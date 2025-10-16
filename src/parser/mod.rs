@@ -19,7 +19,7 @@ the visualization specification into a typed AST.
 
 ```rust
 # use vizql::parser::parse_query;
-# use vizql::Geom;
+# use vizql::{Geom, VizType};
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 let query = r#"
     SELECT date, revenue, region FROM sales WHERE year = 2024
@@ -32,10 +32,12 @@ let query = r#"
         title = 'Sales by Region'
 "#;
 
-let spec = parse_query(query)?;
-assert_eq!(spec.layers.len(), 1);
+let specs = parse_query(query)?;
+assert_eq!(specs.len(), 1);
+assert_eq!(specs[0].viz_type, VizType::Plot);
+assert_eq!(specs[0].layers.len(), 1);
 // Note: Currently returns Point due to stub implementation
-assert_eq!(spec.layers[0].geom, Geom::Point);
+assert_eq!(specs[0].layers[0].geom, Geom::Point);
 # Ok(())
 # }
 ```
@@ -55,19 +57,19 @@ pub use error::ParseError;
 
 /// Main entry point for parsing VizQL queries
 ///
-/// Takes a complete VizQL query (SQL + VISUALISE) and returns a parsed
-/// specification along with the SQL portion.
-pub fn parse_query(query: &str) -> Result<VizSpec> {
+/// Takes a complete VizQL query (SQL + VISUALISE) and returns a vector of
+/// parsed specifications (one per VISUALISE statement).
+pub fn parse_query(query: &str) -> Result<Vec<VizSpec>> {
     // Step 1: Split the query into SQL and VISUALISE portions
-    let (sql_part, viz_part) = splitter::split_query(query)?;
+    let (_sql_part, viz_part) = splitter::split_query(query)?;
 
     // Step 2: Parse the visualization portion using tree-sitter
     let tree = parse_viz_portion(&viz_part)?;
 
     // Step 3: Build AST from the tree-sitter parse tree
-    let spec = builder::build_ast(&tree, &viz_part)?;
+    let specs = builder::build_ast(&tree, &viz_part)?;
 
-    Ok(spec)
+    Ok(specs)
 }
 
 /// Parse just the visualization portion using tree-sitter
@@ -115,9 +117,11 @@ mod tests {
         let result = parse_query(query);
         assert!(result.is_ok(), "Failed to parse simple query: {:?}", result);
 
-        let spec = result.unwrap();
-        assert_eq!(spec.layers.len(), 1);
-        assert_eq!(spec.layers[0].geom, Geom::Point);
+        let specs = result.unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].viz_type, VizType::Plot);
+        assert_eq!(specs[0].layers.len(), 1);
+        assert_eq!(specs[0].layers[0].geom, Geom::Point);
     }
 
     #[test]
@@ -148,10 +152,158 @@ mod tests {
                 color = 'red'
         "#;
 
-        let spec = parse_query(query).unwrap();
-        assert_eq!(spec.layers.len(), 2);
+        let specs = parse_query(query).unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].layers.len(), 2);
         // Note: These will be Point due to stub implementation
-        assert_eq!(spec.layers[0].geom, Geom::Point);
-        assert_eq!(spec.layers[1].geom, Geom::Point);
+        assert_eq!(specs[0].layers[0].geom, Geom::Point);
+        assert_eq!(specs[0].layers[1].geom, Geom::Point);
+    }
+
+    #[test]
+    fn test_multiple_visualizations() {
+        let query = r#"
+            SELECT x, y FROM data
+            VISUALISE AS PLOT
+            WITH point USING x = x, y = y
+            VISUALIZE AS TABLE
+        "#;
+
+        let specs = parse_query(query).unwrap();
+        assert_eq!(specs.len(), 2);
+        assert_eq!(specs[0].viz_type, VizType::Plot);
+        assert_eq!(specs[0].layers.len(), 1);
+        assert_eq!(specs[1].viz_type, VizType::Table);
+        assert_eq!(specs[1].layers.len(), 0);
+    }
+
+    #[test]
+    fn test_american_spelling() {
+        let query = r#"
+            SELECT x, y FROM data
+            VISUALIZE AS MAP
+            WITH tile USING x = x, y = y
+        "#;
+
+        let specs = parse_query(query).unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].viz_type, VizType::Map);
+    }
+
+    #[test]
+    fn test_three_visualizations() {
+        let query = r#"
+            SELECT x, y, z FROM data
+            VISUALISE AS PLOT
+            WITH point USING x = x, y = y
+            VISUALIZE AS TABLE
+            VISUALISE AS MAP
+            WITH tile USING x = x, y = y
+        "#;
+
+        let specs = parse_query(query).unwrap();
+        assert_eq!(specs.len(), 3);
+        assert_eq!(specs[0].viz_type, VizType::Plot);
+        assert_eq!(specs[0].layers.len(), 1);
+        assert_eq!(specs[1].viz_type, VizType::Table);
+        assert_eq!(specs[1].layers.len(), 0);
+        assert_eq!(specs[2].viz_type, VizType::Map);
+        assert_eq!(specs[2].layers.len(), 1);
+    }
+
+    #[test]
+    fn test_all_viz_types() {
+        let query = r#"
+            SELECT x, y FROM data
+            VISUALISE AS PLOT
+            VISUALIZE AS TABLE
+            VISUALISE AS MAP
+        "#;
+
+        let specs = parse_query(query).unwrap();
+        assert_eq!(specs.len(), 3);
+        assert_eq!(specs[0].viz_type, VizType::Plot);
+        assert_eq!(specs[1].viz_type, VizType::Table);
+        assert_eq!(specs[2].viz_type, VizType::Map);
+    }
+
+    #[test]
+    fn test_multiple_viz_with_different_clauses() {
+        let query = r#"
+            SELECT x, y FROM data
+            VISUALISE AS PLOT
+            WITH point USING x = x, y = y
+            LABEL title = 'Scatter Plot'
+            THEME minimal
+            VISUALIZE AS TABLE
+        "#;
+
+        let specs = parse_query(query).unwrap();
+        assert_eq!(specs.len(), 2);
+
+        // First viz should have layers, labels, and theme
+        assert_eq!(specs[0].viz_type, VizType::Plot);
+        assert_eq!(specs[0].layers.len(), 1);
+        assert!(specs[0].labels.is_some());
+        assert!(specs[0].theme.is_some());
+
+        // Second viz should be empty
+        assert_eq!(specs[1].viz_type, VizType::Table);
+        assert_eq!(specs[1].layers.len(), 0);
+        assert!(specs[1].labels.is_none());
+        assert!(specs[1].theme.is_none());
+    }
+
+    #[test]
+    fn test_mixed_spelling_multiple_viz() {
+        let query = r#"
+            SELECT x, y FROM data
+            VISUALISE AS PLOT
+            WITH line USING x = x, y = y
+            VISUALIZE AS MAP
+            WITH tile USING x = x, y = y
+            VISUALISE AS TABLE
+        "#;
+
+        let specs = parse_query(query).unwrap();
+        assert_eq!(specs.len(), 3);
+        assert_eq!(specs[0].viz_type, VizType::Plot);
+        assert_eq!(specs[1].viz_type, VizType::Map);
+        assert_eq!(specs[2].viz_type, VizType::Table);
+    }
+
+    #[test]
+    fn test_complex_multi_viz_query() {
+        let query = r#"
+            SELECT date, revenue, cost FROM sales
+            WHERE year >= 2023
+            VISUALISE AS PLOT
+            WITH line USING x = date, y = revenue
+            WITH line USING x = date, y = cost
+            SCALE x USING type = 'date'
+            LABEL title = 'Revenue and Cost Trends'
+            THEME minimal
+            VISUALIZE AS TABLE
+            VISUALISE AS MAP
+            WITH tile USING x = date, y = revenue
+        "#;
+
+        let specs = parse_query(query).unwrap();
+        assert_eq!(specs.len(), 3);
+
+        // Plot with 2 layers, scale, labels, theme
+        assert_eq!(specs[0].viz_type, VizType::Plot);
+        assert_eq!(specs[0].layers.len(), 2);
+        assert_eq!(specs[0].scales.len(), 1);
+        assert!(specs[0].labels.is_some());
+        assert!(specs[0].theme.is_some());
+
+        // Table with no clauses
+        assert_eq!(specs[1].viz_type, VizType::Table);
+        assert_eq!(specs[1].layers.len(), 0);
+
+        // Map with 1 layer
+        assert_eq!(specs[2].viz_type, VizType::Map);
+        assert_eq!(specs[2].layers.len(), 1);
     }
 }

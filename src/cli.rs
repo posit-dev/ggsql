@@ -107,19 +107,22 @@ fn main() -> anyhow::Result<()> {
             println!("Format: {}", format);
             // TODO: Implement parsing logic
             match parser::parse_query(&query) {
-                Ok(spec) => {
+                Ok(specs) => {
                     match format.as_str() {
-                        "json" => println!("{}", serde_json::to_string_pretty(&spec)?),
-                        "debug" => println!("{:#?}", spec),
+                        "json" => println!("{}", serde_json::to_string_pretty(&specs)?),
+                        "debug" => println!("{:#?}", specs),
                         "pretty" => {
-                            println!("VizQL Specification:");
-                            println!("  Layers: {}", spec.layers.len());
-                            println!("  Scales: {}", spec.scales.len());
-                            if spec.facet.is_some() {
-                                println!("  Faceting: Yes");
-                            }
-                            if spec.theme.is_some() {
-                                println!("  Theme: Yes");
+                            println!("VizQL Specifications: {} total", specs.len());
+                            for (i, spec) in specs.iter().enumerate() {
+                                println!("\nVisualization #{} ({:?}):", i + 1, spec.viz_type);
+                                println!("  Layers: {}", spec.layers.len());
+                                println!("  Scales: {}", spec.scales.len());
+                                if spec.facet.is_some() {
+                                    println!("  Faceting: Yes");
+                                }
+                                if spec.theme.is_some() {
+                                    println!("  Theme: Yes");
+                                }
                             }
                         }
                         _ => {

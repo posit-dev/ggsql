@@ -9,37 +9,61 @@ use super::ast::*;
 use std::collections::HashMap;
 
 /// Build a VizSpec AST from a tree-sitter parse tree
-pub fn build_ast(tree: &Tree, source: &str) -> Result<VizSpec> {
+pub fn build_ast(tree: &Tree, source: &str) -> Result<Vec<VizSpec>> {
     let root = tree.root_node();
 
     // For now, create a simple stub implementation
     // TODO: Implement full tree walking and AST building
 
-    // Check if root is a query or viz_query node
-    if root.kind() != "query" && root.kind() != "viz_query" {
+    // Check if root is a query node
+    if root.kind() != "query" {
         return Err(VizqlError::ParseError(format!(
-            "Expected 'query' or 'viz_query' root node, got '{}'",
+            "Expected 'query' root node, got '{}'",
             root.kind()
         )));
     }
 
-    let mut spec = VizSpec::new();
+    let mut specs = Vec::new();
 
-    // Walk through child nodes
+    // Walk through child nodes - each visualise_statement becomes a VizSpec
     let mut cursor = root.walk();
     for child in root.children(&mut cursor) {
+        if child.kind() == "visualise_statement" {
+            let spec = build_visualise_statement(&child, source)?;
+            specs.push(spec);
+        }
+    }
+
+    if specs.is_empty() {
+        return Err(VizqlError::ParseError(
+            "No VISUALISE statements found in query".to_string()
+        ));
+    }
+
+    Ok(specs)
+}
+
+/// Build a single VizSpec from a visualise_statement node
+fn build_visualise_statement(node: &Node, source: &str) -> Result<VizSpec> {
+    let mut viz_type = VizType::Plot;
+    let mut spec = VizSpec::new(VizType::Plot);
+
+    // Walk through children of visualise_statement
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
         match child.kind() {
-            "sql_body" => {
-                // Skip SQL body - already handled by splitter
+            "VISUALISE" | "VISUALIZE" | "AS" => {
+                // Skip keywords
                 continue;
+            }
+            "viz_type" => {
+                // Extract visualization type
+                viz_type = parse_viz_type(&child, source)?;
+                spec.viz_type = viz_type;
             }
             "viz_clause" => {
                 // Process visualization clause
                 process_viz_clause(&child, source, &mut spec)?;
-            }
-            // For viz_query nodes, skip the VISUALISE/AS/PLOT tokens
-            "VISUALISE" | "AS" | "PLOT" => {
-                continue;
             }
             _ => {
                 // Unknown node type - skip for now
@@ -49,6 +73,17 @@ pub fn build_ast(tree: &Tree, source: &str) -> Result<VizSpec> {
     }
 
     Ok(spec)
+}
+
+/// Parse a viz_type node to determine the visualization type
+fn parse_viz_type(node: &Node, source: &str) -> Result<VizType> {
+    let text = get_node_text(node, source).to_uppercase();
+    match text.as_str() {
+        "PLOT" => Ok(VizType::Plot),
+        "TABLE" => Ok(VizType::Table),
+        "MAP" => Ok(VizType::Map),
+        _ => Err(VizqlError::ParseError(format!("Unknown viz type: {}", text))),
+    }
 }
 
 /// Process a visualization clause node

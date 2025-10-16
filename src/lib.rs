@@ -41,7 +41,7 @@ VizQL splits queries at the `VISUALISE AS` boundary:
 pub mod parser;
 
 // Re-export key types for convenience
-pub use parser::{VizSpec, Layer, Scale, Geom, AestheticValue};
+pub use parser::{VizSpec, VizType, Layer, Scale, Geom, AestheticValue};
 
 // Future modules - not yet implemented
 // #[cfg(feature = "engine")]

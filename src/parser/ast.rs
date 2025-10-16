@@ -23,6 +23,8 @@ use std::collections::HashMap;
 /// Complete VizQL visualization specification
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VizSpec {
+    /// Visualization output type (PLOT, TABLE, etc.)
+    pub viz_type: VizType,
     /// Visual layers (one per WITH clause)
     pub layers: Vec<Layer>,
     /// Scale configurations (one per SCALE clause)
@@ -37,6 +39,14 @@ pub struct VizSpec {
     pub guides: Vec<Guide>,
     /// Theme styling (from THEME clause)
     pub theme: Option<Theme>,
+}
+
+/// Visualization output types
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum VizType {
+    Plot,
+    Table,
+    Map,
 }
 
 /// A single visualization layer (from WITH clause)
@@ -305,9 +315,10 @@ pub enum ThemePropertyValue {
 }
 
 impl VizSpec {
-    /// Create a new empty VizSpec
-    pub fn new() -> Self {
+    /// Create a new empty VizSpec with the given type
+    pub fn new(viz_type: VizType) -> Self {
         Self {
+            viz_type,
             layers: Vec::new(),
             scales: Vec::new(),
             facet: None,
@@ -433,7 +444,7 @@ impl Layer {
 
 impl Default for VizSpec {
     fn default() -> Self {
-        Self::new()
+        Self::new(VizType::Plot)
     }
 }
 
@@ -462,7 +473,8 @@ mod tests {
 
     #[test]
     fn test_viz_spec_creation() {
-        let spec = VizSpec::new();
+        let spec = VizSpec::new(VizType::Plot);
+        assert_eq!(spec.viz_type, VizType::Plot);
         assert_eq!(spec.layers.len(), 0);
         assert!(!spec.has_layers());
         assert_eq!(spec.layer_count(), 0);
@@ -506,7 +518,7 @@ mod tests {
 
     #[test]
     fn test_viz_spec_layer_operations() {
-        let mut spec = VizSpec::new();
+        let mut spec = VizSpec::new(VizType::Plot);
 
         let layer1 = Layer::new(Geom::Point).with_name("points".to_string());
         let layer2 = Layer::new(Geom::Line).with_name("trend".to_string());

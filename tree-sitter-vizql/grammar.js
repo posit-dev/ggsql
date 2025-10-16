@@ -8,11 +8,23 @@ module.exports = grammar({
   name: 'vizql',
 
   rules: {
-    // Main entry point - just start with VISUALISE AS PLOT
+    // Main entry point - supports multiple VISUALISE/VISUALIZE statements
     // The SQL portion will be handled by the calling code (splitter)
-    query: $ => seq(
-      'VISUALISE', 'AS', 'PLOT',
-      repeat1($.viz_clause)
+    query: $ => repeat1($.visualise_statement),
+
+    // VISUALISE/VISUALIZE AS <type> with clauses
+    visualise_statement: $ => seq(
+      choice('VISUALISE', 'VISUALIZE'),
+      'AS',
+      $.viz_type,
+      repeat($.viz_clause)
+    ),
+
+    // Visualization output types
+    viz_type: $ => choice(
+      'PLOT',
+      'TABLE',
+      'MAP'
     ),
 
     // All the visualization clauses (same as current grammar)

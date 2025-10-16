@@ -9,16 +9,16 @@ use regex::Regex;
 /// Split a VizQL query into SQL and visualization portions
 ///
 /// Returns (sql_part, viz_part) where:
-/// - sql_part: Everything before "VISUALISE AS"
-/// - viz_part: Everything from "VISUALISE AS" onwards
+/// - sql_part: Everything before first "VISUALISE/VISUALIZE AS"
+/// - viz_part: Everything from first "VISUALISE/VISUALIZE AS" onwards (may contain multiple VISUALISE statements)
 pub fn split_query(query: &str) -> Result<(String, String)> {
     // For now, implement a simple regex-based splitter
     // TODO: Replace with proper tree-sitter based splitting
 
     let query = query.trim();
 
-    // Find "VISUALISE AS" (case insensitive)
-    let pattern = Regex::new(r"(?i)\bVISUALISE\s+AS\b")
+    // Find "VISUALISE AS" or "VISUALIZE AS" (case insensitive)
+    let pattern = Regex::new(r"(?i)\bVISUALI[SZ]E\s+AS\b")
         .map_err(|e| VizqlError::InternalError(format!("Regex error: {}", e)))?;
 
     if let Some(mat) = pattern.find(query) {

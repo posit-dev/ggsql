@@ -17,25 +17,33 @@ THEME minimal
 - Separation of concerns: data (SQL) vs visualization (VISUALISE)
 - Terminal operation: produces visual output, not relational data
 - Based on Grammar of Graphics (ggplot2, Vega-Lite concepts)
+- **Multiple outputs**: Supports multiple VISUALISE statements in a single query
+- **Spelling flexibility**: Both `VISUALISE` (British) and `VISUALIZE` (American) spellings supported
 
 ## Grammar Structure
 
 ```sql
 SELECT <columns> FROM <table> [WHERE ...] [GROUP BY ...]
-VISUALISE AS PLOT
-[WITH <geom> USING <aesthetics> [AS <name>]]...
-[SCALE <aesthetic> USING <properties>]...
-[FACET {<vars> BY <vars> | WRAP <vars>} [USING scales = <sharing>]]
-[COORD USING type = <type> [, <options>]]
-[LABEL [title = <string>] [x = <string>] [y = <string>] ...]
-[GUIDE <aesthetic> USING <properties>]...
-[THEME <name> [USING <overrides>]]
+[VISUALISE|VISUALIZE AS <type>
+  [WITH <geom> USING <aesthetics> [AS <name>]]...
+  [SCALE <aesthetic> USING <properties>]...
+  [FACET {<vars> BY <vars> | WRAP <vars>} [USING scales = <sharing>]]
+  [COORD USING type = <type> [, <options>]]
+  [LABEL [title = <string>] [x = <string>] [y = <string>] ...]
+  [GUIDE <aesthetic> USING <properties>]...
+  [THEME <name> [USING <overrides>]]
+]...
 ```
+
+**Visualization Types:**
+- `PLOT` - Standard Grammar of Graphics visualizations
+- `TABLE` - Tabular data output
+- `MAP` - Geographic/spatial visualizations
 
 ## Keywords
 
-**Repeatable:** WITH, SCALE, GUIDE, LABEL
-**Singular:** VISUALISE AS, PLOT, FACET, COORD, THEME
+**Repeatable:** WITH, SCALE, GUIDE, LABEL, VISUALISE/VISUALIZE
+**Singular:** PLOT/TABLE/MAP, FACET, COORD, THEME
 
 ## Core Components
 
@@ -149,6 +157,19 @@ GUIDE color USING position = 'right'
 THEME minimal
 ```
 
+### Multiple Outputs Example
+
+```sql
+-- Generate both a visualization and a data table from the same query
+SELECT date, revenue, region FROM sales
+WHERE year = 2024
+VISUALISE AS PLOT
+WITH line USING x = date, y = revenue, color = region
+LABEL title = 'Sales Trends by Region'
+THEME minimal
+VISUALIZE AS TABLE
+```
+
 ## Data Types
 
 **Arrays:** `[0, 100]`, `['2023-01-01', '2024-01-01']`
@@ -166,7 +187,7 @@ THEME minimal
 ### Keyword Summary
 | Keyword | Repeatable | Purpose |
 |---------|------------|---------|
-| `VISUALISE AS` | No | Entry point (required) |
+| `VISUALISE/VISUALIZE AS <type>` | Yes | Entry point (required, can have multiple) |
 | `WITH` | Yes | Define layers |
 | `SCALE` | Yes | Configure scales |
 | `FACET` | No | Small multiples |
@@ -275,11 +296,14 @@ vizql/
 ## Implementation Status
 
 ### ✅ **Completed (Phase 1-2)**
-- **Tree-sitter Grammar**: Simplified 281-line grammar without external scanner
-- **Parser Integration**: Rust bindings working, all tests passing
-- **AST System**: Complete type definitions for VizSpec, Layer, Geom, etc.
-- **Query Splitting**: Regex-based splitter separates SQL from VISUALISE portions
-- **CLI Interface**: Working commands (parse, validate, exec, run)
+- **Tree-sitter Grammar**: Simplified grammar without external scanner
+- **Multiple Visualization Support**: Can parse multiple VISUALISE/VISUALIZE statements in one query
+- **Spelling Flexibility**: Both British (VISUALISE) and American (VISUALIZE) spellings supported
+- **Visualization Types**: Supports PLOT, TABLE, MAP types
+- **Parser Integration**: Rust bindings working, all 20 tests passing
+- **AST System**: Complete type definitions for VizSpec, VizType, Layer, Geom, etc.
+- **Query Splitting**: Regex-based splitter separates SQL from VISUALISE portions (supports both spellings)
+- **CLI Interface**: Working commands (parse, validate, exec, run) with multi-visualization support
 
 ### 🚧 **In Progress**
 - **Documentation**: Updated specification and examples
@@ -295,9 +319,16 @@ vizql/
 ### 🎯 **Current Capabilities**
 ```bash
 # Working CLI commands:
-cargo run parse "SELECT * FROM data VISUALISE AS PLOT WITH point USING x=x, y=y"
-cargo run validate "query.sql"
-cargo run exec "SELECT * FROM data VISUALISE AS PLOT WITH line USING x=date, y=value"
+cargo run -- parse "SELECT * FROM data VISUALISE AS PLOT WITH point USING x=x, y=y"
+
+# Multiple visualizations in one query:
+cargo run -- parse "SELECT * FROM data VISUALISE AS PLOT WITH point USING x=x, y=y VISUALIZE AS TABLE"
+
+# American spelling support:
+cargo run -- parse "SELECT * FROM data VISUALIZE AS MAP WITH tile USING x=x, y=y"
+
+# JSON output for programmatic processing:
+cargo run -- parse "SELECT * FROM data VISUALISE AS PLOT WITH line USING x=x, y=y" --format json
 ```
 
 ## Future Extensions
