@@ -482,7 +482,7 @@ mod tests {
 
     #[test]
     fn test_layer_creation() {
-        let mut layer = Layer::new(Geom::Point)
+        let layer = Layer::new(Geom::Point)
             .with_name("scatter".to_string())
             .with_aesthetic("x".to_string(), AestheticValue::Column("date".to_string()))
             .with_aesthetic("y".to_string(), AestheticValue::Column("revenue".to_string()))

@@ -29,7 +29,7 @@ mod tests {
     #[test]
     fn test_language() {
         let language = language();
-        assert!(language.version() <= tree_sitter::LANGUAGE_VERSION);
-        assert!(language.version() >= tree_sitter::MIN_COMPATIBLE_LANGUAGE_VERSION);
+        assert!(language.abi_version() <= tree_sitter::LANGUAGE_VERSION);
+        assert!(language.abi_version() >= tree_sitter::MIN_COMPATIBLE_LANGUAGE_VERSION);
     }
 }

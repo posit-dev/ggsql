@@ -45,7 +45,6 @@ pub fn build_ast(tree: &Tree, source: &str) -> Result<Vec<VizSpec>> {
 
 /// Build a single VizSpec from a visualise_statement node
 fn build_visualise_statement(node: &Node, source: &str) -> Result<VizSpec> {
-    let mut viz_type = VizType::Plot;
     let mut spec = VizSpec::new(VizType::Plot);
 
     // Walk through children of visualise_statement
@@ -58,7 +57,7 @@ fn build_visualise_statement(node: &Node, source: &str) -> Result<VizSpec> {
             }
             "viz_type" => {
                 // Extract visualization type
-                viz_type = parse_viz_type(&child, source)?;
+                let viz_type = parse_viz_type(&child, source)?;
                 spec.viz_type = viz_type;
             }
             "viz_clause" => {
@@ -829,8 +828,6 @@ fn get_node_text(node: &Node, source: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_stub_implementation() {
         // This is just a placeholder test

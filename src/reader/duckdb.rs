@@ -120,14 +120,14 @@ impl Reader for DuckDBReader {
         // Collect all rows into vectors and extract column names from first row
         let mut row_data: Vec<Vec<String>> = Vec::new();
         let mut column_names: Vec<String> = Vec::new();
-        let mut column_count = 0;
+        let column_count = 0;
 
         // Process first row to get column information
         if let Some(first_row) = rows.next().map_err(|e| {
             VizqlError::ReaderError(format!("Failed to fetch first row: {}", e))
         })? {
             // Get column count from the row
-            column_count = first_row.as_ref().column_count();
+            let column_count = first_row.as_ref().column_count();
 
             if column_count == 0 {
                 return Err(VizqlError::ReaderError(
