@@ -71,6 +71,7 @@ venv.bak/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+*.quarto_ipynb
 
 # PyCharm
 .idea/
@@ -122,6 +123,9 @@ pkg/
 *.dylib
 *.dll
 *.exe
+
+# VSCode build
+*.vsix
 
 # Claude Code specific
 .claude/
