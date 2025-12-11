@@ -11,6 +11,14 @@ and Garrett Grolemund.
 
 All code blocks have been expanded to be self-contained and semantic duplicates have been removed.
 
+```{r}
+library(tidyverse)
+library(ggrepel)
+library(patchwork)
+library(nycflights13)
+library(ggthemes)
+library(babynames)
+```
 
 ## EDA.qmd
 
@@ -1293,14 +1301,6 @@ ggplot(penguins, aes(x = flipper_length_mm, y = body_mass_g)) +
 ggsave(filename = "penguin-plot.png")
 ```
 
-```{r}
-# Source: data-visualize.qmd (line 877)
-#| eval: false
-ggplot(data = mpg) 
-+ geom_point(mapping = aes(x = displ, y = hwy))
-```
-
-
 ## datetimes.qmd
 
 ```{r}
@@ -2289,23 +2289,6 @@ babynames |>
   ggplot(aes(x = year, y = prop_x)) + 
   geom_line()
 ```
-
-
-## workflow-scripts.qmd
-
-```{r}
-# Source: workflow-scripts.qmd (line 296)
-#| label: toy-line
-#| eval: false
-library(tidyverse)
-
-ggplot(diamonds, aes(x = carat, y = price)) + 
-  geom_hex()
-ggsave("diamonds.png")
-
-write_csv(diamonds, "data/diamonds.csv")
-```
-
 
 ## workflow-style.qmd
 
