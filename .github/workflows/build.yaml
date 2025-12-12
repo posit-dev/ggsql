@@ -2,9 +2,9 @@ name: build-test.yaml
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -15,11 +15,20 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Increase disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          sudo docker builder prune -a
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install tree sitter
         run: npm install -g tree-sitter-cli
+
+      - name: Check disk space
+        run: df -h
 
       - name: Regenerate parser
         working-directory: tree-sitter-ggsql
