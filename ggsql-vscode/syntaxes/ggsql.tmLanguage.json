@@ -140,7 +140,7 @@
           "name": "constant.language.viz-type.ggsql",
           "match": "\\b(?i:PLOT|TABLE|MAP)\\b"
         },
-        { "include": "#with-clause" },
+        { "include": "#draw-clause" },
         { "include": "#scale-clause" },
         { "include": "#facet-clause" },
         { "include": "#coord-clause" },
@@ -149,11 +149,11 @@
         { "include": "#theme-clause" }
       ]
     },
-    "with-clause": {
+    "draw-clause": {
       "patterns": [
         {
           "name": "keyword.control.visualise.ggsql",
-          "match": "\\b(?i:WITH)\\b"
+          "match": "\\b(?i:DRAW)\\b"
         },
         {
           "name": "keyword.control.with.ggsql",

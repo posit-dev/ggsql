@@ -123,17 +123,17 @@ mod tests {
 
     #[test]
     fn test_simple_split() {
-        let query = "SELECT * FROM data VISUALISE AS PLOT WITH point USING x = x, y = y";
+        let query = "SELECT * FROM data VISUALISE AS PLOT DRAW point USING x = x, y = y";
         let (sql, viz) = split_query(query).unwrap();
 
         assert_eq!(sql, "SELECT * FROM data");
         assert!(viz.starts_with("VISUALISE AS PLOT"));
-        assert!(viz.contains("WITH point"));
+        assert!(viz.contains("DRAW point"));
     }
 
     #[test]
     fn test_case_insensitive() {
-        let query = "SELECT * FROM data visualise as plot WITH point USING x = x, y = y";
+        let query = "SELECT * FROM data visualise as plot DRAW point USING x = x, y = y";
         let (sql, viz) = split_query(query).unwrap();
 
         assert_eq!(sql, "SELECT * FROM data");
@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn test_visualise_from_no_sql() {
-        let query = "VISUALISE FROM mtcars AS PLOT WITH point USING x = mpg, y = hp";
+        let query = "VISUALISE FROM mtcars AS PLOT DRAW point USING x = mpg, y = hp";
         let (sql, viz) = split_query(query).unwrap();
 
         // Should inject SELECT * FROM mtcars
@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn test_visualise_from_with_cte() {
-        let query = "WITH cte AS (SELECT * FROM x) VISUALISE FROM cte AS PLOT WITH point USING x = a, y = b";
+        let query = "WITH cte AS (SELECT * FROM x) VISUALISE FROM cte AS PLOT DRAW point USING x = a, y = b";
         let (sql, viz) = split_query(query).unwrap();
 
         // Should inject SELECT * FROM cte after the WITH
@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_visualise_as_no_injection() {
-        let query = "SELECT * FROM x VISUALISE AS PLOT WITH point USING x = a, y = b";
+        let query = "SELECT * FROM x VISUALISE AS PLOT DRAW point USING x = a, y = b";
         let (sql, _viz) = split_query(query).unwrap();
 
         // Should NOT inject anything - just split normally
@@ -214,7 +214,7 @@ mod tests {
 
     #[test]
     fn test_visualise_from_file_path() {
-        let query = "VISUALISE FROM 'mtcars.csv' AS PLOT WITH point USING x = mpg, y = hp";
+        let query = "VISUALISE FROM 'mtcars.csv' AS PLOT DRAW point USING x = mpg, y = hp";
         let (sql, viz) = split_query(query).unwrap();
 
         // Should inject SELECT * FROM 'mtcars.csv' with quotes preserved
@@ -225,7 +225,7 @@ mod tests {
     #[test]
     fn test_visualise_from_file_path_double_quotes() {
         let query =
-            r#"VISUALISE FROM "data/sales.parquet" AS PLOT WITH bar USING x = region, y = total"#;
+            r#"VISUALISE FROM "data/sales.parquet" AS PLOT DRAW bar USING x = region, y = total"#;
         let (sql, viz) = split_query(query).unwrap();
 
         // Should inject SELECT * FROM "data/sales.parquet" with quotes preserved
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn test_visualise_from_file_path_with_cte() {
-        let query = "WITH prep AS (SELECT * FROM 'raw.csv' WHERE year = 2024) VISUALISE FROM prep AS PLOT WITH line USING x = date, y = value";
+        let query = "WITH prep AS (SELECT * FROM 'raw.csv' WHERE year = 2024) VISUALISE FROM prep AS PLOT DRAW line USING x = date, y = value";
         let (sql, _viz) = split_query(query).unwrap();
 
         // Should inject SELECT * FROM prep after WITH

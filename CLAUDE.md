@@ -9,7 +9,7 @@
 ```sql
 SELECT date, revenue, region FROM sales WHERE year = 2024
 VISUALISE AS PLOT
-WITH line USING x = date, y = revenue, color = region
+DRAW line USING x = date, y = revenue, color = region
 SCALE x USING type = 'date'
 COORD cartesian USING ylim = [0, 100000]
 LABEL title = 'Sales by Region', x = 'Date', y = 'Revenue'
@@ -40,7 +40,7 @@ The original syntax where SQL and visualization are separated by `VISUALISE AS`:
 ```sql
 SELECT * FROM sales WHERE year = 2024
 VISUALISE AS PLOT
-WITH line USING x = date, y = revenue
+DRAW line USING x = date, y = revenue
 ```
 
 ### Shorthand Pattern: VISUALISE FROM ... AS
@@ -50,7 +50,7 @@ A concise syntax that automatically injects `SELECT * FROM <source>`:
 ```sql
 -- Direct table visualization
 VISUALISE FROM sales AS PLOT
-WITH bar USING x = region, y = total
+DRAW bar USING x = region, y = total
 
 -- CTE visualization (no trailing SELECT)
 WITH monthly_totals AS (
@@ -59,7 +59,7 @@ WITH monthly_totals AS (
     GROUP BY month
 )
 VISUALISE FROM monthly_totals AS PLOT
-WITH line USING x = month, y = total
+DRAW line USING x = month, y = total
 ```
 
 ---
@@ -71,7 +71,7 @@ WITH line USING x = month, y = total
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                       ggSQL Query                            │
-│  "SELECT ... FROM ... WHERE ... VISUALISE AS PLOT WITH ..."  │
+│  "SELECT ... FROM ... WHERE ... VISUALISE AS PLOT DRAW ..."  │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
@@ -146,7 +146,7 @@ WITH line USING x = month, y = total
 
 - Uses `tree-sitter-ggsql` grammar (507 lines, simplified approach)
 - Parses **full query** (SQL + VISUALISE) into concrete syntax tree (CST)
-- Grammar supports: PLOT/TABLE/MAP types, WITH/SCALE/FACET/COORD/LABEL/GUIDE/THEME clauses
+- Grammar supports: PLOT/TABLE/MAP types, DRAW/SCALE/FACET/COORD/LABEL/GUIDE/THEME clauses
 - British and American spellings: `VISUALISE` / `VISUALIZE`
 - **SQL portion parsing**: Basic SQL structure (SELECT, WITH, CREATE, INSERT, subqueries)
 - **Recursive subquery support**: Fully recursive grammar for complex SQL
@@ -186,7 +186,7 @@ Core data structures representing visualization specifications:
 pub struct VizSpec {
     pub viz_type: VizType,           // PLOT, TABLE, MAP
     pub source: Option<String>,      // FROM source (for VISUALISE FROM)
-    pub layers: Vec<Layer>,          // WITH clauses
+    pub layers: Vec<Layer>,          // DRAW clauses
     pub scales: Vec<Scale>,          // SCALE clauses
     pub facet: Option<Facet>,        // FACET clause
     pub coord: Option<Coord>,        // COORD clause
@@ -671,7 +671,7 @@ SELECT * FROM (VALUES
 -- Cell 2: Visualize
 SELECT * FROM sales
 VISUALISE AS PLOT
-WITH line USING x = date, y = revenue, color = region
+DRAW line USING x = date, y = revenue, color = region
 SCALE x USING type = 'date'
 LABEL title = 'Sales Trends'
 ```
@@ -722,7 +722,7 @@ code --install-extension ggsql-0.1.0.vsix
 
 **Syntax Scopes**:
 
-- `keyword.control.ggsql` - VISUALISE, WITH, SCALE, COORD, etc.
+- `keyword.control.ggsql` - VISUALISE, DRAW, SCALE, COORD, etc.
 - `keyword.other.sql` - SELECT, FROM, WHERE, etc.
 - `entity.name.function.geom.ggsql` - point, line, bar, etc.
 - `variable.parameter.aesthetic.ggsql` - x, y, color, size, etc.
@@ -807,7 +807,7 @@ cargo build --all-features
 | Clause         | Repeatable | Purpose            | Example                              |
 | -------------- | ---------- | ------------------ | ------------------------------------ |
 | `VISUALISE AS` | ✅ Yes     | Entry point        | `VISUALISE AS PLOT`                  |
-| `WITH`         | ✅ Yes     | Define layers      | `WITH line USING x=date, y=value`    |
+| `DRAW`         | ✅ Yes     | Define layers      | `DRAW line USING x=date, y=value`    |
 | `SCALE`        | ✅ Yes     | Configure scales   | `SCALE x USING type='date'`          |
 | `FACET`        | ❌ No      | Small multiples    | `FACET WRAP region`                  |
 | `COORD`        | ❌ No      | Coordinate system  | `COORD cartesian USING xlim=[0,100]` |
@@ -815,12 +815,12 @@ cargo build --all-features
 | `GUIDE`        | ✅ Yes     | Legend/axis config | `GUIDE color USING position='right'` |
 | `THEME`        | ❌ No      | Visual styling     | `THEME minimal`                      |
 
-### WITH Clause (Layers)
+### DRAW Clause (Layers)
 
 **Syntax**:
 
 ```sql
-WITH <geom> USING <aesthetic> = <value>, ... [AS <name>]
+DRAW <geom> USING <aesthetic> = <value>, ... [AS <name>]
 ```
 
 **Geom Types**:
@@ -844,8 +844,8 @@ WITH <geom> USING <aesthetic> = <value>, ... [AS <name>]
 **Example**:
 
 ```sql
-WITH line USING x = date, y = revenue, color = region, size = 2
-WITH point USING x = date, y = revenue, color = region AS "data_points"
+DRAW line USING x = date, y = revenue, color = region, size = 2
+DRAW point USING x = date, y = revenue, color = region AS "data_points"
 ```
 
 ### SCALE Clause
@@ -1002,7 +1002,7 @@ COORD polar
 COORD polar USING theta = y
 
 -- Combined with other clauses
-WITH bar USING x = category, y = value
+DRAW bar USING x = category, y = value
 COORD cartesian USING xlim = [0, 100], ylim = [0, 200]
 LABEL x = 'Category', y = 'Count'
 ```
@@ -1064,8 +1064,8 @@ WHERE sale_date >= '2024-01-01'
 GROUP BY sale_date, region
 ORDER BY sale_date
 VISUALISE AS PLOT
-WITH line USING x = sale_date, y = total, color = region
-WITH point USING x = sale_date, y = total, color = region
+DRAW line USING x = sale_date, y = total, color = region
+DRAW point USING x = sale_date, y = total, color = region
 SCALE x USING type = 'date'
 FACET WRAP region
 LABEL title = 'Sales Trends by Region', x = 'Date', y = 'Total Quantity'
@@ -1079,7 +1079,7 @@ THEME minimal
 ```rust
 // splitter.rs
 SQL:  "SELECT sale_date, region, SUM(quantity) as total FROM sales ..."
-VIZ:  "VISUALISE AS PLOT WITH line USING x = sale_date, ..."
+VIZ:  "VISUALISE AS PLOT DRAW line USING x = sale_date, ..."
 ```
 
 **2. SQL Execution** (DuckDB Reader)

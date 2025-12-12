@@ -122,7 +122,7 @@ SELECT 2, 4, 'A'
 UNION ALL
 SELECT 3, 3, 'B'
 VISUALISE AS PLOT
-WITH point USING x = x, y = y, color = category
+DRAW point USING x = x, y = y, color = category
 ```
 
 #### Time Series
@@ -133,7 +133,7 @@ SELECT
     n * 10 as revenue
 FROM generate_series(0, 30) as t(n)
 VISUALISE AS PLOT
-WITH line USING x = date, y = revenue
+DRAW line USING x = date, y = revenue
 SCALE x USING type = 'date'
 LABEL title = 'Revenue Growth', x = 'Date', y = 'Revenue ($)'
 ```
@@ -144,8 +144,8 @@ LABEL title = 'Revenue Growth', x = 'Date', y = 'Revenue ($)'
 SELECT x, x*x as y, x*x*x as z
 FROM generate_series(1, 10) as t(x)
 VISUALISE AS PLOT
-WITH line USING x = x, y = y
-WITH line USING x = x, y = z
+DRAW line USING x = x, y = y
+DRAW line USING x = x, y = z
 LABEL title = 'Polynomial Functions'
 ```
 
@@ -175,6 +175,6 @@ Cell 2:
 ```sql
 SELECT * FROM products
 VISUALISE AS PLOT
-WITH bar USING x = name, y = price
+DRAW bar USING x = name, y = price
 LABEL title = 'Product Prices', y = 'Price ($)'
 ```

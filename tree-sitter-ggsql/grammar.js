@@ -229,7 +229,7 @@ module.exports = grammar({
 
     // All the visualization clauses (same as current grammar)
     viz_clause: $ => choice(
-      $.with_clause,
+      $.draw_clause,
       $.scale_clause,
       $.facet_clause,
       $.coord_clause,
@@ -239,8 +239,8 @@ module.exports = grammar({
     ),
 
     // WITH clause
-    with_clause: $ => seq(
-      caseInsensitive('WITH'),
+    draw_clause: $ => seq(
+      caseInsensitive('DRAW'),
       $.geom_type,
       caseInsensitive('USING'),
       $.aesthetic_mapping,

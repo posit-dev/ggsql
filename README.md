@@ -11,7 +11,7 @@ SELECT date, revenue, region
 FROM sales
 WHERE year = 2024
 VISUALISE AS PLOT
-WITH line USING
+DRAW line USING
     x = date,
     y = revenue,
     color = region
@@ -214,7 +214,7 @@ See [CLAUDE.md](CLAUDE.md) for the in-progress ggSQL grammar specification, incl
 Key grammar elements:
 
 - `VISUALISE AS PLOT` - Entry point for visualization
-- `WITH <geom> USING` - Define geometric layers (point, line, bar, etc.)
+- `DRAW <geom> USING` - Define geometric layers (point, line, bar, etc.)
 - `SCALE <aesthetic> USING` - Configure data-to-visual mappings
 - `FACET` - Create small multiples (WRAP for flowing layout, BY for grid)
 - `COORD` - Coordinate transformations (cartesian, flip, polar)
@@ -246,7 +246,7 @@ SELECT * FROM (VALUES
 -- Visualize with ggSQL
 SELECT * FROM sales
 VISUALISE AS PLOT
-WITH line USING x = date, y = revenue, color = region
+DRAW line USING x = date, y = revenue, color = region
 SCALE x USING type = 'date'
 LABEL title = 'Sales Trends'
 ```
@@ -283,7 +283,7 @@ code --install-extension ggsql-0.1.0.vsix
 The extension uses a TextMate grammar that highlights:
 
 - SQL keywords (SELECT, FROM, WHERE, JOIN, etc.)
-- ggSQL clauses (VISUALISE, WITH, SCALE, COORD, FACET, etc.)
+- ggSQL clauses (VISUALISE, DRAW, SCALE, COORD, FACET, etc.)
 - Geometric objects (point, line, bar, area, etc.)
 - Aesthetics (x, y, color, size, shape, etc.)
 - Scale types (linear, log10, date, viridis, etc.)

@@ -9,7 +9,7 @@
 //! ```text
 //! VizSpec
 //! ├─ source: Option<String>    (optional, from VISUALISE FROM clause)
-//! ├─ layers: Vec<Layer>        (1+ LayerNode, one per WITH clause)
+//! ├─ layers: Vec<Layer>        (1+ LayerNode, one per DRAW clause)
 //! ├─ scales: Vec<Scale>        (0+ ScaleNode, one per SCALE clause)
 //! ├─ facet: Option<Facet>      (optional, from FACET clause)
 //! ├─ coord: Option<Coord>      (optional, from COORD clause)
@@ -28,7 +28,7 @@ pub struct VizSpec {
     pub viz_type: VizType,
     /// FROM source name (CTE or table) when using VISUALISE FROM syntax
     pub source: Option<String>,
-    /// Visual layers (one per WITH clause)
+    /// Visual layers (one per DRAW clause)
     pub layers: Vec<Layer>,
     /// Scale configurations (one per SCALE clause)
     pub scales: Vec<Scale>,
@@ -52,7 +52,7 @@ pub enum VizType {
     Map,
 }
 
-/// A single visualization layer (from WITH clause)
+/// A single visualization layer (from DRAW clause)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Layer {
     /// Optional layer name (from AS clause)

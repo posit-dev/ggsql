@@ -16,7 +16,7 @@ try {
   // Test parsing a simple ggSQL query
   const sourceCode = `
   VISUALISE AS PLOT
-  WITH point USING
+  DRAW point USING
       x = date,
       y = revenue
   `;
@@ -35,11 +35,11 @@ try {
   // Test a more complex query
   const complexQuery = `
   VISUALISE AS PLOT
-  WITH line USING
+  DRAW line USING
       x = date,
       y = revenue,
       color = region
-  WITH point USING
+  DRAW point USING
       x = date,
       y = revenue,
       color = region,

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Rename the WITH clause to DRAW
+
 ## 0.1.0
 
 - Initial release of ggSQL syntax highlighting

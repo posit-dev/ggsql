@@ -2,7 +2,7 @@
 Simple point plot
 ================================================================================
 
-VISUALISE AS PLOT WITH point USING x = x, y = y
+VISUALISE AS PLOT DRAW point USING x = x, y = y
 
 --------------------------------------------------------------------------------
 
@@ -10,7 +10,7 @@ VISUALISE AS PLOT WITH point USING x = x, y = y
   (visualise_statement
     (viz_type)
     (viz_clause
-      (with_clause
+      (draw_clause
         (geom_type)
         (aesthetic_mapping
           (aesthetic_name)
@@ -28,8 +28,8 @@ Multi-layer plot
 ================================================================================
 
 VISUALISE AS PLOT
-WITH line USING x = date, y = value
-WITH point USING x = date, y = value, color = 'red'
+DRAW line USING x = date, y = value
+DRAW point USING x = date, y = value, color = 'red'
 
 --------------------------------------------------------------------------------
 
@@ -37,7 +37,7 @@ WITH point USING x = date, y = value, color = 'red'
   (visualise_statement
     (viz_type)
     (viz_clause
-      (with_clause
+      (draw_clause
         (geom_type)
         (aesthetic_mapping
           (aesthetic_name)
@@ -50,7 +50,7 @@ WITH point USING x = date, y = value, color = 'red'
             (column_reference
               (identifier))))))
     (viz_clause
-      (with_clause
+      (draw_clause
         (geom_type)
         (aesthetic_mapping
           (aesthetic_name)
@@ -73,7 +73,7 @@ Plot with scales and theme
 ================================================================================
 
 VISUALISE AS PLOT
-WITH point USING x = x, y = y, color = group
+DRAW point USING x = x, y = y, color = group
 SCALE x USING type = 'linear', limits = [0, 100]
 SCALE color USING palette = 'viridis'
 THEME minimal
@@ -84,7 +84,7 @@ THEME minimal
   (visualise_statement
     (viz_type)
     (viz_clause
-      (with_clause
+      (draw_clause
         (geom_type)
         (aesthetic_mapping
           (aesthetic_name)
@@ -132,7 +132,7 @@ Plot with labels
 ================================================================================
 
 VISUALISE AS PLOT
-WITH point USING x = x, y = y
+DRAW point USING x = x, y = y
 LABEL title = 'My Plot', x = 'X Axis', y = 'Y Axis'
 LABEL caption = 'Data source: Analysis DB'
 
@@ -142,7 +142,7 @@ LABEL caption = 'Data source: Analysis DB'
   (visualise_statement
     (viz_type)
     (viz_clause
-      (with_clause
+      (draw_clause
         (geom_type)
         (aesthetic_mapping
           (aesthetic_name)
@@ -176,7 +176,7 @@ COORD cartesian with xlim
 ================================================================================
 
 VISUALISE AS PLOT
-WITH point USING x = x, y = y
+DRAW point USING x = x, y = y
 COORD cartesian USING xlim = [0, 100]
 
 --------------------------------------------------------------------------------
@@ -185,7 +185,7 @@ COORD cartesian USING xlim = [0, 100]
   (visualise_statement
     (viz_type)
     (viz_clause
-      (with_clause
+      (draw_clause
         (geom_type)
         (aesthetic_mapping
           (aesthetic_name)
@@ -214,7 +214,7 @@ COORD cartesian with ylim
 ================================================================================
 
 VISUALISE AS PLOT
-WITH point USING x = x, y = y
+DRAW point USING x = x, y = y
 COORD cartesian USING ylim = [-10, 50]
 
 --------------------------------------------------------------------------------
@@ -223,7 +223,7 @@ COORD cartesian USING ylim = [-10, 50]
   (visualise_statement
     (viz_type)
     (viz_clause
-      (with_clause
+      (draw_clause
         (geom_type)
         (aesthetic_mapping
           (aesthetic_name)
@@ -252,7 +252,7 @@ COORD cartesian with multiple properties
 ================================================================================
 
 VISUALISE AS PLOT
-WITH point USING x = x, y = y, color = category
+DRAW point USING x = x, y = y, color = category
 COORD cartesian USING xlim = [0, 100], ylim = [0, 200], color = ['A', 'B', 'C']
 
 --------------------------------------------------------------------------------
@@ -261,7 +261,7 @@ COORD cartesian USING xlim = [0, 100], ylim = [0, 200], color = ['A', 'B', 'C']
   (visualise_statement
     (viz_type)
     (viz_clause
-      (with_clause
+      (draw_clause
         (geom_type)
         (aesthetic_mapping
           (aesthetic_name)
@@ -312,7 +312,7 @@ COORD flip
 ================================================================================
 
 VISUALISE AS PLOT
-WITH bar USING x = category, y = value
+DRAW bar USING x = category, y = value
 COORD flip
 
 --------------------------------------------------------------------------------
@@ -321,7 +321,7 @@ COORD flip
   (visualise_statement
     (viz_type)
     (viz_clause
-      (with_clause
+      (draw_clause
         (geom_type)
         (aesthetic_mapping
           (aesthetic_name)
@@ -342,7 +342,7 @@ COORD flip with aesthetic domain
 ================================================================================
 
 VISUALISE AS PLOT
-WITH bar USING x = category, y = value, color = region
+DRAW bar USING x = category, y = value, color = region
 COORD flip USING color = ['North', 'South', 'East', 'West']
 
 --------------------------------------------------------------------------------
@@ -351,7 +351,7 @@ COORD flip USING color = ['North', 'South', 'East', 'West']
   (visualise_statement
     (viz_type)
   (viz_clause
-    (with_clause
+    (draw_clause
       (geom_type)
       (aesthetic_mapping
         (aesthetic_name)
@@ -390,7 +390,7 @@ COORD polar with theta
 ================================================================================
 
 VISUALISE AS PLOT
-WITH bar USING x = category, y = value
+DRAW bar USING x = category, y = value
 COORD polar USING theta = y
 
 --------------------------------------------------------------------------------
@@ -399,7 +399,7 @@ COORD polar USING theta = y
   (visualise_statement
     (viz_type)
   (viz_clause
-    (with_clause
+    (draw_clause
       (geom_type)
       (aesthetic_mapping
         (aesthetic_name)
@@ -424,7 +424,7 @@ COORD USING without type (defaults to cartesian)
 ================================================================================
 
 VISUALISE AS PLOT
-WITH point USING x = x, y = y
+DRAW point USING x = x, y = y
 COORD USING xlim = [0, 100]
 
 --------------------------------------------------------------------------------
@@ -433,7 +433,7 @@ COORD USING xlim = [0, 100]
   (visualise_statement
     (viz_type)
   (viz_clause
-    (with_clause
+    (draw_clause
       (geom_type)
       (aesthetic_mapping
         (aesthetic_name)
@@ -461,7 +461,7 @@ Case insensitive keywords
 ================================================================================
 
 visualise as plot
-with point using x = x, y = y
+draw point using x = x, y = y
 coord cartesian using xlim = [0, 100]
 label title = 'Test'
 
@@ -471,7 +471,7 @@ label title = 'Test'
   (visualise_statement
     (viz_type)
     (viz_clause
-      (with_clause
+      (draw_clause
         (geom_type)
         (aesthetic_mapping
           (aesthetic_name)
@@ -505,7 +505,7 @@ VISUALISE FROM with CTE
 
 WITH cte AS (SELECT * FROM x)
 VISUALISE FROM cte AS PLOT
-WITH point USING x = a, y = b
+DRAW point USING x = a, y = b
 
 --------------------------------------------------------------------------------
 
@@ -521,7 +521,7 @@ WITH point USING x = a, y = b
     (identifier)
     (viz_type)
     (viz_clause
-      (with_clause
+      (draw_clause
         (geom_type)
         (aesthetic_mapping
           (aesthetic_name)
@@ -539,7 +539,7 @@ VISUALISE FROM with table
 ================================================================================
 
 VISUALISE FROM mtcars AS PLOT
-WITH point USING x = mpg, y = hp
+DRAW point USING x = mpg, y = hp
 
 --------------------------------------------------------------------------------
 
@@ -548,7 +548,7 @@ WITH point USING x = mpg, y = hp
     (identifier)
     (viz_type)
     (viz_clause
-      (with_clause
+      (draw_clause
         (geom_type)
         (aesthetic_mapping
           (aesthetic_name)
@@ -591,7 +591,7 @@ SELECT followed by VISUALISE AS (traditional syntax)
 
 SELECT * FROM x
 VISUALISE AS PLOT
-WITH bar USING x = a, y = b
+DRAW bar USING x = a, y = b
 
 --------------------------------------------------------------------------------
 
@@ -603,7 +603,7 @@ WITH bar USING x = a, y = b
   (visualise_statement
     (viz_type)
     (viz_clause
-      (with_clause
+      (draw_clause
         (geom_type)
         (aesthetic_mapping
           (aesthetic_name)
@@ -622,7 +622,7 @@ WITH statement followed by SELECT and VISUALISE AS
 
 WITH cte AS (SELECT * FROM x) SELECT * FROM cte
 VISUALISE AS PLOT
-WITH point USING x = a, y = b
+DRAW point USING x = a, y = b
 
 --------------------------------------------------------------------------------
 
@@ -640,7 +640,7 @@ WITH point USING x = a, y = b
   (visualise_statement
     (viz_type)
     (viz_clause
-      (with_clause
+      (draw_clause
         (geom_type)
         (aesthetic_mapping
           (aesthetic_name)

@@ -13,7 +13,7 @@ SELECT date, revenue, region
 FROM sales
 WHERE year = 2024
 VISUALISE AS PLOT
-WITH line
+DRAW line
     x = date,
     y = revenue,
     color = region

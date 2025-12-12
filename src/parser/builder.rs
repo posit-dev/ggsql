@@ -148,7 +148,7 @@ fn process_viz_clause(node: &Node, source: &str, spec: &mut VizSpec) -> Result<(
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "with_clause" => {
+            "draw_clause" => {
                 let layer = build_layer(&child, source)?;
                 spec.layers.push(layer);
             }
@@ -190,7 +190,7 @@ fn process_viz_clause(node: &Node, source: &str, spec: &mut VizSpec) -> Result<(
     Ok(())
 }
 
-/// Build a Layer from a with_clause node
+/// Build a Layer from a draw_clause node
 fn build_layer(node: &Node, source: &str) -> Result<Layer> {
     // Parse geom type
     let mut geom = Geom::Point; // default
@@ -199,7 +199,7 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "WITH" | "USING" | "," => continue, // Skip keywords and punctuation
+            "DRAW" | "USING" | "," => continue, // Skip keywords and punctuation
             "geom_type" => {
                 let geom_text = get_node_text(&child, source);
                 geom = parse_geom_type(&geom_text)?;
@@ -1092,7 +1092,7 @@ mod tests {
     fn test_coord_cartesian_valid_xlim() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH point USING x = x, y = y
+            DRAW point USING x = x, y = y
             COORD cartesian USING xlim = [0, 100]
         "#;
 
@@ -1110,7 +1110,7 @@ mod tests {
     fn test_coord_cartesian_valid_ylim() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH point USING x = x, y = y
+            DRAW point USING x = x, y = y
             COORD cartesian USING ylim = [-10, 50]
         "#;
 
@@ -1126,7 +1126,7 @@ mod tests {
     fn test_coord_cartesian_valid_aesthetic_domain() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH point USING x = x, y = y, color = category
+            DRAW point USING x = x, y = y, color = category
             COORD cartesian USING color = ['red', 'green', 'blue']
         "#;
 
@@ -1142,7 +1142,7 @@ mod tests {
     fn test_coord_cartesian_invalid_property_theta() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH point USING x = x, y = y
+            DRAW point USING x = x, y = y
             COORD cartesian USING theta = y
         "#;
 
@@ -1156,7 +1156,7 @@ mod tests {
     fn test_coord_flip_valid_aesthetic_domain() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH bar USING x = category, y = value, color = region
+            DRAW bar USING x = category, y = value, color = region
             COORD flip USING color = ['A', 'B', 'C']
         "#;
 
@@ -1173,7 +1173,7 @@ mod tests {
     fn test_coord_flip_invalid_property_xlim() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH bar USING x = category, y = value
+            DRAW bar USING x = category, y = value
             COORD flip USING xlim = [0, 100]
         "#;
 
@@ -1187,7 +1187,7 @@ mod tests {
     fn test_coord_flip_invalid_property_ylim() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH bar USING x = category, y = value
+            DRAW bar USING x = category, y = value
             COORD flip USING ylim = [0, 100]
         "#;
 
@@ -1201,7 +1201,7 @@ mod tests {
     fn test_coord_flip_invalid_property_theta() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH bar USING x = category, y = value
+            DRAW bar USING x = category, y = value
             COORD flip USING theta = y
         "#;
 
@@ -1215,7 +1215,7 @@ mod tests {
     fn test_coord_polar_valid_theta() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH bar USING x = category, y = value
+            DRAW bar USING x = category, y = value
             COORD polar USING theta = y
         "#;
 
@@ -1232,7 +1232,7 @@ mod tests {
     fn test_coord_polar_valid_aesthetic_domain() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH bar USING x = category, y = value, color = region
+            DRAW bar USING x = category, y = value, color = region
             COORD polar USING color = ['North', 'South', 'East', 'West']
         "#;
 
@@ -1248,7 +1248,7 @@ mod tests {
     fn test_coord_polar_invalid_property_xlim() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH bar USING x = category, y = value
+            DRAW bar USING x = category, y = value
             COORD polar USING xlim = [0, 100]
         "#;
 
@@ -1262,7 +1262,7 @@ mod tests {
     fn test_coord_polar_invalid_property_ylim() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH bar USING x = category, y = value
+            DRAW bar USING x = category, y = value
             COORD polar USING ylim = [0, 100]
         "#;
 
@@ -1280,7 +1280,7 @@ mod tests {
     fn test_scale_coord_conflict_x_domain() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH point USING x = x, y = y
+            DRAW point USING x = x, y = y
             SCALE x USING domain = [0, 100]
             COORD cartesian USING x = [0, 50]
         "#;
@@ -1295,7 +1295,7 @@ mod tests {
     fn test_scale_coord_conflict_color_domain() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH point USING x = x, y = y, color = category
+            DRAW point USING x = x, y = y, color = category
             SCALE color USING domain = ['A', 'B']
             COORD cartesian USING color = ['A', 'B', 'C']
         "#;
@@ -1310,7 +1310,7 @@ mod tests {
     fn test_scale_coord_no_conflict_different_aesthetics() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH point USING x = x, y = y, color = category
+            DRAW point USING x = x, y = y, color = category
             SCALE color USING domain = ['A', 'B']
             COORD cartesian USING xlim = [0, 100]
         "#;
@@ -1323,7 +1323,7 @@ mod tests {
     fn test_scale_coord_no_conflict_scale_without_domain() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH point USING x = x, y = y
+            DRAW point USING x = x, y = y
             SCALE x USING type = 'linear'
             COORD cartesian USING x = [0, 100]
         "#;
@@ -1340,7 +1340,7 @@ mod tests {
     fn test_coord_cartesian_multiple_properties() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH point USING x = x, y = y, color = category
+            DRAW point USING x = x, y = y, color = category
             COORD cartesian USING xlim = [0, 100], ylim = [-10, 50], color = ['A', 'B']
         "#;
 
@@ -1358,7 +1358,7 @@ mod tests {
     fn test_coord_polar_theta_with_aesthetic() {
         let query = r#"
             VISUALISE AS PLOT
-            WITH bar USING x = category, y = value, color = region
+            DRAW bar USING x = category, y = value, color = region
             COORD polar USING theta = y, color = ['North', 'South']
         "#;
 
@@ -1379,7 +1379,7 @@ mod tests {
     fn test_case_insensitive_keywords_lowercase() {
         let query = r#"
             visualise as plot
-            with point using x = x, y = y
+            draw point using x = x, y = y
             coord cartesian using xlim = [0, 100]
             label title = 'Test Chart'
         "#;
@@ -1401,7 +1401,7 @@ mod tests {
     fn test_case_insensitive_keywords_mixed() {
         let query = r#"
             ViSuAlIsE As PlOt
-            WiTh line UsInG x = date, y = revenue
+            DrAw line UsInG x = date, y = revenue
             ScAlE x uSiNg type = 'date'
             ThEmE minimal
         "#;
@@ -1419,7 +1419,7 @@ mod tests {
     fn test_case_insensitive_american_spelling() {
         let query = r#"
             visualize as plot
-            with bar using x = category, y = value
+            draw bar using x = category, y = value
         "#;
 
         let result = parse_test_query(query);
@@ -1437,7 +1437,7 @@ mod tests {
         let query = r#"
             WITH cte AS (SELECT * FROM x)
             VISUALISE FROM cte AS PLOT
-            WITH bar USING x = a, y = b
+            DRAW bar USING x = a, y = b
         "#;
 
         let result = parse_test_query(query);
@@ -1453,7 +1453,7 @@ mod tests {
     fn test_visualise_from_table() {
         let query = r#"
             VISUALISE FROM mtcars AS PLOT
-            WITH point USING x = mpg, y = hp
+            DRAW point USING x = mpg, y = hp
         "#;
 
         let result = parse_test_query(query);
@@ -1467,7 +1467,7 @@ mod tests {
     fn test_visualise_from_file_path() {
         let query = r#"
             VISUALISE FROM 'mtcars.csv' AS PLOT
-            WITH point USING x = hp, y = mpg
+            DRAW point USING x = hp, y = mpg
         "#;
 
         let result = parse_test_query(query);
@@ -1483,7 +1483,7 @@ mod tests {
     fn test_visualise_from_file_path_parquet() {
         let query = r#"
             VISUALISE FROM "data/sales.parquet" AS PLOT
-            WITH bar USING x = region, y = total
+            DRAW bar USING x = region, y = total
         "#;
 
         let result = parse_test_query(query);
@@ -1525,7 +1525,7 @@ mod tests {
         let query = r#"
             SELECT * FROM x
             VISUALISE AS PLOT
-            WITH bar USING x = a, y = b
+            DRAW bar USING x = a, y = b
         "#;
 
         let result = parse_test_query(query);
@@ -1541,7 +1541,7 @@ mod tests {
             WITH cte AS (SELECT * FROM x)
             SELECT * FROM cte
             VISUALISE AS PLOT
-            WITH point USING x = a, y = b
+            DRAW point USING x = a, y = b
         "#;
 
         let result = parse_test_query(query);
@@ -1574,7 +1574,8 @@ mod tests {
     fn test_deeply_nested_subqueries() {
         let query = r#"
             SELECT * FROM (SELECT * FROM (SELECT 1 as x, 2 as y))
-            VISUALISE AS PLOT WITH point USING x = x, y = y
+            VISUALISE AS PLOT
+            DRAW point USING x = x, y = y
         "#;
 
         let result = parse_test_query(query);
@@ -1585,7 +1586,8 @@ mod tests {
     fn test_multiple_values_rows() {
         let query = r#"
             SELECT * FROM (VALUES (1, 2), (3, 4), (5, 6)) AS t(x, y)
-            VISUALISE AS PLOT WITH point USING x = x, y = y
+            VISUALISE AS PLOT
+            DRAW point USING x = x, y = y
         "#;
 
         let result = parse_test_query(query);
@@ -1596,7 +1598,8 @@ mod tests {
     fn test_multiple_ctes_no_select_with_visualise_from() {
         let query = r#"
             WITH a AS (SELECT 1 as x), b AS (SELECT 2 as y), c AS (SELECT 3 as z)
-            VISUALISE FROM c AS PLOT WITH point USING x = z, y = 1
+            VISUALISE FROM c AS PLOT
+            DRAW point USING x = z, y = 1
         "#;
 
         let result = parse_test_query(query);
@@ -1610,7 +1613,8 @@ mod tests {
     fn test_union_with_visualise_as() {
         let query = r#"
             SELECT x, y FROM a UNION SELECT x, y FROM b
-            VISUALISE AS PLOT WITH point USING x = x, y = y
+            VISUALISE AS PLOT
+            DRAW point USING x = x, y = y
         "#;
 
         let result = parse_test_query(query);
@@ -1635,7 +1639,8 @@ mod tests {
     fn test_subquery_in_where_clause() {
         let query = r#"
             SELECT * FROM data WHERE x IN (SELECT y FROM other)
-            VISUALISE AS PLOT WITH point USING x = x, y = y
+            VISUALISE AS PLOT
+            DRAW point USING x = x, y = y
         "#;
 
         let result = parse_test_query(query);
@@ -1646,7 +1651,8 @@ mod tests {
     fn test_join_with_visualise_as() {
         let query = r#"
             SELECT a.x, b.y FROM a LEFT JOIN b ON a.id = b.id
-            VISUALISE AS PLOT WITH point USING x = x, y = y
+            VISUALISE AS PLOT
+            DRAW point USING x = x, y = y
         "#;
 
         let result = parse_test_query(query);
@@ -1657,7 +1663,8 @@ mod tests {
     fn test_window_function_with_visualise_as() {
         let query = r#"
             SELECT x, y, ROW_NUMBER() OVER (ORDER BY x) as row_num FROM data
-            VISUALISE AS PLOT WITH point USING x = x, y = y
+            VISUALISE AS PLOT
+            DRAW point USING x = x, y = y
         "#;
 
         let result = parse_test_query(query);
@@ -1670,7 +1677,8 @@ mod tests {
             WITH joined AS (
                 SELECT a.x, b.y FROM a JOIN b ON a.id = b.id
             )
-            VISUALISE FROM joined AS PLOT WITH point USING x = x, y = y
+            VISUALISE FROM joined AS PLOT
+            DRAW point USING x = x, y = y
         "#;
 
         let result = parse_test_query(query);
@@ -1685,7 +1693,8 @@ mod tests {
                 UNION ALL
                 SELECT n + 1 FROM series WHERE n < 10
             )
-            VISUALISE FROM series AS PLOT WITH line USING x = n, y = n
+            VISUALISE FROM series AS PLOT
+            DRAW line USING x = n, y = n
         "#;
 
         let result = parse_test_query(query);
@@ -1696,7 +1705,8 @@ mod tests {
     fn test_visualise_keyword_in_string_literal() {
         let query = r#"
             SELECT 'VISUALISE AS PLOT' as text, 1 as x, 2 as y
-            VISUALISE AS PLOT WITH point USING x = x, y = y
+            VISUALISE AS PLOT
+            DRAW point USING x = x, y = y
         "#;
 
         let result = parse_test_query(query);
@@ -1709,7 +1719,8 @@ mod tests {
             SELECT category, SUM(value) as total FROM data
             GROUP BY category
             HAVING SUM(value) > 100
-            VISUALISE AS PLOT WITH bar USING x = category, y = total
+            VISUALISE AS PLOT
+            DRAW bar USING x = category, y = total
         "#;
 
         let result = parse_test_query(query);
@@ -1722,7 +1733,8 @@ mod tests {
             SELECT * FROM data
             ORDER BY x DESC
             LIMIT 100
-            VISUALISE AS PLOT WITH point USING x = x, y = y
+            VISUALISE AS PLOT
+            DRAW point USING x = x, y = y
         "#;
 
         let result = parse_test_query(query);
@@ -1735,7 +1747,8 @@ mod tests {
             SELECT x,
                    CASE WHEN x > 0 THEN 'positive' ELSE 'negative' END as sign
             FROM data
-            VISUALISE AS PLOT WITH point USING x = x, color = sign
+            VISUALISE AS PLOT
+            DRAW point USING x = x, color = sign
         "#;
 
         let result = parse_test_query(query);
@@ -1746,7 +1759,8 @@ mod tests {
     fn test_intersect_with_visualise_as() {
         let query = r#"
             SELECT x FROM a INTERSECT SELECT x FROM b
-            VISUALISE AS PLOT WITH histogram USING x = x
+            VISUALISE AS PLOT
+            DRAW histogram USING x = x
         "#;
 
         let result = parse_test_query(query);
@@ -1768,7 +1782,8 @@ mod tests {
     fn test_except_with_visualise_as() {
         let query = r#"
             SELECT x FROM a EXCEPT SELECT x FROM b
-            VISUALISE AS PLOT WITH histogram USING x = x
+            VISUALISE AS PLOT
+            DRAW histogram USING x = x
         "#;
 
         let result = parse_test_query(query);
@@ -1779,7 +1794,8 @@ mod tests {
     fn test_with_semicolon_between_cte_and_visualise_from() {
         let query = r#"
             WITH cte AS (SELECT 1 as x, 2 as y);
-            VISUALISE FROM cte AS PLOT WITH point USING x = x, y = y
+            VISUALISE FROM cte AS PLOT
+            DRAW point USING x = x, y = y
         "#;
 
         let result = parse_test_query(query);
@@ -1807,7 +1823,8 @@ mod tests {
                 FROM data
                 GROUP BY category
             )
-            VISUALISE AS PLOT WITH bar USING x = category, y = avg_value
+            VISUALISE AS PLOT
+            DRAW bar USING x = category, y = avg_value
         "#;
 
         let result = parse_test_query(query);
@@ -1819,7 +1836,8 @@ mod tests {
         let query = r#"
             SELECT a.*, b.*
             FROM a, LATERAL (SELECT * FROM b WHERE b.id = a.id) AS b
-            VISUALISE AS PLOT WITH point USING x = x, y = y
+            VISUALISE AS PLOT
+            DRAW point USING x = x, y = y
         "#;
 
         let result = parse_test_query(query);
@@ -1830,7 +1848,8 @@ mod tests {
     fn test_values_without_table_alias() {
         let query = r#"
             SELECT * FROM (VALUES (1, 2))
-            VISUALISE AS PLOT WITH point USING x = column0, y = column1
+            VISUALISE AS PLOT
+            DRAW point USING x = column0, y = column1
         "#;
 
         let result = parse_test_query(query);
@@ -1844,7 +1863,8 @@ mod tests {
                 WITH inner_cte AS (SELECT 1 as x)
                 SELECT x, x * 2 as y FROM inner_cte
             )
-            VISUALISE FROM outer_cte AS PLOT WITH point USING x = x, y = y
+            VISUALISE FROM outer_cte AS PLOT
+            DRAW point USING x = x, y = y
         "#;
 
         let result = parse_test_query(query);
@@ -1868,7 +1888,8 @@ mod tests {
     fn test_distinct_with_visualise_as() {
         let query = r#"
             SELECT DISTINCT x, y FROM data
-            VISUALISE AS PLOT WITH point USING x = x, y = y
+            VISUALISE AS PLOT
+            DRAW point USING x = x, y = y
         "#;
 
         let result = parse_test_query(query);
@@ -1879,7 +1900,8 @@ mod tests {
     fn test_all_with_visualise_as() {
         let query = r#"
             SELECT ALL x, y FROM data
-            VISUALISE AS PLOT WITH point USING x = x, y = y
+            VISUALISE AS PLOT
+            DRAW point USING x = x, y = y
         "#;
 
         let result = parse_test_query(query);
@@ -1890,7 +1912,8 @@ mod tests {
     fn test_exists_subquery_with_visualise_as() {
         let query = r#"
             SELECT * FROM a WHERE EXISTS (SELECT 1 FROM b WHERE b.id = a.id)
-            VISUALISE AS PLOT WITH point USING x = x, y = y
+            VISUALISE AS PLOT
+            DRAW point USING x = x, y = y
         "#;
 
         let result = parse_test_query(query);
@@ -1901,7 +1924,8 @@ mod tests {
     fn test_not_exists_subquery_with_visualise_as() {
         let query = r#"
             SELECT * FROM a WHERE NOT EXISTS (SELECT 1 FROM b WHERE b.id = a.id)
-            VISUALISE AS PLOT WITH point USING x = x, y = y
+            VISUALISE AS PLOT
+            DRAW point USING x = x, y = y
         "#;
 
         let result = parse_test_query(query);

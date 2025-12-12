@@ -5,7 +5,7 @@
 -- Example 1: Basic Scatter Plot with File Path
 -- ============================================================================
 VISUALISE FROM 'mtcars.csv' AS PLOT
-WITH point USING x = hp, y = mpg, color = cyl
+DRAW point USING x = hp, y = mpg, color = cyl
 LABEL title = 'Horsepower vs Fuel Efficiency',
       x = 'Horsepower',
       y = 'Miles per Gallon'
@@ -25,8 +25,8 @@ WITH monthly_sales AS (
     GROUP BY DATE_TRUNC('month', sale_date), region
 )
 VISUALISE FROM monthly_sales AS PLOT
-WITH line USING x = month, y = total_quantity, color = region
-WITH point USING x = month, y = total_quantity, color = region, size = 3
+DRAW line USING x = month, y = total_quantity, color = region
+DRAW point USING x = month, y = total_quantity, color = region, size = 3
 SCALE x USING type = 'date'
 SCALE color USING palette = 'viridis'
 FACET WRAP region USING scales = 'free_y'
@@ -46,7 +46,7 @@ GROUP BY category
 ORDER BY total DESC
 LIMIT 10
 VISUALISE AS PLOT
-WITH bar USING x = category, y = total, fill = category
+DRAW bar USING x = category, y = total, fill = category
 COORD flip
 LABEL title = 'Top 10 Product Categories',
       x = 'Category',
@@ -61,7 +61,7 @@ SELECT region, COUNT(*) as count
 FROM customers
 GROUP BY region
 VISUALISE AS PLOT
-WITH bar USING x = region, y = count, fill = region
+DRAW bar USING x = region, y = count, fill = region
 COORD polar USING theta = y
 LABEL title = 'Customer Distribution by Region'
 
@@ -72,7 +72,7 @@ SELECT age, gender, income
 FROM demographics
 WHERE age BETWEEN 18 AND 80
 VISUALISE AS PLOT
-WITH histogram USING x = age, fill = gender
+DRAW histogram USING x = age, fill = gender
 SCALE x USING type = 'linear', limits = [18, 80]
 FACET WRAP gender USING scales = 'fixed'
 LABEL title = 'Age Distribution by Gender',
@@ -94,8 +94,8 @@ WITH daily_metrics AS (
 )
 SELECT * FROM daily_metrics
 VISUALISE AS PLOT
-WITH ribbon USING x = date, ymin = min_temp, ymax = max_temp, fill = 'lightblue', alpha = 0.3
-WITH line USING x = date, y = avg_temp, color = 'blue', size = 2
+DRAW ribbon USING x = date, ymin = min_temp, ymax = max_temp, fill = 'lightblue', alpha = 0.3
+DRAW line USING x = date, y = avg_temp, color = 'blue', size = 2
 SCALE x USING type = 'date'
 SCALE y USING type = 'linear', limits = [0, 100]
 COORD cartesian USING xlim = ['2024-01-01', '2024-12-31']
@@ -120,7 +120,7 @@ JOIN sales s ON p.product_id = s.product_id
 JOIN employees e ON s.employee_id = e.employee_id
 WHERE s.sale_date >= '2024-01-01'
 VISUALISE AS PLOT
-WITH point USING
+DRAW point USING
     x = sale_date,
     y = revenue,
     color = category,
@@ -154,7 +154,7 @@ WITH quarterly_breakdown AS (
     GROUP BY DATE_TRUNC('quarter', sale_date), category
 )
 VISUALISE FROM quarterly_breakdown AS PLOT
-WITH area USING x = quarter, y = revenue, fill = category, alpha = 0.7
+DRAW area USING x = quarter, y = revenue, fill = category, alpha = 0.7
 SCALE x USING type = 'date'
 SCALE fill USING palette = 'plasma', domain = ['A', 'B', 'C', 'D']
 LABEL title = 'Quarterly Revenue by Category',
@@ -169,8 +169,8 @@ SELECT category, price, rating
 FROM products
 WHERE rating IS NOT NULL
 VISUALISE AS PLOT
-WITH boxplot USING x = category, y = price
-WITH violin USING x = category, y = price, alpha = 0.3
+DRAW boxplot USING x = category, y = price
+DRAW violin USING x = category, y = price, alpha = 0.3
 COORD cartesian USING ylim = [0, 500]
 LABEL title = 'Price Distribution by Category',
       x = 'Product Category',
@@ -188,8 +188,8 @@ SELECT
 FROM products
 WHERE featured = TRUE
 VISUALISE AS PLOT
-WITH point USING x = price, y = rating, size = sales_count, color = sales_count
-WITH text USING x = price, y = rating, label = product_name
+DRAW point USING x = price, y = rating, size = sales_count, color = sales_count
+DRAW text USING x = price, y = rating, label = product_name
 SCALE color USING palette = 'viridis'
 SCALE size USING limits = [0, 10000]
 COORD cartesian USING xlim = [0, 1000], ylim = [0, 5]
@@ -209,11 +209,11 @@ WITH sales_summary AS (
 )
 -- First visualization: by region
 VISUALISE FROM sales_summary AS PLOT
-WITH bar USING x = region, y = total, fill = region
+DRAW bar USING x = region, y = total, fill = region
 LABEL title = 'Sales by Region'
 -- Second visualization: by category
 VISUALISE FROM sales_summary AS PLOT
-WITH bar USING x = category, y = total, fill = category
+DRAW bar USING x = category, y = total, fill = category
 COORD flip
 LABEL title = 'Sales by Category'
 

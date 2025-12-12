@@ -66,7 +66,7 @@ code .
 
 2. You should see syntax highlighting for:
    - SQL keywords in one color
-   - ggSQL keywords (VISUALISE, WITH, SCALE, etc.) in another
+   - ggSQL keywords (VISUALISE, DRAW, SCALE, etc.) in another
    - Geom types, aesthetics, scale types highlighted distinctly
    - Comments, strings, and numbers properly highlighted
 
@@ -78,7 +78,7 @@ Create a new file with `.gsql` extension:
 -- test.gsql
 SELECT * FROM sales WHERE year = 2024
 VISUALISE AS PLOT
-WITH line USING x = date, y = revenue
+DRAW line USING x = date, y = revenue
 SCALE x USING type = 'date'
 LABEL title = 'Sales Trends'
 ```
