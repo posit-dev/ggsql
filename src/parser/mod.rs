@@ -24,10 +24,8 @@ the visualization specification into a typed AST.
 let query = r#"
     SELECT date, revenue, region FROM sales WHERE year = 2024
     VISUALISE AS PLOT
-    DRAW line USING
-        x = date,
-        y = revenue,
-        color = region
+    DRAW line
+        MAPPING date AS x, revenue AS y, region AS color
     LABEL
         title = 'Sales by Region'
 "#;
@@ -106,9 +104,7 @@ mod tests {
         let query = r#"
             SELECT x, y FROM data
             VISUALISE AS PLOT
-            DRAW point USING
-                x = x,
-                y = y
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let result = parse_query(query);
@@ -126,7 +122,7 @@ mod tests {
         let query = r#"
             SELECT date, revenue FROM sales WHERE year = 2024
             VISUALISE AS PLOT
-            DRAW line USING x = date, y = revenue
+            DRAW line MAPPING date AS x, revenue AS y
         "#;
 
         let sql = extract_sql(query).unwrap();
@@ -140,13 +136,8 @@ mod tests {
         let query = r#"
             SELECT x, y, z FROM data
             VISUALISE AS PLOT
-            DRAW line USING
-                x = x,
-                y = y
-            DRAW point USING
-                x = x,
-                y = z,
-                color = 'red'
+            DRAW line MAPPING x AS x, y AS y
+            DRAW point MAPPING x AS x, z AS y, 'red' AS color
         "#;
 
         let specs = parse_query(query).unwrap();
@@ -180,7 +171,7 @@ mod tests {
         let query = r#"
             SELECT x, y FROM data
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
             VISUALIZE AS TABLE
         "#;
 
@@ -197,7 +188,7 @@ mod tests {
         let query = r#"
             SELECT x, y FROM data
             VISUALIZE AS MAP
-            DRAW tile USING x = x, y = y
+            DRAW tile MAPPING x AS x, y AS y
         "#;
 
         let specs = parse_query(query).unwrap();
@@ -210,10 +201,10 @@ mod tests {
         let query = r#"
             SELECT x, y, z FROM data
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
             VISUALIZE AS TABLE
             VISUALISE AS MAP
-            DRAW tile USING x = x, y = y
+            DRAW tile MAPPING x AS x, y AS y
         "#;
 
         let specs = parse_query(query).unwrap();
@@ -247,7 +238,7 @@ mod tests {
         let query = r#"
             SELECT x, y FROM data
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
             LABEL title = 'Scatter Plot'
             THEME minimal
             VISUALIZE AS TABLE
@@ -274,9 +265,9 @@ mod tests {
         let query = r#"
             SELECT x, y FROM data
             VISUALISE AS PLOT
-            DRAW line USING x = x, y = y
+            DRAW line MAPPING x AS x, y AS y
             VISUALIZE AS MAP
-            DRAW tile USING x = x, y = y
+            DRAW tile MAPPING x AS x, y AS y
             VISUALISE AS TABLE
         "#;
 
@@ -293,14 +284,14 @@ mod tests {
             SELECT date, revenue, cost FROM sales
             WHERE year >= 2023
             VISUALISE AS PLOT
-            DRAW line USING x = date, y = revenue
-            DRAW line USING x = date, y = cost
+            DRAW line MAPPING date AS x, revenue AS y
+            DRAW line MAPPING date AS x, cost AS y
             SCALE x USING type = 'date'
             LABEL title = 'Revenue and Cost Trends'
             THEME minimal
             VISUALIZE AS TABLE
             VISUALISE AS MAP
-            DRAW tile USING x = date, y = revenue
+            DRAW tile MAPPING date AS x, revenue AS y
         "#;
 
         let specs = parse_query(query).unwrap();
@@ -324,7 +315,7 @@ mod tests {
 
     #[test]
     fn test_values_subquery() {
-        let query = "SELECT * FROM (VALUES (1, 2)) AS t(x, y) VISUALISE AS PLOT DRAW point USING x = x, y = y";
+        let query = "SELECT * FROM (VALUES (1, 2)) AS t(x, y) VISUALISE AS PLOT DRAW point MAPPING x AS x, y AS y";
 
         // First check if tree-sitter can parse it
         let tree = parse_full_query(query);

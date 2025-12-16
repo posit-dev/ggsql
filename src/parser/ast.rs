@@ -55,14 +55,56 @@ pub enum VizType {
 /// A single visualization layer (from DRAW clause)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Layer {
-    /// Optional layer name (from AS clause)
-    pub name: Option<String>,
     /// Geometric object type
     pub geom: Geom,
     /// Aesthetic mappings (aesthetic → column or literal)
     pub aesthetics: HashMap<String, AestheticValue>,
     /// Geom parameters (not aesthetic mappings)
     pub parameters: HashMap<String, ParameterValue>,
+    /// Optional filter expression for this layer
+    pub filter: Option<FilterExpression>,
+}
+
+/// Filter expression for layer-specific filtering (from FILTER clause)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum FilterExpression {
+    /// Logical AND of two expressions
+    And(Box<FilterExpression>, Box<FilterExpression>),
+    /// Logical OR of two expressions
+    Or(Box<FilterExpression>, Box<FilterExpression>),
+    /// Simple comparison
+    Comparison {
+        column: String,
+        operator: ComparisonOp,
+        value: FilterValue,
+    },
+}
+
+/// Comparison operators for filter expressions
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ComparisonOp {
+    /// Equal (=)
+    Eq,
+    /// Not equal (!= or <>)
+    Ne,
+    /// Less than (<)
+    Lt,
+    /// Greater than (>)
+    Gt,
+    /// Less than or equal (<=)
+    Le,
+    /// Greater than or equal (>=)
+    Ge,
+}
+
+/// Values in filter comparisons
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum FilterValue {
+    String(String),
+    Number(f64),
+    Boolean(bool),
+    /// Column reference (for column-to-column comparisons)
+    Column(String),
 }
 
 /// Geometric object types
@@ -343,13 +385,6 @@ impl VizSpec {
         self.layers.len()
     }
 
-    /// Find a layer by name
-    pub fn find_layer(&self, name: &str) -> Option<&Layer> {
-        self.layers.iter().find(|layer| {
-            layer.name.as_ref().map(|n| n == name).unwrap_or(false)
-        })
-    }
-
     /// Find a scale for a specific aesthetic
     pub fn find_scale(&self, aesthetic: &str) -> Option<&Scale> {
         self.scales.iter().find(|scale| scale.aesthetic == aesthetic)
@@ -365,16 +400,16 @@ impl Layer {
     /// Create a new layer with the given geom
     pub fn new(geom: Geom) -> Self {
         Self {
-            name: None,
             geom,
             aesthetics: HashMap::new(),
             parameters: HashMap::new(),
+            filter: None,
         }
     }
 
-    /// Set the layer name
-    pub fn with_name(mut self, name: String) -> Self {
-        self.name = Some(name);
+    /// Set the filter expression
+    pub fn with_filter(mut self, filter: FilterExpression) -> Self {
+        self.filter = Some(filter);
         self
     }
 
@@ -487,16 +522,26 @@ mod tests {
     #[test]
     fn test_layer_creation() {
         let layer = Layer::new(Geom::Point)
-            .with_name("scatter".to_string())
             .with_aesthetic("x".to_string(), AestheticValue::Column("date".to_string()))
             .with_aesthetic("y".to_string(), AestheticValue::Column("revenue".to_string()))
             .with_aesthetic("color".to_string(), AestheticValue::Literal(LiteralValue::String("blue".to_string())));
 
-        assert_eq!(layer.name, Some("scatter".to_string()));
         assert_eq!(layer.geom, Geom::Point);
         assert_eq!(layer.get_column("x"), Some("date"));
         assert_eq!(layer.get_column("y"), Some("revenue"));
         assert!(matches!(layer.get_literal("color"), Some(LiteralValue::String(s)) if s == "blue"));
+        assert!(layer.filter.is_none());
+    }
+
+    #[test]
+    fn test_layer_with_filter() {
+        let filter = FilterExpression::Comparison {
+            column: "year".to_string(),
+            operator: ComparisonOp::Gt,
+            value: FilterValue::Number(2020.0),
+        };
+        let layer = Layer::new(Geom::Point).with_filter(filter);
+        assert!(layer.filter.is_some());
     }
 
     #[test]
@@ -524,17 +569,16 @@ mod tests {
     fn test_viz_spec_layer_operations() {
         let mut spec = VizSpec::new(VizType::Plot);
 
-        let layer1 = Layer::new(Geom::Point).with_name("points".to_string());
-        let layer2 = Layer::new(Geom::Line).with_name("trend".to_string());
+        let layer1 = Layer::new(Geom::Point);
+        let layer2 = Layer::new(Geom::Line);
 
         spec.layers.push(layer1);
         spec.layers.push(layer2);
 
         assert!(spec.has_layers());
         assert_eq!(spec.layer_count(), 2);
-        assert!(spec.find_layer("points").is_some());
-        assert!(spec.find_layer("trend").is_some());
-        assert!(spec.find_layer("missing").is_none());
+        assert_eq!(spec.layers[0].geom, Geom::Point);
+        assert_eq!(spec.layers[1].geom, Geom::Line);
     }
 
     #[test]

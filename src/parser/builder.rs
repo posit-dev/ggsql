@@ -191,36 +191,381 @@ fn process_viz_clause(node: &Node, source: &str, spec: &mut VizSpec) -> Result<(
 }
 
 /// Build a Layer from a draw_clause node
+/// New syntax: DRAW geom [MAPPING col AS x, ...] [USING param := val, ...] [FILTER condition]
 fn build_layer(node: &Node, source: &str) -> Result<Layer> {
-    // Parse geom type
     let mut geom = Geom::Point; // default
-    let mut aesthetics = std::collections::HashMap::new();
+    let mut aesthetics = HashMap::new();
+    let mut parameters = HashMap::new();
+    let mut filter = None;
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "DRAW" | "USING" | "," => continue, // Skip keywords and punctuation
             "geom_type" => {
                 let geom_text = get_node_text(&child, source);
                 geom = parse_geom_type(&geom_text)?;
             }
-            "aesthetic_mapping" => {
-                let (aesthetic, value) = parse_aesthetic_mapping(&child, source)?;
-                aesthetics.insert(aesthetic, value);
+            "mapping_clause" => {
+                aesthetics = parse_mapping_clause(&child, source)?;
+            }
+            "draw_using_clause" => {
+                parameters = parse_draw_using_clause(&child, source)?;
+            }
+            "filter_clause" => {
+                filter = Some(parse_filter_clause(&child, source)?);
             }
             _ => {
-                // Unknown node type
-                eprintln!("Skipping unknown node type: {}", child.kind());
+                // Skip keywords and punctuation
+                continue;
             }
         }
     }
 
     let mut layer = Layer::new(geom);
-    for (aesthetic, value) in aesthetics {
-        layer = layer.with_aesthetic(aesthetic, value);
-    }
+    layer.aesthetics = aesthetics;
+    layer.parameters = parameters;
+    layer.filter = filter;
 
     Ok(layer)
+}
+
+/// Parse a mapping_clause: MAPPING col AS x, "blue" AS color
+fn parse_mapping_clause(node: &Node, source: &str) -> Result<HashMap<String, AestheticValue>> {
+    let mut aesthetics = HashMap::new();
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "mapping_item" {
+            let (aesthetic, value) = parse_mapping_item(&child, source)?;
+            aesthetics.insert(aesthetic, value);
+        }
+    }
+
+    Ok(aesthetics)
+}
+
+/// Parse a mapping_item: col AS x or "blue" AS color
+fn parse_mapping_item(node: &Node, source: &str) -> Result<(String, AestheticValue)> {
+    let mut aesthetic_name = String::new();
+    let mut aesthetic_value = None;
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "aesthetic_name" => {
+                aesthetic_name = get_node_text(&child, source);
+            }
+            "mapping_value" => {
+                aesthetic_value = Some(parse_mapping_value(&child, source)?);
+            }
+            _ => continue,
+        }
+    }
+
+    if aesthetic_name.is_empty() || aesthetic_value.is_none() {
+        return Err(GgsqlError::ParseError(format!(
+            "Invalid aesthetic mapping: name='{}', value={:?}",
+            aesthetic_name, aesthetic_value
+        )));
+    }
+
+    Ok((aesthetic_name, aesthetic_value.unwrap()))
+}
+
+/// Parse a mapping_value (column reference or literal)
+fn parse_mapping_value(node: &Node, source: &str) -> Result<AestheticValue> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "column_reference" => {
+                let col_name = get_node_text(&child, source);
+                return Ok(AestheticValue::Column(col_name));
+            }
+            "literal_value" => {
+                return parse_literal_value(&child, source);
+            }
+            _ => {}
+        }
+    }
+
+    Err(GgsqlError::ParseError(format!(
+        "Could not parse aesthetic value from node: {}",
+        node.kind()
+    )))
+}
+
+/// Parse a draw_using_clause: USING param := value, ...
+fn parse_draw_using_clause(node: &Node, source: &str) -> Result<HashMap<String, ParameterValue>> {
+    let mut parameters = HashMap::new();
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "parameter_assignment" {
+            let (param, value) = parse_parameter_assignment(&child, source)?;
+            parameters.insert(param, value);
+        }
+    }
+
+    Ok(parameters)
+}
+
+/// Parse a parameter_assignment: param := value
+fn parse_parameter_assignment(node: &Node, source: &str) -> Result<(String, ParameterValue)> {
+    let mut param_name = String::new();
+    let mut param_value = None;
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "parameter_name" => {
+                // parameter_name -> identifier
+                let mut inner_cursor = child.walk();
+                for inner_child in child.children(&mut inner_cursor) {
+                    if inner_child.kind() == "identifier" {
+                        param_name = get_node_text(&inner_child, source);
+                    }
+                }
+                if param_name.is_empty() {
+                    param_name = get_node_text(&child, source);
+                }
+            }
+            "parameter_value" => {
+                param_value = Some(parse_parameter_value(&child, source)?);
+            }
+            _ => continue,
+        }
+    }
+
+    if param_name.is_empty() || param_value.is_none() {
+        return Err(GgsqlError::ParseError(format!(
+            "Invalid parameter assignment: param='{}', value={:?}",
+            param_name, param_value
+        )));
+    }
+
+    Ok((param_name, param_value.unwrap()))
+}
+
+/// Parse a parameter_value (string, number, or boolean)
+fn parse_parameter_value(node: &Node, source: &str) -> Result<ParameterValue> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "string" => {
+                let text = get_node_text(&child, source);
+                let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
+                return Ok(ParameterValue::String(unquoted.to_string()));
+            }
+            "number" => {
+                let text = get_node_text(&child, source);
+                let num = text.parse::<f64>().map_err(|e| {
+                    GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
+                })?;
+                return Ok(ParameterValue::Number(num));
+            }
+            "boolean" => {
+                let text = get_node_text(&child, source);
+                let bool_val = text == "true";
+                return Ok(ParameterValue::Boolean(bool_val));
+            }
+            _ => {}
+        }
+    }
+
+    Err(GgsqlError::ParseError(format!(
+        "Could not parse parameter value from node: {}",
+        node.kind()
+    )))
+}
+
+/// Parse a filter_clause: FILTER condition
+fn parse_filter_clause(node: &Node, source: &str) -> Result<FilterExpression> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "filter_expression" {
+            return parse_filter_expression(&child, source);
+        }
+    }
+
+    Err(GgsqlError::ParseError(
+        "Could not find filter expression in filter clause".to_string()
+    ))
+}
+
+/// Parse a filter_expression (recursive)
+fn parse_filter_expression(node: &Node, source: &str) -> Result<FilterExpression> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "filter_and_expression" => {
+                return parse_filter_and_expression(&child, source);
+            }
+            "filter_or_expression" => {
+                return parse_filter_or_expression(&child, source);
+            }
+            "filter_primary" => {
+                return parse_filter_primary(&child, source);
+            }
+            _ => {}
+        }
+    }
+
+    Err(GgsqlError::ParseError(format!(
+        "Could not parse filter expression from node: {}",
+        node.kind()
+    )))
+}
+
+/// Parse filter_primary (comparison or parenthesized expression)
+fn parse_filter_primary(node: &Node, source: &str) -> Result<FilterExpression> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "filter_comparison" => {
+                return parse_filter_comparison(&child, source);
+            }
+            "filter_expression" => {
+                // Parenthesized expression
+                return parse_filter_expression(&child, source);
+            }
+            _ => {}
+        }
+    }
+
+    Err(GgsqlError::ParseError(
+        "Could not parse filter primary".to_string()
+    ))
+}
+
+/// Parse filter_and_expression: primary AND expression
+fn parse_filter_and_expression(node: &Node, source: &str) -> Result<FilterExpression> {
+    let mut left = None;
+    let mut right = None;
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "filter_primary" => {
+                left = Some(parse_filter_primary(&child, source)?);
+            }
+            "filter_expression" => {
+                right = Some(parse_filter_expression(&child, source)?);
+            }
+            _ => {}
+        }
+    }
+
+    match (left, right) {
+        (Some(l), Some(r)) => Ok(FilterExpression::And(Box::new(l), Box::new(r))),
+        _ => Err(GgsqlError::ParseError(
+            "Invalid AND expression: missing left or right operand".to_string()
+        )),
+    }
+}
+
+/// Parse filter_or_expression: primary OR expression
+fn parse_filter_or_expression(node: &Node, source: &str) -> Result<FilterExpression> {
+    let mut left = None;
+    let mut right = None;
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "filter_primary" => {
+                left = Some(parse_filter_primary(&child, source)?);
+            }
+            "filter_expression" => {
+                right = Some(parse_filter_expression(&child, source)?);
+            }
+            _ => {}
+        }
+    }
+
+    match (left, right) {
+        (Some(l), Some(r)) => Ok(FilterExpression::Or(Box::new(l), Box::new(r))),
+        _ => Err(GgsqlError::ParseError(
+            "Invalid OR expression: missing left or right operand".to_string()
+        )),
+    }
+}
+
+/// Parse filter_comparison: column op value
+fn parse_filter_comparison(node: &Node, source: &str) -> Result<FilterExpression> {
+    let mut column = String::new();
+    let mut operator = None;
+    let mut value = None;
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "identifier" => {
+                if column.is_empty() {
+                    column = get_node_text(&child, source);
+                } else {
+                    // Second identifier is a column reference in comparison
+                    value = Some(FilterValue::Column(get_node_text(&child, source)));
+                }
+            }
+            "comparison_operator" => {
+                let op_text = get_node_text(&child, source);
+                operator = Some(parse_comparison_operator(&op_text)?);
+            }
+            "string" => {
+                let text = get_node_text(&child, source);
+                let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
+                value = Some(FilterValue::String(unquoted.to_string()));
+            }
+            "number" => {
+                let text = get_node_text(&child, source);
+                let num = text.parse::<f64>().map_err(|e| {
+                    GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
+                })?;
+                value = Some(FilterValue::Number(num));
+            }
+            "boolean" => {
+                let text = get_node_text(&child, source);
+                let bool_val = text == "true";
+                value = Some(FilterValue::Boolean(bool_val));
+            }
+            _ => {}
+        }
+    }
+
+    if column.is_empty() {
+        return Err(GgsqlError::ParseError(
+            "Invalid comparison: missing column".to_string()
+        ));
+    }
+
+    match (operator, value) {
+        (Some(op), Some(val)) => Ok(FilterExpression::Comparison {
+            column,
+            operator: op,
+            value: val,
+        }),
+        (None, _) => Err(GgsqlError::ParseError(
+            "Invalid comparison: missing operator".to_string()
+        )),
+        (_, None) => Err(GgsqlError::ParseError(
+            "Invalid comparison: missing value".to_string()
+        )),
+    }
+}
+
+/// Parse comparison operator
+fn parse_comparison_operator(text: &str) -> Result<ComparisonOp> {
+    match text {
+        "=" => Ok(ComparisonOp::Eq),
+        "!=" | "<>" => Ok(ComparisonOp::Ne),
+        "<" => Ok(ComparisonOp::Lt),
+        ">" => Ok(ComparisonOp::Gt),
+        "<=" => Ok(ComparisonOp::Le),
+        ">=" => Ok(ComparisonOp::Ge),
+        _ => Err(GgsqlError::ParseError(format!(
+            "Unknown comparison operator: {}",
+            text
+        ))),
+    }
 }
 
 /// Parse a geom_type node text into a Geom enum
@@ -250,58 +595,6 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
         "errorbar" => Ok(Geom::ErrorBar),
         _ => Err(GgsqlError::ParseError(format!("Unknown geom type: {}", text))),
     }
-}
-
-/// Parse an aesthetic_mapping node into (aesthetic_name, aesthetic_value)
-fn parse_aesthetic_mapping(node: &Node, source: &str) -> Result<(String, AestheticValue)> {
-    let mut aesthetic_name = String::new();
-    let mut aesthetic_value = None;
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "aesthetic_name" => {
-                aesthetic_name = get_node_text(&child, source);
-            }
-            "aesthetic_value" => {
-                aesthetic_value = Some(parse_aesthetic_value(&child, source)?);
-            }
-            "=" => continue, // Skip equals sign
-            _ => {}
-        }
-    }
-
-    if aesthetic_name.is_empty() || aesthetic_value.is_none() {
-        return Err(GgsqlError::ParseError(format!(
-            "Invalid aesthetic mapping: name='{}', value={:?}",
-            aesthetic_name, aesthetic_value
-        )));
-    }
-
-    Ok((aesthetic_name, aesthetic_value.unwrap()))
-}
-
-/// Parse an aesthetic_value node into an AestheticValue
-fn parse_aesthetic_value(node: &Node, source: &str) -> Result<AestheticValue> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "column_reference" => {
-                // Column reference is an identifier
-                let col_name = get_node_text(&child, source);
-                return Ok(AestheticValue::Column(col_name));
-            }
-            "literal_value" => {
-                return parse_literal_value(&child, source);
-            }
-            _ => {}
-        }
-    }
-
-    Err(GgsqlError::ParseError(format!(
-        "Could not parse aesthetic value from node: {}",
-        node.kind()
-    )))
 }
 
 /// Parse a literal_value node into an AestheticValue::Literal
@@ -1092,7 +1385,7 @@ mod tests {
     fn test_coord_cartesian_valid_xlim() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
             COORD cartesian USING xlim = [0, 100]
         "#;
 
@@ -1110,7 +1403,7 @@ mod tests {
     fn test_coord_cartesian_valid_ylim() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
             COORD cartesian USING ylim = [-10, 50]
         "#;
 
@@ -1126,7 +1419,7 @@ mod tests {
     fn test_coord_cartesian_valid_aesthetic_domain() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y, color = category
+            DRAW point MAPPING x AS x, y AS y, category AS color
             COORD cartesian USING color = ['red', 'green', 'blue']
         "#;
 
@@ -1142,7 +1435,7 @@ mod tests {
     fn test_coord_cartesian_invalid_property_theta() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
             COORD cartesian USING theta = y
         "#;
 
@@ -1156,7 +1449,7 @@ mod tests {
     fn test_coord_flip_valid_aesthetic_domain() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW bar USING x = category, y = value, color = region
+            DRAW bar MAPPING category AS x, value AS y, region AS color
             COORD flip USING color = ['A', 'B', 'C']
         "#;
 
@@ -1173,7 +1466,7 @@ mod tests {
     fn test_coord_flip_invalid_property_xlim() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW bar USING x = category, y = value
+            DRAW bar MAPPING category AS x, value AS y
             COORD flip USING xlim = [0, 100]
         "#;
 
@@ -1187,7 +1480,7 @@ mod tests {
     fn test_coord_flip_invalid_property_ylim() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW bar USING x = category, y = value
+            DRAW bar MAPPING category AS x, value AS y
             COORD flip USING ylim = [0, 100]
         "#;
 
@@ -1201,7 +1494,7 @@ mod tests {
     fn test_coord_flip_invalid_property_theta() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW bar USING x = category, y = value
+            DRAW bar MAPPING category AS x, value AS y
             COORD flip USING theta = y
         "#;
 
@@ -1215,7 +1508,7 @@ mod tests {
     fn test_coord_polar_valid_theta() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW bar USING x = category, y = value
+            DRAW bar MAPPING category AS x, value AS y
             COORD polar USING theta = y
         "#;
 
@@ -1232,7 +1525,7 @@ mod tests {
     fn test_coord_polar_valid_aesthetic_domain() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW bar USING x = category, y = value, color = region
+            DRAW bar MAPPING category AS x, value AS y, region AS color
             COORD polar USING color = ['North', 'South', 'East', 'West']
         "#;
 
@@ -1248,7 +1541,7 @@ mod tests {
     fn test_coord_polar_invalid_property_xlim() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW bar USING x = category, y = value
+            DRAW bar MAPPING category AS x, value AS y
             COORD polar USING xlim = [0, 100]
         "#;
 
@@ -1262,7 +1555,7 @@ mod tests {
     fn test_coord_polar_invalid_property_ylim() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW bar USING x = category, y = value
+            DRAW bar MAPPING category AS x, value AS y
             COORD polar USING ylim = [0, 100]
         "#;
 
@@ -1280,7 +1573,7 @@ mod tests {
     fn test_scale_coord_conflict_x_domain() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
             SCALE x USING domain = [0, 100]
             COORD cartesian USING x = [0, 50]
         "#;
@@ -1295,7 +1588,7 @@ mod tests {
     fn test_scale_coord_conflict_color_domain() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y, color = category
+            DRAW point MAPPING x AS x, y AS y, category AS color
             SCALE color USING domain = ['A', 'B']
             COORD cartesian USING color = ['A', 'B', 'C']
         "#;
@@ -1310,7 +1603,7 @@ mod tests {
     fn test_scale_coord_no_conflict_different_aesthetics() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y, color = category
+            DRAW point MAPPING x AS x, y AS y, category AS color
             SCALE color USING domain = ['A', 'B']
             COORD cartesian USING xlim = [0, 100]
         "#;
@@ -1323,7 +1616,7 @@ mod tests {
     fn test_scale_coord_no_conflict_scale_without_domain() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
             SCALE x USING type = 'linear'
             COORD cartesian USING x = [0, 100]
         "#;
@@ -1340,7 +1633,7 @@ mod tests {
     fn test_coord_cartesian_multiple_properties() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y, color = category
+            DRAW point MAPPING x AS x, y AS y, category AS color
             COORD cartesian USING xlim = [0, 100], ylim = [-10, 50], color = ['A', 'B']
         "#;
 
@@ -1358,7 +1651,7 @@ mod tests {
     fn test_coord_polar_theta_with_aesthetic() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW bar USING x = category, y = value, color = region
+            DRAW bar MAPPING category AS x, value AS y, region AS color
             COORD polar USING theta = y, color = ['North', 'South']
         "#;
 
@@ -1379,7 +1672,7 @@ mod tests {
     fn test_case_insensitive_keywords_lowercase() {
         let query = r#"
             visualise as plot
-            draw point using x = x, y = y
+            draw point MAPPING x AS x, y AS y
             coord cartesian using xlim = [0, 100]
             label title = 'Test Chart'
         "#;
@@ -1401,7 +1694,7 @@ mod tests {
     fn test_case_insensitive_keywords_mixed() {
         let query = r#"
             ViSuAlIsE As PlOt
-            DrAw line UsInG x = date, y = revenue
+            DrAw line MAPPING date AS x, revenue AS y
             ScAlE x uSiNg type = 'date'
             ThEmE minimal
         "#;
@@ -1419,7 +1712,7 @@ mod tests {
     fn test_case_insensitive_american_spelling() {
         let query = r#"
             visualize as plot
-            draw bar using x = category, y = value
+            draw bar MAPPING category AS x, value AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1437,7 +1730,7 @@ mod tests {
         let query = r#"
             WITH cte AS (SELECT * FROM x)
             VISUALISE FROM cte AS PLOT
-            DRAW bar USING x = a, y = b
+            DRAW bar MAPPING a AS x, b AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1453,7 +1746,7 @@ mod tests {
     fn test_visualise_from_table() {
         let query = r#"
             VISUALISE FROM mtcars AS PLOT
-            DRAW point USING x = mpg, y = hp
+            DRAW point MAPPING mpg AS x, hp AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1467,7 +1760,7 @@ mod tests {
     fn test_visualise_from_file_path() {
         let query = r#"
             VISUALISE FROM 'mtcars.csv' AS PLOT
-            DRAW point USING x = hp, y = mpg
+            DRAW point MAPPING hp AS x, mpg AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1483,7 +1776,7 @@ mod tests {
     fn test_visualise_from_file_path_parquet() {
         let query = r#"
             VISUALISE FROM "data/sales.parquet" AS PLOT
-            DRAW bar USING x = region, y = total
+            DRAW bar MAPPING region AS x, total AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1525,7 +1818,7 @@ mod tests {
         let query = r#"
             SELECT * FROM x
             VISUALISE AS PLOT
-            DRAW bar USING x = a, y = b
+            DRAW bar MAPPING a AS x, b AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1541,7 +1834,7 @@ mod tests {
             WITH cte AS (SELECT * FROM x)
             SELECT * FROM cte
             VISUALISE AS PLOT
-            DRAW point USING x = a, y = b
+            DRAW point MAPPING a AS x, b AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1575,7 +1868,7 @@ mod tests {
         let query = r#"
             SELECT * FROM (SELECT * FROM (SELECT 1 as x, 2 as y))
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1587,7 +1880,7 @@ mod tests {
         let query = r#"
             SELECT * FROM (VALUES (1, 2), (3, 4), (5, 6)) AS t(x, y)
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1599,7 +1892,7 @@ mod tests {
         let query = r#"
             WITH a AS (SELECT 1 as x), b AS (SELECT 2 as y), c AS (SELECT 3 as z)
             VISUALISE FROM c AS PLOT
-            DRAW point USING x = z, y = 1
+            DRAW point MAPPING z AS x, 1 AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1614,7 +1907,7 @@ mod tests {
         let query = r#"
             SELECT x, y FROM a UNION SELECT x, y FROM b
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1640,7 +1933,7 @@ mod tests {
         let query = r#"
             SELECT * FROM data WHERE x IN (SELECT y FROM other)
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1652,7 +1945,7 @@ mod tests {
         let query = r#"
             SELECT a.x, b.y FROM a LEFT JOIN b ON a.id = b.id
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1664,7 +1957,7 @@ mod tests {
         let query = r#"
             SELECT x, y, ROW_NUMBER() OVER (ORDER BY x) as row_num FROM data
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1678,7 +1971,7 @@ mod tests {
                 SELECT a.x, b.y FROM a JOIN b ON a.id = b.id
             )
             VISUALISE FROM joined AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1694,7 +1987,7 @@ mod tests {
                 SELECT n + 1 FROM series WHERE n < 10
             )
             VISUALISE FROM series AS PLOT
-            DRAW line USING x = n, y = n
+            DRAW line MAPPING n AS x, n AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1706,7 +1999,7 @@ mod tests {
         let query = r#"
             SELECT 'VISUALISE AS PLOT' as text, 1 as x, 2 as y
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1720,7 +2013,7 @@ mod tests {
             GROUP BY category
             HAVING SUM(value) > 100
             VISUALISE AS PLOT
-            DRAW bar USING x = category, y = total
+            DRAW bar MAPPING category AS x, total AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1734,7 +2027,7 @@ mod tests {
             ORDER BY x DESC
             LIMIT 100
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1748,7 +2041,7 @@ mod tests {
                    CASE WHEN x > 0 THEN 'positive' ELSE 'negative' END as sign
             FROM data
             VISUALISE AS PLOT
-            DRAW point USING x = x, color = sign
+            DRAW point MAPPING x AS x, sign AS color
         "#;
 
         let result = parse_test_query(query);
@@ -1760,7 +2053,7 @@ mod tests {
         let query = r#"
             SELECT x FROM a INTERSECT SELECT x FROM b
             VISUALISE AS PLOT
-            DRAW histogram USING x = x
+            DRAW histogram MAPPING x AS x
         "#;
 
         let result = parse_test_query(query);
@@ -1783,7 +2076,7 @@ mod tests {
         let query = r#"
             SELECT x FROM a EXCEPT SELECT x FROM b
             VISUALISE AS PLOT
-            DRAW histogram USING x = x
+            DRAW histogram MAPPING x AS x
         "#;
 
         let result = parse_test_query(query);
@@ -1795,7 +2088,7 @@ mod tests {
         let query = r#"
             WITH cte AS (SELECT 1 as x, 2 as y);
             VISUALISE FROM cte AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1824,7 +2117,7 @@ mod tests {
                 GROUP BY category
             )
             VISUALISE AS PLOT
-            DRAW bar USING x = category, y = avg_value
+            DRAW bar MAPPING category AS x, avg_value AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1837,7 +2130,7 @@ mod tests {
             SELECT a.*, b.*
             FROM a, LATERAL (SELECT * FROM b WHERE b.id = a.id) AS b
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1849,7 +2142,7 @@ mod tests {
         let query = r#"
             SELECT * FROM (VALUES (1, 2))
             VISUALISE AS PLOT
-            DRAW point USING x = column0, y = column1
+            DRAW point MAPPING column0 AS x, column1 AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1864,7 +2157,7 @@ mod tests {
                 SELECT x, x * 2 as y FROM inner_cte
             )
             VISUALISE FROM outer_cte AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1889,7 +2182,7 @@ mod tests {
         let query = r#"
             SELECT DISTINCT x, y FROM data
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1901,7 +2194,7 @@ mod tests {
         let query = r#"
             SELECT ALL x, y FROM data
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1913,7 +2206,7 @@ mod tests {
         let query = r#"
             SELECT * FROM a WHERE EXISTS (SELECT 1 FROM b WHERE b.id = a.id)
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1925,7 +2218,7 @@ mod tests {
         let query = r#"
             SELECT * FROM a WHERE NOT EXISTS (SELECT 1 FROM b WHERE b.id = a.id)
             VISUALISE AS PLOT
-            DRAW point USING x = x, y = y
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let result = parse_test_query(query);
@@ -1981,5 +2274,311 @@ mod tests {
 
         let result = parse_test_query(query);
         assert!(result.is_err());
+    }
+
+    // ========================================
+    // FILTER Clause Tests
+    // ========================================
+
+    #[test]
+    fn test_filter_simple_comparison() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW point MAPPING x AS x, y AS y FILTER value > 10
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].layers.len(), 1);
+
+        let filter = specs[0].layers[0].filter.as_ref().unwrap();
+        match filter {
+            FilterExpression::Comparison { column, operator, value } => {
+                assert_eq!(column, "value");
+                assert_eq!(*operator, ComparisonOp::Gt);
+                assert!(matches!(value, FilterValue::Number(n) if *n == 10.0));
+            }
+            _ => panic!("Expected Comparison filter"),
+        }
+    }
+
+    #[test]
+    fn test_filter_equality() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW point MAPPING x AS x, y AS y FILTER category = 'A'
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let filter = specs[0].layers[0].filter.as_ref().unwrap();
+        match filter {
+            FilterExpression::Comparison { column, operator, value } => {
+                assert_eq!(column, "category");
+                assert_eq!(*operator, ComparisonOp::Eq);
+                assert!(matches!(value, FilterValue::String(s) if s == "A"));
+            }
+            _ => panic!("Expected Comparison filter"),
+        }
+    }
+
+    #[test]
+    fn test_filter_not_equal() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW point MAPPING x AS x FILTER status != 'inactive'
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let filter = specs[0].layers[0].filter.as_ref().unwrap();
+        match filter {
+            FilterExpression::Comparison { operator, .. } => {
+                assert_eq!(*operator, ComparisonOp::Ne);
+            }
+            _ => panic!("Expected Comparison filter"),
+        }
+    }
+
+    #[test]
+    fn test_filter_less_than_or_equal() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW point MAPPING x AS x FILTER score <= 100
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let filter = specs[0].layers[0].filter.as_ref().unwrap();
+        match filter {
+            FilterExpression::Comparison { operator, .. } => {
+                assert_eq!(*operator, ComparisonOp::Le);
+            }
+            _ => panic!("Expected Comparison filter"),
+        }
+    }
+
+    #[test]
+    fn test_filter_greater_than_or_equal() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW point MAPPING x AS x FILTER year >= 2020
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let filter = specs[0].layers[0].filter.as_ref().unwrap();
+        match filter {
+            FilterExpression::Comparison { operator, .. } => {
+                assert_eq!(*operator, ComparisonOp::Ge);
+            }
+            _ => panic!("Expected Comparison filter"),
+        }
+    }
+
+    #[test]
+    fn test_filter_and_expression() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW point MAPPING x AS x FILTER value > 10 AND value < 100
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let filter = specs[0].layers[0].filter.as_ref().unwrap();
+        match filter {
+            FilterExpression::And(left, right) => {
+                // Left should be value > 10
+                match left.as_ref() {
+                    FilterExpression::Comparison { column, operator, .. } => {
+                        assert_eq!(column, "value");
+                        assert_eq!(*operator, ComparisonOp::Gt);
+                    }
+                    _ => panic!("Expected left Comparison"),
+                }
+                // Right should be value < 100
+                match right.as_ref() {
+                    FilterExpression::Comparison { column, operator, .. } => {
+                        assert_eq!(column, "value");
+                        assert_eq!(*operator, ComparisonOp::Lt);
+                    }
+                    _ => panic!("Expected right Comparison"),
+                }
+            }
+            _ => panic!("Expected And filter"),
+        }
+    }
+
+    #[test]
+    fn test_filter_or_expression() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW point MAPPING x AS x FILTER category = 'A' OR category = 'B'
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let filter = specs[0].layers[0].filter.as_ref().unwrap();
+        match filter {
+            FilterExpression::Or(left, right) => {
+                match left.as_ref() {
+                    FilterExpression::Comparison { value, .. } => {
+                        assert!(matches!(value, FilterValue::String(s) if s == "A"));
+                    }
+                    _ => panic!("Expected left Comparison"),
+                }
+                match right.as_ref() {
+                    FilterExpression::Comparison { value, .. } => {
+                        assert!(matches!(value, FilterValue::String(s) if s == "B"));
+                    }
+                    _ => panic!("Expected right Comparison"),
+                }
+            }
+            _ => panic!("Expected Or filter"),
+        }
+    }
+
+    #[test]
+    fn test_filter_with_mapping_and_using() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW point MAPPING x AS x, y AS y, category AS color USING size := 5 FILTER value > 50
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+        let layer = &specs[0].layers[0];
+
+        // Check aesthetics
+        assert_eq!(layer.aesthetics.len(), 3);
+        assert!(layer.aesthetics.contains_key("x"));
+        assert!(layer.aesthetics.contains_key("y"));
+        assert!(layer.aesthetics.contains_key("color"));
+
+        // Check parameters
+        assert_eq!(layer.parameters.len(), 1);
+        assert!(layer.parameters.contains_key("size"));
+
+        // Check filter
+        assert!(layer.filter.is_some());
+        let filter = layer.filter.as_ref().unwrap();
+        match filter {
+            FilterExpression::Comparison { column, operator, value } => {
+                assert_eq!(column, "value");
+                assert_eq!(*operator, ComparisonOp::Gt);
+                assert!(matches!(value, FilterValue::Number(n) if *n == 50.0));
+            }
+            _ => panic!("Expected Comparison filter"),
+        }
+    }
+
+    #[test]
+    fn test_filter_boolean_value() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW point MAPPING x AS x FILTER active = true
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let filter = specs[0].layers[0].filter.as_ref().unwrap();
+        match filter {
+            FilterExpression::Comparison { value, .. } => {
+                assert!(matches!(value, FilterValue::Boolean(true)));
+            }
+            _ => panic!("Expected Comparison filter"),
+        }
+    }
+
+    #[test]
+    fn test_filter_negative_number() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW point MAPPING x AS x FILTER temperature > -10
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let filter = specs[0].layers[0].filter.as_ref().unwrap();
+        match filter {
+            FilterExpression::Comparison { value, .. } => {
+                assert!(matches!(value, FilterValue::Number(n) if *n == -10.0));
+            }
+            _ => panic!("Expected Comparison filter"),
+        }
+    }
+
+    #[test]
+    fn test_no_filter() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW point MAPPING x AS x, y AS y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert!(specs[0].layers[0].filter.is_none());
+    }
+
+    #[test]
+    fn test_multiple_layers_with_different_filters() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW line MAPPING x AS x, y AS y
+            DRAW point MAPPING x AS x, y AS y FILTER highlight = true
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        // First layer has no filter
+        assert!(specs[0].layers[0].filter.is_none());
+
+        // Second layer has filter
+        assert!(specs[0].layers[1].filter.is_some());
+    }
+
+    #[test]
+    fn test_filter_column_comparison() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW point MAPPING x AS x FILTER start_date < end_date
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let filter = specs[0].layers[0].filter.as_ref().unwrap();
+        match filter {
+            FilterExpression::Comparison { column, operator, value } => {
+                assert_eq!(column, "start_date");
+                assert_eq!(*operator, ComparisonOp::Lt);
+                assert!(matches!(value, FilterValue::Column(col) if col == "end_date"));
+            }
+            _ => panic!("Expected Comparison filter"),
+        }
     }
 }
