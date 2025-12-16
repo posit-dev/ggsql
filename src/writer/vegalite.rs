@@ -22,7 +22,7 @@
 
 use crate::writer::Writer;
 use crate::{DataFrame, Result, GgsqlError, VizSpec, VizType, Geom, AestheticValue};
-use crate::parser::ast::{LiteralValue, Coord, CoordType, CoordPropertyValue, ArrayElement};
+use crate::parser::ast::{LiteralValue, Coord, CoordType, CoordPropertyValue, ArrayElement, FilterExpression, ComparisonOp, FilterValue};
 use serde_json::{json, Value, Map};
 use polars::prelude::*;
 
@@ -204,6 +204,48 @@ impl VegaLiteWriter {
             _ => "point", // Default fallback
         }
         .to_string()
+    }
+
+    /// Convert a FilterExpression to Vega-Lite filter format
+    fn filter_to_vegalite(&self, filter: &FilterExpression) -> Value {
+        match filter {
+            FilterExpression::And(left, right) => {
+                json!({
+                    "and": [
+                        self.filter_to_vegalite(left),
+                        self.filter_to_vegalite(right)
+                    ]
+                })
+            }
+            FilterExpression::Or(left, right) => {
+                json!({
+                    "or": [
+                        self.filter_to_vegalite(left),
+                        self.filter_to_vegalite(right)
+                    ]
+                })
+            }
+            FilterExpression::Comparison { column, operator, value } => {
+                let op_str = match operator {
+                    ComparisonOp::Eq => "===",
+                    ComparisonOp::Ne => "!==",
+                    ComparisonOp::Lt => "<",
+                    ComparisonOp::Gt => ">",
+                    ComparisonOp::Le => "<=",
+                    ComparisonOp::Ge => ">=",
+                };
+
+                let value_str = match value {
+                    FilterValue::String(s) => format!("'{}'", s),
+                    FilterValue::Number(n) => n.to_string(),
+                    FilterValue::Boolean(b) => b.to_string(),
+                    FilterValue::Column(c) => format!("datum.{}", c),
+                };
+
+                // Vega-Lite filter expression: "datum.column op value"
+                json!(format!("datum.{} {} {}", column, op_str, value_str))
+            }
+        }
     }
 
     /// Check if a string column contains numeric values
@@ -929,6 +971,13 @@ impl Writer for VegaLiteWriter {
             let layer = &spec.layers[0];
             vl_spec["mark"] = json!(self.geom_to_mark(&layer.geom));
 
+            // Add filter transform if present
+            if let Some(filter) = &layer.filter {
+                vl_spec["transform"] = json!([{
+                    "filter": self.filter_to_vegalite(filter)
+                }]);
+            }
+
             // Build encoding from aesthetics
             let mut encoding = Map::new();
             for (aesthetic, value) in &layer.aesthetics {
@@ -963,6 +1012,13 @@ impl Writer for VegaLiteWriter {
                 let mut layer_spec = json!({
                     "mark": self.geom_to_mark(&layer.geom)
                 });
+
+                // Add filter transform if present
+                if let Some(filter) = &layer.filter {
+                    layer_spec["transform"] = json!([{
+                        "filter": self.filter_to_vegalite(filter)
+                    }]);
+                }
 
                 // Build encoding for this layer
                 let mut encoding = Map::new();
