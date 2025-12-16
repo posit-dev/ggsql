@@ -25,9 +25,20 @@ ggsql_engine <- function(options) {
       return(knitr::engine_output(options, options$code, out))
     }
 
+    # Interpret output as-is, i.e. raw html/pandoc
+    options$results <- "asis"
+
     # Render the spec as html chunk to include
     widget <- vegawidget::as_vegaspec(paste0(out, collapse = "\n"))
     out <- knitr::knit_print(widget, options = options)
+  
+    # When we cannot include widgets, we are handed a screenshot that we
+    # must include as a png file.
+    # This happens in static formats, like PDF
+    if (inherits(out, "html_screenshot")) {
+      file_path <- knitr::sew(out, options = options)
+      return(knitr::engine_output(options, out = list(file_path)))
+    }
 
     # Add metadata manually, since we're not using the usual hooks.
     # This ensures the dependencies (<script> tags) are listed properly
@@ -35,8 +46,6 @@ ggsql_engine <- function(options) {
     meta <- attr(out, "knit_meta", exact = TRUE)
     knitr::knit_meta_add(meta)
 
-    # Output as-is, i.e. raw html
-    options$results <- "asis"
     knitr::engine_output(options, options$code, out = out)
 }
 
