@@ -238,12 +238,12 @@ module.exports = grammar({
       $.theme_clause,
     ),
 
-    // DRAW clause - new syntax: DRAW geom [MAPPING ...] [USING ...] [FILTER ...]
+    // DRAW clause - syntax: DRAW geom [MAPPING ...] [SETTING ...] [FILTER ...]
     draw_clause: $ => seq(
       caseInsensitive('DRAW'),
       $.geom_type,
       optional($.mapping_clause),
-      optional($.draw_using_clause),
+      optional($.setting_clause),
       optional($.filter_clause)
     ),
 
@@ -271,16 +271,16 @@ module.exports = grammar({
       $.literal_value
     ),
 
-    // USING clause for parameters: USING opacity := 0.5, size := 3
-    draw_using_clause: $ => seq(
-      caseInsensitive('USING'),
+    // SETTING clause for parameters: SETTING opacity TO 0.5, size TO 3
+    setting_clause: $ => seq(
+      caseInsensitive('SETTING'),
       $.parameter_assignment,
       repeat(seq(',', $.parameter_assignment))
     ),
 
     parameter_assignment: $ => seq(
       field('param', $.parameter_name),
-      ':=',
+      caseInsensitive('TO'),
       field('value', $.parameter_value)
     ),
 

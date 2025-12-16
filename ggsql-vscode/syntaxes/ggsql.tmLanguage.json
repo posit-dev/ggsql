@@ -160,16 +160,16 @@
           "match": "\\b(?i:MAPPING)\\b"
         },
         {
-          "name": "keyword.control.with.ggsql",
-          "match": "\\b(?i:USING)\\b"
+          "name": "keyword.control.setting.ggsql",
+          "match": "\\b(?i:SETTING)\\b"
+        },
+        {
+          "name": "keyword.control.to.ggsql",
+          "match": "\\b(?i:TO)\\b"
         },
         {
           "name": "keyword.control.filter.ggsql",
           "match": "\\b(?i:FILTER)\\b"
-        },
-        {
-          "name": "keyword.operator.assignment.ggsql",
-          "match": ":="
         },
         {
           "name": "support.type.geom.ggsql",

@@ -394,8 +394,8 @@ WITH daily_metrics AS (
     GROUP BY DATE_TRUNC('day', timestamp)
 )
 VISUALISE FROM daily_metrics AS PLOT
-DRAW ribbon MAPPING day AS x, min_temp AS ymin, max_temp AS ymax, 'lightblue' AS fill USING alpha := 0.3
-DRAW line MAPPING day AS x, avg_temp AS y, 'blue' AS color USING size := 2
+DRAW ribbon MAPPING day AS x, min_temp AS ymin, max_temp AS ymax, 'lightblue' AS fill SETTING alpha TO 0.3
+DRAW line MAPPING day AS x, avg_temp AS y, 'blue' AS color SETTING size TO 2
 SCALE x USING type = 'date'
 LABEL title = 'Temperature Range (Last 30 Days)',
       x = 'Date',
@@ -520,7 +520,7 @@ SELECT
     label
 FROM data_points
 VISUALISE AS PLOT
-DRAW point MAPPING x AS x, y AS y, category AS color USING size := 5
+DRAW point MAPPING x AS x, y AS y, category AS color SETTING size TO 5
 DRAW text MAPPING x AS x, y AS y, label AS label
 SCALE color USING palette = 'viridis'
 COORD cartesian USING xlim = [0, 100], ylim = [0, 100]

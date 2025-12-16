@@ -819,10 +819,10 @@ cargo build --all-features
 **Syntax**:
 
 ```sql
-DRAW <geom> [MAPPING <value> AS <aesthetic>, ...] [USING <param> := <value>, ...] [FILTER <condition>]
+DRAW <geom> [MAPPING <value> AS <aesthetic>, ...] [SETTING <param> TO <value>, ...] [FILTER <condition>]
 ```
 
-All clauses (MAPPING, USING, FILTER) are optional.
+All clauses (MAPPING, SETTING, FILTER) are optional.
 
 **Geom Types**:
 
@@ -844,9 +844,9 @@ Maps data values (columns or literals) to visual aesthetics. Syntax: `value AS a
 - Unquoted → column reference: `region AS color`
 - Quoted → literal value: `'blue' AS color`, `3 AS size`
 
-**USING Clause** (Parameters):
+**SETTING Clause** (Parameters):
 
-Sets layer/geom parameters (not mapped to data). Syntax: `param := value`
+Sets layer/geom parameters (not mapped to data). Syntax: `param TO value`
 
 - Parameters like `opacity`, `size` (fixed), `stroke_width`, etc.
 
@@ -866,14 +866,14 @@ DRAW line MAPPING date AS x, revenue AS y, region AS color
 -- Mapping with literal
 DRAW point MAPPING date AS x, revenue AS y, 'red' AS color
 
--- Using parameters
-DRAW point MAPPING x AS x, y AS y USING size := 5, opacity := 0.7
+-- Setting parameters
+DRAW point MAPPING x AS x, y AS y SETTING size TO 5, opacity TO 0.7
 
 -- With filter
 DRAW point MAPPING x AS x, y AS y, category AS color FILTER value > 100
 
 -- Combined
-DRAW line MAPPING date AS x, value AS y USING stroke_width := 2 FILTER category = 'A' AND year >= 2024
+DRAW line MAPPING date AS x, value AS y SETTING stroke_width TO 2 FILTER category = 'A' AND year >= 2024
 ```
 
 ### SCALE Clause

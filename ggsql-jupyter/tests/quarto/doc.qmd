@@ -189,7 +189,7 @@ LABEL title = 'Total Revenue by Category', x = 'Category', y = 'Total Revenue ($
 SELECT date, value FROM 'timeseries.csv'
 VISUALISE AS PLOT
 DRAW line MAPPING date AS x, value AS y, 'blue' AS color
-DRAW point MAPPING date AS x, value AS y, 'red' AS color USING size := 30
+DRAW point MAPPING date AS x, value AS y, 'red' AS color SETTING size TO 30
 SCALE x USING type = 'date'
 LABEL title = 'Time Series with Points', x = 'Date', y = 'Value'
 ```
@@ -231,9 +231,9 @@ FROM 'sales.csv'
 GROUP BY DATE_TRUNC('month', sale_date), region, category
 VISUALISE AS PLOT
 DRAW line MAPPING month AS x, total_revenue AS y, 'steelblue' AS color
-DRAW point MAPPING month AS x, total_revenue AS y, 'darkblue' AS color USING size := 30
+DRAW point MAPPING month AS x, total_revenue AS y, 'darkblue' AS color SETTING size TO 30
 DRAW line MAPPING month AS x, total_quantity_scaled AS y, 'coral' AS color
-DRAW point MAPPING month AS x, total_quantity_scaled AS y, 'orangered' AS color USING size := 30
+DRAW point MAPPING month AS x, total_quantity_scaled AS y, 'orangered' AS color SETTING size TO 30
 SCALE x USING type = 'date'
 FACET region BY category
 LABEL title = 'Monthly Revenue and Quantity by Region and Category', x = 'Month', y = 'Value'
@@ -259,7 +259,7 @@ LABEL title = 'Total Revenue by Region', x = 'Region', y = 'Total Revenue ($)'
 ```{ggsql}
 SELECT x, y FROM 'data.csv'
 VISUALISE AS PLOT
-DRAW point MAPPING x AS x, y AS y, 'blue' AS color USING size := 4
+DRAW point MAPPING x AS x, y AS y, 'blue' AS color SETTING size TO 4
 COORD cartesian USING xlim = [0, 60], ylim = [0, 70]
 LABEL title = 'Scatter Plot with Custom Axis Limits', x = 'X', y = 'Y'
 ```

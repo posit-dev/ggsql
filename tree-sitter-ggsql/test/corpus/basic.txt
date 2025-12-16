@@ -72,11 +72,11 @@ DRAW point MAPPING date AS x, value AS y, 'red' AS color
             aesthetic: (aesthetic_name)))))))
 
 ================================================================================
-DRAW with USING clause (parameters)
+DRAW with SETTING clause (parameters)
 ================================================================================
 
 VISUALISE AS PLOT
-DRAW point MAPPING x AS x, y AS y USING opacity := 0.5, size := 3
+DRAW point MAPPING x AS x, y AS y SETTING opacity TO 0.5, size TO 3
 
 --------------------------------------------------------------------------------
 
@@ -97,7 +97,7 @@ DRAW point MAPPING x AS x, y AS y USING opacity := 0.5, size := 3
               (column_reference
                 (identifier)))
             aesthetic: (aesthetic_name)))
-        (draw_using_clause
+        (setting_clause
           (parameter_assignment
             param: (parameter_name
               (identifier))
@@ -220,7 +220,7 @@ DRAW with all clauses
 ================================================================================
 
 VISUALISE AS PLOT
-DRAW point MAPPING x AS x, y AS y USING opacity := 0.5 FILTER year > 2020
+DRAW point MAPPING x AS x, y AS y SETTING opacity TO 0.5 FILTER year > 2020
 
 --------------------------------------------------------------------------------
 
@@ -241,7 +241,7 @@ DRAW point MAPPING x AS x, y AS y USING opacity := 0.5 FILTER year > 2020
               (column_reference
                 (identifier)))
             aesthetic: (aesthetic_name)))
-        (draw_using_clause
+        (setting_clause
           (parameter_assignment
             param: (parameter_name
               (identifier))

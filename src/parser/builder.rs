@@ -191,7 +191,7 @@ fn process_viz_clause(node: &Node, source: &str, spec: &mut VizSpec) -> Result<(
 }
 
 /// Build a Layer from a draw_clause node
-/// New syntax: DRAW geom [MAPPING col AS x, ...] [USING param := val, ...] [FILTER condition]
+/// Syntax: DRAW geom [MAPPING col AS x, ...] [SETTING param TO val, ...] [FILTER condition]
 fn build_layer(node: &Node, source: &str) -> Result<Layer> {
     let mut geom = Geom::Point; // default
     let mut aesthetics = HashMap::new();
@@ -208,8 +208,8 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
             "mapping_clause" => {
                 aesthetics = parse_mapping_clause(&child, source)?;
             }
-            "draw_using_clause" => {
-                parameters = parse_draw_using_clause(&child, source)?;
+            "setting_clause" => {
+                parameters = parse_setting_clause(&child, source)?;
             }
             "filter_clause" => {
                 filter = Some(parse_filter_clause(&child, source)?);
@@ -294,8 +294,8 @@ fn parse_mapping_value(node: &Node, source: &str) -> Result<AestheticValue> {
     )))
 }
 
-/// Parse a draw_using_clause: USING param := value, ...
-fn parse_draw_using_clause(node: &Node, source: &str) -> Result<HashMap<String, ParameterValue>> {
+/// Parse a setting_clause: SETTING param TO value, ...
+fn parse_setting_clause(node: &Node, source: &str) -> Result<HashMap<String, ParameterValue>> {
     let mut parameters = HashMap::new();
 
     let mut cursor = node.walk();
@@ -309,7 +309,7 @@ fn parse_draw_using_clause(node: &Node, source: &str) -> Result<HashMap<String, 
     Ok(parameters)
 }
 
-/// Parse a parameter_assignment: param := value
+/// Parse a parameter_assignment: param TO value
 fn parse_parameter_assignment(node: &Node, source: &str) -> Result<(String, ParameterValue)> {
     let mut param_name = String::new();
     let mut param_value = None;
@@ -2453,10 +2453,10 @@ mod tests {
     }
 
     #[test]
-    fn test_filter_with_mapping_and_using() {
+    fn test_filter_with_mapping_and_setting() {
         let query = r#"
             VISUALISE AS PLOT
-            DRAW point MAPPING x AS x, y AS y, category AS color USING size := 5 FILTER value > 50
+            DRAW point MAPPING x AS x, y AS y, category AS color SETTING size TO 5 FILTER value > 50
         "#;
 
         let result = parse_test_query(query);

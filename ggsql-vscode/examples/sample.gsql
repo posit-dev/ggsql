@@ -26,7 +26,7 @@ WITH monthly_sales AS (
 )
 VISUALISE FROM monthly_sales AS PLOT
 DRAW line MAPPING month AS x, total_quantity AS y, region AS color
-DRAW point MAPPING month AS x, total_quantity AS y, region AS color USING size := 3
+DRAW point MAPPING month AS x, total_quantity AS y, region AS color SETTING size TO 3
 SCALE x USING type = 'date'
 SCALE color USING palette = 'viridis'
 FACET WRAP region USING scales = 'free_y'
@@ -94,8 +94,8 @@ WITH daily_metrics AS (
 )
 SELECT * FROM daily_metrics
 VISUALISE AS PLOT
-DRAW ribbon MAPPING date AS x, min_temp AS ymin, max_temp AS ymax, 'lightblue' AS fill USING alpha := 0.3
-DRAW line MAPPING date AS x, avg_temp AS y, 'blue' AS color USING size := 2
+DRAW ribbon MAPPING date AS x, min_temp AS ymin, max_temp AS ymax, 'lightblue' AS fill SETTING alpha TO 0.3
+DRAW line MAPPING date AS x, avg_temp AS y, 'blue' AS color SETTING size TO 2
 SCALE x USING type = 'date'
 SCALE y USING type = 'linear', limits = [0, 100]
 COORD cartesian USING xlim = ['2024-01-01', '2024-12-31']
@@ -154,7 +154,7 @@ WITH quarterly_breakdown AS (
     GROUP BY DATE_TRUNC('quarter', sale_date), category
 )
 VISUALISE FROM quarterly_breakdown AS PLOT
-DRAW area MAPPING quarter AS x, revenue AS y, category AS fill USING alpha := 0.7
+DRAW area MAPPING quarter AS x, revenue AS y, category AS fill SETTING alpha TO 0.7
 SCALE x USING type = 'date'
 SCALE fill USING palette = 'plasma', domain = ['A', 'B', 'C', 'D']
 LABEL title = 'Quarterly Revenue by Category',
@@ -170,7 +170,7 @@ FROM products
 WHERE rating IS NOT NULL
 VISUALISE AS PLOT
 DRAW boxplot MAPPING category AS x, price AS y
-DRAW violin MAPPING category AS x, price AS y USING alpha := 0.3
+DRAW violin MAPPING category AS x, price AS y SETTING alpha TO 0.3
 COORD cartesian USING ylim = [0, 500]
 LABEL title = 'Price Distribution by Category',
       x = 'Product Category',

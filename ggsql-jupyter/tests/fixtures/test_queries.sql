@@ -77,7 +77,7 @@ SELECT
   n * n as y
 FROM generate_series(1, 10) as t(n)
 VISUALISE AS PLOT
-DRAW point MAPPING x AS x, y AS y USING size := 10, opacity := 0.5
+DRAW point MAPPING x AS x, y AS y SETTING size TO 10, opacity TO 0.5
 LABEL title = 'Points with Parameters';
 
 -- Error case: invalid table

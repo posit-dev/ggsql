@@ -83,7 +83,6 @@
 
 ; Operators
 "=" @operator
-":=" @operator
 
 ; Comparison operators (for FILTER clause)
 (comparison_operator) @operator
@@ -91,5 +90,5 @@
 ; Punctuation
 ["," "[" "]" "(" ")"] @punctuation.delimiter
 
-; Parameter names (in USING clause)
+; Parameter names (in SETTING clause)
 (parameter_name) @variable.parameter
