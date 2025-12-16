@@ -1,7 +1,48 @@
 ---
 title: ggSQL Examples
-keep-ipynb: true # TODO: Why does render on save fail without this?
+engine: knitr
+
 ---
+
+```{r}
+ggsql_engine <- function(options) {
+    # Write a temporary file with the query
+    tmp <- basename(tempfile("ggsql", ".", paste0(".", "plt")))
+    on.exit(unlink(tmp))
+    writeLines(options$code, tmp)
+
+    out <- ''
+
+    # Format and evaluate system command
+    if (options$eval) {
+      cmd <- sprintf("ggsql run %s", paste(tmp, options$engine.opts))
+      out <- system(cmd, intern=TRUE)
+    }
+
+    # If the command failed, we don't have a vegalite schema and we exit early
+    is_schema <- !is.na(out[2]) && startsWith(trimws(out[2]), "\"$schema")
+    if (!is_schema) {
+      return(knitr::engine_output(options, options$code, out))
+    }
+
+    # Render the spec as html chunk to include
+    widget <- vegawidget::as_vegaspec(paste0(out, collapse = "\n"))
+    out <- knitr::knit_print(widget, options = options)
+
+    # Add metadata manually, since we're not using the usual hooks.
+    # This ensures the dependencies (<script> tags) are listed properly
+    # in the output html file.
+    meta <- attr(out, "knit_meta", exact = TRUE)
+    knitr::knit_meta_add(meta)
+
+    # Output as-is, i.e. raw html
+    options$results <- "asis"
+    knitr::engine_output(options, options$code, out = out)
+}
+
+knitr::knit_engines$set(ggsql = ggsql_engine)
+```
+
 
 This document demonstrates various ggSQL features with runnable examples using CSV files.
 
