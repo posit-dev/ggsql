@@ -185,6 +185,13 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
     }
 
     // Parse ggSQL portion
+    if viz_part.len() < 1 {
+        if verbose {
+            eprintln!("The ggSQL portion is empty. No specifications produced.");
+        }
+        return ();
+    }
+
     let parsed = parser::parse_query(&query);
     if let Err(e) = parsed {
         eprintln!("Failed to parse ggSQL portion: {}", e);
