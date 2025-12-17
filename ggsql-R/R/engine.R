@@ -42,3 +42,7 @@ ggsql_engine <- function(options) {
 
   knitr::engine_output(options, options$code, out = out)
 }
+
+on_load(
+  knitr::knit_engines$set(ggsql = ggsql_engine)
+)
