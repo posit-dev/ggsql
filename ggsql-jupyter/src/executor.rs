@@ -68,18 +68,24 @@ impl QueryExecutor {
         }
 
         // 4. Parse VIZ specification
-        let viz_specs = parser::parse_query(code)?;
+        let mut viz_specs = parser::parse_query(code)?;
 
         if viz_specs.is_empty() {
             anyhow::bail!("No visualization specification found despite VISUALISE keyword");
         }
 
-        // 5. Generate Vega-Lite spec (use first spec if multiple)
+        // 5. Resolve global mappings into layer aesthetics
+        let column_names: Vec<&str> = df.get_column_names().iter().map(|s| s.as_str()).collect();
+        for spec in &mut viz_specs {
+            spec.resolve_global_mappings(&column_names)?;
+        }
+
+        // 6. Generate Vega-Lite spec (use first spec if multiple)
         let vega_json = self.writer.write(&viz_specs[0], &df)?;
 
         tracing::debug!("Generated Vega-Lite spec: {} chars", vega_json.len());
 
-        // 6. Return result
+        // 7. Return result
         Ok(ExecutionResult::Visualization {
             spec: vega_json,
             data_rows: df.height(),

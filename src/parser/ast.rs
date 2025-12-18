@@ -22,6 +22,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::Result;
+
 /// Complete ggSQL visualization specification
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VizSpec {
@@ -156,6 +158,15 @@ pub enum Geom {
     ErrorBar,
 }
 
+/// Aesthetic information for a geom type
+#[derive(Debug, Clone, Copy)]
+pub struct GeomAesthetics {
+    /// All aesthetics this geom type supports
+    pub supported: &'static [&'static str],
+    /// Aesthetics required for this geom type to be valid
+    pub required: &'static [&'static str],
+}
+
 impl std::fmt::Display for Geom {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
@@ -183,6 +194,109 @@ impl std::fmt::Display for Geom {
             Geom::ErrorBar => "errorbar",
         };
         write!(f, "{}", s)
+    }
+}
+
+impl Geom {
+    /// Returns aesthetic information for this geom type.
+    /// Includes both supported aesthetics (for wildcard mapping) and
+    /// required aesthetics (for validation).
+    pub fn aesthetics(&self) -> GeomAesthetics {
+        match self {
+            // Position geoms
+            Geom::Point => GeomAesthetics {
+                supported: &["x", "y", "color", "colour", "fill", "size", "shape", "alpha", "group"],
+                required: &["x", "y"],
+            },
+            Geom::Line => GeomAesthetics {
+                supported: &["x", "y", "color", "colour", "linetype", "linewidth", "alpha", "group"],
+                required: &["x", "y"],
+            },
+            Geom::Path => GeomAesthetics {
+                supported: &["x", "y", "color", "colour", "linetype", "linewidth", "alpha", "group"],
+                required: &["x", "y"],
+            },
+            Geom::Bar => GeomAesthetics {
+                supported: &["x", "y", "color", "colour", "fill", "width", "alpha", "group"],
+                required: &["x", "y"],
+            },
+            Geom::Col => GeomAesthetics {
+                supported: &["x", "y", "color", "colour", "fill", "width", "alpha", "group"],
+                required: &["x", "y"],
+            },
+            Geom::Area => GeomAesthetics {
+                supported: &["x", "y", "color", "colour", "fill", "alpha", "group"],
+                required: &["x", "y"],
+            },
+            Geom::Tile => GeomAesthetics {
+                supported: &["x", "y", "color", "colour", "fill", "width", "height", "alpha"],
+                required: &["x", "y"],
+            },
+            Geom::Polygon => GeomAesthetics {
+                supported: &["x", "y", "color", "colour", "fill", "alpha", "group"],
+                required: &["x", "y"],
+            },
+            Geom::Ribbon => GeomAesthetics {
+                supported: &["x", "ymin", "ymax", "color", "colour", "fill", "alpha", "group"],
+                required: &["x", "ymin", "ymax"],
+            },
+
+            // Statistical geoms
+            Geom::Histogram => GeomAesthetics {
+                supported: &["x", "color", "colour", "fill", "alpha"],
+                required: &["x"],
+            },
+            Geom::Density => GeomAesthetics {
+                supported: &["x", "color", "colour", "fill", "alpha"],
+                required: &["x"],
+            },
+            Geom::Smooth => GeomAesthetics {
+                supported: &["x", "y", "color", "colour", "linetype", "alpha", "group"],
+                required: &["x", "y"],
+            },
+            Geom::Boxplot => GeomAesthetics {
+                supported: &["x", "y", "color", "colour", "fill", "alpha"],
+                required: &["x", "y"],
+            },
+            Geom::Violin => GeomAesthetics {
+                supported: &["x", "y", "color", "colour", "fill", "alpha"],
+                required: &["x", "y"],
+            },
+
+            // Annotation geoms
+            Geom::Text => GeomAesthetics {
+                supported: &["x", "y", "label", "color", "colour", "size", "alpha", "family", "fontface", "hjust", "vjust"],
+                required: &["x", "y"],
+            },
+            Geom::Label => GeomAesthetics {
+                supported: &["x", "y", "label", "color", "colour", "fill", "size", "alpha", "family", "fontface", "hjust", "vjust"],
+                required: &["x", "y"],
+            },
+            Geom::Segment => GeomAesthetics {
+                supported: &["x", "y", "xend", "yend", "color", "colour", "linetype", "linewidth", "alpha"],
+                required: &["x", "y", "xend", "yend"],
+            },
+            Geom::Arrow => GeomAesthetics {
+                supported: &["x", "y", "xend", "yend", "color", "colour", "linetype", "linewidth", "alpha"],
+                required: &["x", "y", "xend", "yend"],
+            },
+            Geom::HLine => GeomAesthetics {
+                supported: &["yintercept", "color", "colour", "linetype", "linewidth", "alpha"],
+                required: &["yintercept"],
+            },
+            Geom::VLine => GeomAesthetics {
+                supported: &["xintercept", "color", "colour", "linetype", "linewidth", "alpha"],
+                required: &["xintercept"],
+            },
+            Geom::AbLine => GeomAesthetics {
+                supported: &["slope", "intercept", "color", "colour", "linetype", "linewidth", "alpha"],
+                required: &["slope", "intercept"],
+            },
+            Geom::ErrorBar => GeomAesthetics {
+                supported: &["x", "y", "ymin", "ymax", "xmin", "xmax", "color", "colour", "linewidth", "alpha"],
+                required: &[],
+            },
+        }
     }
 }
 
@@ -426,6 +540,54 @@ impl VizSpec {
     pub fn find_guide(&self, aesthetic: &str) -> Option<&Guide> {
         self.guides.iter().find(|guide| guide.aesthetic == aesthetic)
     }
+
+    /// Resolve global mappings into layer aesthetics.
+    ///
+    /// For each layer, global mappings are merged as defaults.
+    /// Layer-specific MAPPING clauses override global mappings.
+    ///
+    /// For wildcard (`VISUALISE *`), columns are mapped to aesthetics
+    /// based on what each layer's geom type supports.
+    pub fn resolve_global_mappings(&mut self, available_columns: &[&str]) -> Result<()> {
+        // Handle non-wildcard cases first (same for all layers)
+        let explicit_mappings: HashMap<String, AestheticValue> = match &self.global_mapping {
+            GlobalMapping::Empty => HashMap::new(),
+            GlobalMapping::Wildcard => HashMap::new(), // Handled per-layer below
+            GlobalMapping::Mappings(items) => {
+                items.iter().map(|item| match item {
+                    GlobalMappingItem::Explicit { column, aesthetic } => {
+                        (aesthetic.clone(), AestheticValue::Column(column.clone()))
+                    }
+                    GlobalMappingItem::Implicit { name } => {
+                        (name.clone(), AestheticValue::Column(name.clone()))
+                    }
+                }).collect()
+            }
+        };
+
+        // For each layer, merge mappings (layer overrides global)
+        for layer in &mut self.layers {
+            // For wildcard, build mappings based on this geom's supported aesthetics
+            let base_aesthetics: HashMap<String, AestheticValue> = if matches!(self.global_mapping, GlobalMapping::Wildcard) {
+                let supported = layer.geom.aesthetics().supported;
+                available_columns.iter()
+                    .filter(|col| supported.contains(col))
+                    .map(|col| (col.to_string(), AestheticValue::Column(col.to_string())))
+                    .collect()
+            } else {
+                explicit_mappings.clone()
+            };
+
+            // Merge: layer aesthetics override global
+            for (aesthetic, value) in base_aesthetics {
+                layer.aesthetics
+                    .entry(aesthetic)
+                    .or_insert(value);
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Layer {
@@ -474,34 +636,9 @@ impl Layer {
     }
 
     /// Check if this layer has the required aesthetics for its geom
-    pub fn validate_required_aesthetics(&self) -> Result<(), String> {
-        let required = match self.geom {
-            Geom::Point | Geom::Line | Geom::Path | Geom::Text | Geom::Label => {
-                vec!["x", "y"]
-            }
-            Geom::Bar | Geom::Col => {
-                vec!["x", "y"]
-            }
-            Geom::Ribbon => {
-                vec!["x", "ymin", "ymax"]
-            }
-            Geom::Histogram | Geom::Density => {
-                vec!["x"]
-            }
-            Geom::Segment | Geom::Arrow => {
-                vec!["x", "y", "xend", "yend"]
-            }
-            Geom::HLine => {
-                vec!["yintercept"]
-            }
-            Geom::VLine => {
-                vec!["xintercept"]
-            }
-            _ => vec![], // Other geoms have more flexible requirements
-        };
-
-        for aesthetic in required {
-            if !self.aesthetics.contains_key(aesthetic) {
+    pub fn validate_required_aesthetics(&self) -> std::result::Result<(), String> {
+        for aesthetic in self.geom.aesthetics().required {
+            if !self.aesthetics.contains_key(*aesthetic) {
                 return Err(format!(
                     "Geom '{}' requires aesthetic '{}' but it was not provided",
                     self.geom, aesthetic
@@ -652,5 +789,188 @@ mod tests {
         assert_eq!(format!("{}", Geom::Point), "point");
         assert_eq!(format!("{}", Geom::Histogram), "histogram");
         assert_eq!(format!("{}", Geom::ErrorBar), "errorbar");
+    }
+
+    // ========================================
+    // Global Mapping Resolution Tests
+    // ========================================
+
+    #[test]
+    fn test_explicit_global_mapping_resolution() {
+        let mut spec = VizSpec::new();
+        spec.global_mapping = GlobalMapping::Mappings(vec![
+            GlobalMappingItem::Explicit {
+                column: "date".to_string(),
+                aesthetic: "x".to_string(),
+            },
+            GlobalMappingItem::Explicit {
+                column: "revenue".to_string(),
+                aesthetic: "y".to_string(),
+            },
+        ]);
+        spec.layers.push(Layer::new(Geom::Point));
+        spec.layers.push(Layer::new(Geom::Line));
+
+        spec.resolve_global_mappings(&["date", "revenue", "region"]).unwrap();
+
+        // Both layers should have x and y aesthetics
+        assert_eq!(spec.layers[0].aesthetics.len(), 2);
+        assert_eq!(spec.layers[1].aesthetics.len(), 2);
+        assert!(matches!(
+            spec.layers[0].aesthetics.get("x"),
+            Some(AestheticValue::Column(c)) if c == "date"
+        ));
+        assert!(matches!(
+            spec.layers[0].aesthetics.get("y"),
+            Some(AestheticValue::Column(c)) if c == "revenue"
+        ));
+    }
+
+    #[test]
+    fn test_implicit_global_mapping_resolution() {
+        let mut spec = VizSpec::new();
+        spec.global_mapping = GlobalMapping::Mappings(vec![
+            GlobalMappingItem::Implicit { name: "x".to_string() },
+            GlobalMappingItem::Implicit { name: "y".to_string() },
+        ]);
+        spec.layers.push(Layer::new(Geom::Point));
+
+        spec.resolve_global_mappings(&["x", "y", "z"]).unwrap();
+
+        assert!(matches!(
+            spec.layers[0].aesthetics.get("x"),
+            Some(AestheticValue::Column(c)) if c == "x"
+        ));
+        assert!(matches!(
+            spec.layers[0].aesthetics.get("y"),
+            Some(AestheticValue::Column(c)) if c == "y"
+        ));
+    }
+
+    #[test]
+    fn test_wildcard_global_mapping_resolution() {
+        let mut spec = VizSpec::new();
+        spec.global_mapping = GlobalMapping::Wildcard;
+        spec.layers.push(Layer::new(Geom::Point));
+
+        // Point geom supports: x, y, color, size, shape, alpha, etc.
+        // Columns "x", "y", "color" match supported aesthetics
+        // Columns "date", "revenue" do NOT match any supported aesthetic
+        spec.resolve_global_mappings(&["x", "y", "color", "date", "revenue"]).unwrap();
+
+        // Should only map columns that match geom's supported aesthetics
+        assert_eq!(spec.layers[0].aesthetics.len(), 3);
+        assert!(spec.layers[0].aesthetics.contains_key("x"));
+        assert!(spec.layers[0].aesthetics.contains_key("y"));
+        assert!(spec.layers[0].aesthetics.contains_key("color"));
+        assert!(!spec.layers[0].aesthetics.contains_key("date"));
+        assert!(!spec.layers[0].aesthetics.contains_key("revenue"));
+    }
+
+    #[test]
+    fn test_wildcard_different_geoms_get_different_aesthetics() {
+        let mut spec = VizSpec::new();
+        spec.global_mapping = GlobalMapping::Wildcard;
+        spec.layers.push(Layer::new(Geom::Point));  // supports size, shape
+        spec.layers.push(Layer::new(Geom::Line));   // supports linetype, linewidth
+
+        spec.resolve_global_mappings(&["x", "y", "size", "linetype"]).unwrap();
+
+        // Point layer should get x, y, size (not linetype)
+        assert!(spec.layers[0].aesthetics.contains_key("size"));
+        assert!(!spec.layers[0].aesthetics.contains_key("linetype"));
+
+        // Line layer should get x, y, linetype (not size)
+        assert!(spec.layers[1].aesthetics.contains_key("linetype"));
+        assert!(!spec.layers[1].aesthetics.contains_key("size"));
+    }
+
+    #[test]
+    fn test_layer_mapping_overrides_global() {
+        let mut spec = VizSpec::new();
+        spec.global_mapping = GlobalMapping::Mappings(vec![
+            GlobalMappingItem::Explicit {
+                column: "date".to_string(),
+                aesthetic: "x".to_string(),
+            },
+        ]);
+
+        let mut layer = Layer::new(Geom::Point);
+        layer.aesthetics.insert(
+            "x".to_string(),
+            AestheticValue::Column("other_date".to_string()),
+        );
+        spec.layers.push(layer);
+
+        spec.resolve_global_mappings(&["date", "other_date"]).unwrap();
+
+        // Layer's explicit mapping should override global
+        assert!(matches!(
+            spec.layers[0].aesthetics.get("x"),
+            Some(AestheticValue::Column(c)) if c == "other_date"
+        ));
+    }
+
+    #[test]
+    fn test_empty_global_mapping_no_change() {
+        let mut spec = VizSpec::new();
+        spec.global_mapping = GlobalMapping::Empty;
+
+        let mut layer = Layer::new(Geom::Point);
+        layer.aesthetics.insert("x".to_string(), AestheticValue::Column("col".to_string()));
+        spec.layers.push(layer);
+
+        spec.resolve_global_mappings(&["col"]).unwrap();
+
+        // Layer should be unchanged
+        assert_eq!(spec.layers[0].aesthetics.len(), 1);
+    }
+
+    #[test]
+    fn test_geom_aesthetics() {
+        // Point geom
+        let point = Geom::Point.aesthetics();
+        assert!(point.supported.contains(&"x"));
+        assert!(point.supported.contains(&"size"));
+        assert!(point.supported.contains(&"shape"));
+        assert!(!point.supported.contains(&"linetype"));
+        assert_eq!(point.required, &["x", "y"]);
+
+        // Line geom
+        let line = Geom::Line.aesthetics();
+        assert!(line.supported.contains(&"linetype"));
+        assert!(line.supported.contains(&"linewidth"));
+        assert!(!line.supported.contains(&"size"));
+        assert_eq!(line.required, &["x", "y"]);
+
+        // Bar geom
+        let bar = Geom::Bar.aesthetics();
+        assert!(bar.supported.contains(&"fill"));
+        assert!(bar.supported.contains(&"width"));
+        assert_eq!(bar.required, &["x", "y"]);
+
+        // Text geom
+        let text = Geom::Text.aesthetics();
+        assert!(text.supported.contains(&"label"));
+        assert!(text.supported.contains(&"family"));
+        assert_eq!(text.required, &["x", "y"]);
+
+        // Statistical geoms only require x
+        assert_eq!(Geom::Histogram.aesthetics().required, &["x"]);
+        assert_eq!(Geom::Density.aesthetics().required, &["x"]);
+
+        // Ribbon requires ymin/ymax
+        assert_eq!(Geom::Ribbon.aesthetics().required, &["x", "ymin", "ymax"]);
+
+        // Segment/arrow require endpoints
+        assert_eq!(Geom::Segment.aesthetics().required, &["x", "y", "xend", "yend"]);
+
+        // Reference lines
+        assert_eq!(Geom::HLine.aesthetics().required, &["yintercept"]);
+        assert_eq!(Geom::VLine.aesthetics().required, &["xintercept"]);
+        assert_eq!(Geom::AbLine.aesthetics().required, &["slope", "intercept"]);
+
+        // ErrorBar has no strict requirements
+        assert_eq!(Geom::ErrorBar.aesthetics().required, &[] as &[&str]);
     }
 }

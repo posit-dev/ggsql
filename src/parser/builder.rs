@@ -2645,4 +2645,71 @@ mod tests {
             _ => panic!("Expected Comparison filter"),
         }
     }
+
+    // ========================================
+    // Global Mapping Resolution Integration Tests
+    // ========================================
+
+    #[test]
+    fn test_global_mapping_end_to_end() {
+        let query = r#"
+            VISUALISE date AS x, revenue AS y
+            DRAW line
+            DRAW point MAPPING region AS color
+        "#;
+
+        let mut specs = parse_test_query(query).unwrap();
+        specs[0].resolve_global_mappings(&["date", "revenue", "region"]).unwrap();
+
+        // Line layer: should have x and y from global
+        assert_eq!(specs[0].layers[0].aesthetics.len(), 2);
+        assert!(specs[0].layers[0].aesthetics.contains_key("x"));
+        assert!(specs[0].layers[0].aesthetics.contains_key("y"));
+
+        // Point layer: should have x and y from global, plus color from layer
+        assert_eq!(specs[0].layers[1].aesthetics.len(), 3);
+        assert!(specs[0].layers[1].aesthetics.contains_key("x"));
+        assert!(specs[0].layers[1].aesthetics.contains_key("y"));
+        assert!(specs[0].layers[1].aesthetics.contains_key("color"));
+    }
+
+    #[test]
+    fn test_implicit_global_mapping_end_to_end() {
+        let query = r#"
+            VISUALISE x, y
+            DRAW point
+        "#;
+
+        let mut specs = parse_test_query(query).unwrap();
+        specs[0].resolve_global_mappings(&["x", "y", "other"]).unwrap();
+
+        // Layer should have x and y aesthetics
+        assert_eq!(specs[0].layers[0].aesthetics.len(), 2);
+        assert!(matches!(
+            specs[0].layers[0].aesthetics.get("x"),
+            Some(AestheticValue::Column(c)) if c == "x"
+        ));
+        assert!(matches!(
+            specs[0].layers[0].aesthetics.get("y"),
+            Some(AestheticValue::Column(c)) if c == "y"
+        ));
+    }
+
+    #[test]
+    fn test_wildcard_global_mapping_end_to_end() {
+        let query = r#"
+            VISUALISE *
+            DRAW point
+        "#;
+
+        let mut specs = parse_test_query(query).unwrap();
+        // Point geom supports x, y, color, size, shape, etc.
+        specs[0].resolve_global_mappings(&["x", "y", "color", "extra_column"]).unwrap();
+
+        // Should map x, y, and color (not extra_column which isn't an aesthetic)
+        assert!(specs[0].layers[0].aesthetics.contains_key("x"));
+        assert!(specs[0].layers[0].aesthetics.contains_key("y"));
+        assert!(specs[0].layers[0].aesthetics.contains_key("color"));
+        assert!(!specs[0].layers[0].aesthetics.contains_key("extra_column"));
+    }
 }
