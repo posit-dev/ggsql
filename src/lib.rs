@@ -12,20 +12,15 @@ specifications in a single, composable syntax.
 SELECT date, revenue, region
 FROM sales
 WHERE year = 2024
-VISUALISE AS PLOT
+VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
-    x = date,
-    y = revenue,
-    color = region
-LABELS
-    title = 'Sales by Region'
-THEME
-    style = 'minimal'
+LABEL title = 'Sales by Region'
+THEME minimal
 ```
 
 ## Architecture
 
-ggSQL splits queries at the `VISUALISE AS` boundary:
+ggSQL splits queries at the `VISUALISE` boundary:
 - **SQL portion** → passed to pluggable readers (DuckDB, PostgreSQL, CSV, etc.)
 - **VISUALISE portion** → parsed and compiled into visualization specifications
 - **Output** → rendered via pluggable writers (ggplot2, PNG, Vega-Lite, etc.)
@@ -47,7 +42,7 @@ pub mod reader;
 pub mod writer;
 
 // Re-export key types for convenience
-pub use parser::{VizSpec, VizType, Layer, Scale, Geom, AestheticValue};
+pub use parser::{VizSpec, GlobalMapping, GlobalMappingItem, Layer, Scale, Geom, AestheticValue};
 
 // Future modules - not yet implemented
 // #[cfg(feature = "engine")]
@@ -115,7 +110,7 @@ mod integration_tests {
         ));
 
         // Create visualization spec
-        let mut spec = VizSpec::new(VizType::Plot);
+        let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Line)
             .with_aesthetic("x".to_string(), AestheticValue::Column("date".to_string()))
             .with_aesthetic("y".to_string(), AestheticValue::Column("revenue".to_string()));
@@ -161,7 +156,7 @@ mod integration_tests {
         ));
 
         // Create visualization spec
-        let mut spec = VizSpec::new(VizType::Plot);
+        let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Area)
             .with_aesthetic("x".to_string(), AestheticValue::Column("timestamp".to_string()))
             .with_aesthetic("y".to_string(), AestheticValue::Column("value".to_string()));
@@ -197,7 +192,7 @@ mod integration_tests {
         assert!(matches!(df.column("bool_col").unwrap().dtype(), polars::prelude::DataType::Boolean));
 
         // Create visualization spec
-        let mut spec = VizSpec::new(VizType::Plot);
+        let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
             .with_aesthetic("x".to_string(), AestheticValue::Column("int_col".to_string()))
             .with_aesthetic("y".to_string(), AestheticValue::Column("float_col".to_string()));
@@ -234,7 +229,7 @@ mod integration_tests {
         assert!(matches!(df.column("str_col").unwrap().dtype(), polars::prelude::DataType::String));
 
         // Create viz spec
-        let mut spec = VizSpec::new(VizType::Plot);
+        let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
             .with_aesthetic("x".to_string(), AestheticValue::Column("int_col".to_string()))
             .with_aesthetic("y".to_string(), AestheticValue::Column("float_col".to_string()));
@@ -261,7 +256,7 @@ mod integration_tests {
         let sql = "SELECT * FROM (VALUES ('A', 10), ('B', 20), ('A', 15), ('C', 30)) AS t(category, value)";
         let df = reader.execute(sql).unwrap();
 
-        let mut spec = VizSpec::new(VizType::Plot);
+        let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Bar)
             .with_aesthetic("x".to_string(), AestheticValue::Column("category".to_string()))
             .with_aesthetic("y".to_string(), AestheticValue::Column("value".to_string()));
@@ -309,7 +304,7 @@ mod integration_tests {
             polars::prelude::DataType::Date | polars::prelude::DataType::Datetime(_, _)
         ));
 
-        let mut spec = VizSpec::new(VizType::Plot);
+        let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Line)
             .with_aesthetic("x".to_string(), AestheticValue::Column("day".to_string()))
             .with_aesthetic("y".to_string(), AestheticValue::Column("total_sales".to_string()));
@@ -338,7 +333,7 @@ mod integration_tests {
         assert!(matches!(df.column("medium").unwrap().dtype(), polars::prelude::DataType::Float64));
         assert!(matches!(df.column("large").unwrap().dtype(), polars::prelude::DataType::Float64));
 
-        let mut spec = VizSpec::new(VizType::Plot);
+        let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Point)
             .with_aesthetic("x".to_string(), AestheticValue::Column("small".to_string()))
             .with_aesthetic("y".to_string(), AestheticValue::Column("medium".to_string()));
@@ -374,7 +369,7 @@ mod integration_tests {
         assert!(matches!(df.column("int").unwrap().dtype(), polars::prelude::DataType::Int32));
         assert!(matches!(df.column("big").unwrap().dtype(), polars::prelude::DataType::Int64));
 
-        let mut spec = VizSpec::new(VizType::Plot);
+        let mut spec = VizSpec::new();
         let layer = Layer::new(Geom::Bar)
             .with_aesthetic("x".to_string(), AestheticValue::Column("int".to_string()))
             .with_aesthetic("y".to_string(), AestheticValue::Column("big".to_string()));

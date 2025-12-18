@@ -367,7 +367,8 @@ fn main() -> anyhow::Result<()> {
                         "pretty" => {
                             println!("ggSQL Specifications: {} total", specs.len());
                             for (i, spec) in specs.iter().enumerate() {
-                                println!("\nVisualization #{} ({:?}):", i + 1, spec.viz_type);
+                                println!("\nVisualization #{}:", i + 1);
+                                println!("  Global Mapping: {:?}", spec.global_mapping);
                                 println!("  Layers: {}", spec.layers.len());
                                 println!("  Scales: {}", spec.scales.len());
                                 if spec.facet.is_some() {
