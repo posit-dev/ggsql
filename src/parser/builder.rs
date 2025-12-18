@@ -64,27 +64,27 @@ pub fn build_ast(tree: &Tree, source: &str) -> Result<Vec<VizSpec>> {
 
 /// Build a single VizSpec from a visualise_statement node
 fn build_visualise_statement(node: &Node, source: &str) -> Result<VizSpec> {
-    let mut spec = VizSpec::new(VizType::Plot);
-
-    // Extract FROM source if present
-    spec.source = extract_from_clause(node, source);
+    let mut spec = VizSpec::new();
 
     // Walk through children of visualise_statement
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "VISUALISE" | "VISUALIZE" | "AS" | "FROM" => {
+            "VISUALISE" | "VISUALIZE" | "FROM" => {
                 // Skip keywords
                 continue;
             }
-            "identifier" => {
-                // Skip identifier here - already extracted in FROM clause
-                continue;
+            "global_mapping" => {
+                // Parse global mapping (explicit and/or implicit mappings)
+                spec.global_mapping = parse_global_mapping(&child, source)?;
             }
-            "viz_type" => {
-                // Extract visualization type
-                let viz_type = parse_viz_type(&child, source)?;
-                spec.viz_type = viz_type;
+            "wildcard_mapping" => {
+                // Handle wildcard (*) mapping
+                spec.global_mapping = GlobalMapping::Wildcard;
+            }
+            "identifier" | "string" => {
+                // This is the FROM source (table name or file path)
+                spec.source = Some(get_node_text(&child, source).trim_matches(|c| c == '\'' || c == '"').to_string());
             }
             "viz_clause" => {
                 // Process visualization clause
@@ -101,6 +101,116 @@ fn build_visualise_statement(node: &Node, source: &str) -> Result<VizSpec> {
     validate_scale_coord_conflicts(&spec)?;
 
     Ok(spec)
+}
+
+/// Parse global_mapping node into GlobalMapping enum
+fn parse_global_mapping(node: &Node, source: &str) -> Result<GlobalMapping> {
+    let mut items = Vec::new();
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "wildcard_mapping" => {
+                return Ok(GlobalMapping::Wildcard);
+            }
+            "global_mapping_item" => {
+                let item = parse_global_mapping_item(&child, source)?;
+                items.push(item);
+            }
+            "," => continue, // Skip commas
+            _ => continue,
+        }
+    }
+
+    if items.is_empty() {
+        Ok(GlobalMapping::Empty)
+    } else {
+        Ok(GlobalMapping::Mappings(items))
+    }
+}
+
+/// Parse a single global_mapping_item (explicit or implicit)
+fn parse_global_mapping_item(node: &Node, source: &str) -> Result<GlobalMappingItem> {
+    let mut cursor = node.walk();
+    let children: Vec<_> = node.children(&mut cursor).collect();
+
+    // Look for explicit_mapping or implicit_mapping child
+    for child in &children {
+        match child.kind() {
+            "explicit_mapping" => {
+                return parse_explicit_mapping(child, source);
+            }
+            "implicit_mapping" => {
+                // Implicit mapping is just an identifier
+                let mut inner_cursor = child.walk();
+                for inner_child in child.children(&mut inner_cursor) {
+                    if inner_child.kind() == "identifier" {
+                        let name = get_node_text(&inner_child, source);
+                        return Ok(GlobalMappingItem::Implicit { name });
+                    }
+                }
+                // Fallback: the implicit_mapping node itself might be the identifier
+                let name = get_node_text(child, source);
+                return Ok(GlobalMappingItem::Implicit { name });
+            }
+            _ => continue,
+        }
+    }
+
+    Err(GgsqlError::ParseError(
+        "Invalid global mapping item".to_string()
+    ))
+}
+
+/// Parse an explicit_mapping node (value AS aesthetic)
+fn parse_explicit_mapping(node: &Node, source: &str) -> Result<GlobalMappingItem> {
+    let mut column: Option<String> = None;
+    let mut aesthetic: Option<String> = None;
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "mapping_value" => {
+                // Get the column/literal value
+                let mut inner_cursor = child.walk();
+                for inner_child in child.children(&mut inner_cursor) {
+                    match inner_child.kind() {
+                        "column_reference" => {
+                            let mut ref_cursor = inner_child.walk();
+                            for ref_child in inner_child.children(&mut ref_cursor) {
+                                if ref_child.kind() == "identifier" {
+                                    column = Some(get_node_text(&ref_child, source));
+                                }
+                            }
+                        }
+                        "identifier" => {
+                            column = Some(get_node_text(&inner_child, source));
+                        }
+                        "literal_value" => {
+                            // For now, treat literals as column names (they'll be handled in writer)
+                            column = Some(get_node_text(&inner_child, source));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            "aesthetic_name" => {
+                aesthetic = Some(get_node_text(&child, source));
+            }
+            "AS" => continue,
+            _ => continue,
+        }
+    }
+
+    match (column, aesthetic) {
+        (Some(col), Some(aes)) => Ok(GlobalMappingItem::Explicit {
+            column: col,
+            aesthetic: aes,
+        }),
+        _ => Err(GgsqlError::ParseError(
+            "Invalid explicit mapping: missing column or aesthetic".to_string()
+        )),
+    }
 }
 
 /// Check for conflicts between SCALE domain and COORD aesthetic domain specifications
@@ -130,17 +240,6 @@ fn validate_scale_coord_conflicts(spec: &VizSpec) -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Parse a viz_type node to determine the visualization type
-fn parse_viz_type(node: &Node, source: &str) -> Result<VizType> {
-    let text = get_node_text(node, source).to_uppercase();
-    match text.as_str() {
-        "PLOT" => Ok(VizType::Plot),
-        "TABLE" => Ok(VizType::Table),
-        "MAP" => Ok(VizType::Map),
-        _ => Err(GgsqlError::ParseError(format!("Unknown viz type: {}", text))),
-    }
 }
 
 /// Process a visualization clause node
@@ -1284,39 +1383,6 @@ fn get_node_text(node: &Node, source: &str) -> String {
     source[node.start_byte()..node.end_byte()].to_string()
 }
 
-/// Extract FROM identifier or string from visualise_statement node
-fn extract_from_clause(node: &Node, source: &str) -> Option<String> {
-    // Look for pattern: VISUALISE [FROM] (identifier|string) AS viz_type
-    // The identifier or string that appears before viz_type is the FROM source
-    let mut found_source: Option<String> = None;
-    let mut cursor = node.walk();
-
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "identifier" => {
-                // Identifier: table name or CTE name
-                found_source = Some(get_node_text(&child, source));
-            }
-            "string" => {
-                // String literal: file path (e.g., 'mtcars.csv')
-                // Strip quotes for storage in AST
-                let text = get_node_text(&child, source);
-                let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                found_source = Some(unquoted.to_string());
-            }
-            "viz_type" => {
-                // viz_type comes after identifier/string - return what we found
-                return found_source;
-            }
-            _ => {
-                // Keep scanning
-                continue;
-            }
-        }
-    }
-
-    found_source
-}
 
 /// Check if the last SQL statement in sql_portion is a SELECT statement
 fn check_last_statement_is_select(sql_portion_node: &Node) -> bool {
@@ -1384,13 +1450,13 @@ mod tests {
     #[test]
     fn test_coord_cartesian_valid_xlim() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
             COORD cartesian SETTING xlim TO [0, 100]
         "#;
 
         let result = parse_test_query(query);
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
         let specs = result.unwrap();
         assert_eq!(specs.len(), 1);
 
@@ -1402,7 +1468,7 @@ mod tests {
     #[test]
     fn test_coord_cartesian_valid_ylim() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
             COORD cartesian SETTING ylim TO [-10, 50]
         "#;
@@ -1418,7 +1484,7 @@ mod tests {
     #[test]
     fn test_coord_cartesian_valid_aesthetic_domain() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color
             COORD cartesian SETTING color TO ['red', 'green', 'blue']
         "#;
@@ -1434,7 +1500,7 @@ mod tests {
     #[test]
     fn test_coord_cartesian_invalid_property_theta() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
             COORD cartesian SETTING theta TO y
         "#;
@@ -1448,7 +1514,7 @@ mod tests {
     #[test]
     fn test_coord_flip_valid_aesthetic_domain() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW bar MAPPING category AS x, value AS y, region AS color
             COORD flip SETTING color TO ['A', 'B', 'C']
         "#;
@@ -1465,7 +1531,7 @@ mod tests {
     #[test]
     fn test_coord_flip_invalid_property_xlim() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW bar MAPPING category AS x, value AS y
             COORD flip SETTING xlim TO [0, 100]
         "#;
@@ -1479,7 +1545,7 @@ mod tests {
     #[test]
     fn test_coord_flip_invalid_property_ylim() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW bar MAPPING category AS x, value AS y
             COORD flip SETTING ylim TO [0, 100]
         "#;
@@ -1493,7 +1559,7 @@ mod tests {
     #[test]
     fn test_coord_flip_invalid_property_theta() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW bar MAPPING category AS x, value AS y
             COORD flip SETTING theta TO y
         "#;
@@ -1507,7 +1573,7 @@ mod tests {
     #[test]
     fn test_coord_polar_valid_theta() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW bar MAPPING category AS x, value AS y
             COORD polar SETTING theta TO y
         "#;
@@ -1524,7 +1590,7 @@ mod tests {
     #[test]
     fn test_coord_polar_valid_aesthetic_domain() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW bar MAPPING category AS x, value AS y, region AS color
             COORD polar SETTING color TO ['North', 'South', 'East', 'West']
         "#;
@@ -1540,7 +1606,7 @@ mod tests {
     #[test]
     fn test_coord_polar_invalid_property_xlim() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW bar MAPPING category AS x, value AS y
             COORD polar SETTING xlim TO [0, 100]
         "#;
@@ -1554,7 +1620,7 @@ mod tests {
     #[test]
     fn test_coord_polar_invalid_property_ylim() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW bar MAPPING category AS x, value AS y
             COORD polar SETTING ylim TO [0, 100]
         "#;
@@ -1572,7 +1638,7 @@ mod tests {
     #[test]
     fn test_scale_coord_conflict_x_domain() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
             SCALE x SETTING domain TO [0, 100]
             COORD cartesian SETTING x TO [0, 50]
@@ -1587,7 +1653,7 @@ mod tests {
     #[test]
     fn test_scale_coord_conflict_color_domain() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color
             SCALE color SETTING domain TO ['A', 'B']
             COORD cartesian SETTING color TO ['A', 'B', 'C']
@@ -1602,7 +1668,7 @@ mod tests {
     #[test]
     fn test_scale_coord_no_conflict_different_aesthetics() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color
             SCALE color SETTING domain TO ['A', 'B']
             COORD cartesian SETTING xlim TO [0, 100]
@@ -1615,7 +1681,7 @@ mod tests {
     #[test]
     fn test_scale_coord_no_conflict_scale_without_domain() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
             SCALE x SETTING type TO 'linear'
             COORD cartesian SETTING x TO [0, 100]
@@ -1632,7 +1698,7 @@ mod tests {
     #[test]
     fn test_coord_cartesian_multiple_properties() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color
             COORD cartesian SETTING xlim TO [0, 100], ylim TO [-10, 50], color TO ['A', 'B']
         "#;
@@ -1650,7 +1716,7 @@ mod tests {
     #[test]
     fn test_coord_polar_theta_with_aesthetic() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW bar MAPPING category AS x, value AS y, region AS color
             COORD polar SETTING theta TO y, color TO ['North', 'South']
         "#;
@@ -1671,7 +1737,7 @@ mod tests {
     #[test]
     fn test_case_insensitive_keywords_lowercase() {
         let query = r#"
-            visualise as plot
+            visualise
             draw point MAPPING x AS x, y AS y
             coord cartesian setting xlim to [0, 100]
             label title = 'Test Chart'
@@ -1684,7 +1750,7 @@ mod tests {
         assert!(result.is_ok());
         let specs = result.unwrap();
         assert_eq!(specs.len(), 1);
-        assert_eq!(specs[0].viz_type, VizType::Plot);
+        assert_eq!(specs[0].global_mapping, GlobalMapping::Empty);
         assert_eq!(specs[0].layers.len(), 1);
         assert!(specs[0].coord.is_some());
         assert!(specs[0].labels.is_some());
@@ -1693,8 +1759,8 @@ mod tests {
     #[test]
     fn test_case_insensitive_keywords_mixed() {
         let query = r#"
-            ViSuAlIsE As PlOt
-            DrAw line MAPPING date AS x, revenue AS y
+            ViSuAlIsE date AS x, revenue AS y
+            DrAw line
             ScAlE x SeTtInG type tO 'date'
             ThEmE minimal
         "#;
@@ -1711,8 +1777,8 @@ mod tests {
     #[test]
     fn test_case_insensitive_american_spelling() {
         let query = r#"
-            visualize as plot
-            draw bar MAPPING category AS x, value AS y
+            visualize category AS x, value AS y
+            draw bar
         "#;
 
         let result = parse_test_query(query);
@@ -1729,7 +1795,7 @@ mod tests {
     fn test_visualise_from_cte() {
         let query = r#"
             WITH cte AS (SELECT * FROM x)
-            VISUALISE FROM cte AS PLOT
+            VISUALISE FROM cte
             DRAW bar MAPPING a AS x, b AS y
         "#;
 
@@ -1739,13 +1805,12 @@ mod tests {
         let specs = result.unwrap();
         assert_eq!(specs.len(), 1);
         assert_eq!(specs[0].source, Some("cte".to_string()));
-        assert_eq!(specs[0].viz_type, VizType::Plot);
     }
 
     #[test]
     fn test_visualise_from_table() {
         let query = r#"
-            VISUALISE FROM mtcars AS PLOT
+            VISUALISE FROM mtcars
             DRAW point MAPPING mpg AS x, hp AS y
         "#;
 
@@ -1759,7 +1824,7 @@ mod tests {
     #[test]
     fn test_visualise_from_file_path() {
         let query = r#"
-            VISUALISE FROM 'mtcars.csv' AS PLOT
+            VISUALISE FROM 'mtcars.csv'
             DRAW point MAPPING hp AS x, mpg AS y
         "#;
 
@@ -1769,13 +1834,12 @@ mod tests {
         let specs = result.unwrap();
         // Source should be stored without quotes in AST
         assert_eq!(specs[0].source, Some("mtcars.csv".to_string()));
-        assert_eq!(specs[0].viz_type, VizType::Plot);
     }
 
     #[test]
     fn test_visualise_from_file_path_parquet() {
         let query = r#"
-            VISUALISE FROM "data/sales.parquet" AS PLOT
+            VISUALISE FROM "data/sales.parquet"
             DRAW bar MAPPING region AS x, total AS y
         "#;
 
@@ -1791,7 +1855,7 @@ mod tests {
     fn test_error_select_with_from() {
         let query = r#"
             SELECT * FROM x
-            VISUALISE FROM y AS PLOT
+            VISUALISE FROM y
         "#;
 
         let result = parse_test_query(query);
@@ -1806,7 +1870,7 @@ mod tests {
         let query = r#"
             CREATE TABLE x AS SELECT 1;
             WITH cte AS (SELECT * FROM x)
-            VISUALISE FROM cte AS PLOT
+            VISUALISE FROM cte
         "#;
 
         let result = parse_test_query(query);
@@ -1817,7 +1881,7 @@ mod tests {
     fn test_backward_compat_select_visualise_as() {
         let query = r#"
             SELECT * FROM x
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW bar MAPPING a AS x, b AS y
         "#;
 
@@ -1833,7 +1897,7 @@ mod tests {
         let query = r#"
             WITH cte AS (SELECT * FROM x)
             SELECT * FROM cte
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING a AS x, b AS y
         "#;
 
@@ -1849,7 +1913,7 @@ mod tests {
         let query = r#"
             WITH cte AS (SELECT * FROM x)
             SELECT * FROM cte
-            VISUALISE FROM cte AS PLOT
+            VISUALISE FROM cte
         "#;
 
         let result = parse_test_query(query);
@@ -1867,7 +1931,7 @@ mod tests {
     fn test_deeply_nested_subqueries() {
         let query = r#"
             SELECT * FROM (SELECT * FROM (SELECT 1 as x, 2 as y))
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -1879,7 +1943,7 @@ mod tests {
     fn test_multiple_values_rows() {
         let query = r#"
             SELECT * FROM (VALUES (1, 2), (3, 4), (5, 6)) AS t(x, y)
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -1891,7 +1955,7 @@ mod tests {
     fn test_multiple_ctes_no_select_with_visualise_from() {
         let query = r#"
             WITH a AS (SELECT 1 as x), b AS (SELECT 2 as y), c AS (SELECT 3 as z)
-            VISUALISE FROM c AS PLOT
+            VISUALISE FROM c
             DRAW point MAPPING z AS x, 1 AS y
         "#;
 
@@ -1906,7 +1970,7 @@ mod tests {
     fn test_union_with_visualise_as() {
         let query = r#"
             SELECT x, y FROM a UNION SELECT x, y FROM b
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -1918,7 +1982,7 @@ mod tests {
     fn test_error_union_with_visualise_from() {
         let query = r#"
             SELECT x FROM a UNION SELECT x FROM b
-            VISUALISE FROM c AS PLOT
+            VISUALISE FROM c
         "#;
 
         let result = parse_test_query(query);
@@ -1932,7 +1996,7 @@ mod tests {
     fn test_subquery_in_where_clause() {
         let query = r#"
             SELECT * FROM data WHERE x IN (SELECT y FROM other)
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -1944,7 +2008,7 @@ mod tests {
     fn test_join_with_visualise_as() {
         let query = r#"
             SELECT a.x, b.y FROM a LEFT JOIN b ON a.id = b.id
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -1956,7 +2020,7 @@ mod tests {
     fn test_window_function_with_visualise_as() {
         let query = r#"
             SELECT x, y, ROW_NUMBER() OVER (ORDER BY x) as row_num FROM data
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -1970,7 +2034,7 @@ mod tests {
             WITH joined AS (
                 SELECT a.x, b.y FROM a JOIN b ON a.id = b.id
             )
-            VISUALISE FROM joined AS PLOT
+            VISUALISE FROM joined
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -1986,7 +2050,7 @@ mod tests {
                 UNION ALL
                 SELECT n + 1 FROM series WHERE n < 10
             )
-            VISUALISE FROM series AS PLOT
+            VISUALISE FROM series
             DRAW line MAPPING n AS x, n AS y
         "#;
 
@@ -1997,8 +2061,8 @@ mod tests {
     #[test]
     fn test_visualise_keyword_in_string_literal() {
         let query = r#"
-            SELECT 'VISUALISE AS PLOT' as text, 1 as x, 2 as y
-            VISUALISE AS PLOT
+            SELECT 'VISUALISE' as text, 1 as x, 2 as y
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -2012,7 +2076,7 @@ mod tests {
             SELECT category, SUM(value) as total FROM data
             GROUP BY category
             HAVING SUM(value) > 100
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW bar MAPPING category AS x, total AS y
         "#;
 
@@ -2026,7 +2090,7 @@ mod tests {
             SELECT * FROM data
             ORDER BY x DESC
             LIMIT 100
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -2040,7 +2104,7 @@ mod tests {
             SELECT x,
                    CASE WHEN x > 0 THEN 'positive' ELSE 'negative' END as sign
             FROM data
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, sign AS color
         "#;
 
@@ -2052,7 +2116,7 @@ mod tests {
     fn test_intersect_with_visualise_as() {
         let query = r#"
             SELECT x FROM a INTERSECT SELECT x FROM b
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW histogram MAPPING x AS x
         "#;
 
@@ -2064,7 +2128,7 @@ mod tests {
     fn test_error_intersect_with_visualise_from() {
         let query = r#"
             SELECT x FROM a INTERSECT SELECT x FROM b
-            VISUALISE FROM c AS PLOT
+            VISUALISE FROM c
         "#;
 
         let result = parse_test_query(query);
@@ -2075,7 +2139,7 @@ mod tests {
     fn test_except_with_visualise_as() {
         let query = r#"
             SELECT x FROM a EXCEPT SELECT x FROM b
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW histogram MAPPING x AS x
         "#;
 
@@ -2087,7 +2151,7 @@ mod tests {
     fn test_with_semicolon_between_cte_and_visualise_from() {
         let query = r#"
             WITH cte AS (SELECT 1 as x, 2 as y);
-            VISUALISE FROM cte AS PLOT
+            VISUALISE FROM cte
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -2101,7 +2165,7 @@ mod tests {
             CREATE TABLE temp AS SELECT 1 as x;
             INSERT INTO temp VALUES (2);
             WITH final AS (SELECT * FROM temp)
-            VISUALISE FROM final AS PLOT
+            VISUALISE FROM final
         "#;
 
         let result = parse_test_query(query);
@@ -2116,7 +2180,7 @@ mod tests {
                 FROM data
                 GROUP BY category
             )
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW bar MAPPING category AS x, avg_value AS y
         "#;
 
@@ -2129,7 +2193,7 @@ mod tests {
         let query = r#"
             SELECT a.*, b.*
             FROM a, LATERAL (SELECT * FROM b WHERE b.id = a.id) AS b
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -2141,7 +2205,7 @@ mod tests {
     fn test_values_without_table_alias() {
         let query = r#"
             SELECT * FROM (VALUES (1, 2))
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING column0 AS x, column1 AS y
         "#;
 
@@ -2156,7 +2220,7 @@ mod tests {
                 WITH inner_cte AS (SELECT 1 as x)
                 SELECT x, x * 2 as y FROM inner_cte
             )
-            VISUALISE FROM outer_cte AS PLOT
+            VISUALISE FROM outer_cte
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -2170,7 +2234,7 @@ mod tests {
             WITH result AS (
                 SELECT a.x, b.y FROM a CROSS JOIN b
             )
-            VISUALISE FROM result AS PLOT
+            VISUALISE FROM result
         "#;
 
         let result = parse_test_query(query);
@@ -2181,7 +2245,7 @@ mod tests {
     fn test_distinct_with_visualise_as() {
         let query = r#"
             SELECT DISTINCT x, y FROM data
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -2193,7 +2257,7 @@ mod tests {
     fn test_all_with_visualise_as() {
         let query = r#"
             SELECT ALL x, y FROM data
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -2205,7 +2269,7 @@ mod tests {
     fn test_exists_subquery_with_visualise_as() {
         let query = r#"
             SELECT * FROM a WHERE EXISTS (SELECT 1 FROM b WHERE b.id = a.id)
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -2217,7 +2281,7 @@ mod tests {
     fn test_not_exists_subquery_with_visualise_as() {
         let query = r#"
             SELECT * FROM a WHERE NOT EXISTS (SELECT 1 FROM b WHERE b.id = a.id)
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -2234,7 +2298,7 @@ mod tests {
         let query = r#"
             CREATE TABLE x AS SELECT 1;
             SELECT * FROM x
-            VISUALISE FROM y AS PLOT
+            VISUALISE FROM y
         "#;
 
         let result = parse_test_query(query);
@@ -2247,7 +2311,7 @@ mod tests {
         let query = r#"
             INSERT INTO x SELECT * FROM y;
             SELECT * FROM x
-            VISUALISE FROM z AS PLOT
+            VISUALISE FROM z
         "#;
 
         let result = parse_test_query(query);
@@ -2258,7 +2322,7 @@ mod tests {
     fn test_error_subquery_select_with_visualise_from() {
         let query = r#"
             SELECT * FROM (SELECT * FROM data)
-            VISUALISE FROM other AS PLOT
+            VISUALISE FROM other
         "#;
 
         let result = parse_test_query(query);
@@ -2269,7 +2333,7 @@ mod tests {
     fn test_error_join_select_with_visualise_from() {
         let query = r#"
             SELECT a.* FROM a JOIN b ON a.id = b.id
-            VISUALISE FROM c AS PLOT
+            VISUALISE FROM c
         "#;
 
         let result = parse_test_query(query);
@@ -2283,7 +2347,7 @@ mod tests {
     #[test]
     fn test_filter_simple_comparison() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y FILTER value > 10
         "#;
 
@@ -2307,7 +2371,7 @@ mod tests {
     #[test]
     fn test_filter_equality() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y FILTER category = 'A'
         "#;
 
@@ -2329,7 +2393,7 @@ mod tests {
     #[test]
     fn test_filter_not_equal() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x FILTER status != 'inactive'
         "#;
 
@@ -2349,7 +2413,7 @@ mod tests {
     #[test]
     fn test_filter_less_than_or_equal() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x FILTER score <= 100
         "#;
 
@@ -2369,7 +2433,7 @@ mod tests {
     #[test]
     fn test_filter_greater_than_or_equal() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x FILTER year >= 2020
         "#;
 
@@ -2389,7 +2453,7 @@ mod tests {
     #[test]
     fn test_filter_and_expression() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x FILTER value > 10 AND value < 100
         "#;
 
@@ -2424,7 +2488,7 @@ mod tests {
     #[test]
     fn test_filter_or_expression() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x FILTER category = 'A' OR category = 'B'
         "#;
 
@@ -2455,7 +2519,7 @@ mod tests {
     #[test]
     fn test_filter_with_mapping_and_setting() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color SETTING size TO 5 FILTER value > 50
         "#;
 
@@ -2490,7 +2554,7 @@ mod tests {
     #[test]
     fn test_filter_boolean_value() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x FILTER active = true
         "#;
 
@@ -2510,7 +2574,7 @@ mod tests {
     #[test]
     fn test_filter_negative_number() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x FILTER temperature > -10
         "#;
 
@@ -2530,7 +2594,7 @@ mod tests {
     #[test]
     fn test_no_filter() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -2544,7 +2608,7 @@ mod tests {
     #[test]
     fn test_multiple_layers_with_different_filters() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW line MAPPING x AS x, y AS y
             DRAW point MAPPING x AS x, y AS y FILTER highlight = true
         "#;
@@ -2563,7 +2627,7 @@ mod tests {
     #[test]
     fn test_filter_column_comparison() {
         let query = r#"
-            VISUALISE AS PLOT
+            VISUALISE
             DRAW point MAPPING x AS x FILTER start_date < end_date
         "#;
 

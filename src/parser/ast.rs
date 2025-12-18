@@ -8,14 +8,15 @@
 //!
 //! ```text
 //! VizSpec
-//! ├─ source: Option<String>    (optional, from VISUALISE FROM clause)
-//! ├─ layers: Vec<Layer>        (1+ LayerNode, one per DRAW clause)
-//! ├─ scales: Vec<Scale>        (0+ ScaleNode, one per SCALE clause)
-//! ├─ facet: Option<Facet>      (optional, from FACET clause)
-//! ├─ coord: Option<Coord>      (optional, from COORD clause)
-//! ├─ labels: Option<Labels>    (optional, merged from LABEL clauses)
-//! ├─ guides: Vec<Guide>        (0+ GuideNode, one per GUIDE clause)
-//! └─ theme: Option<Theme>      (optional, from THEME clause)
+//! ├─ global_mapping: GlobalMapping  (from VISUALISE clause mappings)
+//! ├─ source: Option<String>         (optional, from VISUALISE FROM clause)
+//! ├─ layers: Vec<Layer>             (1+ LayerNode, one per DRAW clause)
+//! ├─ scales: Vec<Scale>             (0+ ScaleNode, one per SCALE clause)
+//! ├─ facet: Option<Facet>           (optional, from FACET clause)
+//! ├─ coord: Option<Coord>           (optional, from COORD clause)
+//! ├─ labels: Option<Labels>         (optional, merged from LABEL clauses)
+//! ├─ guides: Vec<Guide>             (0+ GuideNode, one per GUIDE clause)
+//! └─ theme: Option<Theme>           (optional, from THEME clause)
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -24,8 +25,8 @@ use std::collections::HashMap;
 /// Complete ggSQL visualization specification
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VizSpec {
-    /// Visualization output type (PLOT, TABLE, etc.)
-    pub viz_type: VizType,
+    /// Global aesthetic mappings (from VISUALISE clause)
+    pub global_mapping: GlobalMapping,
     /// FROM source name (CTE or table) when using VISUALISE FROM syntax
     pub source: Option<String>,
     /// Visual layers (one per DRAW clause)
@@ -44,12 +45,28 @@ pub struct VizSpec {
     pub theme: Option<Theme>,
 }
 
-/// Visualization output types
+/// Global mapping specification from VISUALISE clause
+///
+/// Represents the aesthetic mappings declared at the top level in the VISUALISE clause.
+/// These serve as defaults for all layers, which can override or add to them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub enum GlobalMapping {
+    /// No global mapping specified - layers must define all aesthetics
+    #[default]
+    Empty,
+    /// Wildcard (*) - resolve all columns at execution time
+    Wildcard,
+    /// Explicit list of mappings (may include implicit entries)
+    Mappings(Vec<GlobalMappingItem>),
+}
+
+/// Individual mapping item in global mapping
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum VizType {
-    Plot,
-    Table,
-    Map,
+pub enum GlobalMappingItem {
+    /// Explicit mapping: `date AS x` → column "date" maps to aesthetic "x"
+    Explicit { column: String, aesthetic: String },
+    /// Implicit mapping: `x` → column "x" maps to aesthetic "x"
+    Implicit { name: String },
 }
 
 /// A single visualization layer (from DRAW clause)
@@ -360,10 +377,25 @@ pub enum ThemePropertyValue {
 }
 
 impl VizSpec {
-    /// Create a new empty VizSpec with the given type
-    pub fn new(viz_type: VizType) -> Self {
+    /// Create a new empty VizSpec
+    pub fn new() -> Self {
         Self {
-            viz_type,
+            global_mapping: GlobalMapping::Empty,
+            source: None,
+            layers: Vec::new(),
+            scales: Vec::new(),
+            facet: None,
+            coord: None,
+            labels: None,
+            guides: Vec::new(),
+            theme: None,
+        }
+    }
+
+    /// Create a new VizSpec with the given global mapping
+    pub fn with_global_mapping(global_mapping: GlobalMapping) -> Self {
+        Self {
+            global_mapping,
             source: None,
             layers: Vec::new(),
             scales: Vec::new(),
@@ -483,7 +515,7 @@ impl Layer {
 
 impl Default for VizSpec {
     fn default() -> Self {
-        Self::new(VizType::Plot)
+        Self::new()
     }
 }
 
@@ -512,11 +544,32 @@ mod tests {
 
     #[test]
     fn test_viz_spec_creation() {
-        let spec = VizSpec::new(VizType::Plot);
-        assert_eq!(spec.viz_type, VizType::Plot);
+        let spec = VizSpec::new();
+        assert_eq!(spec.global_mapping, GlobalMapping::Empty);
         assert_eq!(spec.layers.len(), 0);
         assert!(!spec.has_layers());
         assert_eq!(spec.layer_count(), 0);
+    }
+
+    #[test]
+    fn test_viz_spec_with_global_mapping() {
+        let mapping = GlobalMapping::Mappings(vec![
+            GlobalMappingItem::Explicit {
+                column: "date".to_string(),
+                aesthetic: "x".to_string(),
+            },
+            GlobalMappingItem::Implicit {
+                name: "y".to_string(),
+            },
+        ]);
+        let spec = VizSpec::with_global_mapping(mapping.clone());
+        assert_eq!(spec.global_mapping, mapping);
+    }
+
+    #[test]
+    fn test_global_mapping_wildcard() {
+        let spec = VizSpec::with_global_mapping(GlobalMapping::Wildcard);
+        assert_eq!(spec.global_mapping, GlobalMapping::Wildcard);
     }
 
     #[test]
@@ -567,7 +620,7 @@ mod tests {
 
     #[test]
     fn test_viz_spec_layer_operations() {
-        let mut spec = VizSpec::new(VizType::Plot);
+        let mut spec = VizSpec::new();
 
         let layer1 = Layer::new(Geom::Point);
         let layer2 = Layer::new(Geom::Line);
