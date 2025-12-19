@@ -56,7 +56,6 @@
   "fontface"
   "hjust"
   "vjust"
-  "group"
 ] @attribute
 
 ; String literals

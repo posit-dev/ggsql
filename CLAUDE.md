@@ -200,6 +200,7 @@ pub struct Layer {
     pub aesthetics: HashMap<String, AestheticValue>,  // Aesthetic mappings (from MAPPING)
     pub parameters: HashMap<String, ParameterValue>,  // Geom parameters (from SETTING)
     pub filter: Option<FilterExpression>,  // Layer filter (from FILTER)
+    pub partition_by: Vec<String>,   // Grouping columns (from PARTITION BY)
 }
 
 pub enum Geom {
@@ -822,10 +823,11 @@ cargo build --all-features
 DRAW <geom>
     [MAPPING <value> AS <aesthetic>, ...]
     [SETTING <param> TO <value>, ...]
+    [PARTITION BY <column>, ...]
     [FILTER <condition>]
 ```
 
-All clauses (MAPPING, SETTING, FILTER) are optional.
+All clauses (MAPPING, SETTING, PARTITION BY, FILTER) are optional.
 
 **Geom Types**:
 
@@ -852,6 +854,14 @@ Maps data values (columns or literals) to visual aesthetics. Syntax: `value AS a
 Sets layer/geom parameters (not mapped to data). Syntax: `param TO value`
 
 - Parameters like `opacity`, `size` (fixed), `stroke_width`, etc.
+
+**PARTITION BY Clause** (Grouping):
+
+Groups data for geoms that need grouping (e.g., lines, paths, polygons). Maps to Vega-Lite's `detail` encoding channel, which groups data without adding visual differentiation (unlike `color`).
+
+- Accepts a comma-separated list of column names
+- Useful for drawing separate lines/paths for each group without assigning different colors
+- Similar to SQL's `PARTITION BY` in window functions
 
 **FILTER Clause** (Layer Filtering):
 
@@ -886,6 +896,28 @@ DRAW line
     MAPPING date AS x, value AS y
     SETTING stroke_width TO 2
     FILTER category = 'A' AND year >= 2024
+
+-- With PARTITION BY (single column)
+DRAW line
+    MAPPING date AS x, value AS y
+    PARTITION BY category
+
+-- With PARTITION BY (multiple columns)
+DRAW line
+    MAPPING date AS x, value AS y
+    PARTITION BY category, region
+
+-- PARTITION BY with color (grouped lines with different colors)
+DRAW line
+    MAPPING date AS x, value AS y, region AS color
+    PARTITION BY category
+
+-- All clauses combined
+DRAW line
+    MAPPING date AS x, value AS y
+    SETTING stroke_width TO 2
+    PARTITION BY category, region
+    FILTER year >= 2020
 ```
 
 ### SCALE Clause

@@ -238,12 +238,13 @@ module.exports = grammar({
       $.theme_clause,
     ),
 
-    // DRAW clause - syntax: DRAW geom [MAPPING ...] [SETTING ...] [FILTER ...]
+    // DRAW clause - syntax: DRAW geom [MAPPING ...] [SETTING ...] [PARTITION BY ...] [FILTER ...]
     draw_clause: $ => seq(
       caseInsensitive('DRAW'),
       $.geom_type,
       optional($.mapping_clause),
       optional($.setting_clause),
+      optional($.partition_clause),
       optional($.filter_clause)
     ),
 
@@ -292,6 +293,18 @@ module.exports = grammar({
       $.boolean
     ),
 
+    // PARTITION BY clause for grouping: PARTITION BY category, region
+    partition_clause: $ => seq(
+      caseInsensitive('PARTITION'),
+      caseInsensitive('BY'),
+      $.partition_columns
+    ),
+
+    partition_columns: $ => seq(
+      $.identifier,
+      repeat(seq(',', $.identifier))
+    ),
+
     // FILTER clause for layer filtering: FILTER x > 10 AND y < 20
     filter_clause: $ => seq(
       caseInsensitive('FILTER'),
@@ -338,9 +351,7 @@ module.exports = grammar({
       // Size and shape
       'size', 'shape', 'linetype', 'linewidth', 'width', 'height',
       // Text aesthetics
-      'label', 'family', 'fontface', 'hjust', 'vjust',
-      // Grouping
-      'group'
+      'label', 'family', 'fontface', 'hjust', 'vjust'
     ),
 
     column_reference: $ => $.identifier,

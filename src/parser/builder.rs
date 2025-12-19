@@ -191,11 +191,12 @@ fn process_viz_clause(node: &Node, source: &str, spec: &mut VizSpec) -> Result<(
 }
 
 /// Build a Layer from a draw_clause node
-/// Syntax: DRAW geom [MAPPING col AS x, ...] [SETTING param TO val, ...] [FILTER condition]
+/// Syntax: DRAW geom [MAPPING col AS x, ...] [SETTING param TO val, ...] [PARTITION BY col, ...] [FILTER condition]
 fn build_layer(node: &Node, source: &str) -> Result<Layer> {
     let mut geom = Geom::Point; // default
     let mut aesthetics = HashMap::new();
     let mut parameters = HashMap::new();
+    let mut partition_by = Vec::new();
     let mut filter = None;
 
     let mut cursor = node.walk();
@@ -211,6 +212,9 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
             "setting_clause" => {
                 parameters = parse_setting_clause(&child, source)?;
             }
+            "partition_clause" => {
+                partition_by = parse_partition_clause(&child, source)?;
+            }
             "filter_clause" => {
                 filter = Some(parse_filter_clause(&child, source)?);
             }
@@ -224,6 +228,7 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
     let mut layer = Layer::new(geom);
     layer.aesthetics = aesthetics;
     layer.parameters = parameters;
+    layer.partition_by = partition_by;
     layer.filter = filter;
 
     Ok(layer)
@@ -307,6 +312,25 @@ fn parse_setting_clause(node: &Node, source: &str) -> Result<HashMap<String, Par
     }
 
     Ok(parameters)
+}
+
+/// Parse a partition_clause: PARTITION BY col1, col2, ...
+fn parse_partition_clause(node: &Node, source: &str) -> Result<Vec<String>> {
+    let mut columns = Vec::new();
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "partition_columns" {
+            let mut inner_cursor = child.walk();
+            for inner_child in child.children(&mut inner_cursor) {
+                if inner_child.kind() == "identifier" {
+                    columns.push(get_node_text(&inner_child, source));
+                }
+            }
+        }
+    }
+
+    Ok(columns)
 }
 
 /// Parse a parameter_assignment: param TO value
@@ -992,8 +1016,7 @@ fn is_aesthetic_name(name: &str) -> bool {
         "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend" |
         "color" | "colour" | "fill" | "alpha" |
         "size" | "shape" | "linetype" | "linewidth" | "width" | "height" |
-        "label" | "family" | "fontface" | "hjust" | "vjust" |
-        "group"
+        "label" | "family" | "fontface" | "hjust" | "vjust"
     )
 }
 
@@ -2580,5 +2603,87 @@ mod tests {
             }
             _ => panic!("Expected Comparison filter"),
         }
+    }
+
+    // ========================================
+    // PARTITION BY Tests
+    // ========================================
+
+    #[test]
+    fn test_partition_by_single_column() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW line MAPPING date AS x, value AS y PARTITION BY category
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert_eq!(specs[0].layers[0].partition_by.len(), 1);
+        assert_eq!(specs[0].layers[0].partition_by[0], "category");
+    }
+
+    #[test]
+    fn test_partition_by_multiple_columns() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW line MAPPING date AS x, value AS y PARTITION BY category, region
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert_eq!(specs[0].layers[0].partition_by.len(), 2);
+        assert_eq!(specs[0].layers[0].partition_by[0], "category");
+        assert_eq!(specs[0].layers[0].partition_by[1], "region");
+    }
+
+    #[test]
+    fn test_partition_by_with_other_clauses() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW line MAPPING date AS x, value AS y SETTING opacity TO 0.5 PARTITION BY category FILTER year > 2020
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let layer = &specs[0].layers[0];
+        assert_eq!(layer.partition_by.len(), 1);
+        assert_eq!(layer.partition_by[0], "category");
+        assert!(layer.filter.is_some());
+        assert!(layer.parameters.contains_key("opacity"));
+    }
+
+    #[test]
+    fn test_no_partition_by() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW line MAPPING date AS x, value AS y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert!(specs[0].layers[0].partition_by.is_empty());
+    }
+
+    #[test]
+    fn test_partition_by_case_insensitive() {
+        let query = r#"
+            VISUALISE AS PLOT
+            DRAW line MAPPING date AS x, value AS y partition by category
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert_eq!(specs[0].layers[0].partition_by.len(), 1);
+        assert_eq!(specs[0].layers[0].partition_by[0], "category");
     }
 }
