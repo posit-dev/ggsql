@@ -210,22 +210,43 @@ module.exports = grammar({
       caseInsensitive('SCHEMA')
     ),
 
-    // VISUALISE/VISUALIZE [FROM source] AS <type> with clauses
+    // VISUALISE/VISUALIZE [global_mapping] [FROM source] with clauses
+    // Global mapping sets default aesthetics for all layers
     // FROM source can be an identifier (table/CTE) or string (file path)
     visualise_statement: $ => seq(
       choice(caseInsensitive('VISUALISE'), caseInsensitive('VISUALIZE')),
-      optional(seq(caseInsensitive('FROM'), choice($.identifier, $.string))),
-      caseInsensitive('AS'),
-      $.viz_type,
+      optional($.global_mapping),
+      optional(seq(caseInsensitive('FROM'), field('source', choice($.identifier, $.string)))),
       repeat($.viz_clause)
     ),
 
-    // Visualization output types
-    viz_type: $ => choice(
-      caseInsensitive('PLOT'),
-      caseInsensitive('TABLE'),
-      caseInsensitive('MAP')
+    // Global mapping: wildcard (*), or list of explicit/implicit mappings
+    global_mapping: $ => choice(
+      $.wildcard_mapping,
+      seq(
+        $.global_mapping_item,
+        repeat(seq(',', $.global_mapping_item))
+      )
     ),
+
+    // Wildcard mapping: VISUALISE * (maps all columns implicitly)
+    wildcard_mapping: $ => '*',
+
+    // Global mapping item: explicit (col AS aes) or implicit (col)
+    global_mapping_item: $ => choice(
+      $.explicit_mapping,   // date AS x
+      $.implicit_mapping    // x (becomes x AS x)
+    ),
+
+    // Explicit mapping: value AS aesthetic
+    explicit_mapping: $ => seq(
+      field('value', $.mapping_value),
+      caseInsensitive('AS'),
+      field('aesthetic', $.aesthetic_name)
+    ),
+
+    // Implicit mapping: just an identifier (column name = aesthetic name)
+    implicit_mapping: $ => $.identifier,
 
     // All the visualization clauses (same as current grammar)
     viz_clause: $ => choice(

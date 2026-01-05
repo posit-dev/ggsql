@@ -77,8 +77,8 @@ Create a new file with `.gsql` extension:
 ```sql
 -- test.gsql
 SELECT * FROM sales WHERE year = 2024
-VISUALISE AS PLOT
-DRAW line MAPPING date AS x, revenue AS y
+VISUALISE date AS x, revenue AS y
+DRAW line
 SCALE x SETTING type TO 'date'
 LABEL title = 'Sales Trends'
 ```
@@ -98,4 +98,4 @@ If highlighting seems incorrect:
 
 ggSQL is a SQL extension for declarative data visualization. It combines SQL queries with Grammar of Graphics-inspired visualization specifications, enabling you to query data and define visualizations in a single, composable syntax.
 
-ggSQL extends SQL with a `VISUALISE AS` clause that acts as a terminal operation, producing visualizations instead of relational data.
+ggSQL extends SQL with a `VISUALISE` clause that acts as a terminal operation, producing visualizations instead of relational data. Global aesthetic mappings can be specified directly after VISUALISE (e.g., `VISUALISE date AS x, revenue AS y`).

@@ -1,0 +1,31 @@
+Package: ggsql
+Title: A SQL extension for declarative data visualization based on the Grammar of Graphics
+Version: 0.0.0.9000
+Authors@R: c(
+    person("George", "Stagg", , "george.stagg@posit.co", role = c("aut", "cre"),
+           comment = c(ORCID = "0009-0006-3173-9846")),
+    person("Thomas Lin", "Pedersen", , "thomas.pedersen@posit.co", role = "aut",
+           comment = c(ORCID = "0000-0002-5147-4711")),
+    person("Teun", "van den Brand", , "teun.vandenbrand@posit.co", role = "aut",
+           comment = c(ORCID = "0000-0002-9335-7468")),
+    person("Posit, PBC", role = c("cph", "fnd"),
+           comment = c(ROR = "03wc8by49"))
+  )
+Description: ggSQL allows you to write queries that combine SQL data retrieval 
+  with visualization specifications in a single, composable syntax.
+License: MIT + file LICENSE
+Encoding: UTF-8
+SystemRequirements: ggsql
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Imports: 
+    knitr,
+    rlang,
+    vegawidget
+Suggests: 
+    png,
+    rsvg,
+    testthat (>= 3.0.0),
+    V8,
+    withr
+Config/testthat/edition: 3

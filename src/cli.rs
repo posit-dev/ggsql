@@ -5,14 +5,14 @@ Provides commands for executing ggSQL queries with various data sources and outp
 */
 
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
 use ggsql::{parser, VERSION};
+use std::path::PathBuf;
 
 #[cfg(feature = "duckdb")]
-use ggsql::reader::{Reader, DuckDBReader};
+use ggsql::reader::{DuckDBReader, Reader};
 
 #[cfg(feature = "vegalite")]
-use ggsql::writer::{Writer, VegaLiteWriter};
+use ggsql::writer::{VegaLiteWriter, Writer};
 
 #[derive(Parser)]
 #[command(name = "ggsql")]
@@ -94,14 +94,26 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Exec { query, reader, writer, output, verbose } => {
+        Commands::Exec {
+            query,
+            reader,
+            writer,
+            output,
+            verbose,
+        } => {
             if verbose {
                 eprintln!("Executing query: {}", query);
             }
             cmd_exec(query, reader, writer, output, verbose);
         }
 
-        Commands::Run { file, reader, writer, output, verbose } => {
+        Commands::Run {
+            file,
+            reader,
+            writer,
+            output,
+            verbose,
+        } => {
             if verbose {
                 eprintln!("Running query from file: {}", file.display());
             }
@@ -122,9 +134,7 @@ fn main() -> anyhow::Result<()> {
 
 fn cmd_run(file: PathBuf, reader: String, writer: String, output: Option<PathBuf>, verbose: bool) {
     match std::fs::read_to_string(&file) {
-        Ok(query) => {
-            cmd_exec(query, reader, writer, output, verbose)
-        }
+        Ok(query) => cmd_exec(query, reader, writer, output, verbose),
         Err(e) => {
             eprintln!("Failed to read file {}: {}", file.display(), e);
             std::process::exit(1);
@@ -197,7 +207,7 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
         eprintln!("Failed to parse ggSQL portion: {}", e);
         std::process::exit(1);
     }
-    let specs = parsed.unwrap(); 
+    let specs = parsed.unwrap();
 
     let first_spec = specs.first();
     if let None = first_spec {
@@ -265,17 +275,16 @@ fn cmd_parse(query: String, format: String) {
     let specs = parsed.unwrap();
 
     match format.as_str() {
-        "json" => {
-            match serde_json::to_string_pretty(&specs) {
-                Ok(pretty) => println!("{}", pretty),
-                Err(error) => eprintln!("{}", error)
-            }
-        }
+        "json" => match serde_json::to_string_pretty(&specs) {
+            Ok(pretty) => println!("{}", pretty),
+            Err(error) => eprintln!("{}", error),
+        },
         "debug" => println!("{:#?}", specs),
         "pretty" => {
             println!("ggSQL Specifications: {} total", specs.len());
             for (i, spec) in specs.iter().enumerate() {
-                println!("\nVisualization #{} ({:?}):", i + 1, spec.viz_type);
+                println!("\nVisualization #{}:", i + 1);
+                println!("  Global Mapping: {:?}", spec.global_mapping);
                 println!("  Layers: {}", spec.layers.len());
                 println!("  Scales: {}", spec.scales.len());
                 if spec.facet.is_some() {
