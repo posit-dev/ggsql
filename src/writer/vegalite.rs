@@ -20,6 +20,7 @@
 //! // Can be rendered in browser with vega-embed
 //! ```
 
+use std::collections::HashMap;
 use crate::writer::Writer;
 use crate::{DataFrame, Result, GgsqlError, VizSpec, Geom, AestheticValue};
 use crate::parser::ast::{LiteralValue, Coord, CoordType, CoordPropertyValue, ArrayElement, FilterExpression, ComparisonOp, FilterValue};
@@ -531,56 +532,35 @@ impl VegaLiteWriter {
         }
     }
 
-    /// Validate that all column references in aesthetics exist in the DataFrame
-    fn validate_column_references(&self, spec: &VizSpec, data: &DataFrame) -> Result<()> {
+    /// Validate column references for a single layer against its specific DataFrame
+    fn validate_layer_columns(
+        &self,
+        layer: &crate::parser::ast::Layer,
+        data: &DataFrame,
+        layer_idx: usize,
+    ) -> Result<()> {
         let available_columns: Vec<String> = data
             .get_column_names()
             .iter()
             .map(|s| s.to_string())
             .collect();
 
-        // Check all layers
-        for (layer_idx, layer) in spec.layers.iter().enumerate() {
-            for (aesthetic, value) in &layer.aesthetics {
-                if let AestheticValue::Column(col) = value {
-                    if !available_columns.contains(col) {
-                        return Err(GgsqlError::ValidationError(format!(
-                            "Column '{}' referenced in aesthetic '{}' (layer {}) does not exist in the query result.\nAvailable columns: {}",
-                            col,
-                            aesthetic,
-                            layer_idx + 1,
-                            available_columns.join(", ")
-                        )));
-                    }
-                }
-            }
-        }
-
-        // Check facet variables
-        if let Some(facet) = &spec.facet {
-            use crate::parser::ast::Facet;
-            match facet {
-                Facet::Wrap { variables, .. } => {
-                    for var in variables {
-                        if !available_columns.contains(var) {
-                            return Err(GgsqlError::ValidationError(format!(
-                                "Facet variable '{}' does not exist in the query result.\nAvailable columns: {}",
-                                var,
-                                available_columns.join(", ")
-                            )));
-                        }
-                    }
-                }
-                Facet::Grid { rows, cols, .. } => {
-                    for var in rows.iter().chain(cols.iter()) {
-                        if !available_columns.contains(var) {
-                            return Err(GgsqlError::ValidationError(format!(
-                                "Facet variable '{}' does not exist in the query result.\nAvailable columns: {}",
-                                var,
-                                available_columns.join(", ")
-                            )));
-                        }
-                    }
+        for (aesthetic, value) in &layer.aesthetics {
+            if let AestheticValue::Column(col) = value {
+                if !available_columns.contains(col) {
+                    let source_desc = if let Some(src) = &layer.source {
+                        format!(" (source: {})", src.as_str())
+                    } else {
+                        " (global data)".to_string()
+                    };
+                    return Err(GgsqlError::ValidationError(format!(
+                        "Column '{}' referenced in aesthetic '{}' (layer {}{}) does not exist.\nAvailable columns: {}",
+                        col,
+                        aesthetic,
+                        layer_idx + 1,
+                        source_desc,
+                        available_columns.join(", ")
+                    )));
                 }
             }
         }
@@ -941,11 +921,33 @@ impl VegaLiteWriter {
 }
 
 impl Writer for VegaLiteWriter {
-    fn write(&self, spec: &VizSpec, data: &DataFrame) -> Result<String> {
-        // Validate that all column references exist in the DataFrame
-        self.validate_column_references(spec, data)?;
+    fn write(&self, spec: &VizSpec, data: &HashMap<String, DataFrame>) -> Result<String> {
+        // Determine which dataset key each layer should use
+        let layer_data_keys: Vec<String> = spec
+            .layers
+            .iter()
+            .enumerate()
+            .map(|(idx, layer)| {
+                if layer.source.is_some() {
+                    format!("__layer_{}__", idx)
+                } else {
+                    "__global__".to_string()
+                }
+            })
+            .collect();
 
-        // Build the base Vega-Lite spec (without data yet)
+        // Validate all required datasets exist and validate column references
+        for (layer_idx, (layer, key)) in spec.layers.iter().zip(layer_data_keys.iter()).enumerate() {
+            let df = data.get(key).ok_or_else(|| {
+                GgsqlError::WriterError(format!(
+                    "Missing data source '{}' for layer {}",
+                    key, layer_idx + 1
+                ))
+            })?;
+            self.validate_layer_columns(layer, df, layer_idx)?;
+        }
+
+        // Build the base Vega-Lite spec
         let mut vl_spec = json!({
             "$schema": self.schema
         });
@@ -957,24 +959,37 @@ impl Writer for VegaLiteWriter {
             }
         }
 
-        // Handle single layer vs multi-layer
-        if spec.layers.len() == 1 {
-            // Single layer: use flat mark + encoding
-            let layer = &spec.layers[0];
-            vl_spec["mark"] = json!(self.geom_to_mark(&layer.geom));
+        // Build datasets - convert all DataFrames to Vega-Lite format
+        let mut datasets = Map::new();
+        for (key, df) in data {
+            let values = self.dataframe_to_values(df)?;
+            datasets.insert(key.clone(), json!(values));
+        }
+        vl_spec["datasets"] = Value::Object(datasets);
+
+        // Build layers array
+        let mut layers = Vec::new();
+        for (layer_idx, layer) in spec.layers.iter().enumerate() {
+            let data_key = &layer_data_keys[layer_idx];
+            let df = data.get(data_key).unwrap();
+
+            let mut layer_spec = json!({
+                "data": {"name": data_key},
+                "mark": self.geom_to_mark(&layer.geom)
+            });
 
             // Add filter transform if present
             if let Some(filter) = &layer.filter {
-                vl_spec["transform"] = json!([{
+                layer_spec["transform"] = json!([{
                     "filter": self.filter_to_vegalite(filter)
                 }]);
             }
 
-            // Build encoding from aesthetics
+            // Build encoding for this layer
             let mut encoding = Map::new();
             for (aesthetic, value) in &layer.aesthetics {
                 let channel_name = self.map_aesthetic_name(aesthetic);
-                let channel_encoding = self.build_encoding_channel(aesthetic, value, data, spec)?;
+                let channel_encoding = self.build_encoding_channel(aesthetic, value, df, spec)?;
                 encoding.insert(channel_name, channel_encoding);
             }
 
@@ -992,118 +1007,70 @@ impl Writer for VegaLiteWriter {
                 }
             }
 
-            // Apply guide configurations
-            self.apply_guides_to_encoding(&mut encoding, spec);
-
-            vl_spec["encoding"] = Value::Object(encoding);
-        } else if spec.layers.len() > 1 {
-            // Multi-layer: use layer composition
-            let mut layers = Vec::new();
-
-            for layer in &spec.layers {
-                let mut layer_spec = json!({
-                    "mark": self.geom_to_mark(&layer.geom)
-                });
-
-                // Add filter transform if present
-                if let Some(filter) = &layer.filter {
-                    layer_spec["transform"] = json!([{
-                        "filter": self.filter_to_vegalite(filter)
-                    }]);
-                }
-
-                // Build encoding for this layer
-                let mut encoding = Map::new();
-                for (aesthetic, value) in &layer.aesthetics {
-                    let channel_name = self.map_aesthetic_name(aesthetic);
-                    let channel_encoding = self.build_encoding_channel(aesthetic, value, data, spec)?;
-                    encoding.insert(channel_name, channel_encoding);
-                }
-
-                // Override axis titles from labels if present (apply to each layer)
-                if let Some(labels) = &spec.labels {
-                    if let Some(x_label) = labels.labels.get("x") {
-                        if let Some(x_enc) = encoding.get_mut("x") {
-                            x_enc["title"] = json!(x_label);
-                        }
-                    }
-                    if let Some(y_label) = labels.labels.get("y") {
-                        if let Some(y_enc) = encoding.get_mut("y") {
-                            y_enc["title"] = json!(y_label);
-                        }
-                    }
-                }
-
-                layer_spec["encoding"] = Value::Object(encoding);
-                layers.push(layer_spec);
+            // Apply guides to first layer's encoding only (they apply globally)
+            if layer_idx == 0 {
+                self.apply_guides_to_encoding(&mut encoding, spec);
             }
 
-            vl_spec["layer"] = json!(layers);
-
-            // For multi-layer plots, apply guides at the top level by creating a resolve configuration
-            // and encoding the guides in the spec-level encoding (if needed)
-            if !spec.guides.is_empty() {
-                let mut resolve = json!({"legend": {}, "scale": {}});
-                for guide in &spec.guides {
-                    let channel = self.map_aesthetic_name(&guide.aesthetic);
-                    // Share legends across layers
-                    resolve["legend"][&channel] = json!("shared");
-                    resolve["scale"][&channel] = json!("shared");
-                }
-                vl_spec["resolve"] = resolve;
-            }
+            layer_spec["encoding"] = Value::Object(encoding);
+            layers.push(layer_spec);
         }
 
-        // Apply coordinate transformations (may modify vl_spec and/or transform DataFrame)
-        let transformed_data = self.apply_coord_transforms(spec, data, &mut vl_spec)?;
-        let data_to_use = transformed_data.as_ref().unwrap_or(data);
+        vl_spec["layer"] = json!(layers);
 
-        // Convert DataFrame to Vega-Lite data values
-        let data_values = self.dataframe_to_values(data_to_use)?;
-        vl_spec["data"] = json!({"values": data_values});
+        // Apply coordinate transforms (flip, polar, cartesian limits)
+        // This must happen AFTER layers are built since transforms modify layer encodings
+        let first_df = data.get(&layer_data_keys[0]).unwrap();
+        self.apply_coord_transforms(spec, first_df, &mut vl_spec)?;
+
+        // Apply guide configurations for multi-layer specs
+        if spec.layers.len() > 1 && !spec.guides.is_empty() {
+            let mut resolve = json!({"legend": {}, "scale": {}});
+            for guide in &spec.guides {
+                let channel = self.map_aesthetic_name(&guide.aesthetic);
+                resolve["legend"][&channel] = json!("shared");
+                resolve["scale"][&channel] = json!("shared");
+            }
+            vl_spec["resolve"] = resolve;
+        }
 
         // Handle faceting if present
         if let Some(facet) = &spec.facet {
+            let facet_data = data.get("__global__")
+                .or_else(|| data.get(&layer_data_keys[0]))
+                .unwrap();
+
             use crate::parser::ast::Facet;
             match facet {
                 Facet::Wrap { variables, .. } => {
                     if !variables.is_empty() {
-                        let field_type = self.infer_field_type(data_to_use, &variables[0]);
+                        let field_type = self.infer_field_type(facet_data, &variables[0]);
                         vl_spec["facet"] = json!({
                             "field": variables[0],
                             "type": field_type,
                         });
 
-                        // Move mark/encoding into spec
+                        // Move layer into spec, keep datasets at top level
                         let mut spec_inner = json!({});
-                        if let Some(mark) = vl_spec.get("mark") {
-                            spec_inner["mark"] = mark.clone();
-                        }
-                        if let Some(encoding) = vl_spec.get("encoding") {
-                            spec_inner["encoding"] = encoding.clone();
-                        }
                         if let Some(layer) = vl_spec.get("layer") {
                             spec_inner["layer"] = layer.clone();
                         }
 
                         vl_spec["spec"] = spec_inner;
-                        vl_spec.as_object_mut().unwrap().remove("mark");
-                        vl_spec.as_object_mut().unwrap().remove("encoding");
                         vl_spec.as_object_mut().unwrap().remove("layer");
                     }
                 }
                 Facet::Grid { rows, cols, .. } => {
-                    // Grid faceting: use row and column
                     let mut facet_spec = Map::new();
                     if !rows.is_empty() {
-                        let field_type = self.infer_field_type(data_to_use, &rows[0]);
+                        let field_type = self.infer_field_type(facet_data, &rows[0]);
                         facet_spec.insert(
                             "row".to_string(),
                             json!({"field": rows[0], "type": field_type}),
                         );
                     }
                     if !cols.is_empty() {
-                        let field_type = self.infer_field_type(data_to_use, &cols[0]);
+                        let field_type = self.infer_field_type(facet_data, &cols[0]);
                         facet_spec.insert(
                             "column".to_string(),
                             json!({"field": cols[0], "type": field_type}),
@@ -1111,27 +1078,18 @@ impl Writer for VegaLiteWriter {
                     }
                     vl_spec["facet"] = Value::Object(facet_spec);
 
-                    // Move mark/encoding/layer into spec
+                    // Move layer into spec, keep datasets at top level
                     let mut spec_inner = json!({});
-                    if let Some(mark) = vl_spec.get("mark") {
-                        spec_inner["mark"] = mark.clone();
-                    }
-                    if let Some(encoding) = vl_spec.get("encoding") {
-                        spec_inner["encoding"] = encoding.clone();
-                    }
                     if let Some(layer) = vl_spec.get("layer") {
                         spec_inner["layer"] = layer.clone();
                     }
 
                     vl_spec["spec"] = spec_inner;
-                    vl_spec.as_object_mut().unwrap().remove("mark");
-                    vl_spec.as_object_mut().unwrap().remove("encoding");
                     vl_spec.as_object_mut().unwrap().remove("layer");
                 }
             }
         }
 
-        // Serialize to pretty JSON
         serde_json::to_string_pretty(&vl_spec).map_err(|e| {
             GgsqlError::WriterError(format!("Failed to serialize Vega-Lite JSON: {}", e))
         })
@@ -1161,6 +1119,13 @@ mod tests {
     use super::*;
     use crate::parser::ast::{Layer, Labels};
     use std::collections::HashMap;
+
+    /// Helper to wrap a DataFrame in a data map for testing
+    fn wrap_data(df: DataFrame) -> HashMap<String, DataFrame> {
+        let mut data_map = HashMap::new();
+        data_map.insert("__global__".to_string(), df);
+        data_map
+    }
 
     #[test]
     fn test_geom_to_mark_mapping() {
@@ -1206,16 +1171,17 @@ mod tests {
         .unwrap();
 
         // Generate Vega-Lite JSON
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        // Verify structure
+        // Verify structure (now uses layer array and datasets)
         assert_eq!(vl_spec["$schema"], writer.schema);
-        assert_eq!(vl_spec["mark"], "point");
-        assert!(vl_spec["data"]["values"].is_array());
-        assert_eq!(vl_spec["data"]["values"].as_array().unwrap().len(), 3);
-        assert!(vl_spec["encoding"]["x"].is_object());
-        assert!(vl_spec["encoding"]["y"].is_object());
+        assert!(vl_spec["layer"].is_array());
+        assert_eq!(vl_spec["layer"][0]["mark"], "point");
+        assert!(vl_spec["datasets"]["__global__"].is_array());
+        assert_eq!(vl_spec["datasets"]["__global__"].as_array().unwrap().len(), 3);
+        assert!(vl_spec["layer"][0]["encoding"]["x"].is_object());
+        assert!(vl_spec["layer"][0]["encoding"]["y"].is_object());
     }
 
     #[test]
@@ -1240,11 +1206,11 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         assert_eq!(vl_spec["title"], "My Chart");
-        assert_eq!(vl_spec["mark"], "line");
+        assert_eq!(vl_spec["layer"][0]["mark"], "line");
     }
 
     #[test]
@@ -1267,10 +1233,10 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["encoding"]["color"]["value"], "blue");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["value"], "blue");
     }
 
     #[test]
@@ -1289,7 +1255,7 @@ mod tests {
         }
         .unwrap();
 
-        let result = writer.write(&spec, &df);
+        let result = writer.write(&spec, &wrap_data(df));
         assert!(result.is_err());
 
         let err = result.unwrap_err();
@@ -1323,7 +1289,7 @@ mod tests {
         }
         .unwrap();
 
-        let result = writer.write(&spec, &df);
+        let result = writer.write(&spec, &wrap_data(df));
         assert!(result.is_err());
 
         let err = result.unwrap_err();
@@ -1364,11 +1330,11 @@ mod tests {
             }
             .unwrap();
 
-            let json_str = writer.write(&spec, &df).unwrap();
+            let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
             let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
             assert_eq!(
-                vl_spec["mark"].as_str().unwrap(),
+                vl_spec["layer"][0]["mark"].as_str().unwrap(),
                 expected_mark,
                 "Failed for geom: {:?}",
                 geom
@@ -1399,10 +1365,10 @@ mod tests {
             }
             .unwrap();
 
-            let json_str = writer.write(&spec, &df).unwrap();
+            let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
             let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-            assert_eq!(vl_spec["mark"].as_str().unwrap(), expected_mark);
+            assert_eq!(vl_spec["layer"][0]["mark"].as_str().unwrap(), expected_mark);
         }
     }
 
@@ -1423,10 +1389,10 @@ mod tests {
             }
             .unwrap();
 
-            let json_str = writer.write(&spec, &df).unwrap();
+            let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
             let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-            assert_eq!(vl_spec["mark"].as_str().unwrap(), "text");
+            assert_eq!(vl_spec["layer"][0]["mark"].as_str().unwrap(), "text");
         }
     }
 
@@ -1448,11 +1414,11 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["encoding"]["color"]["field"], "category");
-        assert_eq!(vl_spec["encoding"]["color"]["type"], "nominal");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["field"], "category");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["type"], "nominal");
     }
 
     #[test]
@@ -1473,11 +1439,11 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["encoding"]["size"]["field"], "value");
-        assert_eq!(vl_spec["encoding"]["size"]["type"], "quantitative");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["size"]["field"], "value");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["size"]["type"], "quantitative");
     }
 
     #[test]
@@ -1498,11 +1464,11 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // 'fill' should be mapped to 'color' in Vega-Lite
-        assert_eq!(vl_spec["encoding"]["color"]["field"], "region");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["field"], "region");
     }
 
     #[test]
@@ -1522,11 +1488,11 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // 'alpha' should be mapped to 'opacity' in Vega-Lite
-        assert_eq!(vl_spec["encoding"]["opacity"]["value"], 0.5);
+        assert_eq!(vl_spec["layer"][0]["encoding"]["opacity"]["value"], 0.5);
     }
 
     #[test]
@@ -1551,14 +1517,14 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["encoding"]["x"]["field"], "x");
-        assert_eq!(vl_spec["encoding"]["y"]["field"], "y");
-        assert_eq!(vl_spec["encoding"]["color"]["field"], "category");
-        assert_eq!(vl_spec["encoding"]["size"]["field"], "value");
-        assert_eq!(vl_spec["encoding"]["shape"]["field"], "type");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["field"], "x");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["field"], "y");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["field"], "category");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["size"]["field"], "value");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["shape"]["field"], "type");
     }
 
     #[test]
@@ -1578,10 +1544,10 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["encoding"]["size"]["value"], 100.0);
+        assert_eq!(vl_spec["layer"][0]["encoding"]["size"]["value"], 100.0);
     }
 
     #[test]
@@ -1601,10 +1567,10 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["encoding"]["linetype"]["value"], true);
+        assert_eq!(vl_spec["layer"][0]["encoding"]["linetype"]["value"], true);
     }
 
     #[test]
@@ -1632,7 +1598,7 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Should have layer array
@@ -1683,7 +1649,7 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         let layers = vl_spec["layer"].as_array().unwrap();
@@ -1715,7 +1681,7 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         assert_eq!(vl_spec["title"], "Test Plot");
@@ -1744,11 +1710,11 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["encoding"]["x"]["title"], "Date");
-        assert_eq!(vl_spec["encoding"]["y"]["title"], "Revenue ($M)");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["title"], "Date");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["title"], "Revenue ($M)");
     }
 
     #[test]
@@ -1775,12 +1741,12 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         assert_eq!(vl_spec["title"], "Sales by Category");
-        assert_eq!(vl_spec["encoding"]["x"]["title"], "Product Category");
-        assert_eq!(vl_spec["encoding"]["y"]["title"], "Sales Volume");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["title"], "Product Category");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["title"], "Sales Volume");
     }
 
     #[test]
@@ -1799,11 +1765,11 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["encoding"]["x"]["type"], "quantitative");
-        assert_eq!(vl_spec["encoding"]["y"]["type"], "quantitative");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["type"], "quantitative");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["type"], "quantitative");
     }
 
     #[test]
@@ -1822,11 +1788,11 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["encoding"]["x"]["type"], "nominal");
-        assert_eq!(vl_spec["encoding"]["y"]["type"], "quantitative");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["type"], "nominal");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["type"], "quantitative");
     }
 
     #[test]
@@ -1845,15 +1811,15 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Numeric strings should be inferred as quantitative
-        assert_eq!(vl_spec["encoding"]["x"]["type"], "quantitative");
-        assert_eq!(vl_spec["encoding"]["y"]["type"], "quantitative");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["type"], "quantitative");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["type"], "quantitative");
 
         // Values should be converted to numbers in JSON
-        let data = vl_spec["data"]["values"].as_array().unwrap();
+        let data = vl_spec["datasets"]["__global__"].as_array().unwrap();
         assert_eq!(data[0]["x"], 1.0);
         assert_eq!(data[0]["y"], 4.5);
     }
@@ -1876,10 +1842,10 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        let data = vl_spec["data"]["values"].as_array().unwrap();
+        let data = vl_spec["datasets"]["__global__"].as_array().unwrap();
         assert_eq!(data.len(), 3);
 
         // Check first row
@@ -1905,10 +1871,10 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        let data = vl_spec["data"]["values"].as_array().unwrap();
+        let data = vl_spec["datasets"]["__global__"].as_array().unwrap();
         assert_eq!(data.len(), 0);
     }
 
@@ -1932,10 +1898,10 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        let data = vl_spec["data"]["values"].as_array().unwrap();
+        let data = vl_spec["datasets"]["__global__"].as_array().unwrap();
         assert_eq!(data.len(), 100);
         assert_eq!(data[0]["x"], 1);
         assert_eq!(data[0]["y"], 2);
@@ -1974,10 +1940,10 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["encoding"]["color"]["legend"], json!(null));
+        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["legend"], json!(null));
     }
 
     #[test]
@@ -2009,10 +1975,10 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["encoding"]["color"]["legend"]["title"], "Product Type");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["legend"]["title"], "Product Type");
     }
 
     #[test]
@@ -2044,11 +2010,11 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // position maps to orient in Vega-Lite
-        assert_eq!(vl_spec["encoding"]["size"]["legend"]["orient"], "bottom");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["size"]["legend"]["orient"], "bottom");
     }
 
     #[test]
@@ -2080,11 +2046,11 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["encoding"]["color"]["legend"]["type"], "gradient");
-        assert_eq!(vl_spec["encoding"]["color"]["legend"]["title"], "Temperature (°C)");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["legend"]["type"], "gradient");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["legend"]["title"], "Temperature (°C)");
     }
 
     #[test]
@@ -2115,11 +2081,11 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["encoding"]["x"]["axis"]["title"], "Product Category");
-        assert_eq!(vl_spec["encoding"]["x"]["axis"]["labelAngle"], 45.0);
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["axis"]["title"], "Product Category");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["axis"]["labelAngle"], 45.0);
     }
 
     #[test]
@@ -2163,12 +2129,12 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["encoding"]["color"]["legend"]["title"], "Category");
-        assert_eq!(vl_spec["encoding"]["color"]["legend"]["orient"], "right");
-        assert_eq!(vl_spec["encoding"]["size"]["legend"]["title"], "Value");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["legend"]["title"], "Category");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["legend"]["orient"], "right");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["size"]["legend"]["title"], "Value");
     }
 
     #[test]
@@ -2200,12 +2166,12 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // fill should be mapped to color channel
-        assert_eq!(vl_spec["encoding"]["color"]["field"], "region");
-        assert_eq!(vl_spec["encoding"]["color"]["legend"]["title"], "Region");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["field"], "region");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["legend"]["title"], "Region");
     }
 
     // ========================================
@@ -2244,11 +2210,11 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check that x scale has domain set
-        assert_eq!(vl_spec["encoding"]["x"]["scale"]["domain"], json!([0.0, 100.0]));
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["scale"]["domain"], json!([0.0, 100.0]));
     }
 
     #[test]
@@ -2283,11 +2249,11 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check that y scale has domain set
-        assert_eq!(vl_spec["encoding"]["y"]["scale"]["domain"], json!([-10.0, 50.0]));
+        assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["scale"]["domain"], json!([-10.0, 50.0]));
     }
 
     #[test]
@@ -2329,12 +2295,12 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check both domains
-        assert_eq!(vl_spec["encoding"]["x"]["scale"]["domain"], json!([0.0, 100.0]));
-        assert_eq!(vl_spec["encoding"]["y"]["scale"]["domain"], json!([0.0, 200.0]));
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["scale"]["domain"], json!([0.0, 100.0]));
+        assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["scale"]["domain"], json!([0.0, 200.0]));
     }
 
     #[test]
@@ -2369,11 +2335,11 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Should be swapped to [0, 100]
-        assert_eq!(vl_spec["encoding"]["x"]["scale"]["domain"], json!([0.0, 100.0]));
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["scale"]["domain"], json!([0.0, 100.0]));
     }
 
     #[test]
@@ -2411,12 +2377,12 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check that color scale has domain set
         assert_eq!(
-            vl_spec["encoding"]["color"]["scale"]["domain"],
+            vl_spec["layer"][0]["encoding"]["color"]["scale"]["domain"],
             json!(["A", "B", "C"])
         );
     }
@@ -2468,7 +2434,7 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check that both layers have the limits applied
@@ -2513,16 +2479,16 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // After flip: x should have "value" field, y should have "category" field
-        assert_eq!(vl_spec["encoding"]["x"]["field"], "value");
-        assert_eq!(vl_spec["encoding"]["y"]["field"], "category");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["field"], "value");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["field"], "category");
 
         // But titles should preserve original aesthetic names (ggplot2 style)
-        assert_eq!(vl_spec["encoding"]["x"]["title"], "Value");
-        assert_eq!(vl_spec["encoding"]["y"]["title"], "Category");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["title"], "Value");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["title"], "Category");
     }
 
     #[test]
@@ -2557,7 +2523,7 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check both layers have flipped encodings
@@ -2598,16 +2564,16 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check x and y are flipped
-        assert_eq!(vl_spec["encoding"]["x"]["field"], "y");
-        assert_eq!(vl_spec["encoding"]["y"]["field"], "x");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["field"], "y");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["field"], "x");
 
         // Check color and size are unchanged
-        assert_eq!(vl_spec["encoding"]["color"]["field"], "category");
-        assert_eq!(vl_spec["encoding"]["size"]["field"], "value");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["field"], "category");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["size"]["field"], "value");
     }
 
     #[test]
@@ -2634,22 +2600,22 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Bar in polar should become arc
-        assert_eq!(vl_spec["mark"], "arc");
+        assert_eq!(vl_spec["layer"][0]["mark"], "arc");
 
         // y should be mapped to theta
-        assert!(vl_spec["encoding"]["theta"].is_object());
-        assert_eq!(vl_spec["encoding"]["theta"]["field"], "value");
+        assert!(vl_spec["layer"][0]["encoding"]["theta"].is_object());
+        assert_eq!(vl_spec["layer"][0]["encoding"]["theta"]["field"], "value");
 
         // x should be removed from positional encoding
-        assert!(vl_spec["encoding"]["x"].is_null() || !vl_spec["encoding"].as_object().unwrap().contains_key("x"));
+        assert!(vl_spec["layer"][0]["encoding"]["x"].is_null() || !vl_spec["layer"][0]["encoding"].as_object().unwrap().contains_key("x"));
 
         // x should be mapped to color (for category differentiation)
-        assert!(vl_spec["encoding"]["color"].is_object());
-        assert_eq!(vl_spec["encoding"]["color"]["field"], "category");
+        assert!(vl_spec["layer"][0]["encoding"]["color"].is_object());
+        assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["field"], "category");
     }
 
     #[test]
@@ -2681,12 +2647,12 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Should produce same result as default
-        assert_eq!(vl_spec["mark"], "arc");
-        assert_eq!(vl_spec["encoding"]["theta"]["field"], "value");
+        assert_eq!(vl_spec["layer"][0]["mark"], "arc");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["theta"]["field"], "value");
     }
 
     #[test]
@@ -2708,11 +2674,11 @@ mod tests {
         let values = Series::new("value".into(), &[10, 20, 30]);
         let df = DataFrame::new(vec![dates, values]).unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check that dates are formatted as ISO strings in data
-        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
         assert_eq!(data_values[0]["date"], "1970-01-01");
         assert_eq!(data_values[1]["date"], "1970-01-02");
         assert_eq!(data_values[2]["date"], "1970-01-03");
@@ -2737,11 +2703,11 @@ mod tests {
         let values = Series::new("value".into(), &[10, 20, 30]);
         let df = DataFrame::new(vec![datetimes, values]).unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check that datetimes are formatted as ISO strings in data
-        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
         assert_eq!(data_values[0]["datetime"], "1970-01-01T00:00:00.000Z");
         assert_eq!(data_values[1]["datetime"], "1970-01-01T00:00:01.000Z");
         assert_eq!(data_values[2]["datetime"], "1970-01-01T00:00:02.000Z");
@@ -2766,11 +2732,11 @@ mod tests {
         let values = Series::new("value".into(), &[10, 20, 30]);
         let df = DataFrame::new(vec![times, values]).unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check that times are formatted as ISO time strings in data
-        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
         assert_eq!(data_values[0]["time"], "00:00:00.000");
         assert_eq!(data_values[1]["time"], "01:00:00.000");
         assert_eq!(data_values[2]["time"], "02:00:00.000");
@@ -2795,15 +2761,15 @@ mod tests {
         let revenue = Series::new("revenue".into(), &[100, 120, 110, 130, 125]);
         let df = DataFrame::new(vec![dates, revenue]).unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // CRITICAL TEST: x-axis should automatically be inferred as "temporal" type
-        assert_eq!(vl_spec["encoding"]["x"]["type"], "temporal");
-        assert_eq!(vl_spec["encoding"]["y"]["type"], "quantitative");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["type"], "temporal");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["type"], "quantitative");
 
         // Dates should be formatted as ISO strings
-        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
         assert_eq!(data_values[0]["date"], "1970-01-01");
         assert_eq!(data_values[1]["date"], "1970-01-02");
     }
@@ -2827,14 +2793,14 @@ mod tests {
         let values = Series::new("value".into(), &[50, 75, 60]);
         let df = DataFrame::new(vec![timestamps, values]).unwrap();
 
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // x-axis should automatically be inferred as "temporal" type
-        assert_eq!(vl_spec["encoding"]["x"]["type"], "temporal");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["type"], "temporal");
 
         // Timestamps should be formatted as ISO datetime strings
-        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
         assert_eq!(data_values[0]["timestamp"], "1970-01-01T00:00:00.000Z");
         assert_eq!(data_values[1]["timestamp"], "1970-01-02T00:00:00.000Z");
         assert_eq!(data_values[2]["timestamp"], "1970-01-03T00:00:00.000Z");
