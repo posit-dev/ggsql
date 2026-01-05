@@ -71,6 +71,33 @@ pub enum GlobalMappingItem {
     Implicit { name: String },
 }
 
+/// Data source for a layer (from MAPPING ... FROM clause)
+///
+/// Allows layers to specify their own data source instead of using
+/// the global data from the main SQL query.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum LayerSource {
+    /// CTE or table name (unquoted identifier)
+    Identifier(String),
+    /// File path (quoted string like 'data.csv')
+    FilePath(String),
+}
+
+impl LayerSource {
+    /// Returns the source as a string reference
+    pub fn as_str(&self) -> &str {
+        match self {
+            LayerSource::Identifier(s) => s,
+            LayerSource::FilePath(s) => s,
+        }
+    }
+
+    /// Returns true if this is a file path source
+    pub fn is_file(&self) -> bool {
+        matches!(self, LayerSource::FilePath(_))
+    }
+}
+
 /// A single visualization layer (from DRAW clause)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Layer {
@@ -82,6 +109,8 @@ pub struct Layer {
     pub parameters: HashMap<String, ParameterValue>,
     /// Optional filter expression for this layer
     pub filter: Option<FilterExpression>,
+    /// Optional data source for this layer (from MAPPING ... FROM)
+    pub source: Option<LayerSource>,
 }
 
 /// Filter expression for layer-specific filtering (from FILTER clause)
@@ -598,12 +627,19 @@ impl Layer {
             aesthetics: HashMap::new(),
             parameters: HashMap::new(),
             filter: None,
+            source: None,
         }
     }
 
     /// Set the filter expression
     pub fn with_filter(mut self, filter: FilterExpression) -> Self {
         self.filter = Some(filter);
+        self
+    }
+
+    /// Set the data source for this layer
+    pub fn with_source(mut self, source: LayerSource) -> Self {
+        self.source = Some(source);
         self
     }
 

@@ -290,12 +290,13 @@ fn process_viz_clause(node: &Node, source: &str, spec: &mut VizSpec) -> Result<(
 }
 
 /// Build a Layer from a draw_clause node
-/// Syntax: DRAW geom [MAPPING col AS x, ...] [SETTING param TO val, ...] [FILTER condition]
+/// Syntax: DRAW geom [MAPPING col AS x, ... [FROM source]] [SETTING param TO val, ...] [FILTER condition]
 fn build_layer(node: &Node, source: &str) -> Result<Layer> {
     let mut geom = Geom::Point; // default
     let mut aesthetics = HashMap::new();
     let mut parameters = HashMap::new();
     let mut filter = None;
+    let mut layer_source = None;
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -305,7 +306,9 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
                 geom = parse_geom_type(&geom_text)?;
             }
             "mapping_clause" => {
-                aesthetics = parse_mapping_clause(&child, source)?;
+                let (aes, src) = parse_mapping_clause(&child, source)?;
+                aesthetics = aes;
+                layer_source = src;
             }
             "setting_clause" => {
                 parameters = parse_setting_clause(&child, source)?;
@@ -324,23 +327,44 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
     layer.aesthetics = aesthetics;
     layer.parameters = parameters;
     layer.filter = filter;
+    layer.source = layer_source;
 
     Ok(layer)
 }
 
-/// Parse a mapping_clause: MAPPING col AS x, "blue" AS color
-fn parse_mapping_clause(node: &Node, source: &str) -> Result<HashMap<String, AestheticValue>> {
+/// Parse a mapping_clause: MAPPING col AS x, "blue" AS color [FROM source]
+/// Returns (aesthetics, optional layer source)
+fn parse_mapping_clause(
+    node: &Node,
+    source: &str,
+) -> Result<(HashMap<String, AestheticValue>, Option<LayerSource>)> {
     let mut aesthetics = HashMap::new();
+    let mut layer_source = None;
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if child.kind() == "mapping_item" {
-            let (aesthetic, value) = parse_mapping_item(&child, source)?;
-            aesthetics.insert(aesthetic, value);
+        match child.kind() {
+            "mapping_item" => {
+                let (aesthetic, value) = parse_mapping_item(&child, source)?;
+                aesthetics.insert(aesthetic, value);
+            }
+            "identifier" => {
+                // FROM identifier (CTE or table name)
+                let ident = get_node_text(&child, source);
+                layer_source = Some(LayerSource::Identifier(ident));
+            }
+            "string" => {
+                // FROM 'file.csv' (file path)
+                let text = get_node_text(&child, source);
+                // Remove surrounding quotes
+                let path = text.trim_matches(|c| c == '\'' || c == '"');
+                layer_source = Some(LayerSource::FilePath(path.to_string()));
+            }
+            _ => continue,
         }
     }
 
-    Ok(aesthetics)
+    Ok((aesthetics, layer_source))
 }
 
 /// Parse a mapping_item: col AS x or "blue" AS color
@@ -2711,5 +2735,132 @@ mod tests {
         assert!(specs[0].layers[0].aesthetics.contains_key("y"));
         assert!(specs[0].layers[0].aesthetics.contains_key("color"));
         assert!(!specs[0].layers[0].aesthetics.contains_key("extra_column"));
+    }
+
+    // ========================================
+    // Layer FROM Tests
+    // ========================================
+
+    #[test]
+    fn test_layer_from_identifier() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y FROM my_cte
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].layers.len(), 1);
+
+        let layer = &specs[0].layers[0];
+        assert!(layer.source.is_some());
+        assert!(matches!(
+            layer.source.as_ref(),
+            Some(LayerSource::Identifier(name)) if name == "my_cte"
+        ));
+    }
+
+    #[test]
+    fn test_layer_from_file_path() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y FROM 'data.csv'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].layers.len(), 1);
+
+        let layer = &specs[0].layers[0];
+        assert!(layer.source.is_some());
+        assert!(matches!(
+            layer.source.as_ref(),
+            Some(LayerSource::FilePath(path)) if path == "data.csv"
+        ));
+    }
+
+    #[test]
+    fn test_layer_from_empty_mapping() {
+        // MAPPING FROM source (no aesthetics, inherit global)
+        let query = r#"
+            VISUALISE x AS x, y AS y
+            DRAW point MAPPING FROM other_data
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].layers.len(), 1);
+
+        let layer = &specs[0].layers[0];
+        assert!(layer.source.is_some());
+        assert!(matches!(
+            layer.source.as_ref(),
+            Some(LayerSource::Identifier(name)) if name == "other_data"
+        ));
+        // Layer should have no direct aesthetics (will inherit from global)
+        assert!(layer.aesthetics.is_empty());
+    }
+
+    #[test]
+    fn test_layer_without_from() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].layers.len(), 1);
+
+        let layer = &specs[0].layers[0];
+        assert!(layer.source.is_none());
+    }
+
+    #[test]
+    fn test_mixed_layers_with_and_without_from() {
+        let query = r#"
+            SELECT * FROM baseline
+            VISUALISE
+            DRAW line MAPPING x AS x, y AS y
+            DRAW point MAPPING x AS x, y AS y FROM comparison
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].layers.len(), 2);
+
+        // First layer uses global data (no FROM)
+        assert!(specs[0].layers[0].source.is_none());
+
+        // Second layer uses specific source
+        assert!(specs[0].layers[1].source.is_some());
+        assert!(matches!(
+            specs[0].layers[1].source.as_ref(),
+            Some(LayerSource::Identifier(name)) if name == "comparison"
+        ));
+    }
+
+    #[test]
+    fn test_layer_from_with_cte() {
+        let query = r#"
+            WITH sales AS (SELECT date, revenue FROM transactions),
+                 targets AS (SELECT date, goal FROM monthly_goals)
+            VISUALISE
+            DRAW line MAPPING date AS x, revenue AS y FROM sales
+            DRAW line MAPPING date AS x, goal AS y FROM targets
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].layers.len(), 2);
+
+        assert!(matches!(
+            specs[0].layers[0].source.as_ref(),
+            Some(LayerSource::Identifier(name)) if name == "sales"
+        ));
+        assert!(matches!(
+            specs[0].layers[1].source.as_ref(),
+            Some(LayerSource::Identifier(name)) if name == "targets"
+        ));
     }
 }
