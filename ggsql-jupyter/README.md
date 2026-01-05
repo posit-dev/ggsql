@@ -121,8 +121,8 @@ UNION ALL
 SELECT 2, 4, 'A'
 UNION ALL
 SELECT 3, 3, 'B'
-VISUALISE AS PLOT
-DRAW point MAPPING x AS x, y AS y, category AS color
+VISUALISE x, y, category AS color
+DRAW point
 ```
 
 #### Time Series
@@ -132,20 +132,20 @@ SELECT
     '2024-01-01'::DATE + INTERVAL (n) DAY as date,
     n * 10 as revenue
 FROM generate_series(0, 30) as t(n)
-VISUALISE AS PLOT
-DRAW line MAPPING date AS x, revenue AS y
+VISUALISE date AS x, revenue AS y
+DRAW line
 SCALE x SETTING type TO 'date'
 LABEL title AS 'Revenue Growth', x AS 'Date', y AS 'Revenue ($)'
 ```
 
-#### Multi-Layer Plot
+#### Multi-Layer Plot with Global Mapping
 
 ```sql
 SELECT x, x*x as y, x*x*x as z
 FROM generate_series(1, 10) as t(x)
-VISUALISE AS PLOT
-DRAW line MAPPING x AS x, y AS y
-DRAW line MAPPING x AS x, z AS y
+VISUALISE x AS x
+DRAW line MAPPING y AS y
+DRAW line MAPPING z AS y
 LABEL title AS 'Polynomial Functions'
 ```
 
@@ -174,7 +174,7 @@ Cell 2:
 
 ```sql
 SELECT * FROM products
-VISUALISE AS PLOT
-DRAW bar MAPPING name AS x, price AS y
+VISUALISE name AS x, price AS y
+DRAW bar
 LABEL title AS 'Product Prices', y AS 'Price ($)'
 ```

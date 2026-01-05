@@ -19,20 +19,18 @@ the visualization specification into a typed AST.
 
 ```rust
 # use ggsql::parser::parse_query;
-# use ggsql::{Geom, VizType};
+# use ggsql::Geom;
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 let query = r#"
     SELECT date, revenue, region FROM sales WHERE year = 2024
-    VISUALISE AS PLOT
+    VISUALISE date AS x, revenue AS y, region AS color
     DRAW line
-        MAPPING date AS x, revenue AS y, region AS color
     LABEL
         title AS 'Sales by Region'
 "#;
 
 let specs = parse_query(query)?;
 assert_eq!(specs.len(), 1);
-assert_eq!(specs[0].viz_type, VizType::Plot);
 assert_eq!(specs[0].layers.len(), 1);
 assert_eq!(specs[0].layers[0].geom, Geom::Line);
 # Ok(())
@@ -103,8 +101,8 @@ mod tests {
     fn test_simple_query_parsing() {
         let query = r#"
             SELECT x, y FROM data
-            VISUALISE AS PLOT
-            DRAW point MAPPING x AS x, y AS y
+            VISUALISE x, y
+            DRAW point
         "#;
 
         let result = parse_query(query);
@@ -112,7 +110,6 @@ mod tests {
 
         let specs = result.unwrap();
         assert_eq!(specs.len(), 1);
-        assert_eq!(specs[0].viz_type, VizType::Plot);
         assert_eq!(specs[0].layers.len(), 1);
         assert_eq!(specs[0].layers[0].geom, Geom::Point);
     }
@@ -121,8 +118,8 @@ mod tests {
     fn test_sql_extraction() {
         let query = r#"
             SELECT date, revenue FROM sales WHERE year = 2024
-            VISUALISE AS PLOT
-            DRAW line MAPPING date AS x, revenue AS y
+            VISUALISE date AS x, revenue AS y
+            DRAW line
         "#;
 
         let sql = extract_sql(query).unwrap();
@@ -135,9 +132,9 @@ mod tests {
     fn test_multi_layer_query() {
         let query = r#"
             SELECT x, y, z FROM data
-            VISUALISE AS PLOT
-            DRAW line MAPPING x AS x, y AS y
-            DRAW point MAPPING x AS x, z AS y, 'red' AS color
+            VISUALISE x, y
+            DRAW line
+            DRAW point MAPPING z AS y, 'red' AS color
         "#;
 
         let specs = parse_query(query).unwrap();
@@ -147,19 +144,8 @@ mod tests {
         assert_eq!(specs[0].layers[0].geom, Geom::Line);
         assert_eq!(specs[0].layers[1].geom, Geom::Point);
 
-        // Check aesthetics are parsed correctly
-        assert_eq!(specs[0].layers[0].aesthetics.len(), 2);
-        assert!(matches!(
-            specs[0].layers[0].aesthetics.get("x"),
-            Some(AestheticValue::Column(col)) if col == "x"
-        ));
-        assert!(matches!(
-            specs[0].layers[0].aesthetics.get("y"),
-            Some(AestheticValue::Column(col)) if col == "y"
-        ));
-
-        // Second layer should have x, y, and color
-        assert_eq!(specs[0].layers[1].aesthetics.len(), 3);
+        // Second layer should have y and color
+        assert_eq!(specs[0].layers[1].aesthetics.len(), 2);
         assert!(matches!(
             specs[0].layers[1].aesthetics.get("color"),
             Some(AestheticValue::Literal(LiteralValue::String(s))) if s == "red"
@@ -170,92 +156,85 @@ mod tests {
     fn test_multiple_visualizations() {
         let query = r#"
             SELECT x, y FROM data
-            VISUALISE AS PLOT
-            DRAW point MAPPING x AS x, y AS y
-            VISUALIZE AS TABLE
+            VISUALISE x, y
+            DRAW point
+            VISUALIZE
+            DRAW bar MAPPING x AS x, y AS y
         "#;
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 2);
-        assert_eq!(specs[0].viz_type, VizType::Plot);
         assert_eq!(specs[0].layers.len(), 1);
-        assert_eq!(specs[1].viz_type, VizType::Table);
-        assert_eq!(specs[1].layers.len(), 0);
+        assert_eq!(specs[1].layers.len(), 1);
     }
 
     #[test]
     fn test_american_spelling() {
         let query = r#"
             SELECT x, y FROM data
-            VISUALIZE AS MAP
-            DRAW tile MAPPING x AS x, y AS y
+            VISUALIZE x, y
+            DRAW tile
         "#;
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 1);
-        assert_eq!(specs[0].viz_type, VizType::Map);
+        assert_eq!(specs[0].layers[0].geom, Geom::Tile);
     }
 
     #[test]
     fn test_three_visualizations() {
         let query = r#"
             SELECT x, y, z FROM data
-            VISUALISE AS PLOT
-            DRAW point MAPPING x AS x, y AS y
-            VISUALIZE AS TABLE
-            VISUALISE AS MAP
-            DRAW tile MAPPING x AS x, y AS y
+            VISUALISE x, y
+            DRAW point
+            VISUALIZE
+            DRAW bar MAPPING x AS x, y AS y
+            VISUALISE z AS x, y AS y
+            DRAW tile
         "#;
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 3);
-        assert_eq!(specs[0].viz_type, VizType::Plot);
         assert_eq!(specs[0].layers.len(), 1);
-        assert_eq!(specs[1].viz_type, VizType::Table);
-        assert_eq!(specs[1].layers.len(), 0);
-        assert_eq!(specs[2].viz_type, VizType::Map);
+        assert_eq!(specs[1].layers.len(), 1);
         assert_eq!(specs[2].layers.len(), 1);
     }
 
     #[test]
-    fn test_all_viz_types() {
+    fn test_empty_visualise() {
         let query = r#"
             SELECT x, y FROM data
-            VISUALISE AS PLOT
-            VISUALIZE AS TABLE
-            VISUALISE AS MAP
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
         "#;
 
         let specs = parse_query(query).unwrap();
-        assert_eq!(specs.len(), 3);
-        assert_eq!(specs[0].viz_type, VizType::Plot);
-        assert_eq!(specs[1].viz_type, VizType::Table);
-        assert_eq!(specs[2].viz_type, VizType::Map);
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].global_mapping, GlobalMapping::Empty);
     }
 
     #[test]
     fn test_multiple_viz_with_different_clauses() {
         let query = r#"
             SELECT x, y FROM data
-            VISUALISE AS PLOT
-            DRAW point MAPPING x AS x, y AS y
+            VISUALISE x, y
+            DRAW point
             LABEL title AS 'Scatter Plot'
             THEME minimal
-            VISUALIZE AS TABLE
+            VISUALIZE
+            DRAW bar MAPPING x AS x, y AS y
         "#;
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 2);
 
         // First viz should have layers, labels, and theme
-        assert_eq!(specs[0].viz_type, VizType::Plot);
         assert_eq!(specs[0].layers.len(), 1);
         assert!(specs[0].labels.is_some());
         assert!(specs[0].theme.is_some());
 
-        // Second viz should be empty
-        assert_eq!(specs[1].viz_type, VizType::Table);
-        assert_eq!(specs[1].layers.len(), 0);
+        // Second viz should have layer but no labels/theme
+        assert_eq!(specs[1].layers.len(), 1);
         assert!(specs[1].labels.is_none());
         assert!(specs[1].theme.is_none());
     }
@@ -264,18 +243,19 @@ mod tests {
     fn test_mixed_spelling_multiple_viz() {
         let query = r#"
             SELECT x, y FROM data
-            VISUALISE AS PLOT
-            DRAW line MAPPING x AS x, y AS y
-            VISUALIZE AS MAP
+            VISUALISE x, y
+            DRAW line
+            VISUALIZE
             DRAW tile MAPPING x AS x, y AS y
-            VISUALISE AS TABLE
+            VISUALISE
+            DRAW bar MAPPING x AS x, y AS y
         "#;
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 3);
-        assert_eq!(specs[0].viz_type, VizType::Plot);
-        assert_eq!(specs[1].viz_type, VizType::Map);
-        assert_eq!(specs[2].viz_type, VizType::Table);
+        assert_eq!(specs[0].layers[0].geom, Geom::Line);
+        assert_eq!(specs[1].layers[0].geom, Geom::Tile);
+        assert_eq!(specs[2].layers[0].geom, Geom::Bar);
     }
 
     #[test]
@@ -283,14 +263,15 @@ mod tests {
         let query = r#"
             SELECT date, revenue, cost FROM sales
             WHERE year >= 2023
-            VISUALISE AS PLOT
-            DRAW line MAPPING date AS x, revenue AS y
-            DRAW line MAPPING date AS x, cost AS y
+            VISUALISE date AS x, revenue AS y
+            DRAW line
+            DRAW line MAPPING cost AS y
             SCALE x SETTING type TO 'date'
             LABEL title AS 'Revenue and Cost Trends'
             THEME minimal
-            VISUALIZE AS TABLE
-            VISUALISE AS MAP
+            VISUALIZE
+            DRAW bar MAPPING date AS x, revenue AS y
+            VISUALISE
             DRAW tile MAPPING date AS x, revenue AS y
         "#;
 
@@ -298,24 +279,21 @@ mod tests {
         assert_eq!(specs.len(), 3);
 
         // Plot with 2 layers, scale, labels, theme
-        assert_eq!(specs[0].viz_type, VizType::Plot);
         assert_eq!(specs[0].layers.len(), 2);
         assert_eq!(specs[0].scales.len(), 1);
         assert!(specs[0].labels.is_some());
         assert!(specs[0].theme.is_some());
 
-        // Table with no clauses
-        assert_eq!(specs[1].viz_type, VizType::Table);
-        assert_eq!(specs[1].layers.len(), 0);
+        // Second viz with 1 layer
+        assert_eq!(specs[1].layers.len(), 1);
 
-        // Map with 1 layer
-        assert_eq!(specs[2].viz_type, VizType::Map);
+        // Third viz with 1 layer
         assert_eq!(specs[2].layers.len(), 1);
     }
 
     #[test]
     fn test_values_subquery() {
-        let query = "SELECT * FROM (VALUES (1, 2)) AS t(x, y) VISUALISE AS PLOT DRAW point MAPPING x AS x, y AS y";
+        let query = "SELECT * FROM (VALUES (1, 2)) AS t(x, y) VISUALISE x, y DRAW point";
 
         // First check if tree-sitter can parse it
         let tree = parse_full_query(query);
@@ -335,6 +313,101 @@ mod tests {
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 1);
-        assert_eq!(specs[0].viz_type, VizType::Plot);
+    }
+
+    #[test]
+    fn test_wildcard_global_mapping() {
+        let query = r#"
+            SELECT x, y FROM data
+            VISUALISE *
+            DRAW point
+        "#;
+
+        let specs = parse_query(query).unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].global_mapping, GlobalMapping::Wildcard);
+    }
+
+    #[test]
+    fn test_explicit_global_mapping() {
+        let query = r#"
+            VISUALISE date AS x, revenue AS y
+            DRAW line
+        "#;
+
+        let specs = parse_query(query).unwrap();
+        assert_eq!(specs.len(), 1);
+        match &specs[0].global_mapping {
+            GlobalMapping::Mappings(items) => {
+                assert_eq!(items.len(), 2);
+                assert!(matches!(&items[0], GlobalMappingItem::Explicit { column, aesthetic } if column == "date" && aesthetic == "x"));
+                assert!(matches!(&items[1], GlobalMappingItem::Explicit { column, aesthetic } if column == "revenue" && aesthetic == "y"));
+            }
+            _ => panic!("Expected Mappings variant"),
+        }
+    }
+
+    #[test]
+    fn test_implicit_global_mapping() {
+        let query = r#"
+            VISUALISE x, y
+            DRAW point
+        "#;
+
+        let specs = parse_query(query).unwrap();
+        assert_eq!(specs.len(), 1);
+        match &specs[0].global_mapping {
+            GlobalMapping::Mappings(items) => {
+                assert_eq!(items.len(), 2);
+                assert!(matches!(&items[0], GlobalMappingItem::Implicit { name } if name == "x"));
+                assert!(matches!(&items[1], GlobalMappingItem::Implicit { name } if name == "y"));
+            }
+            _ => panic!("Expected Mappings variant"),
+        }
+    }
+
+    #[test]
+    fn test_mixed_global_mapping() {
+        let query = r#"
+            VISUALISE x, y, region AS color
+            DRAW point
+        "#;
+
+        let specs = parse_query(query).unwrap();
+        assert_eq!(specs.len(), 1);
+        match &specs[0].global_mapping {
+            GlobalMapping::Mappings(items) => {
+                assert_eq!(items.len(), 3);
+                assert!(matches!(&items[0], GlobalMappingItem::Implicit { name } if name == "x"));
+                assert!(matches!(&items[1], GlobalMappingItem::Implicit { name } if name == "y"));
+                assert!(matches!(&items[2], GlobalMappingItem::Explicit { column, aesthetic } if column == "region" && aesthetic == "color"));
+            }
+            _ => panic!("Expected Mappings variant"),
+        }
+    }
+
+    #[test]
+    fn test_visualise_from_table() {
+        let query = r#"
+            VISUALISE x, y FROM sales
+            DRAW bar
+        "#;
+
+        let specs = parse_query(query).unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].source, Some("sales".to_string()));
+    }
+
+    #[test]
+    fn test_visualise_from_cte() {
+        let query = r#"
+            WITH cte AS (SELECT * FROM data)
+            VISUALISE x, y FROM cte
+            DRAW point
+        "#;
+
+        let specs = parse_query(query).unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].source, Some("cte".to_string()));
     }
 }

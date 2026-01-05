@@ -10,75 +10,65 @@ SELECT
   AVG(value) as average
 FROM (VALUES (1), (2), (3), (4), (5)) AS t(value);
 
--- Simple visualization
+-- Simple visualization with global mapping
 SELECT 1 as x, 2 as y
-VISUALISE AS PLOT
-DRAW point
-    MAPPING x AS x, y AS y;
+VISUALISE x, y
+DRAW point;
 
 -- Line chart with multiple points
 SELECT n as x, n * n as y
 FROM generate_series(1, 10) as t(n)
-VISUALISE AS PLOT
+VISUALISE x, y
 DRAW line
-    MAPPING x AS x, y AS y
 LABEL title AS 'Quadratic Function', x AS 'X', y AS 'Y';
 
--- Multi-layer visualization
+-- Multi-layer visualization with global mapping
 SELECT n as x, n * n as y
 FROM generate_series(1, 10) as t(n)
-VISUALISE AS PLOT
+VISUALISE x, y
 DRAW line
-    MAPPING x AS x, y AS y
 DRAW point
-    MAPPING x AS x, y AS y
 LABEL title AS 'Line with Points';
 
--- Date-based visualization
+-- Date-based visualization with global mapping
 SELECT
   DATE '2024-01-01' + INTERVAL (n) DAY as date,
   n * 10 as value,
   CASE WHEN n % 2 = 0 THEN 'Even' ELSE 'Odd' END as category
 FROM generate_series(0, 30) as t(n)
-VISUALISE AS PLOT
+VISUALISE date AS x, value AS y, category AS color
 DRAW line
-    MAPPING date AS x, value AS y, category AS color
 SCALE x SETTING type TO 'date'
 LABEL title AS 'Time Series', x AS 'Date', y AS 'Value';
 
--- Bar chart
+-- Bar chart with global mapping
 SELECT
   chr(65 + n) as category,
   (n + 1) * 10 as value
 FROM generate_series(0, 4) as t(n)
-VISUALISE AS PLOT
+VISUALISE category AS x, value AS y
 DRAW bar
-    MAPPING category AS x, value AS y
 LABEL title AS 'Bar Chart', x AS 'Category', y AS 'Value';
 
--- Faceted visualization
+-- Faceted visualization with global mapping
 SELECT
   n as x,
   n * n as y,
   CASE WHEN n <= 5 THEN 'Group A' ELSE 'Group B' END as group
 FROM generate_series(1, 10) as t(n)
-VISUALISE AS PLOT
+VISUALISE x, y
 DRAW point
-    MAPPING x AS x, y AS y
 FACET WRAP group
 LABEL title AS 'Faceted Plot';
 
--- Visualization with FILTER clause
+-- Visualization with FILTER clause - global mapping with layer filter
 SELECT
   n as x,
   n * n as y
 FROM generate_series(1, 10) as t(n)
-VISUALISE AS PLOT
+VISUALISE x, y
 DRAW line
-    MAPPING x AS x, y AS y
-DRAW point
-    MAPPING x AS x, y AS y
-    FILTER y > 25
+DRAW point FILTER y > 25
 LABEL title AS 'Filtered Points';
 
 -- Visualization with SETTING parameters
@@ -86,10 +76,8 @@ SELECT
   n as x,
   n * n as y
 FROM generate_series(1, 10) as t(n)
-VISUALISE AS PLOT
-DRAW point
-    MAPPING x AS x, y AS y
-    SETTING size TO 10, opacity TO 0.5
+VISUALISE x, y
+DRAW point SETTING size TO 10, opacity TO 0.5
 LABEL title AS 'Points with Parameters';
 
 -- Error case: invalid table
@@ -100,6 +88,6 @@ SELECT invalid_column FROM (SELECT 1 as x);
 
 -- Error case: invalid VIZ syntax
 SELECT 1 as x
-VISUALISE AS PLOT
+VISUALISE
 DRAW invalid_geom
     MAPPING x AS x;

@@ -10,13 +10,9 @@ ggSQL allows you to write queries that combine SQL data retrieval with visualiza
 SELECT date, revenue, region
 FROM sales
 WHERE year = 2024
-VISUALISE AS PLOT
-DRAW line MAPPING
-    date AS x,
-    revenue AS y,
-    region AS color
-LABEL
-    title AS 'Sales by Region'
+VISUALISE date AS x, revenue AS y, region AS color
+DRAW line
+LABEL title AS 'Sales by Region'
 THEME minimal
 ```
 
@@ -44,7 +40,7 @@ THEME minimal
 
 ## Architecture
 
-ggSQL splits queries at the `VISUALISE AS` boundary:
+ggSQL splits queries at the `VISUALISE` boundary:
 
 - **SQL portion** → passed to pluggable readers (DuckDB, PostgreSQL, CSV, etc.)
 - **VISUALISE portion** → parsed and compiled into visualization specifications
@@ -213,8 +209,8 @@ See [CLAUDE.md](CLAUDE.md) for the in-progress ggSQL grammar specification, incl
 
 Key grammar elements:
 
-- `VISUALISE AS PLOT` - Entry point for visualization
-- `DRAW <geom> MAPPING` - Define geometric layers (point, line, bar, etc.)
+- `VISUALISE [mappings] [FROM source]` - Entry point with global aesthetic mappings
+- `DRAW <geom> [MAPPING] [SETTING] [FILTER]` - Define geometric layers (point, line, bar, etc.)
 - `SCALE <aesthetic> SETTING` - Configure data-to-visual mappings
 - `FACET` - Create small multiples (WRAP for flowing layout, BY for grid)
 - `COORD` - Coordinate transformations (cartesian, flip, polar)
@@ -243,11 +239,10 @@ SELECT * FROM (VALUES
     ('2024-01-02'::DATE, 120, 'South')
 ) AS t(date, revenue, region)
 
--- Visualize with ggSQL
+-- Visualize with ggSQL using global mapping
 SELECT * FROM sales
-VISUALISE AS PLOT
+VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
-    MAPPING date AS x, revenue AS y, region AS color
 SCALE x SETTING type TO 'date'
 LABEL title AS 'Sales Trends'
 ```
@@ -288,3 +283,11 @@ The extension uses a TextMate grammar that highlights:
 - Geometric objects (point, line, bar, area, etc.)
 - Aesthetics (x, y, color, size, shape, etc.)
 - Scale types (linear, log10, date, viridis, etc.)
+
+## CLI
+
+### Installation
+
+```bash
+cargo install --path src
+```

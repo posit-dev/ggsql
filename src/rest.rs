@@ -143,7 +143,7 @@ struct QueryResult {
 struct QueryMetadata {
     rows: usize,
     columns: Vec<String>,
-    viz_type: String,
+    global_mapping: String,
     layers: usize,
 }
 
@@ -442,7 +442,7 @@ async fn query_handler(
 
 
         // Parse ggSQL portion
-        let specs = parser::parse_query(&request.query)?;
+        let mut specs = parser::parse_query(&request.query)?;
 
         if specs.is_empty() {
             return Err(ApiErrorResponse::from(
@@ -450,9 +450,15 @@ async fn query_handler(
             ));
         }
 
+        // Resolve global mappings into layer aesthetics
+        let column_names: Vec<&str> = df.get_column_names().iter().map(|s| s.as_str()).collect();
+        for spec in &mut specs {
+            spec.resolve_global_mappings(&column_names)?;
+        }
+
         // Get metadata
         let (rows, _cols) = df.shape();
-        let columns: Vec<String> = df.get_column_names().iter().map(|s| s.to_string()).collect();
+        let columns: Vec<String> = column_names.iter().map(|s| s.to_string()).collect();
         let first_spec = &specs[0];
 
         // Generate visualization output using writer
@@ -468,7 +474,7 @@ async fn query_handler(
                 metadata: QueryMetadata {
                     rows,
                     columns,
-                    viz_type: format!("{:?}", first_spec.viz_type),
+                    global_mapping: format!("{:?}", first_spec.global_mapping),
                     layers: first_spec.layers.len(),
                 },
             };

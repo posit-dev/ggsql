@@ -155,19 +155,17 @@ COPY (
 
 ```{ggsql}
 SELECT x, y FROM 'data.csv'
-VISUALISE AS PLOT
+VISUALISE x, y
 DRAW point
-    MAPPING x AS x, y AS y
 ```
 
 ### Line Chart with Date Scale
 
 ```{ggsql}
 SELECT sale_date, revenue FROM 'sales.csv'
-WHERE category AS 'Electronics'
-VISUALISE AS PLOT
+WHERE category = 'Electronics'
+VISUALISE sale_date AS x, revenue AS y
 DRAW line
-    MAPPING sale_date AS x, revenue AS y
 SCALE x SETTING type TO 'date'
 LABEL title AS 'Electronics Revenue Over Time', x AS 'Date', y AS 'Revenue ($)'
 ```
@@ -178,9 +176,8 @@ LABEL title AS 'Electronics Revenue Over Time', x AS 'Date', y AS 'Revenue ($)'
 SELECT category, SUM(revenue) as total
 FROM 'sales.csv'
 GROUP BY category
-VISUALISE AS PLOT
+VISUALISE category AS x, total AS y, category AS fill
 DRAW bar
-    MAPPING category AS x, total AS y, category AS fill
 LABEL title AS 'Total Revenue by Category', x AS 'Category', y AS 'Total Revenue ($)'
 ```
 
@@ -190,12 +187,9 @@ LABEL title AS 'Total Revenue by Category', x AS 'Category', y AS 'Total Revenue
 
 ```{ggsql}
 SELECT date, value FROM 'timeseries.csv'
-VISUALISE AS PLOT
-DRAW line
-    MAPPING date AS x, value AS y, 'blue' AS color
-DRAW point
-    MAPPING date AS x, value AS y, 'red' AS color
-    SETTING size TO 30
+VISUALISE date AS x, value AS y
+DRAW line MAPPING 'blue' AS color
+DRAW point MAPPING 'red' AS color SETTING size TO 30
 SCALE x SETTING type TO 'date'
 LABEL title AS 'Time Series with Points', x AS 'Date', y AS 'Value'
 ```
@@ -204,9 +198,8 @@ LABEL title AS 'Time Series with Points', x AS 'Date', y AS 'Value'
 
 ```{ggsql}
 SELECT date, value, category FROM 'metrics.csv'
-VISUALISE AS PLOT
+VISUALISE date AS x, value AS y, category AS color
 DRAW line
-    MAPPING date AS x, value AS y, category AS color
 SCALE x SETTING type TO 'date'
 LABEL title AS 'Metrics by Category', x AS 'Date', y AS 'Value'
 ```
@@ -217,10 +210,9 @@ LABEL title AS 'Metrics by Category', x AS 'Date', y AS 'Value'
 
 ```{ggsql}
 SELECT sale_date, revenue, region FROM 'sales.csv'
-WHERE category AS 'Electronics'
-VISUALISE AS PLOT
+WHERE category = 'Electronics'
+VISUALISE sale_date AS x, revenue AS y
 DRAW line
-    MAPPING sale_date AS x, revenue AS y
 SCALE x SETTING type TO 'date'
 FACET WRAP region
 LABEL title AS 'Electronics Sales by Region', x AS 'Date', y AS 'Revenue ($)'
@@ -237,17 +229,11 @@ SELECT
     SUM(quantity) * 100 as total_quantity_scaled
 FROM 'sales.csv'
 GROUP BY DATE_TRUNC('month', sale_date), region, category
-VISUALISE AS PLOT
-DRAW line
-    MAPPING month AS x, total_revenue AS y, 'steelblue' AS color
-DRAW point
-    MAPPING month AS x, total_revenue AS y, 'darkblue' AS color
-    SETTING size TO 30
-DRAW line
-    MAPPING month AS x, total_quantity_scaled AS y, 'coral' AS color
-DRAW point
-    MAPPING month AS x, total_quantity_scaled AS y, 'orangered' AS color
-    SETTING size TO 30
+VISUALISE month AS x
+DRAW line MAPPING total_revenue AS y, 'steelblue' AS color
+DRAW point MAPPING total_revenue AS y, 'darkblue' AS color SETTING size TO 30
+DRAW line MAPPING total_quantity_scaled AS y, 'coral' AS color
+DRAW point MAPPING total_quantity_scaled AS y, 'orangered' AS color SETTING size TO 30
 SCALE x SETTING type TO 'date'
 FACET region BY category
 LABEL title AS 'Monthly Revenue and Quantity by Region and Category', x AS 'Month', y AS 'Value'
@@ -262,9 +248,8 @@ SELECT region, SUM(revenue) as total
 FROM 'sales.csv'
 GROUP BY region
 ORDER BY total DESC
-VISUALISE AS PLOT
+VISUALISE region AS x, total AS y, region AS fill
 DRAW bar
-    MAPPING region AS x, total AS y, region AS fill
 COORD flip
 LABEL title AS 'Total Revenue by Region', x AS 'Region', y AS 'Total Revenue ($)'
 ```
@@ -273,10 +258,8 @@ LABEL title AS 'Total Revenue by Region', x AS 'Region', y AS 'Total Revenue ($)
 
 ```{ggsql}
 SELECT x, y FROM 'data.csv'
-VISUALISE AS PLOT
-DRAW point
-    MAPPING x AS x, y AS y, 'blue' AS color
-    SETTING size TO 4
+VISUALISE x, y
+DRAW point MAPPING 'blue' AS color SETTING size TO 4
 COORD cartesian SETTING xlim TO [0, 60], ylim TO [0, 70]
 LABEL title AS 'Scatter Plot with Custom Axis Limits', x AS 'X', y AS 'Y'
 ```
@@ -287,9 +270,8 @@ LABEL title AS 'Scatter Plot with Custom Axis Limits', x AS 'X', y AS 'Y'
 SELECT category, SUM(revenue) as total
 FROM 'sales.csv'
 GROUP BY category
-VISUALISE AS PLOT
+VISUALISE total AS y, category AS fill
 DRAW bar
-    MAPPING total AS y, category AS fill
 COORD polar
 LABEL title AS 'Revenue Distribution by Category'
 ```
@@ -300,12 +282,9 @@ LABEL title AS 'Revenue Distribution by Category'
 
 ```{ggsql}
 SELECT date, value FROM 'timeseries.csv'
-VISUALISE AS PLOT
-DRAW line 
-    MAPPING date AS x, value AS y, 'blue' AS color
-DRAW point 
-    MAPPING date AS x, value AS y, 'red' AS color, 30 AS size
-    FILTER value < 130
+VISUALISE date AS x, value AS y
+DRAW line MAPPING 'blue' AS color
+DRAW point MAPPING 'red' AS color, 30 AS size FILTER value < 130
 SCALE x SETTING type TO 'date'
 LABEL title AS 'Time Series with Points', x AS 'Date', y AS 'Value'
 ```
@@ -322,11 +301,9 @@ WITH monthly_sales AS (
     FROM 'sales.csv'
     GROUP BY DATE_TRUNC('month', sale_date)
 )
-VISUALISE FROM monthly_sales AS PLOT
+VISUALISE month AS x, total_revenue AS y FROM monthly_sales
 DRAW line
-    MAPPING month AS x, total_revenue AS y
 DRAW point
-    MAPPING month AS x, total_revenue AS y
 SCALE x SETTING type TO 'date'
 LABEL title AS 'Monthly Revenue Trends', x AS 'Month', y AS 'Revenue ($)'
 ```
@@ -344,9 +321,8 @@ regional_totals AS (
     FROM daily_sales
     GROUP BY region
 )
-VISUALISE FROM regional_totals AS PLOT
+VISUALISE region AS x, total AS y, region AS fill FROM regional_totals
 DRAW bar
-    MAPPING region AS x, total AS y, region AS fill
 COORD flip
 LABEL title AS 'Total Revenue by Region', x AS 'Region', y AS 'Total Revenue ($)'
 ```
@@ -366,11 +342,9 @@ FROM 'sales.csv'
 WHERE sale_date >= '2023-01-01'
 GROUP BY sale_date, region
 ORDER BY sale_date
-VISUALISE AS PLOT
+VISUALISE sale_date AS x, total_quantity AS y, region AS color
 DRAW line
-    MAPPING sale_date AS x, total_quantity AS y, region AS color
 DRAW point
-    MAPPING sale_date AS x, total_quantity AS y, region AS color
 SCALE x SETTING type TO 'date'
 FACET WRAP region
 LABEL title AS 'Sales Trends by Region', x AS 'Date', y AS 'Total Quantity'
@@ -385,9 +359,8 @@ SELECT
     SUM(revenue) as total_revenue
 FROM 'sales.csv'
 GROUP BY category, region
-VISUALISE AS PLOT
+VISUALISE category AS x, total_revenue AS y, region AS fill
 DRAW bar
-    MAPPING category AS x, total_revenue AS y, region AS fill
 LABEL title AS 'Revenue by Category and Region', x AS 'Category', y AS 'Revenue ($)'
 ```
 

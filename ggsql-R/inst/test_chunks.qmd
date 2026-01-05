@@ -1,0 +1,21 @@
+---
+title: "Test chunks"
+author: "Test author"
+format: html
+---
+
+```{r}
+library(ggsql)
+test_file <- "test.csv"
+write.csv(mtcars, test_file)
+```
+
+```{ggsql}
+SELECT mpg, disp FROM 'test.csv'
+VISUALISE mpg AS x, disp AS y
+DRAW point
+```
+
+```{r}
+unlink(test_file)
+```
