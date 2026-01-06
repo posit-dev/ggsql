@@ -302,7 +302,7 @@ module.exports = grammar({
 
     parameter_assignment: $ => seq(
       field('param', $.parameter_name),
-      caseInsensitive('TO'),
+      caseInsensitive('=>'),
       field('value', $.parameter_value)
     ),
 
@@ -396,7 +396,7 @@ module.exports = grammar({
 
     scale_property: $ => seq(
       $.scale_property_name,
-      caseInsensitive('TO'),
+      caseInsensitive('=>'),
       $.scale_property_value
     ),
 
@@ -420,14 +420,14 @@ module.exports = grammar({
         $.facet_vars,
         alias(caseInsensitive('BY'), $.facet_by),
         $.facet_vars,
-        optional(seq(caseInsensitive('SETTING'), caseInsensitive('scales'), caseInsensitive('TO'), $.facet_scales))
+        optional(seq(caseInsensitive('SETTING'), caseInsensitive('scales'), caseInsensitive('=>'), $.facet_scales))
       ),
       // FACET WRAP vars
       seq(
         caseInsensitive('FACET'),
         alias(caseInsensitive('WRAP'), $.facet_wrap),
         $.facet_vars,
-        optional(seq(caseInsensitive('SETTING'), caseInsensitive('scales'), caseInsensitive('TO'), $.facet_scales))
+        optional(seq(caseInsensitive('SETTING'), caseInsensitive('scales'), caseInsensitive('=>'), $.facet_scales))
       )
     ),
 
@@ -465,7 +465,7 @@ module.exports = grammar({
 
     coord_property: $ => seq(
       $.coord_property_name,
-      caseInsensitive('TO'),
+      caseInsensitive('=>'),
       choice($.string, $.number, $.boolean, $.array, $.identifier)
     ),
 
@@ -508,8 +508,8 @@ module.exports = grammar({
     ),
 
     guide_property: $ => choice(
-      seq('type', caseInsensitive('TO'), $.guide_type),
-      seq($.guide_property_name, caseInsensitive('TO'), choice($.string, $.number, $.boolean))
+      seq('type', caseInsensitive('=>'), $.guide_type),
+      seq($.guide_property_name, caseInsensitive('=>'), choice($.string, $.number, $.boolean))
     ),
 
     guide_type: $ => choice(
@@ -546,7 +546,7 @@ module.exports = grammar({
 
     theme_property: $ => seq(
       $.theme_property_name,
-      caseInsensitive('TO'),
+      caseInsensitive('=>'),
       choice($.string, $.number, $.boolean)
     ),
 
