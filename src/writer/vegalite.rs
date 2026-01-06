@@ -2834,7 +2834,7 @@ mod tests {
             .with_aesthetic("y".to_string(), AestheticValue::Column("revenue".to_string()));
         spec.layers.push(layer);
 
-        // Create DataFrame with Date type - NO explicit SCALE x SETTING type TO 'date' needed!
+        // Create DataFrame with Date type - NO explicit SCALE x SETTING type => 'date' needed!
         let dates = Series::new("date".into(), &[0i32, 1, 2, 3, 4])
             .cast(&DataType::Date)
             .unwrap();
