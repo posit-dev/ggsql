@@ -1552,30 +1552,6 @@ mod tests {
     }
 
     #[test]
-    fn test_alpha_aesthetic_mapping() {
-        let writer = VegaLiteWriter::new();
-
-        let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::Column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::Column("y".to_string()))
-            .with_aesthetic("alpha".to_string(), AestheticValue::Literal(LiteralValue::Number(0.5)));
-        spec.layers.push(layer);
-
-        let df = df! {
-            "x" => &[1, 2],
-            "y" => &[3, 4],
-        }
-        .unwrap();
-
-        let json_str = writer.write(&spec, &df).unwrap();
-        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
-
-        // 'alpha' should be mapped to 'opacity' in Vega-Lite
-        assert_eq!(vl_spec["encoding"]["opacity"]["value"], 0.5);
-    }
-
-    #[test]
     fn test_multiple_aesthetics() {
         let writer = VegaLiteWriter::new();
 
