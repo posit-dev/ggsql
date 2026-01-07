@@ -26,7 +26,7 @@ let query = r#"
     VISUALISE date AS x, revenue AS y, region AS color
     DRAW line
     LABEL
-        title AS 'Sales by Region'
+        title => 'Sales by Region'
 "#;
 
 let specs = parse_query(query)?;
@@ -219,7 +219,7 @@ mod tests {
             SELECT x, y FROM data
             VISUALISE x, y
             DRAW point
-            LABEL title AS 'Scatter Plot'
+            LABEL title => 'Scatter Plot'
             THEME minimal
             VISUALIZE
             DRAW bar MAPPING x AS x, y AS y
@@ -267,7 +267,7 @@ mod tests {
             DRAW line
             DRAW line MAPPING cost AS y
             SCALE x SETTING type TO 'date'
-            LABEL title AS 'Revenue and Cost Trends'
+            LABEL title => 'Revenue and Cost Trends'
             THEME minimal
             VISUALIZE
             DRAW bar MAPPING date AS x, revenue AS y

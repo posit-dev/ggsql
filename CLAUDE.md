@@ -12,7 +12,7 @@ VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
 SCALE x SETTING type TO 'date'
 COORD cartesian SETTING ylim TO [0, 100000]
-LABEL title AS 'Sales by Region', x AS 'Date', y AS 'Revenue'
+LABEL title => 'Sales by Region', x => 'Date', y => 'Revenue'
 THEME minimal
 ```
 
@@ -709,7 +709,7 @@ SELECT * FROM sales
 VISUALISE
 DRAW line MAPPING date AS x, revenue AS y, region AS color
 SCALE x SETTING type TO 'date'
-LABEL title AS 'Sales Trends'
+LABEL title => 'Sales Trends'
 ```
 
 **Key Implementation Details**:
@@ -852,7 +852,7 @@ Where `<global_mapping>` can be:
 | `SCALE`        | ✅ Yes     | Configure scales   | `SCALE x SETTING type TO 'date'`          |
 | `FACET`        | ❌ No      | Small multiples    | `FACET WRAP region`                  |
 | `COORD`        | ❌ No      | Coordinate system  | `COORD cartesian SETTING xlim TO [0,100]` |
-| `LABEL`        | ❌ No      | Text labels        | `LABEL title AS 'My Chart', x AS 'Date'`   |
+| `LABEL`        | ❌ No      | Text labels        | `LABEL title => 'My Chart', x => 'Date'`   |
 | `GUIDE`        | ✅ Yes     | Legend/axis config | `GUIDE color SETTING position TO 'right'` |
 | `THEME`        | ❌ No      | Visual styling     | `THEME minimal`                      |
 
@@ -1086,7 +1086,7 @@ COORD polar SETTING theta TO y
 -- Combined with other clauses
 DRAW bar MAPPING category AS x, value AS y
 COORD cartesian SETTING xlim TO [0, 100], ylim TO [0, 200]
-LABEL x AS 'Category', y AS 'Count'
+LABEL x => 'Category', y => 'Count'
 ```
 
 **Breaking Change**: The COORD syntax changed from `COORD SETTING type TO 'cartesian'` to `COORD cartesian`. Queries using the old syntax will need to be updated.
@@ -1097,13 +1097,13 @@ LABEL x AS 'Category', y AS 'Count'
 
 ```sql
 LABEL
-  [title = <string>]
-  [subtitle = <string>]
-  [x = <string>]
-  [y = <string>]
-  [<aesthetic> = <string>]
-  [caption = <string>]
-  [tag = <string>]
+  [title => <string>]
+  [subtitle => <string>]
+  [x => <string>]
+  [y => <string>]
+  [<aesthetic> => <string>]
+  [caption => <string>]
+  [tag => <string>]
 ```
 
 **Example**:
@@ -1152,7 +1152,7 @@ DRAW point
     MAPPING sale_date AS x, total AS y, region AS color
 SCALE x SETTING type TO 'date'
 FACET WRAP region
-LABEL title AS 'Sales Trends by Region', x AS 'Date', y AS 'Total Quantity'
+LABEL title => 'Sales Trends by Region', x => 'Date', y => 'Total Quantity'
 THEME minimal
 ```
 

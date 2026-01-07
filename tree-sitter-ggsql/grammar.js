@@ -475,7 +475,7 @@ module.exports = grammar({
 
     label_assignment: $ => seq(
       $.label_type,
-      caseInsensitive('AS'),
+      '=>',
       $.string
     ),
 

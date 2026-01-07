@@ -12,7 +12,7 @@ FROM sales
 WHERE year = 2024
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
-LABEL title AS 'Sales by Region'
+LABEL title => 'Sales by Region'
 THEME minimal
 ```
 
@@ -244,7 +244,7 @@ SELECT * FROM sales
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
 SCALE x SETTING type TO 'date'
-LABEL title AS 'Sales Trends'
+LABEL title => 'Sales Trends'
 ```
 
 The kernel maintains a persistent DuckDB session across cells, so you can create tables in one cell and query them in another.

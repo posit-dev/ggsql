@@ -293,7 +293,7 @@ DRAW point MAPPING x AS x FILTER a = 1 OR b = 2
 DRAW with all clauses
 ================================================================================
 
-VISUALISE AS PLOT
+VISUALISE
 DRAW point MAPPING x AS x, y AS y SETTING opacity TO 0.5 FILTER year > 2020
 
 --------------------------------------------------------------------------------
@@ -440,7 +440,7 @@ Plot with labels
 
 VISUALISE x, y
 DRAW point
-LABEL title AS 'My Plot', x AS 'X Axis', y AS 'Y Axis'
+LABEL title => 'My Plot', x => 'X Axis', y => 'Y Axis'
 
 --------------------------------------------------------------------------------
 
