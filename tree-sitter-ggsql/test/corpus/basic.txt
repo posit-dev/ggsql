@@ -162,7 +162,7 @@ DRAW with SETTING clause
 ================================================================================
 
 VISUALISE x, y
-DRAW point SETTING opacity TO 0.5, size TO 3
+DRAW point SETTING alpha TO 0.5, size TO 3
 
 --------------------------------------------------------------------------------
 
@@ -294,7 +294,7 @@ DRAW with all clauses
 ================================================================================
 
 VISUALISE
-DRAW point MAPPING x AS x, y AS y SETTING opacity TO 0.5 FILTER year > 2020
+DRAW point MAPPING x AS x, y AS y SETTING alpha TO 0.5 FILTER year > 2020
 
 --------------------------------------------------------------------------------
 
@@ -772,7 +772,7 @@ PARTITION BY with SETTING and FILTER
 ================================================================================
 
 VISUALISE x AS x, y AS y
-DRAW line SETTING opacity TO 0.5 PARTITION BY category FILTER year > 2020
+DRAW line SETTING alpha TO 0.5 PARTITION BY category FILTER year > 2020
 
 --------------------------------------------------------------------------------
 

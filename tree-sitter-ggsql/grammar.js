@@ -401,7 +401,7 @@ module.exports = grammar({
       $.literal_value
     ),
 
-    // SETTING clause for parameters: SETTING opacity TO 0.5, size TO 3
+    // SETTING clause for parameters: SETTING alpha TO 0.5, size TO 3
     setting_clause: $ => seq(
       caseInsensitive('SETTING'),
       $.parameter_assignment,

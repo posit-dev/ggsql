@@ -895,7 +895,7 @@ Maps data values (columns or literals) to visual aesthetics. Syntax: `value AS a
 
 Sets layer/geom parameters (not mapped to data). Syntax: `param TO value`
 
-- Parameters like `opacity`, `size` (fixed), `stroke_width`, etc.
+- Parameters like `alpha`, `size` (fixed), `stroke_width`, etc.
 
 **PARTITION BY Clause** (Grouping):
 
@@ -926,7 +926,7 @@ DRAW point
 -- Setting parameters
 DRAW point
     MAPPING x AS x, y AS y
-    SETTING size TO 5, opacity TO 0.7
+    SETTING size TO 5, alpha TO 0.7
 
 -- With filter
 DRAW point
