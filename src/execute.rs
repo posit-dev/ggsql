@@ -919,4 +919,150 @@ mod tests {
         assert_eq!(result.data.get("__layer_1__").unwrap().height(), 2);
         assert_eq!(result.data.get("__layer_2__").unwrap().height(), 2);
     }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_cte_chain_dependencies() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // CTE b references CTE a - tests that transform_cte_references works during materialization
+        let query = r#"
+            WITH
+                raw_data AS (
+                    SELECT 1 as id, 100 as value
+                    UNION ALL SELECT 2, 200
+                    UNION ALL SELECT 3, 300
+                ),
+                filtered AS (
+                    SELECT * FROM raw_data WHERE value > 150
+                ),
+                aggregated AS (
+                    SELECT COUNT(*) as cnt, SUM(value) as total FROM filtered
+                )
+            VISUALISE
+            DRAW point MAPPING cnt AS x, total AS y FROM aggregated
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Should have layer 0 data from aggregated CTE
+        assert!(result.data.contains_key("__layer_0__"));
+        let layer_df = result.data.get("__layer_0__").unwrap();
+        assert_eq!(layer_df.height(), 1);  // Single aggregated row
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_visualise_from_cte() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // WITH clause with VISUALISE FROM (parser injects SELECT * FROM monthly)
+        let query = r#"
+            WITH monthly AS (
+                SELECT 1 as month, 1000 as revenue
+                UNION ALL SELECT 2, 1200
+                UNION ALL SELECT 3, 1100
+            )
+            VISUALISE month AS x, revenue AS y FROM monthly
+            DRAW line
+            DRAW point
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // VISUALISE FROM causes SELECT injection, so we have global data
+        assert!(result.data.contains_key("__global__"));
+        // Layers without their own FROM use global directly (no separate entry)
+        assert!(!result.data.contains_key("__layer_0__"));
+        assert!(!result.data.contains_key("__layer_1__"));
+
+        // Global should have 3 rows
+        assert_eq!(result.data.get("__global__").unwrap().height(), 3);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_multiple_ctes_no_global_select() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // WITH clause without trailing SELECT - each layer uses its own CTE
+        let query = r#"
+            WITH
+                series_a AS (SELECT 1 as x, 10 as y UNION ALL SELECT 2, 20),
+                series_b AS (SELECT 1 as x, 15 as y UNION ALL SELECT 2, 25)
+            VISUALISE
+            DRAW line MAPPING x AS x, y AS y FROM series_a
+            DRAW point MAPPING x AS x, y AS y FROM series_b
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // No global data since no trailing SELECT
+        assert!(!result.data.contains_key("__global__"));
+        // Each layer has its own data
+        assert!(result.data.contains_key("__layer_0__"));
+        assert!(result.data.contains_key("__layer_1__"));
+
+        assert_eq!(result.data.get("__layer_0__").unwrap().height(), 2);
+        assert_eq!(result.data.get("__layer_1__").unwrap().height(), 2);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_layer_from_cte_mixed_with_global() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // First layer uses global data, second layer uses CTE
+        let query = r#"
+            WITH targets AS (
+                SELECT 1 as x, 50 as target
+                UNION ALL SELECT 2, 60
+            )
+            SELECT 1 as x, 100 as actual
+            UNION ALL SELECT 2, 120
+            VISUALISE
+            DRAW line MAPPING x AS x, actual AS y
+            DRAW point MAPPING x AS x, target AS y FROM targets
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Global from SELECT, layer 1 from CTE
+        assert!(result.data.contains_key("__global__"));
+        assert!(result.data.contains_key("__layer_1__"));
+        // Layer 0 has no entry (uses global directly)
+        assert!(!result.data.contains_key("__layer_0__"));
+
+        assert_eq!(result.data.get("__global__").unwrap().height(), 2);
+        assert_eq!(result.data.get("__layer_1__").unwrap().height(), 2);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_cte_with_complex_filter_expression() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Test complex filter expressions work correctly with temp tables
+        let query = r#"
+            WITH data AS (
+                SELECT 1 as x, 10 as y, 'A' as cat, true as active
+                UNION ALL SELECT 2, 20, 'B', true
+                UNION ALL SELECT 3, 30, 'A', false
+                UNION ALL SELECT 4, 40, 'B', false
+                UNION ALL SELECT 5, 50, 'A', true
+            )
+            SELECT * FROM data
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            DRAW point MAPPING x AS x, y AS y FROM data FILTER cat = 'A' AND active = true
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Global should have all 5 rows
+        assert_eq!(result.data.get("__global__").unwrap().height(), 5);
+
+        // Layer 1 should have 2 rows (cat='A' AND active=true)
+        assert_eq!(result.data.get("__layer_1__").unwrap().height(), 2);
+    }
 }
