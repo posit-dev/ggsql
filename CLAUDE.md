@@ -1121,7 +1121,6 @@ COORD cartesian SETTING xlim => [0, 100], ylim => [0, 200]
 LABEL x = 'Category', y = 'Count'
 ```
 
-**Breaking Change**: The COORD syntax changed from `COORD SETTING type => 'cartesian'` to `COORD cartesian`. Queries using the old syntax will need to be updated.
 
 ### LABEL Clause
 
