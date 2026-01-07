@@ -554,6 +554,18 @@ impl VegaLiteWriter {
                     }
                 }
             }
+
+            // Check partition_by columns
+            for col in &layer.partition_by {
+                if !available_columns.contains(col) {
+                    return Err(GgsqlError::ValidationError(format!(
+                        "Column '{}' referenced in PARTITION BY (layer {}) does not exist in the query result.\nAvailable columns: {}",
+                        col,
+                        layer_idx + 1,
+                        available_columns.join(", ")
+                    )));
+                }
+            }
         }
 
         // Check facet variables
@@ -934,9 +946,33 @@ impl VegaLiteWriter {
             "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend" |
             "color" | "colour" | "fill" | "alpha" |
             "size" | "shape" | "linetype" | "linewidth" | "width" | "height" |
-            "label" | "family" | "fontface" | "hjust" | "vjust" |
-            "group"
+            "label" | "family" | "fontface" | "hjust" | "vjust"
         )
+    }
+
+    /// Build detail encoding from partition_by columns
+    /// Maps partition_by columns to Vega-Lite's detail channel for grouping
+    fn build_detail_encoding(&self, partition_by: &[String]) -> Option<Value> {
+        if partition_by.is_empty() {
+            return None;
+        }
+
+        if partition_by.len() == 1 {
+            // Single column: simple object
+            Some(json!({
+                "field": partition_by[0],
+                "type": "nominal"
+            }))
+        } else {
+            // Multiple columns: array of detail specifications
+            let details: Vec<Value> = partition_by.iter()
+                .map(|col| json!({
+                    "field": col,
+                    "type": "nominal"
+                }))
+                .collect();
+            Some(json!(details))
+        }
     }
 }
 
@@ -976,6 +1012,11 @@ impl Writer for VegaLiteWriter {
                 let channel_name = self.map_aesthetic_name(aesthetic);
                 let channel_encoding = self.build_encoding_channel(aesthetic, value, data, spec)?;
                 encoding.insert(channel_name, channel_encoding);
+            }
+
+            // Add detail encoding for partition_by columns (grouping)
+            if let Some(detail) = self.build_detail_encoding(&layer.partition_by) {
+                encoding.insert("detail".to_string(), detail);
             }
 
             // Override axis titles from labels if present
@@ -1018,6 +1059,11 @@ impl Writer for VegaLiteWriter {
                     let channel_name = self.map_aesthetic_name(aesthetic);
                     let channel_encoding = self.build_encoding_channel(aesthetic, value, data, spec)?;
                     encoding.insert(channel_name, channel_encoding);
+                }
+
+                // Add detail encoding for partition_by columns (grouping)
+                if let Some(detail) = self.build_detail_encoding(&layer.partition_by) {
+                    encoding.insert("detail".to_string(), detail);
                 }
 
                 // Override axis titles from labels if present (apply to each layer)
@@ -2788,7 +2834,7 @@ mod tests {
             .with_aesthetic("y".to_string(), AestheticValue::Column("revenue".to_string()));
         spec.layers.push(layer);
 
-        // Create DataFrame with Date type - NO explicit SCALE x SETTING type TO 'date' needed!
+        // Create DataFrame with Date type - NO explicit SCALE x SETTING type => 'date' needed!
         let dates = Series::new("date".into(), &[0i32, 1, 2, 3, 4])
             .cast(&DataType::Date)
             .unwrap();
@@ -2838,5 +2884,115 @@ mod tests {
         assert_eq!(data_values[0]["timestamp"], "1970-01-01T00:00:00.000Z");
         assert_eq!(data_values[1]["timestamp"], "1970-01-02T00:00:00.000Z");
         assert_eq!(data_values[2]["timestamp"], "1970-01-03T00:00:00.000Z");
+    }
+
+    // ========================================
+    // PARTITION BY Tests
+    // ========================================
+
+    #[test]
+    fn test_partition_by_single_column_generates_detail() {
+        use polars::prelude::*;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = VizSpec::new();
+        let layer = Layer::new(Geom::Line)
+            .with_aesthetic("x".to_string(), AestheticValue::Column("date".to_string()))
+            .with_aesthetic("y".to_string(), AestheticValue::Column("value".to_string()))
+            .with_partition_by(vec!["category".to_string()]);
+        spec.layers.push(layer);
+
+        let dates = Series::new("date".into(), &["2024-01-01", "2024-01-02", "2024-01-03"]);
+        let values = Series::new("value".into(), &[100, 120, 110]);
+        let categories = Series::new("category".into(), &["A", "A", "B"]);
+        let df = DataFrame::new(vec![dates, values, categories]).unwrap();
+
+        let json_str = writer.write(&spec, &df).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Should have detail encoding with the partition_by column
+        assert!(vl_spec["encoding"]["detail"].is_object());
+        assert_eq!(vl_spec["encoding"]["detail"]["field"], "category");
+        assert_eq!(vl_spec["encoding"]["detail"]["type"], "nominal");
+    }
+
+    #[test]
+    fn test_partition_by_multiple_columns_generates_detail_array() {
+        use polars::prelude::*;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = VizSpec::new();
+        let layer = Layer::new(Geom::Line)
+            .with_aesthetic("x".to_string(), AestheticValue::Column("date".to_string()))
+            .with_aesthetic("y".to_string(), AestheticValue::Column("value".to_string()))
+            .with_partition_by(vec!["category".to_string(), "region".to_string()]);
+        spec.layers.push(layer);
+
+        let dates = Series::new("date".into(), &["2024-01-01", "2024-01-02"]);
+        let values = Series::new("value".into(), &[100, 120]);
+        let categories = Series::new("category".into(), &["A", "B"]);
+        let regions = Series::new("region".into(), &["North", "South"]);
+        let df = DataFrame::new(vec![dates, values, categories, regions]).unwrap();
+
+        let json_str = writer.write(&spec, &df).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Should have detail encoding as an array
+        assert!(vl_spec["encoding"]["detail"].is_array());
+        let details = vl_spec["encoding"]["detail"].as_array().unwrap();
+        assert_eq!(details.len(), 2);
+        assert_eq!(details[0]["field"], "category");
+        assert_eq!(details[0]["type"], "nominal");
+        assert_eq!(details[1]["field"], "region");
+        assert_eq!(details[1]["type"], "nominal");
+    }
+
+    #[test]
+    fn test_no_partition_by_no_detail() {
+        use polars::prelude::*;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = VizSpec::new();
+        let layer = Layer::new(Geom::Line)
+            .with_aesthetic("x".to_string(), AestheticValue::Column("date".to_string()))
+            .with_aesthetic("y".to_string(), AestheticValue::Column("value".to_string()));
+        spec.layers.push(layer);
+
+        let dates = Series::new("date".into(), &["2024-01-01", "2024-01-02"]);
+        let values = Series::new("value".into(), &[100, 120]);
+        let df = DataFrame::new(vec![dates, values]).unwrap();
+
+        let json_str = writer.write(&spec, &df).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Should NOT have detail encoding
+        assert!(vl_spec["encoding"]["detail"].is_null());
+    }
+
+    #[test]
+    fn test_partition_by_validation_missing_column() {
+        use polars::prelude::*;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = VizSpec::new();
+        let layer = Layer::new(Geom::Line)
+            .with_aesthetic("x".to_string(), AestheticValue::Column("date".to_string()))
+            .with_aesthetic("y".to_string(), AestheticValue::Column("value".to_string()))
+            .with_partition_by(vec!["nonexistent_column".to_string()]);
+        spec.layers.push(layer);
+
+        let dates = Series::new("date".into(), &["2024-01-01", "2024-01-02"]);
+        let values = Series::new("value".into(), &[100, 120]);
+        let df = DataFrame::new(vec![dates, values]).unwrap();
+
+        let result = writer.write(&spec, &df);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("nonexistent_column"));
+        assert!(err.contains("PARTITION BY"));
     }
 }

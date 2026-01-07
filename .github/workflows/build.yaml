@@ -34,9 +34,13 @@ jobs:
         working-directory: tree-sitter-ggsql
         run: tree-sitter generate
 
+      - name: Run tree-sitter tests
+        working-directory: tree-sitter-ggsql
+        run: tree-sitter test
+
       - name: Build with cargo
         run: cargo build --verbose
 
-      - name: Run tests
+      - name: Run Rust tests
         if: success()
         run: cargo test --verbose

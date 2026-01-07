@@ -93,7 +93,7 @@ DRAW line
 SELECT sale_date, revenue FROM sales
 VISUALISE sale_date AS x, revenue AS y
 DRAW line
-SCALE x SETTING type TO 'date'
+SCALE x SETTING type => 'date'
 ```
 
 ### Logarithmic Scale
@@ -102,7 +102,7 @@ SCALE x SETTING type TO 'date'
 SELECT x, y FROM exponential_data
 VISUALISE x, y
 DRAW point
-SCALE y SETTING type TO 'log10'
+SCALE y SETTING type => 'log10'
 ```
 
 ### Color Palette
@@ -111,7 +111,7 @@ SCALE y SETTING type TO 'log10'
 SELECT date, temperature, station FROM weather
 VISUALISE date AS x, temperature AS y, station AS color
 DRAW line
-SCALE color SETTING palette TO 'viridis'
+SCALE color SETTING palette => 'viridis'
 ```
 
 ### Custom Domain
@@ -120,7 +120,7 @@ SCALE color SETTING palette TO 'viridis'
 SELECT category, value FROM data
 VISUALISE category AS x, value AS y, category AS fill
 DRAW bar
-SCALE fill SETTING domain TO ['A', 'B', 'C', 'D']
+SCALE fill SETTING domain => ['A', 'B', 'C', 'D']
 ```
 
 ---
@@ -133,7 +133,7 @@ SCALE fill SETTING domain TO ['A', 'B', 'C', 'D']
 SELECT x, y FROM data
 VISUALISE x, y
 DRAW point
-COORD cartesian SETTING xlim TO [0, 100], ylim TO [0, 50]
+COORD cartesian SETTING xlim => [0, 100], ylim => [0, 50]
 ```
 
 ### Flipped Coordinates (Horizontal Bar Chart)
@@ -162,7 +162,7 @@ COORD polar
 SELECT category, value FROM data
 VISUALISE category AS x, value AS y
 DRAW bar
-COORD polar SETTING theta TO y
+COORD polar SETTING theta => y
 ```
 
 ---
@@ -208,7 +208,7 @@ THEME minimal
 SELECT x, y FROM data
 VISUALISE x, y
 DRAW point
-THEME dark SETTING background TO '#1a1a1a'
+THEME dark SETTING background => '#1a1a1a'
 ```
 
 ---
@@ -239,7 +239,7 @@ FACET region BY product
 SELECT date, value, category FROM metrics
 VISUALISE date AS x, value AS y
 DRAW line
-FACET WRAP category SETTING scales TO 'free_y'
+FACET WRAP category SETTING scales => 'free_y'
 ```
 
 ---
@@ -265,7 +265,7 @@ WITH monthly_sales AS (
 )
 VISUALISE month AS x, total_revenue AS y FROM monthly_sales
 DRAW line
-SCALE x SETTING type TO 'date'
+SCALE x SETTING type => 'date'
 LABEL title => 'Monthly Revenue Trends',
       x => 'Month',
       y => 'Revenue ($)'
@@ -287,7 +287,7 @@ WITH monthly_sales AS (
 SELECT * FROM monthly_sales WHERE region = 'North'
 VISUALISE month AS x, total_revenue AS y
 DRAW line
-SCALE x SETTING type TO 'date'
+SCALE x SETTING type => 'date'
 ```
 
 ### Multiple CTEs
@@ -351,7 +351,7 @@ WITH RECURSIVE series AS (
 VISUALISE n AS x, value AS y FROM series
 DRAW line
 DRAW point
-SCALE y SETTING type TO 'log10'
+SCALE y SETTING type => 'log10'
 LABEL title => 'Exponential Growth',
       x => 'Step',
       y => 'Value (log scale)'
@@ -373,7 +373,7 @@ WITH ranked_products AS (
 SELECT * FROM ranked_products WHERE rank <= 5
 VISUALISE product_name AS x, revenue AS y, category AS color
 DRAW bar
-FACET WRAP category SETTING scales TO 'free_x'
+FACET WRAP category SETTING scales => 'free_x'
 COORD flip
 LABEL title => 'Top 5 Products per Category',
       x => 'Product',
@@ -398,11 +398,11 @@ WITH daily_metrics AS (
 VISUALISE day AS x FROM daily_metrics
 DRAW ribbon
     MAPPING min_temp AS ymin, max_temp AS ymax, 'lightblue' AS fill
-    SETTING alpha TO 0.3
+    SETTING alpha => 0.3
 DRAW line
     MAPPING avg_temp AS y, 'blue' AS color
-    SETTING size TO 2
-SCALE x SETTING type TO 'date'
+    SETTING size => 2
+SCALE x SETTING type => 'date'
 LABEL title => 'Temperature Range (Last 30 Days)',
       x => 'Date',
       y => 'Temperature (°C)'
@@ -449,7 +449,7 @@ ORDER BY sale_date
 VISUALISE sale_date AS x, total_quantity AS y, region AS color
 DRAW line
 DRAW point
-SCALE x SETTING type TO 'date'
+SCALE x SETTING type => 'date'
 FACET WRAP region
 LABEL title => 'Sales Trends by Region',
       x => 'Date',
@@ -469,8 +469,8 @@ FROM weather_data
 WHERE timestamp >= NOW() - INTERVAL '7 days'
 VISUALISE timestamp AS x, temperature AS y, station AS color, station AS linetype
 DRAW line
-SCALE x SETTING type TO 'datetime'
-SCALE color SETTING palette TO 'viridis'
+SCALE x SETTING type => 'datetime'
+SCALE color SETTING palette => 'viridis'
 LABEL title => 'Temperature Trends',
       x => 'Time',
       y => 'Temperature (°C)'
@@ -488,7 +488,7 @@ ORDER BY total_revenue DESC
 LIMIT 10
 VISUALISE product_name AS x, total_revenue AS y, product_name AS fill
 DRAW bar
-COORD flip SETTING color TO ['red', 'orange', 'yellow', 'green', 'blue',
+COORD flip SETTING color => ['red', 'orange', 'yellow', 'green', 'blue',
                           'indigo', 'violet', 'pink', 'brown', 'gray']
 LABEL title => 'Top 10 Products by Revenue',
       x => 'Product',
@@ -507,10 +507,10 @@ FROM measurements
 WHERE category IN ('A', 'B', 'C')
 VISUALISE date AS x, value AS y, category AS color, value AS size
 DRAW point
-SCALE x SETTING type TO 'date'
-SCALE color SETTING domain TO ['A', 'B', 'C']
-SCALE size SETTING limits TO [0, 100]
-COORD cartesian SETTING ylim TO [0, 150]
+SCALE x SETTING type => 'date'
+SCALE color SETTING domain => ['A', 'B', 'C']
+SCALE size SETTING limits => [0, 100]
+COORD cartesian SETTING ylim => [0, 150]
 LABEL title => 'Measurement Distribution',
       x => 'Date',
       y => 'Value'
@@ -526,10 +526,10 @@ SELECT
     label
 FROM data_points
 VISUALISE x, y, category AS color
-DRAW point SETTING size TO 5
+DRAW point SETTING size => 5
 DRAW text MAPPING label AS label
-SCALE color SETTING palette TO 'viridis'
-COORD cartesian SETTING xlim TO [0, 100], ylim TO [0, 100]
+SCALE color SETTING palette => 'viridis'
+COORD cartesian SETTING xlim => [0, 100], ylim => [0, 100]
 LABEL title => 'Annotated Scatter Plot',
       x => 'X Axis',
       y => 'Y Axis'
@@ -545,7 +545,7 @@ GROUP BY cyl
 ORDER BY cyl
 VISUALISE cyl AS x, vehicle_count AS y
 DRAW bar
-SCALE x SETTING domain TO [4, 6, 8]
+SCALE x SETTING domain => [4, 6, 8]
 LABEL title => 'Distribution of Vehicles by Number of Cylinders',
       x => 'Number of Cylinders',
       y => 'Number of Vehicles'
@@ -626,11 +626,11 @@ Draw Line
 
 1. **Use Global Mappings**: Prefer global mappings (`VISUALISE date AS x, revenue AS y`) over per-layer mappings when aesthetics are shared across layers.
 
-2. **Date Handling**: Always use `SCALE x SETTING type TO 'date'` for date columns to ensure proper axis formatting.
+2. **Date Handling**: Always use `SCALE x SETTING type => 'date'` for date columns to ensure proper axis formatting.
 
 3. **Color Mappings**: Use `color` for continuous data and `fill` for categorical data in bars/areas.
 
-4. **Coordinate Limits**: Set explicit limits with `COORD cartesian SETTING xlim TO [min, max]` to control axis ranges.
+4. **Coordinate Limits**: Set explicit limits with `COORD cartesian SETTING xlim => [min, max]` to control axis ranges.
 
 5. **Faceting**: Use faceting to create small multiples when comparing across categories.
 

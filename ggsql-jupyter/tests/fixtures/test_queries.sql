@@ -38,8 +38,8 @@ SELECT
 FROM generate_series(0, 30) as t(n)
 VISUALISE date AS x, value AS y, category AS color
 DRAW line
-SCALE x SETTING type TO 'date'
-LABEL title AS 'Time Series', x AS 'Date', y AS 'Value';
+SCALE x SETTING type => 'date'
+LABEL title => 'Time Series', x => 'Date', y => 'Value';
 
 -- Bar chart with global mapping
 SELECT
@@ -77,8 +77,8 @@ SELECT
   n * n as y
 FROM generate_series(1, 10) as t(n)
 VISUALISE x, y
-DRAW point SETTING size TO 10, opacity TO 0.5
-LABEL title AS 'Points with Parameters';
+DRAW point SETTING size => 10, opacity => 0.5
+LABEL title => 'Points with Parameters';
 
 -- Error case: invalid table
 SELECT * FROM nonexistent_table;

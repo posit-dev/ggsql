@@ -134,7 +134,7 @@ SELECT
 FROM generate_series(0, 30) as t(n)
 VISUALISE date AS x, revenue AS y
 DRAW line
-SCALE x SETTING type TO 'date'
+SCALE x SETTING type => 'date'
 LABEL title => 'Revenue Growth', x => 'Date', y => 'Revenue ($)'
 ```
 

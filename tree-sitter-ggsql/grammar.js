@@ -58,17 +58,18 @@ module.exports = grammar({
     )),
 
     select_body: $ => prec.left(repeat1(choice(
+      $.window_function,  // Window functions like ROW_NUMBER() OVER (...)
+      $.function_call,    // Regular function calls like COUNT(), SUM()
       $.sql_keyword,
       $.string,
       $.number,
-      ',', '*', '.', '=', '<', '>', '!',
+      ',', '*', '.', '=', '<', '>', '!', '+', '-', '/', '%', '|', '&', '^', '~',
       $.subquery,
-      token(/[^\s;(),'"VvWwSsCcIiUuDd]+/),  // Other SQL tokens, excluding keyword start letters
       $.identifier
     ))),
 
     // WITH statement (CTEs) - WITH must be followed by SELECT
-    with_statement: $ => prec(2, seq(
+    with_statement: $ => prec.right(2, seq(
       caseInsensitive('WITH'),
       optional(caseInsensitive('RECURSIVE')),
       $.cte_definition,
@@ -80,7 +81,10 @@ module.exports = grammar({
       $.identifier,
       caseInsensitive('AS'),
       '(',
-      $.select_statement,
+      choice(
+        $.with_statement,    // Allow nested CTEs
+        $.select_statement
+      ),
       ')'
     ),
 
@@ -159,6 +163,9 @@ module.exports = grammar({
     subquery: $ => prec(1, seq(
       '(',
       repeat1(choice(
+        $.window_function,   // Window functions inside subqueries
+        $.function_call,     // Function calls inside subqueries
+        $.with_statement,    // Allow nested CTEs
         $.select_statement,
         $.sql_keyword,
         $.string,
@@ -171,6 +178,15 @@ module.exports = grammar({
       ')'
     )),
 
+    // Function call with parentheses (can be empty like ROW_NUMBER())
+    // Used in window functions and general SQL
+    function_call: $ => prec(2, seq(
+      $.identifier,
+      '(',
+      optional($.function_args),
+      ')'
+    )),
+
     // Common SQL keywords (to help parser recognize structure)
     sql_keyword: $ => choice(
       caseInsensitive('FROM'),
@@ -180,6 +196,10 @@ module.exports = grammar({
       caseInsensitive('RIGHT'),
       caseInsensitive('INNER'),
       caseInsensitive('OUTER'),
+      caseInsensitive('LATERAL'),
+      caseInsensitive('CROSS'),
+      caseInsensitive('NATURAL'),
+      caseInsensitive('FULL'),
       caseInsensitive('ON'),
       caseInsensitive('AND'),
       caseInsensitive('OR'),
@@ -207,7 +227,95 @@ module.exports = grammar({
       caseInsensitive('VIEW'),
       caseInsensitive('INDEX'),
       caseInsensitive('DATABASE'),
-      caseInsensitive('SCHEMA')
+      caseInsensitive('SCHEMA'),
+      caseInsensitive('OVER'),
+      caseInsensitive('ROWS'),
+      caseInsensitive('RANGE'),
+      caseInsensitive('UNBOUNDED'),
+      caseInsensitive('PRECEDING'),
+      caseInsensitive('FOLLOWING'),
+      caseInsensitive('CURRENT'),
+      caseInsensitive('ROW'),
+      caseInsensitive('NULLS'),
+      caseInsensitive('FIRST'),
+      caseInsensitive('LAST')
+    ),
+
+    // Window function: func() OVER (PARTITION BY ... ORDER BY ... frame)
+    // Higher precedence to match before generic function_call
+    window_function: $ => prec(4, seq(
+      field('function', $.identifier),
+      '(',
+      optional($.function_args),
+      ')',
+      caseInsensitive('OVER'),
+      $.window_specification
+    )),
+
+    function_args: $ => seq(
+      $.function_arg,
+      repeat(seq(',', $.function_arg))
+    ),
+
+    // Function argument: positional or named
+    function_arg: $ => choice(
+      $.named_arg,
+      $.positional_arg
+    ),
+
+    named_arg: $ => seq(
+      field('name', $.identifier),
+      choice(':=', '=>'),
+      field('value', $.positional_arg)
+    ),
+
+    positional_arg: $ => choice(
+      $.identifier,
+      $.number,
+      $.string,
+      '*'
+    ),
+
+    window_specification: $ => seq(
+      '(',
+      optional($.window_partition_clause),
+      optional($.window_order_clause),
+      optional($.frame_clause),
+      ')'
+    ),
+
+    window_partition_clause: $ => seq(
+      caseInsensitive('PARTITION'),
+      caseInsensitive('BY'),
+      $.identifier,
+      repeat(seq(',', $.identifier))
+    ),
+
+    window_order_clause: $ => seq(
+      caseInsensitive('ORDER'),
+      caseInsensitive('BY'),
+      $.order_item,
+      repeat(seq(',', $.order_item))
+    ),
+
+    order_item: $ => seq(
+      $.identifier,
+      optional(choice(caseInsensitive('ASC'), caseInsensitive('DESC'))),
+      optional(seq(caseInsensitive('NULLS'), choice(caseInsensitive('FIRST'), caseInsensitive('LAST'))))
+    ),
+
+    frame_clause: $ => seq(
+      choice(caseInsensitive('ROWS'), caseInsensitive('RANGE')),
+      choice(
+        seq(caseInsensitive('BETWEEN'), $.frame_bound, caseInsensitive('AND'), $.frame_bound),
+        $.frame_bound
+      )
+    ),
+
+    frame_bound: $ => choice(
+      seq(caseInsensitive('UNBOUNDED'), choice(caseInsensitive('PRECEDING'), caseInsensitive('FOLLOWING'))),
+      seq(caseInsensitive('CURRENT'), caseInsensitive('ROW')),
+      seq($.number, choice(caseInsensitive('PRECEDING'), caseInsensitive('FOLLOWING')))
     ),
 
     // VISUALISE/VISUALIZE [global_mapping] [FROM source] with clauses
@@ -259,12 +367,13 @@ module.exports = grammar({
       $.theme_clause,
     ),
 
-    // DRAW clause - syntax: DRAW geom [MAPPING ...] [SETTING ...] [FILTER ...]
+    // DRAW clause - syntax: DRAW geom [MAPPING ...] [SETTING ...] [PARTITION BY ...] [FILTER ...]
     draw_clause: $ => seq(
       caseInsensitive('DRAW'),
       $.geom_type,
       optional($.mapping_clause),
       optional($.setting_clause),
+      optional($.partition_clause),
       optional($.filter_clause)
     ),
 
@@ -292,7 +401,7 @@ module.exports = grammar({
       $.literal_value
     ),
 
-    // SETTING clause for parameters: SETTING opacity TO 0.5, size TO 3
+    // SETTING clause for parameters: SETTING opacity => 0.5, size => 3
     setting_clause: $ => seq(
       caseInsensitive('SETTING'),
       $.parameter_assignment,
@@ -301,7 +410,7 @@ module.exports = grammar({
 
     parameter_assignment: $ => seq(
       field('param', $.parameter_name),
-      caseInsensitive('TO'),
+      '=>',
       field('value', $.parameter_value)
     ),
 
@@ -311,6 +420,18 @@ module.exports = grammar({
       $.string,
       $.number,
       $.boolean
+    ),
+
+    // PARTITION BY clause for grouping: PARTITION BY category, region
+    partition_clause: $ => seq(
+      caseInsensitive('PARTITION'),
+      caseInsensitive('BY'),
+      $.partition_columns
+    ),
+
+    partition_columns: $ => seq(
+      $.identifier,
+      repeat(seq(',', $.identifier))
     ),
 
     // FILTER clause for layer filtering: FILTER x > 10 AND y < 20
@@ -359,9 +480,7 @@ module.exports = grammar({
       // Size and shape
       'size', 'shape', 'linetype', 'linewidth', 'width', 'height',
       // Text aesthetics
-      'label', 'family', 'fontface', 'hjust', 'vjust',
-      // Grouping
-      'group'
+      'label', 'family', 'fontface', 'hjust', 'vjust'
     ),
 
     column_reference: $ => $.identifier,
@@ -372,7 +491,7 @@ module.exports = grammar({
       $.boolean
     ),
 
-    // SCALE clause - SCALE aesthetic SETTING prop TO value, ...
+    // SCALE clause - SCALE aesthetic SETTING prop => value, ...
     scale_clause: $ => seq(
       caseInsensitive('SCALE'),
       $.aesthetic_name,
@@ -385,7 +504,7 @@ module.exports = grammar({
 
     scale_property: $ => seq(
       $.scale_property_name,
-      caseInsensitive('TO'),
+      '=>',
       $.scale_property_value
     ),
 
@@ -401,7 +520,7 @@ module.exports = grammar({
       $.array
     ),
 
-    // FACET clause - FACET ... SETTING scales TO ...
+    // FACET clause - FACET ... SETTING scales => ...
     facet_clause: $ => choice(
       // FACET row_vars BY col_vars
       seq(
@@ -409,14 +528,14 @@ module.exports = grammar({
         $.facet_vars,
         alias(caseInsensitive('BY'), $.facet_by),
         $.facet_vars,
-        optional(seq(caseInsensitive('SETTING'), caseInsensitive('scales'), caseInsensitive('TO'), $.facet_scales))
+        optional(seq(caseInsensitive('SETTING'), caseInsensitive('scales'), '=>', $.facet_scales))
       ),
       // FACET WRAP vars
       seq(
         caseInsensitive('FACET'),
         alias(caseInsensitive('WRAP'), $.facet_wrap),
         $.facet_vars,
-        optional(seq(caseInsensitive('SETTING'), caseInsensitive('scales'), caseInsensitive('TO'), $.facet_scales))
+        optional(seq(caseInsensitive('SETTING'), caseInsensitive('scales'), '=>', $.facet_scales))
       )
     ),
 
@@ -432,13 +551,13 @@ module.exports = grammar({
       'fixed', 'free', 'free_x', 'free_y'
     ),
 
-    // COORD clause - COORD [type] [SETTING prop TO value, ...]
+    // COORD clause - COORD [type] [SETTING prop => value, ...]
     coord_clause: $ => seq(
       caseInsensitive('COORD'),
       choice(
-        // Type with optional SETTING: COORD polar SETTING theta TO y
+        // Type with optional SETTING: COORD polar SETTING theta => y
         seq($.coord_type, optional(seq(caseInsensitive('SETTING'), $.coord_properties))),
-        // Just SETTING: COORD SETTING xlim TO [0, 100] (defaults to cartesian)
+        // Just SETTING: COORD SETTING xlim => [0, 100] (defaults to cartesian)
         seq(caseInsensitive('SETTING'), $.coord_properties)
       )
     ),
@@ -454,7 +573,7 @@ module.exports = grammar({
 
     coord_property: $ => seq(
       $.coord_property_name,
-      caseInsensitive('TO'),
+      '=>',
       choice($.string, $.number, $.boolean, $.array, $.identifier)
     ),
 
@@ -489,7 +608,7 @@ module.exports = grammar({
       caseInsensitive('shape'), caseInsensitive('linetype')
     ),
 
-    // GUIDE clause - GUIDE aesthetic SETTING prop TO value, ...
+    // GUIDE clause - GUIDE aesthetic SETTING prop => value, ...
     guide_clause: $ => seq(
       caseInsensitive('GUIDE'),
       $.aesthetic_name,
@@ -501,8 +620,8 @@ module.exports = grammar({
     ),
 
     guide_property: $ => choice(
-      seq('type', caseInsensitive('TO'), $.guide_type),
-      seq($.guide_property_name, caseInsensitive('TO'), choice($.string, $.number, $.boolean))
+      seq('type', '=>', $.guide_type),
+      seq($.guide_property_name, '=>', choice($.string, $.number, $.boolean))
     ),
 
     guide_type: $ => choice(
@@ -515,7 +634,7 @@ module.exports = grammar({
       'reverse', 'order'
     ),
 
-    // THEME clause - THEME [name] [SETTING prop TO value, ...]
+    // THEME clause - THEME [name] [SETTING prop => value, ...]
     theme_clause: $ => choice(
       // Just theme name
       seq(caseInsensitive('THEME'), $.theme_name),
@@ -539,7 +658,7 @@ module.exports = grammar({
 
     theme_property: $ => seq(
       $.theme_property_name,
-      caseInsensitive('TO'),
+      '=>',
       choice($.string, $.number, $.boolean)
     ),
 

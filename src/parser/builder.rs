@@ -3,10 +3,10 @@
 //! Takes a tree-sitter parse tree and builds a typed VizSpec AST,
 //! handling all the node types defined in the grammar.
 
-use tree_sitter::{Tree, Node};
-use crate::{GgsqlError, Result};
 use super::ast::*;
+use crate::{GgsqlError, Result};
 use std::collections::HashMap;
+use tree_sitter::{Node, Tree};
 
 /// Build a VizSpec AST from a tree-sitter parse tree
 pub fn build_ast(tree: &Tree, source: &str) -> Result<Vec<VizSpec>> {
@@ -44,8 +44,9 @@ pub fn build_ast(tree: &Tree, source: &str) -> Result<Vec<VizSpec>> {
             if spec.source.is_some() && last_is_select {
                 return Err(GgsqlError::ParseError(
                     "Cannot use VISUALISE FROM when the last SQL statement is SELECT. \
-                     Use either 'SELECT ... VISUALISE AS' or remove the SELECT and use \
-                     'VISUALISE FROM ... AS'.".to_string()
+                     Use either 'SELECT ... VISUALISE' or remove the SELECT and use \
+                     'VISUALISE FROM ...'."
+                        .to_string(),
                 ));
             }
 
@@ -55,7 +56,7 @@ pub fn build_ast(tree: &Tree, source: &str) -> Result<Vec<VizSpec>> {
 
     if specs.is_empty() {
         return Err(GgsqlError::ParseError(
-            "No VISUALISE statements found in query".to_string()
+            "No VISUALISE statements found in query".to_string(),
         ));
     }
 
@@ -84,7 +85,11 @@ fn build_visualise_statement(node: &Node, source: &str) -> Result<VizSpec> {
             }
             "identifier" | "string" => {
                 // This is the FROM source (table name or file path)
-                spec.source = Some(get_node_text(&child, source).trim_matches(|c| c == '\'' || c == '"').to_string());
+                spec.source = Some(
+                    get_node_text(&child, source)
+                        .trim_matches(|c| c == '\'' || c == '"')
+                        .to_string(),
+                );
             }
             "viz_clause" => {
                 // Process visualization clause
@@ -158,7 +163,7 @@ fn parse_global_mapping_item(node: &Node, source: &str) -> Result<GlobalMappingI
     }
 
     Err(GgsqlError::ParseError(
-        "Invalid global mapping item".to_string()
+        "Invalid global mapping item".to_string(),
     ))
 }
 
@@ -208,7 +213,7 @@ fn parse_explicit_mapping(node: &Node, source: &str) -> Result<GlobalMappingItem
             aesthetic: aes,
         }),
         _ => Err(GgsqlError::ParseError(
-            "Invalid explicit mapping: missing column or aesthetic".to_string()
+            "Invalid explicit mapping: missing column or aesthetic".to_string(),
         )),
     }
 }
@@ -217,7 +222,9 @@ fn parse_explicit_mapping(node: &Node, source: &str) -> Result<GlobalMappingItem
 fn validate_scale_coord_conflicts(spec: &VizSpec) -> Result<()> {
     if let Some(ref coord) = spec.coord {
         // Get all aesthetic names that have domains in COORD
-        let coord_aesthetics: Vec<String> = coord.properties.keys()
+        let coord_aesthetics: Vec<String> = coord
+            .properties
+            .keys()
             .filter(|k| is_aesthetic_name(k))
             .cloned()
             .collect();
@@ -290,11 +297,12 @@ fn process_viz_clause(node: &Node, source: &str, spec: &mut VizSpec) -> Result<(
 }
 
 /// Build a Layer from a draw_clause node
-/// Syntax: DRAW geom [MAPPING col AS x, ...] [SETTING param TO val, ...] [FILTER condition]
+/// Syntax: DRAW geom [MAPPING col AS x, ...] [SETTING param => val, ...] [PARTITION BY col, ...] [FILTER condition]
 fn build_layer(node: &Node, source: &str) -> Result<Layer> {
     let mut geom = Geom::Point; // default
     let mut aesthetics = HashMap::new();
     let mut parameters = HashMap::new();
+    let mut partition_by = Vec::new();
     let mut filter = None;
 
     let mut cursor = node.walk();
@@ -310,6 +318,9 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
             "setting_clause" => {
                 parameters = parse_setting_clause(&child, source)?;
             }
+            "partition_clause" => {
+                partition_by = parse_partition_clause(&child, source)?;
+            }
             "filter_clause" => {
                 filter = Some(parse_filter_clause(&child, source)?);
             }
@@ -323,6 +334,7 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
     let mut layer = Layer::new(geom);
     layer.aesthetics = aesthetics;
     layer.parameters = parameters;
+    layer.partition_by = partition_by;
     layer.filter = filter;
 
     Ok(layer)
@@ -393,7 +405,7 @@ fn parse_mapping_value(node: &Node, source: &str) -> Result<AestheticValue> {
     )))
 }
 
-/// Parse a setting_clause: SETTING param TO value, ...
+/// Parse a setting_clause: SETTING param => value, ...
 fn parse_setting_clause(node: &Node, source: &str) -> Result<HashMap<String, ParameterValue>> {
     let mut parameters = HashMap::new();
 
@@ -408,7 +420,26 @@ fn parse_setting_clause(node: &Node, source: &str) -> Result<HashMap<String, Par
     Ok(parameters)
 }
 
-/// Parse a parameter_assignment: param TO value
+/// Parse a partition_clause: PARTITION BY col1, col2, ...
+fn parse_partition_clause(node: &Node, source: &str) -> Result<Vec<String>> {
+    let mut columns = Vec::new();
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "partition_columns" {
+            let mut inner_cursor = child.walk();
+            for inner_child in child.children(&mut inner_cursor) {
+                if inner_child.kind() == "identifier" {
+                    columns.push(get_node_text(&inner_child, source));
+                }
+            }
+        }
+    }
+
+    Ok(columns)
+}
+
+/// Parse a parameter_assignment: param => value
 fn parse_parameter_assignment(node: &Node, source: &str) -> Result<(String, ParameterValue)> {
     let mut param_name = String::new();
     let mut param_value = None;
@@ -487,7 +518,7 @@ fn parse_filter_clause(node: &Node, source: &str) -> Result<FilterExpression> {
     }
 
     Err(GgsqlError::ParseError(
-        "Could not find filter expression in filter clause".to_string()
+        "Could not find filter expression in filter clause".to_string(),
     ))
 }
 
@@ -532,7 +563,7 @@ fn parse_filter_primary(node: &Node, source: &str) -> Result<FilterExpression> {
     }
 
     Err(GgsqlError::ParseError(
-        "Could not parse filter primary".to_string()
+        "Could not parse filter primary".to_string(),
     ))
 }
 
@@ -557,7 +588,7 @@ fn parse_filter_and_expression(node: &Node, source: &str) -> Result<FilterExpres
     match (left, right) {
         (Some(l), Some(r)) => Ok(FilterExpression::And(Box::new(l), Box::new(r))),
         _ => Err(GgsqlError::ParseError(
-            "Invalid AND expression: missing left or right operand".to_string()
+            "Invalid AND expression: missing left or right operand".to_string(),
         )),
     }
 }
@@ -583,7 +614,7 @@ fn parse_filter_or_expression(node: &Node, source: &str) -> Result<FilterExpress
     match (left, right) {
         (Some(l), Some(r)) => Ok(FilterExpression::Or(Box::new(l), Box::new(r))),
         _ => Err(GgsqlError::ParseError(
-            "Invalid OR expression: missing left or right operand".to_string()
+            "Invalid OR expression: missing left or right operand".to_string(),
         )),
     }
 }
@@ -632,7 +663,7 @@ fn parse_filter_comparison(node: &Node, source: &str) -> Result<FilterExpression
 
     if column.is_empty() {
         return Err(GgsqlError::ParseError(
-            "Invalid comparison: missing column".to_string()
+            "Invalid comparison: missing column".to_string(),
         ));
     }
 
@@ -643,10 +674,10 @@ fn parse_filter_comparison(node: &Node, source: &str) -> Result<FilterExpression
             value: val,
         }),
         (None, _) => Err(GgsqlError::ParseError(
-            "Invalid comparison: missing operator".to_string()
+            "Invalid comparison: missing operator".to_string(),
         )),
         (_, None) => Err(GgsqlError::ParseError(
-            "Invalid comparison: missing value".to_string()
+            "Invalid comparison: missing value".to_string(),
         )),
     }
 }
@@ -692,7 +723,10 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
         "vline" => Ok(Geom::VLine),
         "abline" => Ok(Geom::AbLine),
         "errorbar" => Ok(Geom::ErrorBar),
-        _ => Err(GgsqlError::ParseError(format!("Unknown geom type: {}", text))),
+        _ => Err(GgsqlError::ParseError(format!(
+            "Unknown geom type: {}",
+            text
+        ))),
     }
 }
 
@@ -704,7 +738,9 @@ fn parse_literal_value(node: &Node, source: &str) -> Result<AestheticValue> {
             "string" => {
                 let text = get_node_text(&child, source);
                 let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                return Ok(AestheticValue::Literal(LiteralValue::String(unquoted.to_string())));
+                return Ok(AestheticValue::Literal(LiteralValue::String(
+                    unquoted.to_string(),
+                )));
             }
             "number" => {
                 let text = get_node_text(&child, source);
@@ -737,7 +773,7 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "SCALE" | "SETTING" | "TO" | "," => continue, // Skip keywords
+            "SCALE" | "SETTING" | "=>" | "," => continue, // Skip keywords
             "aesthetic_name" => {
                 aesthetic = get_node_text(&child, source);
             }
@@ -755,7 +791,7 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
                         "scale_property_value" => {
                             prop_value = Some(parse_scale_property_value(&prop_child, source)?);
                         }
-                        "TO" => continue,
+                        "=>" => continue,
                         _ => {}
                     }
                 }
@@ -884,7 +920,7 @@ fn build_facet(node: &Node, source: &str) -> Result<Facet> {
 
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "FACET" | "SETTING" | "TO" => continue,
+            "FACET" | "SETTING" | "=>" => continue,
             "facet_wrap" => {
                 is_wrap = true;
             }
@@ -964,7 +1000,7 @@ fn build_coord(node: &Node, source: &str) -> Result<Coord> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "COORD" | "SETTING" | "TO" | "," => continue,
+            "COORD" | "SETTING" | "=>" | "," => continue,
             "coord_type" => {
                 coord_type = parse_coord_type(&child, source)?;
             }
@@ -973,7 +1009,8 @@ fn build_coord(node: &Node, source: &str) -> Result<Coord> {
                 let mut props_cursor = child.walk();
                 for prop_node in child.children(&mut props_cursor) {
                     if prop_node.kind() == "coord_property" {
-                        let (prop_name, prop_value) = parse_single_coord_property(&prop_node, source)?;
+                        let (prop_name, prop_value) =
+                            parse_single_coord_property(&prop_node, source)?;
                         properties.insert(prop_name, prop_value);
                     }
                 }
@@ -1043,7 +1080,10 @@ fn parse_single_coord_property(node: &Node, source: &str) -> Result<(String, Coo
 }
 
 /// Validate that properties are valid for the given coord type
-fn validate_coord_properties(coord_type: &CoordType, properties: &HashMap<String, CoordPropertyValue>) -> Result<()> {
+fn validate_coord_properties(
+    coord_type: &CoordType,
+    properties: &HashMap<String, CoordPropertyValue>,
+) -> Result<()> {
     for prop_name in properties.keys() {
         let valid = match coord_type {
             CoordType::Cartesian => {
@@ -1088,11 +1128,28 @@ fn validate_coord_properties(coord_type: &CoordType, properties: &HashMap<String
 fn is_aesthetic_name(name: &str) -> bool {
     matches!(
         name,
-        "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend" |
-        "color" | "colour" | "fill" | "alpha" |
-        "size" | "shape" | "linetype" | "linewidth" | "width" | "height" |
-        "label" | "family" | "fontface" | "hjust" | "vjust" |
-        "group"
+        "x" | "y"
+            | "xmin"
+            | "xmax"
+            | "ymin"
+            | "ymax"
+            | "xend"
+            | "yend"
+            | "color"
+            | "colour"
+            | "fill"
+            | "alpha"
+            | "size"
+            | "shape"
+            | "linetype"
+            | "linewidth"
+            | "width"
+            | "height"
+            | "label"
+            | "family"
+            | "fontface"
+            | "hjust"
+            | "vjust"
     )
 }
 
@@ -1194,7 +1251,8 @@ fn build_labels(node: &Node, source: &str) -> Result<Labels> {
                     "string" => {
                         let text = get_node_text(&assignment_child, source);
                         // Remove quotes from string
-                        label_value = Some(text.trim_matches(|c| c == '\'' || c == '"').to_string());
+                        label_value =
+                            Some(text.trim_matches(|c| c == '\'' || c == '"').to_string());
                     }
                     _ => {}
                 }
@@ -1218,7 +1276,7 @@ fn build_guide(node: &Node, source: &str) -> Result<Guide> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "GUIDE" | "SETTING" | "TO" | "," => continue, // Skip keywords
+            "GUIDE" | "SETTING" | "=>" | "," => continue, // Skip keywords
             "aesthetic_name" => {
                 aesthetic = get_node_text(&child, source);
             }
@@ -1234,11 +1292,11 @@ fn build_guide(node: &Node, source: &str) -> Result<Guide> {
                         // Regular property: name = value
                         let prop_name = get_node_text(&prop_child, source);
 
-                        // Find the value (next sibling after 'TO')
+                        // Find the value (next sibling after '=>')
                         let mut found_to = false;
                         let mut value_cursor = child.walk();
                         for value_child in child.children(&mut value_cursor) {
-                            if value_child.kind() == "TO" {
+                            if value_child.kind() == "=>" {
                                 found_to = true;
                                 continue;
                             }
@@ -1317,7 +1375,7 @@ fn build_theme(node: &Node, source: &str) -> Result<Theme> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "THEME" | "SETTING" | "TO" | "," => continue,
+            "THEME" | "SETTING" | "=>" | "," => continue,
             "theme_name" => {
                 style = Some(get_node_text(&child, source));
             }
@@ -1335,7 +1393,7 @@ fn build_theme(node: &Node, source: &str) -> Result<Theme> {
                         "string" | "number" | "boolean" => {
                             prop_value = Some(parse_theme_property_value(&prop_child, source)?);
                         }
-                        "TO" => continue,
+                        "=>" => continue,
                         _ => {}
                     }
                 }
@@ -1382,7 +1440,6 @@ fn parse_theme_property_value(node: &Node, source: &str) -> Result<ThemeProperty
 fn get_node_text(node: &Node, source: &str) -> String {
     source[node.start_byte()..node.end_byte()].to_string()
 }
-
 
 /// Check if the last SQL statement in sql_portion is a SELECT statement
 fn check_last_statement_is_select(sql_portion_node: &Node) -> bool {
@@ -1440,6 +1497,12 @@ mod tests {
         parser.set_language(&tree_sitter_ggsql::language()).unwrap();
 
         let tree = parser.parse(query, None).unwrap();
+
+        // Check for parse errors like the main parse_full_query does
+        if tree.root_node().has_error() {
+            return Err(GgsqlError::ParseError("Parse tree contains errors".to_string()));
+        }
+
         build_ast(&tree, query)
     }
 
@@ -1452,7 +1515,7 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            COORD cartesian SETTING xlim TO [0, 100]
+            COORD cartesian SETTING xlim => [0, 100]
         "#;
 
         let result = parse_test_query(query);
@@ -1470,7 +1533,7 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            COORD cartesian SETTING ylim TO [-10, 50]
+            COORD cartesian SETTING ylim => [-10, 50]
         "#;
 
         let result = parse_test_query(query);
@@ -1486,7 +1549,7 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color
-            COORD cartesian SETTING color TO ['red', 'green', 'blue']
+            COORD cartesian SETTING color => ['red', 'green', 'blue']
         "#;
 
         let result = parse_test_query(query);
@@ -1502,13 +1565,15 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            COORD cartesian SETTING theta TO y
+            COORD cartesian SETTING theta => y
         "#;
 
         let result = parse_test_query(query);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Property 'theta' not valid for Cartesian"));
+        assert!(err
+            .to_string()
+            .contains("Property 'theta' not valid for Cartesian"));
     }
 
     #[test]
@@ -1516,7 +1581,7 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW bar MAPPING category AS x, value AS y, region AS color
-            COORD flip SETTING color TO ['A', 'B', 'C']
+            COORD flip SETTING color => ['A', 'B', 'C']
         "#;
 
         let result = parse_test_query(query);
@@ -1533,13 +1598,15 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW bar MAPPING category AS x, value AS y
-            COORD flip SETTING xlim TO [0, 100]
+            COORD flip SETTING xlim => [0, 100]
         "#;
 
         let result = parse_test_query(query);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Property 'xlim' not valid for Flip"));
+        assert!(err
+            .to_string()
+            .contains("Property 'xlim' not valid for Flip"));
     }
 
     #[test]
@@ -1547,13 +1614,15 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW bar MAPPING category AS x, value AS y
-            COORD flip SETTING ylim TO [0, 100]
+            COORD flip SETTING ylim => [0, 100]
         "#;
 
         let result = parse_test_query(query);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Property 'ylim' not valid for Flip"));
+        assert!(err
+            .to_string()
+            .contains("Property 'ylim' not valid for Flip"));
     }
 
     #[test]
@@ -1561,13 +1630,15 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW bar MAPPING category AS x, value AS y
-            COORD flip SETTING theta TO y
+            COORD flip SETTING theta => y
         "#;
 
         let result = parse_test_query(query);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Property 'theta' not valid for Flip"));
+        assert!(err
+            .to_string()
+            .contains("Property 'theta' not valid for Flip"));
     }
 
     #[test]
@@ -1575,7 +1646,7 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW bar MAPPING category AS x, value AS y
-            COORD polar SETTING theta TO y
+            COORD polar SETTING theta => y
         "#;
 
         let result = parse_test_query(query);
@@ -1592,7 +1663,7 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW bar MAPPING category AS x, value AS y, region AS color
-            COORD polar SETTING color TO ['North', 'South', 'East', 'West']
+            COORD polar SETTING color => ['North', 'South', 'East', 'West']
         "#;
 
         let result = parse_test_query(query);
@@ -1608,13 +1679,15 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW bar MAPPING category AS x, value AS y
-            COORD polar SETTING xlim TO [0, 100]
+            COORD polar SETTING xlim => [0, 100]
         "#;
 
         let result = parse_test_query(query);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Property 'xlim' not valid for Polar"));
+        assert!(err
+            .to_string()
+            .contains("Property 'xlim' not valid for Polar"));
     }
 
     #[test]
@@ -1622,13 +1695,15 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW bar MAPPING category AS x, value AS y
-            COORD polar SETTING ylim TO [0, 100]
+            COORD polar SETTING ylim => [0, 100]
         "#;
 
         let result = parse_test_query(query);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Property 'ylim' not valid for Polar"));
+        assert!(err
+            .to_string()
+            .contains("Property 'ylim' not valid for Polar"));
     }
 
     // ========================================
@@ -1640,14 +1715,16 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            SCALE x SETTING domain TO [0, 100]
-            COORD cartesian SETTING x TO [0, 50]
+            SCALE x SETTING domain => [0, 100]
+            COORD cartesian SETTING x => [0, 50]
         "#;
 
         let result = parse_test_query(query);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Domain for 'x' specified in both SCALE and COORD"));
+        assert!(err
+            .to_string()
+            .contains("Domain for 'x' specified in both SCALE and COORD"));
     }
 
     #[test]
@@ -1655,14 +1732,16 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color
-            SCALE color SETTING domain TO ['A', 'B']
-            COORD cartesian SETTING color TO ['A', 'B', 'C']
+            SCALE color SETTING domain => ['A', 'B']
+            COORD cartesian SETTING color => ['A', 'B', 'C']
         "#;
 
         let result = parse_test_query(query);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Domain for 'color' specified in both SCALE and COORD"));
+        assert!(err
+            .to_string()
+            .contains("Domain for 'color' specified in both SCALE and COORD"));
     }
 
     #[test]
@@ -1670,8 +1749,8 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color
-            SCALE color SETTING domain TO ['A', 'B']
-            COORD cartesian SETTING xlim TO [0, 100]
+            SCALE color SETTING domain => ['A', 'B']
+            COORD cartesian SETTING xlim => [0, 100]
         "#;
 
         let result = parse_test_query(query);
@@ -1683,8 +1762,8 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            SCALE x SETTING type TO 'linear'
-            COORD cartesian SETTING x TO [0, 100]
+            SCALE x SETTING type => 'linear'
+            COORD cartesian SETTING x => [0, 100]
         "#;
 
         let result = parse_test_query(query);
@@ -1700,7 +1779,7 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color
-            COORD cartesian SETTING xlim TO [0, 100], ylim TO [-10, 50], color TO ['A', 'B']
+            COORD cartesian SETTING xlim => [0, 100], ylim => [-10, 50], color => ['A', 'B']
         "#;
 
         let result = parse_test_query(query);
@@ -1718,7 +1797,7 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW bar MAPPING category AS x, value AS y, region AS color
-            COORD polar SETTING theta TO y, color TO ['North', 'South']
+            COORD polar SETTING theta => y, color => ['North', 'South']
         "#;
 
         let result = parse_test_query(query);
@@ -1739,7 +1818,7 @@ mod tests {
         let query = r#"
             visualise
             draw point MAPPING x AS x, y AS y
-            coord cartesian setting xlim to [0, 100]
+            coord cartesian setting xlim => [0, 100]
             label title => 'Test Chart'
         "#;
 
@@ -1761,7 +1840,7 @@ mod tests {
         let query = r#"
             ViSuAlIsE date AS x, revenue AS y
             DrAw line
-            ScAlE x SeTtInG type tO 'date'
+            ScAlE x SeTtInG type => 'date'
             ThEmE minimal
         "#;
 
@@ -1862,7 +1941,9 @@ mod tests {
         assert!(result.is_err());
 
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Cannot use VISUALISE FROM when the last SQL statement is SELECT"));
+        assert!(err
+            .to_string()
+            .contains("Cannot use VISUALISE FROM when the last SQL statement is SELECT"));
     }
 
     #[test]
@@ -1920,7 +2001,9 @@ mod tests {
         assert!(result.is_err());
 
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Cannot use VISUALISE FROM when the last SQL statement is SELECT"));
+        assert!(err
+            .to_string()
+            .contains("Cannot use VISUALISE FROM when the last SQL statement is SELECT"));
     }
 
     // ========================================
@@ -2303,7 +2386,10 @@ mod tests {
 
         let result = parse_test_query(query);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Cannot use VISUALISE FROM"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Cannot use VISUALISE FROM"));
     }
 
     #[test]
@@ -2359,7 +2445,11 @@ mod tests {
 
         let filter = specs[0].layers[0].filter.as_ref().unwrap();
         match filter {
-            FilterExpression::Comparison { column, operator, value } => {
+            FilterExpression::Comparison {
+                column,
+                operator,
+                value,
+            } => {
                 assert_eq!(column, "value");
                 assert_eq!(*operator, ComparisonOp::Gt);
                 assert!(matches!(value, FilterValue::Number(n) if *n == 10.0));
@@ -2381,7 +2471,11 @@ mod tests {
 
         let filter = specs[0].layers[0].filter.as_ref().unwrap();
         match filter {
-            FilterExpression::Comparison { column, operator, value } => {
+            FilterExpression::Comparison {
+                column,
+                operator,
+                value,
+            } => {
                 assert_eq!(column, "category");
                 assert_eq!(*operator, ComparisonOp::Eq);
                 assert!(matches!(value, FilterValue::String(s) if s == "A"));
@@ -2466,7 +2560,9 @@ mod tests {
             FilterExpression::And(left, right) => {
                 // Left should be value > 10
                 match left.as_ref() {
-                    FilterExpression::Comparison { column, operator, .. } => {
+                    FilterExpression::Comparison {
+                        column, operator, ..
+                    } => {
                         assert_eq!(column, "value");
                         assert_eq!(*operator, ComparisonOp::Gt);
                     }
@@ -2474,7 +2570,9 @@ mod tests {
                 }
                 // Right should be value < 100
                 match right.as_ref() {
-                    FilterExpression::Comparison { column, operator, .. } => {
+                    FilterExpression::Comparison {
+                        column, operator, ..
+                    } => {
                         assert_eq!(column, "value");
                         assert_eq!(*operator, ComparisonOp::Lt);
                     }
@@ -2520,7 +2618,7 @@ mod tests {
     fn test_filter_with_mapping_and_setting() {
         let query = r#"
             VISUALISE
-            DRAW point MAPPING x AS x, y AS y, category AS color SETTING size TO 5 FILTER value > 50
+            DRAW point MAPPING x AS x, y AS y, category AS color SETTING size => 5 FILTER value > 50
         "#;
 
         let result = parse_test_query(query);
@@ -2542,7 +2640,11 @@ mod tests {
         assert!(layer.filter.is_some());
         let filter = layer.filter.as_ref().unwrap();
         match filter {
-            FilterExpression::Comparison { column, operator, value } => {
+            FilterExpression::Comparison {
+                column,
+                operator,
+                value,
+            } => {
                 assert_eq!(column, "value");
                 assert_eq!(*operator, ComparisonOp::Gt);
                 assert!(matches!(value, FilterValue::Number(n) if *n == 50.0));
@@ -2637,13 +2739,99 @@ mod tests {
 
         let filter = specs[0].layers[0].filter.as_ref().unwrap();
         match filter {
-            FilterExpression::Comparison { column, operator, value } => {
+            FilterExpression::Comparison {
+                column,
+                operator,
+                value,
+            } => {
                 assert_eq!(column, "start_date");
                 assert_eq!(*operator, ComparisonOp::Lt);
                 assert!(matches!(value, FilterValue::Column(col) if col == "end_date"));
             }
             _ => panic!("Expected Comparison filter"),
         }
+    }
+
+    // ========================================
+    // PARTITION BY Tests
+    // ========================================
+
+    #[test]
+    fn test_partition_by_single_column() {
+        let query = r#"
+            VISUALISE date AS x, value AS y
+            DRAW line PARTITION BY category
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert_eq!(specs[0].layers[0].partition_by.len(), 1);
+        assert_eq!(specs[0].layers[0].partition_by[0], "category");
+    }
+
+    #[test]
+    fn test_partition_by_multiple_columns() {
+        let query = r#"
+            VISUALISE date AS x, value AS y
+            DRAW line PARTITION BY category, region
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert_eq!(specs[0].layers[0].partition_by.len(), 2);
+        assert_eq!(specs[0].layers[0].partition_by[0], "category");
+        assert_eq!(specs[0].layers[0].partition_by[1], "region");
+    }
+
+    #[test]
+    fn test_partition_by_with_other_clauses() {
+        let query = r#"
+            VISUALISE
+            DRAW line MAPPING date AS x, value AS y SETTING opacity => 0.5 PARTITION BY category FILTER year > 2020
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let layer = &specs[0].layers[0];
+        assert_eq!(layer.partition_by.len(), 1);
+        assert_eq!(layer.partition_by[0], "category");
+        assert!(layer.filter.is_some());
+        assert!(layer.parameters.contains_key("opacity"));
+    }
+
+    #[test]
+    fn test_no_partition_by() {
+        let query = r#"
+            VISUALISE date AS x, value AS y
+            DRAW line
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert!(specs[0].layers[0].partition_by.is_empty());
+    }
+
+    #[test]
+    fn test_partition_by_case_insensitive() {
+        let query = r#"
+            VISUALISE date AS x, value AS y
+            DRAW line partition by category
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert_eq!(specs[0].layers[0].partition_by.len(), 1);
+        assert_eq!(specs[0].layers[0].partition_by[0], "category");
     }
 
     // ========================================
@@ -2659,7 +2847,9 @@ mod tests {
         "#;
 
         let mut specs = parse_test_query(query).unwrap();
-        specs[0].resolve_global_mappings(&["date", "revenue", "region"]).unwrap();
+        specs[0]
+            .resolve_global_mappings(&["date", "revenue", "region"])
+            .unwrap();
 
         // Line layer: should have x and y from global
         assert_eq!(specs[0].layers[0].aesthetics.len(), 2);
@@ -2681,7 +2871,9 @@ mod tests {
         "#;
 
         let mut specs = parse_test_query(query).unwrap();
-        specs[0].resolve_global_mappings(&["x", "y", "other"]).unwrap();
+        specs[0]
+            .resolve_global_mappings(&["x", "y", "other"])
+            .unwrap();
 
         // Layer should have x and y aesthetics
         assert_eq!(specs[0].layers[0].aesthetics.len(), 2);
@@ -2704,7 +2896,9 @@ mod tests {
 
         let mut specs = parse_test_query(query).unwrap();
         // Point geom supports x, y, color, size, shape, etc.
-        specs[0].resolve_global_mappings(&["x", "y", "color", "extra_column"]).unwrap();
+        specs[0]
+            .resolve_global_mappings(&["x", "y", "color", "extra_column"])
+            .unwrap();
 
         // Should map x, y, and color (not extra_column which isn't an aesthetic)
         assert!(specs[0].layers[0].aesthetics.contains_key("x"));

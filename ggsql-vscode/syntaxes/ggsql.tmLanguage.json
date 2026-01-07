@@ -164,8 +164,8 @@
           "match": "\\b(?i:SETTING)\\b"
         },
         {
-          "name": "keyword.control.to.ggsql",
-          "match": "\\b(?i:TO)\\b"
+          "name": "keyword.control.fatarrow.ggsql",
+          "match": "(?<!\\S)=>(?!\\S)"
         },
         {
           "name": "keyword.control.filter.ggsql",
@@ -192,8 +192,8 @@
           "match": "\\b(?i:SETTING)\\b"
         },
         {
-          "name": "keyword.control.to.ggsql",
-          "match": "\\b(?i:TO)\\b"
+          "name": "keyword.control.fatarrow.ggsql",
+          "match": "(?<!\\S)=>(?!\\S)"
         },
         {
           "name": "variable.parameter.scale-property.ggsql",
@@ -216,8 +216,8 @@
           "match": "\\b(?i:SETTING)\\b"
         },
         {
-          "name": "keyword.control.to.ggsql",
-          "match": "\\b(?i:TO)\\b"
+          "name": "keyword.control.fatarrow.ggsql",
+          "match": "(?<!\\S)=>(?!\\S)"
         },
         {
           "name": "constant.language.facet-scales.ggsql",
@@ -240,8 +240,8 @@
           "match": "\\b(?i:SETTING)\\b"
         },
         {
-          "name": "keyword.control.to.ggsql",
-          "match": "\\b(?i:TO)\\b"
+          "name": "keyword.control.fatarrow.ggsql",
+          "match": "(?<!\\S)=>(?!\\S)"
         },
         {
           "name": "support.type.geom.ggsql",
@@ -276,8 +276,8 @@
           "match": "\\b(?i:SETTING)\\b"
         },
         {
-          "name": "keyword.control.to.ggsql",
-          "match": "\\b(?i:TO)\\b"
+          "name": "keyword.control.fatarrow.ggsql",
+          "match": "(?<!\\S)=>(?!\\S)"
         },
         {
           "name": "constant.language.guide-type.ggsql",
@@ -300,8 +300,8 @@
           "match": "\\b(?i:SETTING)\\b"
         },
         {
-          "name": "keyword.control.to.ggsql",
-          "match": "\\b(?i:TO)\\b"
+          "name": "keyword.control.fatarrow.ggsql",
+          "match": "(?<!\\S)=>(?!\\S)"
         },
         {
           "name": "support.type.geom.ggsql",

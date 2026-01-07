@@ -79,7 +79,7 @@ Create a new file with `.gsql` extension:
 SELECT * FROM sales WHERE year = 2024
 VISUALISE date AS x, revenue AS y
 DRAW line
-SCALE x SETTING type TO 'date'
+SCALE x SETTING type => 'date'
 LABEL title => 'Sales Trends'
 ```
 

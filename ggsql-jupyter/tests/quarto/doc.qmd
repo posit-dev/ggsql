@@ -166,7 +166,7 @@ SELECT sale_date, revenue FROM 'sales.csv'
 WHERE category = 'Electronics'
 VISUALISE sale_date AS x, revenue AS y
 DRAW line
-SCALE x SETTING type TO 'date'
+SCALE x SETTING type => 'date'
 LABEL title => 'Electronics Revenue Over Time', x => 'Date', y => 'Revenue ($)'
 ```
 
@@ -181,6 +181,15 @@ DRAW bar
 LABEL title => 'Total Revenue by Category', x => 'Category', y => 'Total Revenue ($)'
 ```
 
+### Line chart with multiple lines with same aesthetics
+
+```{ggsql}
+SELECT * FROM 'sales.csv'
+VISUALISE sale_date AS x, revenue AS y
+DRAW line
+    PARTITION BY category
+```
+
 ## Multiple Layers
 
 ### Line with Points
@@ -189,8 +198,8 @@ LABEL title => 'Total Revenue by Category', x => 'Category', y => 'Total Revenue
 SELECT date, value FROM 'timeseries.csv'
 VISUALISE date AS x, value AS y
 DRAW line MAPPING 'blue' AS color
-DRAW point MAPPING 'red' AS color SETTING size TO 30
-SCALE x SETTING type TO 'date'
+DRAW point MAPPING 'red' AS color SETTING size => 30
+SCALE x SETTING type => 'date'
 LABEL title => 'Time Series with Points', x => 'Date', y => 'Value'
 ```
 
@@ -200,7 +209,7 @@ LABEL title => 'Time Series with Points', x => 'Date', y => 'Value'
 SELECT date, value, category FROM 'metrics.csv'
 VISUALISE date AS x, value AS y, category AS color
 DRAW line
-SCALE x SETTING type TO 'date'
+SCALE x SETTING type => 'date'
 LABEL title => 'Metrics by Category', x => 'Date', y => 'Value'
 ```
 
@@ -213,7 +222,7 @@ SELECT sale_date, revenue, region FROM 'sales.csv'
 WHERE category = 'Electronics'
 VISUALISE sale_date AS x, revenue AS y
 DRAW line
-SCALE x SETTING type TO 'date'
+SCALE x SETTING type => 'date'
 FACET WRAP region
 LABEL title => 'Electronics Sales by Region', x => 'Date', y => 'Revenue ($)'
 ```
@@ -231,10 +240,10 @@ FROM 'sales.csv'
 GROUP BY DATE_TRUNC('month', sale_date), region, category
 VISUALISE month AS x
 DRAW line MAPPING total_revenue AS y, 'steelblue' AS color
-DRAW point MAPPING total_revenue AS y, 'darkblue' AS color SETTING size TO 30
+DRAW point MAPPING total_revenue AS y, 'darkblue' AS color SETTING size => 30
 DRAW line MAPPING total_quantity_scaled AS y, 'coral' AS color
-DRAW point MAPPING total_quantity_scaled AS y, 'orangered' AS color SETTING size TO 30
-SCALE x SETTING type TO 'date'
+DRAW point MAPPING total_quantity_scaled AS y, 'orangered' AS color SETTING size => 30
+SCALE x SETTING type => 'date'
 FACET region BY category
 LABEL title => 'Monthly Revenue and Quantity by Region and Category', x => 'Month', y => 'Value'
 ```
@@ -259,8 +268,8 @@ LABEL title => 'Total Revenue by Region', x => 'Region', y => 'Total Revenue ($)
 ```{ggsql}
 SELECT x, y FROM 'data.csv'
 VISUALISE x, y
-DRAW point MAPPING 'blue' AS color SETTING size TO 4
-COORD cartesian SETTING xlim TO [0, 60], ylim TO [0, 70]
+DRAW point MAPPING 'blue' AS color SETTING size => 4
+COORD cartesian SETTING xlim => [0, 60], ylim => [0, 70]
 LABEL title => 'Scatter Plot with Custom Axis Limits', x => 'X', y => 'Y'
 ```
 
@@ -285,7 +294,7 @@ SELECT date, value FROM 'timeseries.csv'
 VISUALISE date AS x, value AS y
 DRAW line MAPPING 'blue' AS color
 DRAW point MAPPING 'red' AS color, 30 AS size FILTER value < 130
-SCALE x SETTING type TO 'date'
+SCALE x SETTING type => 'date'
 LABEL title => 'Time Series with Points', x => 'Date', y => 'Value'
 ```
 
@@ -304,7 +313,7 @@ WITH monthly_sales AS (
 VISUALISE month AS x, total_revenue AS y FROM monthly_sales
 DRAW line
 DRAW point
-SCALE x SETTING type TO 'date'
+SCALE x SETTING type => 'date'
 LABEL title => 'Monthly Revenue Trends', x => 'Month', y => 'Revenue ($)'
 ```
 
@@ -345,7 +354,7 @@ ORDER BY sale_date
 VISUALISE sale_date AS x, total_quantity AS y, region AS color
 DRAW line
 DRAW point
-SCALE x SETTING type TO 'date'
+SCALE x SETTING type => 'date'
 FACET WRAP region
 LABEL title => 'Sales Trends by Region', x => 'Date', y => 'Total Quantity'
 ```

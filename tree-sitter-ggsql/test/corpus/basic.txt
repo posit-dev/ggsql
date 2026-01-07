@@ -162,7 +162,7 @@ DRAW with SETTING clause
 ================================================================================
 
 VISUALISE x, y
-DRAW point SETTING opacity TO 0.5, size TO 3
+DRAW point SETTING opacity => 0.5, size => 3
 
 --------------------------------------------------------------------------------
 
@@ -294,7 +294,7 @@ DRAW with all clauses
 ================================================================================
 
 VISUALISE
-DRAW point MAPPING x AS x, y AS y SETTING opacity TO 0.5 FILTER year > 2020
+DRAW point MAPPING x AS x, y AS y SETTING opacity => 0.5 FILTER year > 2020
 
 --------------------------------------------------------------------------------
 
@@ -384,8 +384,8 @@ Plot with scales and theme
 
 VISUALISE x, y, group AS color
 DRAW point
-SCALE x SETTING type TO 'linear', limits TO [0, 100]
-SCALE color SETTING palette TO 'viridis'
+SCALE x SETTING type => 'linear', limits => [0, 100]
+SCALE color SETTING palette => 'viridis'
 THEME minimal
 
 --------------------------------------------------------------------------------
@@ -474,7 +474,7 @@ COORD cartesian with xlim
 
 VISUALISE x, y
 DRAW point
-COORD cartesian SETTING xlim TO [0, 100]
+COORD cartesian SETTING xlim => [0, 100]
 
 --------------------------------------------------------------------------------
 
@@ -551,7 +551,9 @@ DRAW point
         (cte_definition
           (identifier)
           (select_statement
-            (select_body))))))
+            (select_body
+              (sql_keyword)
+              (identifier)))))))
   (visualise_statement
     (global_mapping
       (global_mapping_item
@@ -585,7 +587,9 @@ DRAW bar
   (sql_portion
     (sql_statement
       (select_statement
-        (select_body))))
+        (select_body
+          (sql_keyword)
+          (identifier)))))
   (visualise_statement
     (global_mapping
       (global_mapping_item
@@ -694,6 +698,333 @@ DRAW point MAPPING date AS x, profit AS y
               (column_reference
                 (identifier)))
             aesthetic: (aesthetic_name))
+          (mapping_item
+            value: (mapping_value
+              (column_reference
+                (identifier)))
+            aesthetic: (aesthetic_name)))))))
+
+================================================================================
+PARTITION BY single column
+================================================================================
+
+VISUALISE x AS x, y AS y
+DRAW line PARTITION BY category
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (global_mapping
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name)))
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name))))
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (partition_clause
+          (partition_columns
+            (identifier)))))))
+
+================================================================================
+PARTITION BY multiple columns
+================================================================================
+
+VISUALISE x AS x, y AS y
+DRAW line PARTITION BY category, region
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (global_mapping
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name)))
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name))))
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (partition_clause
+          (partition_columns
+            (identifier)
+            (identifier)))))))
+
+================================================================================
+PARTITION BY with SETTING and FILTER
+================================================================================
+
+VISUALISE x AS x, y AS y
+DRAW line SETTING opacity => 0.5 PARTITION BY category FILTER year > 2020
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (global_mapping
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name)))
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name))))
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (setting_clause
+          (parameter_assignment
+            param: (parameter_name
+              (identifier))
+            value: (parameter_value
+              (number))))
+        (partition_clause
+          (partition_columns
+            (identifier)))
+        (filter_clause
+          (filter_expression
+            (filter_primary
+              (filter_comparison
+                (identifier)
+                (comparison_operator)
+                (number)))))))))
+
+================================================================================
+Window function ROW_NUMBER
+================================================================================
+
+SELECT x, ROW_NUMBER() OVER (ORDER BY x) as rn FROM data
+VISUALISE
+DRAW point MAPPING x AS x, rn AS y
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (identifier)
+          (window_function
+            function: (identifier)
+            (window_specification
+              (window_order_clause
+                (order_item
+                  (identifier)))))
+          (identifier)
+          (identifier)
+          (sql_keyword)
+          (identifier)))))
+  (visualise_statement
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (mapping_clause
+          (mapping_item
+            value: (mapping_value
+              (column_reference
+                (identifier)))
+            aesthetic: (aesthetic_name))
+          (mapping_item
+            value: (mapping_value
+              (column_reference
+                (identifier)))
+            aesthetic: (aesthetic_name)))))))
+
+================================================================================
+Window function with PARTITION BY
+================================================================================
+
+SELECT x, RANK() OVER (PARTITION BY dept ORDER BY salary DESC) as rnk FROM emp
+VISUALISE
+DRAW point MAPPING x AS x, rnk AS y
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (identifier)
+          (window_function
+            function: (identifier)
+            (window_specification
+              (window_partition_clause
+                (identifier))
+              (window_order_clause
+                (order_item
+                  (identifier)))))
+          (identifier)
+          (identifier)
+          (sql_keyword)
+          (identifier)))))
+  (visualise_statement
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (mapping_clause
+          (mapping_item
+            value: (mapping_value
+              (column_reference
+                (identifier)))
+            aesthetic: (aesthetic_name))
+          (mapping_item
+            value: (mapping_value
+              (column_reference
+                (identifier)))
+            aesthetic: (aesthetic_name)))))))
+
+================================================================================
+Window function with frame clause
+================================================================================
+
+SELECT x, SUM(y) OVER (ORDER BY x ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) as total FROM data
+VISUALISE
+DRAW line MAPPING x AS x, total AS y
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (identifier)
+          (window_function
+            function: (identifier)
+            (function_args
+              (function_arg
+                (positional_arg
+                  (identifier))))
+            (window_specification
+              (window_order_clause
+                (order_item
+                  (identifier)))
+              (frame_clause
+                (frame_bound
+                  (number))
+                (frame_bound))))
+          (identifier)
+          (identifier)
+          (sql_keyword)
+          (identifier)))))
+  (visualise_statement
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (mapping_clause
+          (mapping_item
+            value: (mapping_value
+              (column_reference
+                (identifier)))
+            aesthetic: (aesthetic_name))
+          (mapping_item
+            value: (mapping_value
+              (column_reference
+                (identifier)))
+            aesthetic: (aesthetic_name)))))))
+
+================================================================================
+Nested CTEs
+================================================================================
+
+WITH outer_cte AS (WITH inner_cte AS (SELECT 1 as x) SELECT x FROM inner_cte)
+VISUALISE FROM outer_cte
+DRAW point MAPPING x AS x
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (with_statement
+        (cte_definition
+          (identifier)
+          (with_statement
+            (cte_definition
+              (identifier)
+              (select_statement
+                (select_body
+                  (number)
+                  (identifier)
+                  (identifier))))
+            (select_statement
+              (select_body
+                (identifier)
+                (sql_keyword)
+                (identifier))))))))
+  (visualise_statement
+    source: (identifier)
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (mapping_clause
+          (mapping_item
+            value: (mapping_value
+              (column_reference
+                (identifier)))
+            aesthetic: (aesthetic_name)))))))
+
+================================================================================
+Named function arguments
+================================================================================
+
+SELECT make_interval(days := 1, hours => 2) as interval FROM data
+VISUALISE
+DRAW point MAPPING interval AS x
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier)
+            (function_args
+              (function_arg
+                (named_arg
+                  name: (identifier)
+                  value: (positional_arg
+                    (number))))
+              (function_arg
+                (named_arg
+                  name: (identifier)
+                  value: (positional_arg
+                    (number))))))
+          (identifier)
+          (identifier)
+          (sql_keyword)
+          (identifier)))))
+  (visualise_statement
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (mapping_clause
           (mapping_item
             value: (mapping_value
               (column_reference

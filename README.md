@@ -243,7 +243,7 @@ SELECT * FROM (VALUES
 SELECT * FROM sales
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
-SCALE x SETTING type TO 'date'
+SCALE x SETTING type => 'date'
 LABEL title => 'Sales Trends'
 ```
 

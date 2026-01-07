@@ -82,6 +82,8 @@ pub struct Layer {
     pub parameters: HashMap<String, ParameterValue>,
     /// Optional filter expression for this layer
     pub filter: Option<FilterExpression>,
+    /// Columns for grouping/partitioning (from PARTITION BY clause)
+    pub partition_by: Vec<String>,
 }
 
 /// Filter expression for layer-specific filtering (from FILTER clause)
@@ -598,6 +600,7 @@ impl Layer {
             aesthetics: HashMap::new(),
             parameters: HashMap::new(),
             filter: None,
+            partition_by: Vec::new(),
         }
     }
 
@@ -616,6 +619,12 @@ impl Layer {
     /// Add a parameter
     pub fn with_parameter(mut self, parameter: String, value: ParameterValue) -> Self {
         self.parameters.insert(parameter, value);
+        self
+    }
+
+    /// Set the partition columns for grouping
+    pub fn with_partition_by(mut self, columns: Vec<String>) -> Self {
+        self.partition_by = columns;
         self
     }
 

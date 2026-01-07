@@ -34,9 +34,9 @@ try {
   const complexQuery = `
   VISUALISE date AS x, revenue AS y, region AS color
   DRAW line
-  DRAW point SETTING size TO 3
-  SCALE x SETTING type TO 'date'
-  LABEL title AS 'Revenue Analysis'
+  DRAW point SETTING size => 3
+  SCALE x SETTING type => 'date'
+  LABEL title => 'Revenue Analysis'
   THEME minimal
   `;
 
