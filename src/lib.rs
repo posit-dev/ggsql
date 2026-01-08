@@ -41,8 +41,11 @@ pub mod reader;
 #[cfg(any(feature = "vegalite", feature = "ggplot2", feature = "plotters"))]
 pub mod writer;
 
+#[cfg(feature = "duckdb")]
+pub mod execute;
+
 // Re-export key types for convenience
-pub use parser::{VizSpec, GlobalMapping, GlobalMappingItem, Layer, Scale, Geom, AestheticValue};
+pub use parser::{VizSpec, GlobalMapping, GlobalMappingItem, Layer, Scale, Geom, AestheticValue, LayerSource};
 
 // Future modules - not yet implemented
 // #[cfg(feature = "engine")]
@@ -82,6 +85,14 @@ mod integration_tests {
     use crate::parser::ast::{Layer, AestheticValue, Geom};
     use crate::reader::{DuckDBReader, Reader};
     use crate::writer::{VegaLiteWriter, Writer};
+    use std::collections::HashMap;
+
+    /// Helper to wrap a DataFrame in a data map for testing
+    fn wrap_data(df: DataFrame) -> HashMap<String, DataFrame> {
+        let mut data_map = HashMap::new();
+        data_map.insert("__global__".to_string(), df);
+        data_map
+    }
 
     #[test]
     fn test_end_to_end_date_type_preservation() {
@@ -118,16 +129,16 @@ mod integration_tests {
 
         // Generate Vega-Lite JSON
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // CRITICAL ASSERTION: x-axis should be automatically inferred as "temporal"
-        assert_eq!(vl_spec["encoding"]["x"]["type"], "temporal");
-        assert_eq!(vl_spec["encoding"]["y"]["type"], "quantitative");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["type"], "temporal");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["type"], "quantitative");
 
         // Data values should be ISO temporal strings
         // (DuckDB returns Datetime for DATE + INTERVAL, so we get ISO datetime format)
-        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
         let date_str = data_values[0]["date"].as_str().unwrap();
         assert!(date_str.starts_with("2024-01-01"), "Expected date starting with 2024-01-01, got {}", date_str);
     }
@@ -164,14 +175,14 @@ mod integration_tests {
 
         // Generate Vega-Lite JSON
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // x-axis should be automatically inferred as "temporal"
-        assert_eq!(vl_spec["encoding"]["x"]["type"], "temporal");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["type"], "temporal");
 
         // Data values should be ISO datetime strings
-        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
         assert!(data_values[0]["timestamp"].as_str().unwrap().starts_with("2024-01-01T"));
     }
 
@@ -200,15 +211,15 @@ mod integration_tests {
 
         // Generate Vega-Lite JSON
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Types should be inferred as quantitative
-        assert_eq!(vl_spec["encoding"]["x"]["type"], "quantitative");
-        assert_eq!(vl_spec["encoding"]["y"]["type"], "quantitative");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["type"], "quantitative");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["type"], "quantitative");
 
         // Data values should be numbers (not strings!)
-        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
         assert_eq!(data_values[0]["int_col"], 1);
         assert_eq!(data_values[0]["float_col"], 2.5);
         assert_eq!(data_values[0]["bool_col"], true);
@@ -236,11 +247,11 @@ mod integration_tests {
         spec.layers.push(layer);
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Check null handling in JSON
-        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
         assert_eq!(data_values[0]["int_col"], 1);
         assert_eq!(data_values[0]["float_col"], 2.5);
         assert_eq!(data_values[1]["float_col"], serde_json::Value::Null);
@@ -263,12 +274,12 @@ mod integration_tests {
         spec.layers.push(layer);
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // String columns should be inferred as nominal
-        assert_eq!(vl_spec["encoding"]["x"]["type"], "nominal");
-        assert_eq!(vl_spec["encoding"]["y"]["type"], "quantitative");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["type"], "nominal");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["type"], "quantitative");
     }
 
     #[test]
@@ -311,12 +322,12 @@ mod integration_tests {
         spec.layers.push(layer);
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // x-axis should be temporal
-        assert_eq!(vl_spec["encoding"]["x"]["type"], "temporal");
-        assert_eq!(vl_spec["encoding"]["y"]["type"], "quantitative");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["type"], "temporal");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["type"], "quantitative");
     }
 
     #[test]
@@ -340,11 +351,11 @@ mod integration_tests {
         spec.layers.push(layer);
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Check values are preserved
-        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
         let small_val = data_values[0]["small"].as_f64().unwrap();
         let medium_val = data_values[0]["medium"].as_f64().unwrap();
         let large_val = data_values[0]["large"].as_f64().unwrap();
@@ -376,15 +387,15 @@ mod integration_tests {
         spec.layers.push(layer);
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&spec, &df).unwrap();
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // All integer types should be quantitative
-        assert_eq!(vl_spec["encoding"]["x"]["type"], "quantitative");
-        assert_eq!(vl_spec["encoding"]["y"]["type"], "quantitative");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["type"], "quantitative");
+        assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["type"], "quantitative");
 
         // Check values
-        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        let data_values = vl_spec["datasets"]["__global__"].as_array().unwrap();
         assert_eq!(data_values[0]["tiny"], 1);
         assert_eq!(data_values[0]["small"], 1000);
         assert_eq!(data_values[0]["int"], 1000000);

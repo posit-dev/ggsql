@@ -336,7 +336,105 @@ COORD flip
 LABEL title = 'Total Revenue by Region', x = 'Region', y = 'Total Revenue ($)'
 ```
 
+## Layer-Specific Data Sources (MAPPING FROM)
 
+Layers can pull data from different sources using `MAPPING FROM`. This enables overlaying data from different CTEs or tables.
+
+### Comparing Actuals vs Targets
+
+Each layer can reference a different CTE using `MAPPING ... FROM cte_name`:
+
+```{ggsql}
+WITH actuals AS (
+    SELECT
+        DATE_TRUNC('month', sale_date) as month,
+        SUM(revenue) as value
+    FROM 'sales.csv'
+    GROUP BY DATE_TRUNC('month', sale_date)
+),
+targets AS (
+    SELECT * FROM (VALUES
+        ('2023-01-01'::DATE, 5000.0),
+        ('2023-02-01'::DATE, 5500.0),
+        ('2023-03-01'::DATE, 6000.0),
+        ('2023-04-01'::DATE, 6500.0),
+        ('2023-05-01'::DATE, 7000.0),
+        ('2023-06-01'::DATE, 7500.0),
+        ('2023-07-01'::DATE, 8000.0),
+        ('2023-08-01'::DATE, 8500.0),
+        ('2023-09-01'::DATE, 9000.0),
+        ('2023-10-01'::DATE, 9500.0),
+        ('2023-11-01'::DATE, 10000.0),
+        ('2023-12-01'::DATE, 10500.0)
+    ) AS t(month, value)
+)
+VISUALISE
+DRAW line MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals
+DRAW point MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals SETTING size => 30
+DRAW line MAPPING month AS x, value AS y, 'Target' AS color FROM targets
+SCALE x SETTING type => 'date'
+LABEL title = 'Revenue: Actual vs Target', x = 'Month', y = 'Revenue ($)'
+```
+
+### CTE Chain: Raw → Filtered → Aggregated
+
+CTEs can reference other CTEs, creating a data transformation pipeline:
+
+```{ggsql}
+WITH raw_data AS (
+    SELECT sale_date, revenue, category, region
+    FROM 'sales.csv'
+),
+electronics_only AS (
+    SELECT * FROM raw_data
+    WHERE category = 'Electronics'
+),
+monthly_electronics AS (
+    SELECT
+        DATE_TRUNC('month', sale_date) as month,
+        region,
+        SUM(revenue) as total
+    FROM electronics_only
+    GROUP BY DATE_TRUNC('month', sale_date), region
+)
+VISUALISE month AS x, total AS y, region AS color FROM monthly_electronics
+DRAW line
+DRAW point
+SCALE x SETTING type => 'date'
+LABEL title = 'Electronics Revenue by Region (CTE Chain)', x = 'Month', y = 'Revenue ($)'
+```
+
+### Layer FROM with FILTER
+
+Combine `FROM` with `FILTER` to get filtered subsets from a CTE:
+
+```{ggsql}
+WITH all_sales AS (
+    SELECT
+        DATE_TRUNC('month', sale_date) as month,
+        category,
+        SUM(revenue) as revenue
+    FROM 'sales.csv'
+    GROUP BY DATE_TRUNC('month', sale_date), category
+)
+VISUALISE
+DRAW line MAPPING month AS x, revenue AS y, 'All Categories' AS color FROM all_sales
+DRAW line MAPPING month AS x, revenue AS y, 'Electronics' AS color FROM all_sales FILTER category = 'Electronics'
+DRAW line MAPPING month AS x, revenue AS y, 'Clothing' AS color FROM all_sales FILTER category = 'Clothing'
+SCALE x SETTING type => 'date'
+LABEL title = 'Revenue by Category (Filtered Layers)', x = 'Month', y = 'Revenue ($)'
+```
+
+### Multiple File Sources
+
+Layers can also reference different CSV files directly:
+
+```{ggsql}
+VISUALISE
+DRAW line MAPPING date AS x, value AS y, 'Time Series' AS color FROM 'timeseries.csv'
+DRAW point MAPPING x AS x, y AS y, 'Scatter' AS color FROM 'data.csv'
+LABEL title = 'Data from Multiple Files', x = 'X', y = 'Y'
+```
 
 ## Advanced Examples
 

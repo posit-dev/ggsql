@@ -213,11 +213,11 @@ DRAW point FILTER x > 10
         (geom_type)
         (filter_clause
           (filter_expression
-            (filter_primary
-              (filter_comparison
-                (identifier)
-                (comparison_operator)
-                (number)))))))))
+            (filter_token
+              (identifier))
+            (filter_token)
+            (filter_token
+              (number))))))))
 
 ================================================================================
 DRAW with FILTER AND condition
@@ -241,18 +241,17 @@ DRAW point MAPPING x AS x FILTER a > 10 AND b < 20
             aesthetic: (aesthetic_name)))
         (filter_clause
           (filter_expression
-            (filter_and_expression
-              (filter_primary
-                (filter_comparison
-                  (identifier)
-                  (comparison_operator)
-                  (number)))
-              (filter_expression
-                (filter_primary
-                  (filter_comparison
-                    (identifier)
-                    (comparison_operator)
-                    (number)))))))))))
+            (filter_token
+              (identifier))
+            (filter_token)
+            (filter_token
+              (number))
+            (filter_token)
+            (filter_token
+              (identifier))
+            (filter_token)
+            (filter_token
+              (number))))))))
 
 ================================================================================
 DRAW with FILTER OR condition
@@ -276,18 +275,17 @@ DRAW point MAPPING x AS x FILTER a = 1 OR b = 2
             aesthetic: (aesthetic_name)))
         (filter_clause
           (filter_expression
-            (filter_or_expression
-              (filter_primary
-                (filter_comparison
-                  (identifier)
-                  (comparison_operator)
-                  (number)))
-              (filter_expression
-                (filter_primary
-                  (filter_comparison
-                    (identifier)
-                    (comparison_operator)
-                    (number)))))))))))
+            (filter_token
+              (identifier))
+            (filter_token)
+            (filter_token
+              (number))
+            (filter_token)
+            (filter_token
+              (identifier))
+            (filter_token)
+            (filter_token
+              (number))))))))
 
 ================================================================================
 DRAW with all clauses
@@ -322,11 +320,11 @@ DRAW point MAPPING x AS x, y AS y SETTING opacity => 0.5 FILTER year > 2020
               (number))))
         (filter_clause
           (filter_expression
-            (filter_primary
-              (filter_comparison
-                (identifier)
-                (comparison_operator)
-                (number)))))))))
+            (filter_token
+              (identifier))
+            (filter_token)
+            (filter_token
+              (number))))))))
 
 ================================================================================
 DRAW with string comparison in FILTER
@@ -350,11 +348,11 @@ DRAW point MAPPING x AS x FILTER region = 'North'
             aesthetic: (aesthetic_name)))
         (filter_clause
           (filter_expression
-            (filter_primary
-              (filter_comparison
-                (identifier)
-                (comparison_operator)
-                (string)))))))))
+            (filter_token
+              (identifier))
+            (filter_token)
+            (filter_token
+              (string))))))))
 
 ================================================================================
 DRAW geom only (no MAPPING)
@@ -705,6 +703,33 @@ DRAW point MAPPING date AS x, profit AS y
             aesthetic: (aesthetic_name)))))))
 
 ================================================================================
+Layer-specific FROM in MAPPING clause
+================================================================================
+
+VISUALISE
+DRAW point MAPPING x AS x, y AS y FROM my_cte
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (mapping_clause
+          (mapping_item
+            value: (mapping_value
+              (column_reference
+                (identifier)))
+            aesthetic: (aesthetic_name))
+          (mapping_item
+            value: (mapping_value
+              (column_reference
+                (identifier)))
+            aesthetic: (aesthetic_name))
+          layer_source: (identifier))))))
+
+================================================================================
 PARTITION BY single column
 ================================================================================
 
@@ -805,11 +830,11 @@ DRAW line SETTING opacity => 0.5 PARTITION BY category FILTER year > 2020
             (identifier)))
         (filter_clause
           (filter_expression
-            (filter_primary
-              (filter_comparison
-                (identifier)
-                (comparison_operator)
-                (number)))))))))
+            (filter_token
+              (identifier))
+            (filter_token)
+            (filter_token
+              (number))))))))
 
 ================================================================================
 Window function ROW_NUMBER

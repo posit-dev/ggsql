@@ -34,6 +34,8 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use ggsql::{parser, GgsqlError, VERSION};
 
 #[cfg(feature = "duckdb")]
+use ggsql::execute::prepare_data_with_executor;
+#[cfg(feature = "duckdb")]
 use ggsql::reader::{DuckDBReader, Reader};
 
 #[cfg(feature = "vegalite")]
@@ -421,51 +423,44 @@ async fn query_handler(
     info!("Executing query: {} chars", request.query.len());
     info!("Reader: {}, Writer: {}", request.reader, request.writer);
 
-    // Split query into SQL and ggSQL portions
-    let (sql_part, _viz_part) = parser::split_query(&request.query)?;
-
-    // Execute SQL portion using the reader
     #[cfg(feature = "duckdb")]
     if request.reader.starts_with("duckdb://") {
-        // Execute query using the appropriate reader
-        let df = if request.reader == "duckdb://memory" && state.reader.is_some() {
-            // Use pre-initialized reader from state
-            let reader_mutex = state.reader.as_ref().unwrap();
-            let reader = reader_mutex.lock()
-                .map_err(|e| GgsqlError::InternalError(format!("Failed to lock reader: {}", e)))?;
-            reader.execute(&sql_part)?
-        } else {
-            // Create a new reader for this request
-            let reader = DuckDBReader::from_connection_string(&request.reader)?;
-            reader.execute(&sql_part)?
+        // Create query executor that handles shared state vs new reader
+        let execute_query = |sql: &str| -> Result<ggsql::DataFrame, GgsqlError> {
+            if request.reader == "duckdb://memory" && state.reader.is_some() {
+                let reader_mutex = state.reader.as_ref().unwrap();
+                let reader = reader_mutex.lock()
+                    .map_err(|e| GgsqlError::InternalError(format!("Failed to lock reader: {}", e)))?;
+                reader.execute(sql)
+            } else {
+                let reader = DuckDBReader::from_connection_string(&request.reader)?;
+                reader.execute(sql)
+            }
         };
 
+        // Prepare data using shared execution logic
+        let prepared = prepare_data_with_executor(&request.query, execute_query)?;
 
-        // Parse ggSQL portion
-        let mut specs = parser::parse_query(&request.query)?;
+        // Get metadata from available data
+        let (rows, columns) = if let Some(df) = prepared.data.get("__global__") {
+            let (r, _) = df.shape();
+            let cols: Vec<String> = df.get_column_names().iter().map(|s| s.to_string()).collect();
+            (r, cols)
+        } else {
+            // Use first available data for metadata
+            let df = prepared.data.values().next().unwrap();
+            let (r, _) = df.shape();
+            let cols: Vec<String> = df.get_column_names().iter().map(|s| s.to_string()).collect();
+            (r, cols)
+        };
 
-        if specs.is_empty() {
-            return Err(ApiErrorResponse::from(
-                "No visualization specifications found".to_string(),
-            ));
-        }
-
-        // Resolve global mappings into layer aesthetics
-        let column_names: Vec<&str> = df.get_column_names().iter().map(|s| s.as_str()).collect();
-        for spec in &mut specs {
-            spec.resolve_global_mappings(&column_names)?;
-        }
-
-        // Get metadata
-        let (rows, _cols) = df.shape();
-        let columns: Vec<String> = column_names.iter().map(|s| s.to_string()).collect();
-        let first_spec = &specs[0];
+        let first_spec = &prepared.specs[0];
 
         // Generate visualization output using writer
         #[cfg(feature = "vegalite")]
         if request.writer == "vegalite" {
             let writer = VegaLiteWriter::new();
-            let json_output = writer.write(first_spec, &df)?;
+            let json_output = writer.write(first_spec, &prepared.data)?;
             let spec_value: serde_json::Value = serde_json::from_str(&json_output)
                 .map_err(|e| GgsqlError::WriterError(format!("Failed to parse JSON: {}", e)))?;
 

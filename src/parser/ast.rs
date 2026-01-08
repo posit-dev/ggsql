@@ -71,6 +71,33 @@ pub enum GlobalMappingItem {
     Implicit { name: String },
 }
 
+/// Data source for a layer (from MAPPING ... FROM clause)
+///
+/// Allows layers to specify their own data source instead of using
+/// the global data from the main SQL query.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum LayerSource {
+    /// CTE or table name (unquoted identifier)
+    Identifier(String),
+    /// File path (quoted string like 'data.csv')
+    FilePath(String),
+}
+
+impl LayerSource {
+    /// Returns the source as a string reference
+    pub fn as_str(&self) -> &str {
+        match self {
+            LayerSource::Identifier(s) => s,
+            LayerSource::FilePath(s) => s,
+        }
+    }
+
+    /// Returns true if this is a file path source
+    pub fn is_file(&self) -> bool {
+        matches!(self, LayerSource::FilePath(_))
+    }
+}
+
 /// A single visualization layer (from DRAW clause)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Layer {
@@ -80,52 +107,42 @@ pub struct Layer {
     pub aesthetics: HashMap<String, AestheticValue>,
     /// Geom parameters (not aesthetic mappings)
     pub parameters: HashMap<String, ParameterValue>,
+    /// Optional data source for this layer (from MAPPING ... FROM)
+    pub source: Option<LayerSource>,
     /// Optional filter expression for this layer
     pub filter: Option<FilterExpression>,
     /// Columns for grouping/partitioning (from PARTITION BY clause)
     pub partition_by: Vec<String>,
 }
 
-/// Filter expression for layer-specific filtering (from FILTER clause)
+/// Raw SQL filter expression for layer-specific filtering (from FILTER clause)
+///
+/// This stores the raw SQL WHERE clause text verbatim, which is passed directly
+/// to the database backend. This allows any valid SQL WHERE expression to be used.
+///
+/// Example filter values:
+/// - `"x > 10"`
+/// - `"region = 'North' AND year >= 2020"`
+/// - `"category IN ('A', 'B', 'C')"`
+/// - `"name LIKE '%test%'"`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum FilterExpression {
-    /// Logical AND of two expressions
-    And(Box<FilterExpression>, Box<FilterExpression>),
-    /// Logical OR of two expressions
-    Or(Box<FilterExpression>, Box<FilterExpression>),
-    /// Simple comparison
-    Comparison {
-        column: String,
-        operator: ComparisonOp,
-        value: FilterValue,
-    },
-}
+pub struct FilterExpression(pub String);
 
-/// Comparison operators for filter expressions
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ComparisonOp {
-    /// Equal (=)
-    Eq,
-    /// Not equal (!= or <>)
-    Ne,
-    /// Less than (<)
-    Lt,
-    /// Greater than (>)
-    Gt,
-    /// Less than or equal (<=)
-    Le,
-    /// Greater than or equal (>=)
-    Ge,
-}
+impl FilterExpression {
+    /// Create a new filter expression from raw SQL text
+    pub fn new(sql: impl Into<String>) -> Self {
+        Self(sql.into())
+    }
 
-/// Values in filter comparisons
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum FilterValue {
-    String(String),
-    Number(f64),
-    Boolean(bool),
-    /// Column reference (for column-to-column comparisons)
-    Column(String),
+    /// Get the raw SQL text
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Consume and return the raw SQL text
+    pub fn into_string(self) -> String {
+        self.0
+    }
 }
 
 /// Geometric object types
@@ -599,6 +616,7 @@ impl Layer {
             geom,
             aesthetics: HashMap::new(),
             parameters: HashMap::new(),
+            source: None,
             filter: None,
             partition_by: Vec::new(),
         }
@@ -607,6 +625,12 @@ impl Layer {
     /// Set the filter expression
     pub fn with_filter(mut self, filter: FilterExpression) -> Self {
         self.filter = Some(filter);
+        self
+    }
+
+    /// Set the data source for this layer
+    pub fn with_source(mut self, source: LayerSource) -> Self {
+        self.source = Some(source);
         self
     }
 
@@ -734,13 +758,10 @@ mod tests {
 
     #[test]
     fn test_layer_with_filter() {
-        let filter = FilterExpression::Comparison {
-            column: "year".to_string(),
-            operator: ComparisonOp::Gt,
-            value: FilterValue::Number(2020.0),
-        };
+        let filter = FilterExpression::new("year > 2020");
         let layer = Layer::new(Geom::Point).with_filter(filter);
         assert!(layer.filter.is_some());
+        assert_eq!(layer.filter.as_ref().unwrap().as_str(), "year > 2020");
     }
 
     #[test]

@@ -20,6 +20,7 @@
 //! println!("{}", json);
 //! ```
 
+use std::collections::HashMap;
 use crate::{Result, DataFrame, VizSpec};
 
 #[cfg(feature = "vegalite")]
@@ -30,15 +31,16 @@ pub use vegalite::VegaLiteWriter;
 
 /// Trait for visualization output writers
 ///
-/// Writers take a VizSpec and DataFrame and produce formatted output
+/// Writers take a VizSpec and data sources and produce formatted output
 /// (JSON, R code, PNG bytes, etc.).
 pub trait Writer {
-    /// Generate output from a visualization specification and data
+    /// Generate output from a visualization specification and data sources
     ///
     /// # Arguments
     ///
     /// * `spec` - The parsed ggSQL specification
-    /// * `data` - The DataFrame containing the query results
+    /// * `data` - A map of data source names to DataFrames. The writer decides
+    ///   how to use these based on the spec's layer configurations.
     ///
     /// # Returns
     ///
@@ -50,7 +52,7 @@ pub trait Writer {
     /// - The spec is incompatible with this writer
     /// - The data doesn't match the spec's requirements
     /// - Output generation fails
-    fn write(&self, spec: &VizSpec, data: &DataFrame) -> Result<String>;
+    fn write(&self, spec: &VizSpec, data: &HashMap<String, DataFrame>) -> Result<String>;
 
     /// Validate that a spec is compatible with this writer
     ///

@@ -9,6 +9,8 @@ use ggsql::{parser, VERSION};
 use std::path::PathBuf;
 
 #[cfg(feature = "duckdb")]
+use ggsql::execute::prepare_data;
+#[cfg(feature = "duckdb")]
 use ggsql::reader::{DuckDBReader, Reader};
 
 #[cfg(feature = "vegalite")]
@@ -151,20 +153,6 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
         }
     }
 
-    // Split query into sql and ggsql part
-    let parsed = parser::split_query(&query);
-    if let Err(e) = parsed {
-        eprintln!("Failed to split query: {}", e);
-        std::process::exit(1);
-    }
-    let (sql_part, viz_part) = parsed.unwrap();
-
-    if verbose {
-        eprintln!("\nQuery split:");
-        eprintln!("  SQL portion: {} chars", sql_part.len());
-        eprintln!("  ggSQL portion: {} chars", viz_part.len());
-    }
-
     // Setup reader
     #[cfg(feature = "duckdb")]
     if !reader.starts_with("duckdb://") {
@@ -180,45 +168,28 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
     }
     let db_reader = db_reader.unwrap();
 
-    // Execute sql query
-    let sql_result = db_reader.execute(&sql_part);
-    if let Err(e) = sql_result {
-        eprintln!("Failed to execute SQL query: {}", e);
+    // Prepare data (parses query, executes SQL, handles layer sources)
+    let prepared = prepare_data(&query, &db_reader);
+    if let Err(e) = prepared {
+        eprintln!("Failed to prepare data: {}", e);
         std::process::exit(1);
     }
-    let df = sql_result.unwrap();
+    let prepared = prepared.unwrap();
 
     if verbose {
-        eprintln!("\nQuery executed successfully!");
-        eprintln!("Result shape: {:?}", df.shape());
-        eprintln!("Columns: {:?}", df.get_column_names());
-    }
-
-    // Parse ggSQL portion
-    if viz_part.len() < 1 {
-        if verbose {
-            eprintln!("The ggSQL portion is empty. No specifications produced.");
+        eprintln!("\nData sources loaded:");
+        for (key, df) in &prepared.data {
+            eprintln!("  {}: {:?}", key, df.shape());
         }
-        return ();
+        eprintln!("\nParsed {} visualisation spec(s)", prepared.specs.len());
     }
 
-    let parsed = parser::parse_query(&query);
-    if let Err(e) = parsed {
-        eprintln!("Failed to parse ggSQL portion: {}", e);
-        std::process::exit(1);
-    }
-    let specs = parsed.unwrap();
-
-    let first_spec = specs.first();
-    if let None = first_spec {
+    let first_spec = prepared.specs.first();
+    if first_spec.is_none() {
         eprintln!("No visualization specifications found");
         std::process::exit(1);
     }
     let first_spec = first_spec.unwrap();
-
-    if verbose {
-        eprintln!("\nParsed {} visualisation spec(s)", specs.len());
-    }
 
     // Check writer
     if writer != "vegalite" {
@@ -232,18 +203,19 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
         std::process::exit(1)
     }
 
-    // Write
+    // Write visualization
     let vl_writer = VegaLiteWriter::new();
-    let json_output = vl_writer.write(first_spec, &df);
+    let json_output = vl_writer.write(first_spec, &prepared.data);
     if let Err(ref e) = json_output {
         eprintln!("Failed to generate Vega-Lite output: {}", e);
+        std::process::exit(1);
     }
     let json_output = json_output.unwrap();
 
-    if let None = output {
+    if output.is_none() {
         // Empty output location, write to stdout
         println!("{}", json_output);
-        return ();
+        return;
     }
     let output = output.unwrap();
 

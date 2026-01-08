@@ -296,6 +296,27 @@ impl Reader for DuckDBReader {
     fn execute(&self, sql: &str) -> Result<DataFrame> {
         use polars::prelude::*;
 
+        // Check if this is a DDL statement (CREATE, DROP, INSERT, UPDATE, DELETE, ALTER)
+        // DDL statements don't return rows, so we handle them specially
+        let trimmed = sql.trim().to_uppercase();
+        let is_ddl = trimmed.starts_with("CREATE ")
+            || trimmed.starts_with("DROP ")
+            || trimmed.starts_with("INSERT ")
+            || trimmed.starts_with("UPDATE ")
+            || trimmed.starts_with("DELETE ")
+            || trimmed.starts_with("ALTER ");
+
+        if is_ddl {
+            // For DDL, just execute and return an empty DataFrame
+            self.conn
+                .execute(sql, params![])
+                .map_err(|e| GgsqlError::ReaderError(format!("Failed to execute DDL: {}", e)))?;
+
+            // Return empty DataFrame for DDL statements
+            return DataFrame::new(Vec::<polars::prelude::Series>::new())
+                .map_err(|e| GgsqlError::ReaderError(format!("Failed to create empty DataFrame: {}", e)));
+        }
+
         // Prepare and execute statement to get schema
         let mut stmt = self
             .conn
