@@ -48,11 +48,11 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**Cargo.lock')}}
 
       - name: Build with cargo
-        run: cargo build --verbose
+        run: cargo build --release
 
       - name: Run Rust tests
         if: success()
-        run: cargo test --verbose
+        run: cargo test --release
 
       - name: Upload build artefact
         uses: actions/upload-artifact@v4
