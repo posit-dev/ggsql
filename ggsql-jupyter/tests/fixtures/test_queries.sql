@@ -20,7 +20,7 @@ SELECT n as x, n * n as y
 FROM generate_series(1, 10) as t(n)
 VISUALISE x, y
 DRAW line
-LABEL title AS 'Quadratic Function', x AS 'X', y AS 'Y';
+LABEL title => 'Quadratic Function', x AS 'X', y AS 'Y';
 
 -- Multi-layer visualization with global mapping
 SELECT n as x, n * n as y
@@ -28,7 +28,7 @@ FROM generate_series(1, 10) as t(n)
 VISUALISE x, y
 DRAW line
 DRAW point
-LABEL title AS 'Line with Points';
+LABEL title => 'Line with Points';
 
 -- Date-based visualization with global mapping
 SELECT
@@ -48,7 +48,7 @@ SELECT
 FROM generate_series(0, 4) as t(n)
 VISUALISE category AS x, value AS y
 DRAW bar
-LABEL title AS 'Bar Chart', x AS 'Category', y AS 'Value';
+LABEL title => 'Bar Chart', x AS 'Category', y AS 'Value';
 
 -- Faceted visualization with global mapping
 SELECT
@@ -59,7 +59,7 @@ FROM generate_series(1, 10) as t(n)
 VISUALISE x, y
 DRAW point
 FACET WRAP group
-LABEL title AS 'Faceted Plot';
+LABEL title => 'Faceted Plot';
 
 -- Visualization with FILTER clause - global mapping with layer filter
 SELECT
@@ -69,7 +69,7 @@ FROM generate_series(1, 10) as t(n)
 VISUALISE x, y
 DRAW line
 DRAW point FILTER y > 25
-LABEL title AS 'Filtered Points';
+LABEL title => 'Filtered Points';
 
 -- Visualization with SETTING parameters
 SELECT

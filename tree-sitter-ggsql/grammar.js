@@ -599,13 +599,9 @@ module.exports = grammar({
     ),
 
     label_type: $ => choice(
-      caseInsensitive('title'), caseInsensitive('subtitle'),
-      caseInsensitive('x'), caseInsensitive('y'),
-      caseInsensitive('caption'), caseInsensitive('tag'),
+      'title', 'subtitle', 'x', 'y', 'caption', 'tag',
       // Aesthetic names for legend titles
-      caseInsensitive('color'), caseInsensitive('colour'),
-      caseInsensitive('fill'), caseInsensitive('size'),
-      caseInsensitive('shape'), caseInsensitive('linetype')
+      'color', 'colour', 'fill', 'size', 'shape', 'linetype'
     ),
 
     // GUIDE clause - GUIDE aesthetic SETTING prop => value, ...

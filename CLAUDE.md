@@ -249,8 +249,8 @@ pub enum Geom {
 }
 
 pub enum AestheticValue {
-    Column(String),                  // Unquoted column reference: x = revenue
-    Literal(LiteralValue),           // Quoted literal: color AS 'blue'
+    Column(String),                  // Unquoted column reference: revenue AS x
+    Literal(LiteralValue),           // Quoted literal: 'blue' AS fill
 }
 
 pub enum LiteralValue {
@@ -1141,10 +1141,10 @@ LABEL
 
 ```sql
 LABEL
-  title AS 'Sales by Region',
-  x AS 'Date',
-  y AS 'Revenue (USD)',
-  caption AS 'Data from Q4 2024'
+  title => 'Sales by Region',
+  x => 'Date',
+  y => 'Revenue (USD)',
+  caption => 'Data from Q4 2024'
 ```
 
 ### THEME Clause
