@@ -62,3 +62,28 @@ jobs:
             target/release
             target/.rustc_info.json
 
+  publish-website:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: rust-target
+          path: target
+
+      - name: Setup quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Render and Publish
+        uses: quarto-dev/quarto-actions/publish@v2
+        with:
+          target: gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
