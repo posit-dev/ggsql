@@ -370,9 +370,9 @@ targets AS (
 )
 VISUALISE
 DRAW line MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals
-DRAW point MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals SETTING size TO 30
+DRAW point MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals SETTING size => 30
 DRAW line MAPPING month AS x, value AS y, 'Target' AS color FROM targets
-SCALE x SETTING type TO 'date'
+SCALE x SETTING type => 'date'
 LABEL title = 'Revenue: Actual vs Target', x = 'Month', y = 'Revenue ($)'
 ```
 
@@ -400,7 +400,7 @@ monthly_electronics AS (
 VISUALISE month AS x, total AS y, region AS color FROM monthly_electronics
 DRAW line
 DRAW point
-SCALE x SETTING type TO 'date'
+SCALE x SETTING type => 'date'
 LABEL title = 'Electronics Revenue by Region (CTE Chain)', x = 'Month', y = 'Revenue ($)'
 ```
 
@@ -421,7 +421,7 @@ VISUALISE
 DRAW line MAPPING month AS x, revenue AS y, 'All Categories' AS color FROM all_sales
 DRAW line MAPPING month AS x, revenue AS y, 'Electronics' AS color FROM all_sales FILTER category = 'Electronics'
 DRAW line MAPPING month AS x, revenue AS y, 'Clothing' AS color FROM all_sales FILTER category = 'Clothing'
-SCALE x SETTING type TO 'date'
+SCALE x SETTING type => 'date'
 LABEL title = 'Revenue by Category (Filtered Layers)', x = 'Month', y = 'Revenue ($)'
 ```
 
