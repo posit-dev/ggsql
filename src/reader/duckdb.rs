@@ -312,9 +312,8 @@ impl Reader for DuckDBReader {
                 .execute(sql, params![])
                 .map_err(|e| GgsqlError::ReaderError(format!("Failed to execute DDL: {}", e)))?;
 
-            // Return empty DataFrame with a single dummy column
-            let empty_series = Series::new("__ddl_success__".into(), &[true]);
-            return DataFrame::new(vec![empty_series])
+            // Return empty DataFrame for DDL statements
+            return DataFrame::new(Vec::<polars::prelude::Series>::new())
                 .map_err(|e| GgsqlError::ReaderError(format!("Failed to create empty DataFrame: {}", e)));
         }
 
