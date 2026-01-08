@@ -968,16 +968,37 @@ impl Writer for VegaLiteWriter {
         }
         vl_spec["datasets"] = Value::Object(datasets);
 
+        // Determine if faceting requires unified data (no per-layer data entries)
+        let faceting_mode = spec.facet.is_some();
+
+        // If faceting, validate all layers use the same data source
+        if faceting_mode {
+            let unique_keys: std::collections::HashSet<_> = layer_data_keys.iter().collect();
+            if unique_keys.len() > 1 {
+                return Err(GgsqlError::ValidationError(
+                    "Faceting requires all layers to use the same data source. \
+                     Layers with different FROM sources cannot be faceted.".to_string()
+                ));
+            }
+        }
+
         // Build layers array
         let mut layers = Vec::new();
         for (layer_idx, layer) in spec.layers.iter().enumerate() {
             let data_key = &layer_data_keys[layer_idx];
             let df = data.get(data_key).unwrap();
 
-            let mut layer_spec = json!({
-                "data": {"name": data_key},
-                "mark": self.geom_to_mark(&layer.geom)
-            });
+            let mut layer_spec = if faceting_mode {
+                // No per-layer data when faceting - uses top-level data
+                json!({
+                    "mark": self.geom_to_mark(&layer.geom)
+                })
+            } else {
+                json!({
+                    "data": {"name": data_key},
+                    "mark": self.geom_to_mark(&layer.geom)
+                })
+            };
 
 
             // Build encoding for this layer
@@ -1036,9 +1057,13 @@ impl Writer for VegaLiteWriter {
 
         // Handle faceting if present
         if let Some(facet) = &spec.facet {
-            let facet_data = data.get("__global__")
-                .or_else(|| data.get(&layer_data_keys[0]))
-                .unwrap();
+            // Determine the data key for faceting (prefer __global__, fallback to first layer's data)
+            let facet_data_key = if data.contains_key("__global__") {
+                "__global__".to_string()
+            } else {
+                layer_data_keys[0].clone()
+            };
+            let facet_data = data.get(&facet_data_key).unwrap();
 
             use crate::parser::ast::Facet;
             match facet {
@@ -1049,6 +1074,9 @@ impl Writer for VegaLiteWriter {
                             "field": variables[0],
                             "type": field_type,
                         });
+
+                        // Set top-level data reference for faceting
+                        vl_spec["data"] = json!({"name": facet_data_key});
 
                         // Move layer into spec, keep datasets at top level
                         let mut spec_inner = json!({});
@@ -1077,6 +1105,9 @@ impl Writer for VegaLiteWriter {
                         );
                     }
                     vl_spec["facet"] = Value::Object(facet_spec);
+
+                    // Set top-level data reference for faceting
+                    vl_spec["data"] = json!({"name": facet_data_key});
 
                     // Move layer into spec, keep datasets at top level
                     let mut spec_inner = json!({});
@@ -2922,5 +2953,90 @@ mod tests {
         let err = result.unwrap_err().to_string();
         assert!(err.contains("nonexistent_column"));
         assert!(err.contains("PARTITION BY"));
+    }
+
+    #[test]
+    fn test_facet_wrap_top_level() {
+        use crate::parser::ast::Facet;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = VizSpec::new();
+        let layer = Layer::new(Geom::Point)
+            .with_aesthetic("x".to_string(), AestheticValue::Column("x".to_string()))
+            .with_aesthetic("y".to_string(), AestheticValue::Column("y".to_string()));
+        spec.layers.push(layer);
+        spec.facet = Some(Facet::Wrap {
+            variables: vec!["region".to_string()],
+            scales: crate::parser::ast::FacetScales::Fixed,
+        });
+
+        let df = df! {
+            "x" => &[1, 2, 3, 4],
+            "y" => &[10, 20, 15, 25],
+            "region" => &["North", "North", "South", "South"],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Verify top-level faceting structure
+        assert!(vl_spec["facet"].is_object(), "Should have top-level facet");
+        assert_eq!(vl_spec["facet"]["field"], "region");
+        assert!(vl_spec["data"].is_object(), "Should have top-level data reference");
+        assert_eq!(vl_spec["data"]["name"], "__global__");
+        assert!(vl_spec["datasets"]["__global__"].is_array(), "Should have datasets");
+        assert!(vl_spec["spec"]["layer"].is_array(), "Layer should be moved into spec");
+
+        // Layers inside spec should NOT have per-layer data entries
+        assert!(
+            vl_spec["spec"]["layer"][0].get("data").is_none(),
+            "Faceted layers should not have per-layer data"
+        );
+    }
+
+    #[test]
+    fn test_facet_grid_top_level() {
+        use crate::parser::ast::Facet;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = VizSpec::new();
+        let layer = Layer::new(Geom::Point)
+            .with_aesthetic("x".to_string(), AestheticValue::Column("x".to_string()))
+            .with_aesthetic("y".to_string(), AestheticValue::Column("y".to_string()));
+        spec.layers.push(layer);
+        spec.facet = Some(Facet::Grid {
+            rows: vec!["region".to_string()],
+            cols: vec!["category".to_string()],
+            scales: crate::parser::ast::FacetScales::Fixed,
+        });
+
+        let df = df! {
+            "x" => &[1, 2, 3, 4],
+            "y" => &[10, 20, 15, 25],
+            "region" => &["North", "North", "South", "South"],
+            "category" => &["A", "B", "A", "B"],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Verify top-level faceting structure
+        assert!(vl_spec["facet"].is_object(), "Should have top-level facet");
+        assert_eq!(vl_spec["facet"]["row"]["field"], "region");
+        assert_eq!(vl_spec["facet"]["column"]["field"], "category");
+        assert!(vl_spec["data"].is_object(), "Should have top-level data reference");
+        assert_eq!(vl_spec["data"]["name"], "__global__");
+        assert!(vl_spec["datasets"]["__global__"].is_array(), "Should have datasets");
+        assert!(vl_spec["spec"]["layer"].is_array(), "Layer should be moved into spec");
+
+        // Layers inside spec should NOT have per-layer data entries
+        assert!(
+            vl_spec["spec"]["layer"][0].get("data").is_none(),
+            "Faceted layers should not have per-layer data"
+        );
     }
 }
