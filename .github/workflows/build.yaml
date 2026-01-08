@@ -51,6 +51,7 @@ jobs:
 
   publish-website:
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -104,6 +105,7 @@ jobs:
 
   R-CMD-Check:
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
