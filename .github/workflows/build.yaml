@@ -38,6 +38,13 @@ jobs:
         working-directory: tree-sitter-ggsql
         run: tree-sitter test
 
+      - name: Caching
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**Cargo.lock')}}
+
       - name: Build with cargo
         run: cargo build
 
@@ -70,6 +77,13 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Caching
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**Cargo.lock')}}
 
       - name: Regenerate parser
         working-directory: tree-sitter-ggsql
@@ -118,6 +132,13 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Caching
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**Cargo.lock')}}
 
       - name: Install tree sitter
         run: npm install -g tree-sitter-cli
