@@ -3347,7 +3347,10 @@ mod tests {
         let layer = Layer::new(Geom::Line)
             .with_aesthetic("x".to_string(), AestheticValue::Column("date".to_string()))
             .with_aesthetic("y".to_string(), AestheticValue::Column("value".to_string()))
-            .with_parameter("color".to_string(), ParameterValue::String("red".to_string()));
+            .with_parameter(
+                "color".to_string(),
+                ParameterValue::String("red".to_string()),
+            );
         spec.layers.push(layer);
 
         let df = df! {
@@ -3361,8 +3364,7 @@ mod tests {
 
         // Color should be encoded as a literal value
         assert_eq!(
-            vl_spec["layer"][0]["encoding"]["color"]["value"],
-            "red",
+            vl_spec["layer"][0]["encoding"]["color"]["value"], "red",
             "SETTING color => 'red' should produce {{\"value\": \"red\"}}"
         );
     }
@@ -3391,13 +3393,11 @@ mod tests {
 
         // Size and opacity should be encoded as literal values
         assert_eq!(
-            vl_spec["layer"][0]["encoding"]["size"]["value"],
-            100.0,
+            vl_spec["layer"][0]["encoding"]["size"]["value"], 100.0,
             "SETTING size => 100 should produce {{\"value\": 100}}"
         );
         assert_eq!(
-            vl_spec["layer"][0]["encoding"]["opacity"]["value"],
-            0.5,
+            vl_spec["layer"][0]["encoding"]["opacity"]["value"], 0.5,
             "SETTING opacity => 0.5 should produce {{\"value\": 0.5}}"
         );
     }
@@ -3415,7 +3415,10 @@ mod tests {
                 "color".to_string(),
                 AestheticValue::Column("category".to_string()),
             )
-            .with_parameter("color".to_string(), ParameterValue::String("red".to_string()));
+            .with_parameter(
+                "color".to_string(),
+                ParameterValue::String("red".to_string()),
+            );
         spec.layers.push(layer);
 
         let df = df! {
@@ -3430,8 +3433,7 @@ mod tests {
 
         // Color should be field-mapped (from MAPPING), not value (from SETTING)
         assert_eq!(
-            vl_spec["layer"][0]["encoding"]["color"]["field"],
-            "category",
+            vl_spec["layer"][0]["encoding"]["color"]["field"], "category",
             "MAPPING should take precedence over SETTING"
         );
         assert!(

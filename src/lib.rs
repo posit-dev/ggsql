@@ -602,7 +602,8 @@ mod integration_tests {
             FACET region BY category
         "#;
 
-        let prepared = execute::prepare_data_with_executor(query, |sql| reader.execute(sql)).unwrap();
+        let prepared =
+            execute::prepare_data_with_executor(query, |sql| reader.execute(sql)).unwrap();
 
         // All layers should use global data for faceting to work
         assert!(
@@ -689,7 +690,8 @@ mod integration_tests {
             SCALE x SETTING type => 'date'
         "#;
 
-        let prepared = execute::prepare_data_with_executor(query, |sql| reader.execute(sql)).unwrap();
+        let prepared =
+            execute::prepare_data_with_executor(query, |sql| reader.execute(sql)).unwrap();
 
         // Should have global data with the constant injected
         assert!(
@@ -719,11 +721,15 @@ mod integration_tests {
         // Both layers should have color field-mapped to their indexed constant columns
         assert_eq!(vl_spec["layer"].as_array().unwrap().len(), 2);
         assert_eq!(
-            vl_spec["layer"][0]["encoding"]["color"]["field"].as_str().unwrap(),
+            vl_spec["layer"][0]["encoding"]["color"]["field"]
+                .as_str()
+                .unwrap(),
             "__ggsql_const_color_0__"
         );
         assert_eq!(
-            vl_spec["layer"][1]["encoding"]["color"]["field"].as_str().unwrap(),
+            vl_spec["layer"][1]["encoding"]["color"]["field"]
+                .as_str()
+                .unwrap(),
             "__ggsql_const_color_1__"
         );
 
