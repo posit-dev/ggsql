@@ -2,28 +2,50 @@ skip_if_not_installed("png")
 skip_if_not_installed("rsvg")
 skip_if_not_installed("V8")
 
+run_query <- function(query, ...) {
+  opts <- knitr::opts_current$get()
+  opts$code <- query
+  extra_opts <- list(...)
+  if (length(extra_opts) > 0) {
+    opts[names(extra_opts)] <- extra_opts
+  }
+  ggsql_engine(opts)
+}
+
+data_file <- "mtcars.csv"
+on.exit(unlink(data_file))
+write.csv(mtcars, data_file)
+
 test_that("engine can handle a query", {
-
-  data_file <- tempfile(fileext = ".csv")
-  data_file <- "mtcars.csv"
-  on.exit(unlink(data_file))
-  write.csv(mtcars, data_file)
-
   query <- c(
     paste0("SELECT mpg, disp FROM '", data_file, "'"),
     "VISUALISE mpg AS x, disp AS y",
     "DRAW point"
   )
-
-  opts <- knitr::opts_current$get()
-  opts$code <- query
-  opts$dev <- "png"
-
-  out <- ggsql_engine(opts)
+  out <- run_query(query, dev = "png")
 
   # We expect path to png file here, since output format for knitr is undetermined
   expect_type(out, "character")
   expect_length(out, 1L)
+})
+
+test_that("engine can handle a query without visualisation statement", {
+  query <- paste0("SELECT mpg, disp FROM '", data_file, "'")
+
+  out <- run_query(query)
+  expect_snapshot(cat(out))
+})
+
+test_that("engine does not return a table when merely creating data", {
+  query <-
+    "COPY (
+      SELECT * FROM (VALUES
+          (5.2, 18.5),
+          (8.7, 22.3)
+      ) AS t(x, y)
+    ) TO 'data.csv' (HEADER, DELIMITER ',')"
+  out <- run_query(query)
+  expect_snapshot(cat(out))
 })
 
 test_that("we can knit a mixed-chunk document", {

@@ -292,7 +292,7 @@ impl VegaLiteWriter {
                         // If domain is specified without explicit type:
                         // - For size/opacity: keep quantitative (domain sets range, not categories)
                         // - For color/x/y: treat as ordinal (discrete categories)
-                        if aesthetic == "size" || aesthetic == "opacity" || aesthetic == "alpha" {
+                        if aesthetic == "size" || aesthetic == "opacity" {
                             "quantitative".to_string()
                         } else {
                             "ordinal".to_string()
@@ -390,7 +390,6 @@ impl VegaLiteWriter {
     fn map_aesthetic_name(&self, aesthetic: &str) -> String {
         match aesthetic {
             "fill" => "color",
-            "alpha" => "opacity",
             _ => aesthetic,
         }
         .to_string()
@@ -936,7 +935,7 @@ impl VegaLiteWriter {
                 | "color"
                 | "colour"
                 | "fill"
-                | "alpha"
+                | "opacity"
                 | "size"
                 | "shape"
                 | "linetype"
@@ -1259,7 +1258,6 @@ mod tests {
         let writer = VegaLiteWriter::new();
         assert_eq!(writer.map_aesthetic_name("x"), "x");
         assert_eq!(writer.map_aesthetic_name("fill"), "color");
-        assert_eq!(writer.map_aesthetic_name("alpha"), "opacity");
     }
 
     #[test]
@@ -1612,33 +1610,6 @@ mod tests {
 
         // 'fill' should be mapped to 'color' in Vega-Lite
         assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["field"], "region");
-    }
-
-    #[test]
-    fn test_alpha_aesthetic_mapping() {
-        let writer = VegaLiteWriter::new();
-
-        let mut spec = VizSpec::new();
-        let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::Column("x".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::Column("y".to_string()))
-            .with_aesthetic(
-                "alpha".to_string(),
-                AestheticValue::Literal(LiteralValue::Number(0.5)),
-            );
-        spec.layers.push(layer);
-
-        let df = df! {
-            "x" => &[1, 2],
-            "y" => &[3, 4],
-        }
-        .unwrap();
-
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
-        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
-
-        // 'alpha' should be mapped to 'opacity' in Vega-Lite
-        assert_eq!(vl_spec["layer"][0]["encoding"]["opacity"]["value"], 0.5);
     }
 
     #[test]

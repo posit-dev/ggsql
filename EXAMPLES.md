@@ -398,7 +398,7 @@ WITH daily_metrics AS (
 VISUALISE day AS x FROM daily_metrics
 DRAW ribbon
     MAPPING min_temp AS ymin, max_temp AS ymax, 'lightblue' AS fill
-    SETTING alpha => 0.3
+    SETTING opacity => 0.3
 DRAW line
     MAPPING avg_temp AS y, 'blue' AS color
     SETTING size => 2

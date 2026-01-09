@@ -97,7 +97,7 @@ SELECT * FROM daily_metrics
 VISUALISE date AS x
 DRAW ribbon
     MAPPING min_temp AS ymin, max_temp AS ymax, 'lightblue' AS fill
-    SETTING alpha => 0.3
+    SETTING opacity => 0.3
 DRAW line
     MAPPING avg_temp AS y, 'blue' AS color
     SETTING size => 2
@@ -154,7 +154,7 @@ WITH quarterly_breakdown AS (
     GROUP BY DATE_TRUNC('quarter', sale_date), category
 )
 VISUALISE quarter AS x, revenue AS y, category AS fill FROM quarterly_breakdown
-DRAW area SETTING alpha => 0.7
+DRAW area SETTING opacity => 0.7
 SCALE x SETTING type => 'date'
 SCALE fill SETTING palette => 'plasma', domain => ['A', 'B', 'C', 'D']
 LABEL title => 'Quarterly Revenue by Category',
@@ -170,7 +170,7 @@ FROM products
 WHERE rating IS NOT NULL
 VISUALISE category AS x, price AS y
 DRAW boxplot
-DRAW violin SETTING alpha => 0.3
+DRAW violin SETTING opacity => 0.3
 COORD cartesian SETTING ylim => [0, 500]
 LABEL title => 'Price Distribution by Category',
       x => 'Product Category',

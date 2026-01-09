@@ -16,6 +16,18 @@ ggsql_engine <- function(options) {
   # If the command failed, we don't have a vegalite schema and we exit early
   is_schema <- !is.na(out[2]) && startsWith(trimws(out[2]), "\"$schema")
   if (!is_schema) {
+
+    out <- rlang::try_fetch(
+      utils::read.csv(text = out),
+      error = function(cnd) out
+    )
+    # Excludes dummy table when creating new table in chunk
+    is_proper_dataframe <- is.data.frame(out) &&
+      !(identical(colnames(out), "Count") && nrow(out) == 1)
+    if (is_proper_dataframe) {
+      out <- knitr::kable(out)
+      options$results <- "asis"
+    }
     return(knitr::engine_output(options, options$code, out))
   }
 

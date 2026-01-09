@@ -44,7 +44,7 @@
   "color"
   "colour"
   "fill"
-  "alpha"
+  "opacity"
   "size"
   "shape"
   "linetype"

@@ -20,7 +20,7 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::Result;
 
@@ -69,11 +69,6 @@ pub enum GlobalMappingItem {
     Explicit { column: String, aesthetic: String },
     /// Implicit mapping: `x` → column "x" maps to aesthetic "x"
     Implicit { name: String },
-    /// Literal mapping: `'blue' AS color` → literal value maps to aesthetic
-    Literal {
-        value: LiteralValue,
-        aesthetic: String,
-    },
 }
 
 /// Data source for a layer (from MAPPING ... FROM clause)
@@ -230,132 +225,180 @@ impl Geom {
             // Position geoms
             Geom::Point => GeomAesthetics {
                 supported: &[
-                    "x", "y", "color", "colour", "fill", "size", "shape", "alpha", "opacity",
-                    "group",
+                    "x", "y", "color", "colour", "fill", "size", "shape", "opacity", "group",
                 ],
                 required: &["x", "y"],
             },
             Geom::Line => GeomAesthetics {
                 supported: &[
-                    "x", "y", "color", "colour", "linetype", "linewidth", "alpha", "opacity",
+                    "x",
+                    "y",
+                    "color",
+                    "colour",
+                    "linetype",
+                    "linewidth",
+                    "opacity",
                     "group",
                 ],
                 required: &["x", "y"],
             },
             Geom::Path => GeomAesthetics {
                 supported: &[
-                    "x", "y", "color", "colour", "linetype", "linewidth", "alpha", "opacity",
+                    "x",
+                    "y",
+                    "color",
+                    "colour",
+                    "linetype",
+                    "linewidth",
+                    "opacity",
                     "group",
                 ],
                 required: &["x", "y"],
             },
             Geom::Bar => GeomAesthetics {
                 supported: &[
-                    "x", "y", "color", "colour", "fill", "width", "alpha", "opacity", "group",
+                    "x", "y", "color", "colour", "fill", "width", "opacity", "group",
                 ],
                 required: &["x", "y"],
             },
             Geom::Col => GeomAesthetics {
                 supported: &[
-                    "x", "y", "color", "colour", "fill", "width", "alpha", "opacity", "group",
+                    "x", "y", "color", "colour", "fill", "width", "opacity", "group",
                 ],
                 required: &["x", "y"],
             },
             Geom::Area => GeomAesthetics {
-                supported: &["x", "y", "color", "colour", "fill", "alpha", "opacity", "group"],
+                supported: &["x", "y", "color", "colour", "fill", "opacity", "group"],
                 required: &["x", "y"],
             },
             Geom::Tile => GeomAesthetics {
                 supported: &[
-                    "x", "y", "color", "colour", "fill", "width", "height", "alpha", "opacity",
+                    "x", "y", "color", "colour", "fill", "width", "height", "opacity",
                 ],
                 required: &["x", "y"],
             },
             Geom::Polygon => GeomAesthetics {
-                supported: &["x", "y", "color", "colour", "fill", "alpha", "opacity", "group"],
+                supported: &["x", "y", "color", "colour", "fill", "opacity", "group"],
                 required: &["x", "y"],
             },
             Geom::Ribbon => GeomAesthetics {
                 supported: &[
-                    "x", "ymin", "ymax", "color", "colour", "fill", "alpha", "opacity", "group",
+                    "x", "ymin", "ymax", "color", "colour", "fill", "opacity", "group",
                 ],
                 required: &["x", "ymin", "ymax"],
             },
 
             // Statistical geoms
             Geom::Histogram => GeomAesthetics {
-                supported: &["x", "color", "colour", "fill", "alpha", "opacity"],
+                supported: &["x", "color", "colour", "fill", "opacity"],
                 required: &["x"],
             },
             Geom::Density => GeomAesthetics {
-                supported: &["x", "color", "colour", "fill", "alpha", "opacity"],
+                supported: &["x", "color", "colour", "fill", "opacity"],
                 required: &["x"],
             },
             Geom::Smooth => GeomAesthetics {
-                supported: &["x", "y", "color", "colour", "linetype", "alpha", "opacity", "group"],
+                supported: &["x", "y", "color", "colour", "linetype", "opacity", "group"],
                 required: &["x", "y"],
             },
             Geom::Boxplot => GeomAesthetics {
-                supported: &["x", "y", "color", "colour", "fill", "alpha", "opacity"],
+                supported: &["x", "y", "color", "colour", "fill", "opacity"],
                 required: &["x", "y"],
             },
             Geom::Violin => GeomAesthetics {
-                supported: &["x", "y", "color", "colour", "fill", "alpha", "opacity"],
+                supported: &["x", "y", "color", "colour", "fill", "opacity"],
                 required: &["x", "y"],
             },
 
             // Annotation geoms
             Geom::Text => GeomAesthetics {
                 supported: &[
-                    "x", "y", "label", "color", "colour", "size", "alpha", "opacity", "family",
-                    "fontface", "hjust", "vjust",
+                    "x", "y", "label", "color", "colour", "size", "opacity", "family", "fontface",
+                    "hjust", "vjust",
                 ],
                 required: &["x", "y"],
             },
             Geom::Label => GeomAesthetics {
                 supported: &[
-                    "x", "y", "label", "color", "colour", "fill", "size", "alpha", "opacity",
-                    "family", "fontface", "hjust", "vjust",
+                    "x", "y", "label", "color", "colour", "fill", "size", "opacity", "family",
+                    "fontface", "hjust", "vjust",
                 ],
                 required: &["x", "y"],
             },
             Geom::Segment => GeomAesthetics {
                 supported: &[
-                    "x", "y", "xend", "yend", "color", "colour", "linetype", "linewidth", "alpha",
+                    "x",
+                    "y",
+                    "xend",
+                    "yend",
+                    "color",
+                    "colour",
+                    "linetype",
+                    "linewidth",
                     "opacity",
                 ],
                 required: &["x", "y", "xend", "yend"],
             },
             Geom::Arrow => GeomAesthetics {
                 supported: &[
-                    "x", "y", "xend", "yend", "color", "colour", "linetype", "linewidth", "alpha",
+                    "x",
+                    "y",
+                    "xend",
+                    "yend",
+                    "color",
+                    "colour",
+                    "linetype",
+                    "linewidth",
                     "opacity",
                 ],
                 required: &["x", "y", "xend", "yend"],
             },
             Geom::HLine => GeomAesthetics {
                 supported: &[
-                    "yintercept", "color", "colour", "linetype", "linewidth", "alpha", "opacity",
+                    "yintercept",
+                    "color",
+                    "colour",
+                    "linetype",
+                    "linewidth",
+                    "opacity",
                 ],
                 required: &["yintercept"],
             },
             Geom::VLine => GeomAesthetics {
                 supported: &[
-                    "xintercept", "color", "colour", "linetype", "linewidth", "alpha", "opacity",
+                    "xintercept",
+                    "color",
+                    "colour",
+                    "linetype",
+                    "linewidth",
+                    "opacity",
                 ],
                 required: &["xintercept"],
             },
             Geom::AbLine => GeomAesthetics {
                 supported: &[
-                    "slope", "intercept", "color", "colour", "linetype", "linewidth", "alpha",
+                    "slope",
+                    "intercept",
+                    "color",
+                    "colour",
+                    "linetype",
+                    "linewidth",
                     "opacity",
                 ],
                 required: &["slope", "intercept"],
             },
             Geom::ErrorBar => GeomAesthetics {
                 supported: &[
-                    "x", "y", "ymin", "ymax", "xmin", "xmax", "color", "colour", "linewidth",
-                    "alpha", "opacity",
+                    "x",
+                    "y",
+                    "ymin",
+                    "ymax",
+                    "xmin",
+                    "xmax",
+                    "color",
+                    "colour",
+                    "linewidth",
+                    "opacity",
                 ],
                 required: &[],
             },
@@ -629,9 +672,6 @@ impl VizSpec {
                     GlobalMappingItem::Implicit { name } => {
                         (name.clone(), AestheticValue::Column(name.clone()))
                     }
-                    GlobalMappingItem::Literal { value, aesthetic } => {
-                        (aesthetic.clone(), AestheticValue::Literal(value.clone()))
-                    }
                 })
                 .collect(),
         };
@@ -658,54 +698,6 @@ impl VizSpec {
         }
 
         Ok(())
-    }
-
-    /// Compute and merge aesthetic labels into the Labels struct
-    ///
-    /// For each aesthetic used across layers, determines the display label:
-    /// 1. User-specified labels (from LABEL clause) take precedence
-    /// 2. Otherwise, uses first non-constant column mapping
-    /// 3. Falls back to aesthetic name if all mappings are constants
-    ///
-    /// Call this after `resolve_global_mappings()` and constant injection.
-    pub fn compute_aesthetic_labels(&mut self) {
-        // Ensure Labels struct exists
-        if self.labels.is_none() {
-            self.labels = Some(Labels {
-                labels: HashMap::new(),
-            });
-        }
-        let labels = self.labels.as_mut().unwrap();
-
-        // Collect all aesthetics used across all layers
-        let mut all_aesthetics: HashSet<String> = HashSet::new();
-        for layer in &self.layers {
-            for aesthetic in layer.aesthetics.keys() {
-                all_aesthetics.insert(aesthetic.clone());
-            }
-        }
-
-        // For each aesthetic, compute label if not already user-specified
-        for aesthetic in all_aesthetics {
-            // Skip if user already specified this label
-            if labels.labels.contains_key(&aesthetic) {
-                continue;
-            }
-
-            // Find first non-constant column mapping
-            let mut label = aesthetic.clone(); // Default to aesthetic name
-            for layer in &self.layers {
-                if let Some(AestheticValue::Column(col)) = layer.aesthetics.get(&aesthetic) {
-                    // Skip synthetic constant columns
-                    if !col.starts_with("__ggsql_const_") {
-                        label = col.clone();
-                        break;
-                    }
-                }
-            }
-
-            labels.labels.insert(aesthetic, label);
-        }
     }
 }
 
@@ -1000,7 +992,7 @@ mod tests {
         spec.global_mapping = GlobalMapping::Wildcard;
         spec.layers.push(Layer::new(Geom::Point));
 
-        // Point geom supports: x, y, color, size, shape, alpha, etc.
+        // Point geom supports: x, y, color, size, shape, opacity, etc.
         // Columns "x", "y", "color" match supported aesthetics
         // Columns "date", "revenue" do NOT match any supported aesthetic
         spec.resolve_global_mappings(&["x", "y", "color", "date", "revenue"])
