@@ -5,7 +5,8 @@ Provides commands for executing ggSQL queries with various data sources and outp
 */
 
 use clap::{Parser, Subcommand};
-use ggsql::{parser, DataFrame, VERSION};
+use ggsql::parser::extract_sql;
+use ggsql::{parser, VERSION};
 use std::path::PathBuf;
 
 #[cfg(feature = "duckdb")]
@@ -168,6 +169,22 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
     }
     let db_reader = db_reader.unwrap();
 
+    // Check if visualise part is empty
+    let parsed = parser::split_query(&query);
+    if let Err(e) = parsed {
+        eprintln!("Failed to split query: {}", e);
+        std::process::exit(1);
+    }
+    let (_, viz_part) = parsed.unwrap();
+
+    if viz_part.is_empty() {
+        if verbose {
+            eprintln!("Visualisation is empty. Printing table instead.");
+        }
+        print_table_fallback(&query, &db_reader, 100);
+        return;
+    }
+
     // Prepare data (parses query, executes SQL, handles layer sources)
     let prepared = prepare_data(&query, &db_reader);
     if let Err(e) = prepared {
@@ -284,7 +301,21 @@ fn cmd_validate(query: String, reader: Option<String>) {
 }
 
 // Prints a CSV-like output to stdout with aligned columns
-fn print_table_fallback(data: &DataFrame, max_rows: usize) {
+fn print_table_fallback(query: &str, reader: &DuckDBReader, max_rows: usize) {
+    let parsed = extract_sql(query);
+    if let Err(e) = parsed {
+        eprintln!("Failed to split query: {}", e);
+        std::process::exit(1);
+    }
+    let parsed = parsed.unwrap();
+
+    let data = reader.execute(&parsed);
+    if let Err(e) = data {
+        eprintln!("Failed to execute SQL query: {}", e);
+        std::process::exit(1)
+    }
+    let data = data.unwrap();
+
     let nrow = data.height().min(max_rows);
     let ncol = data.width();
     let colnames = data.get_column_names_str();

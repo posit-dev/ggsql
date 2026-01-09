@@ -408,6 +408,7 @@ where
 
     if specs.is_empty() {
         return Err(GgsqlError::ValidationError(
+            // If this message changes, change cmd_exec() in cli.rs too
             "No visualization specifications found".to_string(),
         ));
     }
@@ -415,6 +416,7 @@ where
     // Check if we have any visualization content
     if viz_part.trim().is_empty() {
         return Err(GgsqlError::ValidationError(
+            // If this message changes, change cmd_exec() in cli.rs too
             "The visualization portion is empty".to_string(),
         ));
     }
