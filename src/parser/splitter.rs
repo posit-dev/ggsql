@@ -161,7 +161,8 @@ mod tests {
 
     #[test]
     fn test_visualise_from_with_cte() {
-        let query = "WITH cte AS (SELECT * FROM x) VISUALISE FROM cte DRAW point MAPPING a AS x, b AS y";
+        let query =
+            "WITH cte AS (SELECT * FROM x) VISUALISE FROM cte DRAW point MAPPING a AS x, b AS y";
         let (sql, viz) = split_query(query).unwrap();
 
         // Should inject SELECT * FROM cte after the WITH

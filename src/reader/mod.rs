@@ -19,7 +19,7 @@
 //! let df = reader.execute("SELECT * FROM table")?;
 //! ```
 
-use crate::{Result, DataFrame};
+use crate::{DataFrame, Result};
 
 #[cfg(feature = "duckdb")]
 pub mod duckdb;

@@ -3,9 +3,9 @@
 //! This module defines the Jupyter messaging protocol structures used
 //! for communication between the kernel and clients.
 
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use anyhow::Result;
 
 /// Connection information from Jupyter
 #[derive(Debug, Deserialize, Serialize, Clone)]

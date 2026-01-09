@@ -12,7 +12,7 @@ VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
 SCALE x SETTING type => 'date'
 COORD cartesian SETTING ylim => [0, 100000]
-LABEL title = 'Sales by Region', x = 'Date', y = 'Revenue'
+LABEL title => 'Sales by Region', x => 'Date', y => 'Revenue'
 THEME minimal
 ```
 
@@ -249,8 +249,8 @@ pub enum Geom {
 }
 
 pub enum AestheticValue {
-    Column(String),                  // Unquoted column reference: x = revenue
-    Literal(LiteralValue),           // Quoted literal: color = 'blue'
+    Column(String),                  // Unquoted column reference: revenue AS x
+    Literal(LiteralValue),           // Quoted literal: 'blue' AS fill
 }
 
 pub enum LiteralValue {
@@ -710,7 +710,7 @@ SELECT * FROM sales
 VISUALISE
 DRAW line MAPPING date AS x, revenue AS y, region AS color
 SCALE x SETTING type => 'date'
-LABEL title = 'Sales Trends'
+LABEL title => 'Sales Trends'
 ```
 
 **Key Implementation Details**:
@@ -853,7 +853,7 @@ Where `<global_mapping>` can be:
 | `SCALE`        | ✅ Yes     | Configure scales   | `SCALE x SETTING type => 'date'`          |
 | `FACET`        | ❌ No      | Small multiples    | `FACET WRAP region`                  |
 | `COORD`        | ❌ No      | Coordinate system  | `COORD cartesian SETTING xlim => [0,100]` |
-| `LABEL`        | ❌ No      | Text labels        | `LABEL title='My Chart', x='Date'`   |
+| `LABEL`        | ❌ No      | Text labels        | `LABEL title => 'My Chart', x => 'Date'`   |
 | `GUIDE`        | ✅ Yes     | Legend/axis config | `GUIDE color SETTING position => 'right'` |
 | `THEME`        | ❌ No      | Visual styling     | `THEME minimal`                      |
 
@@ -1007,7 +1007,7 @@ SCALE x SETTING domain => [0, 100]
 **Example**:
 
 ```sql
-SCALE x SETTING type => 'date', breaks = '2 months'
+SCALE x SETTING type => 'date', breaks => '2 months'
 SCALE y SETTING type => 'log10', limits => [1, 1000]
 SCALE color SETTING palette => 'viridis', domain => ['A', 'B', 'C']
 ```
@@ -1118,7 +1118,7 @@ COORD polar SETTING theta => y
 -- Combined with other clauses
 DRAW bar MAPPING category AS x, value AS y
 COORD cartesian SETTING xlim => [0, 100], ylim => [0, 200]
-LABEL x = 'Category', y = 'Count'
+LABEL x => 'Category', y => 'Count'
 ```
 
 
@@ -1128,23 +1128,23 @@ LABEL x = 'Category', y = 'Count'
 
 ```sql
 LABEL
-  [title = <string>]
-  [subtitle = <string>]
-  [x = <string>]
-  [y = <string>]
-  [<aesthetic> = <string>]
-  [caption = <string>]
-  [tag = <string>]
+  [title => <string>]
+  [subtitle => <string>]
+  [x => <string>]
+  [y => <string>]
+  [<aesthetic> => <string>]
+  [caption => <string>]
+  [tag => <string>]
 ```
 
 **Example**:
 
 ```sql
 LABEL
-  title = 'Sales by Region',
-  x = 'Date',
-  y = 'Revenue (USD)',
-  caption = 'Data from Q4 2024'
+  title => 'Sales by Region',
+  x => 'Date',
+  y => 'Revenue (USD)',
+  caption => 'Data from Q4 2024'
 ```
 
 ### THEME Clause
@@ -1183,7 +1183,7 @@ DRAW point
     MAPPING sale_date AS x, total AS y, region AS color
 SCALE x SETTING type => 'date'
 FACET WRAP region
-LABEL title = 'Sales Trends by Region', x = 'Date', y = 'Total Quantity'
+LABEL title => 'Sales Trends by Region', x => 'Date', y => 'Total Quantity'
 THEME minimal
 ```
 

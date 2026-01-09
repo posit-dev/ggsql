@@ -143,7 +143,11 @@ impl KernelServer {
         let (identities, jupyter_msg) = self.parse_message(msg)?;
         let msg_type = &jupyter_msg.header.msg_type;
 
-        tracing::info!("Received shell message: {} (identities: {})", msg_type, identities.len());
+        tracing::info!(
+            "Received shell message: {} (identities: {})",
+            msg_type,
+            identities.len()
+        );
 
         match msg_type.as_str() {
             "kernel_info_request" => self.send_kernel_info(&jupyter_msg, &identities).await?,
@@ -166,7 +170,8 @@ impl KernelServer {
         match msg_type.as_str() {
             "kernel_info_request" => {
                 // Handle kernel_info on control channel too
-                self.send_kernel_info_control(&jupyter_msg, &identities).await?;
+                self.send_kernel_info_control(&jupyter_msg, &identities)
+                    .await?;
                 Ok(false)
             }
             "shutdown_request" => {
@@ -196,8 +201,15 @@ impl KernelServer {
     }
 
     /// Send kernel_info_reply on shell channel
-    async fn send_kernel_info(&mut self, parent: &JupyterMessage, identities: &[Vec<u8>]) -> Result<()> {
-        tracing::info!("Sending kernel_info_reply (identities: {})", identities.len());
+    async fn send_kernel_info(
+        &mut self,
+        parent: &JupyterMessage,
+        identities: &[Vec<u8>],
+    ) -> Result<()> {
+        tracing::info!(
+            "Sending kernel_info_reply (identities: {})",
+            identities.len()
+        );
 
         // Per Jupyter spec: send busy/idle for ALL requests
         self.send_status("busy", parent).await?;
@@ -211,7 +223,11 @@ impl KernelServer {
     }
 
     /// Send kernel_info_reply on control channel
-    async fn send_kernel_info_control(&mut self, parent: &JupyterMessage, identities: &[Vec<u8>]) -> Result<()> {
+    async fn send_kernel_info_control(
+        &mut self,
+        parent: &JupyterMessage,
+        identities: &[Vec<u8>],
+    ) -> Result<()> {
         // Per Jupyter spec: send busy/idle for ALL requests
         self.send_status("busy", parent).await?;
 
@@ -288,7 +304,7 @@ impl KernelServer {
                             "data": display_data["data"],
                             "metadata": display_data["metadata"]
                         }),
-                        parent
+                        parent,
                     )
                     .await?;
                 }
@@ -403,21 +419,13 @@ impl KernelServer {
 
     /// Send a status message
     async fn send_status(&mut self, state: &str, parent: &JupyterMessage) -> Result<()> {
-        self.send_iopub(
-            "status",
-            json!({"execution_state": state}),
-            parent,
-        )
-        .await
+        self.send_iopub("status", json!({"execution_state": state}), parent)
+            .await
     }
 
     /// Send an initial status message without a parent (for kernel startup)
     async fn send_status_initial(&mut self, state: &str) -> Result<()> {
-        let msg = self.create_message(
-            "status",
-            json!({"execution_state": state}),
-            None,
-        );
+        let msg = self.create_message("status", json!({"execution_state": state}), None);
         let zmq_msg = self.serialize_message_with_topic(&msg, "status")?;
         self.iopub.send(zmq_msg).await?;
         Ok(())
@@ -475,7 +483,8 @@ impl KernelServer {
 
         // SECURITY: Verify HMAC signature if key is set
         if !self.key.is_empty() {
-            let expected_hmac = self.sign_message(header_json, parent_json, metadata_json, content_json);
+            let expected_hmac =
+                self.sign_message(header_json, parent_json, metadata_json, content_json);
 
             // Use constant-time comparison to prevent timing attacks
             if received_hmac != expected_hmac {
@@ -517,7 +526,11 @@ impl KernelServer {
 
     /// Serialize a Jupyter message to ZeroMQ format with topic (for IOPub)
     /// According to Jupyter protocol: "there should be just one prefix component, which is the topic"
-    fn serialize_message_with_topic(&self, msg: &JupyterMessage, topic: &str) -> Result<zeromq::ZmqMessage> {
+    fn serialize_message_with_topic(
+        &self,
+        msg: &JupyterMessage,
+        topic: &str,
+    ) -> Result<zeromq::ZmqMessage> {
         let header = serde_json::to_string(&msg.header)?;
         let parent = serde_json::to_string(&msg.parent_header)?;
         let metadata = serde_json::to_string(&msg.metadata)?;
@@ -538,15 +551,13 @@ impl KernelServer {
         Ok(zmq_msg)
     }
 
-
     /// Sign a message using HMAC-SHA256
     fn sign_message(&self, header: &str, parent: &str, metadata: &str, content: &str) -> String {
         if self.key.is_empty() {
             return String::new();
         }
 
-        let mut mac = HmacSha256::new_from_slice(&self.key)
-            .expect("HMAC can take key of any size");
+        let mut mac = HmacSha256::new_from_slice(&self.key).expect("HMAC can take key of any size");
         mac.update(header.as_bytes());
         mac.update(parent.as_bytes());
         mac.update(metadata.as_bytes());

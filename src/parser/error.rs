@@ -47,7 +47,7 @@ impl fmt::Display for ParseError {
                 f,
                 "{} at line {}, column {} (in {})",
                 self.message,
-                self.line + 1, // Display as 1-based
+                self.line + 1,   // Display as 1-based
                 self.column + 1, // Display as 1-based
                 self.context
             )

@@ -2,7 +2,7 @@
 //!
 //! Parses URI-style connection strings to determine database type and connection parameters.
 
-use crate::{Result, GgsqlError};
+use crate::{GgsqlError, Result};
 
 /// Parsed connection information
 #[derive(Debug, Clone, PartialEq)]

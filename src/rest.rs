@@ -34,6 +34,8 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use ggsql::{parser, GgsqlError, VERSION};
 
 #[cfg(feature = "duckdb")]
+use ggsql::execute::prepare_data_with_executor;
+#[cfg(feature = "duckdb")]
 use ggsql::reader::{DuckDBReader, Reader};
 
 #[cfg(feature = "vegalite")]
@@ -230,8 +232,8 @@ impl From<String> for ApiErrorResponse {
 
 #[cfg(feature = "duckdb")]
 fn load_data_files(reader: &DuckDBReader, files: &[String]) -> Result<(), GgsqlError> {
-    use std::path::Path;
     use duckdb::params;
+    use std::path::Path;
 
     let conn = reader.connection();
 
@@ -239,16 +241,21 @@ fn load_data_files(reader: &DuckDBReader, files: &[String]) -> Result<(), GgsqlE
         let path = Path::new(file_path);
 
         if !path.exists() {
-            return Err(GgsqlError::ReaderError(format!("File not found: {}", file_path)));
+            return Err(GgsqlError::ReaderError(format!(
+                "File not found: {}",
+                file_path
+            )));
         }
 
-        let extension = path.extension()
+        let extension = path
+            .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_lowercase();
 
         // Derive table name from filename (without extension)
-        let table_name = path.file_stem()
+        let table_name = path
+            .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("data")
             .replace('-', "_")
@@ -263,8 +270,9 @@ fn load_data_files(reader: &DuckDBReader, files: &[String]) -> Result<(), GgsqlE
                     "CREATE TABLE {} AS SELECT * FROM read_csv_auto('{}')",
                     table_name, file_path
                 );
-                conn.execute(&sql, params![])
-                    .map_err(|e| GgsqlError::ReaderError(format!("Failed to load CSV {}: {}", file_path, e)))?;
+                conn.execute(&sql, params![]).map_err(|e| {
+                    GgsqlError::ReaderError(format!("Failed to load CSV {}: {}", file_path, e))
+                })?;
             }
             "parquet" => {
                 // DuckDB can read Parquet directly
@@ -272,8 +280,9 @@ fn load_data_files(reader: &DuckDBReader, files: &[String]) -> Result<(), GgsqlE
                     "CREATE TABLE {} AS SELECT * FROM read_parquet('{}')",
                     table_name, file_path
                 );
-                conn.execute(&sql, params![])
-                    .map_err(|e| GgsqlError::ReaderError(format!("Failed to load Parquet {}: {}", file_path, e)))?;
+                conn.execute(&sql, params![]).map_err(|e| {
+                    GgsqlError::ReaderError(format!("Failed to load Parquet {}: {}", file_path, e))
+                })?;
             }
             "json" | "jsonl" | "ndjson" => {
                 // DuckDB can read JSON directly
@@ -281,8 +290,9 @@ fn load_data_files(reader: &DuckDBReader, files: &[String]) -> Result<(), GgsqlE
                     "CREATE TABLE {} AS SELECT * FROM read_json_auto('{}')",
                     table_name, file_path
                 );
-                conn.execute(&sql, params![])
-                    .map_err(|e| GgsqlError::ReaderError(format!("Failed to load JSON {}: {}", file_path, e)))?;
+                conn.execute(&sql, params![]).map_err(|e| {
+                    GgsqlError::ReaderError(format!("Failed to load JSON {}: {}", file_path, e))
+                })?;
             }
             _ => {
                 return Err(GgsqlError::ReaderError(format!(
@@ -292,7 +302,10 @@ fn load_data_files(reader: &DuckDBReader, files: &[String]) -> Result<(), GgsqlE
             }
         }
 
-        info!("Successfully loaded {} as table '{}'", file_path, table_name);
+        info!(
+            "Successfully loaded {} as table '{}'",
+            file_path, table_name
+        );
     }
 
     Ok(())
@@ -313,7 +326,8 @@ fn load_sample_data(reader: &DuckDBReader) -> Result<(), GgsqlError> {
             price DECIMAL(10,2)
         )",
         params![],
-    ).map_err(|e| GgsqlError::ReaderError(format!("Failed to create products table: {}", e)))?;
+    )
+    .map_err(|e| GgsqlError::ReaderError(format!("Failed to create products table: {}", e)))?;
 
     conn.execute(
         "INSERT INTO products VALUES
@@ -325,7 +339,8 @@ fn load_sample_data(reader: &DuckDBReader) -> Result<(), GgsqlError> {
             (6, 'Monitor', 'Electronics', 349.99),
             (7, 'Lamp', 'Furniture', 45.00)",
         params![],
-    ).map_err(|e| GgsqlError::ReaderError(format!("Failed to insert products: {}", e)))?;
+    )
+    .map_err(|e| GgsqlError::ReaderError(format!("Failed to insert products: {}", e)))?;
 
     // Create sample sales table with more temporal data
     conn.execute(
@@ -337,7 +352,8 @@ fn load_sample_data(reader: &DuckDBReader) -> Result<(), GgsqlError> {
             region VARCHAR
         )",
         params![],
-    ).map_err(|e| GgsqlError::ReaderError(format!("Failed to create sales table: {}", e)))?;
+    )
+    .map_err(|e| GgsqlError::ReaderError(format!("Failed to create sales table: {}", e)))?;
 
     conn.execute(
         "INSERT INTO sales VALUES
@@ -381,7 +397,8 @@ fn load_sample_data(reader: &DuckDBReader) -> Result<(), GgsqlError> {
             (35, 2, 7, '2024-03-22', 'EU'),
             (36, 5, 6, '2024-03-22', 'APAC')",
         params![],
-    ).map_err(|e| GgsqlError::ReaderError(format!("Failed to insert sales: {}", e)))?;
+    )
+    .map_err(|e| GgsqlError::ReaderError(format!("Failed to insert sales: {}", e)))?;
 
     // Create sample employees table
     conn.execute(
@@ -393,7 +410,8 @@ fn load_sample_data(reader: &DuckDBReader) -> Result<(), GgsqlError> {
             hire_date DATE
         )",
         params![],
-    ).map_err(|e| GgsqlError::ReaderError(format!("Failed to create employees table: {}", e)))?;
+    )
+    .map_err(|e| GgsqlError::ReaderError(format!("Failed to create employees table: {}", e)))?;
 
     conn.execute(
         "INSERT INTO employees VALUES
@@ -404,7 +422,8 @@ fn load_sample_data(reader: &DuckDBReader) -> Result<(), GgsqlError> {
             (5, 'Eve Davis', 'Marketing', 65000, '2023-03-15'),
             (6, 'Frank Miller', 'Engineering', 105000, '2021-09-01')",
         params![],
-    ).map_err(|e| GgsqlError::ReaderError(format!("Failed to insert employees: {}", e)))?;
+    )
+    .map_err(|e| GgsqlError::ReaderError(format!("Failed to insert employees: {}", e)))?;
 
     Ok(())
 }
@@ -421,51 +440,53 @@ async fn query_handler(
     info!("Executing query: {} chars", request.query.len());
     info!("Reader: {}, Writer: {}", request.reader, request.writer);
 
-    // Split query into SQL and ggSQL portions
-    let (sql_part, _viz_part) = parser::split_query(&request.query)?;
-
-    // Execute SQL portion using the reader
     #[cfg(feature = "duckdb")]
     if request.reader.starts_with("duckdb://") {
-        // Execute query using the appropriate reader
-        let df = if request.reader == "duckdb://memory" && state.reader.is_some() {
-            // Use pre-initialized reader from state
-            let reader_mutex = state.reader.as_ref().unwrap();
-            let reader = reader_mutex.lock()
-                .map_err(|e| GgsqlError::InternalError(format!("Failed to lock reader: {}", e)))?;
-            reader.execute(&sql_part)?
-        } else {
-            // Create a new reader for this request
-            let reader = DuckDBReader::from_connection_string(&request.reader)?;
-            reader.execute(&sql_part)?
+        // Create query executor that handles shared state vs new reader
+        let execute_query = |sql: &str| -> Result<ggsql::DataFrame, GgsqlError> {
+            if request.reader == "duckdb://memory" && state.reader.is_some() {
+                let reader_mutex = state.reader.as_ref().unwrap();
+                let reader = reader_mutex.lock().map_err(|e| {
+                    GgsqlError::InternalError(format!("Failed to lock reader: {}", e))
+                })?;
+                reader.execute(sql)
+            } else {
+                let reader = DuckDBReader::from_connection_string(&request.reader)?;
+                reader.execute(sql)
+            }
         };
 
+        // Prepare data using shared execution logic
+        let prepared = prepare_data_with_executor(&request.query, execute_query)?;
 
-        // Parse ggSQL portion
-        let mut specs = parser::parse_query(&request.query)?;
+        // Get metadata from available data
+        let (rows, columns) = if let Some(df) = prepared.data.get("__global__") {
+            let (r, _) = df.shape();
+            let cols: Vec<String> = df
+                .get_column_names()
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            (r, cols)
+        } else {
+            // Use first available data for metadata
+            let df = prepared.data.values().next().unwrap();
+            let (r, _) = df.shape();
+            let cols: Vec<String> = df
+                .get_column_names()
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            (r, cols)
+        };
 
-        if specs.is_empty() {
-            return Err(ApiErrorResponse::from(
-                "No visualization specifications found".to_string(),
-            ));
-        }
-
-        // Resolve global mappings into layer aesthetics
-        let column_names: Vec<&str> = df.get_column_names().iter().map(|s| s.as_str()).collect();
-        for spec in &mut specs {
-            spec.resolve_global_mappings(&column_names)?;
-        }
-
-        // Get metadata
-        let (rows, _cols) = df.shape();
-        let columns: Vec<String> = column_names.iter().map(|s| s.to_string()).collect();
-        let first_spec = &specs[0];
+        let first_spec = &prepared.specs[0];
 
         // Generate visualization output using writer
         #[cfg(feature = "vegalite")]
         if request.writer == "vegalite" {
             let writer = VegaLiteWriter::new();
-            let json_output = writer.write(first_spec, &df)?;
+            let json_output = writer.write(first_spec, &prepared.data)?;
             let spec_value: serde_json::Value = serde_json::from_str(&json_output)
                 .map_err(|e| GgsqlError::WriterError(format!("Failed to parse JSON: {}", e)))?;
 

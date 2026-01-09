@@ -26,7 +26,7 @@ let query = r#"
     VISUALISE date AS x, revenue AS y, region AS color
     DRAW line
     LABEL
-        title = 'Sales by Region'
+        title => 'Sales by Region'
 "#;
 
 let specs = parse_query(query)?;
@@ -38,13 +38,13 @@ assert_eq!(specs[0].layers[0].geom, Geom::Line);
 ```
 */
 
-use tree_sitter::Tree;
 use crate::{GgsqlError, Result};
+use tree_sitter::Tree;
 
 pub mod ast;
-pub mod splitter;
 pub mod builder;
 pub mod error;
+pub mod splitter;
 
 // Re-export key types
 pub use ast::*;
@@ -81,7 +81,9 @@ fn parse_full_query(query: &str) -> Result<Tree> {
 
     // Check for parse errors
     if tree.root_node().has_error() {
-        return Err(GgsqlError::ParseError("Parse tree contains errors".to_string()));
+        return Err(GgsqlError::ParseError(
+            "Parse tree contains errors".to_string(),
+        ));
     }
 
     Ok(tree)
@@ -219,7 +221,7 @@ mod tests {
             SELECT x, y FROM data
             VISUALISE x, y
             DRAW point
-            LABEL title = 'Scatter Plot'
+            LABEL title => 'Scatter Plot'
             THEME minimal
             VISUALIZE
             DRAW bar MAPPING x AS x, y AS y
@@ -267,7 +269,7 @@ mod tests {
             DRAW line
             DRAW line MAPPING cost AS y
             SCALE x SETTING type => 'date'
-            LABEL title = 'Revenue and Cost Trends'
+            LABEL title => 'Revenue and Cost Trends'
             THEME minimal
             VISUALIZE
             DRAW bar MAPPING date AS x, revenue AS y
@@ -340,8 +342,12 @@ mod tests {
         match &specs[0].global_mapping {
             GlobalMapping::Mappings(items) => {
                 assert_eq!(items.len(), 2);
-                assert!(matches!(&items[0], GlobalMappingItem::Explicit { column, aesthetic } if column == "date" && aesthetic == "x"));
-                assert!(matches!(&items[1], GlobalMappingItem::Explicit { column, aesthetic } if column == "revenue" && aesthetic == "y"));
+                assert!(
+                    matches!(&items[0], GlobalMappingItem::Explicit { column, aesthetic } if column == "date" && aesthetic == "x")
+                );
+                assert!(
+                    matches!(&items[1], GlobalMappingItem::Explicit { column, aesthetic } if column == "revenue" && aesthetic == "y")
+                );
             }
             _ => panic!("Expected Mappings variant"),
         }
@@ -380,7 +386,9 @@ mod tests {
                 assert_eq!(items.len(), 3);
                 assert!(matches!(&items[0], GlobalMappingItem::Implicit { name } if name == "x"));
                 assert!(matches!(&items[1], GlobalMappingItem::Implicit { name } if name == "y"));
-                assert!(matches!(&items[2], GlobalMappingItem::Explicit { column, aesthetic } if column == "region" && aesthetic == "color"));
+                assert!(
+                    matches!(&items[2], GlobalMappingItem::Explicit { column, aesthetic } if column == "region" && aesthetic == "color")
+                );
             }
             _ => panic!("Expected Mappings variant"),
         }

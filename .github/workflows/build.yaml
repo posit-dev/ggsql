@@ -44,3 +44,7 @@ jobs:
       - name: Run Rust tests
         if: success()
         run: cargo test --verbose
+
+      - name: Run Rust formatting check
+        if: success()
+        run: cargo fmt --all -- --check

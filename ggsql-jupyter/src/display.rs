@@ -19,17 +19,13 @@ use serde_json::{json, Value};
 /// ```
 pub fn format_display_data(result: ExecutionResult) -> Value {
     match result {
-        ExecutionResult::Visualization {
-            spec,
-            data_rows,
-            data_cols,
-        } => format_vegalite(spec, data_rows, data_cols),
+        ExecutionResult::Visualization { spec } => format_vegalite(spec),
         ExecutionResult::DataFrame(df) => format_dataframe(df),
     }
 }
 
 /// Format Vega-Lite visualization as display_data
-fn format_vegalite(spec: String, rows: usize, cols: usize) -> Value {
+fn format_vegalite(spec: String) -> Value {
     let spec_value: Value = serde_json::from_str(&spec).unwrap_or_else(|e| {
         tracing::error!("Failed to parse Vega-Lite JSON: {}", e);
         json!({"error": "Invalid Vega-Lite JSON"})
@@ -112,10 +108,7 @@ fn format_vegalite(spec: String, rows: usize, cols: usize) -> Value {
             "application/json": spec_value,
 
             // Text fallback
-            "text/plain": format!(
-                "Vega-Lite visualization ({} rows, {} columns)",
-                rows, cols
-            )
+            "text/plain": "Vega-Lite visualization".to_string()
         },
         "metadata": {
             "application/vnd.vegalite.v5+json": {
@@ -194,11 +187,7 @@ mod tests {
     #[test]
     fn test_vegalite_format() {
         let spec = r#"{"mark": "point"}"#.to_string();
-        let result = ExecutionResult::Visualization {
-            spec,
-            data_rows: 10,
-            data_cols: 2,
-        };
+        let result = ExecutionResult::Visualization { spec };
         let display = format_display_data(result);
 
         assert!(display["data"]["application/vnd.vegalite.v5+json"].is_object());

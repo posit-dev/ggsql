@@ -175,9 +175,9 @@ COORD polar SETTING theta => y
 SELECT date, revenue FROM sales
 VISUALISE date AS x, revenue AS y
 DRAW line
-LABEL title = 'Monthly Revenue Trends',
-      x = 'Date',
-      y = 'Revenue ($)'
+LABEL title => 'Monthly Revenue Trends',
+      x => 'Date',
+      y => 'Revenue ($)'
 ```
 
 ### Multiple Labels
@@ -186,11 +186,11 @@ LABEL title = 'Monthly Revenue Trends',
 SELECT date, value FROM metrics
 VISUALISE date AS x, value AS y
 DRAW area
-LABEL title = 'Performance Metrics',
-      subtitle = 'Q4 2024',
-      x = 'Date',
-      y = 'Metric Value',
-      caption = 'Data source: Analytics DB'
+LABEL title => 'Performance Metrics',
+      subtitle => 'Q4 2024',
+      x => 'Date',
+      y => 'Metric Value',
+      caption => 'Data source: Analytics DB'
 ```
 
 ### Themed Visualization
@@ -266,9 +266,9 @@ WITH monthly_sales AS (
 VISUALISE month AS x, total_revenue AS y FROM monthly_sales
 DRAW line
 SCALE x SETTING type => 'date'
-LABEL title = 'Monthly Revenue Trends',
-      x = 'Month',
-      y = 'Revenue ($)'
+LABEL title => 'Monthly Revenue Trends',
+      x => 'Month',
+      y => 'Revenue ($)'
 ```
 
 ### Traditional CTE with SELECT
@@ -308,9 +308,9 @@ regional_totals AS (
 VISUALISE region AS x, total AS y, region AS fill FROM regional_totals
 DRAW bar
 COORD flip
-LABEL title = 'Total Revenue by Region',
-      x = 'Region',
-      y = 'Total Revenue ($)'
+LABEL title => 'Total Revenue by Region',
+      x => 'Region',
+      y => 'Total Revenue ($)'
 ```
 
 ### CTE with JOIN
@@ -331,9 +331,9 @@ WITH product_metrics AS (
 )
 VISUALISE total_sold AS x, total_revenue AS y, category AS color FROM product_metrics
 DRAW point
-LABEL title = 'Product Performance',
-      x = 'Units Sold',
-      y = 'Revenue ($)'
+LABEL title => 'Product Performance',
+      x => 'Units Sold',
+      y => 'Revenue ($)'
 ```
 
 ### Recursive CTE
@@ -352,9 +352,9 @@ VISUALISE n AS x, value AS y FROM series
 DRAW line
 DRAW point
 SCALE y SETTING type => 'log10'
-LABEL title = 'Exponential Growth',
-      x = 'Step',
-      y = 'Value (log scale)'
+LABEL title => 'Exponential Growth',
+      x => 'Step',
+      y => 'Value (log scale)'
 ```
 
 ### CTE with Window Functions
@@ -375,9 +375,9 @@ VISUALISE product_name AS x, revenue AS y, category AS color
 DRAW bar
 FACET WRAP category SETTING scales => 'free_x'
 COORD flip
-LABEL title = 'Top 5 Products per Category',
-      x = 'Product',
-      y = 'Revenue ($)'
+LABEL title => 'Top 5 Products per Category',
+      x => 'Product',
+      y => 'Revenue ($)'
 ```
 
 ### Temporal Analysis with CTEs
@@ -403,9 +403,9 @@ DRAW line
     MAPPING avg_temp AS y, 'blue' AS color
     SETTING size => 2
 SCALE x SETTING type => 'date'
-LABEL title = 'Temperature Range (Last 30 Days)',
-      x = 'Date',
-      y = 'Temperature (C)'
+LABEL title => 'Temperature Range (Last 30 Days)',
+      x => 'Date',
+      y => 'Temperature (°C)'
 ```
 
 ### Important Rules
@@ -451,9 +451,9 @@ DRAW line
 DRAW point
 SCALE x SETTING type => 'date'
 FACET WRAP region
-LABEL title = 'Sales Trends by Region',
-      x = 'Date',
-      y = 'Total Quantity'
+LABEL title => 'Sales Trends by Region',
+      x => 'Date',
+      y => 'Total Quantity'
 THEME minimal
 ```
 
@@ -471,9 +471,9 @@ VISUALISE timestamp AS x, temperature AS y, station AS color, station AS linetyp
 DRAW line
 SCALE x SETTING type => 'datetime'
 SCALE color SETTING palette => 'viridis'
-LABEL title = 'Temperature Trends',
-      x = 'Time',
-      y = 'Temperature (C)'
+LABEL title => 'Temperature Trends',
+      x => 'Time',
+      y => 'Temperature (°C)'
 ```
 
 ### Categorical Analysis with Flipped Coordinates
@@ -490,9 +490,9 @@ VISUALISE product_name AS x, total_revenue AS y, product_name AS fill
 DRAW bar
 COORD flip SETTING color => ['red', 'orange', 'yellow', 'green', 'blue',
                           'indigo', 'violet', 'pink', 'brown', 'gray']
-LABEL title = 'Top 10 Products by Revenue',
-      x = 'Product',
-      y = 'Revenue ($)'
+LABEL title => 'Top 10 Products by Revenue',
+      x => 'Product',
+      y => 'Revenue ($)'
 THEME classic
 ```
 
@@ -511,9 +511,9 @@ SCALE x SETTING type => 'date'
 SCALE color SETTING domain => ['A', 'B', 'C']
 SCALE size SETTING limits => [0, 100]
 COORD cartesian SETTING ylim => [0, 150]
-LABEL title = 'Measurement Distribution',
-      x = 'Date',
-      y = 'Value'
+LABEL title => 'Measurement Distribution',
+      x => 'Date',
+      y => 'Value'
 ```
 
 ### Multi-Layer Visualization with Annotations
@@ -530,9 +530,9 @@ DRAW point SETTING size => 5
 DRAW text MAPPING label AS label
 SCALE color SETTING palette => 'viridis'
 COORD cartesian SETTING xlim => [0, 100], ylim => [0, 100]
-LABEL title = 'Annotated Scatter Plot',
-      x = 'X Axis',
-      y = 'Y Axis'
+LABEL title => 'Annotated Scatter Plot',
+      x => 'X Axis',
+      y => 'Y Axis'
 ```
 
 ```sql
@@ -546,9 +546,9 @@ ORDER BY cyl
 VISUALISE cyl AS x, vehicle_count AS y
 DRAW bar
 SCALE x SETTING domain => [4, 6, 8]
-LABEL title = 'Distribution of Vehicles by Number of Cylinders',
-      x = 'Number of Cylinders',
-      y = 'Number of Vehicles'
+LABEL title => 'Distribution of Vehicles by Number of Cylinders',
+      x => 'Number of Cylinders',
+      y => 'Number of Vehicles'
 ```
 
 ---

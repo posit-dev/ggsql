@@ -1,4 +1,6 @@
-# ggSQL - SQL Visualization Grammar
+---
+title: "ggsql - SQL Visualization Grammar"
+---
 
 A SQL extension for declarative data visualization based on the Grammar of Graphics.
 
@@ -6,19 +8,19 @@ ggSQL allows you to write queries that combine SQL data retrieval with visualiza
 
 ## Example
 
-```sql
+```ggsql
 SELECT date, revenue, region
 FROM sales
 WHERE year = 2024
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
-LABEL title => 'Sales by Region'
+LABEL title = 'Sales by Region'
 THEME minimal
 ```
 
 ## Project Status
 
-✨ **Active Development** - Core functionality is working with ongoing feature additions.
+✨ **Active Development** - Core functionality is working with ongoing feature additions and refinements.
 
 **Completed:**
 
@@ -29,6 +31,7 @@ THEME minimal
 - ✅ CLI tool (`ggsql`) with parse, exec, and validate commands
 - ✅ REST API server (`ggsql-rest`) with CORS support
 - ✅ Jupyter kernel (`ggsql-jupyter`) with inline Vega-Lite visualizations
+- ✅ knitr-engine (`ggsql-jupyter`) with inline Vega-Lite visualizations
 - ✅ VS Code extension (`ggsql-vscode`) with syntax highlighting for `.ggsql` files
 
 **Planned:**
@@ -244,7 +247,7 @@ SELECT * FROM sales
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
 SCALE x SETTING type => 'date'
-LABEL title => 'Sales Trends'
+LABEL title = 'Sales Trends'
 ```
 
 The kernel maintains a persistent DuckDB session across cells, so you can create tables in one cell and query them in another.

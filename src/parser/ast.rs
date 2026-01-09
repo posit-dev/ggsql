@@ -71,6 +71,33 @@ pub enum GlobalMappingItem {
     Implicit { name: String },
 }
 
+/// Data source for a layer (from MAPPING ... FROM clause)
+///
+/// Allows layers to specify their own data source instead of using
+/// the global data from the main SQL query.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum LayerSource {
+    /// CTE or table name (unquoted identifier)
+    Identifier(String),
+    /// File path (quoted string like 'data.csv')
+    FilePath(String),
+}
+
+impl LayerSource {
+    /// Returns the source as a string reference
+    pub fn as_str(&self) -> &str {
+        match self {
+            LayerSource::Identifier(s) => s,
+            LayerSource::FilePath(s) => s,
+        }
+    }
+
+    /// Returns true if this is a file path source
+    pub fn is_file(&self) -> bool {
+        matches!(self, LayerSource::FilePath(_))
+    }
+}
+
 /// A single visualization layer (from DRAW clause)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Layer {
@@ -80,52 +107,42 @@ pub struct Layer {
     pub aesthetics: HashMap<String, AestheticValue>,
     /// Geom parameters (not aesthetic mappings)
     pub parameters: HashMap<String, ParameterValue>,
+    /// Optional data source for this layer (from MAPPING ... FROM)
+    pub source: Option<LayerSource>,
     /// Optional filter expression for this layer
     pub filter: Option<FilterExpression>,
     /// Columns for grouping/partitioning (from PARTITION BY clause)
     pub partition_by: Vec<String>,
 }
 
-/// Filter expression for layer-specific filtering (from FILTER clause)
+/// Raw SQL filter expression for layer-specific filtering (from FILTER clause)
+///
+/// This stores the raw SQL WHERE clause text verbatim, which is passed directly
+/// to the database backend. This allows any valid SQL WHERE expression to be used.
+///
+/// Example filter values:
+/// - `"x > 10"`
+/// - `"region = 'North' AND year >= 2020"`
+/// - `"category IN ('A', 'B', 'C')"`
+/// - `"name LIKE '%test%'"`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum FilterExpression {
-    /// Logical AND of two expressions
-    And(Box<FilterExpression>, Box<FilterExpression>),
-    /// Logical OR of two expressions
-    Or(Box<FilterExpression>, Box<FilterExpression>),
-    /// Simple comparison
-    Comparison {
-        column: String,
-        operator: ComparisonOp,
-        value: FilterValue,
-    },
-}
+pub struct FilterExpression(pub String);
 
-/// Comparison operators for filter expressions
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ComparisonOp {
-    /// Equal (=)
-    Eq,
-    /// Not equal (!= or <>)
-    Ne,
-    /// Less than (<)
-    Lt,
-    /// Greater than (>)
-    Gt,
-    /// Less than or equal (<=)
-    Le,
-    /// Greater than or equal (>=)
-    Ge,
-}
+impl FilterExpression {
+    /// Create a new filter expression from raw SQL text
+    pub fn new(sql: impl Into<String>) -> Self {
+        Self(sql.into())
+    }
 
-/// Values in filter comparisons
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum FilterValue {
-    String(String),
-    Number(f64),
-    Boolean(bool),
-    /// Column reference (for column-to-column comparisons)
-    Column(String),
+    /// Get the raw SQL text
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Consume and return the raw SQL text
+    pub fn into_string(self) -> String {
+        self.0
+    }
 }
 
 /// Geometric object types
@@ -622,12 +639,16 @@ impl VizSpec {
 
     /// Find a scale for a specific aesthetic
     pub fn find_scale(&self, aesthetic: &str) -> Option<&Scale> {
-        self.scales.iter().find(|scale| scale.aesthetic == aesthetic)
+        self.scales
+            .iter()
+            .find(|scale| scale.aesthetic == aesthetic)
     }
 
     /// Find a guide for a specific aesthetic
     pub fn find_guide(&self, aesthetic: &str) -> Option<&Guide> {
-        self.guides.iter().find(|guide| guide.aesthetic == aesthetic)
+        self.guides
+            .iter()
+            .find(|guide| guide.aesthetic == aesthetic)
     }
 
     /// Resolve global mappings into layer aesthetics.
@@ -642,36 +663,37 @@ impl VizSpec {
         let explicit_mappings: HashMap<String, AestheticValue> = match &self.global_mapping {
             GlobalMapping::Empty => HashMap::new(),
             GlobalMapping::Wildcard => HashMap::new(), // Handled per-layer below
-            GlobalMapping::Mappings(items) => {
-                items.iter().map(|item| match item {
+            GlobalMapping::Mappings(items) => items
+                .iter()
+                .map(|item| match item {
                     GlobalMappingItem::Explicit { column, aesthetic } => {
                         (aesthetic.clone(), AestheticValue::Column(column.clone()))
                     }
                     GlobalMappingItem::Implicit { name } => {
                         (name.clone(), AestheticValue::Column(name.clone()))
                     }
-                }).collect()
-            }
+                })
+                .collect(),
         };
 
         // For each layer, merge mappings (layer overrides global)
         for layer in &mut self.layers {
             // For wildcard, build mappings based on this geom's supported aesthetics
-            let base_aesthetics: HashMap<String, AestheticValue> = if matches!(self.global_mapping, GlobalMapping::Wildcard) {
-                let supported = layer.geom.aesthetics().supported;
-                available_columns.iter()
-                    .filter(|col| supported.contains(col))
-                    .map(|col| (col.to_string(), AestheticValue::Column(col.to_string())))
-                    .collect()
-            } else {
-                explicit_mappings.clone()
-            };
+            let base_aesthetics: HashMap<String, AestheticValue> =
+                if matches!(self.global_mapping, GlobalMapping::Wildcard) {
+                    let supported = layer.geom.aesthetics().supported;
+                    available_columns
+                        .iter()
+                        .filter(|col| supported.contains(col))
+                        .map(|col| (col.to_string(), AestheticValue::Column(col.to_string())))
+                        .collect()
+                } else {
+                    explicit_mappings.clone()
+                };
 
             // Merge: layer aesthetics override global
             for (aesthetic, value) in base_aesthetics {
-                layer.aesthetics
-                    .entry(aesthetic)
-                    .or_insert(value);
+                layer.aesthetics.entry(aesthetic).or_insert(value);
             }
         }
 
@@ -686,6 +708,7 @@ impl Layer {
             geom,
             aesthetics: HashMap::new(),
             parameters: HashMap::new(),
+            source: None,
             filter: None,
             partition_by: Vec::new(),
         }
@@ -694,6 +717,12 @@ impl Layer {
     /// Set the filter expression
     pub fn with_filter(mut self, filter: FilterExpression) -> Self {
         self.filter = Some(filter);
+        self
+    }
+
+    /// Set the data source for this layer
+    pub fn with_source(mut self, source: LayerSource) -> Self {
+        self.source = Some(source);
         self
     }
 
@@ -809,8 +838,14 @@ mod tests {
     fn test_layer_creation() {
         let layer = Layer::new(Geom::Point)
             .with_aesthetic("x".to_string(), AestheticValue::Column("date".to_string()))
-            .with_aesthetic("y".to_string(), AestheticValue::Column("revenue".to_string()))
-            .with_aesthetic("color".to_string(), AestheticValue::Literal(LiteralValue::String("blue".to_string())));
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::Column("revenue".to_string()),
+            )
+            .with_aesthetic(
+                "color".to_string(),
+                AestheticValue::Literal(LiteralValue::String("blue".to_string())),
+            );
 
         assert_eq!(layer.geom, Geom::Point);
         assert_eq!(layer.get_column("x"), Some("date"));
@@ -821,13 +856,10 @@ mod tests {
 
     #[test]
     fn test_layer_with_filter() {
-        let filter = FilterExpression::Comparison {
-            column: "year".to_string(),
-            operator: ComparisonOp::Gt,
-            value: FilterValue::Number(2020.0),
-        };
+        let filter = FilterExpression::new("year > 2020");
         let layer = Layer::new(Geom::Point).with_filter(filter);
         assert!(layer.filter.is_some());
+        assert_eq!(layer.filter.as_ref().unwrap().as_str(), "year > 2020");
     }
 
     #[test]
@@ -845,8 +877,14 @@ mod tests {
 
         let valid_ribbon = Layer::new(Geom::Ribbon)
             .with_aesthetic("x".to_string(), AestheticValue::Column("x".to_string()))
-            .with_aesthetic("ymin".to_string(), AestheticValue::Column("ymin".to_string()))
-            .with_aesthetic("ymax".to_string(), AestheticValue::Column("ymax".to_string()));
+            .with_aesthetic(
+                "ymin".to_string(),
+                AestheticValue::Column("ymin".to_string()),
+            )
+            .with_aesthetic(
+                "ymax".to_string(),
+                AestheticValue::Column("ymax".to_string()),
+            );
 
         assert!(valid_ribbon.validate_required_aesthetics().is_ok());
     }
@@ -907,7 +945,8 @@ mod tests {
         spec.layers.push(Layer::new(Geom::Point));
         spec.layers.push(Layer::new(Geom::Line));
 
-        spec.resolve_global_mappings(&["date", "revenue", "region"]).unwrap();
+        spec.resolve_global_mappings(&["date", "revenue", "region"])
+            .unwrap();
 
         // Both layers should have x and y aesthetics
         assert_eq!(spec.layers[0].aesthetics.len(), 2);
@@ -926,8 +965,12 @@ mod tests {
     fn test_implicit_global_mapping_resolution() {
         let mut spec = VizSpec::new();
         spec.global_mapping = GlobalMapping::Mappings(vec![
-            GlobalMappingItem::Implicit { name: "x".to_string() },
-            GlobalMappingItem::Implicit { name: "y".to_string() },
+            GlobalMappingItem::Implicit {
+                name: "x".to_string(),
+            },
+            GlobalMappingItem::Implicit {
+                name: "y".to_string(),
+            },
         ]);
         spec.layers.push(Layer::new(Geom::Point));
 
@@ -952,7 +995,8 @@ mod tests {
         // Point geom supports: x, y, color, size, shape, opacity, etc.
         // Columns "x", "y", "color" match supported aesthetics
         // Columns "date", "revenue" do NOT match any supported aesthetic
-        spec.resolve_global_mappings(&["x", "y", "color", "date", "revenue"]).unwrap();
+        spec.resolve_global_mappings(&["x", "y", "color", "date", "revenue"])
+            .unwrap();
 
         // Should only map columns that match geom's supported aesthetics
         assert_eq!(spec.layers[0].aesthetics.len(), 3);
@@ -967,10 +1011,11 @@ mod tests {
     fn test_wildcard_different_geoms_get_different_aesthetics() {
         let mut spec = VizSpec::new();
         spec.global_mapping = GlobalMapping::Wildcard;
-        spec.layers.push(Layer::new(Geom::Point));  // supports size, shape
-        spec.layers.push(Layer::new(Geom::Line));   // supports linetype, linewidth
+        spec.layers.push(Layer::new(Geom::Point)); // supports size, shape
+        spec.layers.push(Layer::new(Geom::Line)); // supports linetype, linewidth
 
-        spec.resolve_global_mappings(&["x", "y", "size", "linetype"]).unwrap();
+        spec.resolve_global_mappings(&["x", "y", "size", "linetype"])
+            .unwrap();
 
         // Point layer should get x, y, size (not linetype)
         assert!(spec.layers[0].aesthetics.contains_key("size"));
@@ -984,12 +1029,10 @@ mod tests {
     #[test]
     fn test_layer_mapping_overrides_global() {
         let mut spec = VizSpec::new();
-        spec.global_mapping = GlobalMapping::Mappings(vec![
-            GlobalMappingItem::Explicit {
-                column: "date".to_string(),
-                aesthetic: "x".to_string(),
-            },
-        ]);
+        spec.global_mapping = GlobalMapping::Mappings(vec![GlobalMappingItem::Explicit {
+            column: "date".to_string(),
+            aesthetic: "x".to_string(),
+        }]);
 
         let mut layer = Layer::new(Geom::Point);
         layer.aesthetics.insert(
@@ -998,7 +1041,8 @@ mod tests {
         );
         spec.layers.push(layer);
 
-        spec.resolve_global_mappings(&["date", "other_date"]).unwrap();
+        spec.resolve_global_mappings(&["date", "other_date"])
+            .unwrap();
 
         // Layer's explicit mapping should override global
         assert!(matches!(
@@ -1013,7 +1057,9 @@ mod tests {
         spec.global_mapping = GlobalMapping::Empty;
 
         let mut layer = Layer::new(Geom::Point);
-        layer.aesthetics.insert("x".to_string(), AestheticValue::Column("col".to_string()));
+        layer
+            .aesthetics
+            .insert("x".to_string(), AestheticValue::Column("col".to_string()));
         spec.layers.push(layer);
 
         spec.resolve_global_mappings(&["col"]).unwrap();
@@ -1059,7 +1105,10 @@ mod tests {
         assert_eq!(Geom::Ribbon.aesthetics().required, &["x", "ymin", "ymax"]);
 
         // Segment/arrow require endpoints
-        assert_eq!(Geom::Segment.aesthetics().required, &["x", "y", "xend", "yend"]);
+        assert_eq!(
+            Geom::Segment.aesthetics().required,
+            &["x", "y", "xend", "yend"]
+        );
 
         // Reference lines
         assert_eq!(Geom::HLine.aesthetics().required, &["yintercept"]);
