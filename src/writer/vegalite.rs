@@ -311,9 +311,12 @@ impl VegaLiteWriter {
                     "type": field_type,
                 });
 
-                // Add titles for positional aesthetics
-                if aesthetic == "x" || aesthetic == "y" {
-                    encoding["title"] = json!(col);
+                // Add titles using computed labels (includes user-specified and computed)
+                // This handles both axis titles (x, y) and legend titles (color, size, etc.)
+                if let Some(ref labels) = spec.labels {
+                    if let Some(label) = labels.labels.get(aesthetic) {
+                        encoding["title"] = json!(label);
+                    }
                 }
 
                 // Apply scale properties from SCALE if specified

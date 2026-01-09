@@ -3,6 +3,7 @@
 //! Provides shared execution logic for building data maps from queries,
 //! handling both global SQL and layer-specific data sources.
 
+use crate::parser::ast::{AestheticValue, Layer, LiteralValue};
 use crate::{parser, DataFrame, GgsqlError, LayerSource, Result, VizSpec};
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Parser};
@@ -150,6 +151,56 @@ fn get_cte_temp_table_name(cte_name: &str) -> String {
     format!("__ggsql_cte_{}__", cte_name)
 }
 
+/// Generate synthetic column name for a constant aesthetic
+fn const_column_name(aesthetic: &str) -> String {
+    format!("__ggsql_const_{}__", aesthetic)
+}
+
+/// Format a literal value as SQL
+fn literal_to_sql(lit: &LiteralValue) -> String {
+    match lit {
+        LiteralValue::String(s) => format!("'{}'", s.replace('\'', "''")),
+        LiteralValue::Number(n) => n.to_string(),
+        LiteralValue::Boolean(b) => {
+            if *b {
+                "TRUE".to_string()
+            } else {
+                "FALSE".to_string()
+            }
+        }
+    }
+}
+
+/// Extract constant aesthetics from a layer
+fn extract_constants(layer: &Layer) -> Vec<(String, LiteralValue)> {
+    layer
+        .aesthetics
+        .iter()
+        .filter_map(|(aesthetic, value)| {
+            if let AestheticValue::Literal(lit) = value {
+                Some((aesthetic.clone(), lit.clone()))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Replace literal aesthetic values with column references to synthetic constant columns
+///
+/// After data has been fetched with constants injected as columns, this function
+/// updates the spec so that aesthetics point to the synthetic column names instead
+/// of literal values.
+fn replace_literals_with_columns(spec: &mut VizSpec) {
+    for layer in &mut spec.layers {
+        for (aesthetic, value) in layer.aesthetics.iter_mut() {
+            if matches!(value, AestheticValue::Literal(_)) {
+                *value = AestheticValue::Column(const_column_name(aesthetic));
+            }
+        }
+    }
+}
+
 /// Materialize CTEs as temporary tables in the database
 ///
 /// Creates a temp table for each CTE in declaration order. When a CTE
@@ -255,14 +306,16 @@ fn transform_global_sql(sql: &str, materialized_ctes: &HashSet<String>) -> Optio
 /// Build a layer query handling all source types
 ///
 /// Handles:
-/// - `None` source with filter → queries `__ggsql_global__`
-/// - `None` source without filter → returns `None` (use global directly)
+/// - `None` source with filter or constants → queries `__ggsql_global__`
+/// - `None` source without filter or constants → returns `None` (use global directly)
 /// - `Identifier` source → checks if CTE, uses temp table or table name
 /// - `FilePath` source → wraps path in single quotes
 ///
+/// Constants are injected as synthetic columns (e.g., `'blue' AS __ggsql_const_color__`).
+///
 /// Returns:
 /// - `Ok(Some(query))` - execute this query and store result
-/// - `Ok(None)` - layer uses `__global__` directly (no source, no filter)
+/// - `Ok(None)` - layer uses `__global__` directly (no source, no filter, no constants)
 /// - `Err(...)` - validation error (e.g., filter without global data)
 fn build_layer_query(
     source: Option<&LayerSource>,
@@ -270,6 +323,7 @@ fn build_layer_query(
     filter: Option<&str>,
     has_global: bool,
     layer_idx: usize,
+    constants: &[(String, LiteralValue)],
 ) -> Result<Option<String>> {
     let table_name = match source {
         Some(LayerSource::Identifier(name)) => {
@@ -285,23 +339,33 @@ fn build_layer_query(
             format!("'{}'", path)
         }
         None => {
-            // No source - validate and use global
-            if filter.is_some() {
+            // No source - validate and use global if filter or constants present
+            if filter.is_some() || !constants.is_empty() {
                 if !has_global {
                     return Err(GgsqlError::ValidationError(format!(
-                        "Layer {} has a FILTER but no data source. Either provide a SQL query or use MAPPING FROM.",
+                        "Layer {} has a FILTER or constants but no data source. Either provide a SQL query or use MAPPING FROM.",
                         layer_idx + 1
                     )));
                 }
                 "__ggsql_global__".to_string()
             } else {
-                // No source, no filter - use __global__ data directly
+                // No source, no filter, no constants - use __global__ data directly
                 return Ok(None);
             }
         }
     };
 
-    let query = format!("SELECT * FROM {}", table_name);
+    // Build query with optional constant columns
+    let query = if constants.is_empty() {
+        format!("SELECT * FROM {}", table_name)
+    } else {
+        let const_cols: Vec<String> = constants
+            .iter()
+            .map(|(aes, lit)| format!("{} AS {}", literal_to_sql(lit), const_column_name(aes)))
+            .collect();
+        format!("SELECT *, {} FROM {}", const_cols.join(", "), table_name)
+    };
+
     Ok(Some(if let Some(f) = filter {
         format!("{} WHERE {}", query, f)
     } else {
@@ -450,13 +514,14 @@ where
     // Execute layer-specific queries
     // build_layer_query() handles all cases:
     // - Layer with source (CTE, table, or file) → query that source
-    // - Layer with filter but no source → query __ggsql_global__ with filter
-    // - Layer with no source and no filter → returns None (use global directly)
+    // - Layer with filter or constants but no source → query __ggsql_global__ with filter/constants
+    // - Layer with no source, filter, or constants → returns None (use global directly)
     let first_spec = &specs[0];
     let has_global = data_map.contains_key("__global__");
 
     for (idx, layer) in first_spec.layers.iter().enumerate() {
         let filter_sql = layer.filter.as_ref().map(|f| f.as_str());
+        let constants = extract_constants(layer);
 
         if let Some(layer_query) = build_layer_query(
             layer.source.as_ref(),
@@ -464,6 +529,7 @@ where
             filter_sql,
             has_global,
             idx,
+            &constants,
         )? {
             let df = execute_query(&layer_query).map_err(|e| {
                 GgsqlError::ReaderError(format!(
@@ -510,6 +576,10 @@ where
 
     for spec in &mut specs {
         spec.resolve_global_mappings(&column_names)?;
+        // Replace literal aesthetic values with column references to synthetic constant columns
+        replace_literals_with_columns(spec);
+        // Compute aesthetic labels (uses first non-constant column, respects user-specified labels)
+        spec.compute_aesthetic_labels();
     }
 
     Ok(PreparedData {
@@ -743,7 +813,7 @@ mod tests {
         materialized.insert("sales".to_string());
         let source = LayerSource::Identifier("sales".to_string());
 
-        let result = build_layer_query(Some(&source), &materialized, None, false, 0);
+        let result = build_layer_query(Some(&source), &materialized, None, false, 0, &[]);
 
         // Should use temp table name
         assert_eq!(
@@ -758,7 +828,14 @@ mod tests {
         materialized.insert("sales".to_string());
         let source = LayerSource::Identifier("sales".to_string());
 
-        let result = build_layer_query(Some(&source), &materialized, Some("year = 2024"), false, 0);
+        let result = build_layer_query(
+            Some(&source),
+            &materialized,
+            Some("year = 2024"),
+            false,
+            0,
+            &[],
+        );
 
         assert_eq!(
             result.unwrap(),
@@ -771,7 +848,7 @@ mod tests {
         let materialized = HashSet::new();
         let source = LayerSource::Identifier("some_table".to_string());
 
-        let result = build_layer_query(Some(&source), &materialized, None, false, 0);
+        let result = build_layer_query(Some(&source), &materialized, None, false, 0, &[]);
 
         // Should use table name directly
         assert_eq!(
@@ -785,7 +862,14 @@ mod tests {
         let materialized = HashSet::new();
         let source = LayerSource::Identifier("some_table".to_string());
 
-        let result = build_layer_query(Some(&source), &materialized, Some("value > 100"), false, 0);
+        let result = build_layer_query(
+            Some(&source),
+            &materialized,
+            Some("value > 100"),
+            false,
+            0,
+            &[],
+        );
 
         assert_eq!(
             result.unwrap(),
@@ -798,7 +882,7 @@ mod tests {
         let materialized = HashSet::new();
         let source = LayerSource::FilePath("data/sales.csv".to_string());
 
-        let result = build_layer_query(Some(&source), &materialized, None, false, 0);
+        let result = build_layer_query(Some(&source), &materialized, None, false, 0, &[]);
 
         // File paths should be wrapped in single quotes
         assert_eq!(
@@ -812,7 +896,7 @@ mod tests {
         let materialized = HashSet::new();
         let source = LayerSource::FilePath("data.parquet".to_string());
 
-        let result = build_layer_query(Some(&source), &materialized, Some("x > 10"), false, 0);
+        let result = build_layer_query(Some(&source), &materialized, Some("x > 10"), false, 0, &[]);
 
         assert_eq!(
             result.unwrap(),
@@ -824,7 +908,7 @@ mod tests {
     fn test_build_layer_query_none_source_with_filter() {
         let materialized = HashSet::new();
 
-        let result = build_layer_query(None, &materialized, Some("category = 'A'"), true, 0);
+        let result = build_layer_query(None, &materialized, Some("category = 'A'"), true, 0, &[]);
 
         // Should query __ggsql_global__ with filter
         assert_eq!(
@@ -837,7 +921,7 @@ mod tests {
     fn test_build_layer_query_none_source_no_filter() {
         let materialized = HashSet::new();
 
-        let result = build_layer_query(None, &materialized, None, true, 0);
+        let result = build_layer_query(None, &materialized, None, true, 0, &[]);
 
         // Should return None - layer uses __global__ directly
         assert_eq!(result.unwrap(), None);
@@ -847,13 +931,48 @@ mod tests {
     fn test_build_layer_query_filter_without_global_errors() {
         let materialized = HashSet::new();
 
-        let result = build_layer_query(None, &materialized, Some("x > 10"), false, 2);
+        let result = build_layer_query(None, &materialized, Some("x > 10"), false, 2, &[]);
 
         // Should return validation error
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("Layer 3")); // layer_idx 2 -> Layer 3 in message
         assert!(err.contains("FILTER"));
+    }
+
+    #[test]
+    fn test_build_layer_query_with_constants() {
+        let materialized = HashSet::new();
+        let source = LayerSource::Identifier("some_table".to_string());
+        let constants = vec![
+            (
+                "color".to_string(),
+                LiteralValue::String("blue".to_string()),
+            ),
+            ("size".to_string(), LiteralValue::Number(5.0)),
+        ];
+
+        let result = build_layer_query(Some(&source), &materialized, None, false, 0, &constants);
+
+        // Should inject constants as columns
+        let query = result.unwrap().unwrap();
+        assert!(query.contains("SELECT *"));
+        assert!(query.contains("'blue' AS __ggsql_const_color__"));
+        assert!(query.contains("5 AS __ggsql_const_size__"));
+        assert!(query.contains("FROM some_table"));
+    }
+
+    #[test]
+    fn test_build_layer_query_constants_on_global() {
+        let materialized = HashSet::new();
+        let constants = vec![("fill".to_string(), LiteralValue::String("red".to_string()))];
+
+        // No source but has constants - should use __ggsql_global__
+        let result = build_layer_query(None, &materialized, None, true, 0, &constants);
+
+        let query = result.unwrap().unwrap();
+        assert!(query.contains("FROM __ggsql_global__"));
+        assert!(query.contains("'red' AS __ggsql_const_fill__"));
     }
 
     // ========================================
