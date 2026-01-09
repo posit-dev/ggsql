@@ -225,7 +225,7 @@ impl Geom {
             // Position geoms
             Geom::Point => GeomAesthetics {
                 supported: &[
-                    "x", "y", "color", "colour", "fill", "size", "shape", "opacity"
+                    "x", "y", "color", "colour", "fill", "size", "shape", "opacity",
                 ],
                 required: &["x", "y"],
             },
@@ -254,15 +254,11 @@ impl Geom {
                 required: &["x", "y"],
             },
             Geom::Bar => GeomAesthetics {
-                supported: &[
-                    "x", "y", "color", "colour", "fill", "width", "opacity",
-                ],
+                supported: &["x", "y", "color", "colour", "fill", "width", "opacity"],
                 required: &["x", "y"],
             },
             Geom::Col => GeomAesthetics {
-                supported: &[
-                    "x", "y", "color", "colour", "fill", "width", "opacity",
-                ],
+                supported: &["x", "y", "color", "colour", "fill", "width", "opacity"],
                 required: &["x", "y"],
             },
             Geom::Area => GeomAesthetics {
@@ -280,9 +276,7 @@ impl Geom {
                 required: &["x", "y"],
             },
             Geom::Ribbon => GeomAesthetics {
-                supported: &[
-                    "x", "ymin", "ymax", "color", "colour", "fill", "opacity",
-                ],
+                supported: &["x", "ymin", "ymax", "color", "colour", "fill", "opacity"],
                 required: &["x", "ymin", "ymax"],
             },
 
