@@ -304,6 +304,7 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
     let mut parameters = HashMap::new();
     let mut partition_by = Vec::new();
     let mut filter = None;
+    let mut order_by = None;
     let mut layer_source = None;
 
     let mut cursor = node.walk();
@@ -327,6 +328,9 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
             "filter_clause" => {
                 filter = Some(parse_filter_clause(&child, source)?);
             }
+            "order_clause" => {
+                order_by = Some(parse_order_clause(&child, source)?);
+            }
             _ => {
                 // Skip keywords and punctuation
                 continue;
@@ -339,6 +343,7 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
     layer.parameters = parameters;
     layer.partition_by = partition_by;
     layer.filter = filter;
+    layer.order_by = order_by;
     layer.source = layer_source;
 
     Ok(layer)
@@ -547,6 +552,22 @@ fn parse_filter_clause(node: &Node, source: &str) -> Result<FilterExpression> {
 
     Err(GgsqlError::ParseError(
         "Could not find filter expression in filter clause".to_string(),
+    ))
+}
+
+/// Parse an order_clause: ORDER BY date ASC, value DESC
+fn parse_order_clause(node: &Node, source: &str) -> Result<OrderExpression> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "order_expression" {
+            // Extract the raw text from the order_expression node
+            let order_text = get_node_text(&child, source).trim().to_string();
+            return Ok(OrderExpression::new(order_text));
+        }
+    }
+
+    Err(GgsqlError::ParseError(
+        "Could not find order expression in order clause".to_string(),
     ))
 }
 
@@ -2574,7 +2595,7 @@ mod tests {
     fn test_partition_by_with_other_clauses() {
         let query = r#"
             VISUALISE
-            DRAW line MAPPING date AS x, value AS y SETTING opacity => 0.5 PARTITION BY category FILTER year > 2020
+            DRAW line MAPPING date AS x, value AS y SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY category
         "#;
 
         let result = parse_test_query(query);
@@ -2615,6 +2636,178 @@ mod tests {
 
         assert_eq!(specs[0].layers[0].partition_by.len(), 1);
         assert_eq!(specs[0].layers[0].partition_by[0], "category");
+    }
+
+    // ========================================
+    // ORDER BY Tests
+    // ========================================
+
+    #[test]
+    fn test_order_by_single_column() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y ORDER BY x ASC
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let order_by = specs[0].layers[0].order_by.as_ref().unwrap();
+        assert_eq!(order_by.as_str(), "x ASC");
+    }
+
+    #[test]
+    fn test_order_by_multiple_columns() {
+        let query = r#"
+            VISUALISE
+            DRAW line MAPPING x AS x, y AS y ORDER BY category, date DESC
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let order_by = specs[0].layers[0].order_by.as_ref().unwrap();
+        assert_eq!(order_by.as_str(), "category, date DESC");
+    }
+
+    #[test]
+    fn test_order_by_with_nulls() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y ORDER BY date ASC NULLS FIRST
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let order_by = specs[0].layers[0].order_by.as_ref().unwrap();
+        assert!(order_by.as_str().contains("NULLS FIRST"));
+    }
+
+    #[test]
+    fn test_order_by_desc() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y ORDER BY value DESC
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let order_by = specs[0].layers[0].order_by.as_ref().unwrap();
+        assert_eq!(order_by.as_str(), "value DESC");
+    }
+
+    #[test]
+    fn test_order_by_with_filter() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y FILTER x > 0 ORDER BY x ASC
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let layer = &specs[0].layers[0];
+        assert!(layer.filter.is_some());
+        assert!(layer.order_by.is_some());
+        assert_eq!(layer.filter.as_ref().unwrap().as_str(), "x > 0");
+        assert_eq!(layer.order_by.as_ref().unwrap().as_str(), "x ASC");
+    }
+
+    #[test]
+    fn test_order_by_with_partition_by() {
+        let query = r#"
+            VISUALISE
+            DRAW line MAPPING x AS x, y AS y PARTITION BY category ORDER BY date ASC
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let layer = &specs[0].layers[0];
+        assert_eq!(layer.partition_by.len(), 1);
+        assert_eq!(layer.partition_by[0], "category");
+        assert!(layer.order_by.is_some());
+        assert_eq!(layer.order_by.as_ref().unwrap().as_str(), "date ASC");
+    }
+
+    #[test]
+    fn test_order_by_with_all_clauses() {
+        let query = r#"
+            VISUALISE
+            DRAW line MAPPING date AS x, value AS y SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY region ORDER BY date ASC, value DESC
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let layer = &specs[0].layers[0];
+        assert!(layer.parameters.contains_key("opacity"));
+        assert!(layer.filter.is_some());
+        assert_eq!(layer.partition_by.len(), 1);
+        assert!(layer.order_by.is_some());
+        assert_eq!(
+            layer.order_by.as_ref().unwrap().as_str(),
+            "date ASC, value DESC"
+        );
+    }
+
+    #[test]
+    fn test_no_order_by() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert!(specs[0].layers[0].order_by.is_none());
+    }
+
+    #[test]
+    fn test_order_by_case_insensitive() {
+        let query = r#"
+            VISUALISE
+            DRAW line MAPPING x AS x, y AS y order by date asc
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert!(specs[0].layers[0].order_by.is_some());
+    }
+
+    #[test]
+    fn test_multiple_layers_different_order_by() {
+        let query = r#"
+            VISUALISE
+            DRAW line MAPPING x AS x, y AS y ORDER BY date ASC
+            DRAW point MAPPING x AS x, y AS y ORDER BY value DESC
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert_eq!(
+            specs[0].layers[0].order_by.as_ref().unwrap().as_str(),
+            "date ASC"
+        );
+        assert_eq!(
+            specs[0].layers[1].order_by.as_ref().unwrap().as_str(),
+            "value DESC"
+        );
     }
 
     // ========================================

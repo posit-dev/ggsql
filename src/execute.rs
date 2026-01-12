@@ -268,6 +268,7 @@ fn build_layer_query(
     source: Option<&LayerSource>,
     materialized_ctes: &HashSet<String>,
     filter: Option<&str>,
+    order_by: Option<&str>,
     has_global: bool,
     layer_idx: usize,
 ) -> Result<Option<String>> {
@@ -285,28 +286,33 @@ fn build_layer_query(
             format!("'{}'", path)
         }
         None => {
-            // No source - validate and use global
-            if filter.is_some() {
+            // No source - validate and use global if filter or order_by present
+            if filter.is_some() || order_by.is_some() {
                 if !has_global {
                     return Err(GgsqlError::ValidationError(format!(
-                        "Layer {} has a FILTER but no data source. Either provide a SQL query or use MAPPING FROM.",
+                        "Layer {} has a FILTER or ORDER BY but no data source. Either provide a SQL query or use MAPPING FROM.",
                         layer_idx + 1
                     )));
                 }
                 "__ggsql_global__".to_string()
             } else {
-                // No source, no filter - use __global__ data directly
+                // No source, no filter, no order_by - use __global__ data directly
                 return Ok(None);
             }
         }
     };
 
-    let query = format!("SELECT * FROM {}", table_name);
-    Ok(Some(if let Some(f) = filter {
-        format!("{} WHERE {}", query, f)
-    } else {
-        query
-    }))
+    let mut query = format!("SELECT * FROM {}", table_name);
+
+    if let Some(f) = filter {
+        query = format!("{} WHERE {}", query, f);
+    }
+
+    if let Some(o) = order_by {
+        query = format!("{} ORDER BY {}", query, o);
+    }
+
+    Ok(Some(query))
 }
 
 /// Check if SQL contains executable statements (SELECT, INSERT, UPDATE, DELETE, CREATE)
@@ -447,18 +453,20 @@ where
     // Execute layer-specific queries
     // build_layer_query() handles all cases:
     // - Layer with source (CTE, table, or file) → query that source
-    // - Layer with filter but no source → query __ggsql_global__ with filter
-    // - Layer with no source and no filter → returns None (use global directly)
+    // - Layer with filter/order_by but no source → query __ggsql_global__ with filter/order_by
+    // - Layer with no source, no filter, no order_by → returns None (use global directly)
     let first_spec = &specs[0];
     let has_global = data_map.contains_key("__global__");
 
     for (idx, layer) in first_spec.layers.iter().enumerate() {
         let filter_sql = layer.filter.as_ref().map(|f| f.as_str());
+        let order_sql = layer.order_by.as_ref().map(|o| o.as_str());
 
         if let Some(layer_query) = build_layer_query(
             layer.source.as_ref(),
             &materialized_ctes,
             filter_sql,
+            order_sql,
             has_global,
             idx,
         )? {
@@ -740,7 +748,7 @@ mod tests {
         materialized.insert("sales".to_string());
         let source = LayerSource::Identifier("sales".to_string());
 
-        let result = build_layer_query(Some(&source), &materialized, None, false, 0);
+        let result = build_layer_query(Some(&source), &materialized, None, None, false, 0);
 
         // Should use temp table name
         assert_eq!(
@@ -755,7 +763,8 @@ mod tests {
         materialized.insert("sales".to_string());
         let source = LayerSource::Identifier("sales".to_string());
 
-        let result = build_layer_query(Some(&source), &materialized, Some("year = 2024"), false, 0);
+        let result =
+            build_layer_query(Some(&source), &materialized, Some("year = 2024"), None, false, 0);
 
         assert_eq!(
             result.unwrap(),
@@ -768,7 +777,7 @@ mod tests {
         let materialized = HashSet::new();
         let source = LayerSource::Identifier("some_table".to_string());
 
-        let result = build_layer_query(Some(&source), &materialized, None, false, 0);
+        let result = build_layer_query(Some(&source), &materialized, None, None, false, 0);
 
         // Should use table name directly
         assert_eq!(
@@ -782,7 +791,8 @@ mod tests {
         let materialized = HashSet::new();
         let source = LayerSource::Identifier("some_table".to_string());
 
-        let result = build_layer_query(Some(&source), &materialized, Some("value > 100"), false, 0);
+        let result =
+            build_layer_query(Some(&source), &materialized, Some("value > 100"), None, false, 0);
 
         assert_eq!(
             result.unwrap(),
@@ -795,7 +805,7 @@ mod tests {
         let materialized = HashSet::new();
         let source = LayerSource::FilePath("data/sales.csv".to_string());
 
-        let result = build_layer_query(Some(&source), &materialized, None, false, 0);
+        let result = build_layer_query(Some(&source), &materialized, None, None, false, 0);
 
         // File paths should be wrapped in single quotes
         assert_eq!(
@@ -809,7 +819,8 @@ mod tests {
         let materialized = HashSet::new();
         let source = LayerSource::FilePath("data.parquet".to_string());
 
-        let result = build_layer_query(Some(&source), &materialized, Some("x > 10"), false, 0);
+        let result =
+            build_layer_query(Some(&source), &materialized, Some("x > 10"), None, false, 0);
 
         assert_eq!(
             result.unwrap(),
@@ -821,7 +832,7 @@ mod tests {
     fn test_build_layer_query_none_source_with_filter() {
         let materialized = HashSet::new();
 
-        let result = build_layer_query(None, &materialized, Some("category = 'A'"), true, 0);
+        let result = build_layer_query(None, &materialized, Some("category = 'A'"), None, true, 0);
 
         // Should query __ggsql_global__ with filter
         assert_eq!(
@@ -834,7 +845,7 @@ mod tests {
     fn test_build_layer_query_none_source_no_filter() {
         let materialized = HashSet::new();
 
-        let result = build_layer_query(None, &materialized, None, true, 0);
+        let result = build_layer_query(None, &materialized, None, None, true, 0);
 
         // Should return None - layer uses __global__ directly
         assert_eq!(result.unwrap(), None);
@@ -844,13 +855,63 @@ mod tests {
     fn test_build_layer_query_filter_without_global_errors() {
         let materialized = HashSet::new();
 
-        let result = build_layer_query(None, &materialized, Some("x > 10"), false, 2);
+        let result = build_layer_query(None, &materialized, Some("x > 10"), None, false, 2);
 
         // Should return validation error
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("Layer 3")); // layer_idx 2 -> Layer 3 in message
         assert!(err.contains("FILTER"));
+    }
+
+    #[test]
+    fn test_build_layer_query_with_order_by() {
+        let materialized = HashSet::new();
+        let source = LayerSource::Identifier("some_table".to_string());
+
+        let result =
+            build_layer_query(Some(&source), &materialized, None, Some("date ASC"), false, 0);
+
+        assert_eq!(
+            result.unwrap(),
+            Some("SELECT * FROM some_table ORDER BY date ASC".to_string())
+        );
+    }
+
+    #[test]
+    fn test_build_layer_query_with_filter_and_order_by() {
+        let materialized = HashSet::new();
+        let source = LayerSource::Identifier("some_table".to_string());
+
+        let result = build_layer_query(
+            Some(&source),
+            &materialized,
+            Some("year = 2024"),
+            Some("date DESC, value ASC"),
+            false,
+            0,
+        );
+
+        assert_eq!(
+            result.unwrap(),
+            Some(
+                "SELECT * FROM some_table WHERE year = 2024 ORDER BY date DESC, value ASC"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn test_build_layer_query_none_source_with_order_by() {
+        let materialized = HashSet::new();
+
+        let result = build_layer_query(None, &materialized, None, Some("x ASC"), true, 0);
+
+        // Should query __ggsql_global__ with order_by
+        assert_eq!(
+            result.unwrap(),
+            Some("SELECT * FROM __ggsql_global__ ORDER BY x ASC".to_string())
+        );
     }
 
     // ========================================

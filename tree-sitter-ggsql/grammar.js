@@ -367,14 +367,15 @@ module.exports = grammar({
       $.theme_clause,
     ),
 
-    // DRAW clause - syntax: DRAW geom [MAPPING ...] [SETTING ...] [PARTITION BY ...] [FILTER ...]
+    // DRAW clause - syntax: DRAW geom [MAPPING ...] [SETTING ...] [FILTER ...] [PARTITION BY ...] [ORDER BY ...]
     draw_clause: $ => seq(
       caseInsensitive('DRAW'),
       $.geom_type,
       optional($.mapping_clause),
       optional($.setting_clause),
+      optional($.filter_clause),
       optional($.partition_clause),
-      optional($.filter_clause)
+      optional($.order_clause)
     ),
 
     geom_type: $ => choice(
@@ -518,6 +519,31 @@ module.exports = grammar({
       token(')'),
       token(','),
       token('.')
+    ),
+
+    // ORDER BY clause for layer sorting: ORDER BY date ASC, value DESC
+    order_clause: $ => seq(
+      caseInsensitive('ORDER'),
+      caseInsensitive('BY'),
+      $.order_expression
+    ),
+
+    // Raw SQL ORDER BY expression - captures column names and sort directions
+    order_expression: $ => prec.right(repeat1($.order_token)),
+
+    // Individual tokens that can appear in an order expression
+    order_token: $ => choice(
+      $.identifier,
+      $.number,
+      caseInsensitive('ASC'),
+      caseInsensitive('DESC'),
+      caseInsensitive('NULLS'),
+      caseInsensitive('FIRST'),
+      caseInsensitive('LAST'),
+      ',',
+      '.',
+      '(',
+      ')'
     ),
 
     aesthetic_name: $ => choice(

@@ -298,6 +298,42 @@ SCALE x SETTING type => 'date'
 LABEL title => 'Time Series with Points', x => 'Date', y => 'Value'
 ```
 
+## Layer ordering
+
+### ORDER BY in a layer
+
+Use `ORDER BY` to ensure data is sorted correctly within a layer. This is especially important for line charts where the order of points affects the visual path:
+
+```{ggsql}
+WITH unordered_data AS (
+    SELECT * FROM (VALUES
+        ('2023-03-01'::DATE, 150.0),
+        ('2023-01-01'::DATE, 100.0),
+        ('2023-05-01'::DATE, 200.0),
+        ('2023-02-01'::DATE, 120.0),
+        ('2023-04-01'::DATE, 180.0)
+    ) AS t(date, value)
+)
+VISUALISE
+DRAW line MAPPING date AS x, value AS y FROM unordered_data ORDER BY date ASC
+DRAW point MAPPING date AS x, value AS y, 'red' AS color FROM unordered_data SETTING size => 40
+SCALE x SETTING type => 'date'
+LABEL title => 'Line Chart with ORDER BY', x => 'Date', y => 'Value'
+```
+
+### Combining FILTER and ORDER BY
+
+The `ORDER BY` clause can be combined with `FILTER` and other layer options:
+
+```{ggsql}
+SELECT date, value, category FROM 'metrics.csv'
+VISUALISE
+DRAW line MAPPING date AS x, value AS y, category AS color FILTER category != 'Support' ORDER BY date ASC
+DRAW point MAPPING date AS x, value AS y, category AS color FILTER category != 'Support' ORDER BY date ASC SETTING size => 20
+SCALE x SETTING type => 'date'
+LABEL title => 'Sales and Marketing Metrics (Ordered)', x => 'Date', y => 'Value'
+```
+
 ## Common Table Expressions (CTEs)
 
 ### Simple CTE with VISUALISE FROM
