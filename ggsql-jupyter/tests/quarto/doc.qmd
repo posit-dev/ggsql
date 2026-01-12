@@ -326,7 +326,7 @@ When mixing constant and column mappings for the same aesthetic, the axis/legend
 SELECT date, value, category FROM 'metrics.csv'
 VISUALISE date AS x
 DRAW line MAPPING value AS y, category AS color
-DRAW point MAPPING 120 AS y SETTING size => 20, color => 'Threshold'
+DRAW point MAPPING 120 AS y SETTING size => 20, color => 'blue'
 SCALE x SETTING type => 'date'
 LABEL title => 'Metrics with Threshold Line', x => 'Date'
 ```
