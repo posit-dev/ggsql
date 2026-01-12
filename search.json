@@ -1,5 +1,75 @@
 [
   {
+    "objectID": "examples.html",
+    "href": "examples.html",
+    "title": "Examples",
+    "section": "",
+    "text": "This document demonstrates various ggSQL features with runnable examples using CSV files."
+  },
+  {
+    "objectID": "examples.html#basic-visualizations",
+    "href": "examples.html#basic-visualizations",
+    "title": "Examples",
+    "section": "Basic Visualizations",
+    "text": "Basic Visualizations\n\nSimple Scatter Plot\n\nSELECT x, y FROM 'data.csv'\nVISUALISE x, y\nDRAW point\n\n\n\n\n\n\n\nLine Chart with Date Scale\n\nSELECT sale_date, revenue FROM 'sales.csv'\nWHERE category = 'Electronics'\nVISUALISE sale_date AS x, revenue AS y\nDRAW line\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Electronics Revenue Over Time', x =&gt; 'Date', y =&gt; 'Revenue ($)'\n\n\n\n\n\n\n\nBar Chart by Category\n\nSELECT category, SUM(revenue) as total\nFROM 'sales.csv'\nGROUP BY category\nVISUALISE category AS x, total AS y, category AS fill\nDRAW bar\nLABEL title =&gt; 'Total Revenue by Category', x =&gt; 'Category', y =&gt; 'Total Revenue ($)'\n\n\n\n\n\n\n\nLine chart with multiple lines with same aesthetics\n\nSELECT * FROM 'sales.csv'\nVISUALISE sale_date AS x, revenue AS y\nDRAW line\n    PARTITION BY category"
+  },
+  {
+    "objectID": "examples.html#multiple-layers",
+    "href": "examples.html#multiple-layers",
+    "title": "Examples",
+    "section": "Multiple Layers",
+    "text": "Multiple Layers\n\nLine with Points\n\nSELECT date, value FROM 'timeseries.csv'\nVISUALISE date AS x, value AS y\nDRAW line SETTING  color =&gt; 'blue'\nDRAW point SETTING size =&gt; 30, color =&gt; 'red'\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Time Series with Points', x =&gt; 'Date', y =&gt; 'Value'\n\n\n\n\n\n\n\nColored Lines by Category\n\nSELECT date, value, category FROM 'metrics.csv'\nVISUALISE date AS x, value AS y, category AS color\nDRAW line\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Metrics by Category', x =&gt; 'Date', y =&gt; 'Value'"
+  },
+  {
+    "objectID": "examples.html#faceting",
+    "href": "examples.html#faceting",
+    "title": "Examples",
+    "section": "Faceting",
+    "text": "Faceting\n\nFacet Wrap by Region\n\nSELECT sale_date, revenue, region FROM 'sales.csv'\nWHERE category = 'Electronics'\nVISUALISE sale_date AS x, revenue AS y\nDRAW line\nSCALE x SETTING type =&gt; 'date'\nFACET WRAP region\nLABEL title =&gt; 'Electronics Sales by Region', x =&gt; 'Date', y =&gt; 'Revenue ($)'\n\n\n\n\n\n\n\nFacet Grid\n\nSELECT\n    DATE_TRUNC('month', sale_date) as month,\n    region,\n    category,\n    SUM(revenue) as total_revenue,\n    SUM(quantity) * 100 as total_quantity_scaled\nFROM 'sales.csv'\nGROUP BY DATE_TRUNC('month', sale_date), region, category\nVISUALISE month AS x\nDRAW line \n    MAPPING total_revenue AS y\n    SETTING color =&gt; 'steelblue'\nDRAW point \n    MAPPING total_revenue AS y\n    SETTING size =&gt; 30, color =&gt; 'darkblue'\nDRAW line \n    MAPPING total_quantity_scaled AS y\n    SETTING color =&gt; 'coral'\nDRAW point \n    MAPPING total_quantity_scaled AS y\n    SETTING size =&gt; 30, color =&gt; 'orangered'\nSCALE x SETTING type =&gt; 'date'\nFACET region BY category\nLABEL title =&gt; 'Monthly Revenue and Quantity by Region and Category', x =&gt; 'Month', y =&gt; 'Value'"
+  },
+  {
+    "objectID": "examples.html#coordinate-transformations",
+    "href": "examples.html#coordinate-transformations",
+    "title": "Examples",
+    "section": "Coordinate Transformations",
+    "text": "Coordinate Transformations\n\nFlipped Coordinates (Horizontal Bar Chart)\n\nSELECT region, SUM(revenue) as total\nFROM 'sales.csv'\nGROUP BY region\nORDER BY total DESC\nVISUALISE region AS x, total AS y, region AS fill\nDRAW bar\nCOORD flip\nLABEL title =&gt; 'Total Revenue by Region', x =&gt; 'Region', y =&gt; 'Total Revenue ($)'\n\n\n\n\n\n\n\nCartesian with Axis Limits\n\nSELECT x, y FROM 'data.csv'\nVISUALISE x, y\nDRAW point SETTING size =&gt; 4, color =&gt; 'blue'\nCOORD cartesian SETTING xlim =&gt; [0, 60], ylim =&gt; [0, 70]\nLABEL title =&gt; 'Scatter Plot with Custom Axis Limits', x =&gt; 'X', y =&gt; 'Y'\n\n\n\n\n\n\n\nPie Chart with Polar Coordinates\n\nSELECT category, SUM(revenue) as total\nFROM 'sales.csv'\nGROUP BY category\nVISUALISE total AS y, category AS fill\nDRAW bar\nCOORD polar\nLABEL title =&gt; 'Revenue Distribution by Category'"
+  },
+  {
+    "objectID": "examples.html#constant-mappings",
+    "href": "examples.html#constant-mappings",
+    "title": "Examples",
+    "section": "Constant Mappings",
+    "text": "Constant Mappings\nConstants can be used in both the VISUALISE clause (global) and MAPPING clauses (per-layer) to set fixed aesthetic values.\n\nDifferent Constants Per Layer\nEach layer can have its own constant value, creating a legend showing all values:\n\nWITH monthly AS (\n    SELECT\n        DATE_TRUNC('month', sale_date) as month,\n        category,\n        SUM(revenue) as revenue\n    FROM 'sales.csv'\n    GROUP BY DATE_TRUNC('month', sale_date), category\n)\nVISUALISE month AS x, revenue AS y\nDRAW line MAPPING 'Electronics' AS color FROM monthly FILTER category = 'Electronics'\nDRAW line MAPPING 'Clothing' AS color FROM monthly FILTER category = 'Clothing'\nDRAW line MAPPING 'Furniture' AS color FROM monthly FILTER category = 'Furniture'\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Revenue by Category (Constant Colors)', x =&gt; 'Month', y =&gt; 'Revenue ($)'\n\n\n\n\n\n\n\nMixed Constants and Columns\nWhen mixing constant and column mappings for the same aesthetic, the axis/legend label uses the first non-constant column name:\n\nSELECT date, value, category FROM 'metrics.csv'\nVISUALISE date AS x\nDRAW line MAPPING value AS y, category AS color\nDRAW point MAPPING 120 AS y SETTING size =&gt; 20, color =&gt; 'blue'\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Metrics with Threshold Line', x =&gt; 'Date'\n\n\n\n\n\n\n\nNumeric Constants\nNumbers work as constants too:\n\nSELECT x, y FROM 'data.csv'\nVISUALISE x, y\nDRAW point SETTING color =&gt; 'blue', size =&gt; 100\nDRAW point SETTING color =&gt; 'red', size =&gt; 50 FILTER y &gt; 50\nLABEL title =&gt; 'Scatter Plot with Constant Sizes'"
+  },
+  {
+    "objectID": "examples.html#layer-filtering",
+    "href": "examples.html#layer-filtering",
+    "title": "Examples",
+    "section": "Layer filtering",
+    "text": "Layer filtering\n\nFilter one layer\n\nSELECT date, value FROM 'timeseries.csv'\nVISUALISE date AS x, value AS y\nDRAW line SETTING color =&gt; 'blue'\nDRAW point SETTING color =&gt; 'red', size =&gt; 30 FILTER value &lt; 130\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Time Series with Points', x =&gt; 'Date', y =&gt; 'Value'"
+  },
+  {
+    "objectID": "examples.html#common-table-expressions-ctes",
+    "href": "examples.html#common-table-expressions-ctes",
+    "title": "Examples",
+    "section": "Common Table Expressions (CTEs)",
+    "text": "Common Table Expressions (CTEs)\n\nSimple CTE with VISUALISE FROM\n\nWITH monthly_sales AS (\n    SELECT\n        DATE_TRUNC('month', sale_date) as month,\n        SUM(revenue) as total_revenue\n    FROM 'sales.csv'\n    GROUP BY DATE_TRUNC('month', sale_date)\n)\nVISUALISE month AS x, total_revenue AS y FROM monthly_sales\nDRAW line\nDRAW point\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Monthly Revenue Trends', x =&gt; 'Month', y =&gt; 'Revenue ($)'\n\n\n\n\n\n\n\nMultiple CTEs\n\nWITH daily_sales AS (\n    SELECT sale_date, region, SUM(revenue) as revenue\n    FROM 'sales.csv'\n    GROUP BY sale_date, region\n),\nregional_totals AS (\n    SELECT region, SUM(revenue) as total\n    FROM daily_sales\n    GROUP BY region\n)\nVISUALISE region AS x, total AS y, region AS fill FROM regional_totals\nDRAW bar\nCOORD flip\nLABEL title =&gt; 'Total Revenue by Region', x =&gt; 'Region', y =&gt; 'Total Revenue ($)'"
+  },
+  {
+    "objectID": "examples.html#layer-specific-data-sources-mapping-from",
+    "href": "examples.html#layer-specific-data-sources-mapping-from",
+    "title": "Examples",
+    "section": "Layer-Specific Data Sources (MAPPING FROM)",
+    "text": "Layer-Specific Data Sources (MAPPING FROM)\nLayers can pull data from different sources using MAPPING FROM. This enables overlaying data from different CTEs or tables.\n\nComparing Actuals vs Targets\nEach layer can reference a different CTE using MAPPING ... FROM cte_name:\n\nWITH actuals AS (\n    SELECT\n        DATE_TRUNC('month', sale_date) as month,\n        SUM(revenue) as value\n    FROM 'sales.csv'\n    GROUP BY DATE_TRUNC('month', sale_date)\n),\ntargets AS (\n    SELECT * FROM (VALUES\n        ('2023-01-01'::DATE, 5000.0),\n        ('2023-02-01'::DATE, 5500.0),\n        ('2023-03-01'::DATE, 6000.0),\n        ('2023-04-01'::DATE, 6500.0),\n        ('2023-05-01'::DATE, 7000.0),\n        ('2023-06-01'::DATE, 7500.0),\n        ('2023-07-01'::DATE, 8000.0),\n        ('2023-08-01'::DATE, 8500.0),\n        ('2023-09-01'::DATE, 9000.0),\n        ('2023-10-01'::DATE, 9500.0),\n        ('2023-11-01'::DATE, 10000.0),\n        ('2023-12-01'::DATE, 10500.0)\n    ) AS t(month, value)\n)\nVISUALISE\nDRAW line MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals\nDRAW point MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals SETTING size =&gt; 30\nDRAW line MAPPING month AS x, value AS y, 'Target' AS color FROM targets\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Revenue: Actual vs Target', x =&gt; 'Month', y =&gt; 'Revenue ($)'\n\n\n\n\n\n\n\nCTE Chain: Raw → Filtered → Aggregated\nCTEs can reference other CTEs, creating a data transformation pipeline:\n\nWITH raw_data AS (\n    SELECT sale_date, revenue, category, region\n    FROM 'sales.csv'\n),\nelectronics_only AS (\n    SELECT * FROM raw_data\n    WHERE category = 'Electronics'\n),\nmonthly_electronics AS (\n    SELECT\n        DATE_TRUNC('month', sale_date) as month,\n        region,\n        SUM(revenue) as total\n    FROM electronics_only\n    GROUP BY DATE_TRUNC('month', sale_date), region\n)\nVISUALISE month AS x, total AS y, region AS color FROM monthly_electronics\nDRAW line\nDRAW point\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Electronics Revenue by Region (CTE Chain)', x =&gt; 'Month', y =&gt; 'Revenue ($)'\n\n\n\n\n\n\n\nLayer FROM with FILTER\nCombine FROM with FILTER to get filtered subsets from a CTE:\n\nWITH all_sales AS (\n    SELECT\n        DATE_TRUNC('month', sale_date) as month,\n        category,\n        SUM(revenue) as revenue\n    FROM 'sales.csv'\n    GROUP BY DATE_TRUNC('month', sale_date), category\n)\nVISUALISE\nDRAW line MAPPING month AS x, revenue AS y, 'All Categories' AS color FROM all_sales\nDRAW line MAPPING month AS x, revenue AS y, 'Electronics' AS color FROM all_sales FILTER category = 'Electronics'\nDRAW line MAPPING month AS x, revenue AS y, 'Clothing' AS color FROM all_sales FILTER category = 'Clothing'\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Revenue by Category (Filtered Layers)', x =&gt; 'Month', y =&gt; 'Revenue ($)'\n\n\n\n\n\n\n\nMultiple File Sources\nLayers can also reference different CSV files directly:\n\nVISUALISE\nDRAW line MAPPING date AS x, value AS y, 'Time Series' AS color FROM 'timeseries.csv'\nDRAW point MAPPING x AS x, y AS y, 'Scatter' AS color FROM 'data.csv'\nLABEL title =&gt; 'Data from Multiple Files', x =&gt; 'X', y =&gt; 'Y'"
+  },
+  {
+    "objectID": "examples.html#advanced-examples",
+    "href": "examples.html#advanced-examples",
+    "title": "Examples",
+    "section": "Advanced Examples",
+    "text": "Advanced Examples\n\nComplete Regional Sales Analysis\n\nSELECT\n    sale_date,\n    region,\n    SUM(quantity) as total_quantity\nFROM 'sales.csv'\nWHERE sale_date &gt;= '2023-01-01'\nGROUP BY sale_date, region\nORDER BY sale_date\nVISUALISE sale_date AS x, total_quantity AS y, region AS color\nDRAW line\nDRAW point\nSCALE x SETTING type =&gt; 'date'\nFACET WRAP region\nLABEL title =&gt; 'Sales Trends by Region', x =&gt; 'Date', y =&gt; 'Total Quantity'\n\n\n\n\n\n\n\nMulti-Category Analysis\n\nSELECT\n    category,\n    region,\n    SUM(revenue) as total_revenue\nFROM 'sales.csv'\nGROUP BY category, region\nVISUALISE category AS x, total_revenue AS y, region AS fill\nDRAW bar\nLABEL title =&gt; 'Revenue by Category and Region', x =&gt; 'Category', y =&gt; 'Revenue ($)'"
+  },
+  {
     "objectID": "index.html",
     "href": "index.html",
     "title": "ggsql - SQL Visualization Grammar",
@@ -82,75 +152,5 @@
     "title": "ggsql - SQL Visualization Grammar",
     "section": "CLI",
     "text": "CLI\n\nInstallation\ncargo install --path src"
-  },
-  {
-    "objectID": "examples.html",
-    "href": "examples.html",
-    "title": "Examples",
-    "section": "",
-    "text": "This document demonstrates various ggSQL features with runnable examples using CSV files."
-  },
-  {
-    "objectID": "examples.html#basic-visualizations",
-    "href": "examples.html#basic-visualizations",
-    "title": "Examples",
-    "section": "Basic Visualizations",
-    "text": "Basic Visualizations\n\nSimple Scatter Plot\n\nSELECT x, y FROM 'data.csv'\nVISUALISE x, y\nDRAW point\n\n\n\n\n\n\n\nLine Chart with Date Scale\n\nSELECT sale_date, revenue FROM 'sales.csv'\nWHERE category = 'Electronics'\nVISUALISE sale_date AS x, revenue AS y\nDRAW line\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Electronics Revenue Over Time', x =&gt; 'Date', y =&gt; 'Revenue ($)'\n\n\n\n\n\n\n\nBar Chart by Category\n\nSELECT category, SUM(revenue) as total\nFROM 'sales.csv'\nGROUP BY category\nVISUALISE category AS x, total AS y, category AS fill\nDRAW bar\nLABEL title =&gt; 'Total Revenue by Category', x =&gt; 'Category', y =&gt; 'Total Revenue ($)'\n\n\n\n\n\n\n\nLine chart with multiple lines with same aesthetics\n\nSELECT * FROM 'sales.csv'\nVISUALISE sale_date AS x, revenue AS y\nDRAW line\n    PARTITION BY category"
-  },
-  {
-    "objectID": "examples.html#multiple-layers",
-    "href": "examples.html#multiple-layers",
-    "title": "Examples",
-    "section": "Multiple Layers",
-    "text": "Multiple Layers\n\nLine with Points\n\nSELECT date, value FROM 'timeseries.csv'\nVISUALISE date AS x, value AS y\nDRAW line SETTING  color =&gt; 'blue'\nDRAW point SETTING size =&gt; 30, color =&gt; 'red'\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Time Series with Points', x =&gt; 'Date', y =&gt; 'Value'\n\n\n\n\n\n\n\nColored Lines by Category\n\nSELECT date, value, category FROM 'metrics.csv'\nVISUALISE date AS x, value AS y, category AS color\nDRAW line\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Metrics by Category', x =&gt; 'Date', y =&gt; 'Value'"
-  },
-  {
-    "objectID": "examples.html#faceting",
-    "href": "examples.html#faceting",
-    "title": "Examples",
-    "section": "Faceting",
-    "text": "Faceting\n\nFacet Wrap by Region\n\nSELECT sale_date, revenue, region FROM 'sales.csv'\nWHERE category = 'Electronics'\nVISUALISE sale_date AS x, revenue AS y\nDRAW line\nSCALE x SETTING type =&gt; 'date'\nFACET WRAP region\nLABEL title =&gt; 'Electronics Sales by Region', x =&gt; 'Date', y =&gt; 'Revenue ($)'\n\n\n\n\n\n\n\nFacet Grid\n\nSELECT\n    DATE_TRUNC('month', sale_date) as month,\n    region,\n    category,\n    SUM(revenue) as total_revenue,\n    SUM(quantity) * 100 as total_quantity_scaled\nFROM 'sales.csv'\nGROUP BY DATE_TRUNC('month', sale_date), region, category\nVISUALISE month AS x\nDRAW line \n    MAPPING total_revenue AS y\n    SETTING color =&gt; 'steelblue'\nDRAW point \n    MAPPING total_revenue AS y\n    SETTING size =&gt; 30, color =&gt; 'darkblue'\nDRAW line \n    MAPPING total_quantity_scaled AS y\n    SETTING color =&gt; 'coral'\nDRAW point \n    MAPPING total_quantity_scaled AS y\n    SETTING size =&gt; 30, color =&gt; 'orangered'\nSCALE x SETTING type =&gt; 'date'\nFACET region BY category\nLABEL title =&gt; 'Monthly Revenue and Quantity by Region and Category', x =&gt; 'Month', y =&gt; 'Value'"
-  },
-  {
-    "objectID": "examples.html#coordinate-transformations",
-    "href": "examples.html#coordinate-transformations",
-    "title": "Examples",
-    "section": "Coordinate Transformations",
-    "text": "Coordinate Transformations\n\nFlipped Coordinates (Horizontal Bar Chart)\n\nSELECT region, SUM(revenue) as total\nFROM 'sales.csv'\nGROUP BY region\nORDER BY total DESC\nVISUALISE region AS x, total AS y, region AS fill\nDRAW bar\nCOORD flip\nLABEL title =&gt; 'Total Revenue by Region', x =&gt; 'Region', y =&gt; 'Total Revenue ($)'\n\n\n\n\n\n\n\nCartesian with Axis Limits\n\nSELECT x, y FROM 'data.csv'\nVISUALISE x, y\nDRAW point SETTING size =&gt; 4, color =&gt; 'blue'\nCOORD cartesian SETTING xlim =&gt; [0, 60], ylim =&gt; [0, 70]\nLABEL title =&gt; 'Scatter Plot with Custom Axis Limits', x =&gt; 'X', y =&gt; 'Y'\n\n\n\n\n\n\n\nPie Chart with Polar Coordinates\n\nSELECT category, SUM(revenue) as total\nFROM 'sales.csv'\nGROUP BY category\nVISUALISE total AS y, category AS fill\nDRAW bar\nCOORD polar\nLABEL title =&gt; 'Revenue Distribution by Category'"
-  },
-  {
-    "objectID": "examples.html#constant-mappings",
-    "href": "examples.html#constant-mappings",
-    "title": "Examples",
-    "section": "Constant Mappings",
-    "text": "Constant Mappings\nConstants can be used in both the VISUALISE clause (global) and MAPPING clauses (per-layer) to set fixed aesthetic values.\n\nDifferent Constants Per Layer\nEach layer can have its own constant value, creating a legend showing all values:\n\nWITH monthly AS (\n    SELECT\n        DATE_TRUNC('month', sale_date) as month,\n        category,\n        SUM(revenue) as revenue\n    FROM 'sales.csv'\n    GROUP BY DATE_TRUNC('month', sale_date), category\n)\nVISUALISE month AS x, revenue AS y\nDRAW line MAPPING 'Electronics' AS color FROM monthly FILTER category = 'Electronics'\nDRAW line MAPPING 'Clothing' AS color FROM monthly FILTER category = 'Clothing'\nDRAW line MAPPING 'Furniture' AS color FROM monthly FILTER category = 'Furniture'\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Revenue by Category (Constant Colors)', x =&gt; 'Month', y =&gt; 'Revenue ($)'\n\n\n\n\n\n\n\nMixed Constants and Columns\nWhen mixing constant and column mappings for the same aesthetic, the axis/legend label uses the first non-constant column name:\n\nSELECT date, value, category FROM 'metrics.csv'\nVISUALISE date AS x\nDRAW line MAPPING value AS y, category AS color\nDRAW point MAPPING 120 AS y SETTING size =&gt; 20, color =&gt; 'blue'\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Metrics with Threshold Line', x =&gt; 'Date'\n\n\n\n\n\n\n\nNumeric Constants\nNumbers work as constants too:\n\nSELECT x, y FROM 'data.csv'\nVISUALISE x, y\nDRAW point SETTING color =&gt; 'blue', size =&gt; 100\nDRAW point SETTING color =&gt; 'red', size =&gt; 50 FILTER y &gt; 50\nLABEL title =&gt; 'Scatter Plot with Constant Sizes'"
-  },
-  {
-    "objectID": "examples.html#layer-filtering",
-    "href": "examples.html#layer-filtering",
-    "title": "Examples",
-    "section": "Layer filtering",
-    "text": "Layer filtering\n\nFilter one layer\n\nSELECT date, value FROM 'timeseries.csv'\nVISUALISE date AS x, value AS y\nDRAW line SETTING color =&gt; 'blue'\nDRAW point SETTING color =&gt; 'red', size =&gt; 30 FILTER value &lt; 130\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Time Series with Points', x =&gt; 'Date', y =&gt; 'Value'"
-  },
-  {
-    "objectID": "examples.html#common-table-expressions-ctes",
-    "href": "examples.html#common-table-expressions-ctes",
-    "title": "Examples",
-    "section": "Common Table Expressions (CTEs)",
-    "text": "Common Table Expressions (CTEs)\n\nSimple CTE with VISUALISE FROM\n\nWITH monthly_sales AS (\n    SELECT\n        DATE_TRUNC('month', sale_date) as month,\n        SUM(revenue) as total_revenue\n    FROM 'sales.csv'\n    GROUP BY DATE_TRUNC('month', sale_date)\n)\nVISUALISE month AS x, total_revenue AS y FROM monthly_sales\nDRAW line\nDRAW point\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Monthly Revenue Trends', x =&gt; 'Month', y =&gt; 'Revenue ($)'\n\n\n\n\n\n\n\nMultiple CTEs\n\nWITH daily_sales AS (\n    SELECT sale_date, region, SUM(revenue) as revenue\n    FROM 'sales.csv'\n    GROUP BY sale_date, region\n),\nregional_totals AS (\n    SELECT region, SUM(revenue) as total\n    FROM daily_sales\n    GROUP BY region\n)\nVISUALISE region AS x, total AS y, region AS fill FROM regional_totals\nDRAW bar\nCOORD flip\nLABEL title =&gt; 'Total Revenue by Region', x =&gt; 'Region', y =&gt; 'Total Revenue ($)'"
-  },
-  {
-    "objectID": "examples.html#layer-specific-data-sources-mapping-from",
-    "href": "examples.html#layer-specific-data-sources-mapping-from",
-    "title": "Examples",
-    "section": "Layer-Specific Data Sources (MAPPING FROM)",
-    "text": "Layer-Specific Data Sources (MAPPING FROM)\nLayers can pull data from different sources using MAPPING FROM. This enables overlaying data from different CTEs or tables.\n\nComparing Actuals vs Targets\nEach layer can reference a different CTE using MAPPING ... FROM cte_name:\n\nWITH actuals AS (\n    SELECT\n        DATE_TRUNC('month', sale_date) as month,\n        SUM(revenue) as value\n    FROM 'sales.csv'\n    GROUP BY DATE_TRUNC('month', sale_date)\n),\ntargets AS (\n    SELECT * FROM (VALUES\n        ('2023-01-01'::DATE, 5000.0),\n        ('2023-02-01'::DATE, 5500.0),\n        ('2023-03-01'::DATE, 6000.0),\n        ('2023-04-01'::DATE, 6500.0),\n        ('2023-05-01'::DATE, 7000.0),\n        ('2023-06-01'::DATE, 7500.0),\n        ('2023-07-01'::DATE, 8000.0),\n        ('2023-08-01'::DATE, 8500.0),\n        ('2023-09-01'::DATE, 9000.0),\n        ('2023-10-01'::DATE, 9500.0),\n        ('2023-11-01'::DATE, 10000.0),\n        ('2023-12-01'::DATE, 10500.0)\n    ) AS t(month, value)\n)\nVISUALISE\nDRAW line MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals\nDRAW point MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals SETTING size =&gt; 30\nDRAW line MAPPING month AS x, value AS y, 'Target' AS color FROM targets\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Revenue: Actual vs Target', x =&gt; 'Month', y =&gt; 'Revenue ($)'\n\n\n\n\n\n\n\nCTE Chain: Raw → Filtered → Aggregated\nCTEs can reference other CTEs, creating a data transformation pipeline:\n\nWITH raw_data AS (\n    SELECT sale_date, revenue, category, region\n    FROM 'sales.csv'\n),\nelectronics_only AS (\n    SELECT * FROM raw_data\n    WHERE category = 'Electronics'\n),\nmonthly_electronics AS (\n    SELECT\n        DATE_TRUNC('month', sale_date) as month,\n        region,\n        SUM(revenue) as total\n    FROM electronics_only\n    GROUP BY DATE_TRUNC('month', sale_date), region\n)\nVISUALISE month AS x, total AS y, region AS color FROM monthly_electronics\nDRAW line\nDRAW point\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Electronics Revenue by Region (CTE Chain)', x =&gt; 'Month', y =&gt; 'Revenue ($)'\n\n\n\n\n\n\n\nLayer FROM with FILTER\nCombine FROM with FILTER to get filtered subsets from a CTE:\n\nWITH all_sales AS (\n    SELECT\n        DATE_TRUNC('month', sale_date) as month,\n        category,\n        SUM(revenue) as revenue\n    FROM 'sales.csv'\n    GROUP BY DATE_TRUNC('month', sale_date), category\n)\nVISUALISE\nDRAW line MAPPING month AS x, revenue AS y, 'All Categories' AS color FROM all_sales\nDRAW line MAPPING month AS x, revenue AS y, 'Electronics' AS color FROM all_sales FILTER category = 'Electronics'\nDRAW line MAPPING month AS x, revenue AS y, 'Clothing' AS color FROM all_sales FILTER category = 'Clothing'\nSCALE x SETTING type =&gt; 'date'\nLABEL title =&gt; 'Revenue by Category (Filtered Layers)', x =&gt; 'Month', y =&gt; 'Revenue ($)'\n\n\n\n\n\n\n\nMultiple File Sources\nLayers can also reference different CSV files directly:\n\nVISUALISE\nDRAW line MAPPING date AS x, value AS y, 'Time Series' AS color FROM 'timeseries.csv'\nDRAW point MAPPING x AS x, y AS y, 'Scatter' AS color FROM 'data.csv'\nLABEL title =&gt; 'Data from Multiple Files', x =&gt; 'X', y =&gt; 'Y'"
-  },
-  {
-    "objectID": "examples.html#advanced-examples",
-    "href": "examples.html#advanced-examples",
-    "title": "Examples",
-    "section": "Advanced Examples",
-    "text": "Advanced Examples\n\nComplete Regional Sales Analysis\n\nSELECT\n    sale_date,\n    region,\n    SUM(quantity) as total_quantity\nFROM 'sales.csv'\nWHERE sale_date &gt;= '2023-01-01'\nGROUP BY sale_date, region\nORDER BY sale_date\nVISUALISE sale_date AS x, total_quantity AS y, region AS color\nDRAW line\nDRAW point\nSCALE x SETTING type =&gt; 'date'\nFACET WRAP region\nLABEL title =&gt; 'Sales Trends by Region', x =&gt; 'Date', y =&gt; 'Total Quantity'\n\n\n\n\n\n\n\nMulti-Category Analysis\n\nSELECT\n    category,\n    region,\n    SUM(revenue) as total_revenue\nFROM 'sales.csv'\nGROUP BY category, region\nVISUALISE category AS x, total_revenue AS y, region AS fill\nDRAW bar\nLABEL title =&gt; 'Revenue by Category and Region', x =&gt; 'Category', y =&gt; 'Revenue ($)'"
   }
 ]
