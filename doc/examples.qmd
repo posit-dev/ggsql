@@ -167,7 +167,7 @@ WHERE category = 'Electronics'
 VISUALISE sale_date AS x, revenue AS y
 DRAW line
 SCALE x SETTING type => 'date'
-LABEL title =>'Electronics Revenue Over Time', x => 'Date', y => 'Revenue ($)'
+LABEL title => 'Electronics Revenue Over Time', x => 'Date', y => 'Revenue ($)'
 ```
 
 ### Bar Chart by Category
@@ -178,7 +178,7 @@ FROM 'sales.csv'
 GROUP BY category
 VISUALISE category AS x, total AS y, category AS fill
 DRAW bar
-LABEL title =>'Total Revenue by Category', x => 'Category', y => 'Total Revenue ($)'
+LABEL title => 'Total Revenue by Category', x => 'Category', y => 'Total Revenue ($)'
 ```
 
 ### Line chart with multiple lines with same aesthetics
@@ -197,10 +197,10 @@ DRAW line
 ```{ggsql}
 SELECT date, value FROM 'timeseries.csv'
 VISUALISE date AS x, value AS y
-DRAW line MAPPING 'blue' AS color
-DRAW point MAPPING 'red' AS color SETTING size => 30
+DRAW line SETTING  color => 'blue'
+DRAW point SETTING size => 30, color => 'red'
 SCALE x SETTING type => 'date'
-LABEL title =>'Time Series with Points', x => 'Date', y => 'Value'
+LABEL title => 'Time Series with Points', x => 'Date', y => 'Value'
 ```
 
 ### Colored Lines by Category
@@ -210,7 +210,7 @@ SELECT date, value, category FROM 'metrics.csv'
 VISUALISE date AS x, value AS y, category AS color
 DRAW line
 SCALE x SETTING type => 'date'
-LABEL title =>'Metrics by Category', x => 'Date', y => 'Value'
+LABEL title => 'Metrics by Category', x => 'Date', y => 'Value'
 ```
 
 ## Faceting
@@ -224,7 +224,7 @@ VISUALISE sale_date AS x, revenue AS y
 DRAW line
 SCALE x SETTING type => 'date'
 FACET WRAP region
-LABEL title =>'Electronics Sales by Region', x => 'Date', y => 'Revenue ($)'
+LABEL title => 'Electronics Sales by Region', x => 'Date', y => 'Revenue ($)'
 ```
 
 ### Facet Grid
@@ -239,13 +239,21 @@ SELECT
 FROM 'sales.csv'
 GROUP BY DATE_TRUNC('month', sale_date), region, category
 VISUALISE month AS x
-DRAW line MAPPING total_revenue AS y, 'steelblue' AS color
-DRAW point MAPPING total_revenue AS y, 'darkblue' AS color SETTING size => 30
-DRAW line MAPPING total_quantity_scaled AS y, 'coral' AS color
-DRAW point MAPPING total_quantity_scaled AS y, 'orangered' AS color SETTING size => 30
+DRAW line 
+    MAPPING total_revenue AS y
+    SETTING color => 'steelblue'
+DRAW point 
+    MAPPING total_revenue AS y
+    SETTING size => 30, color => 'darkblue'
+DRAW line 
+    MAPPING total_quantity_scaled AS y
+    SETTING color => 'coral'
+DRAW point 
+    MAPPING total_quantity_scaled AS y
+    SETTING size => 30, color => 'orangered'
 SCALE x SETTING type => 'date'
 FACET region BY category
-LABEL title =>'Monthly Revenue and Quantity by Region and Category', x => 'Month', y => 'Value'
+LABEL title => 'Monthly Revenue and Quantity by Region and Category', x => 'Month', y => 'Value'
 ```
 
 ## Coordinate Transformations
@@ -268,7 +276,7 @@ LABEL title => 'Total Revenue by Region', x => 'Region', y => 'Total Revenue ($)
 ```{ggsql}
 SELECT x, y FROM 'data.csv'
 VISUALISE x, y
-DRAW point MAPPING 'blue' AS color SETTING size => 4
+DRAW point SETTING size => 4, color => 'blue'
 COORD cartesian SETTING xlim => [0, 60], ylim => [0, 70]
 LABEL title => 'Scatter Plot with Custom Axis Limits', x => 'X', y => 'Y'
 ```
@@ -285,6 +293,56 @@ COORD polar
 LABEL title => 'Revenue Distribution by Category'
 ```
 
+## Constant Mappings
+
+Constants can be used in both the VISUALISE clause (global) and MAPPING clauses (per-layer) to set fixed aesthetic values.
+
+### Different Constants Per Layer
+
+Each layer can have its own constant value, creating a legend showing all values:
+
+```{ggsql}
+WITH monthly AS (
+    SELECT
+        DATE_TRUNC('month', sale_date) as month,
+        category,
+        SUM(revenue) as revenue
+    FROM 'sales.csv'
+    GROUP BY DATE_TRUNC('month', sale_date), category
+)
+VISUALISE month AS x, revenue AS y
+DRAW line MAPPING 'Electronics' AS color FROM monthly FILTER category = 'Electronics'
+DRAW line MAPPING 'Clothing' AS color FROM monthly FILTER category = 'Clothing'
+DRAW line MAPPING 'Furniture' AS color FROM monthly FILTER category = 'Furniture'
+SCALE x SETTING type => 'date'
+LABEL title => 'Revenue by Category (Constant Colors)', x => 'Month', y => 'Revenue ($)'
+```
+
+### Mixed Constants and Columns
+
+When mixing constant and column mappings for the same aesthetic, the axis/legend label uses the first non-constant column name:
+
+```{ggsql}
+SELECT date, value, category FROM 'metrics.csv'
+VISUALISE date AS x
+DRAW line MAPPING value AS y, category AS color
+DRAW point MAPPING 120 AS y SETTING size => 20, color => 'blue'
+SCALE x SETTING type => 'date'
+LABEL title => 'Metrics with Threshold Line', x => 'Date'
+```
+
+### Numeric Constants
+
+Numbers work as constants too:
+
+```{ggsql}
+SELECT x, y FROM 'data.csv'
+VISUALISE x, y
+DRAW point SETTING color => 'blue', size => 100
+DRAW point SETTING color => 'red', size => 50 FILTER y > 50
+LABEL title => 'Scatter Plot with Constant Sizes'
+```
+
 ## Layer filtering
 
 ### Filter one layer
@@ -292,8 +350,8 @@ LABEL title => 'Revenue Distribution by Category'
 ```{ggsql}
 SELECT date, value FROM 'timeseries.csv'
 VISUALISE date AS x, value AS y
-DRAW line MAPPING 'blue' AS color
-DRAW point MAPPING 'red' AS color, 30 AS size FILTER value < 130
+DRAW line SETTING color => 'blue'
+DRAW point SETTING color => 'red', size => 30 FILTER value < 130
 SCALE x SETTING type => 'date'
 LABEL title => 'Time Series with Points', x => 'Date', y => 'Value'
 ```
@@ -336,7 +394,105 @@ COORD flip
 LABEL title => 'Total Revenue by Region', x => 'Region', y => 'Total Revenue ($)'
 ```
 
+## Layer-Specific Data Sources (MAPPING FROM)
 
+Layers can pull data from different sources using `MAPPING FROM`. This enables overlaying data from different CTEs or tables.
+
+### Comparing Actuals vs Targets
+
+Each layer can reference a different CTE using `MAPPING ... FROM cte_name`:
+
+```{ggsql}
+WITH actuals AS (
+    SELECT
+        DATE_TRUNC('month', sale_date) as month,
+        SUM(revenue) as value
+    FROM 'sales.csv'
+    GROUP BY DATE_TRUNC('month', sale_date)
+),
+targets AS (
+    SELECT * FROM (VALUES
+        ('2023-01-01'::DATE, 5000.0),
+        ('2023-02-01'::DATE, 5500.0),
+        ('2023-03-01'::DATE, 6000.0),
+        ('2023-04-01'::DATE, 6500.0),
+        ('2023-05-01'::DATE, 7000.0),
+        ('2023-06-01'::DATE, 7500.0),
+        ('2023-07-01'::DATE, 8000.0),
+        ('2023-08-01'::DATE, 8500.0),
+        ('2023-09-01'::DATE, 9000.0),
+        ('2023-10-01'::DATE, 9500.0),
+        ('2023-11-01'::DATE, 10000.0),
+        ('2023-12-01'::DATE, 10500.0)
+    ) AS t(month, value)
+)
+VISUALISE
+DRAW line MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals
+DRAW point MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals SETTING size => 30
+DRAW line MAPPING month AS x, value AS y, 'Target' AS color FROM targets
+SCALE x SETTING type => 'date'
+LABEL title => 'Revenue: Actual vs Target', x => 'Month', y => 'Revenue ($)'
+```
+
+### CTE Chain: Raw → Filtered → Aggregated
+
+CTEs can reference other CTEs, creating a data transformation pipeline:
+
+```{ggsql}
+WITH raw_data AS (
+    SELECT sale_date, revenue, category, region
+    FROM 'sales.csv'
+),
+electronics_only AS (
+    SELECT * FROM raw_data
+    WHERE category = 'Electronics'
+),
+monthly_electronics AS (
+    SELECT
+        DATE_TRUNC('month', sale_date) as month,
+        region,
+        SUM(revenue) as total
+    FROM electronics_only
+    GROUP BY DATE_TRUNC('month', sale_date), region
+)
+VISUALISE month AS x, total AS y, region AS color FROM monthly_electronics
+DRAW line
+DRAW point
+SCALE x SETTING type => 'date'
+LABEL title => 'Electronics Revenue by Region (CTE Chain)', x => 'Month', y => 'Revenue ($)'
+```
+
+### Layer FROM with FILTER
+
+Combine `FROM` with `FILTER` to get filtered subsets from a CTE:
+
+```{ggsql}
+WITH all_sales AS (
+    SELECT
+        DATE_TRUNC('month', sale_date) as month,
+        category,
+        SUM(revenue) as revenue
+    FROM 'sales.csv'
+    GROUP BY DATE_TRUNC('month', sale_date), category
+)
+VISUALISE
+DRAW line MAPPING month AS x, revenue AS y, 'All Categories' AS color FROM all_sales
+DRAW line MAPPING month AS x, revenue AS y, 'Electronics' AS color FROM all_sales FILTER category = 'Electronics'
+DRAW line MAPPING month AS x, revenue AS y, 'Clothing' AS color FROM all_sales FILTER category = 'Clothing'
+SCALE x SETTING type => 'date'
+LABEL title => 'Revenue by Category (Filtered Layers)', x => 'Month', y => 'Revenue ($)'
+```
+
+### Multiple File Sources
+
+Layers can also reference different CSV files directly:
+
+```{ggsql}
+VISUALISE
+DRAW line MAPPING date AS x, value AS y, 'Time Series' AS color FROM 'timeseries.csv'
+DRAW point MAPPING x AS x, y AS y, 'Scatter' AS color FROM 'data.csv'
+LABEL title => 'Data from Multiple Files', x => 'X', y => 'Y'
+```
 
 ## Advanced Examples
 
@@ -372,4 +528,3 @@ VISUALISE category AS x, total_revenue AS y, region AS fill
 DRAW bar
 LABEL title => 'Revenue by Category and Region', x => 'Category', y => 'Revenue ($)'
 ```
-

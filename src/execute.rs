@@ -3,7 +3,8 @@
 //! Provides shared execution logic for building data maps from queries,
 //! handling both global SQL and layer-specific data sources.
 
-use crate::{parser, DataFrame, Facet, GgsqlError, Layer, LayerSource, Result, VizSpec};
+use crate::parser::ast::{AestheticValue, GlobalMapping, GlobalMappingItem, Layer, LiteralValue};
+use crate::{parser, DataFrame, Facet, GgsqlError, LayerSource, Result, VizSpec};
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Parser};
 
@@ -150,6 +151,73 @@ fn get_cte_temp_table_name(cte_name: &str) -> String {
     format!("__ggsql_cte_{}__", cte_name)
 }
 
+/// Generate synthetic column name for a constant aesthetic
+fn const_column_name(aesthetic: &str) -> String {
+    format!("__ggsql_const_{}__", aesthetic)
+}
+
+/// Generate synthetic column name for a constant aesthetic with layer index
+/// Used when injecting constants into global data so different layers can have different values
+fn const_column_name_indexed(aesthetic: &str, layer_idx: usize) -> String {
+    format!("__ggsql_const_{}_{}__", aesthetic, layer_idx)
+}
+
+/// Format a literal value as SQL
+fn literal_to_sql(lit: &LiteralValue) -> String {
+    match lit {
+        LiteralValue::String(s) => format!("'{}'", s.replace('\'', "''")),
+        LiteralValue::Number(n) => n.to_string(),
+        LiteralValue::Boolean(b) => {
+            if *b {
+                "TRUE".to_string()
+            } else {
+                "FALSE".to_string()
+            }
+        }
+    }
+}
+
+/// Extract constant aesthetics from a layer
+fn extract_constants(layer: &Layer) -> Vec<(String, LiteralValue)> {
+    layer
+        .aesthetics
+        .iter()
+        .filter_map(|(aesthetic, value)| {
+            if let AestheticValue::Literal(lit) = value {
+                Some((aesthetic.clone(), lit.clone()))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Replace literal aesthetic values with column references to synthetic constant columns
+///
+/// After data has been fetched with constants injected as columns, this function
+/// updates the spec so that aesthetics point to the synthetic column names instead
+/// of literal values.
+///
+/// For layers using global data (no source, no filter), uses layer-indexed column names
+/// (e.g., `__ggsql_const_color_0__`) since constants are injected into global data.
+/// For other layers, uses non-indexed column names (e.g., `__ggsql_const_color__`).
+fn replace_literals_with_columns(spec: &mut VizSpec) {
+    for (layer_idx, layer) in spec.layers.iter_mut().enumerate() {
+        for (aesthetic, value) in layer.aesthetics.iter_mut() {
+            if matches!(value, AestheticValue::Literal(_)) {
+                // Use layer-indexed column name for layers using global data (no source, no filter)
+                // Use non-indexed name for layers with their own data (filter or explicit source)
+                let col_name = if layer.source.is_none() && layer.filter.is_none() {
+                    const_column_name_indexed(aesthetic, layer_idx)
+                } else {
+                    const_column_name(aesthetic)
+                };
+                *value = AestheticValue::Column(col_name);
+            }
+        }
+    }
+}
+
 /// Materialize CTEs as temporary tables in the database
 ///
 /// Creates a temp table for each CTE in declaration order. When a CTE
@@ -255,18 +323,18 @@ fn transform_global_sql(sql: &str, materialized_ctes: &HashSet<String>) -> Optio
 /// Build a layer query handling all source types
 ///
 /// Handles:
-/// - `None` source with filter → queries `__ggsql_global__`
-/// - `None` source with stat transform needed → queries `__ggsql_global__`
-/// - `None` source without filter → returns `None` (use global directly)
+/// - `None` source with filter, constants, or stat transform needed → queries `__ggsql_global__`
+/// - `None` source without filter, constants, or stat transform → returns `None` (use global directly)
 /// - `Identifier` source → checks if CTE, uses temp table or table name
 /// - `FilePath` source → wraps path in single quotes
 ///
+/// Constants are injected as synthetic columns (e.g., `'blue' AS __ggsql_const_color__`).
 /// Also applies statistical transformations for geoms that need them
 /// (e.g., histogram binning, bar counting).
 ///
 /// Returns:
 /// - `Ok(Some(query))` - execute this query and store result
-/// - `Ok(None)` - layer uses `__global__` directly (no source, no filter, no stat transform)
+/// - `Ok(None)` - layer uses `__global__` directly (no source, no filter, no constants, no stat transform)
 /// - `Err(...)` - validation error (e.g., filter without global data)
 fn build_layer_query<F>(
     layer: &Layer,
@@ -274,6 +342,7 @@ fn build_layer_query<F>(
     has_global: bool,
     layer_idx: usize,
     facet: Option<&Facet>,
+    constants: &[(String, LiteralValue)],
     execute_query: &F,
 ) -> Result<Option<String>>
 where
@@ -295,11 +364,11 @@ where
             format!("'{}'", path)
         }
         None => {
-            // No source - validate and use global
-            if filter.is_some() {
+            // No source - validate and use global if filter or constants present
+            if filter.is_some() || !constants.is_empty() {
                 if !has_global {
                     return Err(GgsqlError::ValidationError(format!(
-                        "Layer {} has a FILTER but no data source. Either provide a SQL query or use MAPPING FROM.",
+                        "Layer {} has a FILTER or constants but no data source. Either provide a SQL query or use MAPPING FROM.",
                         layer_idx + 1
                     )));
                 }
@@ -315,15 +384,25 @@ where
                     }
                     "__ggsql_global__".to_string()
                 } else {
-                    // No source, no filter, no stat transform - use __global__ data directly
+                    // No source, no filter, no constants, no stat transform - use __global__ data directly
                     return Ok(None);
                 }
             }
         }
     };
 
-    // Build base query with filter
-    let mut query = format!("SELECT * FROM {}", table_name);
+    // Build base query with optional constant columns
+    let mut query = if constants.is_empty() {
+        format!("SELECT * FROM {}", table_name)
+    } else {
+        let const_cols: Vec<String> = constants
+            .iter()
+            .map(|(aes, lit)| format!("{} AS {}", literal_to_sql(lit), const_column_name(aes)))
+            .collect();
+        format!("SELECT *, {} FROM {}", const_cols.join(", "), table_name)
+    };
+
+    // Apply filter
     if let Some(f) = filter {
         query = format!("{} WHERE {}", query, f);
     }
@@ -463,15 +542,93 @@ where
     // Build data map for multi-source support
     let mut data_map: HashMap<String, DataFrame> = HashMap::new();
 
+    // Collect constants from layers that use global data (no source, no filter)
+    // These get injected into the global data table so all layers share the same data source
+    // (required for faceting to work). Use layer-indexed column names to allow different
+    // constant values per layer (e.g., layer 0: 'blue' AS color, layer 1: 'red' AS color)
+    let first_spec = &specs[0];
+
+    // First, extract global constants from VISUALISE clause (e.g., VISUALISE 'blue' AS color)
+    // These apply to all layers that use global data
+    let global_mapping_constants: Vec<(String, LiteralValue)> =
+        if let GlobalMapping::Mappings(items) = &first_spec.global_mapping {
+            items
+                .iter()
+                .filter_map(|item| {
+                    if let GlobalMappingItem::Literal { value, aesthetic } = item {
+                        Some((aesthetic.clone(), value.clone()))
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        } else {
+            vec![]
+        };
+
+    // Find layers that use global data (no source, no filter)
+    let global_data_layer_indices: Vec<usize> = first_spec
+        .layers
+        .iter()
+        .enumerate()
+        .filter(|(_, layer)| layer.source.is_none() && layer.filter.is_none())
+        .map(|(idx, _)| idx)
+        .collect();
+
+    // Collect all constants: layer-specific constants + global constants for each global-data layer
+    let mut global_constants: Vec<(usize, String, LiteralValue)> = Vec::new();
+
+    // Add layer-specific constants (from MAPPING clauses)
+    for (layer_idx, layer) in first_spec.layers.iter().enumerate() {
+        if layer.source.is_none() && layer.filter.is_none() {
+            for (aes, lit) in extract_constants(layer) {
+                global_constants.push((layer_idx, aes, lit));
+            }
+        }
+    }
+
+    // Add global mapping constants for each layer that uses global data
+    // (these will be propagated to layers during resolve_global_mappings)
+    for layer_idx in &global_data_layer_indices {
+        for (aes, lit) in &global_mapping_constants {
+            // Only add if this layer doesn't already have this aesthetic from its own MAPPING
+            let layer = &first_spec.layers[*layer_idx];
+            if !layer.aesthetics.contains_key(aes) {
+                global_constants.push((*layer_idx, aes.clone(), lit.clone()));
+            }
+        }
+    }
+
     // Execute global SQL if present
     // If there's a WITH clause, extract just the trailing SELECT and transform CTE references.
     // The global result is stored as a temp table so filtered layers can query it efficiently.
     if !sql_part.trim().is_empty() {
         if let Some(transformed_sql) = transform_global_sql(&sql_part, &materialized_ctes) {
+            // Inject global constants into the query (with layer-indexed names)
+            let global_query = if global_constants.is_empty() {
+                transformed_sql
+            } else {
+                let const_cols: Vec<String> = global_constants
+                    .iter()
+                    .map(|(layer_idx, aes, lit)| {
+                        format!(
+                            "{} AS {}",
+                            literal_to_sql(lit),
+                            const_column_name_indexed(aes, *layer_idx)
+                        )
+                    })
+                    .collect();
+                format!(
+                    "SELECT *, {} FROM ({})",
+                    const_cols.join(", "),
+                    transformed_sql
+                )
+            };
+
             // Create temp table for global result
             let create_global = format!(
                 "CREATE OR REPLACE TEMP TABLE __ggsql_global__ AS {}",
-                transformed_sql
+                global_query
             );
             execute_query(&create_global)?;
 
@@ -484,18 +641,26 @@ where
     // Execute layer-specific queries
     // build_layer_query() handles all cases:
     // - Layer with source (CTE, table, or file) → query that source
-    // - Layer with filter but no source → query __ggsql_global__ with filter
-    // - Layer with no source and no filter → returns None (use global directly)
-    let first_spec = &specs[0];
+    // - Layer with filter but no source → query __ggsql_global__ with filter and constants
+    // - Layer with no source, no filter → returns None (use global directly, constants already injected)
     let has_global = data_map.contains_key("__global__");
 
     for (idx, layer) in first_spec.layers.iter().enumerate() {
+        // For layers using global data without filter, constants are already in global data
+        // (injected with layer-indexed names). For other layers, extract constants for injection.
+        let constants = if layer.source.is_none() && layer.filter.is_none() {
+            vec![] // Constants already in global data
+        } else {
+            extract_constants(layer)
+        };
+
         if let Some(layer_query) = build_layer_query(
             layer,
             &materialized_ctes,
             has_global,
             idx,
             first_spec.facet.as_ref(),
+            &constants,
             &execute_query,
         )? {
             let df = execute_query(&layer_query).map_err(|e| {
@@ -543,6 +708,10 @@ where
 
     for spec in &mut specs {
         spec.resolve_global_mappings(&column_names)?;
+        // Replace literal aesthetic values with column references to synthetic constant columns
+        replace_literals_with_columns(spec);
+        // Compute aesthetic labels (uses first non-constant column, respects user-specified labels)
+        spec.compute_aesthetic_labels();
     }
 
     Ok(PreparedData {
@@ -785,7 +954,7 @@ mod tests {
         let mut layer = Layer::new(Geom::Point);
         layer.source = Some(LayerSource::Identifier("sales".to_string()));
 
-        let result = build_layer_query(&layer, &materialized, false, 0, None, &mock_execute);
+        let result = build_layer_query(&layer, &materialized, false, 0, None, &[], &mock_execute);
 
         // Should use temp table name
         assert_eq!(
@@ -803,7 +972,7 @@ mod tests {
         layer.source = Some(LayerSource::Identifier("sales".to_string()));
         layer.filter = Some(FilterExpression::new("year = 2024"));
 
-        let result = build_layer_query(&layer, &materialized, false, 0, None, &mock_execute);
+        let result = build_layer_query(&layer, &materialized, false, 0, None, &[], &mock_execute);
 
         assert_eq!(
             result.unwrap(),
@@ -818,7 +987,7 @@ mod tests {
         let mut layer = Layer::new(Geom::Point);
         layer.source = Some(LayerSource::Identifier("some_table".to_string()));
 
-        let result = build_layer_query(&layer, &materialized, false, 0, None, &mock_execute);
+        let result = build_layer_query(&layer, &materialized, false, 0, None, &[], &mock_execute);
 
         // Should use table name directly
         assert_eq!(
@@ -835,7 +1004,7 @@ mod tests {
         layer.source = Some(LayerSource::Identifier("some_table".to_string()));
         layer.filter = Some(FilterExpression::new("value > 100"));
 
-        let result = build_layer_query(&layer, &materialized, false, 0, None, &mock_execute);
+        let result = build_layer_query(&layer, &materialized, false, 0, None, &[], &mock_execute);
 
         assert_eq!(
             result.unwrap(),
@@ -850,7 +1019,7 @@ mod tests {
         let mut layer = Layer::new(Geom::Point);
         layer.source = Some(LayerSource::FilePath("data/sales.csv".to_string()));
 
-        let result = build_layer_query(&layer, &materialized, false, 0, None, &mock_execute);
+        let result = build_layer_query(&layer, &materialized, false, 0, None, &[], &mock_execute);
 
         // File paths should be wrapped in single quotes
         assert_eq!(
@@ -867,7 +1036,7 @@ mod tests {
         layer.source = Some(LayerSource::FilePath("data.parquet".to_string()));
         layer.filter = Some(FilterExpression::new("x > 10"));
 
-        let result = build_layer_query(&layer, &materialized, false, 0, None, &mock_execute);
+        let result = build_layer_query(&layer, &materialized, false, 0, None, &[], &mock_execute);
 
         assert_eq!(
             result.unwrap(),
@@ -882,7 +1051,7 @@ mod tests {
         let mut layer = Layer::new(Geom::Point);
         layer.filter = Some(FilterExpression::new("category = 'A'"));
 
-        let result = build_layer_query(&layer, &materialized, true, 0, None, &mock_execute);
+        let result = build_layer_query(&layer, &materialized, true, 0, None, &[], &mock_execute);
 
         // Should query __ggsql_global__ with filter
         assert_eq!(
@@ -897,7 +1066,7 @@ mod tests {
 
         let layer = Layer::new(Geom::Point);
 
-        let result = build_layer_query(&layer, &materialized, true, 0, None, &mock_execute);
+        let result = build_layer_query(&layer, &materialized, true, 0, None, &[], &mock_execute);
 
         // Should return None - layer uses __global__ directly
         assert_eq!(result.unwrap(), None);
@@ -910,13 +1079,52 @@ mod tests {
         let mut layer = Layer::new(Geom::Point);
         layer.filter = Some(FilterExpression::new("x > 10"));
 
-        let result = build_layer_query(&layer, &materialized, false, 2, None, &mock_execute);
+        let result = build_layer_query(&layer, &materialized, false, 2, None, &[], &mock_execute);
 
         // Should return validation error
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("Layer 3")); // layer_idx 2 -> Layer 3 in message
         assert!(err.contains("FILTER"));
+    }
+
+    #[test]
+    fn test_build_layer_query_with_constants() {
+        let materialized = HashSet::new();
+        let constants = vec![
+            (
+                "color".to_string(),
+                LiteralValue::String("blue".to_string()),
+            ),
+            ("size".to_string(), LiteralValue::Number(5.0)),
+        ];
+
+        let mut layer = Layer::new(Geom::Point);
+        layer.source = Some(LayerSource::Identifier("some_table".to_string()));
+
+        let result = build_layer_query(&layer, &materialized, false, 0, None, &constants, &mock_execute);
+
+        // Should inject constants as columns
+        let query = result.unwrap().unwrap();
+        assert!(query.contains("SELECT *"));
+        assert!(query.contains("'blue' AS __ggsql_const_color__"));
+        assert!(query.contains("5 AS __ggsql_const_size__"));
+        assert!(query.contains("FROM some_table"));
+    }
+
+    #[test]
+    fn test_build_layer_query_constants_on_global() {
+        let materialized = HashSet::new();
+        let constants = vec![("fill".to_string(), LiteralValue::String("red".to_string()))];
+
+        // No source but has constants - should use __ggsql_global__
+        let layer = Layer::new(Geom::Point);
+
+        let result = build_layer_query(&layer, &materialized, true, 0, None, &constants, &mock_execute);
+
+        let query = result.unwrap().unwrap();
+        assert!(query.contains("FROM __ggsql_global__"));
+        assert!(query.contains("'red' AS __ggsql_const_fill__"));
     }
 
     // ========================================

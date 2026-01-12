@@ -20,7 +20,7 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{DataFrame, GgsqlError, Result};
 
@@ -69,6 +69,11 @@ pub enum GlobalMappingItem {
     Explicit { column: String, aesthetic: String },
     /// Implicit mapping: `x` → column "x" maps to aesthetic "x"
     Implicit { name: String },
+    /// Literal mapping: `'blue' AS color` → literal value maps to aesthetic
+    Literal {
+        value: LiteralValue,
+        aesthetic: String,
+    },
 }
 
 /// Data source for a layer (from MAPPING ... FROM clause)
@@ -887,6 +892,9 @@ impl VizSpec {
                     GlobalMappingItem::Implicit { name } => {
                         (name.clone(), AestheticValue::Column(name.clone()))
                     }
+                    GlobalMappingItem::Literal { value, aesthetic } => {
+                        (aesthetic.clone(), AestheticValue::Literal(value.clone()))
+                    }
                 })
                 .collect(),
         };
@@ -913,6 +921,55 @@ impl VizSpec {
         }
 
         Ok(())
+    }
+
+    /// Compute aesthetic labels for axes and legends.
+    ///
+    /// For each aesthetic used in any layer, determines the appropriate label:
+    /// - If user specified a label via LABEL clause, use that
+    /// - Otherwise, use the first non-synthetic column name mapped to that aesthetic
+    /// - Falls back to the aesthetic name itself if only constants are mapped
+    ///
+    /// This ensures that synthetic constant columns (like `__ggsql_const_color_0__`)
+    /// don't appear as axis/legend titles.
+    pub fn compute_aesthetic_labels(&mut self) {
+        // Ensure Labels struct exists
+        if self.labels.is_none() {
+            self.labels = Some(Labels {
+                labels: HashMap::new(),
+            });
+        }
+        let labels = self.labels.as_mut().unwrap();
+
+        // Collect all aesthetics used across all layers
+        let mut all_aesthetics: HashSet<String> = HashSet::new();
+        for layer in &self.layers {
+            for aesthetic in layer.aesthetics.keys() {
+                all_aesthetics.insert(aesthetic.clone());
+            }
+        }
+
+        // For each aesthetic, compute label if not already user-specified
+        for aesthetic in all_aesthetics {
+            // Skip if user already specified this label
+            if labels.labels.contains_key(&aesthetic) {
+                continue;
+            }
+
+            // Find first non-constant column mapping
+            let mut label = aesthetic.clone(); // Default to aesthetic name
+            for layer in &self.layers {
+                if let Some(AestheticValue::Column(col)) = layer.aesthetics.get(&aesthetic) {
+                    // Skip synthetic constant columns
+                    if !col.starts_with("__ggsql_const_") {
+                        label = col.clone();
+                        break;
+                    }
+                }
+            }
+
+            labels.labels.insert(aesthetic, label);
+        }
     }
 }
 

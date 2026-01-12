@@ -311,9 +311,12 @@ impl VegaLiteWriter {
                     "type": field_type,
                 });
 
-                // Add titles for positional aesthetics
-                if aesthetic == "x" || aesthetic == "y" {
-                    encoding["title"] = json!(col);
+                // Add titles using computed labels (includes user-specified and computed)
+                // This handles both axis titles (x, y) and legend titles (color, size, etc.)
+                if let Some(ref labels) = spec.labels {
+                    if let Some(label) = labels.labels.get(aesthetic) {
+                        encoding["title"] = json!(label);
+                    }
                 }
 
                 // Apply scale properties from SCALE if specified
@@ -979,13 +982,18 @@ impl VegaLiteWriter {
 impl Writer for VegaLiteWriter {
     fn write(&self, spec: &VizSpec, data: &HashMap<String, DataFrame>) -> Result<String> {
         // Determine which dataset key each layer should use
+        // A layer uses __layer_{idx}__ if:
+        // - It has an explicit source (FROM clause), OR
+        // - It has constants injected (no source but constants were added)
+        // Otherwise, use __global__
         let layer_data_keys: Vec<String> = spec
             .layers
             .iter()
             .enumerate()
-            .map(|(idx, layer)| {
-                if layer.source.is_some() {
-                    format!("__layer_{}__", idx)
+            .map(|(idx, _layer)| {
+                let layer_key = format!("__layer_{}__", idx);
+                if data.contains_key(&layer_key) {
+                    layer_key
                 } else {
                     "__global__".to_string()
                 }
@@ -1064,6 +1072,26 @@ impl Writer for VegaLiteWriter {
                 let channel_name = self.map_aesthetic_name(aesthetic);
                 let channel_encoding = self.build_encoding_channel(aesthetic, value, df, spec)?;
                 encoding.insert(channel_name, channel_encoding);
+            }
+
+            // Also add aesthetic parameters from SETTING as literal encodings
+            // (e.g., SETTING color => 'red' becomes {"color": {"value": "red"}})
+            // Only parameters that are supported aesthetics for this geom type are included
+            use crate::parser::ast::ParameterValue;
+            let supported_aesthetics = layer.geom.aesthetics().supported;
+            for (param_name, param_value) in &layer.parameters {
+                if supported_aesthetics.contains(&param_name.as_str()) {
+                    let channel_name = self.map_aesthetic_name(param_name);
+                    // Only add if not already set by MAPPING (MAPPING takes precedence)
+                    if !encoding.contains_key(&channel_name) {
+                        let val = match param_value {
+                            ParameterValue::String(s) => json!(s),
+                            ParameterValue::Number(n) => json!(n),
+                            ParameterValue::Boolean(b) => json!(b),
+                        };
+                        encoding.insert(channel_name, json!({"value": val}));
+                    }
+                }
             }
 
             // Add detail encoding for partition_by columns (grouping)
@@ -1205,8 +1233,7 @@ impl Writer for VegaLiteWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::ast::LiteralValue;
-    use crate::parser::ast::{Labels, Layer};
+    use crate::parser::ast::{Labels, Layer, LiteralValue, ParameterValue};
     use std::collections::HashMap;
 
     /// Helper to wrap a DataFrame in a data map for testing
@@ -3308,6 +3335,110 @@ mod tests {
         assert!(
             vl_spec["spec"]["layer"][0].get("data").is_none(),
             "Faceted layers should not have per-layer data"
+        );
+    }
+
+    #[test]
+    fn test_aesthetic_in_setting_literal_encoding() {
+        // Test that aesthetics in SETTING (e.g., SETTING color => 'red') are encoded as literals
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = VizSpec::new();
+        let layer = Layer::new(Geom::Line)
+            .with_aesthetic("x".to_string(), AestheticValue::Column("date".to_string()))
+            .with_aesthetic("y".to_string(), AestheticValue::Column("value".to_string()))
+            .with_parameter(
+                "color".to_string(),
+                ParameterValue::String("red".to_string()),
+            );
+        spec.layers.push(layer);
+
+        let df = df! {
+            "date" => &[1, 2, 3],
+            "value" => &[10, 20, 30],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Color should be encoded as a literal value
+        assert_eq!(
+            vl_spec["layer"][0]["encoding"]["color"]["value"], "red",
+            "SETTING color => 'red' should produce {{\"value\": \"red\"}}"
+        );
+    }
+
+    #[test]
+    fn test_aesthetic_in_setting_numeric_value() {
+        // Test that numeric aesthetics in SETTING are encoded as literals
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = VizSpec::new();
+        let layer = Layer::new(Geom::Point)
+            .with_aesthetic("x".to_string(), AestheticValue::Column("x".to_string()))
+            .with_aesthetic("y".to_string(), AestheticValue::Column("y".to_string()))
+            .with_parameter("size".to_string(), ParameterValue::Number(100.0))
+            .with_parameter("opacity".to_string(), ParameterValue::Number(0.5));
+        spec.layers.push(layer);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[10, 20, 30],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Size and opacity should be encoded as literal values
+        assert_eq!(
+            vl_spec["layer"][0]["encoding"]["size"]["value"], 100.0,
+            "SETTING size => 100 should produce {{\"value\": 100}}"
+        );
+        assert_eq!(
+            vl_spec["layer"][0]["encoding"]["opacity"]["value"], 0.5,
+            "SETTING opacity => 0.5 should produce {{\"value\": 0.5}}"
+        );
+    }
+
+    #[test]
+    fn test_mapping_takes_precedence_over_setting() {
+        // Test that MAPPING takes precedence over SETTING for the same aesthetic
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = VizSpec::new();
+        let layer = Layer::new(Geom::Point)
+            .with_aesthetic("x".to_string(), AestheticValue::Column("x".to_string()))
+            .with_aesthetic("y".to_string(), AestheticValue::Column("y".to_string()))
+            .with_aesthetic(
+                "color".to_string(),
+                AestheticValue::Column("category".to_string()),
+            )
+            .with_parameter(
+                "color".to_string(),
+                ParameterValue::String("red".to_string()),
+            );
+        spec.layers.push(layer);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[10, 20, 30],
+            "category" => &["A", "B", "C"],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Color should be field-mapped (from MAPPING), not value (from SETTING)
+        assert_eq!(
+            vl_spec["layer"][0]["encoding"]["color"]["field"], "category",
+            "MAPPING should take precedence over SETTING"
+        );
+        assert!(
+            vl_spec["layer"][0]["encoding"]["color"]["value"].is_null(),
+            "Should not have value encoding when MAPPING is present"
         );
     }
 }

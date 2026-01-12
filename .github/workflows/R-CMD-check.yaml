@@ -1,4 +1,4 @@
-name: build-test.yaml
+name: R-CMD-Check.yaml
 
 on:
   push:
@@ -8,9 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  R-CMD-Check:
     runs-on: ubuntu-latest
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -27,18 +26,22 @@ jobs:
       - name: Check disk space
         run: df -h
 
-      - name: Build with cargo
-        run: cargo build --verbose
+      - name: Setup CLI tools
+        run: cargo install --path src
 
-      - name: Run tree-sitter tests
-        working-directory: tree-sitter-ggsql
-        run: tree-sitter test
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          working-directory: ggsql-R
 
-      - name: Run Rust tests
-        if: success()
-        run: cargo test
+      - name: Setup R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: ggsql-R
+          extra-packages: any::rcmdcheck
+          needs: check
 
-      - name: Run Rust formatting check
-        if: success()
-        run: cargo fmt --all -- --check
-        
+      - name: Checking R package
+        uses: r-lib/actions/check-r-package@v2
+        with:
+          working-directory: ggsql-R
