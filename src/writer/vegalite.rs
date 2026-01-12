@@ -232,7 +232,7 @@ impl VegaLiteWriter {
 
     /// Infer Vega-Lite field type from DataFrame column
     fn infer_field_type(&self, df: &DataFrame, field: &str) -> String {
-        if let Some(series) = df.column(field).ok() {
+        if let Ok(series) = df.column(field) {
             use DataType::*;
             match series.dtype() {
                 Int8 | Int16 | Int32 | Int64 | UInt8 | UInt16 | UInt32 | UInt64 | Float32
@@ -322,18 +322,18 @@ impl VegaLiteWriter {
                     let mut scale_obj = serde_json::Map::new();
 
                     // Apply domain
-                    if let Some(domain_prop) = scale.properties.get("domain") {
-                        if let ScalePropertyValue::Array(domain_values) = domain_prop {
-                            let domain_json: Vec<Value> = domain_values
-                                .iter()
-                                .map(|elem| match elem {
-                                    ArrayElement::String(s) => json!(s),
-                                    ArrayElement::Number(n) => json!(n),
-                                    ArrayElement::Boolean(b) => json!(b),
-                                })
-                                .collect();
-                            scale_obj.insert("domain".to_string(), json!(domain_json));
-                        }
+                    if let Some(ScalePropertyValue::Array(domain_values)) =
+                        scale.properties.get("domain")
+                    {
+                        let domain_json: Vec<Value> = domain_values
+                            .iter()
+                            .map(|elem| match elem {
+                                ArrayElement::String(s) => json!(s),
+                                ArrayElement::Number(n) => json!(n),
+                                ArrayElement::Boolean(b) => json!(b),
+                            })
+                            .collect();
+                        scale_obj.insert("domain".to_string(), json!(domain_json));
                     }
 
                     // Apply range (explicit range property takes precedence over palette)
@@ -349,19 +349,19 @@ impl VegaLiteWriter {
                                 .collect();
                             scale_obj.insert("range".to_string(), json!(range_json));
                         }
-                    } else if let Some(palette_prop) = scale.properties.get("palette") {
+                    } else if let Some(ScalePropertyValue::Array(palette_values)) =
+                        scale.properties.get("palette")
+                    {
                         // Apply palette as range (fallback for color scales)
-                        if let ScalePropertyValue::Array(palette_values) = palette_prop {
-                            let range_json: Vec<Value> = palette_values
-                                .iter()
-                                .map(|elem| match elem {
-                                    ArrayElement::String(s) => json!(s),
-                                    ArrayElement::Number(n) => json!(n),
-                                    ArrayElement::Boolean(b) => json!(b),
-                                })
-                                .collect();
-                            scale_obj.insert("range".to_string(), json!(range_json));
-                        }
+                        let range_json: Vec<Value> = palette_values
+                            .iter()
+                            .map(|elem| match elem {
+                                ArrayElement::String(s) => json!(s),
+                                ArrayElement::Number(n) => json!(n),
+                                ArrayElement::Boolean(b) => json!(b),
+                            })
+                            .collect();
+                        scale_obj.insert("range".to_string(), json!(range_json));
                     }
 
                     if !scale_obj.is_empty() {
@@ -1205,6 +1205,7 @@ impl Writer for VegaLiteWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser::ast::LiteralValue;
     use crate::parser::ast::{Labels, Layer};
     use std::collections::HashMap;
 

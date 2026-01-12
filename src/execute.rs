@@ -337,25 +337,22 @@ fn has_executable_sql(sql: &str) -> bool {
             // Check if sql_portion contains actual statement nodes
             let mut sql_cursor = child.walk();
             for sql_child in child.children(&mut sql_cursor) {
-                match sql_child.kind() {
-                    "sql_statement" => {
-                        // Check if this is a WITH-only statement (no trailing SELECT)
-                        let mut stmt_cursor = sql_child.walk();
-                        for stmt_child in sql_child.children(&mut stmt_cursor) {
-                            match stmt_child.kind() {
-                                "select_statement" | "create_statement" | "insert_statement"
-                                | "update_statement" | "delete_statement" => return true,
-                                "with_statement" => {
-                                    // Check if WITH has trailing SELECT
-                                    if with_has_trailing_select(&stmt_child) {
-                                        return true;
-                                    }
+                if sql_child.kind() == "sql_statement" {
+                    // Check if this is a WITH-only statement (no trailing SELECT)
+                    let mut stmt_cursor = sql_child.walk();
+                    for stmt_child in sql_child.children(&mut stmt_cursor) {
+                        match stmt_child.kind() {
+                            "select_statement" | "create_statement" | "insert_statement"
+                            | "update_statement" | "delete_statement" => return true,
+                            "with_statement" => {
+                                // Check if WITH has trailing SELECT
+                                if with_has_trailing_select(&stmt_child) {
+                                    return true;
                                 }
-                                _ => {}
                             }
+                            _ => {}
                         }
                     }
-                    _ => {}
                 }
             }
         }

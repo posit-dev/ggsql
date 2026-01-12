@@ -1249,9 +1249,10 @@ fn build_theme(node: &Node, source: &str) -> Result<Theme> {
                         _ => {}
                     }
                 }
-
-                if !prop_name.is_empty() && prop_value.is_some() {
-                    properties.insert(prop_name, prop_value.unwrap());
+                if !prop_name.is_empty() {
+                    if let Some(value) = prop_value {
+                        properties.insert(prop_name, value);
+                    }
                 }
             }
             _ => {}
