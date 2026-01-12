@@ -23,15 +23,8 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install tree sitter
-        run: npm install -g tree-sitter-cli
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Regenerate parser
-        working-directory: tree-sitter-ggsql
-        run: tree-sitter generate
 
       - name: Setup quarto
         uses: quarto-dev/quarto-actions/setup@v2
