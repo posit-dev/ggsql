@@ -118,7 +118,9 @@ cargo test --features duckdb,sqlite
 
 ### Working with the Grammar
 
-The tree-sitter grammar is in `tree-sitter-ggsql/grammar.js`. After making changes:
+The tree-sitter grammar is in `tree-sitter-ggsql/grammar.js`. 
+The grammar is automatically regenerated whenever the `tree-sitter-ggsql` project is build.
+After making changes, you can manually test:
 
 1. **Regenerate the parser:**
 
