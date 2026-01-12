@@ -24,22 +24,15 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install tree sitter
-        run: npm install -g tree-sitter-cli
-
       - name: Check disk space
         run: df -h
 
-      - name: Regenerate parser
-        working-directory: tree-sitter-ggsql
-        run: tree-sitter generate
+      - name: Build with cargo
+        run: cargo build --verbose
 
       - name: Run tree-sitter tests
         working-directory: tree-sitter-ggsql
         run: tree-sitter test
-
-      - name: Build with cargo
-        run: cargo build --verbose
 
       - name: Run Rust tests
         if: success()

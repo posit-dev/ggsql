@@ -476,4 +476,266 @@ mod integration_tests {
         assert_eq!(data_values[0]["int"], 1000000);
         assert_eq!(data_values[0]["big"], 1000000000000i64);
     }
+
+    #[test]
+    fn test_end_to_end_constant_mappings() {
+        // Test that constant values in MAPPING clauses work correctly
+        // Constants are injected into global data with layer-indexed column names
+        // This allows faceting to work (all layers share same data source)
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Query with layer-level constants (layers use global data, no filter)
+        let query = r#"
+            SELECT 1 as x, 10 as y
+            VISUALISE x, y
+            DRAW line MAPPING 'blue' AS color
+            DRAW point MAPPING 'red' AS color
+        "#;
+
+        // Prepare data - this parses, injects constants into global data, and replaces literals with columns
+        let prepared =
+            execute::prepare_data_with_executor(query, |sql| reader.execute(sql)).unwrap();
+
+        // Verify constants were injected into global data (not layer-specific data)
+        // Both layers share __global__ data for faceting compatibility
+        assert!(
+            prepared.data.contains_key("__global__"),
+            "Should have global data with constants injected"
+        );
+        // Layers without filters should NOT have their own data entries
+        assert!(
+            !prepared.data.contains_key("__layer_0__"),
+            "Layer 0 should use global data, not layer-specific data"
+        );
+        assert!(
+            !prepared.data.contains_key("__layer_1__"),
+            "Layer 1 should use global data, not layer-specific data"
+        );
+        assert_eq!(prepared.specs.len(), 1);
+
+        // Verify global data contains layer-indexed constant columns
+        let global_df = prepared.data.get("__global__").unwrap();
+        let col_names = global_df.get_column_names();
+        assert!(
+            col_names.iter().any(|c| *c == "__ggsql_const_color_0__"),
+            "Global data should have layer 0 color constant: {:?}",
+            col_names
+        );
+        assert!(
+            col_names.iter().any(|c| *c == "__ggsql_const_color_1__"),
+            "Global data should have layer 1 color constant: {:?}",
+            col_names
+        );
+
+        // Generate Vega-Lite
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        // Verify we have two layers
+        assert_eq!(vl_spec["layer"].as_array().unwrap().len(), 2);
+
+        // Verify the color aesthetic is mapped to layer-indexed synthetic columns
+        let layer0_color = &vl_spec["layer"][0]["encoding"]["color"];
+        let layer1_color = &vl_spec["layer"][1]["encoding"]["color"];
+
+        // Color should be field-mapped to layer-indexed columns
+        assert_eq!(
+            layer0_color["field"].as_str().unwrap(),
+            "__ggsql_const_color_0__",
+            "Layer 0 color should map to layer-indexed column"
+        );
+        assert_eq!(
+            layer1_color["field"].as_str().unwrap(),
+            "__ggsql_const_color_1__",
+            "Layer 1 color should map to layer-indexed column"
+        );
+
+        // All layers should use the same global data
+        let global_data = &vl_spec["datasets"]["__global__"];
+        assert!(global_data.is_array(), "Should have global data array");
+
+        // Verify constant values appear in the global data with layer-indexed names
+        let data_row = &global_data.as_array().unwrap()[0];
+        assert_eq!(
+            data_row["__ggsql_const_color_0__"], "blue",
+            "Layer 0 constant should be 'blue'"
+        );
+        assert_eq!(
+            data_row["__ggsql_const_color_1__"], "red",
+            "Layer 1 constant should be 'red'"
+        );
+    }
+
+    #[test]
+    fn test_end_to_end_facet_with_constant_colors() {
+        // Test faceting with multiple layers that have constant color mappings
+        // This verifies the fix for faceting compatibility with constants
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create test data with multiple groups for faceting
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE facet_test AS SELECT * FROM (VALUES
+                    ('2023-01-01'::DATE, 100.0, 50, 'North', 'A'),
+                    ('2023-02-01'::DATE, 120.0, 60, 'North', 'A'),
+                    ('2023-01-01'::DATE, 80.0, 40, 'South', 'B'),
+                    ('2023-02-01'::DATE, 90.0, 45, 'South', 'B')
+                ) AS t(month, revenue, quantity, region, category)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Query with multiple constant-colored layers and faceting
+        let query = r#"
+            SELECT month, region, category, revenue, quantity * 10 as qty_scaled
+            FROM facet_test
+            VISUALISE month AS x
+            DRAW line MAPPING revenue AS y, 'steelblue' AS color
+            DRAW point MAPPING revenue AS y, 'darkblue' AS color SETTING size => 30
+            DRAW line MAPPING qty_scaled AS y, 'coral' AS color
+            DRAW point MAPPING qty_scaled AS y, 'orangered' AS color SETTING size => 30
+            SCALE x SETTING type => 'date'
+            FACET region BY category
+        "#;
+
+        let prepared =
+            execute::prepare_data_with_executor(query, |sql| reader.execute(sql)).unwrap();
+
+        // All layers should use global data for faceting to work
+        assert!(
+            prepared.data.contains_key("__global__"),
+            "Should have global data"
+        );
+        // No layer-specific data should be created
+        assert!(
+            !prepared.data.contains_key("__layer_0__"),
+            "Layer 0 should use global data"
+        );
+        assert!(
+            !prepared.data.contains_key("__layer_1__"),
+            "Layer 1 should use global data"
+        );
+        assert!(
+            !prepared.data.contains_key("__layer_2__"),
+            "Layer 2 should use global data"
+        );
+        assert!(
+            !prepared.data.contains_key("__layer_3__"),
+            "Layer 3 should use global data"
+        );
+
+        // Verify global data has all layer-indexed constant columns
+        let global_df = prepared.data.get("__global__").unwrap();
+        let col_names = global_df.get_column_names();
+        assert!(
+            col_names.iter().any(|c| *c == "__ggsql_const_color_0__"),
+            "Should have layer 0 color constant"
+        );
+        assert!(
+            col_names.iter().any(|c| *c == "__ggsql_const_color_1__"),
+            "Should have layer 1 color constant"
+        );
+        assert!(
+            col_names.iter().any(|c| *c == "__ggsql_const_color_2__"),
+            "Should have layer 2 color constant"
+        );
+        assert!(
+            col_names.iter().any(|c| *c == "__ggsql_const_color_3__"),
+            "Should have layer 3 color constant"
+        );
+
+        // Generate Vega-Lite and verify faceting structure
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        // Should have facet structure (row and column)
+        assert!(
+            vl_spec["facet"]["row"].is_object() || vl_spec["facet"]["column"].is_object(),
+            "Should have facet structure: {:?}",
+            vl_spec["facet"]
+        );
+    }
+
+    #[test]
+    fn test_end_to_end_global_constant_in_visualise() {
+        // Test that global constants in VISUALISE clause work correctly
+        // e.g., VISUALISE date AS x, value AS y, 'steelblue' AS color
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create test data
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE timeseries AS SELECT * FROM (VALUES
+                    ('2023-01-01'::DATE, 100.0),
+                    ('2023-01-08'::DATE, 110.0),
+                    ('2023-01-15'::DATE, 105.0)
+                ) AS t(date, value)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Query with global constant color in VISUALISE clause
+        let query = r#"
+            SELECT date, value FROM timeseries
+            VISUALISE date AS x, value AS y, 'steelblue' AS color
+            DRAW line
+            DRAW point SETTING size => 50
+            SCALE x SETTING type => 'date'
+        "#;
+
+        let prepared =
+            execute::prepare_data_with_executor(query, |sql| reader.execute(sql)).unwrap();
+
+        // Should have global data with the constant injected
+        assert!(
+            prepared.data.contains_key("__global__"),
+            "Should have global data"
+        );
+
+        // Verify global data has the constant columns for both layers
+        let global_df = prepared.data.get("__global__").unwrap();
+        let col_names = global_df.get_column_names();
+        assert!(
+            col_names.iter().any(|c| *c == "__ggsql_const_color_0__"),
+            "Should have layer 0 color constant: {:?}",
+            col_names
+        );
+        assert!(
+            col_names.iter().any(|c| *c == "__ggsql_const_color_1__"),
+            "Should have layer 1 color constant: {:?}",
+            col_names
+        );
+
+        // Generate Vega-Lite and verify it works
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        // Both layers should have color field-mapped to their indexed constant columns
+        assert_eq!(vl_spec["layer"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            vl_spec["layer"][0]["encoding"]["color"]["field"]
+                .as_str()
+                .unwrap(),
+            "__ggsql_const_color_0__"
+        );
+        assert_eq!(
+            vl_spec["layer"][1]["encoding"]["color"]["field"]
+                .as_str()
+                .unwrap(),
+            "__ggsql_const_color_1__"
+        );
+
+        // Both constants should have the same value "steelblue"
+        let data = &vl_spec["datasets"]["__global__"].as_array().unwrap()[0];
+        assert_eq!(data["__ggsql_const_color_0__"], "steelblue");
+        assert_eq!(data["__ggsql_const_color_1__"], "steelblue");
+    }
 }

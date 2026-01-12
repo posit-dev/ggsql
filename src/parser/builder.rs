@@ -169,7 +169,7 @@ fn parse_global_mapping_item(node: &Node, source: &str) -> Result<GlobalMappingI
 
 /// Parse an explicit_mapping node (value AS aesthetic)
 fn parse_explicit_mapping(node: &Node, source: &str) -> Result<GlobalMappingItem> {
-    let mut column: Option<String> = None;
+    let mut value: Option<AestheticValue> = None;
     let mut aesthetic: Option<String> = None;
 
     let mut cursor = node.walk();
@@ -184,16 +184,18 @@ fn parse_explicit_mapping(node: &Node, source: &str) -> Result<GlobalMappingItem
                             let mut ref_cursor = inner_child.walk();
                             for ref_child in inner_child.children(&mut ref_cursor) {
                                 if ref_child.kind() == "identifier" {
-                                    column = Some(get_node_text(&ref_child, source));
+                                    value = Some(AestheticValue::Column(get_node_text(
+                                        &ref_child, source,
+                                    )));
                                 }
                             }
                         }
                         "identifier" => {
-                            column = Some(get_node_text(&inner_child, source));
+                            value =
+                                Some(AestheticValue::Column(get_node_text(&inner_child, source)));
                         }
                         "literal_value" => {
-                            // For now, treat literals as column names (they'll be handled in writer)
-                            column = Some(get_node_text(&inner_child, source));
+                            value = Some(parse_literal_value(&inner_child, source)?);
                         }
                         _ => {}
                     }
@@ -207,13 +209,17 @@ fn parse_explicit_mapping(node: &Node, source: &str) -> Result<GlobalMappingItem
         }
     }
 
-    match (column, aesthetic) {
-        (Some(col), Some(aes)) => Ok(GlobalMappingItem::Explicit {
+    match (value, aesthetic) {
+        (Some(AestheticValue::Column(col)), Some(aes)) => Ok(GlobalMappingItem::Explicit {
             column: col,
             aesthetic: aes,
         }),
+        (Some(AestheticValue::Literal(lit)), Some(aes)) => Ok(GlobalMappingItem::Literal {
+            value: lit,
+            aesthetic: aes,
+        }),
         _ => Err(GgsqlError::ParseError(
-            "Invalid explicit mapping: missing column or aesthetic".to_string(),
+            "Invalid explicit mapping: missing value or aesthetic".to_string(),
         )),
     }
 }
