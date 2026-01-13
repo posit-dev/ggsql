@@ -1158,7 +1158,10 @@ mod tests {
     #[test]
     fn test_build_layer_query_constants_on_global() {
         let materialized = HashSet::new();
-        let constants = vec![("fill".to_string(), LiteralValue::String("value".to_string()))];
+        let constants = vec![(
+            "fill".to_string(),
+            LiteralValue::String("value".to_string()),
+        )];
 
         // No source but has constants - should use __ggsql_global__
         let result = build_layer_query(None, &materialized, None, None, true, 0, &constants);
