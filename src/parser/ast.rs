@@ -69,7 +69,7 @@ pub enum GlobalMappingItem {
     Explicit { column: String, aesthetic: String },
     /// Implicit mapping: `x` → column "x" maps to aesthetic "x"
     Implicit { name: String },
-    /// Literal mapping: `'blue' AS color` → literal value maps to aesthetic
+    /// Literal mapping: `'value' AS color` → literal value maps to aesthetic
     Literal {
         value: LiteralValue,
         aesthetic: String,

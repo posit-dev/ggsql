@@ -136,7 +136,7 @@ mod tests {
             SELECT x, y, z FROM data
             VISUALISE x, y
             DRAW line
-            DRAW point MAPPING z AS y, 'red' AS color
+            DRAW point MAPPING z AS y, 'value' AS color
         "#;
 
         let specs = parse_query(query).unwrap();
@@ -150,7 +150,7 @@ mod tests {
         assert_eq!(specs[0].layers[1].aesthetics.len(), 2);
         assert!(matches!(
             specs[0].layers[1].aesthetics.get("color"),
-            Some(AestheticValue::Literal(LiteralValue::String(s))) if s == "red"
+            Some(AestheticValue::Literal(LiteralValue::String(s))) if s == "value"
         ));
     }
 

@@ -328,7 +328,7 @@ fn transform_global_sql(sql: &str, materialized_ctes: &HashSet<String>) -> Optio
 /// - `Identifier` source → checks if CTE, uses temp table or table name
 /// - `FilePath` source → wraps path in single quotes
 ///
-/// Constants are injected as synthetic columns (e.g., `'blue' AS __ggsql_const_color__`).
+/// Constants are injected as synthetic columns (e.g., `'value' AS __ggsql_const_color__`).
 ///
 /// Returns:
 /// - `Ok(Some(query))` - execute this query and store result
@@ -515,10 +515,10 @@ where
     // Collect constants from layers that use global data (no source, no filter)
     // These get injected into the global data table so all layers share the same data source
     // (required for faceting to work). Use layer-indexed column names to allow different
-    // constant values per layer (e.g., layer 0: 'blue' AS color, layer 1: 'red' AS color)
+    // constant values per layer (e.g., layer 0: 'value' AS color, layer 1: 'value2' AS color)
     let first_spec = &specs[0];
 
-    // First, extract global constants from VISUALISE clause (e.g., VISUALISE 'blue' AS color)
+    // First, extract global constants from VISUALISE clause (e.g., VISUALISE 'value' AS color)
     // These apply to all layers that use global data
     let global_mapping_constants: Vec<(String, LiteralValue)> =
         if let GlobalMapping::Mappings(items) = &first_spec.global_mapping {
@@ -1129,9 +1129,12 @@ mod tests {
         let constants = vec![
             (
                 "color".to_string(),
-                LiteralValue::String("blue".to_string()),
+                LiteralValue::String("value".to_string()),
             ),
-            ("size".to_string(), LiteralValue::Number(5.0)),
+            (
+                "size".to_string(),
+                LiteralValue::String("value2".to_string()),
+            ),
         ];
 
         let result = build_layer_query(
@@ -1147,22 +1150,22 @@ mod tests {
         // Should inject constants as columns
         let query = result.unwrap().unwrap();
         assert!(query.contains("SELECT *"));
-        assert!(query.contains("'blue' AS __ggsql_const_color__"));
-        assert!(query.contains("5 AS __ggsql_const_size__"));
+        assert!(query.contains("'value' AS __ggsql_const_color__"));
+        assert!(query.contains("'value2' AS __ggsql_const_size__"));
         assert!(query.contains("FROM some_table"));
     }
 
     #[test]
     fn test_build_layer_query_constants_on_global() {
         let materialized = HashSet::new();
-        let constants = vec![("fill".to_string(), LiteralValue::String("red".to_string()))];
+        let constants = vec![("fill".to_string(), LiteralValue::String("value".to_string()))];
 
         // No source but has constants - should use __ggsql_global__
         let result = build_layer_query(None, &materialized, None, None, true, 0, &constants);
 
         let query = result.unwrap().unwrap();
         assert!(query.contains("FROM __ggsql_global__"));
-        assert!(query.contains("'red' AS __ggsql_const_fill__"));
+        assert!(query.contains("'value' AS __ggsql_const_fill__"));
     }
 
     // ========================================

@@ -250,7 +250,7 @@ pub enum Geom {
 
 pub enum AestheticValue {
     Column(String),                  // Unquoted column reference: revenue AS x
-    Literal(LiteralValue),           // Quoted literal: 'blue' AS fill
+    Literal(LiteralValue),           // Quoted literal: 'value' AS fill
 }
 
 pub enum LiteralValue {
@@ -889,7 +889,7 @@ Maps data values (columns or literals) to visual aesthetics. Syntax: `value AS a
 **Literal vs Column**:
 
 - Unquoted → column reference: `region AS color`
-- Quoted → literal value: `'blue' AS color`, `3 AS size`
+- Quoted → literal value: `'value' AS color`
 
 **SETTING Clause** (Parameters):
 
@@ -921,7 +921,7 @@ DRAW line
 
 -- Mapping with literal
 DRAW point
-    MAPPING date AS x, revenue AS y, 'red' AS color
+    MAPPING date AS x, revenue AS y, 'value' AS color
 
 -- Setting parameters
 DRAW point

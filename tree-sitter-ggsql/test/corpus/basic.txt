@@ -125,7 +125,7 @@ Multi-layer plot with global mapping
 
 VISUALISE date AS x, value AS y
 DRAW line
-DRAW point MAPPING 'red' AS color
+DRAW point MAPPING 'value' AS color
 
 --------------------------------------------------------------------------------
 

@@ -489,8 +489,8 @@ mod integration_tests {
         let query = r#"
             SELECT 1 as x, 10 as y
             VISUALISE x, y
-            DRAW line MAPPING 'blue' AS color
-            DRAW point MAPPING 'red' AS color
+            DRAW line MAPPING 'value' AS color
+            DRAW point MAPPING 'value2' AS color
         "#;
 
         // Prepare data - this parses, injects constants into global data, and replaces literals with columns
@@ -594,10 +594,10 @@ mod integration_tests {
             SELECT month, region, category, revenue, quantity * 10 as qty_scaled
             FROM facet_test
             VISUALISE month AS x
-            DRAW line MAPPING revenue AS y, 'steelblue' AS color
-            DRAW point MAPPING revenue AS y, 'darkblue' AS color SETTING size => 30
-            DRAW line MAPPING qty_scaled AS y, 'coral' AS color
-            DRAW point MAPPING qty_scaled AS y, 'orangered' AS color SETTING size => 30
+            DRAW line MAPPING revenue AS y, 'value' AS color
+            DRAW point MAPPING revenue AS y, 'value2' AS color SETTING size => 30
+            DRAW line MAPPING qty_scaled AS y, 'value3' AS color
+            DRAW point MAPPING qty_scaled AS y, 'value4' AS color SETTING size => 30
             SCALE x SETTING type => 'date'
             FACET region BY category
         "#;
@@ -664,7 +664,7 @@ mod integration_tests {
     #[test]
     fn test_end_to_end_global_constant_in_visualise() {
         // Test that global constants in VISUALISE clause work correctly
-        // e.g., VISUALISE date AS x, value AS y, 'steelblue' AS color
+        // e.g., VISUALISE date AS x, value AS y, 'value' AS color
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
@@ -684,7 +684,7 @@ mod integration_tests {
         // Query with global constant color in VISUALISE clause
         let query = r#"
             SELECT date, value FROM timeseries
-            VISUALISE date AS x, value AS y, 'steelblue' AS color
+            VISUALISE date AS x, value AS y, 'value' AS color
             DRAW line
             DRAW point SETTING size => 50
             SCALE x SETTING type => 'date'
@@ -733,9 +733,9 @@ mod integration_tests {
             "__ggsql_const_color_1__"
         );
 
-        // Both constants should have the same value "steelblue"
+        // Both constants should have the same value "value"
         let data = &vl_spec["datasets"]["__global__"].as_array().unwrap()[0];
-        assert_eq!(data["__ggsql_const_color_0__"], "steelblue");
-        assert_eq!(data["__ggsql_const_color_1__"], "steelblue");
+        assert_eq!(data["__ggsql_const_color_0__"], "value");
+        assert_eq!(data["__ggsql_const_color_1__"], "value");
     }
 }

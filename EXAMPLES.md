@@ -397,11 +397,11 @@ WITH daily_metrics AS (
 )
 VISUALISE day AS x FROM daily_metrics
 DRAW ribbon
-    MAPPING min_temp AS ymin, max_temp AS ymax, 'lightblue' AS fill
-    SETTING opacity => 0.3
+    MAPPING min_temp AS ymin, max_temp AS ymax
+    SETTING opacity => 0.3, fill => 'lightblue'
 DRAW line
-    MAPPING avg_temp AS y, 'blue' AS color
-    SETTING size => 2
+    MAPPING avg_temp AS y
+    SETTING size => 2, color => 'blue'
 SCALE x SETTING type => 'date'
 LABEL title => 'Temperature Range (Last 30 Days)',
       x => 'Date',
