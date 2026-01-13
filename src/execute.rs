@@ -1102,7 +1102,15 @@ mod tests {
         let mut layer = Layer::new(Geom::Point);
         layer.source = Some(LayerSource::Identifier("some_table".to_string()));
 
-        let result = build_layer_query(&layer, &materialized, false, 0, None, &constants, &mock_execute);
+        let result = build_layer_query(
+            &layer,
+            &materialized,
+            false,
+            0,
+            None,
+            &constants,
+            &mock_execute,
+        );
 
         // Should inject constants as columns
         let query = result.unwrap().unwrap();
@@ -1120,7 +1128,15 @@ mod tests {
         // No source but has constants - should use __ggsql_global__
         let layer = Layer::new(Geom::Point);
 
-        let result = build_layer_query(&layer, &materialized, true, 0, None, &constants, &mock_execute);
+        let result = build_layer_query(
+            &layer,
+            &materialized,
+            true,
+            0,
+            None,
+            &constants,
+            &mock_execute,
+        );
 
         let query = result.unwrap().unwrap();
         assert!(query.contains("FROM __ggsql_global__"));
@@ -1407,7 +1423,11 @@ mod tests {
         let layer_df = result.data.get("__layer_0__").unwrap();
 
         // Should have x (bin) and y (count) columns
-        let col_names: Vec<&str> = layer_df.get_column_names().iter().map(|s| s.as_str()).collect();
+        let col_names: Vec<&str> = layer_df
+            .get_column_names()
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
         assert!(col_names.contains(&"x"));
         assert!(col_names.contains(&"y"));
 
@@ -1446,7 +1466,11 @@ mod tests {
         assert_eq!(layer_df.height(), 3);
 
         // Should have x and y columns
-        let col_names: Vec<&str> = layer_df.get_column_names().iter().map(|s| s.as_str()).collect();
+        let col_names: Vec<&str> = layer_df
+            .get_column_names()
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
         assert!(col_names.contains(&"x"));
         assert!(col_names.contains(&"y"));
     }
@@ -1514,7 +1538,11 @@ mod tests {
         let layer_df = result.data.get("__layer_0__").unwrap();
 
         // Should have region column preserved for faceting
-        let col_names: Vec<&str> = layer_df.get_column_names().iter().map(|s| s.as_str()).collect();
+        let col_names: Vec<&str> = layer_df
+            .get_column_names()
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
         assert!(col_names.contains(&"region"));
         assert!(col_names.contains(&"x"));
         assert!(col_names.contains(&"y"));
@@ -1551,7 +1579,11 @@ mod tests {
         let layer_df = result.data.get("__layer_0__").unwrap();
 
         // Should have grp column preserved for grouping
-        let col_names: Vec<&str> = layer_df.get_column_names().iter().map(|s| s.as_str()).collect();
+        let col_names: Vec<&str> = layer_df
+            .get_column_names()
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
         assert!(col_names.contains(&"grp"));
         assert!(col_names.contains(&"x"));
         assert!(col_names.contains(&"y"));

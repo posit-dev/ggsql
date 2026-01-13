@@ -548,7 +548,10 @@ impl Geom {
 }
 
 /// Helper to extract column name from aesthetic value
-fn get_column_name(aesthetics: &HashMap<String, AestheticValue>, aesthetic: &str) -> Option<String> {
+fn get_column_name(
+    aesthetics: &HashMap<String, AestheticValue>,
+    aesthetic: &str,
+) -> Option<String> {
     aesthetics.get(aesthetic).and_then(|v| match v {
         AestheticValue::Column(col) => Some(col.clone()),
         _ => None,
