@@ -888,8 +888,8 @@ impl std::fmt::Display for LiteralValue {
 
 pub fn normalise_aes_name(name: &str) -> String {
     match name {
-        "col" | "colour" => "color".to_owned(),
-        _ => name.to_owned(),
+        "col" | "colour" => "color".to_string(),
+        _ => name.to_string(),
     }
 }
 
