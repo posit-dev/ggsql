@@ -1130,10 +1130,11 @@ mod tests {
             .unwrap();
 
         // Should only map columns that match geom's supported aesthetics
-        assert_eq!(spec.layers[0].aesthetics.len(), 3);
+        assert_eq!(spec.layers[0].aesthetics.len(), 4);
         assert!(spec.layers[0].aesthetics.contains_key("x"));
         assert!(spec.layers[0].aesthetics.contains_key("y"));
-        assert!(spec.layers[0].aesthetics.contains_key("color"));
+        assert!(spec.layers[0].aesthetics.contains_key("stroke"));
+        assert!(spec.layers[0].aesthetics.contains_key("fill"));
         assert!(!spec.layers[0].aesthetics.contains_key("date"));
         assert!(!spec.layers[0].aesthetics.contains_key("revenue"));
     }

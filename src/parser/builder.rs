@@ -2839,11 +2839,12 @@ mod tests {
         assert!(specs[0].layers[0].aesthetics.contains_key("x"));
         assert!(specs[0].layers[0].aesthetics.contains_key("y"));
 
-        // Point layer: should have x and y from global, plus color from layer
-        assert_eq!(specs[0].layers[1].aesthetics.len(), 3);
+        // Point layer: should have x and y from global, plus stroke & fill from layer
+        assert_eq!(specs[0].layers[1].aesthetics.len(), 4);
         assert!(specs[0].layers[1].aesthetics.contains_key("x"));
         assert!(specs[0].layers[1].aesthetics.contains_key("y"));
-        assert!(specs[0].layers[1].aesthetics.contains_key("color"));
+        assert!(specs[0].layers[1].aesthetics.contains_key("stroke"));
+        assert!(specs[0].layers[1].aesthetics.contains_key("fill"));
     }
 
     #[test]
@@ -2886,7 +2887,8 @@ mod tests {
         // Should map x, y, and color (not extra_column which isn't an aesthetic)
         assert!(specs[0].layers[0].aesthetics.contains_key("x"));
         assert!(specs[0].layers[0].aesthetics.contains_key("y"));
-        assert!(specs[0].layers[0].aesthetics.contains_key("color"));
+        assert!(specs[0].layers[0].aesthetics.contains_key("stroke"));
+        assert!(specs[0].layers[0].aesthetics.contains_key("fill"));
         assert!(!specs[0].layers[0].aesthetics.contains_key("extra_column"));
     }
 
