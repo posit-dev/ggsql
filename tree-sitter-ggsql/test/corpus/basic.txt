@@ -214,7 +214,7 @@ DRAW point FILTER x > 10
         (filter_clause
           (filter_expression
             (filter_token
-              (identifier))
+              (filter_identifier))
             (filter_token)
             (filter_token
               (number))))))))
@@ -242,13 +242,13 @@ DRAW point MAPPING x AS x FILTER a > 10 AND b < 20
         (filter_clause
           (filter_expression
             (filter_token
-              (identifier))
+              (filter_identifier))
             (filter_token)
             (filter_token
               (number))
             (filter_token)
             (filter_token
-              (identifier))
+              (filter_identifier))
             (filter_token)
             (filter_token
               (number))))))))
@@ -276,13 +276,13 @@ DRAW point MAPPING x AS x FILTER a = 1 OR b = 2
         (filter_clause
           (filter_expression
             (filter_token
-              (identifier))
+              (filter_identifier))
             (filter_token)
             (filter_token
               (number))
             (filter_token)
             (filter_token
-              (identifier))
+              (filter_identifier))
             (filter_token)
             (filter_token
               (number))))))))
@@ -321,7 +321,7 @@ DRAW point MAPPING x AS x, y AS y SETTING opacity => 0.5 FILTER year > 2020
         (filter_clause
           (filter_expression
             (filter_token
-              (identifier))
+              (filter_identifier))
             (filter_token)
             (filter_token
               (number))))))))
@@ -349,7 +349,7 @@ DRAW point MAPPING x AS x FILTER region = 'North'
         (filter_clause
           (filter_expression
             (filter_token
-              (identifier))
+              (filter_identifier))
             (filter_token)
             (filter_token
               (string))))))))
@@ -828,7 +828,7 @@ DRAW line SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY category
         (filter_clause
           (filter_expression
             (filter_token
-              (identifier))
+              (filter_identifier))
             (filter_token)
             (filter_token
               (number))))
@@ -1055,3 +1055,300 @@ DRAW point MAPPING interval AS x
               (column_reference
                 (identifier)))
             aesthetic: (aesthetic_name)))))))
+
+================================================================================
+ORDER BY single column ASC
+================================================================================
+
+VISUALISE x AS x, y AS y
+DRAW line ORDER BY date ASC
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (global_mapping
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name)))
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name))))
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (order_clause
+          (order_expression
+            (order_token
+              (identifier))
+            (order_token)))))))
+
+================================================================================
+ORDER BY single column DESC
+================================================================================
+
+VISUALISE x AS x, y AS y
+DRAW point ORDER BY value DESC
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (global_mapping
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name)))
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name))))
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (order_clause
+          (order_expression
+            (order_token
+              (identifier))
+            (order_token)))))))
+
+================================================================================
+ORDER BY multiple columns
+================================================================================
+
+VISUALISE x AS x, y AS y
+DRAW line ORDER BY category, date DESC
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (global_mapping
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name)))
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name))))
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (order_clause
+          (order_expression
+            (order_token
+              (identifier))
+            (order_token)
+            (order_token
+              (identifier))
+            (order_token)))))))
+
+================================================================================
+ORDER BY with NULLS FIRST
+================================================================================
+
+VISUALISE x AS x, y AS y
+DRAW point ORDER BY date ASC NULLS FIRST
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (global_mapping
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name)))
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name))))
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (order_clause
+          (order_expression
+            (order_token
+              (identifier))
+            (order_token)
+            (order_token)
+            (order_token)))))))
+
+================================================================================
+ORDER BY with NULLS LAST
+================================================================================
+
+VISUALISE x AS x, y AS y
+DRAW line ORDER BY value DESC NULLS LAST
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (global_mapping
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name)))
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name))))
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (order_clause
+          (order_expression
+            (order_token
+              (identifier))
+            (order_token)
+            (order_token)
+            (order_token)))))))
+
+================================================================================
+ORDER BY with FILTER
+================================================================================
+
+VISUALISE x AS x, y AS y
+DRAW point FILTER x > 0 ORDER BY x ASC
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (global_mapping
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name)))
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name))))
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (filter_clause
+          (filter_expression
+            (filter_token
+              (filter_identifier))
+            (filter_token)
+            (filter_token
+              (number))))
+        (order_clause
+          (order_expression
+            (order_token
+              (identifier))
+            (order_token)))))))
+
+================================================================================
+ORDER BY with PARTITION BY
+================================================================================
+
+VISUALISE x AS x, y AS y
+DRAW line PARTITION BY category ORDER BY date ASC
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (global_mapping
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name)))
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name))))
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (partition_clause
+          (partition_columns
+            (identifier)))
+        (order_clause
+          (order_expression
+            (order_token
+              (identifier))
+            (order_token)))))))
+
+================================================================================
+ORDER BY with all clauses
+================================================================================
+
+VISUALISE x AS x, y AS y
+DRAW line SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY region ORDER BY date ASC
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (global_mapping
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name)))
+      (global_mapping_item
+        (explicit_mapping
+          value: (mapping_value
+            (column_reference
+              (identifier)))
+          aesthetic: (aesthetic_name))))
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (setting_clause
+          (parameter_assignment
+            param: (parameter_name
+              (identifier))
+            value: (parameter_value
+              (number))))
+        (filter_clause
+          (filter_expression
+            (filter_token
+              (filter_identifier))
+            (filter_token)
+            (filter_token
+              (number))))
+        (partition_clause
+          (partition_columns
+            (identifier)))
+        (order_clause
+          (order_expression
+            (order_token
+              (identifier))
+            (order_token)))))))
