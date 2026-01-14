@@ -2442,6 +2442,7 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color SETTING size => 5 FILTER value > 50
+            DRAW point SETTING fill => 'Chartreuse'
         "#;
 
         let result = parse_test_query(query);
@@ -2463,6 +2464,16 @@ mod tests {
         assert!(layer.filter.is_some());
         let filter = layer.filter.as_ref().unwrap();
         assert_eq!(filter.as_str(), "value > 50");
+
+        // Check translation of colour name
+        let layer = &specs[0].layers[1];
+        assert!(layer.parameters.contains_key("fill"));
+
+        if let ParameterValue::String(fill) = layer.parameters.get("fill").unwrap() {
+            assert_eq!(fill, "#7fff00")
+        } else {
+            panic!("Wrong type of 'fill' parameter")
+        }
     }
 
     #[test]
