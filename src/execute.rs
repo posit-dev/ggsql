@@ -429,17 +429,37 @@ where
     match stat_result {
         StatResult::Transformed {
             query: transformed_query,
-            new_mappings,
+            stat_columns,
         } => {
-            // Stat transformation applied - apply new aesthetic mappings to layer
-            for (aesthetic, column) in new_mappings {
-                layer.aesthetics.insert(
-                    aesthetic,
-                    AestheticValue::Column {
-                        name: column,
-                        from_wildcard: false,
-                    },
-                );
+            // Build final remappings: start with geom defaults, override with user remappings
+            let mut final_remappings: HashMap<String, String> = layer
+                .geom
+                .default_remappings()
+                .iter()
+                .map(|(stat, aes)| (stat.to_string(), aes.to_string()))
+                .collect();
+
+            // User REMAPPING overrides defaults
+            // In remappings, the aesthetic key is the target, and the column name is the stat name
+            for (aesthetic, value) in &layer.remappings.aesthetics {
+                if let Some(stat_name) = value.column_name() {
+                    // stat_name maps to this aesthetic
+                    final_remappings.insert(stat_name.to_string(), aesthetic.clone());
+                }
+            }
+
+            // Apply stat_columns to layer aesthetics using the remappings
+            for stat in &stat_columns {
+                if let Some(aesthetic) = final_remappings.get(stat) {
+                    let col = format!("__ggsql_stat__{}", stat);
+                    layer.aesthetics.insert(
+                        aesthetic.clone(),
+                        AestheticValue::Column {
+                            name: col,
+                            from_wildcard: false,
+                        },
+                    );
+                }
             }
 
             // Remove the weight aesthetic if present - it has been consumed by the stat transform
@@ -2078,13 +2098,13 @@ mod tests {
         assert_eq!(layer_df.height(), 2);
 
         // Verify y values are sums: A=30 (10+20), B=30
-        // SUM returns f64
+        // SUM returns f64, but stat column is always named "count" for consistency
         let y_col = layer_df
-            .column("__ggsql_stat__sum")
-            .expect("__ggsql_stat__sum column should exist");
+            .column("__ggsql_stat__count")
+            .expect("__ggsql_stat__count column should exist");
         let y_values: Vec<f64> = y_col
             .f64()
-            .expect("__ggsql_stat__sum should be f64 (SUM result)")
+            .expect("__ggsql_stat__count should be f64 (SUM result)")
             .into_iter()
             .flatten()
             .collect();
@@ -2312,13 +2332,13 @@ mod tests {
         assert_eq!(layer_df.height(), 2);
 
         // Verify y values are sums: A=30, B=30
-        // SUM returns f64
+        // SUM returns f64, but stat column is always named "count" for consistency
         let y_col = layer_df
-            .column("__ggsql_stat__sum")
-            .expect("__ggsql_stat__sum column should exist");
+            .column("__ggsql_stat__count")
+            .expect("__ggsql_stat__count column should exist");
         let y_values: Vec<f64> = y_col
             .f64()
-            .expect("__ggsql_stat__sum should be f64 (SUM result)")
+            .expect("__ggsql_stat__count should be f64 (SUM result)")
             .into_iter()
             .flatten()
             .collect();

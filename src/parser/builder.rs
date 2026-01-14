@@ -273,10 +273,11 @@ fn process_viz_clause(node: &Node, source: &str, spec: &mut VizSpec) -> Result<(
 }
 
 /// Build a Layer from a draw_clause node
-/// Syntax: DRAW geom [MAPPING col AS x, ... [FROM source]] [SETTING param => val, ...] [PARTITION BY col, ...] [FILTER condition]
+/// Syntax: DRAW geom [MAPPING col AS x, ... [FROM source]] [REMAPPING stat AS aes, ...] [SETTING param => val, ...] [PARTITION BY col, ...] [FILTER condition]
 fn build_layer(node: &Node, source: &str) -> Result<Layer> {
     let mut geom = Geom::Point; // default
     let mut aesthetics = Mappings::new();
+    let mut remappings = Mappings::new();
     let mut parameters = HashMap::new();
     let mut partition_by = Vec::new();
     let mut filter = None;
@@ -294,6 +295,11 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
                 let (aes, src) = parse_mapping_clause(&child, source)?;
                 aesthetics = aes;
                 layer_source = src;
+            }
+            "remapping_clause" => {
+                // Reuse parse_mapping_clause - remapping has same syntax, just different semantics
+                let (remap, _) = parse_mapping_clause(&child, source)?;
+                remappings = remap;
             }
             "setting_clause" => {
                 parameters = parse_setting_clause(&child, source)?;
@@ -316,6 +322,7 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
 
     let mut layer = Layer::new(geom);
     layer.aesthetics = aesthetics;
+    layer.remappings = remappings;
     layer.parameters = parameters;
     layer.partition_by = partition_by;
     layer.filter = filter;

@@ -369,15 +369,24 @@ module.exports = grammar({
       $.theme_clause,
     ),
 
-    // DRAW clause - syntax: DRAW geom [MAPPING ...] [SETTING ...] [FILTER ...] [PARTITION BY ...] [ORDER BY ...]
+    // DRAW clause - syntax: DRAW geom [MAPPING ...] [REMAPPING ...] [SETTING ...] [FILTER ...] [PARTITION BY ...] [ORDER BY ...]
     draw_clause: $ => seq(
       caseInsensitive('DRAW'),
       $.geom_type,
       optional($.mapping_clause),
+      optional($.remapping_clause),
       optional($.setting_clause),
       optional($.filter_clause),
       optional($.partition_clause),
       optional($.order_clause)
+    ),
+
+    // REMAPPING clause: maps stat-computed columns to aesthetics
+    // Syntax: REMAPPING count AS y, sum AS size
+    // Reuses mapping_list for parsing - stat names are treated as column references
+    remapping_clause: $ => seq(
+      caseInsensitive('REMAPPING'),
+      $.mapping_list
     ),
 
     geom_type: $ => choice(
