@@ -255,6 +255,21 @@ pub struct GeomAesthetics {
     pub required: &'static [&'static str],
 }
 
+/// Default value for a layer parameter
+#[derive(Debug, Clone)]
+pub enum DefaultParamValue {
+    String(&'static str),
+    Number(f64),
+    Boolean(bool),
+}
+
+/// Layer parameter definition: name and default value
+#[derive(Debug, Clone)]
+pub struct DefaultParam {
+    pub name: &'static str,
+    pub default: DefaultParamValue,
+}
+
 impl std::fmt::Display for Geom {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
@@ -480,6 +495,22 @@ impl Geom {
         }
     }
 
+    /// Returns non-aesthetic parameters with their default values.
+    ///
+    /// These control stat behavior (e.g., bins for histogram).
+    /// Defaults are applied to layer.parameters during execution via
+    /// `Layer::apply_default_params()`.
+    pub fn default_params(&self) -> &[DefaultParam] {
+        match self {
+            Geom::Histogram => &[DefaultParam {
+                name: "bins",
+                default: DefaultParamValue::Number(30.0),
+            }],
+            // Future: Density might have bandwidth, Smooth might have span/method
+            _ => &[],
+        }
+    }
+
     /// Returns aesthetics consumed as input by this geom's stat transform.
     ///
     /// Columns mapped to these aesthetics are used by the stat and don't need
@@ -492,6 +523,18 @@ impl Geom {
             // Other geoms with stats would be added here
             _ => &[],
         }
+    }
+
+    /// Returns valid parameter names for SETTING clause.
+    ///
+    /// Combines supported aesthetics with non-aesthetic parameters from `default_params()`.
+    /// Used for validation - invalid settings will produce an error.
+    pub fn valid_settings(&self) -> Vec<&'static str> {
+        let mut valid: Vec<&'static str> = self.aesthetics().supported.to_vec();
+        for param in self.default_params() {
+            valid.push(param.name);
+        }
+        valid
     }
 
     /// Check if this geom requires a statistical transformation
@@ -535,13 +578,16 @@ impl Geom {
         schema: &Schema,
         aesthetics: &Mappings,
         group_by: &[String],
+        parameters: &HashMap<String, ParameterValue>,
         execute_query: &F,
     ) -> Result<StatResult>
     where
         F: Fn(&str) -> Result<DataFrame>,
     {
         match self {
-            Geom::Histogram => self.stat_histogram(query, aesthetics, group_by, execute_query),
+            Geom::Histogram => {
+                self.stat_histogram(query, aesthetics, group_by, parameters, execute_query)
+            }
             Geom::Bar => self.stat_bar_count(query, schema, aesthetics, group_by),
             // Future: Geom::Density, Geom::Smooth, etc.
             _ => Ok(StatResult::Identity),
@@ -554,6 +600,7 @@ impl Geom {
         query: &str,
         aesthetics: &Mappings,
         group_by: &[String],
+        parameters: &HashMap<String, ParameterValue>,
         execute_query: &F,
     ) -> Result<StatResult>
     where
@@ -564,16 +611,31 @@ impl Geom {
             GgsqlError::ValidationError("Histogram requires 'x' aesthetic mapping".to_string())
         })?;
 
-        // Query data to compute bin width using Sturges' rule
+        // Get bins from parameters (default: 30)
+        let bins = parameters
+            .get("bins")
+            .and_then(|p| match p {
+                ParameterValue::Number(n) => Some(*n as usize),
+                _ => None,
+            })
+            .unwrap_or(30);
+
+        // Query min/max to compute bin width
         let stats_query = format!(
-            "SELECT MIN({x}) as min_val, MAX({x}) as max_val, COUNT(*) as n FROM ({query})",
+            "SELECT MIN({x}) as min_val, MAX({x}) as max_val FROM ({query})",
             x = x_col,
             query = query
         );
         let stats_df = execute_query(&stats_query)?;
 
-        let (min_val, max_val, n) = extract_histogram_stats(&stats_df)?;
-        let bin_width = compute_bin_width(min_val, max_val, n);
+        let (min_val, max_val) = extract_histogram_min_max(&stats_df)?;
+
+        // Compute bin width from fixed number of bins
+        let bin_width = if min_val >= max_val {
+            1.0 // Fallback for edge case
+        } else {
+            (max_val - min_val) / bins as f64
+        };
 
         // Build the bin expression
         let bin_expr = format!("FLOOR({x} / {w}) * {w}", x = x_col, w = bin_width);
@@ -791,8 +853,8 @@ fn get_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String> {
     })
 }
 
-/// Extract min, max, and count from histogram stats DataFrame
-fn extract_histogram_stats(df: &DataFrame) -> Result<(f64, f64, usize)> {
+/// Extract min and max from histogram stats DataFrame
+fn extract_histogram_min_max(df: &DataFrame) -> Result<(f64, f64)> {
     if df.height() == 0 {
         return Err(GgsqlError::ValidationError(
             "No data for histogram statistics".to_string(),
@@ -817,31 +879,7 @@ fn extract_histogram_stats(df: &DataFrame) -> Result<(f64, f64, usize)> {
             GgsqlError::ValidationError("Could not extract max value for histogram".to_string())
         })?;
 
-    let n = df
-        .column("n")
-        .ok()
-        .and_then(|s| s.i64().ok())
-        .and_then(|ca| ca.get(0))
-        .map(|v| v as usize)
-        .ok_or_else(|| {
-            GgsqlError::ValidationError("Could not extract count for histogram".to_string())
-        })?;
-
-    Ok((min_val, max_val, n))
-}
-
-/// Compute bin width using Sturges' rule: bins = ceil(log2(n) + 1)
-fn compute_bin_width(min_val: f64, max_val: f64, n: usize) -> f64 {
-    if n == 0 || min_val >= max_val {
-        return 1.0; // Fallback
-    }
-
-    // Sturges' rule
-    let num_bins = ((n as f64).log2() + 1.0).ceil() as usize;
-    let num_bins = num_bins.max(1);
-
-    let range = max_val - min_val;
-    range / num_bins as f64
+    Ok((min_val, max_val))
 }
 
 /// Value for aesthetic mappings
@@ -1189,10 +1227,16 @@ impl VizSpec {
                 if let Some(AestheticValue::Column { name, .. }) = layer.aesthetics.get(&aesthetic)
                 {
                     // Skip synthetic constant columns
-                    if !name.starts_with("__ggsql_const_") {
-                        label = name.clone();
-                        break;
+                    if name.starts_with("__ggsql_const_") {
+                        continue;
                     }
+                    // Strip __ggsql_stat__ prefix for human-readable labels
+                    if let Some(stat_name) = name.strip_prefix("__ggsql_stat__") {
+                        label = stat_name.to_string();
+                    } else {
+                        label = name.clone();
+                    }
+                    break;
                 }
             }
 
@@ -1285,6 +1329,38 @@ impl Layer {
             }
         }
 
+        Ok(())
+    }
+
+    /// Apply default parameter values for any params not specified by user.
+    ///
+    /// Call this during execution to ensure all stat params have values.
+    pub fn apply_default_params(&mut self) {
+        for param in self.geom.default_params() {
+            if !self.parameters.contains_key(param.name) {
+                let value = match &param.default {
+                    DefaultParamValue::String(s) => ParameterValue::String(s.to_string()),
+                    DefaultParamValue::Number(n) => ParameterValue::Number(*n),
+                    DefaultParamValue::Boolean(b) => ParameterValue::Boolean(*b),
+                };
+                self.parameters.insert(param.name.to_string(), value);
+            }
+        }
+    }
+
+    /// Validate that all SETTING parameters are valid for this layer's geom
+    pub fn validate_settings(&self) -> std::result::Result<(), String> {
+        let valid = self.geom.valid_settings();
+        for param_name in self.parameters.keys() {
+            if !valid.contains(&param_name.as_str()) {
+                return Err(format!(
+                    "Invalid setting '{}' for geom '{}'. Valid settings are: {}",
+                    param_name,
+                    self.geom,
+                    valid.join(", ")
+                ));
+            }
+        }
         Ok(())
     }
 }

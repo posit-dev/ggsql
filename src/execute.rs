@@ -385,6 +385,10 @@ fn build_layer_query<F>(
 where
     F: Fn(&str) -> Result<DataFrame>,
 {
+    // Apply default parameter values (e.g., bins=30 for histogram)
+    // Must be done before any immutable borrows of layer
+    layer.apply_default_params();
+
     let filter = layer.filter.as_ref().map(|f| f.as_str());
     let order_by = layer.order_by.as_ref().map(|f| f.as_str());
 
@@ -510,6 +514,7 @@ where
         &schema,
         &layer.aesthetics,
         &group_by,
+        &layer.parameters,
         execute_query,
     )?;
 
