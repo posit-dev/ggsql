@@ -371,7 +371,7 @@ impl Geom {
 
             // Statistical geoms
             Geom::Histogram => GeomAesthetics {
-                supported: &["x", "color", "colour", "fill", "opacity"],
+                supported: &["x", "weight", "color", "colour", "fill", "opacity"],
                 required: &["x"],
             },
             Geom::Density => GeomAesthetics {
@@ -700,18 +700,34 @@ impl Geom {
             cols.join(", ")
         };
 
+        // Determine aggregation expression based on weight aesthetic
+        let agg_expr = if let Some(weight_value) = aesthetics.get("weight") {
+            if weight_value.is_literal() {
+                return Err(GgsqlError::ValidationError(
+                    "Histogram weight aesthetic must be a column, not a literal".to_string(),
+                ));
+            }
+            if let Some(weight_col) = weight_value.column_name() {
+                format!("SUM({})", weight_col)
+            } else {
+                "COUNT(*)".to_string()
+            }
+        } else {
+            "COUNT(*)".to_string()
+        };
+
         // Use semantically meaningful column names with prefix to avoid conflicts
-        // Include bin (start), bin_end (end), and count
+        // Include bin (start), bin_end (end), and count/sum
         let select_cols = if group_by.is_empty() {
             format!(
-                "{} AS __ggsql_stat__bin, {} AS __ggsql_stat__bin_end, COUNT(*) AS __ggsql_stat__count",
-                bin_expr, bin_end_expr
+                "{} AS __ggsql_stat__bin, {} AS __ggsql_stat__bin_end, {} AS __ggsql_stat__count",
+                bin_expr, bin_end_expr, agg_expr
             )
         } else {
             let grp_cols = group_by.join(", ");
             format!(
-                "{}, {} AS __ggsql_stat__bin, {} AS __ggsql_stat__bin_end, COUNT(*) AS __ggsql_stat__count",
-                grp_cols, bin_expr, bin_end_expr
+                "{}, {} AS __ggsql_stat__bin, {} AS __ggsql_stat__bin_end, {} AS __ggsql_stat__count",
+                grp_cols, bin_expr, bin_end_expr, agg_expr
             )
         };
 
