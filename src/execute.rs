@@ -199,8 +199,9 @@ where
             let dtype = col.dtype();
             // Discrete: String, Boolean, Date (grouping by day makes sense), Categorical
             // Continuous: numeric types, Datetime, Time (too granular for grouping)
-            let is_discrete = matches!(dtype, DataType::String | DataType::Boolean | DataType::Date)
-                || dtype.is_categorical();
+            let is_discrete =
+                matches!(dtype, DataType::String | DataType::Boolean | DataType::Date)
+                    || dtype.is_categorical();
             ColumnInfo {
                 name: col.name().to_string(),
                 is_discrete,
