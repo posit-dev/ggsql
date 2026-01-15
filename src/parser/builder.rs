@@ -446,7 +446,15 @@ fn parse_setting_clause(node: &Node, source: &str) -> Result<HashMap<String, Par
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "parameter_assignment" {
-            let (param, value) = parse_parameter_assignment(&child, source)?;
+            let (param, mut value) = parse_parameter_assignment(&child, source)?;
+            match param.as_str() {
+                "color" | "col" | "colour" | "fill" | "stroke" => {
+                    if let ParameterValue::String(color) = value {
+                        value = ParameterValue::String(color_to_hex(&color));
+                    }
+                }
+                _ => {}
+            }
             parameters.insert(param, value);
         }
     }
@@ -1365,6 +1373,16 @@ fn with_statement_has_trailing_select(with_node: &Node) -> bool {
     }
 
     false
+}
+
+fn color_to_hex(value: &str) -> String {
+    match csscolorparser::parse(value) {
+        Ok(value) => value.to_css_hex(),
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(1)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -2424,6 +2442,7 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color SETTING size => 5 FILTER value > 50
+            DRAW point SETTING fill => 'Chartreuse'
         "#;
 
         let result = parse_test_query(query);
@@ -2445,6 +2464,16 @@ mod tests {
         assert!(layer.filter.is_some());
         let filter = layer.filter.as_ref().unwrap();
         assert_eq!(filter.as_str(), "value > 50");
+
+        // Check translation of colour name
+        let layer = &specs[0].layers[1];
+        assert!(layer.parameters.contains_key("fill"));
+
+        if let ParameterValue::String(fill) = layer.parameters.get("fill").unwrap() {
+            assert_eq!(fill, "#7fff00")
+        } else {
+            panic!("Wrong type of 'fill' parameter")
+        }
     }
 
     #[test]

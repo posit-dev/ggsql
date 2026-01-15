@@ -25,6 +25,7 @@ required-features = ["rest-api"]
 # Parsing
 tree-sitter.workspace = true
 tree-sitter-ggsql = { path = "../tree-sitter-ggsql" }
+csscolorparser.workspace = true
 
 # Data processing
 polars.workspace = true

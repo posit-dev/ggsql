@@ -18,6 +18,7 @@ description = "SQL extension for declarative data visualization"
 [workspace.dependencies]
 # Parsing
 tree-sitter = "0.25"
+csscolorparser = "0.8.1"
 
 # Data processing
 polars = { version = "0.43", features = ["lazy", "sql"] }
