@@ -1021,6 +1021,10 @@ impl Writer for VegaLiteWriter {
             "$schema": self.schema
         });
 
+        // Responsive plot sizing
+        vl_spec["width"] = json!("container");
+        vl_spec["height"] = json!("container");
+
         // Add title if present
         if let Some(labels) = &spec.labels {
             if let Some(title) = labels.labels.get("title") {

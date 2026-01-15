@@ -49,6 +49,18 @@ fn format_vegalite(spec: String) -> Value {
   (function() {{
     const spec = {};
     const visId = '{}';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {{
+      container.style.height = '100vh';
+    }}
+
+    const options = {{
+      "actions": true,
+    }};
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {{
@@ -71,7 +83,7 @@ fn format_vegalite(spec: String) -> Value {
       docReady(function() {{
         window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {{
             domReady(function () {{
-              vegaEmbed('#' + visId, spec, {{"actions": true}}).catch(console.error);
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
             }});
         }});
       }});
@@ -93,7 +105,7 @@ fn format_vegalite(spec: String) -> Value {
         loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
       ])
         .then(() => {{
-          vegaEmbed('#' + visId, spec, {{"actions": true}})
+          vegaEmbed('#' + visId, spec, options)
             .catch(console.error);
         }})
         .catch(err => {{
