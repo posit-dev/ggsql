@@ -1122,6 +1122,12 @@ impl Writer for VegaLiteWriter {
                 encoding.insert("detail".to_string(), detail);
             }
 
+            // Add y2 baseline when x2 is present (for histogram bars)
+            // Vega-Lite requires y2 when using x2 for bar marks
+            if encoding.contains_key("x2") && !encoding.contains_key("y2") {
+                encoding.insert("y2".to_string(), json!({"datum": 0}));
+            }
+
             // Add order encoding for Path geoms (preserves data order instead of x-axis sorting)
             if matches!(layer.geom, Geom::Path) {
                 encoding.insert(

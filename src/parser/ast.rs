@@ -492,7 +492,7 @@ impl Geom {
     pub fn default_remappings(&self) -> &[(&str, &str)] {
         match self {
             Geom::Bar => &[("count", "y"), ("x", "x")],
-            Geom::Histogram => &[("bin", "x"), ("count", "y")],
+            Geom::Histogram => &[("bin", "x"), ("bin_end", "x2"), ("count", "y")],
             // Other geoms don't have stat transforms yet
             _ => &[],
         }
@@ -640,8 +640,10 @@ impl Geom {
             (max_val - min_val) / bins as f64
         };
 
-        // Build the bin expression
+        // Build the bin expression (bin start)
         let bin_expr = format!("FLOOR({x} / {w}) * {w}", x = x_col, w = bin_width);
+        // Build the bin end expression (bin start + bin width)
+        let bin_end_expr = format!("FLOOR({x} / {w}) * {w} + {w}", x = x_col, w = bin_width);
 
         // Build grouped columns (group_by includes partition_by + facet variables)
         let group_cols = if group_by.is_empty() {
@@ -653,16 +655,17 @@ impl Geom {
         };
 
         // Use semantically meaningful column names with prefix to avoid conflicts
+        // Include bin (start), bin_end (end), and count
         let select_cols = if group_by.is_empty() {
             format!(
-                "{} AS __ggsql_stat__bin, COUNT(*) AS __ggsql_stat__count",
-                bin_expr
+                "{} AS __ggsql_stat__bin, {} AS __ggsql_stat__bin_end, COUNT(*) AS __ggsql_stat__count",
+                bin_expr, bin_end_expr
             )
         } else {
             let grp_cols = group_by.join(", ");
             format!(
-                "{}, {} AS __ggsql_stat__bin, COUNT(*) AS __ggsql_stat__count",
-                grp_cols, bin_expr
+                "{}, {} AS __ggsql_stat__bin, {} AS __ggsql_stat__bin_end, COUNT(*) AS __ggsql_stat__count",
+                grp_cols, bin_expr, bin_end_expr
             )
         };
 
@@ -673,10 +676,14 @@ impl Geom {
             group = group_cols
         );
 
-        // Histogram always transforms - produces bin and count columns
+        // Histogram always transforms - produces bin, bin_end, and count columns
         Ok(StatResult::Transformed {
             query: transformed_query,
-            stat_columns: vec!["bin".to_string(), "count".to_string()],
+            stat_columns: vec![
+                "bin".to_string(),
+                "bin_end".to_string(),
+                "count".to_string(),
+            ],
             dummy_columns: vec![],
         })
     }
