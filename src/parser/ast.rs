@@ -503,6 +503,19 @@ impl Geom {
         }
     }
 
+    /// Returns valid stat column names that can be used in REMAPPING.
+    ///
+    /// These are the columns produced by the geom's stat transform.
+    /// REMAPPING can only map these columns to aesthetics.
+    pub fn valid_stat_columns(&self) -> &[&str] {
+        match self {
+            Geom::Bar => &["count", "x", "proportion"],
+            Geom::Histogram => &["bin", "bin_end", "count", "density"],
+            // Other geoms don't have stat transforms
+            _ => &[],
+        }
+    }
+
     /// Returns non-aesthetic parameters with their default values.
     ///
     /// These control stat behavior (e.g., bins for histogram).

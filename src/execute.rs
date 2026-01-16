@@ -239,16 +239,31 @@ fn determine_layer_source(
     }
 }
 
-/// Validate all layer mappings against their schemas
+/// Validate all layers against their schemas
 ///
-/// Called after wildcard expansion. Only validates aesthetics that the
-/// layer's geom actually supports - unsupported aesthetics are ignored
-/// since they won't be used anyway.
-fn validate_layer_mappings(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
+/// Validates:
+/// - Required aesthetics exist for each geom
+/// - SETTING parameters are valid for each geom
+/// - Aesthetic columns exist in schema
+/// - Partition_by columns exist in schema
+/// - Remapping target aesthetics are supported by geom
+/// - Remapping source columns are valid stat columns for geom
+fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
     for (idx, (layer, schema)) in layers.iter().zip(layer_schemas.iter()).enumerate() {
         let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
         let supported = layer.geom.aesthetics().supported;
 
+        // Validate required aesthetics for this geom
+        layer.validate_required_aesthetics().map_err(|e| {
+            GgsqlError::ValidationError(format!("Layer {}: {}", idx + 1, e))
+        })?;
+
+        // Validate SETTING parameters are valid for this geom
+        layer.validate_settings().map_err(|e| {
+            GgsqlError::ValidationError(format!("Layer {}: {}", idx + 1, e))
+        })?;
+
+        // Validate aesthetic columns exist in schema
         for (aesthetic, value) in &layer.mappings.aesthetics {
             // Only validate aesthetics supported by this geom
             if !supported.contains(&aesthetic.as_str()) {
@@ -267,6 +282,53 @@ fn validate_layer_mappings(layers: &[Layer], layer_schemas: &[Schema]) -> Result
                         aesthetic,
                         col_name
                     )));
+                }
+            }
+        }
+
+        // Validate partition_by columns exist in schema
+        for col in &layer.partition_by {
+            if !schema_columns.contains(col.as_str()) {
+                return Err(GgsqlError::ValidationError(format!(
+                    "Layer {}: PARTITION BY references non-existent column '{}'",
+                    idx + 1,
+                    col
+                )));
+            }
+        }
+
+        // Validate remapping target aesthetics are supported by geom
+        for (target_aesthetic, _) in &layer.remappings.aesthetics {
+            if !supported.contains(&target_aesthetic.as_str()) {
+                return Err(GgsqlError::ValidationError(format!(
+                    "Layer {}: REMAPPING targets unsupported aesthetic '{}' for geom '{}'",
+                    idx + 1,
+                    target_aesthetic,
+                    layer.geom
+                )));
+            }
+        }
+
+        // Validate remapping source columns are valid stat columns for this geom
+        let valid_stat_columns = layer.geom.valid_stat_columns();
+        for (_, stat_value) in &layer.remappings.aesthetics {
+            if let Some(stat_col) = stat_value.column_name() {
+                if !valid_stat_columns.contains(&stat_col) {
+                    if valid_stat_columns.is_empty() {
+                        return Err(GgsqlError::ValidationError(format!(
+                            "Layer {}: REMAPPING not supported for geom '{}' (no stat transform)",
+                            idx + 1,
+                            layer.geom
+                        )));
+                    } else {
+                        return Err(GgsqlError::ValidationError(format!(
+                            "Layer {}: REMAPPING references unknown stat column '{}'. Valid stat columns for geom '{}' are: {}",
+                            idx + 1,
+                            stat_col,
+                            layer.geom,
+                            valid_stat_columns.join(", ")
+                        )));
+                    }
                 }
             }
         }
@@ -942,9 +1004,15 @@ where
     // Smart wildcard expansion only creates mappings for columns that exist in schema
     merge_global_mappings_into_layers(&mut specs, &layer_schemas);
 
-    // Validate all layer mappings against their schemas
-    // This catches missing columns early with clear error messages
-    validate_layer_mappings(&specs[0].layers, &layer_schemas)?;
+    // Validate all layers against their schemas
+    // This catches errors early with clear error messages:
+    // - Missing required aesthetics
+    // - Invalid SETTING parameters
+    // - Non-existent columns in mappings
+    // - Non-existent columns in PARTITION BY
+    // - Unsupported aesthetics in REMAPPING
+    // - Invalid stat columns in REMAPPING
+    validate(&specs[0].layers, &layer_schemas)?;
 
     // Add discrete mapped columns to partition_by for all layers
     // This ensures proper grouping for color, fill, shape, etc. aesthetics
