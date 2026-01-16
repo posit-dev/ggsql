@@ -8,7 +8,7 @@
 //!
 //! ```text
 //! VizSpec
-//! ├─ global_mapping: GlobalMapping  (from VISUALISE clause mappings)
+//! ├─ global_mappings: GlobalMapping  (from VISUALISE clause mappings)
 //! ├─ source: Option<DataSource>     (optional, from VISUALISE FROM clause)
 //! ├─ layers: Vec<Layer>             (1+ LayerNode, one per DRAW clause)
 //! ├─ scales: Vec<Scale>             (0+ ScaleNode, one per SCALE clause)
@@ -42,7 +42,7 @@ pub type Schema = Vec<ColumnInfo>;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VizSpec {
     /// Global aesthetic mappings (from VISUALISE clause)
-    pub global_mapping: Mappings,
+    pub global_mappings: Mappings,
     /// FROM source (CTE, table, or file) when using VISUALISE FROM syntax
     pub source: Option<DataSource>,
     /// Visual layers (one per DRAW clause)
@@ -171,8 +171,8 @@ impl DataSource {
 pub struct Layer {
     /// Geometric object type
     pub geom: Geom,
-    /// Aesthetic mappings
-    pub aesthetics: Mappings,
+    /// Aesthetic mappings (from MAPPING clause)
+    pub mappings: Mappings,
     /// Stat remappings (from REMAPPING clause): stat_name → aesthetic
     /// Maps stat-computed columns (e.g., "count") to aesthetic channels (e.g., "y")
     pub remappings: Mappings,
@@ -1023,7 +1023,7 @@ pub enum AestheticValue {
 
 impl AestheticValue {
     /// Create a column mapping (not from wildcard)
-    pub fn column(name: impl Into<String>) -> Self {
+    pub fn standard_column(name: impl Into<String>) -> Self {
         Self::Column {
             name: name.into(),
             from_wildcard: false,
@@ -1282,7 +1282,7 @@ impl VizSpec {
     /// Create a new empty VizSpec
     pub fn new() -> Self {
         Self {
-            global_mapping: Mappings::new(),
+            global_mappings: Mappings::new(),
             source: None,
             layers: Vec::new(),
             scales: Vec::new(),
@@ -1295,9 +1295,9 @@ impl VizSpec {
     }
 
     /// Create a new VizSpec with the given global mapping
-    pub fn with_global_mapping(global_mapping: Mappings) -> Self {
+    pub fn with_global_mappings(global_mappings: Mappings) -> Self {
         Self {
-            global_mapping,
+            global_mappings,
             source: None,
             layers: Vec::new(),
             scales: Vec::new(),
@@ -1354,7 +1354,7 @@ impl VizSpec {
         // Collect all aesthetics used across all layers
         let mut all_aesthetics: HashSet<String> = HashSet::new();
         for layer in &self.layers {
-            for aesthetic in layer.aesthetics.aesthetics.keys() {
+            for aesthetic in layer.mappings.aesthetics.keys() {
                 all_aesthetics.insert(aesthetic.clone());
             }
         }
@@ -1369,7 +1369,7 @@ impl VizSpec {
             // Find first non-constant column mapping
             let mut label = aesthetic.clone(); // Default to aesthetic name
             for layer in &self.layers {
-                if let Some(AestheticValue::Column { name, .. }) = layer.aesthetics.get(&aesthetic)
+                if let Some(AestheticValue::Column { name, .. }) = layer.mappings.get(&aesthetic)
                 {
                     // Skip synthetic constant columns
                     if name.starts_with("__ggsql_const_") {
@@ -1395,7 +1395,7 @@ impl Layer {
     pub fn new(geom: Geom) -> Self {
         Self {
             geom,
-            aesthetics: Mappings::new(),
+            mappings: Mappings::new(),
             remappings: Mappings::new(),
             parameters: HashMap::new(),
             source: None,
@@ -1425,13 +1425,13 @@ impl Layer {
 
     /// Add an aesthetic mapping
     pub fn with_aesthetic(mut self, aesthetic: impl Into<String>, value: AestheticValue) -> Self {
-        self.aesthetics.insert(aesthetic, value);
+        self.mappings.insert(aesthetic, value);
         self
     }
 
     /// Set the wildcard flag
     pub fn with_wildcard(mut self) -> Self {
-        self.aesthetics.wildcard = true;
+        self.mappings.wildcard = true;
         self
     }
 
@@ -1449,7 +1449,7 @@ impl Layer {
 
     /// Get a column reference from an aesthetic, if it's mapped to a column
     pub fn get_column(&self, aesthetic: &str) -> Option<&str> {
-        match self.aesthetics.get(aesthetic) {
+        match self.mappings.get(aesthetic) {
             Some(AestheticValue::Column { name, .. }) => Some(name),
             _ => None,
         }
@@ -1457,7 +1457,7 @@ impl Layer {
 
     /// Get a literal value from an aesthetic, if it's mapped to a literal
     pub fn get_literal(&self, aesthetic: &str) -> Option<&LiteralValue> {
-        match self.aesthetics.get(aesthetic) {
+        match self.mappings.get(aesthetic) {
             Some(AestheticValue::Literal(lit)) => Some(lit),
             _ => None,
         }
@@ -1466,7 +1466,7 @@ impl Layer {
     /// Check if this layer has the required aesthetics for its geom
     pub fn validate_required_aesthetics(&self) -> std::result::Result<(), String> {
         for aesthetic in self.geom.aesthetics().required {
-            if !self.aesthetics.contains_key(aesthetic) {
+            if !self.mappings.contains_key(aesthetic) {
                 return Err(format!(
                     "Geom '{}' requires aesthetic '{}' but it was not provided",
                     self.geom, aesthetic
@@ -1543,34 +1543,34 @@ mod tests {
     #[test]
     fn test_viz_spec_creation() {
         let spec = VizSpec::new();
-        assert!(spec.global_mapping.is_empty());
+        assert!(spec.global_mappings.is_empty());
         assert_eq!(spec.layers.len(), 0);
         assert!(!spec.has_layers());
         assert_eq!(spec.layer_count(), 0);
     }
 
     #[test]
-    fn test_viz_spec_with_global_mapping() {
+    fn test_viz_spec_with_global_mappings() {
         let mut mapping = Mappings::new();
-        mapping.insert("x", AestheticValue::column("date"));
-        mapping.insert("y", AestheticValue::column("y"));
-        let spec = VizSpec::with_global_mapping(mapping.clone());
-        assert_eq!(spec.global_mapping.aesthetics.len(), 2);
-        assert!(spec.global_mapping.aesthetics.contains_key("x"));
+        mapping.insert("x", AestheticValue::standard_column("date"));
+        mapping.insert("y", AestheticValue::standard_column("y"));
+        let spec = VizSpec::with_global_mappings(mapping.clone());
+        assert_eq!(spec.global_mappings.aesthetics.len(), 2);
+        assert!(spec.global_mappings.aesthetics.contains_key("x"));
     }
 
     #[test]
-    fn test_global_mapping_wildcard() {
+    fn test_global_mappings_wildcard() {
         let mapping = Mappings::with_wildcard();
-        let spec = VizSpec::with_global_mapping(mapping);
-        assert!(spec.global_mapping.wildcard);
+        let spec = VizSpec::with_global_mappings(mapping);
+        assert!(spec.global_mappings.wildcard);
     }
 
     #[test]
     fn test_layer_creation() {
         let layer = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::column("date"))
-            .with_aesthetic("y".to_string(), AestheticValue::column("revenue"))
+            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date"))
+            .with_aesthetic("y".to_string(), AestheticValue::standard_column("revenue"))
             .with_aesthetic(
                 "color".to_string(),
                 AestheticValue::Literal(LiteralValue::String("blue".to_string())),
@@ -1594,20 +1594,20 @@ mod tests {
     #[test]
     fn test_layer_validation() {
         let valid_point = Layer::new(Geom::Point)
-            .with_aesthetic("x".to_string(), AestheticValue::column("x"))
-            .with_aesthetic("y".to_string(), AestheticValue::column("y"));
+            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x"))
+            .with_aesthetic("y".to_string(), AestheticValue::standard_column("y"));
 
         assert!(valid_point.validate_required_aesthetics().is_ok());
 
-        let invalid_point =
-            Layer::new(Geom::Point).with_aesthetic("x".to_string(), AestheticValue::column("x"));
+        let invalid_point = Layer::new(Geom::Point)
+            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x"));
 
         assert!(invalid_point.validate_required_aesthetics().is_err());
 
         let valid_ribbon = Layer::new(Geom::Ribbon)
-            .with_aesthetic("x".to_string(), AestheticValue::column("x"))
-            .with_aesthetic("ymin".to_string(), AestheticValue::column("ymin"))
-            .with_aesthetic("ymax".to_string(), AestheticValue::column("ymax"));
+            .with_aesthetic("x".to_string(), AestheticValue::standard_column("x"))
+            .with_aesthetic("ymin".to_string(), AestheticValue::standard_column("ymin"))
+            .with_aesthetic("ymax".to_string(), AestheticValue::standard_column("ymax"));
 
         assert!(valid_ribbon.validate_required_aesthetics().is_ok());
     }
@@ -1630,7 +1630,7 @@ mod tests {
 
     #[test]
     fn test_aesthetic_value_display() {
-        let column = AestheticValue::column("sales");
+        let column = AestheticValue::standard_column("sales");
         let string_lit = AestheticValue::Literal(LiteralValue::String("blue".to_string()));
         let number_lit = AestheticValue::Literal(LiteralValue::Number(3.53));
         let bool_lit = AestheticValue::Literal(LiteralValue::Boolean(true));
@@ -1671,8 +1671,8 @@ mod tests {
     #[test]
     fn test_mappings_insert_and_get() {
         let mut mappings = Mappings::new();
-        mappings.insert("x", AestheticValue::column("date"));
-        mappings.insert("y", AestheticValue::column("value"));
+        mappings.insert("x", AestheticValue::standard_column("date"));
+        mappings.insert("y", AestheticValue::standard_column("value"));
 
         assert_eq!(mappings.len(), 2);
         assert!(mappings.contains_key("x"));
@@ -1685,7 +1685,7 @@ mod tests {
 
     #[test]
     fn test_aesthetic_value_column_constructors() {
-        let col = AestheticValue::column("date");
+        let col = AestheticValue::standard_column("date");
         assert!(!col.is_from_wildcard());
         assert_eq!(col.column_name(), Some("date"));
 
@@ -1704,7 +1704,7 @@ mod tests {
     #[test]
     fn test_layer_with_wildcard() {
         let layer = Layer::new(Geom::Point).with_wildcard();
-        assert!(layer.aesthetics.wildcard);
+        assert!(layer.mappings.wildcard);
     }
 
     #[test]

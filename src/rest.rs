@@ -145,7 +145,7 @@ struct QueryResult {
 struct QueryMetadata {
     rows: usize,
     columns: Vec<String>,
-    global_mapping: String,
+    global_mappings: String,
     layers: usize,
 }
 
@@ -495,7 +495,7 @@ async fn query_handler(
                 metadata: QueryMetadata {
                     rows,
                     columns,
-                    global_mapping: format!("{:?}", first_spec.global_mapping),
+                    global_mappings: format!("{:?}", first_spec.global_mappings),
                     layers: first_spec.layers.len(),
                 },
             };

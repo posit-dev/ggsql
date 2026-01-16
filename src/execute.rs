@@ -213,7 +213,7 @@ where
 /// Extract constant aesthetics from a layer
 fn extract_constants(layer: &Layer) -> Vec<(String, LiteralValue)> {
     layer
-        .aesthetics
+        .mappings
         .aesthetics
         .iter()
         .filter_map(|(aesthetic, value)| {
@@ -237,7 +237,7 @@ fn extract_constants(layer: &Layer) -> Vec<(String, LiteralValue)> {
 /// For other layers, uses non-indexed column names (e.g., `__ggsql_const_color__`).
 fn replace_literals_with_columns(spec: &mut VizSpec) {
     for (layer_idx, layer) in spec.layers.iter_mut().enumerate() {
-        for (aesthetic, value) in layer.aesthetics.aesthetics.iter_mut() {
+        for (aesthetic, value) in layer.mappings.aesthetics.iter_mut() {
             if matches!(value, AestheticValue::Literal(_)) {
                 // Use layer-indexed column name for layers using global data (no source, no filter)
                 // Use non-indexed name for layers with their own data (filter or explicit source)
@@ -246,7 +246,7 @@ fn replace_literals_with_columns(spec: &mut VizSpec) {
                 } else {
                     const_column_name(aesthetic)
                 };
-                *value = AestheticValue::column(col_name);
+                *value = AestheticValue::standard_column(col_name);
             }
         }
     }
@@ -415,7 +415,7 @@ where
                     )));
                 }
                 "__ggsql_global__".to_string()
-            } else if layer.geom.needs_stat_transform(&layer.aesthetics) {
+            } else if layer.geom.needs_stat_transform(&layer.mappings) {
                 if !has_global {
                     return Err(GgsqlError::ValidationError(format!(
                         "Layer {} requires data for statistical transformation but no data source.",
@@ -453,7 +453,7 @@ where
 
     // Only fetch schema and validate aesthetic columns for stat transforms
     // Non-stat geoms don't need grouping, so no validation needed
-    let needs_stat = layer.geom.needs_stat_transform(&layer.aesthetics);
+    let needs_stat = layer.geom.needs_stat_transform(&layer.mappings);
     let schema = if needs_stat {
         // Fetch schema once for the layer to validate columns and check types
         let schema = fetch_layer_schema(&query, execute_query)?;
@@ -468,7 +468,7 @@ where
         // This ensures columns mapped to fill, color, shape, etc. are kept during stat transforms
         // Uses schema to validate column existence and discreteness
         let consumed_aesthetics = layer.geom.stat_consumed_aesthetics();
-        for (aesthetic, value) in &layer.aesthetics.aesthetics {
+        for (aesthetic, value) in &layer.mappings.aesthetics {
             if consumed_aesthetics.contains(&aesthetic.as_str()) {
                 continue;
             }
@@ -512,7 +512,7 @@ where
     let stat_result = layer.geom.apply_stat_transform(
         &query,
         &schema,
-        &layer.aesthetics,
+        &layer.mappings,
         &group_by,
         &layer.parameters,
         execute_query,
@@ -546,19 +546,19 @@ where
                 if let Some(aesthetic) = final_remappings.get(stat) {
                     let col = format!("__ggsql_stat__{}", stat);
                     let is_dummy = dummy_columns.contains(stat);
-                    layer.aesthetics.insert(
+                    layer.mappings.insert(
                         aesthetic.clone(),
                         if is_dummy {
                             AestheticValue::dummy_column(col)
                         } else {
-                            AestheticValue::column(col)
+                            AestheticValue::standard_column(col)
                         },
                     );
                 }
             }
 
             // Remove the weight aesthetic if present - it has been consumed by the stat transform
-            layer.aesthetics.aesthetics.remove("weight");
+            layer.mappings.aesthetics.remove("weight");
 
             // Use the transformed query
             let mut final_query = transformed_query;
@@ -603,10 +603,10 @@ fn merge_global_mappings_into_layers(specs: &mut [VizSpec]) {
             let supported = layer.geom.aesthetics().supported;
 
             // 1. First merge explicit global aesthetics (layer overrides global)
-            for (aesthetic, value) in &spec.global_mapping.aesthetics {
+            for (aesthetic, value) in &spec.global_mappings.aesthetics {
                 if supported.contains(&aesthetic.as_str()) {
                     layer
-                        .aesthetics
+                        .mappings
                         .aesthetics
                         .entry(aesthetic.clone())
                         .or_insert(value.clone());
@@ -615,11 +615,11 @@ fn merge_global_mappings_into_layers(specs: &mut [VizSpec]) {
 
             // 2. Expand wildcards: add mapping for each supported aesthetic
             //    that isn't already mapped (either from global or layer)
-            let has_wildcard = layer.aesthetics.wildcard || spec.global_mapping.wildcard;
+            let has_wildcard = layer.mappings.wildcard || spec.global_mappings.wildcard;
             if has_wildcard {
                 for &aes in supported {
                     layer
-                        .aesthetics
+                        .mappings
                         .aesthetics
                         .entry(aes.to_string())
                         .or_insert(AestheticValue::wildcard_column(aes));
@@ -627,7 +627,7 @@ fn merge_global_mappings_into_layers(specs: &mut [VizSpec]) {
             }
 
             // Clear wildcard flag since it's been resolved
-            layer.aesthetics.wildcard = false;
+            layer.mappings.wildcard = false;
         }
     }
 }
@@ -757,8 +757,8 @@ where
 
     // First, extract global constants from VISUALISE clause (e.g., VISUALISE 'value' AS color)
     // These apply to all layers that use global data
-    let global_mapping_constants: Vec<(String, LiteralValue)> = first_spec
-        .global_mapping
+    let global_mappings_constants: Vec<(String, LiteralValue)> = first_spec
+        .global_mappings
         .aesthetics
         .iter()
         .filter_map(|(aesthetic, value)| {
@@ -794,10 +794,10 @@ where
     // Add global mapping constants for each layer that uses global data
     // (these will be injected into the global data table)
     for layer_idx in &global_data_layer_indices {
-        for (aes, lit) in &global_mapping_constants {
+        for (aes, lit) in &global_mappings_constants {
             // Only add if this layer doesn't already have this aesthetic from its own MAPPING
             let layer = &first_spec.layers[*layer_idx];
-            if !layer.aesthetics.contains_key(aes) {
+            if !layer.mappings.contains_key(aes) {
                 global_constants.push((*layer_idx, aes.clone(), lit.clone()));
             }
         }
@@ -1999,11 +1999,11 @@ mod tests {
         assert_eq!(result.specs.len(), 1);
         let layer = &result.specs[0].layers[0];
         assert!(
-            layer.aesthetics.contains_key("x"),
+            layer.mappings.contains_key("x"),
             "Layer should have x from global mapping"
         );
         assert!(
-            layer.aesthetics.contains_key("y"),
+            layer.mappings.contains_key("y"),
             "Layer should have y from global mapping"
         );
     }

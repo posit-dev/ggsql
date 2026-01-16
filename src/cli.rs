@@ -273,7 +273,7 @@ fn cmd_parse(query: String, format: String) {
             println!("ggSQL Specifications: {} total", specs.len());
             for (i, spec) in specs.iter().enumerate() {
                 println!("\nVisualization #{}:", i + 1);
-                println!("  Global Mapping: {:?}", spec.global_mapping);
+                println!("  Global Mappings: {:?}", spec.global_mappings);
                 println!("  Layers: {}", spec.layers.len());
                 println!("  Scales: {}", spec.scales.len());
                 if spec.facet.is_some() {

@@ -147,9 +147,9 @@ mod tests {
         assert_eq!(specs[0].layers[1].geom, Geom::Point);
 
         // Second layer should have y and color
-        assert_eq!(specs[0].layers[1].aesthetics.len(), 2);
+        assert_eq!(specs[0].layers[1].mappings.len(), 2);
         assert!(matches!(
-            specs[0].layers[1].aesthetics.get("color"),
+            specs[0].layers[1].mappings.get("color"),
             Some(AestheticValue::Literal(LiteralValue::String(s))) if s == "value"
         ));
     }
@@ -212,7 +212,7 @@ mod tests {
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 1);
-        assert!(specs[0].global_mapping.is_empty());
+        assert!(specs[0].global_mappings.is_empty());
     }
 
     #[test]
@@ -327,8 +327,8 @@ mod tests {
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 1);
-        assert!(specs[0].global_mapping.wildcard);
-        assert!(specs[0].global_mapping.aesthetics.is_empty());
+        assert!(specs[0].global_mappings.wildcard);
+        assert!(specs[0].global_mappings.aesthetics.is_empty());
     }
 
     #[test]
@@ -340,7 +340,7 @@ mod tests {
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 1);
-        let mapping = &specs[0].global_mapping;
+        let mapping = &specs[0].global_mappings;
         assert!(!mapping.wildcard);
         assert_eq!(mapping.aesthetics.len(), 2);
         assert!(mapping.aesthetics.contains_key("x"));
@@ -364,7 +364,7 @@ mod tests {
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 1);
-        let mapping = &specs[0].global_mapping;
+        let mapping = &specs[0].global_mappings;
         assert!(!mapping.wildcard);
         assert_eq!(mapping.aesthetics.len(), 2);
         // Implicit mappings are resolved at parse time: x -> x, y -> y
@@ -387,7 +387,7 @@ mod tests {
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 1);
-        let mapping = &specs[0].global_mapping;
+        let mapping = &specs[0].global_mappings;
         assert!(!mapping.wildcard);
         assert_eq!(mapping.aesthetics.len(), 3);
         // Implicit x and y, explicit color

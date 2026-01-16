@@ -77,11 +77,11 @@ fn build_visualise_statement(node: &Node, source: &str) -> Result<VizSpec> {
             }
             "global_mapping" => {
                 // Parse global mapping (may include wildcard and/or explicit mappings)
-                spec.global_mapping = parse_global_mapping(&child, source)?;
+                spec.global_mappings = parse_global_mapping(&child, source)?;
             }
             "wildcard_mapping" => {
                 // Handle standalone wildcard (*) mapping
-                spec.global_mapping.wildcard = true;
+                spec.global_mappings.wildcard = true;
             }
             "identifier" | "string" => {
                 // This is the FROM source (table name or file path)
@@ -161,15 +161,17 @@ fn parse_explicit_mapping(node: &Node, source: &str) -> Result<(String, Aestheti
                             let mut ref_cursor = inner_child.walk();
                             for ref_child in inner_child.children(&mut ref_cursor) {
                                 if ref_child.kind() == "identifier" {
-                                    value = Some(AestheticValue::column(get_node_text(
+                                    value = Some(AestheticValue::standard_column(get_node_text(
                                         &ref_child, source,
                                     )));
                                 }
                             }
                         }
                         "identifier" => {
-                            value =
-                                Some(AestheticValue::column(get_node_text(&inner_child, source)));
+                            value = Some(AestheticValue::standard_column(get_node_text(
+                                &inner_child,
+                                source,
+                            )));
                         }
                         "literal_value" => {
                             value = Some(parse_literal_value(&inner_child, source)?);
@@ -321,7 +323,7 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
     }
 
     let mut layer = Layer::new(geom);
-    layer.aesthetics = aesthetics;
+    layer.mappings = aesthetics;
     layer.remappings = remappings;
     layer.parameters = parameters;
     layer.partition_by = partition_by;
@@ -385,7 +387,7 @@ fn parse_mapping_element(node: &Node, source: &str, mappings: &mut Mappings) -> 
             }
             "implicit_mapping" | "identifier" => {
                 let name = get_node_text(&child, source);
-                mappings.insert(&name, AestheticValue::column(&name));
+                mappings.insert(&name, AestheticValue::standard_column(&name));
             }
             _ => continue,
         }
@@ -1664,7 +1666,7 @@ mod tests {
         assert!(result.is_ok());
         let specs = result.unwrap();
         assert_eq!(specs.len(), 1);
-        assert!(specs[0].global_mapping.is_empty());
+        assert!(specs[0].global_mappings.is_empty());
         assert_eq!(specs[0].layers.len(), 1);
         assert!(specs[0].coord.is_some());
         assert!(specs[0].labels.is_some());
@@ -2400,10 +2402,10 @@ mod tests {
         let layer = &specs[0].layers[0];
 
         // Check aesthetics
-        assert_eq!(layer.aesthetics.len(), 3);
-        assert!(layer.aesthetics.contains_key("x"));
-        assert!(layer.aesthetics.contains_key("y"));
-        assert!(layer.aesthetics.contains_key("color"));
+        assert_eq!(layer.mappings.len(), 3);
+        assert!(layer.mappings.contains_key("x"));
+        assert!(layer.mappings.contains_key("y"));
+        assert!(layer.mappings.contains_key("color"));
 
         // Check parameters
         assert_eq!(layer.parameters.len(), 1);
@@ -2799,17 +2801,17 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
 
         // Global mapping should have x and y
-        assert_eq!(specs[0].global_mapping.aesthetics.len(), 2);
-        assert!(specs[0].global_mapping.aesthetics.contains_key("x"));
-        assert!(specs[0].global_mapping.aesthetics.contains_key("y"));
-        assert!(!specs[0].global_mapping.wildcard);
+        assert_eq!(specs[0].global_mappings.aesthetics.len(), 2);
+        assert!(specs[0].global_mappings.aesthetics.contains_key("x"));
+        assert!(specs[0].global_mappings.aesthetics.contains_key("y"));
+        assert!(!specs[0].global_mappings.wildcard);
 
         // Line layer should have no layer-specific aesthetics
-        assert_eq!(specs[0].layers[0].aesthetics.len(), 0);
+        assert_eq!(specs[0].layers[0].mappings.len(), 0);
 
         // Point layer should have color from layer MAPPING
-        assert_eq!(specs[0].layers[1].aesthetics.len(), 1);
-        assert!(specs[0].layers[1].aesthetics.contains_key("color"));
+        assert_eq!(specs[0].layers[1].mappings.len(), 1);
+        assert!(specs[0].layers[1].mappings.contains_key("color"));
     }
 
     #[test]
@@ -2822,14 +2824,14 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
 
         // Implicit x, y become explicit mappings at parse time
-        assert_eq!(specs[0].global_mapping.aesthetics.len(), 2);
-        assert!(specs[0].global_mapping.aesthetics.contains_key("x"));
-        assert!(specs[0].global_mapping.aesthetics.contains_key("y"));
+        assert_eq!(specs[0].global_mappings.aesthetics.len(), 2);
+        assert!(specs[0].global_mappings.aesthetics.contains_key("x"));
+        assert!(specs[0].global_mappings.aesthetics.contains_key("y"));
 
         // Verify they map to columns of the same name
-        let x_val = specs[0].global_mapping.aesthetics.get("x").unwrap();
+        let x_val = specs[0].global_mappings.aesthetics.get("x").unwrap();
         assert_eq!(x_val.column_name(), Some("x"));
-        let y_val = specs[0].global_mapping.aesthetics.get("y").unwrap();
+        let y_val = specs[0].global_mappings.aesthetics.get("y").unwrap();
         assert_eq!(y_val.column_name(), Some("y"));
     }
 
@@ -2843,9 +2845,9 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
 
         // Wildcard flag should be set
-        assert!(specs[0].global_mapping.wildcard);
+        assert!(specs[0].global_mappings.wildcard);
         // No explicit aesthetics (wildcard expansion happens at execution time)
-        assert!(specs[0].global_mapping.aesthetics.is_empty());
+        assert!(specs[0].global_mappings.aesthetics.is_empty());
     }
 
     #[test]
@@ -2858,10 +2860,10 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
 
         // Wildcard flag should be set
-        assert!(specs[0].global_mapping.wildcard);
+        assert!(specs[0].global_mappings.wildcard);
         // Plus explicit fill mapping
-        assert_eq!(specs[0].global_mapping.aesthetics.len(), 1);
-        assert!(specs[0].global_mapping.aesthetics.contains_key("fill"));
+        assert_eq!(specs[0].global_mappings.aesthetics.len(), 1);
+        assert!(specs[0].global_mappings.aesthetics.contains_key("fill"));
     }
 
     #[test]
@@ -2874,9 +2876,9 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
 
         // Global mapping should be empty
-        assert!(specs[0].global_mapping.is_empty());
+        assert!(specs[0].global_mappings.is_empty());
         // Layer should have wildcard set
-        assert!(specs[0].layers[0].aesthetics.wildcard);
+        assert!(specs[0].layers[0].mappings.wildcard);
     }
 
     #[test]
@@ -2889,9 +2891,9 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
 
         // Layer should have wildcard set plus explicit color
-        assert!(specs[0].layers[0].aesthetics.wildcard);
-        assert_eq!(specs[0].layers[0].aesthetics.len(), 1);
-        assert!(specs[0].layers[0].aesthetics.contains_key("color"));
+        assert!(specs[0].layers[0].mappings.wildcard);
+        assert_eq!(specs[0].layers[0].mappings.len(), 1);
+        assert!(specs[0].layers[0].mappings.contains_key("color"));
     }
 
     // ========================================
@@ -2955,7 +2957,7 @@ mod tests {
             Some(DataSource::Identifier(name)) if name == "other_data"
         ));
         // Layer should have no direct aesthetics (will inherit from global)
-        assert!(layer.aesthetics.is_empty());
+        assert!(layer.mappings.is_empty());
     }
 
     #[test]
