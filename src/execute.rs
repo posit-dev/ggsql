@@ -296,7 +296,7 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
         }
 
         // Validate remapping target aesthetics are supported by geom
-        for (target_aesthetic, _) in &layer.remappings.aesthetics {
+        for target_aesthetic in layer.remappings.aesthetics.keys() {
             if !supported.contains(&target_aesthetic.as_str()) {
                 return Err(GgsqlError::ValidationError(format!(
                     "Layer {}: REMAPPING targets unsupported aesthetic '{}' for geom '{}'",
@@ -309,7 +309,7 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
 
         // Validate remapping source columns are valid stat columns for this geom
         let valid_stat_columns = layer.geom.valid_stat_columns();
-        for (_, stat_value) in &layer.remappings.aesthetics {
+        for stat_value in layer.remappings.aesthetics.values() {
             if let Some(stat_col) = stat_value.column_name() {
                 if !valid_stat_columns.contains(&stat_col) {
                     if valid_stat_columns.is_empty() {
@@ -634,7 +634,7 @@ where
     // Returns StatResult::Identity for no transformation, StatResult::Transformed for transformed query
     let stat_result = layer.geom.apply_stat_transform(
         &query,
-        &schema,
+        schema,
         &layer.mappings,
         &group_by,
         &layer.parameters,
@@ -1021,13 +1021,11 @@ where
     // - Layer with source (CTE, table, or file) → query that source
     // - Layer with filter/order_by but no source → query __ggsql_global__ with filter/order_by and constants
     // - Layer with no source, no filter, no order_by → returns None (use global directly, constants already injected)
-    let num_layers = specs[0].layers.len();
     let facet = specs[0].facet.clone();
 
-    for idx in 0..num_layers {
+    for (idx, layer) in specs[0].layers.iter_mut().enumerate() {
         // For layers using global data without filter, constants are already in global data
         // (injected with layer-indexed names). For other layers, extract constants for injection.
-        let layer = &specs[0].layers[idx];
         let constants = if layer.source.is_none() && layer.filter.is_none() {
             vec![] // Constants already in global data
         } else {
@@ -1035,7 +1033,6 @@ where
         };
 
         // Get mutable reference to layer for stat transform to update aesthetics
-        let layer = &mut specs[0].layers[idx];
         if let Some(layer_query) = build_layer_query(
             layer,
             &layer_schemas[idx],
