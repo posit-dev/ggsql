@@ -99,7 +99,8 @@ module.exports = grammar({
         $.subquery,
         ',', '(', ')', '*', '.', '=',
         /[^\s;(),'"]+/
-      ))
+      )),
+      optional($.select_statement)
     )),
 
     // INSERT statement
