@@ -1,4 +1,4 @@
-//! Data source abstraction layer for ggSQL
+//! Data source abstraction layer for ggsql
 //!
 //! The reader module provides a pluggable interface for executing SQL queries
 //! against various data sources and returning Polars DataFrames for visualization.
@@ -46,7 +46,7 @@ pub trait Reader {
     ///
     /// # Errors
     ///
-    /// Returns `GgsqlError::ReaderError` if:
+    /// Returns `ggsqlError::ReaderError` if:
     /// - The SQL is invalid
     /// - The connection fails
     /// - The table or columns don't exist

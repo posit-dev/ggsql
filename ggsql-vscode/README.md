@@ -1,12 +1,12 @@
-# ggSQL Syntax Highlighting for VSCode
+# ggsql Syntax Highlighting for VSCode
 
-Syntax highlighting for ggSQL - SQL with declarative visualization based on Grammar of Graphics.
+Syntax highlighting for ggsql - SQL with declarative visualization based on Grammar of Graphics.
 
 ## Features
 
-- **Complete syntax highlighting** for ggSQL queries
+- **Complete syntax highlighting** for ggsql queries
 - **SQL keyword support** (SELECT, FROM, WHERE, JOIN, WITH, etc.)
-- **ggSQL clause highlighting**: (SCALE, COORD, FACET, LABEL, etc.)
+- **ggsql clause highlighting**: (SCALE, COORD, FACET, LABEL, etc.)
 - **Aesthetic highlighting** (x, y, color, size, shape, etc.)
 - **String and number literals**
 - **Comment support** (`--` and `/* */`)
@@ -66,7 +66,7 @@ code .
 
 2. You should see syntax highlighting for:
    - SQL keywords in one color
-   - ggSQL keywords (VISUALISE, DRAW, SCALE, etc.) in another
+   - ggsql keywords (VISUALISE, DRAW, SCALE, etc.) in another
    - Geom types, aesthetics, scale types highlighted distinctly
    - Comments, strings, and numbers properly highlighted
 
@@ -94,8 +94,8 @@ If highlighting seems incorrect:
 3. Click on any token to see its scope name
 4. Compare with scopes defined in `syntaxes/ggsql.tmLanguage.json`
 
-## About ggSQL
+## About ggsql
 
-ggSQL is a SQL extension for declarative data visualization. It combines SQL queries with Grammar of Graphics-inspired visualization specifications, enabling you to query data and define visualizations in a single, composable syntax.
+ggsql is a SQL extension for declarative data visualization. It combines SQL queries with Grammar of Graphics-inspired visualization specifications, enabling you to query data and define visualizations in a single, composable syntax.
 
-ggSQL extends SQL with a `VISUALISE` clause that acts as a terminal operation, producing visualizations instead of relational data. Global aesthetic mappings can be specified directly after VISUALISE (e.g., `VISUALISE date AS x, revenue AS y`).
+ggsql extends SQL with a `VISUALISE` clause that acts as a terminal operation, producing visualizations instead of relational data. Global aesthetic mappings can be specified directly after VISUALISE (e.g., `VISUALISE date AS x, revenue AS y`).

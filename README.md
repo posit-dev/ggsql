@@ -1,8 +1,8 @@
-# ggSQL - SQL Visualization Grammar
+# ggsql - SQL Visualization Grammar
 
 A SQL extension for declarative data visualization based on the Grammar of Graphics.
 
-ggSQL allows you to write queries that combine SQL data retrieval with visualization specifications in a single, composable syntax.
+ggsql allows you to write queries that combine SQL data retrieval with visualization specifications in a single, composable syntax.
 
 ## Example
 
@@ -40,7 +40,7 @@ THEME minimal
 
 ## Architecture
 
-ggSQL splits queries at the `VISUALISE` boundary:
+ggsql splits queries at the `VISUALISE` boundary:
 
 - **SQL portion** → passed to pluggable readers (DuckDB, PostgreSQL, CSV, etc.)
 - **VISUALISE portion** → parsed and compiled into visualization specifications
@@ -118,7 +118,7 @@ cargo test --features duckdb,sqlite
 
 ### Working with the Grammar
 
-The tree-sitter grammar is in `tree-sitter-ggsql/grammar.js`. 
+The tree-sitter grammar is in `tree-sitter-ggsql/grammar.js`.
 The grammar is automatically regenerated whenever the `tree-sitter-ggsql` project is build.
 After making changes, you can manually test:
 
@@ -151,7 +151,7 @@ After making changes, you can manually test:
 
 ### Code Organization
 
-- **AST Types** (`src/parser/ast.rs`): Core data structures representing parsed ggSQL
+- **AST Types** (`src/parser/ast.rs`): Core data structures representing parsed ggsql
 - **Query Splitter** (`src/parser/splitter.rs`): Separates SQL from VISUALISE portions
 - **AST Builder** (`src/parser/builder.rs`): Converts tree-sitter parse trees to typed AST
 - **Error Handling** (`src/parser/error.rs`): Parse-time error types and formatting
@@ -202,7 +202,7 @@ cargo test parser
 
 ## Grammar Specification
 
-See [CLAUDE.md](CLAUDE.md) for the in-progress ggSQL grammar specification, including:
+See [CLAUDE.md](CLAUDE.md) for the in-progress ggsql grammar specification, including:
 
 - Syntax reference
 - AST structure
@@ -220,7 +220,7 @@ Key grammar elements:
 
 ## Jupyter Kernel
 
-The `ggsql-jupyter` package provides a Jupyter kernel for interactive ggSQL queries with inline Vega-Lite visualizations.
+The `ggsql-jupyter` package provides a Jupyter kernel for interactive ggsql queries with inline Vega-Lite visualizations.
 
 ### Installation
 
@@ -231,7 +231,7 @@ cargo build --release --package ggsql-jupyter
 
 ### Usage
 
-After installation, create a new notebook with the "ggSQL" kernel or use `%kernel ggsql` in an existing notebook.
+After installation, create a new notebook with the "ggsql" kernel or use `%kernel ggsql` in an existing notebook.
 
 ```sql
 -- Create data
@@ -241,7 +241,7 @@ SELECT * FROM (VALUES
     ('2024-01-02'::DATE, 120, 'South')
 ) AS t(date, revenue, region)
 
--- Visualize with ggSQL using global mapping
+-- Visualize with ggsql using global mapping
 SELECT * FROM sales
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
@@ -257,7 +257,7 @@ A Quarto example can be found in `ggsql-jupyter/tests/quarto/doc.qmd`.
 
 ## VS Code Extension
 
-The `ggsql-vscode` extension provides syntax highlighting for ggSQL files in Visual Studio Code.
+The `ggsql-vscode` extension provides syntax highlighting for ggsql files in Visual Studio Code.
 
 ### Installation
 
@@ -273,7 +273,7 @@ code --install-extension ggsql-0.1.0.vsix
 
 ### Features
 
-- **Syntax highlighting** for ggSQL keywords, geoms, aesthetics, and SQL
+- **Syntax highlighting** for ggsql keywords, geoms, aesthetics, and SQL
 - **File association** for `.ggsql`, `.ggsql.sql`, and `.gsql` extensions
 - **Bracket matching** and auto-closing for parentheses and brackets
 - **Comment support** for `--` single-line and `/* */` multi-line comments
@@ -281,7 +281,7 @@ code --install-extension ggsql-0.1.0.vsix
 The extension uses a TextMate grammar that highlights:
 
 - SQL keywords (SELECT, FROM, WHERE, JOIN, etc.)
-- ggSQL clauses (VISUALISE, DRAW, SCALE, COORD, FACET, etc.)
+- ggsql clauses (VISUALISE, DRAW, SCALE, COORD, FACET, etc.)
 - Geometric objects (point, line, bar, area, etc.)
 - Aesthetics (x, y, color, size, shape, etc.)
 - Scale types (linear, log10, date, viridis, etc.)

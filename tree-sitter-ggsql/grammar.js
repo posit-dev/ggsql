@@ -1,5 +1,5 @@
 /**
- * Minimal ggSQL grammar without external scanner
+ * Minimal ggsql grammar without external scanner
  *
  * Uses a simple regex to capture SQL portion as opaque text
  */

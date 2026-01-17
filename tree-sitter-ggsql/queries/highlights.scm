@@ -1,4 +1,4 @@
-; Tree-sitter highlighting queries for ggSQL
+; Tree-sitter highlighting queries for ggsql
 
 ; Note: Keywords are case-insensitive via regex patterns in grammar.js,
 ; so we can't match them directly in highlight queries. Instead, we rely

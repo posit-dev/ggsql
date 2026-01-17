@@ -1,7 +1,7 @@
 /*!
-ggSQL Parser Module
+ggsql Parser Module
 
-Handles splitting ggSQL queries into SQL and visualization portions, then parsing
+Handles splitting ggsql queries into SQL and visualization portions, then parsing
 the visualization specification into a typed AST.
 
 ## Architecture
@@ -38,7 +38,7 @@ assert_eq!(specs[0].layers[0].geom, Geom::Line);
 ```
 */
 
-use crate::{GgsqlError, Result};
+use crate::{ggsqlError, Result};
 use tree_sitter::Tree;
 
 pub mod ast;
@@ -51,9 +51,9 @@ pub use ast::*;
 pub use error::ParseError;
 pub use splitter::split_query;
 
-/// Main entry point for parsing ggSQL queries
+/// Main entry point for parsing ggsql queries
 ///
-/// Takes a complete ggSQL query (SQL + VISUALISE) and returns a vector of
+/// Takes a complete ggsql query (SQL + VISUALISE) and returns a vector of
 /// parsed specifications (one per VISUALISE statement).
 pub fn parse_query(query: &str) -> Result<Vec<VizSpec>> {
     // Parse the full query using tree-sitter (includes SQL + VISUALISE portions)
@@ -65,23 +65,23 @@ pub fn parse_query(query: &str) -> Result<Vec<VizSpec>> {
     Ok(specs)
 }
 
-/// Parse the full ggSQL query (SQL + VISUALISE) using tree-sitter
+/// Parse the full ggsql query (SQL + VISUALISE) using tree-sitter
 fn parse_full_query(query: &str) -> Result<Tree> {
     let mut parser = tree_sitter::Parser::new();
 
     // Set the tree-sitter-ggsql language
     parser
         .set_language(&tree_sitter_ggsql::language())
-        .map_err(|e| GgsqlError::ParseError(format!("Failed to set language: {}", e)))?;
+        .map_err(|e| ggsqlError::ParseError(format!("Failed to set language: {}", e)))?;
 
     // Parse the full query (SQL + VISUALISE portions together)
     let tree = parser
         .parse(query, None)
-        .ok_or_else(|| GgsqlError::ParseError("Failed to parse query".to_string()))?;
+        .ok_or_else(|| ggsqlError::ParseError("Failed to parse query".to_string()))?;
 
     // Check for parse errors
     if tree.root_node().has_error() {
-        return Err(GgsqlError::ParseError(
+        return Err(ggsqlError::ParseError(
             "Parse tree contains errors".to_string(),
         ));
     }
@@ -89,7 +89,7 @@ fn parse_full_query(query: &str) -> Result<Tree> {
     Ok(tree)
 }
 
-/// Extract just the SQL portion from a ggSQL query
+/// Extract just the SQL portion from a ggsql query
 pub fn extract_sql(query: &str) -> Result<String> {
     let (sql_part, _) = splitter::split_query(query)?;
     Ok(sql_part)

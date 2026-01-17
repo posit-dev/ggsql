@@ -1,0 +1,25 @@
+---
+title: "Syntax"
+---
+
+## Main Clauses
+ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:
+
+- `VISUALISE` initiates the visualisation part of the query
+- [`DRAW`](clause/draw.qmd) adds a new layer to the visualisation
+- `SCALE` specify how an aesthetic should be scaled
+- `FACET` describes how data should be split into small multiples
+- `PROJECT` is used for selecting the coordinate system to use
+
+## Layers
+There are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the `DRAW` clause
+
+- [`point`](layer/point.qmd) is used to create a scatterplot layer
+- `line` is used to produce lineplots with the data sorted along the x axis
+- `path` is like `line` above but does not sort the data but plot it according to its own order
+- `bar` creates a bar chart, optionally calculating y from the number of records in each bar
+- `histogram` bins the data along the x axis and produces a bar for each bin showing the number of records in it
+
+## Scales
+
+## Coordinate systems

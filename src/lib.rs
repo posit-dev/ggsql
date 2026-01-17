@@ -1,9 +1,9 @@
 /*!
-# ggSQL - SQL Visualization Grammar
+# ggsql - SQL Visualization Grammar
 
 A SQL extension for declarative data visualization based on the Grammar of Graphics.
 
-ggSQL allows you to write queries that combine SQL data retrieval with visualization
+ggsql allows you to write queries that combine SQL data retrieval with visualization
 specifications in a single, composable syntax.
 
 ## Example
@@ -20,7 +20,7 @@ THEME minimal
 
 ## Architecture
 
-ggSQL splits queries at the `VISUALISE` boundary:
+ggsql splits queries at the `VISUALISE` boundary:
 - **SQL portion** → passed to pluggable readers (DuckDB, PostgreSQL, CSV, etc.)
 - **VISUALISE portion** → parsed and compiled into visualization specifications
 - **Output** → rendered via pluggable writers (ggplot2, PNG, Vega-Lite, etc.)
@@ -58,7 +58,7 @@ pub use polars::prelude::DataFrame;
 
 /// Main library error type
 #[derive(thiserror::Error, Debug)]
-pub enum GgsqlError {
+pub enum ggsqlError {
     #[error("Parse error: {0}")]
     ParseError(String),
 
@@ -75,7 +75,7 @@ pub enum GgsqlError {
     InternalError(String),
 }
 
-pub type Result<T> = std::result::Result<T, GgsqlError>;
+pub type Result<T> = std::result::Result<T, ggsqlError>;
 
 /// Version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

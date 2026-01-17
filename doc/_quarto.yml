@@ -7,12 +7,14 @@ website:
     left:
       - href: index.qmd
         text: Home
+      - installation.qmd
+      - syntax/index.qmd
       - examples.qmd
 
 format:
   html:
     theme:
-      - morph
+      - cosmo
       - brand
     css: styles.css
     toc: true

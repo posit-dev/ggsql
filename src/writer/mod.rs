@@ -1,4 +1,4 @@
-//! Output writer abstraction layer for ggSQL
+//! Output writer abstraction layer for ggsql
 //!
 //! The writer module provides a pluggable interface for generating visualization
 //! outputs from VizSpec + DataFrame combinations.
@@ -38,7 +38,7 @@ pub trait Writer {
     ///
     /// # Arguments
     ///
-    /// * `spec` - The parsed ggSQL specification
+    /// * `spec` - The parsed ggsql specification
     /// * `data` - A map of data source names to DataFrames. The writer decides
     ///   how to use these based on the spec's layer configurations.
     ///
@@ -48,7 +48,7 @@ pub trait Writer {
     ///
     /// # Errors
     ///
-    /// Returns `GgsqlError::WriterError` if:
+    /// Returns `ggsqlError::WriterError` if:
     /// - The spec is incompatible with this writer
     /// - The data doesn't match the spec's requirements
     /// - Output generation fails

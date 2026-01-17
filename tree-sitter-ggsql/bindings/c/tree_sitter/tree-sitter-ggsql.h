@@ -1,5 +1,5 @@
-#ifndef TREE_SITTER_GGSQL_H_
-#define TREE_SITTER_GGSQL_H_
+#ifndef TREE_SITTER_ggsql_H_
+#define TREE_SITTER_ggsql_H_
 
 typedef struct TSLanguage TSLanguage;
 
@@ -13,4 +13,4 @@ const TSLanguage *tree_sitter_ggsql(void);
 }
 #endif
 
-#endif // TREE_SITTER_GGSQL_H_
+#endif // TREE_SITTER_ggsql_H_

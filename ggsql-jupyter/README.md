@@ -1,14 +1,14 @@
-# ggSQL Jupyter Kernel
+# ggsql Jupyter Kernel
 
-A Jupyter kernel for executing ggSQL queries with rich inline Vega-Lite visualizations.
+A Jupyter kernel for executing ggsql queries with rich inline Vega-Lite visualizations.
 
 ## Overview
 
-The ggSQL Jupyter kernel enables you to run ggSQL queries directly in Jupyter notebooks, with automatic rendering of visualizations using Vega-Lite. It maintains a persistent DuckDB session across cells, allowing you to build up datasets and create visualizations interactively.
+The ggsql Jupyter kernel enables you to run ggsql queries directly in Jupyter notebooks, with automatic rendering of visualizations using Vega-Lite. It maintains a persistent DuckDB session across cells, allowing you to build up datasets and create visualizations interactively.
 
 ## Features
 
-- **Execute ggSQL queries** in Jupyter notebooks
+- **Execute ggsql queries** in Jupyter notebooks
 - **Rich visualizations** with Vega-Lite rendered inline
 - **Persistent DuckDB session** across cells
 - **Pure SQL support** with HTML table output
@@ -106,10 +106,10 @@ jupyter lab
 jupyter notebook
 ```
 
-### Create a ggSQL Notebook
+### Create a ggsql Notebook
 
-1. In Jupyter, click "New" and select "ggSQL" from the dropdown
-2. Start writing ggSQL queries!
+1. In Jupyter, click "New" and select "ggsql" from the dropdown
+2. Start writing ggsql queries!
 
 ### Example Queries
 

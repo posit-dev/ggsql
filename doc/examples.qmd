@@ -3,7 +3,7 @@ title: Examples
 keep-ipynb: true # TODO: Why does render on save fail without this?
 ---
 
-This document demonstrates various ggSQL features with runnable examples using CSV files.
+This document demonstrates various ggsql features with runnable examples using CSV files.
 
 ```{ggsql}
 #| echo: false

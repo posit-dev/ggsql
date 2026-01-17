@@ -1,7 +1,7 @@
 /**
  * Node.js bindings for tree-sitter-ggsql
  *
- * This module provides the tree-sitter language definition for ggSQL,
+ * This module provides the tree-sitter language definition for ggsql,
  * a SQL extension for declarative data visualization.
  */
 

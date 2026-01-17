@@ -6,10 +6,10 @@
 
 ## 0.1.0
 
-- Initial release of ggSQL syntax highlighting
-- Complete TextMate grammar for ggSQL language
+- Initial release of ggsql syntax highlighting
+- Complete TextMate grammar for ggsql language
 - Support for SQL keywords (SELECT, FROM, WHERE, JOIN, WITH, etc.)
-- Support for ggSQL visualization clauses:
+- Support for ggsql visualization clauses:
   - VISUALISE/VISUALIZE AS statements
   - WITH clause with geom types (point, line, bar, area, histogram, etc.)
   - SCALE clause with scale types (linear, log10, date, viridis, etc.)
@@ -25,7 +25,7 @@
 - File extension associations: `.ggsql`, `.ggsql.sql` and `.gsql`.
 - Language configuration for proper editor behavior
 - Comprehensive README with examples and usage instructions
-- Syntax highlighting for all ggSQL constructs
+- Syntax highlighting for all ggsql constructs
 - Compatible with all VSCode color themes
 - Auto-closing pairs for quotes and brackets
 - Comment toggling with keyboard shortcuts

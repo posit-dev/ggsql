@@ -5,15 +5,15 @@
 const Parser = require('tree-sitter');
 
 try {
-  const ggSQL = require('./index.js');
+  const ggsql = require('./index.js');
   console.log('✅ Successfully loaded tree-sitter-ggsql bindings');
-  console.log('Language name:', ggSQL.name);
+  console.log('Language name:', ggsql.name);
 
   // Create a parser
   const parser = new Parser();
-  parser.setLanguage(ggSQL.language);
+  parser.setLanguage(ggsql.language);
 
-  // Test parsing a simple ggSQL query with global mapping
+  // Test parsing a simple ggsql query with global mapping
   const sourceCode = `
   VISUALISE date AS x, revenue AS y
   DRAW point
@@ -25,7 +25,7 @@ try {
     console.log('❌ Parse error in test query');
     console.log(tree.rootNode.toString());
   } else {
-    console.log('✅ Successfully parsed test ggSQL query');
+    console.log('✅ Successfully parsed test ggsql query');
     console.log('Root node type:', tree.rootNode.type);
     console.log('Child count:', tree.rootNode.childCount);
   }
@@ -45,7 +45,7 @@ try {
   if (complexTree.rootNode.hasError()) {
     console.log('❌ Parse error in complex query');
   } else {
-    console.log('✅ Successfully parsed complex ggSQL query');
+    console.log('✅ Successfully parsed complex ggsql query');
     console.log('Complex query child count:', complexTree.rootNode.childCount);
   }
 

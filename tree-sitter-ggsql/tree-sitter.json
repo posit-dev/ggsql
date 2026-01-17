@@ -3,23 +3,23 @@
   "grammars": [
     {
       "name": "ggsql",
-      "camelcase": "ggSQL",
-      "title": "ggSQL",
+      "camelcase": "ggsql",
+      "title": "ggsql",
       "scope": "source.ggsql",
       "file-types": [
         "ggsql"
       ],
       "injection-regex": "^ggsql$",
-      "class-name": "TreeSitterggSQL"
+      "class-name": "TreeSitterggsql"
     }
   ],
   "metadata": {
     "version": "0.1.0",
     "license": "MIT",
-    "description": "ggSQL grammar for tree-sitter",
+    "description": "ggsql grammar for tree-sitter",
     "authors": [
       {
-        "name": "ggSQL Authors"
+        "name": "ggsql Authors"
       }
     ],
     "links": {

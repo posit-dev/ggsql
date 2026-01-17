@@ -1,8 +1,8 @@
-//! AST (Abstract Syntax Tree) types for ggSQL specification
+//! AST (Abstract Syntax Tree) types for ggsql specification
 //!
-//! This module defines the typed AST structures that represent parsed ggSQL queries.
+//! This module defines the typed AST structures that represent parsed ggsql queries.
 //! The AST is built from the tree-sitter CST (Concrete Syntax Tree) and provides
-//! a more convenient, typed interface for working with ggSQL specifications.
+//! a more convenient, typed interface for working with ggsql specifications.
 //!
 //! # AST Structure
 //!
@@ -24,7 +24,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::Result;
 
-/// Complete ggSQL visualization specification
+/// Complete ggsql visualization specification
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VizSpec {
     /// Global aesthetic mappings (from VISUALISE clause)

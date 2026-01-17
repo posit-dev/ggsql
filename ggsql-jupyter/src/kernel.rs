@@ -14,7 +14,7 @@ use zeromq::{PubSocket, RepSocket, RouterSocket, Socket, SocketRecv, SocketSend}
 
 type HmacSha256 = Hmac<Sha256>;
 
-/// The ggSQL Jupyter kernel server
+/// The ggsql Jupyter kernel server
 pub struct KernelServer {
     shell: RouterSocket,
     iopub: PubSocket,
@@ -254,12 +254,12 @@ impl KernelServer {
                 "pygments_lexer": "sql",
                 "codemirror_mode": "sql"
             },
-            "banner": format!("ggSQL Jupyter Kernel v{}\nSQL with declarative visualization", env!("CARGO_PKG_VERSION")),
+            "banner": format!("ggsql Jupyter Kernel v{}\nSQL with declarative visualization", env!("CARGO_PKG_VERSION")),
             "help_links": []
         })
     }
 
-    /// Execute a ggSQL query
+    /// Execute a ggsql query
     async fn execute(&mut self, parent: &JupyterMessage, identities: &[Vec<u8>]) -> Result<()> {
         let content = &parent.content;
         let code = content["code"].as_str().unwrap_or("");

@@ -1,4 +1,4 @@
--- ggSQL Example Queries
+-- ggsql Example Queries
 -- Demonstrates syntax highlighting for all major features
 
 -- ============================================================================
@@ -241,7 +241,7 @@ LABEL title => 'Metrics with Highlighted Points Above 50'
 */
 
 SELECT
-    'VISUALISE' as text,  -- String containing ggSQL keywords
+    'VISUALISE' as text,  -- String containing ggsql keywords
     "This is a string" as quoted,
     123 as number,
     45.67 as decimal,

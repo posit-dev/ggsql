@@ -1,10 +1,10 @@
-# ggSQL System Architecture & Implementation Summary
+# ggsql System Architecture & Implementation Summary
 
 ## Overview
 
-**ggSQL** is a SQL extension for declarative data visualization based on Grammar of Graphics principles. It allows users to combine SQL data queries with visualization specifications in a single, composable syntax.
+**ggsql** is a SQL extension for declarative data visualization based on Grammar of Graphics principles. It allows users to combine SQL data queries with visualization specifications in a single, composable syntax.
 
-**Core Innovation**: ggSQL extends standard SQL with a `VISUALISE` clause that separates data retrieval (SQL) from visual encoding (Grammar of Graphics), enabling terminal visualization operations that produce charts instead of relational data.
+**Core Innovation**: ggsql extends standard SQL with a `VISUALISE` clause that separates data retrieval (SQL) from visual encoding (Grammar of Graphics), enabling terminal visualization operations that produce charts instead of relational data.
 
 ```sql
 SELECT date, revenue, region FROM sales WHERE year = 2024
@@ -31,7 +31,7 @@ THEME minimal
 
 ## Global Mapping Feature
 
-ggSQL supports global aesthetic mappings at the VISUALISE level that apply to all layers:
+ggsql supports global aesthetic mappings at the VISUALISE level that apply to all layers:
 
 ### Explicit Global Mapping
 
@@ -94,7 +94,7 @@ DRAW line MAPPING month AS x, total AS y
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                       ggSQL Query                            │
+│                       ggsql Query                            │
 │  "SELECT ... FROM ... WHERE ... VISUALISE x, y DRAW ..."     │
 └────────────────────────┬────────────────────────────────────┘
                          │
@@ -396,14 +396,14 @@ impl fmt::Display for ParseError {
 
 - Precise error location reporting for user-friendly diagnostics
 - Context information helps identify where parsing failed
-- Converts to GgsqlError for unified error handling
+- Converts to ggsqlError for unified error handling
 
 #### Main Error Type (`lib.rs`)
 
 The library uses a unified error type for all operations:
 
 ```rust
-pub enum GgsqlError {
+pub enum ggsqlError {
     ParseError(String),        // Query parsing errors
     ValidationError(String),   // Semantic validation errors
     ReaderError(String),       // Data source errors
@@ -411,7 +411,7 @@ pub enum GgsqlError {
     InternalError(String),     // Unexpected internal errors
 }
 
-pub type Result<T> = std::result::Result<T, GgsqlError>;
+pub type Result<T> = std::result::Result<T, ggsqlError>;
 ```
 
 **Error Types**:
@@ -556,14 +556,14 @@ impl Writer for VegaLiteWriter {
 
 ### 4. REST API (`src/rest.rs`)
 
-**Responsibility**: HTTP interface for executing ggSQL queries.
+**Responsibility**: HTTP interface for executing ggsql queries.
 
 **Technology**: Axum web framework with CORS support
 
 **Endpoints**:
 
 ```rust
-// POST /api/v1/query - Execute ggSQL query
+// POST /api/v1/query - Execute ggsql query
 // Request:
 {
   "query": "SELECT ... VISUALISE ...",
@@ -663,11 +663,11 @@ ggsql validate query.sql
 
 ### 6. Jupyter Kernel (`ggsql-jupyter/`)
 
-**Responsibility**: Jupyter kernel for executing ggSQL queries with rich inline visualizations.
+**Responsibility**: Jupyter kernel for executing ggsql queries with rich inline visualizations.
 
 **Features**:
 
-- Execute ggSQL queries directly in Jupyter notebooks
+- Execute ggsql queries directly in Jupyter notebooks
 - Rich Vega-Lite visualizations rendered inline
 - Persistent DuckDB session across cells
 - Pure SQL support with HTML table output
@@ -677,9 +677,9 @@ ggsql validate query.sql
 
 The Jupyter kernel implements the Jupyter messaging protocol to:
 
-1. Receive ggSQL query code from notebook cells
+1. Receive ggsql query code from notebook cells
 2. Maintain a persistent in-memory DuckDB session
-3. Execute queries using the ggSQL engine
+3. Execute queries using the ggsql engine
 4. Return Vega-Lite JSON for visualization cells
 5. Return HTML tables for pure SQL queries
 
@@ -724,13 +724,13 @@ LABEL title => 'Sales Trends'
 
 ### 7. VS Code Extension (`ggsql-vscode/`)
 
-**Responsibility**: Syntax highlighting for ggSQL in Visual Studio Code.
+**Responsibility**: Syntax highlighting for ggsql in Visual Studio Code.
 
 **Features**:
 
-- Complete syntax highlighting for ggSQL queries
+- Complete syntax highlighting for ggsql queries
 - SQL keyword support (SELECT, FROM, WHERE, JOIN, WITH, etc.)
-- ggSQL clause highlighting (VISUALISE, SCALE, COORD, FACET, LABEL, etc.)
+- ggsql clause highlighting (VISUALISE, SCALE, COORD, FACET, LABEL, etc.)
 - Aesthetic highlighting (x, y, color, size, shape, etc.)
 - String and number literals
 - Comment support (`--` and `/* */`)
@@ -769,7 +769,7 @@ code --install-extension ggsql-0.1.0.vsix
 
 ## Feature Flags and Build Configuration
 
-ggSQL uses Cargo feature flags to enable optional functionality and reduce binary size.
+ggsql uses Cargo feature flags to enable optional functionality and reduce binary size.
 
 ### Available Features
 
@@ -833,7 +833,7 @@ cargo build --all-features
 
 ## Grammar Deep Dive
 
-### ggSQL Grammar Structure
+### ggsql Grammar Structure
 
 ```sql
 [SELECT ...] VISUALISE [<global_mapping>] [FROM <source>] [clauses]...

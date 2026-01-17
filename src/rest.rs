@@ -1,7 +1,7 @@
 /*!
-ggSQL REST API Server
+ggsql REST API Server
 
-Provides HTTP endpoints for executing ggSQL queries and returning visualization outputs.
+Provides HTTP endpoints for executing ggsql queries and returning visualization outputs.
 
 ## Usage
 
@@ -11,8 +11,8 @@ ggsql-rest --host 127.0.0.1 --port 3000
 
 ## Endpoints
 
-- `POST /api/v1/query` - Execute a ggSQL query
-- `POST /api/v1/parse` - Parse a ggSQL query (debugging)
+- `POST /api/v1/query` - Execute a ggsql query
+- `POST /api/v1/parse` - Parse a ggsql query (debugging)
 - `GET /api/v1/health` - Health check
 - `GET /api/v1/version` - Version information
 */
@@ -31,7 +31,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use ggsql::{parser, GgsqlError, VERSION};
+use ggsql::{ggsqlError, parser, VERSION};
 
 #[cfg(feature = "duckdb")]
 use ggsql::execute::prepare_data_with_executor;
@@ -44,7 +44,7 @@ use ggsql::writer::{VegaLiteWriter, Writer};
 /// CLI arguments for the REST API server
 #[derive(Parser)]
 #[command(name = "ggsql-rest")]
-#[command(about = "ggSQL REST API Server")]
+#[command(about = "ggsql REST API Server")]
 #[command(version = VERSION)]
 struct Cli {
     /// Host address to bind to
@@ -86,7 +86,7 @@ struct AppState {
 /// Request body for /api/v1/query endpoint
 #[derive(Debug, Deserialize)]
 struct QueryRequest {
-    /// ggSQL query to execute
+    /// ggsql query to execute
     query: String,
     /// Data source connection string (optional, default: duckdb://memory)
     #[serde(default = "default_reader")]
@@ -107,7 +107,7 @@ fn default_writer() -> String {
 /// Request body for /api/v1/parse endpoint
 #[derive(Debug, Deserialize)]
 struct ParseRequest {
-    /// ggSQL query to parse
+    /// ggsql query to parse
     query: String,
 }
 
@@ -188,14 +188,14 @@ impl IntoResponse for ApiErrorResponse {
     }
 }
 
-impl From<GgsqlError> for ApiErrorResponse {
-    fn from(err: GgsqlError) -> Self {
+impl From<ggsqlError> for ApiErrorResponse {
+    fn from(err: ggsqlError) -> Self {
         let (status, error_type) = match &err {
-            GgsqlError::ParseError(_) => (StatusCode::BAD_REQUEST, "ParseError"),
-            GgsqlError::ValidationError(_) => (StatusCode::BAD_REQUEST, "ValidationError"),
-            GgsqlError::ReaderError(_) => (StatusCode::BAD_REQUEST, "ReaderError"),
-            GgsqlError::WriterError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "WriterError"),
-            GgsqlError::InternalError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "InternalError"),
+            ggsqlError::ParseError(_) => (StatusCode::BAD_REQUEST, "ParseError"),
+            ggsqlError::ValidationError(_) => (StatusCode::BAD_REQUEST, "ValidationError"),
+            ggsqlError::ReaderError(_) => (StatusCode::BAD_REQUEST, "ReaderError"),
+            ggsqlError::WriterError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "WriterError"),
+            ggsqlError::InternalError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "InternalError"),
         };
 
         ApiErrorResponse {
@@ -231,7 +231,7 @@ impl From<String> for ApiErrorResponse {
 // ============================================================================
 
 #[cfg(feature = "duckdb")]
-fn load_data_files(reader: &DuckDBReader, files: &[String]) -> Result<(), GgsqlError> {
+fn load_data_files(reader: &DuckDBReader, files: &[String]) -> Result<(), ggsqlError> {
     use duckdb::params;
     use std::path::Path;
 
@@ -241,7 +241,7 @@ fn load_data_files(reader: &DuckDBReader, files: &[String]) -> Result<(), GgsqlE
         let path = Path::new(file_path);
 
         if !path.exists() {
-            return Err(GgsqlError::ReaderError(format!(
+            return Err(ggsqlError::ReaderError(format!(
                 "File not found: {}",
                 file_path
             )));
@@ -271,7 +271,7 @@ fn load_data_files(reader: &DuckDBReader, files: &[String]) -> Result<(), GgsqlE
                     table_name, file_path
                 );
                 conn.execute(&sql, params![]).map_err(|e| {
-                    GgsqlError::ReaderError(format!("Failed to load CSV {}: {}", file_path, e))
+                    ggsqlError::ReaderError(format!("Failed to load CSV {}: {}", file_path, e))
                 })?;
             }
             "parquet" => {
@@ -281,7 +281,7 @@ fn load_data_files(reader: &DuckDBReader, files: &[String]) -> Result<(), GgsqlE
                     table_name, file_path
                 );
                 conn.execute(&sql, params![]).map_err(|e| {
-                    GgsqlError::ReaderError(format!("Failed to load Parquet {}: {}", file_path, e))
+                    ggsqlError::ReaderError(format!("Failed to load Parquet {}: {}", file_path, e))
                 })?;
             }
             "json" | "jsonl" | "ndjson" => {
@@ -291,11 +291,11 @@ fn load_data_files(reader: &DuckDBReader, files: &[String]) -> Result<(), GgsqlE
                     table_name, file_path
                 );
                 conn.execute(&sql, params![]).map_err(|e| {
-                    GgsqlError::ReaderError(format!("Failed to load JSON {}: {}", file_path, e))
+                    ggsqlError::ReaderError(format!("Failed to load JSON {}: {}", file_path, e))
                 })?;
             }
             _ => {
-                return Err(GgsqlError::ReaderError(format!(
+                return Err(ggsqlError::ReaderError(format!(
                     "Unsupported file format: {} (supported: csv, parquet, json, jsonl, ndjson)",
                     extension
                 )));
@@ -312,7 +312,7 @@ fn load_data_files(reader: &DuckDBReader, files: &[String]) -> Result<(), GgsqlE
 }
 
 #[cfg(feature = "duckdb")]
-fn load_sample_data(reader: &DuckDBReader) -> Result<(), GgsqlError> {
+fn load_sample_data(reader: &DuckDBReader) -> Result<(), ggsqlError> {
     use duckdb::params;
 
     let conn = reader.connection();
@@ -327,7 +327,7 @@ fn load_sample_data(reader: &DuckDBReader) -> Result<(), GgsqlError> {
         )",
         params![],
     )
-    .map_err(|e| GgsqlError::ReaderError(format!("Failed to create products table: {}", e)))?;
+    .map_err(|e| ggsqlError::ReaderError(format!("Failed to create products table: {}", e)))?;
 
     conn.execute(
         "INSERT INTO products VALUES
@@ -340,7 +340,7 @@ fn load_sample_data(reader: &DuckDBReader) -> Result<(), GgsqlError> {
             (7, 'Lamp', 'Furniture', 45.00)",
         params![],
     )
-    .map_err(|e| GgsqlError::ReaderError(format!("Failed to insert products: {}", e)))?;
+    .map_err(|e| ggsqlError::ReaderError(format!("Failed to insert products: {}", e)))?;
 
     // Create sample sales table with more temporal data
     conn.execute(
@@ -353,7 +353,7 @@ fn load_sample_data(reader: &DuckDBReader) -> Result<(), GgsqlError> {
         )",
         params![],
     )
-    .map_err(|e| GgsqlError::ReaderError(format!("Failed to create sales table: {}", e)))?;
+    .map_err(|e| ggsqlError::ReaderError(format!("Failed to create sales table: {}", e)))?;
 
     conn.execute(
         "INSERT INTO sales VALUES
@@ -398,7 +398,7 @@ fn load_sample_data(reader: &DuckDBReader) -> Result<(), GgsqlError> {
             (36, 5, 6, '2024-03-22', 'APAC')",
         params![],
     )
-    .map_err(|e| GgsqlError::ReaderError(format!("Failed to insert sales: {}", e)))?;
+    .map_err(|e| ggsqlError::ReaderError(format!("Failed to insert sales: {}", e)))?;
 
     // Create sample employees table
     conn.execute(
@@ -411,7 +411,7 @@ fn load_sample_data(reader: &DuckDBReader) -> Result<(), GgsqlError> {
         )",
         params![],
     )
-    .map_err(|e| GgsqlError::ReaderError(format!("Failed to create employees table: {}", e)))?;
+    .map_err(|e| ggsqlError::ReaderError(format!("Failed to create employees table: {}", e)))?;
 
     conn.execute(
         "INSERT INTO employees VALUES
@@ -423,7 +423,7 @@ fn load_sample_data(reader: &DuckDBReader) -> Result<(), GgsqlError> {
             (6, 'Frank Miller', 'Engineering', 105000, '2021-09-01')",
         params![],
     )
-    .map_err(|e| GgsqlError::ReaderError(format!("Failed to insert employees: {}", e)))?;
+    .map_err(|e| ggsqlError::ReaderError(format!("Failed to insert employees: {}", e)))?;
 
     Ok(())
 }
@@ -432,7 +432,7 @@ fn load_sample_data(reader: &DuckDBReader) -> Result<(), GgsqlError> {
 // Handler Functions
 // ============================================================================
 
-/// POST /api/v1/query - Execute a ggSQL query
+/// POST /api/v1/query - Execute a ggsql query
 async fn query_handler(
     State(state): State<AppState>,
     Json(request): Json<QueryRequest>,
@@ -443,11 +443,11 @@ async fn query_handler(
     #[cfg(feature = "duckdb")]
     if request.reader.starts_with("duckdb://") {
         // Create query executor that handles shared state vs new reader
-        let execute_query = |sql: &str| -> Result<ggsql::DataFrame, GgsqlError> {
+        let execute_query = |sql: &str| -> Result<ggsql::DataFrame, ggsqlError> {
             if request.reader == "duckdb://memory" && state.reader.is_some() {
                 let reader_mutex = state.reader.as_ref().unwrap();
                 let reader = reader_mutex.lock().map_err(|e| {
-                    GgsqlError::InternalError(format!("Failed to lock reader: {}", e))
+                    ggsqlError::InternalError(format!("Failed to lock reader: {}", e))
                 })?;
                 reader.execute(sql)
             } else {
@@ -488,7 +488,7 @@ async fn query_handler(
             let writer = VegaLiteWriter::new();
             let json_output = writer.write(first_spec, &prepared.data)?;
             let spec_value: serde_json::Value = serde_json::from_str(&json_output)
-                .map_err(|e| GgsqlError::WriterError(format!("Failed to parse JSON: {}", e)))?;
+                .map_err(|e| ggsqlError::WriterError(format!("Failed to parse JSON: {}", e)))?;
 
             let result = QueryResult {
                 spec: spec_value,
@@ -524,7 +524,7 @@ async fn query_handler(
     )))
 }
 
-/// POST /api/v1/parse - Parse a ggSQL query
+/// POST /api/v1/parse - Parse a ggsql query
 async fn parse_handler(
     Json(request): Json<ParseRequest>,
 ) -> Result<Json<ApiSuccess<ParseResult>>, ApiErrorResponse> {
@@ -533,7 +533,7 @@ async fn parse_handler(
     // Split query
     let (sql_part, viz_part) = parser::split_query(&request.query)?;
 
-    // Parse ggSQL portion
+    // Parse ggsql portion
     let specs = parser::parse_query(&request.query)?;
 
     // Convert specs to JSON
@@ -586,7 +586,7 @@ async fn version_handler() -> Json<VersionResponse> {
 
 /// Root handler
 async fn root_handler() -> &'static str {
-    "ggSQL REST API Server - See /api/v1/health for status"
+    "ggsql REST API Server - See /api/v1/health for status"
 }
 
 // ============================================================================
@@ -674,10 +674,10 @@ async fn main() -> anyhow::Result<()> {
         .parse()
         .expect("Invalid host or port");
 
-    info!("Starting ggSQL REST API server on {}", addr);
+    info!("Starting ggsql REST API server on {}", addr);
     info!("API documentation:");
-    info!("  POST /api/v1/query  - Execute ggSQL query");
-    info!("  POST /api/v1/parse  - Parse ggSQL query");
+    info!("  POST /api/v1/query  - Execute ggsql query");
+    info!("  POST /api/v1/parse  - Parse ggsql query");
     info!("  GET  /api/v1/health - Health check");
     info!("  GET  /api/v1/version - Version info");
 

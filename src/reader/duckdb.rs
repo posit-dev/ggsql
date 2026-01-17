@@ -3,7 +3,7 @@
 //! Provides a reader for DuckDB databases with direct Polars DataFrame integration.
 
 use crate::reader::{connection::ConnectionInfo, Reader};
-use crate::{DataFrame, GgsqlError, Result};
+use crate::{ggsqlError, DataFrame, Result};
 use duckdb::{params, Connection};
 
 /// DuckDB database reader
@@ -50,13 +50,13 @@ impl DuckDBReader {
 
         let conn = match conn_info {
             ConnectionInfo::DuckDBMemory => Connection::open_in_memory().map_err(|e| {
-                GgsqlError::ReaderError(format!("Failed to open in-memory DuckDB: {}", e))
+                ggsqlError::ReaderError(format!("Failed to open in-memory DuckDB: {}", e))
             })?,
             ConnectionInfo::DuckDBFile(path) => Connection::open(&path).map_err(|e| {
-                GgsqlError::ReaderError(format!("Failed to open DuckDB file '{}': {}", path, e))
+                ggsqlError::ReaderError(format!("Failed to open DuckDB file '{}': {}", path, e))
             })?,
             _ => {
-                return Err(GgsqlError::ReaderError(format!(
+                return Err(ggsqlError::ReaderError(format!(
                     "Connection string '{}' is not supported by DuckDBReader",
                     uri
                 )))
@@ -233,19 +233,19 @@ impl ColumnBuilder {
                 let series = Series::new(column_name.into(), values);
                 series
                     .cast(&DataType::Date)
-                    .map_err(|e| GgsqlError::ReaderError(format!("Date cast failed: {}", e)))?
+                    .map_err(|e| ggsqlError::ReaderError(format!("Date cast failed: {}", e)))?
             }
             Timestamp(values) => {
                 let series = Series::new(column_name.into(), values);
                 series
                     .cast(&DataType::Datetime(TimeUnit::Microseconds, None))
-                    .map_err(|e| GgsqlError::ReaderError(format!("Timestamp cast failed: {}", e)))?
+                    .map_err(|e| ggsqlError::ReaderError(format!("Timestamp cast failed: {}", e)))?
             }
             Time64(values) => {
                 let series = Series::new(column_name.into(), values);
                 series
                     .cast(&DataType::Time)
-                    .map_err(|e| GgsqlError::ReaderError(format!("Time cast failed: {}", e)))?
+                    .map_err(|e| ggsqlError::ReaderError(format!("Time cast failed: {}", e)))?
             }
             Decimal(values) => Series::new(column_name.into(), values),
             HugeInt(values) => {
@@ -310,11 +310,11 @@ impl Reader for DuckDBReader {
             // For DDL, just execute and return an empty DataFrame
             self.conn
                 .execute(sql, params![])
-                .map_err(|e| GgsqlError::ReaderError(format!("Failed to execute DDL: {}", e)))?;
+                .map_err(|e| ggsqlError::ReaderError(format!("Failed to execute DDL: {}", e)))?;
 
             // Return empty DataFrame for DDL statements
             return DataFrame::new(Vec::<polars::prelude::Series>::new()).map_err(|e| {
-                GgsqlError::ReaderError(format!("Failed to create empty DataFrame: {}", e))
+                ggsqlError::ReaderError(format!("Failed to create empty DataFrame: {}", e))
             });
         }
 
@@ -322,16 +322,16 @@ impl Reader for DuckDBReader {
         let mut stmt = self
             .conn
             .prepare(sql)
-            .map_err(|e| GgsqlError::ReaderError(format!("Failed to prepare SQL: {}", e)))?;
+            .map_err(|e| ggsqlError::ReaderError(format!("Failed to prepare SQL: {}", e)))?;
 
         // Execute to populate schema info
         stmt.execute(params![])
-            .map_err(|e| GgsqlError::ReaderError(format!("Failed to execute SQL: {}", e)))?;
+            .map_err(|e| ggsqlError::ReaderError(format!("Failed to execute SQL: {}", e)))?;
 
         // Get column metadata BEFORE creating iterator
         let column_count = stmt.column_count();
         if column_count == 0 {
-            return Err(GgsqlError::ReaderError(
+            return Err(ggsqlError::ReaderError(
                 "Query returned no columns".to_string(),
             ));
         }
@@ -342,7 +342,7 @@ impl Reader for DuckDBReader {
             column_names.push(
                 stmt.column_name(i)
                     .map_err(|e| {
-                        GgsqlError::ReaderError(format!("Failed to get column name: {}", e))
+                        ggsqlError::ReaderError(format!("Failed to get column name: {}", e))
                     })?
                     .to_string(),
             );
@@ -379,9 +379,9 @@ impl Reader for DuckDBReader {
                 *row_count_cell.borrow_mut() += 1;
                 Ok(())
             })
-            .map_err(|e| GgsqlError::ReaderError(format!("Failed to iterate rows: {}", e)))?
+            .map_err(|e| ggsqlError::ReaderError(format!("Failed to iterate rows: {}", e)))?
             .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| GgsqlError::ReaderError(format!("Failed to process rows: {}", e)))?;
+            .map_err(|e| ggsqlError::ReaderError(format!("Failed to process rows: {}", e)))?;
 
         // Check if there was an error during processing
         if let Some(err) = error_cell.into_inner() {
@@ -390,7 +390,7 @@ impl Reader for DuckDBReader {
 
         let row_count = *row_count_cell.borrow();
         if row_count == 0 {
-            return Err(GgsqlError::ReaderError(
+            return Err(ggsqlError::ReaderError(
                 "Query returned no rows".to_string(),
             ));
         }
@@ -405,7 +405,7 @@ impl Reader for DuckDBReader {
 
         // Create DataFrame from typed columns
         let df = DataFrame::new(columns)
-            .map_err(|e| GgsqlError::ReaderError(format!("Failed to create DataFrame: {}", e)))?;
+            .map_err(|e| ggsqlError::ReaderError(format!("Failed to create DataFrame: {}", e)))?;
 
         Ok(df)
     }
@@ -424,7 +424,7 @@ impl Reader for DuckDBReader {
         // Check if all required columns exist
         for col in columns {
             if !schema_columns.contains(col) {
-                return Err(GgsqlError::ValidationError(format!(
+                return Err(ggsqlError::ValidationError(format!(
                     "Column '{}' not found in query result. Available columns: {}",
                     col,
                     schema_columns.join(", ")

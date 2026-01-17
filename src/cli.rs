@@ -1,7 +1,7 @@
 /*!
-ggSQL Command Line Interface
+ggsql Command Line Interface
 
-Provides commands for executing ggSQL queries with various data sources and output formats.
+Provides commands for executing ggsql queries with various data sources and output formats.
 */
 
 use clap::{Parser, Subcommand};
@@ -28,9 +28,9 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Execute a ggSQL query
+    /// Execute a ggsql query
     Exec {
-        /// The ggSQL query to execute
+        /// The ggsql query to execute
         query: String,
 
         /// Data source connection string
@@ -50,9 +50,9 @@ pub enum Commands {
         verbose: bool,
     },
 
-    /// Execute a ggSQL query from a file
+    /// Execute a ggsql query from a file
     Run {
-        /// Path to .sql file containing ggSQL query
+        /// Path to .sql file containing ggsql query
         file: PathBuf,
 
         /// Data source connection string
@@ -74,7 +74,7 @@ pub enum Commands {
 
     /// Parse a query and show the AST (for debugging)
     Parse {
-        /// The ggSQL query to parse
+        /// The ggsql query to parse
         query: String,
 
         /// Output format for AST (json, debug, pretty)
@@ -84,7 +84,7 @@ pub enum Commands {
 
     /// Validate a query without executing
     Validate {
-        /// The ggSQL query to validate
+        /// The ggsql query to validate
         query: String,
 
         /// Data source connection string (needed for column validation)
@@ -270,7 +270,7 @@ fn cmd_parse(query: String, format: String) {
         },
         "debug" => println!("{:#?}", specs),
         "pretty" => {
-            println!("ggSQL Specifications: {} total", specs.len());
+            println!("ggsql Specifications: {} total", specs.len());
             for (i, spec) in specs.iter().enumerate() {
                 println!("\nVisualization #{}:", i + 1);
                 println!("  Global Mapping: {:?}", spec.global_mapping);

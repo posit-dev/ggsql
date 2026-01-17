@@ -1,0 +1,35 @@
+meta:
+  name: ggsql
+  link: https://github.com/georgestagg/ggsql
+
+logo:
+  small: assets/icon.png
+  medium: assets/logo.png
+
+color:
+  palette:
+    black: "#001219"
+    white: "#F9F9F9"
+    darkteal: "#005F73"
+    teal: "#0A9396"
+    lightteal: "#94D2BD"
+    paleyellow: "#E9D8A6"
+  foreground: black
+  background: white
+  primary: darkteal
+  secondary: teal
+  tertiary: lightteal
+  info: paleyellow
+
+typography:
+  fonts:
+    - family: Nunito Sans
+      source: google
+    - family: Fira Code
+      source: google
+
+  base: Nunito Sans
+  headings:
+    family: Nunito Sans
+    weight: 400
+  monospace: Fira Code
