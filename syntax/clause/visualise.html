@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Point layer – ggsql</title>
+<title>Initialise a visualisation with VISUALISE – ggsql</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -166,14 +166,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#aesthetics" id="toc-aesthetics" class="nav-link active" data-scroll-target="#aesthetics">Aesthetics</a>
-  <ul class="collapse">
-  <li><a href="#required" id="toc-required" class="nav-link" data-scroll-target="#required">Required</a></li>
-  <li><a href="#optional" id="toc-optional" class="nav-link" data-scroll-target="#optional">Optional</a></li>
-  </ul></li>
-  <li><a href="#settings" id="toc-settings" class="nav-link" data-scroll-target="#settings">Settings</a></li>
-  <li><a href="#data-transformation" id="toc-data-transformation" class="nav-link" data-scroll-target="#data-transformation">Data transformation</a></li>
-  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
+  <li><a href="#clause-syntax" id="toc-clause-syntax" class="nav-link active" data-scroll-target="#clause-syntax">Clause syntax</a></li>
   </ul>
 </nav>
     </div>
@@ -182,7 +175,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">Point layer</h1>
+<h1 class="title">Initialise a visualisation with <code>VISUALISE</code></h1>
 </div>
 
 
@@ -199,57 +192,36 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </header>
 
 
+<p>The <code>VISUALISE</code> (or <code>VISUALIZE</code>) clause marks the beginning of a ggsql visualisation declaration. As such it demarcates where the regular query ends and the visualisation query starts. Everything that comes before the <code>VISUALISE</code> clause is considered a standard SQL query that is sent to the backend. Any CTEs defined therein will be available to the ggsql query, and if it ends with a <code>SELECT</code> query this will automatically be added as the global data for the plot.</p>
+<section id="clause-syntax" class="level2">
+<h2 class="anchored" data-anchor-id="clause-syntax">Clause syntax</h2>
+<p>The <code>VISUALISE</code> clause is quite simple and doesn’t take any additional required parameters. You can, however, use it to define global mappings and a global data source (if the earlier query didn’t end in a <code>SELECT</code>).</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>VISUALISE <span class="op">&lt;</span>mapping<span class="op">&gt;</span>, <span class="op">..</span>. <span class="kw">FROM</span> <span class="op">&lt;</span><span class="kw">data</span><span class="op">-</span><span class="kw">source</span><span class="op">&gt;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Following <code>VISUALISE</code> you can provide a series of global mappings. These will be inherited by the layers created with the <code>DRAW</code> clause but can be overwritten by them. Mappings define how data from the dataset are related to visual aesthetics or statistical properties. Multiple mappings can be provided by separating them with a comma. Mapped aesthetics are always scaled by their respective scale. This means that if you map the value ‘red’ to fill, then fill will not take the color red, but whatever the scale decides should represent the string ‘red’.</p>
+<p><code>VISUALISE</code> may have a <code>FROM</code> clause that defines the source of the global data. If present it overwrites the terminal <code>SELECT</code> clause in the previous query as the global data. Global data is used by layers that do not specify their own data source with <code>MAPPING ... FROM &lt;data-source&gt;</code>.</p>
+<p>The <code>mapping</code> can take one of three forms and all three can be mixed:</p>
+<ul>
+<li><code>&lt;data&gt; AS &lt;aesthetic/property&gt;</code> (explicit mapping)</li>
+<li><code>&lt;data&gt;</code> (implicit mapping)</li>
+<li><code>*</code> (wildcard mapping)</li>
+</ul>
+<p><code>data</code> can be either:</p>
+<ul>
+<li><em>Column name</em>: If you provide the name of a column in the data then the values in that column are mapped to the aesthetic or property. If the name of the column is the same as the aesthetic or property you can provide it without the following <code>AS &lt;aesthetic/property&gt;</code> (implicit mapping).</li>
+<li><em>Constant</em>: If you provide a constant like a string, number, or boolean then this value is repeated for every record in the data and mapped to the given aesthetic or property. When mapping a constant you must use the explicit form since the aesthetic/property cannot be derived.</li>
+</ul>
+<p>If an asterisk is given (wildcard mapping) it indicate that every column in the layer data with a name matching a supported aesthetic or property are implicitly mapped to said aesthetic or property. If the aesthetic or property has been mapped elsewhere then that gains precedence (i.e.&nbsp;if writing <code>VISUALISE *, revenue AS y</code> then y will take on the data in the revenue column even if a y column exist in the data)</p>
+<p>An <code>aesthetic</code> is a visual characteristic of what you are rendering. Different aesthetics are available depending on the layer type since e.g.&nbsp;linetype is not relevant for points and shape are not relevant for lines.</p>
+<p>A <code>property</code> is a value used by the statistical transformation done by the layer, e.g.&nbsp;the weight property in the histogram layer that allows weighted histogram calculation.</p>
 <blockquote class="blockquote">
-<p>Layers are declared with the <code>DRAW</code> clause. Read the documentation for this clause for a thorough description of how to use it.</p>
+<p>Mapped aesthetics are always scaled by their respective scale, whereas properties are not (there are no scales for properties).</p>
 </blockquote>
-<p>The point geom is used to create scatterplots. The scatterplot is most useful for displaying the relationship between two continuous variables. A bubblechart is a scatterplot with a third variable mapped to the size of points.</p>
-<section id="aesthetics" class="level2">
-<h2 class="anchored" data-anchor-id="aesthetics">Aesthetics</h2>
-<p>The following aesthetics are recognised by the point layer.</p>
-<section id="required" class="level3">
-<h3 class="anchored" data-anchor-id="required">Required</h3>
+<p>Layers only inherit the aesthetics and properties they support from the global mapping. The documentation for each layer type provides an overview of the aesthetics and properties available for them.</p>
+<p>When specifying a global data source with <code>FROM &lt;data-source&gt;</code> the <code>data-source</code> can take one of two different forms:</p>
 <ul>
-<li><code>x</code>: Position along the x-axis</li>
-<li><code>y</code>: Position along the y-axis</li>
+<li><em>Table/CTE</em>: If providing an unquoted identifier it is assumed that the data is available in the backend, either as a CTE defined in the pre-query, or as a proper table in the database.</li>
+<li><em>Filepath</em>: If a string is provided (single quoted), it is assumed to point to a file that can be read directly by the backend.</li>
 </ul>
-</section>
-<section id="optional" class="level3">
-<h3 class="anchored" data-anchor-id="optional">Optional</h3>
-<ul>
-<li><code>size</code>: The size of each point</li>
-<li><code>colour</code>: The default colour of the each point</li>
-<li><code>stroke</code>: The colour of the stroke around each point (if any). Overrides <code>colour</code></li>
-<li><code>fill</code>: The fill colour of each point (if any). Overrides <code>colour</code></li>
-<li><code>opacity</code>: The opacity of the point</li>
-<li><code>shape</code>: The shape used to draw the point</li>
-</ul>
-</section>
-</section>
-<section id="settings" class="level2">
-<h2 class="anchored" data-anchor-id="settings">Settings</h2>
-<p>The point layer has no additional settings</p>
-</section>
-<section id="data-transformation" class="level2">
-<h2 class="anchored" data-anchor-id="data-transformation">Data transformation</h2>
-<p>The point layer does not transform its data but passes it through unchanged</p>
-</section>
-<section id="examples" class="level2">
-<h2 class="anchored" data-anchor-id="examples">Examples</h2>
-<p>Create a classic scatterplot</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>VISUALISE <span class="kw">FROM</span> penguins</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>DRAW point</span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    MAPPING bill_len <span class="kw">AS</span> x, bill_dep <span class="kw">AS</span> y, species <span class="kw">AS</span> fill</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    SETTING <span class="kw">size</span> <span class="op">=&gt;</span> <span class="dv">30</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Map to size to create a bubble chart</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>VISUALISE <span class="kw">FROM</span> penguins</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>DRAW point</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    MAPPING bill_len <span class="kw">AS</span> x, bill_dep <span class="kw">AS</span> y, body_mass <span class="kw">AS</span> <span class="kw">size</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Use filter to only plot a subset of the data</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>VISUALISE <span class="kw">FROM</span> penguins</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>DRAW point</span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    MAPPING bill_len <span class="kw">AS</span> x, bill_dep <span class="kw">AS</span> y, species <span class="kw">AS</span> fill</span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    SETTING <span class="kw">size</span> <span class="op">=&gt;</span> <span class="dv">30</span></span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">FILTER</span> sex <span class="op">=</span> <span class="st">'female'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 
 
 </section>

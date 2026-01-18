@@ -7,53 +7,53 @@
     "text": "ggsql is very much still a work in progress and the installation process reflects this. Eventually we will have proper installers but for now please follow this process if you wish to play around with it:\n\nClone the repository:\ngit clone https://github.com/georgestagg/ggsql\ncd ggsql\nInstall tree-sitter CLI:\nnpm install -g tree-sitter-cli\nBuild the project:\ncd tree-sitter-ggsql && tree-sitter generate && cd ..\ncargo build\nInstall the Jupyter kernel:\ncargo run --package ggsql-jupyter -- --install"
   },
   {
-    "objectID": "syntax/clause/draw.html",
-    "href": "syntax/clause/draw.html",
-    "title": "Create layers with DRAW",
+    "objectID": "syntax/clause/visualise.html",
+    "href": "syntax/clause/visualise.html",
+    "title": "Initialise a visualisation with VISUALISE",
     "section": "",
-    "text": "DRAW is perhaps the most important clause in ggsql as it defines a layer in your visualisation. A layer is a single instance of a visual representation of a dataset. A visualisation can contain multiple layers, either showing the same dataset in different ways or showing different data in each. Layers are drawn in the order they are defined, so that layers defined first will be behind layers defined last."
+    "text": "The VISUALISE (or VISUALIZE) clause marks the beginning of a ggsql visualisation declaration. As such it demarcates where the regular query ends and the visualisation query starts. Everything that comes before the VISUALISE clause is considered a standard SQL query that is sent to the backend. Any CTEs defined therein will be available to the ggsql query, and if it ends with a SELECT query this will automatically be added as the global data for the plot."
   },
   {
-    "objectID": "syntax/clause/draw.html#clause-syntax",
-    "href": "syntax/clause/draw.html#clause-syntax",
-    "title": "Create layers with DRAW",
+    "objectID": "syntax/clause/visualise.html#clause-syntax",
+    "href": "syntax/clause/visualise.html#clause-syntax",
+    "title": "Initialise a visualisation with VISUALISE",
     "section": "Clause syntax",
-    "text": "Clause syntax\nThe DRAW clause takes a number of subclauses, all of them optional if the VISUALISE clause provides a global mapping and data source.\nDRAW &lt;layer-type&gt;\n    MAPPING &lt;mapping&gt;, ... FROM &lt;data-source&gt;\n    REMAPPING &lt;mapping&gt;, ...\n    SETTING &lt;parameter/aesthetic&gt; =&gt; &lt;value&gt;, ...\n    FILTER &lt;condition&gt;\n    PARTITION BY &lt;column&gt;, ...\n    ORDER BY &lt;column&gt;, ...\nThe only required part is the layer type immediately following the DRAW clause, which specifies the type of layer to draw, e.g. point or histogram. It defines how the remaining settings are interpreted. The main syntax page has a list of all available layer types\n\nMAPPING\nMAPPING &lt;mapping&gt;, ... FROM &lt;data-source&gt;\nThe MAPPINGS clause define how data from the dataset are related to visual aesthetics or statistical properties. Multiple mappings can be provided by separating them with a comma. Mapped aesthetics are always scaled by their respective scale. This means that if you map the value ‘red’ to fill, then fill will not take the color red, but whatever the scale decides should represent the string ‘red’. Layer mappings are merged with the global mapping from the VISUALISE clause with the one in the layer taking precedence. This means that it is not necessary to provide any mappings in the DRAW clause if sufficient global mappings are provided.\nMAPPING may have a FROM clause that defines the source of the data. If this is missing the global data source from VISUALISE is used.\nThe mapping can take one of three forms and all three can be mixed in the same MAPPING clause:\n\n&lt;data&gt; AS &lt;aesthetic/property&gt; (explicit mapping)\n&lt;data&gt; (implicit mapping)\n* (wildcard mapping)\n\ndata can be either:\n\nColumn name: If you provide the name of a column in the layer data (or global data in the absence of layer data) then the values in that column are mapped to the aesthetic or property. If the name of the column is the same as the aesthetic or property you can provide it without the following AS &lt;aesthetic/property&gt; (implicit mapping).\nConstant: If you provide a constant like a string, number, or boolean then this value is repeated for every record in the data and mapped to the given aesthetic or property. When mapping a constant you must use the explicit form since the aesthetic/property cannot be derived.\n\nIf an asterisk is given (wildcard mapping) it indicate that every column in the layer data with a name matching a supported aesthetic or property are implicitly mapped to said aesthetic or property. If the aesthetic or property has been mapped elsewhere then that gains precedence (i.e. if writing MAPPING *, revenue AS y then y will take on the data in the revenue column even if a y column exist in the data)\nAn aesthetic is a visual characteristic of what you are rendering. Different aesthetics are available depending on the layer type since e.g. linetype is not relevant for points and shape are not relevant for lines.\nA property is a value used by the statistical transformation done by the layer, e.g. the weight property in the histogram layer that allows weighted histogram calculation.\n\nMapped aesthetics are always scaled by their respective scale, whereas properties are not (there are no scales for properties).\n\nThe documentation for each layer type provides an overview of the aesthetics and properties available for them.\nA layer may use a data source different than the global data by appending a FROM &lt;data-source&gt; to the mapping. The data source can be either:\n\nTable/CTE: If providing an unquoted identifier it is assumed that the data is available in the backend, either as a CTE defined in the pre-query, or as a proper table in the database.\nFilepath: If a string is provided (single quoted), it is assumed to point to a file that can be read directly by the backend.\n\n\n\nREMAPPING\nREMAPPING &lt;mapping&gt;, ...\nSome layer types like histogram runs the data through a statistical transformation in order to arrive at the data that needs to be displayed (e.g. count per bin). During this, one or more columns are added to the data and you can access these in the REMAPPING clause. Layers that perform statistical transformations always have a default remapping (e.g. count AS y in histogram) so it never required to specify a remapping, but you can do so, either to change the default (e.g. density AS yto access the calculated density instead of count), or to use the calculated property for another aesthetic (e.g. count AS fill to also shade the bars according to their height).\nRemappings have to be explicit since the property name never coincide with an aesthetic. Further, remappings must always map to a visual aesthetic since the statistical properties have already been consumed.\n\n\nSETTING\nSETTING &lt;parameter/aesthetic&gt; =&gt; &lt;value&gt;, ...\nThe SETTING clause can be used for to different things:\n\nSetting parameters: Some layers take additional arguments that control how they behave. Often, but not always, these modify the statistical transformation in some way. An example would be the binwidth parameter in histogram which controls the width of each bin during histogram calculation. This is not a statistical property since it is not related to each record, but to the calculation as a whole.\nSetting aesthetics: If you wish to set a specific aesthetic to a literal value, e.g. ‘red’ (as in the color red) then you can do so in the SETTING clause. Aesthetics that are set will not go through a scale but will use the provided value as-is. You cannot set an aesthetic to a column, only to a scalar literal value.\n\n\n\nFILTER\nFILTER &lt;condition&gt;\nYou may not want to use all data provided from the data source in the layer. You can limit the data to plot with the FILTER clause. The content of condition is used directly in a WHERE clause when querying the backend for the layer data, so whatever type of expression you database backend supports there will work.\n\n\nPARTITION BY\nPARTITION BY &lt;column&gt;, ...\nDuring drawing the records in the layer data are grouped by all the discrete data that has been mapped. This grouping is not relevant to all layer types but critical for some, e.g. line layers where the grouping defines which records are connected with a line.\nOften the implicit grouping from the aesthetic mapping is enough, e.g. mapping a discrete value to colour will create one line per colour, but sometimes you need a grouping not reflected in the aesthetic mapping. In that case you can use the PARTITION BY clause to define data columns used for grouping in addition to the ones from the mapping.\n\n\nORDER BY\nORDER BY &lt;column&gt;, ...\nFor some layers the order of records in the data is important, e.g. the path layer which connect records in the order they are provided. Since databases often doesn’t guarantee a specific order of the data, the ORDER BY clause can be used to enforce such and order. Even for layers where the order doesn’t immediately seem to matter it may have an effect, e.g. an overplottet scatterplot where the records in the end of the data are plottet on top of the one in the start."
+    "text": "Clause syntax\nThe VISUALISE clause is quite simple and doesn’t take any additional required parameters. You can, however, use it to define global mappings and a global data source (if the earlier query didn’t end in a SELECT).\nVISUALISE &lt;mapping&gt;, ... FROM &lt;data-source&gt;\nFollowing VISUALISE you can provide a series of global mappings. These will be inherited by the layers created with the DRAW clause but can be overwritten by them. Mappings define how data from the dataset are related to visual aesthetics or statistical properties. Multiple mappings can be provided by separating them with a comma. Mapped aesthetics are always scaled by their respective scale. This means that if you map the value ‘red’ to fill, then fill will not take the color red, but whatever the scale decides should represent the string ‘red’.\nVISUALISE may have a FROM clause that defines the source of the global data. If present it overwrites the terminal SELECT clause in the previous query as the global data. Global data is used by layers that do not specify their own data source with MAPPING ... FROM &lt;data-source&gt;.\nThe mapping can take one of three forms and all three can be mixed:\n\n&lt;data&gt; AS &lt;aesthetic/property&gt; (explicit mapping)\n&lt;data&gt; (implicit mapping)\n* (wildcard mapping)\n\ndata can be either:\n\nColumn name: If you provide the name of a column in the data then the values in that column are mapped to the aesthetic or property. If the name of the column is the same as the aesthetic or property you can provide it without the following AS &lt;aesthetic/property&gt; (implicit mapping).\nConstant: If you provide a constant like a string, number, or boolean then this value is repeated for every record in the data and mapped to the given aesthetic or property. When mapping a constant you must use the explicit form since the aesthetic/property cannot be derived.\n\nIf an asterisk is given (wildcard mapping) it indicate that every column in the layer data with a name matching a supported aesthetic or property are implicitly mapped to said aesthetic or property. If the aesthetic or property has been mapped elsewhere then that gains precedence (i.e. if writing VISUALISE *, revenue AS y then y will take on the data in the revenue column even if a y column exist in the data)\nAn aesthetic is a visual characteristic of what you are rendering. Different aesthetics are available depending on the layer type since e.g. linetype is not relevant for points and shape are not relevant for lines.\nA property is a value used by the statistical transformation done by the layer, e.g. the weight property in the histogram layer that allows weighted histogram calculation.\n\nMapped aesthetics are always scaled by their respective scale, whereas properties are not (there are no scales for properties).\n\nLayers only inherit the aesthetics and properties they support from the global mapping. The documentation for each layer type provides an overview of the aesthetics and properties available for them.\nWhen specifying a global data source with FROM &lt;data-source&gt; the data-source can take one of two different forms:\n\nTable/CTE: If providing an unquoted identifier it is assumed that the data is available in the backend, either as a CTE defined in the pre-query, or as a proper table in the database.\nFilepath: If a string is provided (single quoted), it is assumed to point to a file that can be read directly by the backend."
   },
   {
-    "objectID": "syntax/index.html",
-    "href": "syntax/index.html",
-    "title": "Syntax",
+    "objectID": "syntax/layer/point.html",
+    "href": "syntax/layer/point.html",
+    "title": "Point layer",
     "section": "",
-    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use"
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe point geom is used to create scatterplots. The scatterplot is most useful for displaying the relationship between two continuous variables. A bubblechart is a scatterplot with a third variable mapped to the size of points."
   },
   {
-    "objectID": "syntax/index.html#main-clauses",
-    "href": "syntax/index.html#main-clauses",
-    "title": "Syntax",
-    "section": "",
-    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use"
+    "objectID": "syntax/layer/point.html#aesthetics",
+    "href": "syntax/layer/point.html#aesthetics",
+    "title": "Point layer",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the point layer.\n\nRequired\n\nx: Position along the x-axis\ny: Position along the y-axis\n\n\n\nOptional\n\nsize: The size of each point\ncolour: The default colour of the each point\nstroke: The colour of the stroke around each point (if any). Overrides colour\nfill: The fill colour of each point (if any). Overrides colour\nopacity: The opacity of the point\nshape: The shape used to draw the point"
   },
   {
-    "objectID": "syntax/index.html#layers",
-    "href": "syntax/index.html#layers",
-    "title": "Syntax",
-    "section": "Layers",
-    "text": "Layers\nThere are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the DRAW clause\n\npoint is used to create a scatterplot layer\nline is used to produce lineplots with the data sorted along the x axis\npath is like line above but does not sort the data but plot it according to its own order\nbar creates a bar chart, optionally calculating y from the number of records in each bar\nhistogram bins the data along the x axis and produces a bar for each bin showing the number of records in it"
+    "objectID": "syntax/layer/point.html#settings",
+    "href": "syntax/layer/point.html#settings",
+    "title": "Point layer",
+    "section": "Settings",
+    "text": "Settings\nThe point layer has no additional settings"
   },
   {
-    "objectID": "syntax/index.html#scales",
-    "href": "syntax/index.html#scales",
-    "title": "Syntax",
-    "section": "Scales",
-    "text": "Scales"
+    "objectID": "syntax/layer/point.html#data-transformation",
+    "href": "syntax/layer/point.html#data-transformation",
+    "title": "Point layer",
+    "section": "Data transformation",
+    "text": "Data transformation\nThe point layer does not transform its data but passes it through unchanged"
   },
   {
-    "objectID": "syntax/index.html#coordinate-systems",
-    "href": "syntax/index.html#coordinate-systems",
-    "title": "Syntax",
-    "section": "Coordinate systems",
-    "text": "Coordinate systems"
+    "objectID": "syntax/layer/point.html#examples",
+    "href": "syntax/layer/point.html#examples",
+    "title": "Point layer",
+    "section": "Examples",
+    "text": "Examples\nCreate a classic scatterplot\nVISUALISE FROM penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, species AS fill\n    SETTING size =&gt; 30\nMap to size to create a bubble chart\nVISUALISE FROM penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, body_mass AS size\nUse filter to only plot a subset of the data\nVISUALISE FROM penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, species AS fill\n    SETTING size =&gt; 30\n    FILTER sex = 'female'"
   },
   {
     "objectID": "index.html",
@@ -112,39 +112,53 @@
     "text": "CLI\n\nInstallation\ncargo install --path src"
   },
   {
-    "objectID": "syntax/layer/point.html",
-    "href": "syntax/layer/point.html",
-    "title": "Point layer",
+    "objectID": "syntax/index.html",
+    "href": "syntax/index.html",
+    "title": "Syntax",
     "section": "",
-    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe point geom is used to create scatterplots. The scatterplot is most useful for displaying the relationship between two continuous variables. A bubblechart is a scatterplot with a third variable mapped to the size of points."
+    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends"
   },
   {
-    "objectID": "syntax/layer/point.html#aesthetics",
-    "href": "syntax/layer/point.html#aesthetics",
-    "title": "Point layer",
-    "section": "Aesthetics",
-    "text": "Aesthetics\nThe following aesthetics are recognised by the point layer.\n\nRequired\n\nx: Position along the x-axis\ny: Position along the y-axis\n\n\n\nOptional\n\nsize: The size of each point\ncolour: The default colour of the each point\nstroke: The colour of the stroke around each point (if any). Overrides colour\nfill: The fill colour of each point (if any). Overrides colour\nopacity: The opacity of the point\nshape: The shape used to draw the point"
+    "objectID": "syntax/index.html#main-clauses",
+    "href": "syntax/index.html#main-clauses",
+    "title": "Syntax",
+    "section": "",
+    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends"
   },
   {
-    "objectID": "syntax/layer/point.html#settings",
-    "href": "syntax/layer/point.html#settings",
-    "title": "Point layer",
-    "section": "Settings",
-    "text": "Settings\nThe point layer has no additional settings"
+    "objectID": "syntax/index.html#layers",
+    "href": "syntax/index.html#layers",
+    "title": "Syntax",
+    "section": "Layers",
+    "text": "Layers\nThere are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the DRAW clause\n\npoint is used to create a scatterplot layer\nline is used to produce lineplots with the data sorted along the x axis\npath is like line above but does not sort the data but plot it according to its own order\nbar creates a bar chart, optionally calculating y from the number of records in each bar\nhistogram bins the data along the x axis and produces a bar for each bin showing the number of records in it"
   },
   {
-    "objectID": "syntax/layer/point.html#data-transformation",
-    "href": "syntax/layer/point.html#data-transformation",
-    "title": "Point layer",
-    "section": "Data transformation",
-    "text": "Data transformation\nThe point layer does not transform its data but passes it through unchanged"
+    "objectID": "syntax/index.html#scales",
+    "href": "syntax/index.html#scales",
+    "title": "Syntax",
+    "section": "Scales",
+    "text": "Scales"
   },
   {
-    "objectID": "syntax/layer/point.html#examples",
-    "href": "syntax/layer/point.html#examples",
-    "title": "Point layer",
-    "section": "Examples",
-    "text": "Examples\nCreate a classic scatterplot\nVISUALISE FROM penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, species AS fill\n    SETTING size =&gt; 30\nMap to size to create a bubble chart\nVISUALISE FROM penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, body_mass AS size\nUse filter to only plot a subset of the data\nVISUALISE FROM penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, species AS fill\n    SETTING size =&gt; 30\n    FILTER sex = 'female'"
+    "objectID": "syntax/index.html#coordinate-systems",
+    "href": "syntax/index.html#coordinate-systems",
+    "title": "Syntax",
+    "section": "Coordinate systems",
+    "text": "Coordinate systems"
+  },
+  {
+    "objectID": "syntax/clause/draw.html",
+    "href": "syntax/clause/draw.html",
+    "title": "Create layers with DRAW",
+    "section": "",
+    "text": "DRAW is perhaps the most important clause in ggsql as it defines a layer in your visualisation. A layer is a single instance of a visual representation of a dataset. A visualisation can contain multiple layers, either showing the same dataset in different ways or showing different data in each. Layers are drawn in the order they are defined, so that layers defined first will be behind layers defined last."
+  },
+  {
+    "objectID": "syntax/clause/draw.html#clause-syntax",
+    "href": "syntax/clause/draw.html#clause-syntax",
+    "title": "Create layers with DRAW",
+    "section": "Clause syntax",
+    "text": "Clause syntax\nThe DRAW clause takes a number of subclauses, all of them optional if the VISUALISE clause provides a global mapping and data source.\nDRAW &lt;layer-type&gt;\n    MAPPING &lt;mapping&gt;, ... FROM &lt;data-source&gt;\n    REMAPPING &lt;mapping&gt;, ...\n    SETTING &lt;parameter/aesthetic&gt; =&gt; &lt;value&gt;, ...\n    FILTER &lt;condition&gt;\n    PARTITION BY &lt;column&gt;, ...\n    ORDER BY &lt;column&gt;, ...\nThe only required part is the layer type immediately following the DRAW clause, which specifies the type of layer to draw, e.g. point or histogram. It defines how the remaining settings are interpreted. The main syntax page has a list of all available layer types\n\nMAPPING\nMAPPING &lt;mapping&gt;, ... FROM &lt;data-source&gt;\nThe MAPPINGS clause define how data from the dataset are related to visual aesthetics or statistical properties. Multiple mappings can be provided by separating them with a comma. Mapped aesthetics are always scaled by their respective scale. This means that if you map the value ‘red’ to fill, then fill will not take the color red, but whatever the scale decides should represent the string ‘red’. Layer mappings are merged with the global mapping from the VISUALISE clause with the one in the layer taking precedence. This means that it is not necessary to provide any mappings in the DRAW clause if sufficient global mappings are provided.\nMAPPING may have a FROM clause that defines the source of the data. If this is missing the global data source from VISUALISE is used.\nThe mapping can take one of three forms and all three can be mixed in the same MAPPING clause:\n\n&lt;data&gt; AS &lt;aesthetic/property&gt; (explicit mapping)\n&lt;data&gt; (implicit mapping)\n* (wildcard mapping)\n\ndata can be either:\n\nColumn name: If you provide the name of a column in the layer data (or global data in the absence of layer data) then the values in that column are mapped to the aesthetic or property. If the name of the column is the same as the aesthetic or property you can provide it without the following AS &lt;aesthetic/property&gt; (implicit mapping).\nConstant: If you provide a constant like a string, number, or boolean then this value is repeated for every record in the data and mapped to the given aesthetic or property. When mapping a constant you must use the explicit form since the aesthetic/property cannot be derived.\n\nIf an asterisk is given (wildcard mapping) it indicate that every column in the layer data with a name matching a supported aesthetic or property are implicitly mapped to said aesthetic or property. If the aesthetic or property has been mapped elsewhere then that gains precedence (i.e. if writing MAPPING *, revenue AS y then y will take on the data in the revenue column even if a y column exist in the data)\nAn aesthetic is a visual characteristic of what you are rendering. Different aesthetics are available depending on the layer type since e.g. linetype is not relevant for points and shape are not relevant for lines.\nA property is a value used by the statistical transformation done by the layer, e.g. the weight property in the histogram layer that allows weighted histogram calculation.\n\nMapped aesthetics are always scaled by their respective scale, whereas properties are not (there are no scales for properties).\n\nThe documentation for each layer type provides an overview of the aesthetics and properties available for them.\nA layer may use a data source different than the global data by appending a FROM &lt;data-source&gt; to the mapping. The data source can be either:\n\nTable/CTE: If providing an unquoted identifier it is assumed that the data is available in the backend, either as a CTE defined in the pre-query, or as a proper table in the database.\nFilepath: If a string is provided (single quoted), it is assumed to point to a file that can be read directly by the backend.\n\n\n\nREMAPPING\nREMAPPING &lt;mapping&gt;, ...\nSome layer types like histogram runs the data through a statistical transformation in order to arrive at the data that needs to be displayed (e.g. count per bin). During this, one or more columns are added to the data and you can access these in the REMAPPING clause. Layers that perform statistical transformations always have a default remapping (e.g. count AS y in histogram) so it never required to specify a remapping, but you can do so, either to change the default (e.g. density AS yto access the calculated density instead of count), or to use the calculated property for another aesthetic (e.g. count AS fill to also shade the bars according to their height).\nRemappings have to be explicit since the property name never coincide with an aesthetic. Further, remappings must always map to a visual aesthetic since the statistical properties have already been consumed.\n\n\nSETTING\nSETTING &lt;parameter/aesthetic&gt; =&gt; &lt;value&gt;, ...\nThe SETTING clause can be used for to different things:\n\nSetting parameters: Some layers take additional arguments that control how they behave. Often, but not always, these modify the statistical transformation in some way. An example would be the binwidth parameter in histogram which controls the width of each bin during histogram calculation. This is not a statistical property since it is not related to each record, but to the calculation as a whole.\nSetting aesthetics: If you wish to set a specific aesthetic to a literal value, e.g. ‘red’ (as in the color red) then you can do so in the SETTING clause. Aesthetics that are set will not go through a scale but will use the provided value as-is. You cannot set an aesthetic to a column, only to a scalar literal value.\n\n\n\nFILTER\nFILTER &lt;condition&gt;\nYou may not want to use all data provided from the data source in the layer. You can limit the data to plot with the FILTER clause. The content of condition is used directly in a WHERE clause when querying the backend for the layer data, so whatever type of expression you database backend supports there will work.\n\n\nPARTITION BY\nPARTITION BY &lt;column&gt;, ...\nDuring drawing the records in the layer data are grouped by all the discrete data that has been mapped. This grouping is not relevant to all layer types but critical for some, e.g. line layers where the grouping defines which records are connected with a line.\nOften the implicit grouping from the aesthetic mapping is enough, e.g. mapping a discrete value to colour will create one line per colour, but sometimes you need a grouping not reflected in the aesthetic mapping. In that case you can use the PARTITION BY clause to define data columns used for grouping in addition to the ones from the mapping.\n\n\nORDER BY\nORDER BY &lt;column&gt;, ...\nFor some layers the order of records in the data is important, e.g. the path layer which connect records in the order they are provided. Since databases often doesn’t guarantee a specific order of the data, the ORDER BY clause can be used to enforce such and order. Even for layers where the order doesn’t immediately seem to matter it may have an effect, e.g. an overplottet scatterplot where the records in the end of the data are plottet on top of the one in the start."
   },
   {
     "objectID": "examples.html",
