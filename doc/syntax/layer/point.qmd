@@ -2,7 +2,7 @@
 title: "Point layer"
 ---
 
-> Layers are declared with the `DRAW` clause. Read the documentation for this clause for a thorough description of how to use it.
+> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
 The point layer is used to create scatterplots. The scatterplot is most useful for displaying the relationship between two continuous variables. A bubblechart is a scatterplot with a third variable mapped to the size of points.
 
