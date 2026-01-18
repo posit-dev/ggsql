@@ -14,6 +14,7 @@ color:
     teal: "#0A9396"
     lightteal: "#94D2BD"
     paleyellow: "#E9D8A6"
+    paleteal: "#DEF1EB"
   foreground: black
   background: white
   primary: darkteal
@@ -33,3 +34,10 @@ typography:
     family: Nunito Sans
     weight: 400
   monospace: Fira Code
+
+defaults:
+  bootstrap:
+    defaults:
+      navbar-bg: "#DEF1EB" # paleteal
+      navbar-fg: "#005F73"
+      navbar-hl: "#001219"
