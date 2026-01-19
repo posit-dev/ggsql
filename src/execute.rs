@@ -682,7 +682,12 @@ where
                 }
             }
 
-            // Apply stat_columns to layer aesthetics using the remappings
+            // FIRST: Remove consumed aesthetics - they were used as stat input, not visual output
+            for aes in &consumed_aesthetics {
+                layer.mappings.aesthetics.remove(aes);
+            }
+
+            // THEN: Apply stat_columns to layer aesthetics using the remappings
             for stat in &stat_columns {
                 if let Some(aesthetic) = final_remappings.get(stat) {
                     let col = format!("__ggsql_stat__{}", stat);
@@ -696,11 +701,6 @@ where
                         },
                     );
                 }
-            }
-
-            // Remove consumed aesthetics - they were used as stat input, not visual output
-            for aes in &consumed_aesthetics {
-                layer.mappings.aesthetics.remove(aes);
             }
 
             // Use the transformed query
