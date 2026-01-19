@@ -1,0 +1,3 @@
+---
+title: "Define different titles with `LABEL`"
+---

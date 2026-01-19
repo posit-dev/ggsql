@@ -11,7 +11,7 @@ import subprocess
 from pathlib import Path
 
 
-class GGSQLKernelTests(jkt.KernelTests):
+class ggsqlKernelTests(jkt.KernelTests):
     """Compliance tests for ggsql-jupyter kernel."""
 
     # Kernel name (will be overridden to use custom command)
@@ -252,7 +252,7 @@ def setup_module():
     # Create kernel spec
     kernel_spec = {
         "argv": [str(binary_path), "-f", "{connection_file}"],
-        "display_name": "ggSQL",
+        "display_name": "ggsql",
         "language": "ggsql",
     }
 

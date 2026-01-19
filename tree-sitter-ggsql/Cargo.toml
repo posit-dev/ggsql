@@ -5,7 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Tree-sitter grammar for ggSQL visualization language"
+description = "Tree-sitter grammar for ggsql visualization language"
 build = "bindings/rust/build.rs"
 
 [lib]

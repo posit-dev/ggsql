@@ -1,0 +1,30 @@
+---
+title: "Line"
+---
+
+> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+
+The line layer is used to create lineplots. Lineplots always connects records along the x-axis, in contrast to [path layers](path.qmd) which use the order of data to connect records. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers [`PARTITION BY`](../clause/draw.qmd#partition-by).
+
+## Aesthetics
+The following aesthetics are recognised by the line layer.
+
+### Required
+* `x`: Position along the x-axis
+* `y`: Position along the y-axis
+
+### Optional
+* `colour`/`stroke`: The colour of the line
+* `opacity`: The opacity of the line
+* `linewidth`: The width of the line
+* `linetype`: The type of line, i.e. the dashing pattern
+
+## Settings
+The line layer has no additional settings
+
+## Data transformation
+The line layer does not transform its data but passes it through unchanged
+
+## Examples
+
+TBD

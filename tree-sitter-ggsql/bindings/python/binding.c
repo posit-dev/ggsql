@@ -10,14 +10,14 @@ static PyObject* language(PyObject *self, PyObject *args) {
 
 static PyMethodDef methods[] = {
     {"language", language, METH_NOARGS,
-     "Get the tree-sitter language for ggSQL."},
+     "Get the tree-sitter language for ggsql."},
     {NULL, NULL, 0, NULL}
 };
 
 static struct PyModuleDef module = {
     PyModuleDef_HEAD_INIT,
     "tree_sitter_ggsql.binding",
-    "Tree-sitter bindings for ggSQL",
+    "Tree-sitter bindings for ggsql",
     -1,
     methods
 };

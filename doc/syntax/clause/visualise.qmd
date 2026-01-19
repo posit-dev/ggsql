@@ -1,0 +1,42 @@
+---
+title: "Initialise a visualisation with `VISUALISE`"
+---
+
+The `VISUALISE` (or `VISUALIZE`) clause marks the beginning of a ggsql visualisation declaration. As such it demarcates where the regular query ends and the visualisation query starts. Everything that comes before the `VISUALISE` clause is considered a standard SQL query that is sent to the backend. Any CTEs defined therein will be available to the ggsql query, and if it ends with a `SELECT` query this will automatically be added as the global data for the plot.
+
+## Clause syntax
+The `VISUALISE` clause is quite simple and doesn't take any additional required parameters. You can, however, use it to define global mappings and a global data source (if the earlier query didn't end in a `SELECT`).
+
+```sql
+VISUALISE <mapping>, ... FROM <data-source>
+```
+
+Following `VISUALISE` you can provide a series of global mappings. These will be inherited by the layers created with the `DRAW` clause but can be overwritten by them. Mappings define how data from the dataset are related to visual aesthetics or statistical properties. Multiple mappings can be provided by separating them with a comma. Mapped aesthetics are always scaled by their respective scale. This means that if you map the value 'red' to fill, then fill will not take the color red, but whatever the scale decides should represent the string 'red'. 
+
+`VISUALISE` may have a `FROM` clause that defines the source of the global data. If present it overwrites the terminal `SELECT` clause in the previous query as the global data. Global data is used by layers that do not specify their own data source with `MAPPING ... FROM <data-source>`.
+
+The `mapping` can take one of three forms and all three can be mixed:
+
+* `<data> AS <aesthetic/property>` (explicit mapping)
+* `<data>` (implicit mapping)
+* `*` (wildcard mapping)
+
+`data` can be either:
+
+* *Column name*: If you provide the name of a column in the data then the values in that column are mapped to the aesthetic or property. If the name of the column is the same as the aesthetic or property you can provide it without the following `AS <aesthetic/property>` (implicit mapping).
+* *Constant*: If you provide a constant like a string, number, or boolean then this value is repeated for every record in the data and mapped to the given aesthetic or property. When mapping a constant you must use the explicit form since the aesthetic/property cannot be derived.
+
+If an asterisk is given (wildcard mapping) it indicate that every column in the layer data with a name matching a supported aesthetic or property are implicitly mapped to said aesthetic or property. If the aesthetic or property has been mapped elsewhere then that gains precedence (i.e. if writing `VISUALISE *, revenue AS y` then y will take on the data in the revenue column even if a y column exist in the data)
+
+An `aesthetic` is a visual characteristic of what you are rendering. Different aesthetics are available depending on the layer type since e.g. linetype is not relevant for points and shape are not relevant for lines.
+
+A `property` is a value used by the statistical transformation done by the layer, e.g. the weight property in the histogram layer that allows weighted histogram calculation.
+
+> Mapped aesthetics are always scaled by their respective scale, whereas properties are not (there are no scales for properties).
+
+Layers only inherit the aesthetics and properties they support from the global mapping. The documentation for each layer type provides an overview of the aesthetics and properties available for them.
+
+When specifying a global data source with `FROM <data-source>` the `data-source` can take one of two different forms:
+
+* *Table/CTE*: If providing an unquoted identifier it is assumed that the data is available in the backend, either as a CTE defined in the pre-query, or as a proper table in the database.
+* *Filepath*: If a string is provided (single quoted), it is assumed to point to a file that can be read directly by the backend.

@@ -1,0 +1,79 @@
+---
+title: "Histogram"
+---
+
+> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+
+Visualise the distribution of a single continuous variable by dividing the x axis into bins and counting the number of observations in each bin. If providing a weight then a weighted histogram is calculated instead.
+
+## Aesthetics
+The following aesthetics are recognised by the bar layer.
+
+### Required
+* `x`: Position on the x-axis
+
+### Optional
+* `colour`: The default colour of each bar
+* `stroke`: The colour of the stroke around each bar. Overrides `colour`
+* `fill`: The fill colour of each bar. Overrides `colour`
+* `opacity`: The opacity of the bar fill
+* `linewidth`: The width of the stroke
+* `linetype`: The type of stroke, i.e. the dashing pattern
+
+## Settings
+
+* `bins`: The number of bins to calculate. Defaults to `30`
+* `binwidth`: The width of each bin. If provided it will override the binwidth calculated from `bins`
+* `closed`: Either `'left'` or `'right'` (default). Determines whether the bin intervals are closed to the left or right side
+
+## Data transformation
+The histogram layer will bin the records in each group and count them. By default it will map the count to `y`.
+
+### Properties
+
+* `weight`: If mapped, the sum of the weights within each bin is calculated instead of the count in each bin
+
+### Calculated statistics
+
+* `count`: The count or, if `weight` have been mapped, sum of weights in each bin.
+* `density`: The groupwise density, i.e. the `count` divided by the sum of `count` among all bins within each group
+
+### Default remappings
+
+* `count AS y`: By default the histogram will show count as the height of the bars
+
+## Examples
+
+Show the number of each species in the data
+
+```sql
+VISUALISE FROM penguins
+DRAW histogram
+    MAPPING body_mass AS x
+```
+
+Split the histogram in two by mapping sex to fill
+
+```sql
+VISUALISE FROM penguins
+DRAW histogram
+    MAPPING body_mass AS x, sex AS fill
+```
+
+Make the two histograms the same scale by remapping to density
+
+```sql
+VISUALISE FROM penguins
+DRAW histogram
+    MAPPING body_mass AS x, sex AS fill
+    REMAPPING density AS y
+```
+
+Specify an exact binwidth if needed
+
+```sql
+VISUALISE FROM penguins
+DRAW histogram
+    MAPPING body_mass AS x
+    SETTING binwidth => 100
+```

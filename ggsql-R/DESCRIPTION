@@ -11,18 +11,18 @@ Authors@R: c(
     person("Posit, PBC", role = c("cph", "fnd"),
            comment = c(ROR = "03wc8by49"))
   )
-Description: ggSQL allows you to write queries that combine SQL data retrieval 
+Description: ggsql allows you to write queries that combine SQL data retrieval
   with visualization specifications in a single, composable syntax.
 License: MIT + file LICENSE
 Encoding: UTF-8
 SystemRequirements: ggsql
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
-Imports: 
+Imports:
     knitr,
     rlang,
     vegawidget
-Suggests: 
+Suggests:
     png,
     rsvg,
     testthat (>= 3.0.0),

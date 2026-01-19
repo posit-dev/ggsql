@@ -1,0 +1,96 @@
+---
+title: "Create layers with `DRAW`"
+---
+
+`DRAW` is perhaps the most important clause in ggsql as it defines a layer in your visualisation. A layer is a single instance of a visual representation of a dataset. A visualisation can contain multiple layers, either showing the same dataset in different ways or showing different data in each. Layers are drawn in the order they are defined, so that layers defined first will be behind layers defined last.
+
+## Clause syntax
+The `DRAW` clause takes a number of subclauses, all of them optional if the `VISUALISE` clause provides a global mapping and data source.
+
+```sql
+DRAW <layer-type>
+    MAPPING <mapping>, ... FROM <data-source>
+    REMAPPING <mapping>, ...
+    SETTING <parameter/aesthetic> => <value>, ...
+    FILTER <condition>
+    PARTITION BY <column>, ...
+    ORDER BY <column>, ...
+```
+
+The only required part is the layer type immediately following the `DRAW` clause, which specifies the type of layer to draw, e.g. `point` or `histogram`. It defines how the remaining settings are interpreted. The [main syntax page](../index.qmd#layers) has a list of all available layer types
+
+### `MAPPING`
+```sql
+MAPPING <mapping>, ... FROM <data-source>
+```
+The `MAPPINGS` clause define how data from the dataset are related to visual aesthetics or statistical properties. Multiple mappings can be provided by separating them with a comma. Mapped aesthetics are always scaled by their respective scale. This means that if you map the value 'red' to fill, then fill will not take the color red, but whatever the scale decides should represent the string 'red'. Layer mappings are merged with the global mapping from the `VISUALISE` clause with the one in the layer taking precedence. This means that it is not necessary to provide any mappings in the `DRAW` clause if sufficient global mappings are provided.
+
+`MAPPING` may have a `FROM` clause that defines the source of the data. If this is missing the global data source from `VISUALISE` is used.
+
+The `mapping` can take one of three forms and all three can be mixed in the same `MAPPING` clause:
+
+* `<data> AS <aesthetic/property>` (explicit mapping)
+* `<data>` (implicit mapping)
+* `*` (wildcard mapping)
+
+`data` can be either:
+
+* *Column name*: If you provide the name of a column in the layer data (or global data in the absence of layer data) then the values in that column are mapped to the aesthetic or property. If the name of the column is the same as the aesthetic or property you can provide it without the following `AS <aesthetic/property>` (implicit mapping).
+* *Constant*: If you provide a constant like a string, number, or boolean then this value is repeated for every record in the data and mapped to the given aesthetic or property. When mapping a constant you must use the explicit form since the aesthetic/property cannot be derived.
+
+If an asterisk is given (wildcard mapping) it indicate that every column in the layer data with a name matching a supported aesthetic or property are implicitly mapped to said aesthetic or property. If the aesthetic or property has been mapped elsewhere then that gains precedence (i.e. if writing `MAPPING *, revenue AS y` then y will take on the data in the revenue column even if a y column exist in the data)
+
+An `aesthetic` is a visual characteristic of what you are rendering. Different aesthetics are available depending on the layer type since e.g. linetype is not relevant for points and shape are not relevant for lines. 
+
+A `property` is a value used by the statistical transformation done by the layer, e.g. the weight property in the histogram layer that allows weighted histogram calculation.
+
+> Mapped aesthetics are always scaled by their respective scale, whereas properties are not (there are no scales for properties).
+
+The documentation for each layer type provides an overview of the aesthetics and properties available for them.
+
+A layer may use a data source different than the global data by appending a `FROM <data-source>` to the mapping. The data source can be either:
+
+* *Table/CTE*: If providing an unquoted identifier it is assumed that the data is available in the backend, either as a CTE defined in the pre-query, or as a proper table in the database.
+* *Filepath*: If a string is provided (single quoted), it is assumed to point to a file that can be read directly by the backend.
+
+### `REMAPPING`
+```sql
+REMAPPING <mapping>, ...
+```
+
+Some layer types like histogram runs the data through a statistical transformation in order to arrive at the data that needs to be displayed (e.g. count per bin). During this, one or more columns are added to the data and you can access these in the `REMAPPING` clause. Layers that perform statistical transformations always have a default remapping (e.g. `count AS y` in histogram) so it never required to specify a remapping, but you can do so, either to change the default (e.g. `density AS y`to access the calculated density instead of count), or to use the calculated property for another aesthetic (e.g. `count AS fill` to also shade the bars according to their height).
+
+Remappings have to be explicit since the property name never coincide with an aesthetic. Further, remappings must always map to a visual aesthetic since the statistical properties have already been consumed.
+
+### `SETTING`
+```sql
+SETTING <parameter/aesthetic> => <value>, ...
+```
+
+The `SETTING` clause can be used for to different things:
+
+* *Setting parameters*: Some layers take additional arguments that control how they behave. Often, but not always, these modify the statistical transformation in some way. An example would be the binwidth parameter in histogram which controls the width of each bin during histogram calculation. This is not a statistical property since it is not related to each record, but to the calculation as a whole.
+* *Setting aesthetics*: If you wish to set a specific aesthetic to a literal value, e.g. 'red' (as in the color red) then you can do so in the `SETTING` clause. Aesthetics that are set will not go through a scale but will use the provided value as-is. You cannot set an aesthetic to a column, only to a scalar literal value.
+
+### `FILTER`
+```sql
+FILTER <condition>
+```
+
+You may not want to use all data provided from the data source in the layer. You can limit the data to plot with the `FILTER` clause. The content of `condition` is used directly in a `WHERE` clause when querying the backend for the layer data, so whatever type of expression you database backend supports there will work.
+
+### `PARTITION BY`
+```sql
+PARTITION BY <column>, ...
+```
+
+During drawing the records in the layer data are grouped by all the discrete data that has been mapped. This grouping is not relevant to all layer types but critical for some, e.g. line layers where the grouping defines which records are connected with a line.
+
+Often the implicit grouping from the aesthetic mapping is enough, e.g. mapping a discrete value to colour will create one line per colour, but sometimes you need a grouping not reflected in the aesthetic mapping. In that case you can use the `PARTITION BY` clause to define data columns used for grouping in addition to the ones from the mapping.
+
+### `ORDER BY`
+```sql
+ORDER BY <column>, ...
+```
+
+For some layers the order of records in the data is important, e.g. the path layer which connect records in the order they are provided. Since databases often doesn't guarantee a specific order of the data, the `ORDER BY` clause can be used to enforce such and order. Even for layers where the order doesn't immediately seem to matter it may have an effect, e.g. an overplottet scatterplot where the records in the end of the data are plottet on top of the one in the start.

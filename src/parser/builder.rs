@@ -76,20 +76,24 @@ fn build_visualise_statement(node: &Node, source: &str) -> Result<VizSpec> {
                 continue;
             }
             "global_mapping" => {
-                // Parse global mapping (explicit and/or implicit mappings)
-                spec.global_mapping = parse_global_mapping(&child, source)?;
+                // Parse global mapping (may include wildcard and/or explicit mappings)
+                spec.global_mappings = parse_global_mapping(&child, source)?;
             }
             "wildcard_mapping" => {
-                // Handle wildcard (*) mapping
-                spec.global_mapping = GlobalMapping::Wildcard;
+                // Handle standalone wildcard (*) mapping
+                spec.global_mappings.wildcard = true;
             }
             "identifier" | "string" => {
                 // This is the FROM source (table name or file path)
-                spec.source = Some(
-                    get_node_text(&child, source)
-                        .trim_matches(|c| c == '\'' || c == '"')
-                        .to_string(),
-                );
+                let text = get_node_text(&child, source);
+                spec.source = Some(match child.kind() {
+                    "string" => {
+                        // Remove surrounding quotes for file paths
+                        let path = text.trim_matches(|c| c == '\'' || c == '"');
+                        DataSource::FilePath(path.to_string())
+                    }
+                    _ => DataSource::Identifier(text.to_string()),
+                });
             }
             "viz_clause" => {
                 // Process visualization clause
@@ -108,67 +112,40 @@ fn build_visualise_statement(node: &Node, source: &str) -> Result<VizSpec> {
     Ok(spec)
 }
 
-/// Parse global_mapping node into GlobalMapping enum
-fn parse_global_mapping(node: &Node, source: &str) -> Result<GlobalMapping> {
-    let mut items = Vec::new();
+/// Parse global_mapping node into Mappings struct
+/// global_mapping contains a mapping_list child node
+fn parse_global_mapping(node: &Node, source: &str) -> Result<Mappings> {
+    // global_mapping: $ => $.mapping_list - contains a mapping_list child node
+    let mut mappings = Mappings::new();
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        match child.kind() {
-            "wildcard_mapping" => {
-                return Ok(GlobalMapping::Wildcard);
-            }
-            "global_mapping_item" => {
-                let item = parse_global_mapping_item(&child, source)?;
-                items.push(item);
-            }
-            "," => continue, // Skip commas
-            _ => continue,
+        if child.kind() == "mapping_list" {
+            parse_mapping_list(&child, source, &mut mappings)?;
         }
     }
-
-    if items.is_empty() {
-        Ok(GlobalMapping::Empty)
-    } else {
-        Ok(GlobalMapping::Mappings(items))
-    }
+    Ok(mappings)
 }
 
-/// Parse a single global_mapping_item (explicit or implicit)
-fn parse_global_mapping_item(node: &Node, source: &str) -> Result<GlobalMappingItem> {
+/// Parse a mapping_list: comma-separated mapping_element nodes
+/// Shared by both global (VISUALISE) and layer (MAPPING) mappings
+fn parse_mapping_list(node: &Node, source: &str, mappings: &mut Mappings) -> Result<()> {
     let mut cursor = node.walk();
-    let children: Vec<_> = node.children(&mut cursor).collect();
-
-    // Look for explicit_mapping or implicit_mapping child
-    for child in &children {
+    for child in node.children(&mut cursor) {
         match child.kind() {
-            "explicit_mapping" => {
-                return parse_explicit_mapping(child, source);
+            "mapping_element" => {
+                parse_mapping_element(&child, source, mappings)?;
             }
-            "implicit_mapping" => {
-                // Implicit mapping is just an identifier
-                let mut inner_cursor = child.walk();
-                for inner_child in child.children(&mut inner_cursor) {
-                    if inner_child.kind() == "identifier" {
-                        let name = get_node_text(&inner_child, source);
-                        return Ok(GlobalMappingItem::Implicit { name });
-                    }
-                }
-                // Fallback: the implicit_mapping node itself might be the identifier
-                let name = get_node_text(child, source);
-                return Ok(GlobalMappingItem::Implicit { name });
-            }
+            "," => continue,
             _ => continue,
         }
     }
-
-    Err(GgsqlError::ParseError(
-        "Invalid global mapping item".to_string(),
-    ))
+    Ok(())
 }
 
 /// Parse an explicit_mapping node (value AS aesthetic)
-fn parse_explicit_mapping(node: &Node, source: &str) -> Result<GlobalMappingItem> {
+/// Returns (aesthetic_name, value)
+fn parse_explicit_mapping(node: &Node, source: &str) -> Result<(String, AestheticValue)> {
     let mut value: Option<AestheticValue> = None;
     let mut aesthetic: Option<String> = None;
 
@@ -184,15 +161,17 @@ fn parse_explicit_mapping(node: &Node, source: &str) -> Result<GlobalMappingItem
                             let mut ref_cursor = inner_child.walk();
                             for ref_child in inner_child.children(&mut ref_cursor) {
                                 if ref_child.kind() == "identifier" {
-                                    value = Some(AestheticValue::Column(get_node_text(
+                                    value = Some(AestheticValue::standard_column(get_node_text(
                                         &ref_child, source,
                                     )));
                                 }
                             }
                         }
                         "identifier" => {
-                            value =
-                                Some(AestheticValue::Column(get_node_text(&inner_child, source)));
+                            value = Some(AestheticValue::standard_column(get_node_text(
+                                &inner_child,
+                                source,
+                            )));
                         }
                         "literal_value" => {
                             value = Some(parse_literal_value(&inner_child, source)?);
@@ -210,14 +189,7 @@ fn parse_explicit_mapping(node: &Node, source: &str) -> Result<GlobalMappingItem
     }
 
     match (value, aesthetic) {
-        (Some(AestheticValue::Column(col)), Some(aes)) => Ok(GlobalMappingItem::Explicit {
-            column: col,
-            aesthetic: aes,
-        }),
-        (Some(AestheticValue::Literal(lit)), Some(aes)) => Ok(GlobalMappingItem::Literal {
-            value: lit,
-            aesthetic: aes,
-        }),
+        (Some(val), Some(aes)) => Ok((aes, val)),
         _ => Err(GgsqlError::ParseError(
             "Invalid explicit mapping: missing value or aesthetic".to_string(),
         )),
@@ -303,10 +275,11 @@ fn process_viz_clause(node: &Node, source: &str, spec: &mut VizSpec) -> Result<(
 }
 
 /// Build a Layer from a draw_clause node
-/// Syntax: DRAW geom [MAPPING col AS x, ... [FROM source]] [SETTING param => val, ...] [PARTITION BY col, ...] [FILTER condition]
+/// Syntax: DRAW geom [MAPPING col AS x, ... [FROM source]] [REMAPPING stat AS aes, ...] [SETTING param => val, ...] [PARTITION BY col, ...] [FILTER condition]
 fn build_layer(node: &Node, source: &str) -> Result<Layer> {
     let mut geom = Geom::Point; // default
-    let mut aesthetics = HashMap::new();
+    let mut aesthetics = Mappings::new();
+    let mut remappings = Mappings::new();
     let mut parameters = HashMap::new();
     let mut partition_by = Vec::new();
     let mut filter = None;
@@ -324,6 +297,11 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
                 let (aes, src) = parse_mapping_clause(&child, source)?;
                 aesthetics = aes;
                 layer_source = src;
+            }
+            "remapping_clause" => {
+                // Reuse parse_mapping_clause - remapping has same syntax, just different semantics
+                let (remap, _) = parse_mapping_clause(&child, source)?;
+                remappings = remap;
             }
             "setting_clause" => {
                 parameters = parse_setting_clause(&child, source)?;
@@ -345,7 +323,8 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
     }
 
     let mut layer = Layer::new(geom);
-    layer.aesthetics = aesthetics;
+    layer.mappings = aesthetics;
+    layer.remappings = remappings;
     layer.parameters = parameters;
     layer.partition_by = partition_by;
     layer.filter = filter;
@@ -356,87 +335,61 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
 }
 
 /// Parse a mapping_clause: MAPPING col AS x, "blue" AS color [FROM source]
-/// Returns (aesthetics, optional layer source)
-fn parse_mapping_clause(
-    node: &Node,
-    source: &str,
-) -> Result<(HashMap<String, AestheticValue>, Option<LayerSource>)> {
-    let mut aesthetics = HashMap::new();
+/// Returns (aesthetics as Mappings, optional data source)
+fn parse_mapping_clause(node: &Node, source: &str) -> Result<(Mappings, Option<DataSource>)> {
+    let mut mappings = Mappings::new();
 
-    // Parse mapping items
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "mapping_item" {
-            let (aesthetic, value) = parse_mapping_item(&child, source)?;
-            aesthetics.insert(aesthetic, value);
-        }
-    }
-
-    // Extract layer_source field (FROM identifier or FROM 'file.csv')
-    let layer_source = node.child_by_field_name("layer_source").map(|child| {
-        let text = get_node_text(&child, source);
-        match child.kind() {
-            "identifier" => LayerSource::Identifier(text.to_string()),
-            "string" => {
-                // Remove surrounding quotes
-                let path = text.trim_matches(|c| c == '\'' || c == '"');
-                LayerSource::FilePath(path.to_string())
-            }
-            _ => LayerSource::Identifier(text.to_string()),
-        }
-    });
-
-    Ok((aesthetics, layer_source))
-}
-
-/// Parse a mapping_item: col AS x or "blue" AS color
-fn parse_mapping_item(node: &Node, source: &str) -> Result<(String, AestheticValue)> {
-    let mut aesthetic_name = String::new();
-    let mut aesthetic_value = None;
-
+    // Parse mapping elements using the shared mapping_list structure
+    // With the unified grammar, all aesthetic mappings come through mapping_list.
+    // Bare identifiers here are part of the FROM clause, not mappings.
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "aesthetic_name" => {
-                aesthetic_name = get_node_text(&child, source);
-            }
-            "mapping_value" => {
-                aesthetic_value = Some(parse_mapping_value(&child, source)?);
+            "mapping_list" => {
+                parse_mapping_list(&child, source, &mut mappings)?;
             }
             _ => continue,
         }
     }
 
-    if aesthetic_name.is_empty() || aesthetic_value.is_none() {
-        return Err(GgsqlError::ParseError(format!(
-            "Invalid aesthetic mapping: name='{}', value={:?}",
-            aesthetic_name, aesthetic_value
-        )));
-    }
+    // Extract layer_source field (FROM identifier or FROM 'file.csv')
+    let data_source = node.child_by_field_name("layer_source").map(|child| {
+        let text = get_node_text(&child, source);
+        match child.kind() {
+            "identifier" => DataSource::Identifier(text.to_string()),
+            "string" => {
+                // Remove surrounding quotes
+                let path = text.trim_matches(|c| c == '\'' || c == '"');
+                DataSource::FilePath(path.to_string())
+            }
+            _ => DataSource::Identifier(text.to_string()),
+        }
+    });
 
-    Ok((aesthetic_name, aesthetic_value.unwrap()))
+    Ok((mappings, data_source))
 }
 
-/// Parse a mapping_value (column reference or literal)
-fn parse_mapping_value(node: &Node, source: &str) -> Result<AestheticValue> {
+/// Parse a mapping_element: wildcard, explicit, or implicit mapping
+/// Shared by both global (VISUALISE) and layer (MAPPING) mappings
+fn parse_mapping_element(node: &Node, source: &str, mappings: &mut Mappings) -> Result<()> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "column_reference" => {
-                let col_name = get_node_text(&child, source);
-                return Ok(AestheticValue::Column(col_name));
+            "wildcard_mapping" => {
+                mappings.wildcard = true;
             }
-            "literal_value" => {
-                return parse_literal_value(&child, source);
+            "explicit_mapping" => {
+                let (aesthetic, value) = parse_explicit_mapping(&child, source)?;
+                mappings.insert(aesthetic, value);
             }
-            _ => {}
+            "implicit_mapping" | "identifier" => {
+                let name = get_node_text(&child, source);
+                mappings.insert(&name, AestheticValue::standard_column(&name));
+            }
+            _ => continue,
         }
     }
-
-    Err(GgsqlError::ParseError(format!(
-        "Could not parse aesthetic value from node: {}",
-        node.kind()
-    )))
+    Ok(())
 }
 
 /// Parse a setting_clause: SETTING param => value, ...
@@ -554,13 +507,13 @@ fn parse_parameter_value(node: &Node, source: &str) -> Result<ParameterValue> {
 ///
 /// Extracts the raw SQL text from the filter_expression and returns it verbatim.
 /// This allows any valid SQL WHERE expression to be passed to the database backend.
-fn parse_filter_clause(node: &Node, source: &str) -> Result<FilterExpression> {
+fn parse_filter_clause(node: &Node, source: &str) -> Result<SqlExpression> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "filter_expression" {
             // Extract the raw text from the filter_expression node
             let filter_text = get_node_text(&child, source).trim().to_string();
-            return Ok(FilterExpression::new(filter_text));
+            return Ok(SqlExpression::new(filter_text));
         }
     }
 
@@ -570,13 +523,13 @@ fn parse_filter_clause(node: &Node, source: &str) -> Result<FilterExpression> {
 }
 
 /// Parse an order_clause: ORDER BY date ASC, value DESC
-fn parse_order_clause(node: &Node, source: &str) -> Result<OrderExpression> {
+fn parse_order_clause(node: &Node, source: &str) -> Result<SqlExpression> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "order_expression" {
             // Extract the raw text from the order_expression node
             let order_text = get_node_text(&child, source).trim().to_string();
-            return Ok(OrderExpression::new(order_text));
+            return Ok(SqlExpression::new(order_text));
         }
     }
 
@@ -592,7 +545,6 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
         "line" => Ok(Geom::Line),
         "path" => Ok(Geom::Path),
         "bar" => Ok(Geom::Bar),
-        "col" => Ok(Geom::Col),
         "area" => Ok(Geom::Area),
         "tile" => Ok(Geom::Tile),
         "polygon" => Ok(Geom::Polygon),
@@ -1729,7 +1681,7 @@ mod tests {
         assert!(result.is_ok());
         let specs = result.unwrap();
         assert_eq!(specs.len(), 1);
-        assert_eq!(specs[0].global_mapping, GlobalMapping::Empty);
+        assert!(specs[0].global_mappings.is_empty());
         assert_eq!(specs[0].layers.len(), 1);
         assert!(specs[0].coord.is_some());
         assert!(specs[0].labels.is_some());
@@ -1783,7 +1735,10 @@ mod tests {
 
         let specs = result.unwrap();
         assert_eq!(specs.len(), 1);
-        assert_eq!(specs[0].source, Some("cte".to_string()));
+        assert_eq!(
+            specs[0].source,
+            Some(DataSource::Identifier("cte".to_string()))
+        );
     }
 
     #[test]
@@ -1797,7 +1752,10 @@ mod tests {
         assert!(result.is_ok());
 
         let specs = result.unwrap();
-        assert_eq!(specs[0].source, Some("mtcars".to_string()));
+        assert_eq!(
+            specs[0].source,
+            Some(DataSource::Identifier("mtcars".to_string()))
+        );
     }
 
     #[test]
@@ -1812,7 +1770,10 @@ mod tests {
 
         let specs = result.unwrap();
         // Source should be stored without quotes in AST
-        assert_eq!(specs[0].source, Some("mtcars.csv".to_string()));
+        assert_eq!(
+            specs[0].source,
+            Some(DataSource::FilePath("mtcars.csv".to_string()))
+        );
     }
 
     #[test]
@@ -1827,7 +1788,10 @@ mod tests {
 
         let specs = result.unwrap();
         // Source should be stored without quotes
-        assert_eq!(specs[0].source, Some("data/sales.parquet".to_string()));
+        assert_eq!(
+            specs[0].source,
+            Some(DataSource::FilePath("data/sales.parquet".to_string()))
+        );
     }
 
     #[test]
@@ -1946,7 +1910,10 @@ mod tests {
         assert!(result.is_ok());
 
         let specs = result.unwrap();
-        assert_eq!(specs[0].source, Some("c".to_string()));
+        assert_eq!(
+            specs[0].source,
+            Some(DataSource::Identifier("c".to_string()))
+        );
     }
 
     #[test]
@@ -2451,10 +2418,10 @@ mod tests {
         let layer = &specs[0].layers[0];
 
         // Check aesthetics
-        assert_eq!(layer.aesthetics.len(), 3);
-        assert!(layer.aesthetics.contains_key("x"));
-        assert!(layer.aesthetics.contains_key("y"));
-        assert!(layer.aesthetics.contains_key("color"));
+        assert_eq!(layer.mappings.len(), 3);
+        assert!(layer.mappings.contains_key("x"));
+        assert!(layer.mappings.contains_key("y"));
+        assert!(layer.mappings.contains_key("color"));
 
         // Check parameters
         assert_eq!(layer.parameters.len(), 1);
@@ -2850,72 +2817,109 @@ mod tests {
     // ========================================
 
     #[test]
-    fn test_global_mapping_end_to_end() {
+    fn test_global_mapping_parsing() {
         let query = r#"
             VISUALISE date AS x, revenue AS y
             DRAW line
             DRAW point MAPPING region AS color
         "#;
 
-        let mut specs = parse_test_query(query).unwrap();
-        specs[0]
-            .resolve_global_mappings(&["date", "revenue", "region"])
-            .unwrap();
+        let specs = parse_test_query(query).unwrap();
 
-        // Line layer: should have x and y from global
-        assert_eq!(specs[0].layers[0].aesthetics.len(), 2);
-        assert!(specs[0].layers[0].aesthetics.contains_key("x"));
-        assert!(specs[0].layers[0].aesthetics.contains_key("y"));
+        // Global mapping should have x and y
+        assert_eq!(specs[0].global_mappings.aesthetics.len(), 2);
+        assert!(specs[0].global_mappings.aesthetics.contains_key("x"));
+        assert!(specs[0].global_mappings.aesthetics.contains_key("y"));
+        assert!(!specs[0].global_mappings.wildcard);
 
-        // Point layer: should have x and y from global, plus color from layer
-        assert_eq!(specs[0].layers[1].aesthetics.len(), 3);
-        assert!(specs[0].layers[1].aesthetics.contains_key("x"));
-        assert!(specs[0].layers[1].aesthetics.contains_key("y"));
-        assert!(specs[0].layers[1].aesthetics.contains_key("color"));
+        // Line layer should have no layer-specific aesthetics
+        assert_eq!(specs[0].layers[0].mappings.len(), 0);
+
+        // Point layer should have color from layer MAPPING
+        assert_eq!(specs[0].layers[1].mappings.len(), 1);
+        assert!(specs[0].layers[1].mappings.contains_key("color"));
     }
 
     #[test]
-    fn test_implicit_global_mapping_end_to_end() {
+    fn test_implicit_global_mapping_parsing() {
         let query = r#"
             VISUALISE x, y
             DRAW point
         "#;
 
-        let mut specs = parse_test_query(query).unwrap();
-        specs[0]
-            .resolve_global_mappings(&["x", "y", "other"])
-            .unwrap();
+        let specs = parse_test_query(query).unwrap();
 
-        // Layer should have x and y aesthetics
-        assert_eq!(specs[0].layers[0].aesthetics.len(), 2);
-        assert!(matches!(
-            specs[0].layers[0].aesthetics.get("x"),
-            Some(AestheticValue::Column(c)) if c == "x"
-        ));
-        assert!(matches!(
-            specs[0].layers[0].aesthetics.get("y"),
-            Some(AestheticValue::Column(c)) if c == "y"
-        ));
+        // Implicit x, y become explicit mappings at parse time
+        assert_eq!(specs[0].global_mappings.aesthetics.len(), 2);
+        assert!(specs[0].global_mappings.aesthetics.contains_key("x"));
+        assert!(specs[0].global_mappings.aesthetics.contains_key("y"));
+
+        // Verify they map to columns of the same name
+        let x_val = specs[0].global_mappings.aesthetics.get("x").unwrap();
+        assert_eq!(x_val.column_name(), Some("x"));
+        let y_val = specs[0].global_mappings.aesthetics.get("y").unwrap();
+        assert_eq!(y_val.column_name(), Some("y"));
     }
 
     #[test]
-    fn test_wildcard_global_mapping_end_to_end() {
+    fn test_wildcard_global_mapping_parsing() {
         let query = r#"
             VISUALISE *
             DRAW point
         "#;
 
-        let mut specs = parse_test_query(query).unwrap();
-        // Point geom supports x, y, color, size, shape, etc.
-        specs[0]
-            .resolve_global_mappings(&["x", "y", "color", "extra_column"])
-            .unwrap();
+        let specs = parse_test_query(query).unwrap();
 
-        // Should map x, y, and color (not extra_column which isn't an aesthetic)
-        assert!(specs[0].layers[0].aesthetics.contains_key("x"));
-        assert!(specs[0].layers[0].aesthetics.contains_key("y"));
-        assert!(specs[0].layers[0].aesthetics.contains_key("color"));
-        assert!(!specs[0].layers[0].aesthetics.contains_key("extra_column"));
+        // Wildcard flag should be set
+        assert!(specs[0].global_mappings.wildcard);
+        // No explicit aesthetics (wildcard expansion happens at execution time)
+        assert!(specs[0].global_mappings.aesthetics.is_empty());
+    }
+
+    #[test]
+    fn test_wildcard_with_explicit_mapping_parsing() {
+        let query = r#"
+            VISUALISE *, category AS fill
+            DRAW bar
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+
+        // Wildcard flag should be set
+        assert!(specs[0].global_mappings.wildcard);
+        // Plus explicit fill mapping
+        assert_eq!(specs[0].global_mappings.aesthetics.len(), 1);
+        assert!(specs[0].global_mappings.aesthetics.contains_key("fill"));
+    }
+
+    #[test]
+    fn test_layer_wildcard_mapping_parsing() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING *
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+
+        // Global mapping should be empty
+        assert!(specs[0].global_mappings.is_empty());
+        // Layer should have wildcard set
+        assert!(specs[0].layers[0].mappings.wildcard);
+    }
+
+    #[test]
+    fn test_layer_wildcard_with_explicit_parsing() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING *, 'red' AS color
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+
+        // Layer should have wildcard set plus explicit color
+        assert!(specs[0].layers[0].mappings.wildcard);
+        assert_eq!(specs[0].layers[0].mappings.len(), 1);
+        assert!(specs[0].layers[0].mappings.contains_key("color"));
     }
 
     // ========================================
@@ -2937,7 +2941,7 @@ mod tests {
         assert!(layer.source.is_some());
         assert!(matches!(
             layer.source.as_ref(),
-            Some(LayerSource::Identifier(name)) if name == "my_cte"
+            Some(DataSource::Identifier(name)) if name == "my_cte"
         ));
     }
 
@@ -2956,7 +2960,7 @@ mod tests {
         assert!(layer.source.is_some());
         assert!(matches!(
             layer.source.as_ref(),
-            Some(LayerSource::FilePath(path)) if path == "data.csv"
+            Some(DataSource::FilePath(path)) if path == "data.csv"
         ));
     }
 
@@ -2976,10 +2980,10 @@ mod tests {
         assert!(layer.source.is_some());
         assert!(matches!(
             layer.source.as_ref(),
-            Some(LayerSource::Identifier(name)) if name == "other_data"
+            Some(DataSource::Identifier(name)) if name == "other_data"
         ));
         // Layer should have no direct aesthetics (will inherit from global)
-        assert!(layer.aesthetics.is_empty());
+        assert!(layer.mappings.is_empty());
     }
 
     #[test]
@@ -3017,7 +3021,7 @@ mod tests {
         assert!(specs[0].layers[1].source.is_some());
         assert!(matches!(
             specs[0].layers[1].source.as_ref(),
-            Some(LayerSource::Identifier(name)) if name == "comparison"
+            Some(DataSource::Identifier(name)) if name == "comparison"
         ));
     }
 
@@ -3037,11 +3041,11 @@ mod tests {
 
         assert!(matches!(
             specs[0].layers[0].source.as_ref(),
-            Some(LayerSource::Identifier(name)) if name == "sales"
+            Some(DataSource::Identifier(name)) if name == "sales"
         ));
         assert!(matches!(
             specs[0].layers[1].source.as_ref(),
-            Some(LayerSource::Identifier(name)) if name == "targets"
+            Some(DataSource::Identifier(name)) if name == "targets"
         ));
     }
 }

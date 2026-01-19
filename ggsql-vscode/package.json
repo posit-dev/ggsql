@@ -1,7 +1,7 @@
 {
   "name": "ggsql",
-  "displayName": "ggSQL",
-  "description": "Syntax highlighting and language runtime for ggSQL - SQL with declarative visualization",
+  "displayName": "ggsql",
+  "description": "Syntax highlighting and language runtime for ggsql - SQL with declarative visualization",
   "version": "0.1.0",
   "publisher": "ggsql",
   "engines": {
@@ -31,7 +31,7 @@
       {
         "id": "ggsql",
         "aliases": [
-          "ggSQL",
+          "ggsql",
           "ggsql"
         ],
         "extensions": [

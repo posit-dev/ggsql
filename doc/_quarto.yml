@@ -7,14 +7,58 @@ website:
     left:
       - href: index.qmd
         text: Home
+      - installation.qmd
+      - text: Syntax
+        menu:
+          - text: Overview
+            href: syntax/index.qmd
+          - text: ---
+          - text: "`VISUALISE`"
+            href: syntax/clause/visualise.qmd
+          - text: "`DRAW`"
+            href: syntax/clause/draw.qmd
+          - text: "`SCALE`"
+            href: syntax/clause/scale.qmd
+          - text: "`FACET`"
+            href: syntax/clause/facet.qmd
+          - text: "`PROJECT`"
+            href: syntax/clause/project.qmd
+          - text: "`LABEL`"
+            href: syntax/clause/label.qmd
       - examples.qmd
+  sidebar:
+    id: syntax
+    title: Syntax
+    style: "floating"
+    search: true
+    contents:
+      - text: Overview
+        href: syntax/index.qmd
+      - section: "Main clauses"
+        contents:
+          - text: "`VISUALISE`"
+            href: syntax/clause/visualise.qmd
+          - text: "`DRAW`"
+            href: syntax/clause/draw.qmd
+          - text: "`SCALE`"
+            href: syntax/clause/scale.qmd
+          - text: "`FACET`"
+            href: syntax/clause/facet.qmd
+          - text: "`PROJECT`"
+            href: syntax/clause/project.qmd
+          - text: "`LABEL`"
+            href: syntax/clause/label.qmd
+      - section: Layers
+        contents:
+          - auto: syntax/layer/*
+
 
 format:
   html:
     theme:
-      - morph
+      - cosmo
       - brand
-    css: styles.css
+      - styles.scss
     toc: true
 
 

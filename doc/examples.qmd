@@ -3,7 +3,7 @@ title: Examples
 keep-ipynb: true # TODO: Why does render on save fail without this?
 ---
 
-This document demonstrates various ggSQL features with runnable examples using CSV files.
+This document demonstrates various ggsql features with runnable examples using CSV files.
 
 ```{ggsql}
 #| echo: false
@@ -194,6 +194,153 @@ SELECT * FROM 'sales.csv'
 VISUALISE sale_date AS x, revenue AS y
 DRAW line
     PARTITION BY category
+```
+
+## Statistical Transformations
+
+Statistical transformations automatically compute aggregations for certain geom types.
+
+### Histogram
+
+When using `DRAW histogram`, ggSQL automatically bins continuous data and counts occurrences. You only need to specify the x aesthetic:
+
+```{ggsql}
+SELECT revenue FROM 'sales.csv'
+VISUALISE revenue AS x
+DRAW histogram
+LABEL
+    title => 'Revenue Distribution',
+    x => 'Revenue ($)',
+    y => 'Count'
+```
+
+### Bar with Automatic Count
+
+When using `DRAW bar` without a y aesthetic, ggSQL automatically counts occurrences of each x value:
+
+```{ggsql}
+SELECT category FROM 'sales.csv'
+VISUALISE category AS x
+DRAW bar
+LABEL
+    title => 'Sales Count by Category',
+    x => 'Category',
+    y => 'Count'
+```
+
+### Bar with Weighted Count
+
+You can also specify a weight aesthetic to sum values instead of counting:
+
+```{ggsql}
+SELECT category, revenue FROM 'sales.csv'
+VISUALISE category AS x, revenue AS weight
+DRAW bar
+LABEL
+    title => 'Total Revenue by Category',
+    x => 'Category',
+    y => 'Revenue ($)'
+```
+
+### Histogram Settings
+
+Control histogram binning with `SETTING` options:
+
+**Custom number of bins:**
+
+```{ggsql}
+SELECT revenue FROM 'sales.csv'
+VISUALISE revenue AS x
+DRAW histogram 
+    SETTING bins => 10
+LABEL
+    title => 'Revenue Distribution (10 bins)',
+    x => 'Revenue ($)',
+    y => 'Count'
+```
+
+**Explicit bin width** (overrides bins):
+
+```{ggsql}
+SELECT revenue FROM 'sales.csv'
+VISUALISE revenue AS x
+DRAW histogram 
+    SETTING binwidth => 500
+LABEL
+    title => 'Revenue Distribution (500 bin width)',
+    x => 'Revenue ($)',
+    y => 'Count'
+```
+
+**Left-closed intervals** (default is right-closed `(a, b]`):
+
+```{ggsql}
+SELECT revenue FROM 'sales.csv'
+VISUALISE revenue AS x
+DRAW histogram 
+    SETTING bins => 8, closed => 'left'
+LABEL
+    title => 'Revenue Distribution (left-closed intervals)',
+    x => 'Revenue ($)',
+    y => 'Count'
+```
+
+### Histogram Remapping
+
+Histogram computes several statistics: `bin`, `bin_end`, `count`, and `density`. By default, `count` is mapped to `y`. Use `REMAPPING` to show density (proportion) instead:
+
+```{ggsql}
+SELECT revenue FROM 'sales.csv'
+VISUALISE revenue AS x
+DRAW histogram 
+    REMAPPING density AS y
+LABEL
+    title => 'Revenue Density Distribution',
+    x => 'Revenue ($)',
+    y => 'Density'
+```
+
+### Bar Width Setting
+
+Control bar width with the `width` setting (0-1 scale, default 0.9):
+
+```{ggsql}
+SELECT category FROM 'sales.csv'
+VISUALISE category AS x
+DRAW bar 
+    SETTING width => 0.5
+LABEL
+    title => 'Sales Count (Narrow Bars)',
+    x => 'Category',
+    y => 'Count'
+```
+
+### Bar Remapping
+
+Bar computes `count` and `proportion` statistics. By default, `count` is mapped to `y`. Use `REMAPPING` to show proportions instead:
+
+```{ggsql}
+SELECT category FROM 'sales.csv'
+VISUALISE category AS x
+DRAW bar 
+    REMAPPING proportion AS y
+LABEL
+    title => 'Sales Proportion by Category',
+    x => 'Category',
+    y => 'Proportion'
+```
+
+Combine with `weight` to show weighted proportions:
+
+```{ggsql}
+SELECT category, revenue FROM 'sales.csv'
+VISUALISE category AS x, revenue AS weight
+DRAW bar 
+    REMAPPING proportion AS y
+LABEL
+    title => 'Revenue Share by Category',
+    x => 'Category',
+    y => 'Share of Total Revenue'
 ```
 
 ## Multiple Layers
