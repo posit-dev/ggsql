@@ -1382,6 +1382,15 @@ impl VizSpec {
 
         // For each aesthetic, compute label if not already user-specified
         for aesthetic in all_aesthetics {
+            // Skip secondary/interval aesthetics (x2, y2, xmin, etc.)
+            // Only primary aesthetics (x, y, color, etc.) should get labels
+            if matches!(
+                aesthetic.as_str(),
+                "x2" | "y2" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
+            ) {
+                continue;
+            }
+
             // Skip if user already specified this label
             if labels.labels.contains_key(&aesthetic) {
                 continue;
