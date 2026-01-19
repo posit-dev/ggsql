@@ -29,7 +29,7 @@ THEME minimal
 - ✅ CLI tool (`ggsql`) with parse, exec, and validate commands
 - ✅ REST API server (`ggsql-rest`) with CORS support
 - ✅ Jupyter kernel (`ggsql-jupyter`) with inline Vega-Lite visualizations
-- ✅ VS Code extension (`ggsql-vscode`) with syntax highlighting for `.ggsql` files
+- ✅ VS Code extension (`ggsql-vscode`) with syntax highlighting and Positron IDE integration
 
 **Planned:**
 
@@ -257,7 +257,7 @@ A Quarto example can be found in `ggsql-jupyter/tests/quarto/doc.qmd`.
 
 ## VS Code Extension
 
-The `ggsql-vscode` extension provides syntax highlighting for ggsql files in Visual Studio Code.
+The `ggsql-vscode` extension provides syntax highlighting for ggsql files in Visual Studio Code and Positron IDE.
 
 ### Installation
 
@@ -285,6 +285,13 @@ The extension uses a TextMate grammar that highlights:
 - Geometric objects (point, line, bar, area, etc.)
 - Aesthetics (x, y, color, size, shape, etc.)
 - Scale types (linear, log10, date, viridis, etc.)
+
+### Positron IDE Integration
+
+When running in Positron IDE, the extension provides additional features:
+
+- **Language runtime registration** for executing ggsql queries directly within Positron
+- **Plot pane integration** - visualizations are automatically routed to Positron's Plots pane
 
 ## CLI
 

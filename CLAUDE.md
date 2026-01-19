@@ -716,15 +716,24 @@ LABEL title => 'Sales Trends'
 **Key Implementation Details**:
 
 - Uses Jupyter messaging protocol (ZMQ)
-- Supports `execute_request`, `kernel_info_request`, `shutdown_request`
-- Returns `display_data` messages with Vega-Lite MIME type
+- Supports `execute_request`, `kernel_info_request`, `shutdown_request`, `is_complete_request`
+- Returns `display_data` messages with HTML-embedded Vega-Lite visualizations (using vega-embed)
 - Maintains kernel state across cell executions
+
+**Positron IDE Integration**:
+
+The kernel includes enhanced support for Positron IDE:
+
+- **`is_complete_request` handler**: Enables code completeness checking for multi-line input
+- **HTML-based rendering**: Uses vega-embed to render Vega-Lite specs as HTML, providing broader compatibility
+- **Plot pane routing**: Includes Positron-specific `"output_location": "plot"` metadata to automatically route visualizations to the Plots pane
+- **Comm channels**: Implements Positron communication channels (comms) for variables, UI, and plot output
 
 ---
 
 ### 7. VS Code Extension (`ggsql-vscode/`)
 
-**Responsibility**: Syntax highlighting for ggsql in Visual Studio Code.
+**Responsibility**: Syntax highlighting for ggsql in Visual Studio Code and Positron IDE, with language runtime integration for Positron.
 
 **Features**:
 
@@ -736,6 +745,7 @@ LABEL title => 'Sales Trends'
 - Comment support (`--` and `/* */`)
 - Bracket matching and auto-closing
 - `.gsql` file extension support
+- Positron IDE language runtime integration
 
 **Installation**:
 
@@ -752,10 +762,23 @@ code --install-extension ggsql-0.1.0.vsix
 
 **Implementation**:
 
+- **TypeScript extension** with full Positron API integration
 - Uses TextMate grammar (`syntaxes/ggsql.tmLanguage.json`)
 - Tree-sitter syntax highlighting queries (`tree-sitter-ggsql/queries/highlights.scm`)
 - Language configuration for bracket matching and comments
 - File extension association (`.gsql`)
+- SVG icon asset for branding
+
+**Positron IDE Integration**:
+
+When running in Positron IDE, the extension provides enhanced functionality:
+
+- **Language runtime registration**: Registers ggsql as a language runtime, enabling direct query execution
+- **Kernel discovery**: Automatically discovers the ggsql-jupyter kernel from:
+  - Extension settings (`ggsql.kernelPath`)
+  - Jupyter kernelspec directories
+  - System PATH
+- **Plot pane integration**: Visualizations are routed to Positron's Plots pane via kernel metadata
 
 **Syntax Scopes**:
 
