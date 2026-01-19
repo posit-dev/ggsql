@@ -250,16 +250,16 @@ ul.task-list li input[type="checkbox"] {
 <h2 class="anchored" data-anchor-id="basic-visualizations">Basic Visualizations</h2>
 <section id="simple-scatter-plot" class="level3">
 <h3 class="anchored" data-anchor-id="simple-scatter-plot">Simple Scatter Plot</h3>
-<div id="38a033ba" class="cell" data-execution_count="5">
+<div id="e79cc82c" class="cell" data-execution_count="5">
 <pre class="ggsql cell-code"><code>SELECT x, y FROM 'data.csv'
 VISUALISE x, y
 DRAW point</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="5">
-<div id="vis-1768833799113"></div>
+<div id="vis-1768836067970"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"x":5.2,"y":18.5},{"x":8.7,"y":22.3},{"x":12.3,"y":28.9},{"x":15.8,"y":35.2},{"x":19.4,"y":42.7},{"x":23.1,"y":38.6},{"x":26.8,"y":45.1},{"x":30.2,"y":52.8},{"x":33.9,"y":48.3},{"x":37.5,"y":55.9},{"x":41.2,"y":62.4},{"x":44.8,"y":58.7},{"x":48.3,"y":65.2},{"x":52.1,"y":71.8},{"x":55.7,"y":68.1},{"x":59.4,"y":74.6}]},"layer":[{"data":{"name":"__global__"},"encoding":{"x":{"field":"x","title":"x","type":"quantitative"},"y":{"field":"y","title":"y","type":"quantitative"}},"mark":"point"}]};
-    const visId = 'vis-1768833799113';
+    const visId = 'vis-1768836067970';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -309,7 +309,7 @@ DRAW point</code></pre>
 </section>
 <section id="line-chart-with-date-scale" class="level3">
 <h3 class="anchored" data-anchor-id="line-chart-with-date-scale">Line Chart with Date Scale</h3>
-<div id="5b30970d" class="cell" data-execution_count="6">
+<div id="93e59654" class="cell" data-execution_count="6">
 <pre class="ggsql cell-code"><code>SELECT sale_date, revenue FROM 'sales.csv'
 WHERE category = 'Electronics'
 VISUALISE sale_date AS x, revenue AS y
@@ -320,11 +320,11 @@ LABEL
     x =&gt; 'Date', 
     y =&gt; 'Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="6">
-<div id="vis-1768833799127"></div>
+<div id="vis-1768836067981"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"revenue":1000.0,"sale_date":"2023-01-15"},{"revenue":1200.0,"sale_date":"2023-02-10"},{"revenue":1400.0,"sale_date":"2023-03-05"},{"revenue":1100.0,"sale_date":"2023-04-20"},{"revenue":1600.0,"sale_date":"2023-05-12"},{"revenue":1800.0,"sale_date":"2023-06-08"},{"revenue":2000.0,"sale_date":"2023-07-14"},{"revenue":2200.0,"sale_date":"2023-08-22"},{"revenue":1900.0,"sale_date":"2023-09-18"},{"revenue":2400.0,"sale_date":"2023-10-25"},{"revenue":2600.0,"sale_date":"2023-11-11"},{"revenue":3000.0,"sale_date":"2023-12-05"}]},"layer":[{"data":{"name":"__global__"},"encoding":{"x":{"field":"sale_date","title":"Date","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Electronics Revenue Over Time"};
-    const visId = 'vis-1768833799127';
+    const visId = 'vis-1768836067981';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -374,7 +374,7 @@ LABEL
 </section>
 <section id="bar-chart-by-category" class="level3">
 <h3 class="anchored" data-anchor-id="bar-chart-by-category">Bar Chart by Category</h3>
-<div id="14f4d8d3" class="cell" data-execution_count="7">
+<div id="a0f8853b" class="cell" data-execution_count="7">
 <pre class="ggsql cell-code"><code>SELECT category, SUM(revenue) as total
 FROM 'sales.csv'
 GROUP BY category
@@ -385,11 +385,11 @@ LABEL
     x =&gt; 'Category', 
     y =&gt; 'Total Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="7">
-<div id="vis-1768833799141"></div>
+<div id="vis-1768836067993"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Clothing","total":21700.0},{"category":"Furniture","total":14300.0},{"category":"Electronics","total":22200.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"category","title":"category","type":"nominal"},"x":{"field":"category","title":"Category","type":"nominal"},"y":{"field":"total","title":"Total Revenue ($)","type":"quantitative"}},"mark":"bar"}],"title":"Total Revenue by Category"};
-    const visId = 'vis-1768833799141';
+    const visId = 'vis-1768836067993';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -439,17 +439,17 @@ LABEL
 </section>
 <section id="line-chart-with-multiple-lines-with-same-aesthetics" class="level3">
 <h3 class="anchored" data-anchor-id="line-chart-with-multiple-lines-with-same-aesthetics">Line chart with multiple lines with same aesthetics</h3>
-<div id="86e7b8dc" class="cell" data-execution_count="8">
+<div id="f2dcd9f1" class="cell" data-execution_count="8">
 <pre class="ggsql cell-code"><code>SELECT * FROM 'sales.csv'
 VISUALISE sale_date AS x, revenue AS y
 DRAW line
     PARTITION BY category</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="8">
-<div id="vis-1768833799152"></div>
+<div id="vis-1768836068002"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Electronics","quantity":5,"region":"North","revenue":1000.0,"sale_date":"2023-01-15"},{"category":"Electronics","quantity":8,"region":"South","revenue":1200.0,"sale_date":"2023-02-10"},{"category":"Electronics","quantity":7,"region":"East","revenue":1400.0,"sale_date":"2023-03-05"},{"category":"Electronics","quantity":6,"region":"West","revenue":1100.0,"sale_date":"2023-04-20"},{"category":"Electronics","quantity":9,"region":"North","revenue":1600.0,"sale_date":"2023-05-12"},{"category":"Electronics","quantity":10,"region":"South","revenue":1800.0,"sale_date":"2023-06-08"},{"category":"Electronics","quantity":11,"region":"East","revenue":2000.0,"sale_date":"2023-07-14"},{"category":"Electronics","quantity":12,"region":"West","revenue":2200.0,"sale_date":"2023-08-22"},{"category":"Electronics","quantity":8,"region":"North","revenue":1900.0,"sale_date":"2023-09-18"},{"category":"Electronics","quantity":14,"region":"South","revenue":2400.0,"sale_date":"2023-10-25"},{"category":"Electronics","quantity":15,"region":"East","revenue":2600.0,"sale_date":"2023-11-11"},{"category":"Electronics","quantity":16,"region":"West","revenue":3000.0,"sale_date":"2023-12-05"},{"category":"Clothing","quantity":25,"region":"North","revenue":800.0,"sale_date":"2023-01-20"},{"category":"Clothing","quantity":30,"region":"South","revenue":900.0,"sale_date":"2023-02-15"},{"category":"Clothing","quantity":35,"region":"East","revenue":1100.0,"sale_date":"2023-03-10"},{"category":"Clothing","quantity":38,"region":"West","revenue":1300.0,"sale_date":"2023-04-25"},{"category":"Clothing","quantity":42,"region":"North","revenue":1500.0,"sale_date":"2023-05-18"},{"category":"Clothing","quantity":45,"region":"South","revenue":1700.0,"sale_date":"2023-06-12"},{"category":"Clothing","quantity":48,"region":"East","revenue":1900.0,"sale_date":"2023-07-20"},{"category":"Clothing","quantity":50,"region":"West","revenue":2100.0,"sale_date":"2023-08-28"},{"category":"Clothing","quantity":52,"region":"North","revenue":2300.0,"sale_date":"2023-09-22"},{"category":"Clothing","quantity":55,"region":"South","revenue":2500.0,"sale_date":"2023-10-30"},{"category":"Clothing","quantity":58,"region":"East","revenue":2700.0,"sale_date":"2023-11-15"},{"category":"Clothing","quantity":60,"region":"West","revenue":2900.0,"sale_date":"2023-12-10"},{"category":"Furniture","quantity":3,"region":"North","revenue":600.0,"sale_date":"2023-01-25"},{"category":"Furniture","quantity":3,"region":"South","revenue":700.0,"sale_date":"2023-02-18"},{"category":"Furniture","quantity":4,"region":"East","revenue":850.0,"sale_date":"2023-03-15"},{"category":"Furniture","quantity":4,"region":"West","revenue":950.0,"sale_date":"2023-04-28"},{"category":"Furniture","quantity":5,"region":"North","revenue":1050.0,"sale_date":"2023-05-22"},{"category":"Furniture","quantity":5,"region":"South","revenue":1150.0,"sale_date":"2023-06-16"},{"category":"Furniture","quantity":5,"region":"East","revenue":1250.0,"sale_date":"2023-07-24"},{"category":"Furniture","quantity":6,"region":"West","revenue":1350.0,"sale_date":"2023-08-30"},{"category":"Furniture","quantity":6,"region":"North","revenue":1450.0,"sale_date":"2023-09-26"},{"category":"Furniture","quantity":6,"region":"South","revenue":1550.0,"sale_date":"2023-10-31"},{"category":"Furniture","quantity":7,"region":"East","revenue":1650.0,"sale_date":"2023-11-20"},{"category":"Furniture","quantity":7,"region":"West","revenue":1750.0,"sale_date":"2023-12-15"}]},"layer":[{"data":{"name":"__global__"},"encoding":{"detail":{"field":"category","type":"nominal"},"x":{"field":"sale_date","title":"sale_date","type":"temporal"},"y":{"field":"revenue","title":"revenue","type":"quantitative"}},"mark":"line"}]};
-    const visId = 'vis-1768833799152';
+    const visId = 'vis-1768836068002';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -502,7 +502,7 @@ DRAW line
 <h2 class="anchored" data-anchor-id="multiple-layers">Multiple Layers</h2>
 <section id="line-with-points" class="level3">
 <h3 class="anchored" data-anchor-id="line-with-points">Line with Points</h3>
-<div id="10ab92fc" class="cell" data-execution_count="9">
+<div id="186c894e" class="cell" data-execution_count="9">
 <pre class="ggsql cell-code"><code>SELECT date, value FROM 'timeseries.csv'
 VISUALISE date AS x, value AS y
 DRAW line 
@@ -515,11 +515,11 @@ LABEL
     x =&gt; 'Date', 
     y =&gt; 'Value'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="9">
-<div id="vis-1768833799162"></div>
+<div id="vis-1768836068010"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"date":"2023-01-01","value":100.0},{"date":"2023-01-08","value":110.0},{"date":"2023-01-15","value":105.0},{"date":"2023-01-22","value":115.0},{"date":"2023-01-29","value":120.0},{"date":"2023-02-05","value":118.0},{"date":"2023-02-12","value":125.0},{"date":"2023-02-19","value":130.0},{"date":"2023-02-26","value":128.0},{"date":"2023-03-05","value":135.0},{"date":"2023-03-12","value":142.0},{"date":"2023-03-19","value":138.0},{"date":"2023-03-26","value":145.0},{"date":"2023-04-02","value":150.0},{"date":"2023-04-09","value":148.0},{"date":"2023-04-16","value":155.0},{"date":"2023-04-23","value":160.0},{"date":"2023-04-30","value":158.0},{"date":"2023-05-07","value":165.0},{"date":"2023-05-14","value":170.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"value":"#0000ff"},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"line"},{"data":{"name":"__global__"},"encoding":{"color":{"value":"#ff0000"},"size":{"value":30.0},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"point"}],"title":"Time Series with Points"};
-    const visId = 'vis-1768833799162';
+    const visId = 'vis-1768836068010';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -569,7 +569,7 @@ LABEL
 </section>
 <section id="colored-lines-by-category" class="level3">
 <h3 class="anchored" data-anchor-id="colored-lines-by-category">Colored Lines by Category</h3>
-<div id="c3f5d5a6" class="cell" data-execution_count="10">
+<div id="30b55e85" class="cell" data-execution_count="10">
 <pre class="ggsql cell-code"><code>SELECT date, value, category FROM 'metrics.csv'
 VISUALISE date AS x, value AS y, category AS color
 DRAW line
@@ -579,11 +579,11 @@ LABEL
     x =&gt; 'Date', 
     y =&gt; 'Value'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="10">
-<div id="vis-1768833799171"></div>
+<div id="vis-1768836068018"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Sales","date":"2023-01-01","value":45.2},{"category":"Sales","date":"2023-02-01","value":52.1},{"category":"Sales","date":"2023-03-01","value":48.7},{"category":"Sales","date":"2023-04-01","value":58.3},{"category":"Sales","date":"2023-05-01","value":62.5},{"category":"Sales","date":"2023-06-01","value":67.8},{"category":"Sales","date":"2023-07-01","value":71.2},{"category":"Sales","date":"2023-08-01","value":75.6},{"category":"Sales","date":"2023-09-01","value":80.1},{"category":"Sales","date":"2023-10-01","value":85.4},{"category":"Sales","date":"2023-11-01","value":90.2},{"category":"Sales","date":"2023-12-01","value":95.8},{"category":"Marketing","date":"2023-01-01","value":120.5},{"category":"Marketing","date":"2023-02-01","value":135.2},{"category":"Marketing","date":"2023-03-01","value":128.9},{"category":"Marketing","date":"2023-04-01","value":142.3},{"category":"Marketing","date":"2023-05-01","value":155.7},{"category":"Marketing","date":"2023-06-01","value":148.2},{"category":"Marketing","date":"2023-07-01","value":162.8},{"category":"Marketing","date":"2023-08-01","value":175.4},{"category":"Marketing","date":"2023-09-01","value":168.9},{"category":"Marketing","date":"2023-10-01","value":182.5},{"category":"Marketing","date":"2023-11-01","value":195.1},{"category":"Marketing","date":"2023-12-01","value":188.7},{"category":"Support","date":"2023-01-01","value":78.3},{"category":"Support","date":"2023-02-01","value":82.1},{"category":"Support","date":"2023-03-01","value":75.6},{"category":"Support","date":"2023-04-01","value":85.9},{"category":"Support","date":"2023-05-01","value":92.4},{"category":"Support","date":"2023-06-01","value":88.7},{"category":"Support","date":"2023-07-01","value":95.2},{"category":"Support","date":"2023-08-01","value":101.8},{"category":"Support","date":"2023-09-01","value":97.5},{"category":"Support","date":"2023-10-01","value":105.3},{"category":"Support","date":"2023-11-01","value":112.6},{"category":"Support","date":"2023-12-01","value":108.9}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"category","title":"category","type":"nominal"},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"line"}],"title":"Metrics by Category"};
-    const visId = 'vis-1768833799171';
+    const visId = 'vis-1768836068018';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -636,7 +636,7 @@ LABEL
 <h2 class="anchored" data-anchor-id="faceting">Faceting</h2>
 <section id="facet-wrap-by-region" class="level3">
 <h3 class="anchored" data-anchor-id="facet-wrap-by-region">Facet Wrap by Region</h3>
-<div id="0aaba50a" class="cell" data-execution_count="11">
+<div id="6b29099d" class="cell" data-execution_count="11">
 <pre class="ggsql cell-code"><code>SELECT sale_date, revenue, region FROM 'sales.csv'
 WHERE category = 'Electronics'
 VISUALISE sale_date AS x, revenue AS y
@@ -648,11 +648,11 @@ LABEL
     x =&gt; 'Date', 
     y =&gt; 'Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="11">
-<div id="vis-1768833799182"></div>
+<div id="vis-1768836068027"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"__global__"},"datasets":{"__global__":[{"region":"North","revenue":1000.0,"sale_date":"2023-01-15"},{"region":"South","revenue":1200.0,"sale_date":"2023-02-10"},{"region":"East","revenue":1400.0,"sale_date":"2023-03-05"},{"region":"West","revenue":1100.0,"sale_date":"2023-04-20"},{"region":"North","revenue":1600.0,"sale_date":"2023-05-12"},{"region":"South","revenue":1800.0,"sale_date":"2023-06-08"},{"region":"East","revenue":2000.0,"sale_date":"2023-07-14"},{"region":"West","revenue":2200.0,"sale_date":"2023-08-22"},{"region":"North","revenue":1900.0,"sale_date":"2023-09-18"},{"region":"South","revenue":2400.0,"sale_date":"2023-10-25"},{"region":"East","revenue":2600.0,"sale_date":"2023-11-11"},{"region":"West","revenue":3000.0,"sale_date":"2023-12-05"}]},"facet":{"field":"region","type":"nominal"},"spec":{"layer":[{"encoding":{"x":{"field":"sale_date","title":"Date","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}]},"title":"Electronics Sales by Region"};
-    const visId = 'vis-1768833799182';
+    const visId = 'vis-1768836068027';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -702,7 +702,7 @@ LABEL
 </section>
 <section id="facet-grid" class="level3">
 <h3 class="anchored" data-anchor-id="facet-grid">Facet Grid</h3>
-<div id="1d320fa4" class="cell" data-execution_count="12">
+<div id="3326871f" class="cell" data-execution_count="12">
 <pre class="ggsql cell-code"><code>SELECT
     DATE_TRUNC('month', sale_date) as month,
     region,
@@ -731,11 +731,11 @@ LABEL
     x =&gt; 'Month', 
     y =&gt; 'Value'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="12">
-<div id="vis-1768833799193"></div>
+<div id="vis-1768836068038"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"__global__"},"datasets":{"__global__":[{"category":"Electronics","month":"2023-10-01","region":"South","total_quantity_scaled":1400.0,"total_revenue":2400.0},{"category":"Clothing","month":"2023-04-01","region":"West","total_quantity_scaled":3800.0,"total_revenue":1300.0},{"category":"Clothing","month":"2023-08-01","region":"West","total_quantity_scaled":5000.0,"total_revenue":2100.0},{"category":"Clothing","month":"2023-11-01","region":"East","total_quantity_scaled":5800.0,"total_revenue":2700.0},{"category":"Furniture","month":"2023-03-01","region":"East","total_quantity_scaled":400.0,"total_revenue":850.0},{"category":"Furniture","month":"2023-05-01","region":"North","total_quantity_scaled":500.0,"total_revenue":1050.0},{"category":"Furniture","month":"2023-06-01","region":"South","total_quantity_scaled":500.0,"total_revenue":1150.0},{"category":"Furniture","month":"2023-07-01","region":"East","total_quantity_scaled":500.0,"total_revenue":1250.0},{"category":"Furniture","month":"2023-09-01","region":"North","total_quantity_scaled":600.0,"total_revenue":1450.0},{"category":"Electronics","month":"2023-04-01","region":"West","total_quantity_scaled":600.0,"total_revenue":1100.0},{"category":"Electronics","month":"2023-08-01","region":"West","total_quantity_scaled":1200.0,"total_revenue":2200.0},{"category":"Electronics","month":"2023-11-01","region":"East","total_quantity_scaled":1500.0,"total_revenue":2600.0},{"category":"Clothing","month":"2023-10-01","region":"South","total_quantity_scaled":5500.0,"total_revenue":2500.0},{"category":"Furniture","month":"2023-01-01","region":"North","total_quantity_scaled":300.0,"total_revenue":600.0},{"category":"Furniture","month":"2023-02-01","region":"South","total_quantity_scaled":300.0,"total_revenue":700.0},{"category":"Furniture","month":"2023-12-01","region":"West","total_quantity_scaled":700.0,"total_revenue":1750.0},{"category":"Electronics","month":"2023-01-01","region":"North","total_quantity_scaled":500.0,"total_revenue":1000.0},{"category":"Electronics","month":"2023-02-01","region":"South","total_quantity_scaled":800.0,"total_revenue":1200.0},{"category":"Electronics","month":"2023-12-01","region":"West","total_quantity_scaled":1600.0,"total_revenue":3000.0},{"category":"Clothing","month":"2023-03-01","region":"East","total_quantity_scaled":3500.0,"total_revenue":1100.0},{"category":"Clothing","month":"2023-05-01","region":"North","total_quantity_scaled":4200.0,"total_revenue":1500.0},{"category":"Clothing","month":"2023-06-01","region":"South","total_quantity_scaled":4500.0,"total_revenue":1700.0},{"category":"Clothing","month":"2023-07-01","region":"East","total_quantity_scaled":4800.0,"total_revenue":1900.0},{"category":"Clothing","month":"2023-09-01","region":"North","total_quantity_scaled":5200.0,"total_revenue":2300.0},{"category":"Furniture","month":"2023-04-01","region":"West","total_quantity_scaled":400.0,"total_revenue":950.0},{"category":"Furniture","month":"2023-08-01","region":"West","total_quantity_scaled":600.0,"total_revenue":1350.0},{"category":"Furniture","month":"2023-11-01","region":"East","total_quantity_scaled":700.0,"total_revenue":1650.0},{"category":"Electronics","month":"2023-03-01","region":"East","total_quantity_scaled":700.0,"total_revenue":1400.0},{"category":"Electronics","month":"2023-05-01","region":"North","total_quantity_scaled":900.0,"total_revenue":1600.0},{"category":"Electronics","month":"2023-06-01","region":"South","total_quantity_scaled":1000.0,"total_revenue":1800.0},{"category":"Electronics","month":"2023-07-01","region":"East","total_quantity_scaled":1100.0,"total_revenue":2000.0},{"category":"Electronics","month":"2023-09-01","region":"North","total_quantity_scaled":800.0,"total_revenue":1900.0},{"category":"Clothing","month":"2023-01-01","region":"North","total_quantity_scaled":2500.0,"total_revenue":800.0},{"category":"Clothing","month":"2023-02-01","region":"South","total_quantity_scaled":3000.0,"total_revenue":900.0},{"category":"Clothing","month":"2023-12-01","region":"West","total_quantity_scaled":6000.0,"total_revenue":2900.0},{"category":"Furniture","month":"2023-10-01","region":"South","total_quantity_scaled":600.0,"total_revenue":1550.0}]},"facet":{"column":{"field":"category","type":"nominal"},"row":{"field":"region","type":"nominal"}},"spec":{"layer":[{"encoding":{"color":{"value":"#4682b4"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Value","type":"quantitative"}},"mark":"line"},{"encoding":{"color":{"value":"#00008b"},"size":{"value":30.0},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Value","type":"quantitative"}},"mark":"point"},{"encoding":{"color":{"value":"#ff7f50"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_quantity_scaled","title":"Value","type":"quantitative"}},"mark":"line"},{"encoding":{"color":{"value":"#ff4500"},"size":{"value":30.0},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_quantity_scaled","title":"Value","type":"quantitative"}},"mark":"point"}]},"title":"Monthly Revenue and Quantity by Region and Category"};
-    const visId = 'vis-1768833799193';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"__global__"},"datasets":{"__global__":[{"category":"Electronics","month":"2023-10-01","region":"South","total_quantity_scaled":1400.0,"total_revenue":2400.0},{"category":"Clothing","month":"2023-04-01","region":"West","total_quantity_scaled":3800.0,"total_revenue":1300.0},{"category":"Clothing","month":"2023-08-01","region":"West","total_quantity_scaled":5000.0,"total_revenue":2100.0},{"category":"Clothing","month":"2023-11-01","region":"East","total_quantity_scaled":5800.0,"total_revenue":2700.0},{"category":"Furniture","month":"2023-03-01","region":"East","total_quantity_scaled":400.0,"total_revenue":850.0},{"category":"Furniture","month":"2023-05-01","region":"North","total_quantity_scaled":500.0,"total_revenue":1050.0},{"category":"Furniture","month":"2023-06-01","region":"South","total_quantity_scaled":500.0,"total_revenue":1150.0},{"category":"Furniture","month":"2023-07-01","region":"East","total_quantity_scaled":500.0,"total_revenue":1250.0},{"category":"Furniture","month":"2023-09-01","region":"North","total_quantity_scaled":600.0,"total_revenue":1450.0},{"category":"Electronics","month":"2023-01-01","region":"North","total_quantity_scaled":500.0,"total_revenue":1000.0},{"category":"Electronics","month":"2023-02-01","region":"South","total_quantity_scaled":800.0,"total_revenue":1200.0},{"category":"Electronics","month":"2023-12-01","region":"West","total_quantity_scaled":1600.0,"total_revenue":3000.0},{"category":"Clothing","month":"2023-03-01","region":"East","total_quantity_scaled":3500.0,"total_revenue":1100.0},{"category":"Clothing","month":"2023-05-01","region":"North","total_quantity_scaled":4200.0,"total_revenue":1500.0},{"category":"Clothing","month":"2023-06-01","region":"South","total_quantity_scaled":4500.0,"total_revenue":1700.0},{"category":"Clothing","month":"2023-07-01","region":"East","total_quantity_scaled":4800.0,"total_revenue":1900.0},{"category":"Clothing","month":"2023-09-01","region":"North","total_quantity_scaled":5200.0,"total_revenue":2300.0},{"category":"Furniture","month":"2023-04-01","region":"West","total_quantity_scaled":400.0,"total_revenue":950.0},{"category":"Furniture","month":"2023-08-01","region":"West","total_quantity_scaled":600.0,"total_revenue":1350.0},{"category":"Furniture","month":"2023-11-01","region":"East","total_quantity_scaled":700.0,"total_revenue":1650.0},{"category":"Electronics","month":"2023-04-01","region":"West","total_quantity_scaled":600.0,"total_revenue":1100.0},{"category":"Electronics","month":"2023-08-01","region":"West","total_quantity_scaled":1200.0,"total_revenue":2200.0},{"category":"Electronics","month":"2023-11-01","region":"East","total_quantity_scaled":1500.0,"total_revenue":2600.0},{"category":"Clothing","month":"2023-10-01","region":"South","total_quantity_scaled":5500.0,"total_revenue":2500.0},{"category":"Furniture","month":"2023-01-01","region":"North","total_quantity_scaled":300.0,"total_revenue":600.0},{"category":"Furniture","month":"2023-02-01","region":"South","total_quantity_scaled":300.0,"total_revenue":700.0},{"category":"Furniture","month":"2023-12-01","region":"West","total_quantity_scaled":700.0,"total_revenue":1750.0},{"category":"Electronics","month":"2023-03-01","region":"East","total_quantity_scaled":700.0,"total_revenue":1400.0},{"category":"Electronics","month":"2023-05-01","region":"North","total_quantity_scaled":900.0,"total_revenue":1600.0},{"category":"Electronics","month":"2023-06-01","region":"South","total_quantity_scaled":1000.0,"total_revenue":1800.0},{"category":"Electronics","month":"2023-07-01","region":"East","total_quantity_scaled":1100.0,"total_revenue":2000.0},{"category":"Electronics","month":"2023-09-01","region":"North","total_quantity_scaled":800.0,"total_revenue":1900.0},{"category":"Clothing","month":"2023-01-01","region":"North","total_quantity_scaled":2500.0,"total_revenue":800.0},{"category":"Clothing","month":"2023-02-01","region":"South","total_quantity_scaled":3000.0,"total_revenue":900.0},{"category":"Clothing","month":"2023-12-01","region":"West","total_quantity_scaled":6000.0,"total_revenue":2900.0},{"category":"Furniture","month":"2023-10-01","region":"South","total_quantity_scaled":600.0,"total_revenue":1550.0}]},"facet":{"column":{"field":"category","type":"nominal"},"row":{"field":"region","type":"nominal"}},"spec":{"layer":[{"encoding":{"color":{"value":"#4682b4"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Value","type":"quantitative"}},"mark":"line"},{"encoding":{"color":{"value":"#00008b"},"size":{"value":30.0},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Value","type":"quantitative"}},"mark":"point"},{"encoding":{"color":{"value":"#ff7f50"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_quantity_scaled","title":"Value","type":"quantitative"}},"mark":"line"},{"encoding":{"color":{"value":"#ff4500"},"size":{"value":30.0},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_quantity_scaled","title":"Value","type":"quantitative"}},"mark":"point"}]},"title":"Monthly Revenue and Quantity by Region and Category"};
+    const visId = 'vis-1768836068038';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -788,7 +788,7 @@ LABEL
 <h2 class="anchored" data-anchor-id="coordinate-transformations">Coordinate Transformations</h2>
 <section id="flipped-coordinates-horizontal-bar-chart" class="level3">
 <h3 class="anchored" data-anchor-id="flipped-coordinates-horizontal-bar-chart">Flipped Coordinates (Horizontal Bar Chart)</h3>
-<div id="4db6b5cd" class="cell" data-execution_count="13">
+<div id="7c21b00f" class="cell" data-execution_count="13">
 <pre class="ggsql cell-code"><code>SELECT region, SUM(revenue) as total
 FROM 'sales.csv'
 GROUP BY region
@@ -801,11 +801,11 @@ LABEL
     x =&gt; 'Region', 
     y =&gt; 'Total Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="13">
-<div id="vis-1768833799205"></div>
+<div id="vis-1768836068048"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"region":"West","total":16650.0},{"region":"East","total":15450.0},{"region":"South","total":13900.0},{"region":"North","total":12200.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"x":{"field":"total","title":"Total Revenue ($)","type":"quantitative"},"y":{"field":"region","title":"Region","type":"nominal"}},"mark":"bar"}],"title":"Total Revenue by Region"};
-    const visId = 'vis-1768833799205';
+    const visId = 'vis-1768836068048';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -855,7 +855,7 @@ LABEL
 </section>
 <section id="cartesian-with-axis-limits" class="level3">
 <h3 class="anchored" data-anchor-id="cartesian-with-axis-limits">Cartesian with Axis Limits</h3>
-<div id="f3e6679a" class="cell" data-execution_count="14">
+<div id="ebf33788" class="cell" data-execution_count="14">
 <pre class="ggsql cell-code"><code>SELECT x, y FROM 'data.csv'
 VISUALISE x, y
 DRAW point 
@@ -867,11 +867,11 @@ LABEL
     x =&gt; 'X', 
     y =&gt; 'Y'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="14">
-<div id="vis-1768833799212"></div>
+<div id="vis-1768836068054"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"x":5.2,"y":18.5},{"x":8.7,"y":22.3},{"x":12.3,"y":28.9},{"x":15.8,"y":35.2},{"x":19.4,"y":42.7},{"x":23.1,"y":38.6},{"x":26.8,"y":45.1},{"x":30.2,"y":52.8},{"x":33.9,"y":48.3},{"x":37.5,"y":55.9},{"x":41.2,"y":62.4},{"x":44.8,"y":58.7},{"x":48.3,"y":65.2},{"x":52.1,"y":71.8},{"x":55.7,"y":68.1},{"x":59.4,"y":74.6}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"value":"#0000ff"},"size":{"value":4.0},"x":{"field":"x","scale":{"domain":[0.0,60.0]},"title":"X","type":"quantitative"},"y":{"field":"y","scale":{"domain":[0.0,70.0]},"title":"Y","type":"quantitative"}},"mark":"point"}],"title":"Scatter Plot with Custom Axis Limits"};
-    const visId = 'vis-1768833799212';
+    const visId = 'vis-1768836068054';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -921,7 +921,7 @@ LABEL
 </section>
 <section id="pie-chart-with-polar-coordinates" class="level3">
 <h3 class="anchored" data-anchor-id="pie-chart-with-polar-coordinates">Pie Chart with Polar Coordinates</h3>
-<div id="c14baf60" class="cell" data-execution_count="15">
+<div id="0d2e8611" class="cell" data-execution_count="15">
 <pre class="ggsql cell-code"><code>SELECT category, SUM(revenue) as total
 FROM 'sales.csv'
 GROUP BY category
@@ -931,11 +931,11 @@ COORD polar
 LABEL 
     title =&gt; 'Revenue Distribution by Category'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="15">
-<div id="vis-1768833799222"></div>
+<div id="vis-1768836068063"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Furniture","total":14300.0},{"category":"Clothing","total":21700.0},{"category":"Electronics","total":22200.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"category","title":"category","type":"nominal"},"theta":{"field":"total","title":"total","type":"quantitative"}},"mark":"arc"}],"title":"Revenue Distribution by Category"};
-    const visId = 'vis-1768833799222';
+    const visId = 'vis-1768836068063';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -990,7 +990,7 @@ LABEL
 <section id="different-constants-per-layer" class="level3">
 <h3 class="anchored" data-anchor-id="different-constants-per-layer">Different Constants Per Layer</h3>
 <p>Each layer can have its own constant value, creating a legend showing all values:</p>
-<div id="cf4b2e9f" class="cell" data-execution_count="16">
+<div id="a6a6e02a" class="cell" data-execution_count="16">
 <pre class="ggsql cell-code"><code>WITH monthly AS (
     SELECT
         DATE_TRUNC('month', sale_date) as month,
@@ -1015,11 +1015,11 @@ LABEL
     x =&gt; 'Month', 
     y =&gt; 'Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="16">
-<div id="vis-1768833799234"></div>
+<div id="vis-1768836068075"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-02-01","revenue":1200.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-08-01","revenue":2200.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-10-01","revenue":2400.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-01-01","revenue":1000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-11-01","revenue":2600.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-06-01","revenue":1800.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-07-01","revenue":2000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-09-01","revenue":1900.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-03-01","revenue":1400.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-04-01","revenue":1100.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-05-01","revenue":1600.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-12-01","revenue":3000.0}],"__layer_1__":[{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-01-01","revenue":800.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-11-01","revenue":2700.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-02-01","revenue":900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-08-01","revenue":2100.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-10-01","revenue":2500.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-03-01","revenue":1100.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-04-01","revenue":1300.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-05-01","revenue":1500.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-12-01","revenue":2900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-06-01","revenue":1700.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-07-01","revenue":1900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-09-01","revenue":2300.0}],"__layer_2__":[{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-03-01","revenue":850.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-04-01","revenue":950.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-05-01","revenue":1050.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-12-01","revenue":1750.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-06-01","revenue":1150.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-07-01","revenue":1250.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-09-01","revenue":1450.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-01-01","revenue":600.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-11-01","revenue":1650.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-02-01","revenue":700.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-08-01","revenue":1350.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-10-01","revenue":1550.0}]},"layer":[{"data":{"name":"__layer_0__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_2__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Revenue by Category (Constant Colors)"};
-    const visId = 'vis-1768833799234';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-02-01","revenue":1200.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-08-01","revenue":2200.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-10-01","revenue":2400.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-06-01","revenue":1800.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-07-01","revenue":2000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-09-01","revenue":1900.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-01-01","revenue":1000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-11-01","revenue":2600.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-03-01","revenue":1400.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-04-01","revenue":1100.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-05-01","revenue":1600.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-12-01","revenue":3000.0}],"__layer_1__":[{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-01-01","revenue":800.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-11-01","revenue":2700.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-03-01","revenue":1100.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-04-01","revenue":1300.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-05-01","revenue":1500.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-12-01","revenue":2900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-02-01","revenue":900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-08-01","revenue":2100.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-10-01","revenue":2500.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-06-01","revenue":1700.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-07-01","revenue":1900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-09-01","revenue":2300.0}],"__layer_2__":[{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-03-01","revenue":850.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-04-01","revenue":950.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-05-01","revenue":1050.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-12-01","revenue":1750.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-01-01","revenue":600.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-11-01","revenue":1650.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-06-01","revenue":1150.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-07-01","revenue":1250.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-09-01","revenue":1450.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-02-01","revenue":700.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-08-01","revenue":1350.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-10-01","revenue":1550.0}]},"layer":[{"data":{"name":"__layer_0__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_2__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Revenue by Category (Constant Colors)"};
+    const visId = 'vis-1768836068075';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -1070,7 +1070,7 @@ LABEL
 <section id="mixed-constants-and-columns" class="level3">
 <h3 class="anchored" data-anchor-id="mixed-constants-and-columns">Mixed Constants and Columns</h3>
 <p>When mixing constant and column mappings for the same aesthetic, the axis/legend label uses the first non-constant column name:</p>
-<div id="067b5449" class="cell" data-execution_count="17">
+<div id="737e83c3" class="cell" data-execution_count="17">
 <pre class="ggsql cell-code"><code>SELECT date, value, category FROM 'metrics.csv'
 VISUALISE date AS x
 DRAW line 
@@ -1083,11 +1083,11 @@ LABEL
     title =&gt; 'Metrics with Threshold Line', 
     x =&gt; 'Date'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="17">
-<div id="vis-1768833799244"></div>
+<div id="vis-1768836068084"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-01-01","value":45.2},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-02-01","value":52.1},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-03-01","value":48.7},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-04-01","value":58.3},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-05-01","value":62.5},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-06-01","value":67.8},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-07-01","value":71.2},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-08-01","value":75.6},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-09-01","value":80.1},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-10-01","value":85.4},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-11-01","value":90.2},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-12-01","value":95.8},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-01-01","value":120.5},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-02-01","value":135.2},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-03-01","value":128.9},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-04-01","value":142.3},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-05-01","value":155.7},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-06-01","value":148.2},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-07-01","value":162.8},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-08-01","value":175.4},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-09-01","value":168.9},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-10-01","value":182.5},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-11-01","value":195.1},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-12-01","value":188.7},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-01-01","value":78.3},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-02-01","value":82.1},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-03-01","value":75.6},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-04-01","value":85.9},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-05-01","value":92.4},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-06-01","value":88.7},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-07-01","value":95.2},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-08-01","value":101.8},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-09-01","value":97.5},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-10-01","value":105.3},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-11-01","value":112.6},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-12-01","value":108.9}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"category","title":"category","type":"nominal"},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"value","type":"quantitative"}},"mark":"line"},{"data":{"name":"__global__"},"encoding":{"color":{"value":"#0000ff"},"size":{"value":20.0},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"__ggsql_const_y_1__","title":"value","type":"quantitative"}},"mark":"point"}],"title":"Metrics with Threshold Line"};
-    const visId = 'vis-1768833799244';
+    const visId = 'vis-1768836068084';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -1138,7 +1138,7 @@ LABEL
 <section id="numeric-constants" class="level3">
 <h3 class="anchored" data-anchor-id="numeric-constants">Numeric Constants</h3>
 <p>Numbers work as constants too:</p>
-<div id="1d58a2dc" class="cell" data-execution_count="18">
+<div id="e269886a" class="cell" data-execution_count="18">
 <pre class="ggsql cell-code"><code>SELECT x, y FROM 'data.csv'
 VISUALISE x, y
 DRAW point 
@@ -1149,11 +1149,11 @@ DRAW point
 LABEL 
     title =&gt; 'Scatter Plot with Constant Sizes'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="18">
-<div id="vis-1768833799252"></div>
+<div id="vis-1768836068091"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"x":5.2,"y":18.5},{"x":8.7,"y":22.3},{"x":12.3,"y":28.9},{"x":15.8,"y":35.2},{"x":19.4,"y":42.7},{"x":23.1,"y":38.6},{"x":26.8,"y":45.1},{"x":30.2,"y":52.8},{"x":33.9,"y":48.3},{"x":37.5,"y":55.9},{"x":41.2,"y":62.4},{"x":44.8,"y":58.7},{"x":48.3,"y":65.2},{"x":52.1,"y":71.8},{"x":55.7,"y":68.1},{"x":59.4,"y":74.6}],"__layer_1__":[{"x":30.2,"y":52.8},{"x":37.5,"y":55.9},{"x":41.2,"y":62.4},{"x":44.8,"y":58.7},{"x":48.3,"y":65.2},{"x":52.1,"y":71.8},{"x":55.7,"y":68.1},{"x":59.4,"y":74.6}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"value":"#0000ff"},"size":{"value":100.0},"x":{"field":"x","title":"x","type":"quantitative"},"y":{"field":"y","title":"y","type":"quantitative"}},"mark":"point"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"value":"#ff0000"},"size":{"value":50.0},"x":{"field":"x","title":"x","type":"quantitative"},"y":{"field":"y","title":"y","type":"quantitative"}},"mark":"point"}],"title":"Scatter Plot with Constant Sizes"};
-    const visId = 'vis-1768833799252';
+    const visId = 'vis-1768836068091';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -1206,7 +1206,7 @@ LABEL
 <h2 class="anchored" data-anchor-id="layer-filtering">Layer filtering</h2>
 <section id="filter-one-layer" class="level3">
 <h3 class="anchored" data-anchor-id="filter-one-layer">Filter one layer</h3>
-<div id="f5b5b501" class="cell" data-execution_count="19">
+<div id="d815e67f" class="cell" data-execution_count="19">
 <pre class="ggsql cell-code"><code>SELECT date, value FROM 'timeseries.csv'
 VISUALISE date AS x, value AS y
 DRAW line 
@@ -1220,11 +1220,11 @@ LABEL
     x =&gt; 'Date', 
     y =&gt; 'Value'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="19">
-<div id="vis-1768833799261"></div>
+<div id="vis-1768836068106"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"date":"2023-01-01","value":100.0},{"date":"2023-01-08","value":110.0},{"date":"2023-01-15","value":105.0},{"date":"2023-01-22","value":115.0},{"date":"2023-01-29","value":120.0},{"date":"2023-02-05","value":118.0},{"date":"2023-02-12","value":125.0},{"date":"2023-02-19","value":130.0},{"date":"2023-02-26","value":128.0},{"date":"2023-03-05","value":135.0},{"date":"2023-03-12","value":142.0},{"date":"2023-03-19","value":138.0},{"date":"2023-03-26","value":145.0},{"date":"2023-04-02","value":150.0},{"date":"2023-04-09","value":148.0},{"date":"2023-04-16","value":155.0},{"date":"2023-04-23","value":160.0},{"date":"2023-04-30","value":158.0},{"date":"2023-05-07","value":165.0},{"date":"2023-05-14","value":170.0}],"__layer_1__":[{"date":"2023-01-01","value":100.0},{"date":"2023-01-08","value":110.0},{"date":"2023-01-15","value":105.0},{"date":"2023-01-22","value":115.0},{"date":"2023-01-29","value":120.0},{"date":"2023-02-05","value":118.0},{"date":"2023-02-12","value":125.0},{"date":"2023-02-26","value":128.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"value":"#0000ff"},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"value":"#ff0000"},"size":{"value":30.0},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"point"}],"title":"Time Series with Points"};
-    const visId = 'vis-1768833799261';
+    const visId = 'vis-1768836068106';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -1278,7 +1278,7 @@ LABEL
 <section id="order-by-in-a-layer" class="level3">
 <h3 class="anchored" data-anchor-id="order-by-in-a-layer">ORDER BY in a layer</h3>
 <p>Use <code>ORDER BY</code> to ensure data is sorted correctly within a layer. This is especially important for line charts where the order of points affects the visual path:</p>
-<div id="f5a4be40" class="cell" data-execution_count="20">
+<div id="2188995c" class="cell" data-execution_count="20">
 <pre class="ggsql cell-code"><code>WITH unordered_data AS (
     SELECT * FROM (VALUES
         (150.0, '2023-03-01'::DATE),
@@ -1301,11 +1301,11 @@ LABEL
     x =&gt; 'Date', 
     y =&gt; 'Value'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="20">
-<div id="vis-1768833799269"></div>
+<div id="vis-1768836068115"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"date":"2023-01-01","value":100.0},{"date":"2023-02-01","value":200.0},{"date":"2023-03-01","value":150.0},{"date":"2023-04-01","value":180.0},{"date":"2023-05-01","value":120.0}],"__layer_1__":[{"date":"2023-03-01","value":150.0},{"date":"2023-01-01","value":100.0},{"date":"2023-05-01","value":120.0},{"date":"2023-02-01","value":200.0},{"date":"2023-04-01","value":180.0}]},"layer":[{"data":{"name":"__layer_0__"},"encoding":{"order":{"field":"__ggsql_order__","type":"quantitative"},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"line","transform":[{"window":[{"as":"__ggsql_order__","op":"row_number"}]}]},{"data":{"name":"__layer_1__"},"encoding":{"color":{"value":"#ff0000"},"size":{"value":40.0},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"point"}],"title":"Line Chart with ORDER BY"};
-    const visId = 'vis-1768833799269';
+    const visId = 'vis-1768836068115';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -1356,7 +1356,7 @@ LABEL
 <section id="combining-filter-and-order-by" class="level3">
 <h3 class="anchored" data-anchor-id="combining-filter-and-order-by">Combining FILTER and ORDER BY</h3>
 <p>The <code>ORDER BY</code> clause can be combined with <code>FILTER</code> and other layer options:</p>
-<div id="77121338" class="cell" data-execution_count="21">
+<div id="1acb5044" class="cell" data-execution_count="21">
 <pre class="ggsql cell-code"><code>SELECT date, value, category FROM 'metrics.csv'
 VISUALISE
 DRAW path 
@@ -1373,11 +1373,11 @@ LABEL
     x =&gt; 'Date', 
     y =&gt; 'Value'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="21">
-<div id="vis-1768833799280"></div>
+<div id="vis-1768836068126"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Sales","date":"2023-01-01","value":45.2},{"category":"Sales","date":"2023-02-01","value":52.1},{"category":"Sales","date":"2023-03-01","value":48.7},{"category":"Sales","date":"2023-04-01","value":58.3},{"category":"Sales","date":"2023-05-01","value":62.5},{"category":"Sales","date":"2023-06-01","value":67.8},{"category":"Sales","date":"2023-07-01","value":71.2},{"category":"Sales","date":"2023-08-01","value":75.6},{"category":"Sales","date":"2023-09-01","value":80.1},{"category":"Sales","date":"2023-10-01","value":85.4},{"category":"Sales","date":"2023-11-01","value":90.2},{"category":"Sales","date":"2023-12-01","value":95.8},{"category":"Marketing","date":"2023-01-01","value":120.5},{"category":"Marketing","date":"2023-02-01","value":135.2},{"category":"Marketing","date":"2023-03-01","value":128.9},{"category":"Marketing","date":"2023-04-01","value":142.3},{"category":"Marketing","date":"2023-05-01","value":155.7},{"category":"Marketing","date":"2023-06-01","value":148.2},{"category":"Marketing","date":"2023-07-01","value":162.8},{"category":"Marketing","date":"2023-08-01","value":175.4},{"category":"Marketing","date":"2023-09-01","value":168.9},{"category":"Marketing","date":"2023-10-01","value":182.5},{"category":"Marketing","date":"2023-11-01","value":195.1},{"category":"Marketing","date":"2023-12-01","value":188.7},{"category":"Support","date":"2023-01-01","value":78.3},{"category":"Support","date":"2023-02-01","value":82.1},{"category":"Support","date":"2023-03-01","value":75.6},{"category":"Support","date":"2023-04-01","value":85.9},{"category":"Support","date":"2023-05-01","value":92.4},{"category":"Support","date":"2023-06-01","value":88.7},{"category":"Support","date":"2023-07-01","value":95.2},{"category":"Support","date":"2023-08-01","value":101.8},{"category":"Support","date":"2023-09-01","value":97.5},{"category":"Support","date":"2023-10-01","value":105.3},{"category":"Support","date":"2023-11-01","value":112.6},{"category":"Support","date":"2023-12-01","value":108.9}],"__layer_0__":[{"category":"Sales","date":"2023-01-01","value":45.2},{"category":"Sales","date":"2023-03-01","value":48.7},{"category":"Sales","date":"2023-02-01","value":52.1},{"category":"Sales","date":"2023-04-01","value":58.3},{"category":"Sales","date":"2023-05-01","value":62.5},{"category":"Sales","date":"2023-06-01","value":67.8},{"category":"Sales","date":"2023-07-01","value":71.2},{"category":"Sales","date":"2023-08-01","value":75.6},{"category":"Sales","date":"2023-09-01","value":80.1},{"category":"Sales","date":"2023-10-01","value":85.4},{"category":"Sales","date":"2023-11-01","value":90.2},{"category":"Sales","date":"2023-12-01","value":95.8},{"category":"Marketing","date":"2023-01-01","value":120.5},{"category":"Marketing","date":"2023-03-01","value":128.9},{"category":"Marketing","date":"2023-02-01","value":135.2},{"category":"Marketing","date":"2023-04-01","value":142.3},{"category":"Marketing","date":"2023-06-01","value":148.2},{"category":"Marketing","date":"2023-05-01","value":155.7},{"category":"Marketing","date":"2023-07-01","value":162.8},{"category":"Marketing","date":"2023-09-01","value":168.9},{"category":"Marketing","date":"2023-08-01","value":175.4},{"category":"Marketing","date":"2023-10-01","value":182.5},{"category":"Marketing","date":"2023-12-01","value":188.7},{"category":"Marketing","date":"2023-11-01","value":195.1}],"__layer_1__":[{"category":"Sales","date":"2023-01-01","value":45.2},{"category":"Sales","date":"2023-02-01","value":52.1},{"category":"Sales","date":"2023-03-01","value":48.7},{"category":"Sales","date":"2023-04-01","value":58.3},{"category":"Sales","date":"2023-05-01","value":62.5},{"category":"Sales","date":"2023-06-01","value":67.8},{"category":"Sales","date":"2023-07-01","value":71.2},{"category":"Sales","date":"2023-08-01","value":75.6},{"category":"Sales","date":"2023-09-01","value":80.1},{"category":"Sales","date":"2023-10-01","value":85.4},{"category":"Sales","date":"2023-11-01","value":90.2},{"category":"Sales","date":"2023-12-01","value":95.8},{"category":"Marketing","date":"2023-01-01","value":120.5},{"category":"Marketing","date":"2023-02-01","value":135.2},{"category":"Marketing","date":"2023-03-01","value":128.9},{"category":"Marketing","date":"2023-04-01","value":142.3},{"category":"Marketing","date":"2023-05-01","value":155.7},{"category":"Marketing","date":"2023-06-01","value":148.2},{"category":"Marketing","date":"2023-07-01","value":162.8},{"category":"Marketing","date":"2023-08-01","value":175.4},{"category":"Marketing","date":"2023-09-01","value":168.9},{"category":"Marketing","date":"2023-10-01","value":182.5},{"category":"Marketing","date":"2023-11-01","value":195.1},{"category":"Marketing","date":"2023-12-01","value":188.7}]},"layer":[{"data":{"name":"__layer_0__"},"encoding":{"color":{"field":"category","title":"category","type":"nominal"},"order":{"field":"__ggsql_order__","type":"quantitative"},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"line","transform":[{"window":[{"as":"__ggsql_order__","op":"row_number"}]}]},{"data":{"name":"__layer_1__"},"encoding":{"color":{"field":"category","title":"category","type":"nominal"},"size":{"value":20.0},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"point"}],"title":"Sales and Marketing Metrics (Ordered)"};
-    const visId = 'vis-1768833799280';
+    const visId = 'vis-1768836068126';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -1430,7 +1430,7 @@ LABEL
 <h2 class="anchored" data-anchor-id="common-table-expressions-ctes">Common Table Expressions (CTEs)</h2>
 <section id="simple-cte-with-visualise-from" class="level3">
 <h3 class="anchored" data-anchor-id="simple-cte-with-visualise-from">Simple CTE with VISUALISE FROM</h3>
-<div id="d2edae8a" class="cell" data-execution_count="22">
+<div id="d1ed5800" class="cell" data-execution_count="22">
 <pre class="ggsql cell-code"><code>WITH monthly_sales AS (
     SELECT
         DATE_TRUNC('month', sale_date) as month,
@@ -1447,11 +1447,11 @@ LABEL
     x =&gt; 'Month', 
     y =&gt; 'Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="22">
-<div id="vis-1768833799293"></div>
+<div id="vis-1768836068137"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"month":"2023-04-01","total_revenue":3350.0},{"month":"2023-06-01","total_revenue":4650.0},{"month":"2023-10-01","total_revenue":6450.0},{"month":"2023-11-01","total_revenue":6950.0},{"month":"2023-12-01","total_revenue":7650.0},{"month":"2023-01-01","total_revenue":2400.0},{"month":"2023-03-01","total_revenue":3350.0},{"month":"2023-08-01","total_revenue":5650.0},{"month":"2023-09-01","total_revenue":5650.0},{"month":"2023-05-01","total_revenue":4150.0},{"month":"2023-02-01","total_revenue":2800.0},{"month":"2023-07-01","total_revenue":5150.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__global__"},"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"point"}],"title":"Monthly Revenue Trends"};
-    const visId = 'vis-1768833799293';
+    const visId = 'vis-1768836068137';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -1501,7 +1501,7 @@ LABEL
 </section>
 <section id="multiple-ctes" class="level3">
 <h3 class="anchored" data-anchor-id="multiple-ctes">Multiple CTEs</h3>
-<div id="b02a0ff7" class="cell" data-execution_count="23">
+<div id="891f369f" class="cell" data-execution_count="23">
 <pre class="ggsql cell-code"><code>WITH daily_sales AS (
     SELECT sale_date, region, SUM(revenue) as revenue
     FROM 'sales.csv'
@@ -1520,11 +1520,11 @@ LABEL
     x =&gt; 'Region', 
     y =&gt; 'Total Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="23">
-<div id="vis-1768833799306"></div>
+<div id="vis-1768836068149"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"region":"South","total":13900.0},{"region":"East","total":15450.0},{"region":"West","total":16650.0},{"region":"North","total":12200.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"x":{"field":"total","title":"Total Revenue ($)","type":"quantitative"},"y":{"field":"region","title":"Region","type":"nominal"}},"mark":"bar"}],"title":"Total Revenue by Region"};
-    const visId = 'vis-1768833799306';
+    const visId = 'vis-1768836068149';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -1579,7 +1579,7 @@ LABEL
 <section id="comparing-actuals-vs-targets" class="level3">
 <h3 class="anchored" data-anchor-id="comparing-actuals-vs-targets">Comparing Actuals vs Targets</h3>
 <p>Each layer can reference a different CTE using <code>MAPPING ... FROM cte_name</code>:</p>
-<div id="79480399" class="cell" data-execution_count="24">
+<div id="213b9c2f" class="cell" data-execution_count="24">
 <pre class="ggsql cell-code"><code>WITH actuals AS (
     SELECT
         DATE_TRUNC('month', sale_date) as month,
@@ -1617,11 +1617,11 @@ LABEL
     x =&gt; 'Month', 
     y =&gt; 'Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="24">
-<div id="vis-1768833799327"></div>
+<div id="vis-1768836068161"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"__ggsql_const_color__":"Actual","month":"2023-04-01","value":3350.0},{"__ggsql_const_color__":"Actual","month":"2023-06-01","value":4650.0},{"__ggsql_const_color__":"Actual","month":"2023-10-01","value":6450.0},{"__ggsql_const_color__":"Actual","month":"2023-11-01","value":6950.0},{"__ggsql_const_color__":"Actual","month":"2023-12-01","value":7650.0},{"__ggsql_const_color__":"Actual","month":"2023-01-01","value":2400.0},{"__ggsql_const_color__":"Actual","month":"2023-03-01","value":3350.0},{"__ggsql_const_color__":"Actual","month":"2023-08-01","value":5650.0},{"__ggsql_const_color__":"Actual","month":"2023-09-01","value":5650.0},{"__ggsql_const_color__":"Actual","month":"2023-05-01","value":4150.0},{"__ggsql_const_color__":"Actual","month":"2023-02-01","value":2800.0},{"__ggsql_const_color__":"Actual","month":"2023-07-01","value":5150.0}],"__layer_1__":[{"__ggsql_const_color__":"Actual","month":"2023-04-01","value":3350.0},{"__ggsql_const_color__":"Actual","month":"2023-06-01","value":4650.0},{"__ggsql_const_color__":"Actual","month":"2023-10-01","value":6450.0},{"__ggsql_const_color__":"Actual","month":"2023-11-01","value":6950.0},{"__ggsql_const_color__":"Actual","month":"2023-12-01","value":7650.0},{"__ggsql_const_color__":"Actual","month":"2023-01-01","value":2400.0},{"__ggsql_const_color__":"Actual","month":"2023-03-01","value":3350.0},{"__ggsql_const_color__":"Actual","month":"2023-08-01","value":5650.0},{"__ggsql_const_color__":"Actual","month":"2023-09-01","value":5650.0},{"__ggsql_const_color__":"Actual","month":"2023-05-01","value":4150.0},{"__ggsql_const_color__":"Actual","month":"2023-02-01","value":2800.0},{"__ggsql_const_color__":"Actual","month":"2023-07-01","value":5150.0}],"__layer_2__":[{"__ggsql_const_color__":"Target","month":"2023-01-01","value":5000.0},{"__ggsql_const_color__":"Target","month":"2023-02-01","value":5500.0},{"__ggsql_const_color__":"Target","month":"2023-03-01","value":6000.0},{"__ggsql_const_color__":"Target","month":"2023-04-01","value":6500.0},{"__ggsql_const_color__":"Target","month":"2023-05-01","value":7000.0},{"__ggsql_const_color__":"Target","month":"2023-06-01","value":7500.0},{"__ggsql_const_color__":"Target","month":"2023-07-01","value":8000.0},{"__ggsql_const_color__":"Target","month":"2023-08-01","value":8500.0},{"__ggsql_const_color__":"Target","month":"2023-09-01","value":9000.0},{"__ggsql_const_color__":"Target","month":"2023-10-01","value":9500.0},{"__ggsql_const_color__":"Target","month":"2023-11-01","value":10000.0},{"__ggsql_const_color__":"Target","month":"2023-12-01","value":10500.0}]},"layer":[{"data":{"name":"__layer_0__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"value","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"size":{"value":30.0},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"value","title":"Revenue ($)","type":"quantitative"}},"mark":"point"},{"data":{"name":"__layer_2__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"value","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Revenue: Actual vs Target"};
-    const visId = 'vis-1768833799327';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"__ggsql_const_color__":"Actual","month":"2023-01-01","value":2400.0},{"__ggsql_const_color__":"Actual","month":"2023-03-01","value":3350.0},{"__ggsql_const_color__":"Actual","month":"2023-08-01","value":5650.0},{"__ggsql_const_color__":"Actual","month":"2023-09-01","value":5650.0},{"__ggsql_const_color__":"Actual","month":"2023-05-01","value":4150.0},{"__ggsql_const_color__":"Actual","month":"2023-02-01","value":2800.0},{"__ggsql_const_color__":"Actual","month":"2023-07-01","value":5150.0},{"__ggsql_const_color__":"Actual","month":"2023-04-01","value":3350.0},{"__ggsql_const_color__":"Actual","month":"2023-06-01","value":4650.0},{"__ggsql_const_color__":"Actual","month":"2023-10-01","value":6450.0},{"__ggsql_const_color__":"Actual","month":"2023-11-01","value":6950.0},{"__ggsql_const_color__":"Actual","month":"2023-12-01","value":7650.0}],"__layer_1__":[{"__ggsql_const_color__":"Actual","month":"2023-01-01","value":2400.0},{"__ggsql_const_color__":"Actual","month":"2023-03-01","value":3350.0},{"__ggsql_const_color__":"Actual","month":"2023-08-01","value":5650.0},{"__ggsql_const_color__":"Actual","month":"2023-09-01","value":5650.0},{"__ggsql_const_color__":"Actual","month":"2023-05-01","value":4150.0},{"__ggsql_const_color__":"Actual","month":"2023-02-01","value":2800.0},{"__ggsql_const_color__":"Actual","month":"2023-07-01","value":5150.0},{"__ggsql_const_color__":"Actual","month":"2023-04-01","value":3350.0},{"__ggsql_const_color__":"Actual","month":"2023-06-01","value":4650.0},{"__ggsql_const_color__":"Actual","month":"2023-10-01","value":6450.0},{"__ggsql_const_color__":"Actual","month":"2023-11-01","value":6950.0},{"__ggsql_const_color__":"Actual","month":"2023-12-01","value":7650.0}],"__layer_2__":[{"__ggsql_const_color__":"Target","month":"2023-01-01","value":5000.0},{"__ggsql_const_color__":"Target","month":"2023-02-01","value":5500.0},{"__ggsql_const_color__":"Target","month":"2023-03-01","value":6000.0},{"__ggsql_const_color__":"Target","month":"2023-04-01","value":6500.0},{"__ggsql_const_color__":"Target","month":"2023-05-01","value":7000.0},{"__ggsql_const_color__":"Target","month":"2023-06-01","value":7500.0},{"__ggsql_const_color__":"Target","month":"2023-07-01","value":8000.0},{"__ggsql_const_color__":"Target","month":"2023-08-01","value":8500.0},{"__ggsql_const_color__":"Target","month":"2023-09-01","value":9000.0},{"__ggsql_const_color__":"Target","month":"2023-10-01","value":9500.0},{"__ggsql_const_color__":"Target","month":"2023-11-01","value":10000.0},{"__ggsql_const_color__":"Target","month":"2023-12-01","value":10500.0}]},"layer":[{"data":{"name":"__layer_0__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"value","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"size":{"value":30.0},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"value","title":"Revenue ($)","type":"quantitative"}},"mark":"point"},{"data":{"name":"__layer_2__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"value","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Revenue: Actual vs Target"};
+    const visId = 'vis-1768836068161';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -1672,7 +1672,7 @@ LABEL
 <section id="cte-chain-raw-filtered-aggregated" class="level3">
 <h3 class="anchored" data-anchor-id="cte-chain-raw-filtered-aggregated">CTE Chain: Raw → Filtered → Aggregated</h3>
 <p>CTEs can reference other CTEs, creating a data transformation pipeline:</p>
-<div id="5f7cd471" class="cell" data-execution_count="25">
+<div id="953215f5" class="cell" data-execution_count="25">
 <pre class="ggsql cell-code"><code>WITH raw_data AS (
     SELECT sale_date, revenue, category, region
     FROM 'sales.csv'
@@ -1698,11 +1698,11 @@ LABEL
     x =&gt; 'Month', 
     y =&gt; 'Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="25">
-<div id="vis-1768833799350"></div>
+<div id="vis-1768836068175"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"month":"2023-03-01","region":"East","total":1400.0},{"month":"2023-04-01","region":"West","total":1100.0},{"month":"2023-05-01","region":"North","total":1600.0},{"month":"2023-12-01","region":"West","total":3000.0},{"month":"2023-01-01","region":"North","total":1000.0},{"month":"2023-11-01","region":"East","total":2600.0},{"month":"2023-02-01","region":"South","total":1200.0},{"month":"2023-07-01","region":"East","total":2000.0},{"month":"2023-09-01","region":"North","total":1900.0},{"month":"2023-10-01","region":"South","total":2400.0},{"month":"2023-06-01","region":"South","total":1800.0},{"month":"2023-08-01","region":"West","total":2200.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total","title":"Revenue ($)","type":"quantitative"}},"mark":"point"}],"title":"Electronics Revenue by Region (CTE Chain)"};
-    const visId = 'vis-1768833799350';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"month":"2023-01-01","region":"North","total":1000.0},{"month":"2023-11-01","region":"East","total":2600.0},{"month":"2023-02-01","region":"South","total":1200.0},{"month":"2023-07-01","region":"East","total":2000.0},{"month":"2023-09-01","region":"North","total":1900.0},{"month":"2023-10-01","region":"South","total":2400.0},{"month":"2023-03-01","region":"East","total":1400.0},{"month":"2023-04-01","region":"West","total":1100.0},{"month":"2023-05-01","region":"North","total":1600.0},{"month":"2023-12-01","region":"West","total":3000.0},{"month":"2023-06-01","region":"South","total":1800.0},{"month":"2023-08-01","region":"West","total":2200.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total","title":"Revenue ($)","type":"quantitative"}},"mark":"point"}],"title":"Electronics Revenue by Region (CTE Chain)"};
+    const visId = 'vis-1768836068175';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -1753,7 +1753,7 @@ LABEL
 <section id="layer-from-with-filter" class="level3">
 <h3 class="anchored" data-anchor-id="layer-from-with-filter">Layer FROM with FILTER</h3>
 <p>Combine <code>FROM</code> with <code>FILTER</code> to get filtered subsets from a CTE:</p>
-<div id="af0514be" class="cell" data-execution_count="26">
+<div id="2b54bb04" class="cell" data-execution_count="26">
 <pre class="ggsql cell-code"><code>WITH all_sales AS (
     SELECT
         DATE_TRUNC('month', sale_date) as month,
@@ -1777,11 +1777,11 @@ LABEL
     x =&gt; 'Month', 
     y =&gt; 'Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="26">
-<div id="vis-1768833799363"></div>
+<div id="vis-1768836068187"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-02-01","revenue":1200.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-08-01","revenue":2200.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-10-01","revenue":2400.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-01-01","revenue":800.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-11-01","revenue":2700.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-03-01","revenue":850.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-04-01","revenue":950.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-05-01","revenue":1050.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-12-01","revenue":1750.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-03-01","revenue":1400.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-04-01","revenue":1100.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-05-01","revenue":1600.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-12-01","revenue":3000.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-06-01","revenue":1700.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-07-01","revenue":1900.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-09-01","revenue":2300.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-02-01","revenue":700.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-08-01","revenue":1350.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-10-01","revenue":1550.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-06-01","revenue":1800.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-07-01","revenue":2000.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-09-01","revenue":1900.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-03-01","revenue":1100.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-04-01","revenue":1300.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-05-01","revenue":1500.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-12-01","revenue":2900.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-01-01","revenue":600.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-11-01","revenue":1650.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-01-01","revenue":1000.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-11-01","revenue":2600.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-02-01","revenue":900.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-08-01","revenue":2100.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-10-01","revenue":2500.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-06-01","revenue":1150.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-07-01","revenue":1250.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-09-01","revenue":1450.0}],"__layer_1__":[{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-02-01","revenue":1200.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-08-01","revenue":2200.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-10-01","revenue":2400.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-03-01","revenue":1400.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-04-01","revenue":1100.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-05-01","revenue":1600.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-12-01","revenue":3000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-06-01","revenue":1800.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-07-01","revenue":2000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-09-01","revenue":1900.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-01-01","revenue":1000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-11-01","revenue":2600.0}],"__layer_2__":[{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-01-01","revenue":800.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-11-01","revenue":2700.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-06-01","revenue":1700.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-07-01","revenue":1900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-09-01","revenue":2300.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-03-01","revenue":1100.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-04-01","revenue":1300.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-05-01","revenue":1500.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-12-01","revenue":2900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-02-01","revenue":900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-08-01","revenue":2100.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-10-01","revenue":2500.0}]},"layer":[{"data":{"name":"__layer_0__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_2__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Revenue by Category (Filtered Layers)"};
-    const visId = 'vis-1768833799363';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-01-01","revenue":1000.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-11-01","revenue":2600.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-02-01","revenue":900.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-08-01","revenue":2100.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-10-01","revenue":2500.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-06-01","revenue":1150.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-07-01","revenue":1250.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-09-01","revenue":1450.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-02-01","revenue":1200.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-08-01","revenue":2200.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-10-01","revenue":2400.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-01-01","revenue":800.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-11-01","revenue":2700.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-03-01","revenue":850.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-04-01","revenue":950.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-05-01","revenue":1050.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-12-01","revenue":1750.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-03-01","revenue":1400.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-04-01","revenue":1100.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-05-01","revenue":1600.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-12-01","revenue":3000.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-06-01","revenue":1700.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-07-01","revenue":1900.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-09-01","revenue":2300.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-02-01","revenue":700.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-08-01","revenue":1350.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-10-01","revenue":1550.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-06-01","revenue":1800.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-07-01","revenue":2000.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-09-01","revenue":1900.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-03-01","revenue":1100.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-04-01","revenue":1300.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-05-01","revenue":1500.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-12-01","revenue":2900.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-01-01","revenue":600.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-11-01","revenue":1650.0}],"__layer_1__":[{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-01-01","revenue":1000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-11-01","revenue":2600.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-02-01","revenue":1200.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-08-01","revenue":2200.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-10-01","revenue":2400.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-03-01","revenue":1400.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-04-01","revenue":1100.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-05-01","revenue":1600.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-12-01","revenue":3000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-06-01","revenue":1800.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-07-01","revenue":2000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-09-01","revenue":1900.0}],"__layer_2__":[{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-02-01","revenue":900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-08-01","revenue":2100.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-10-01","revenue":2500.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-01-01","revenue":800.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-11-01","revenue":2700.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-06-01","revenue":1700.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-07-01","revenue":1900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-09-01","revenue":2300.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-03-01","revenue":1100.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-04-01","revenue":1300.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-05-01","revenue":1500.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-12-01","revenue":2900.0}]},"layer":[{"data":{"name":"__layer_0__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_2__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Revenue by Category (Filtered Layers)"};
+    const visId = 'vis-1768836068187';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -1832,7 +1832,7 @@ LABEL
 <section id="multiple-file-sources" class="level3">
 <h3 class="anchored" data-anchor-id="multiple-file-sources">Multiple File Sources</h3>
 <p>Layers can also reference different CSV files directly:</p>
-<div id="7ea14f38" class="cell" data-execution_count="27">
+<div id="af16ee86" class="cell" data-execution_count="27">
 <pre class="ggsql cell-code"><code>VISUALISE
 DRAW line 
     MAPPING date AS x, value AS y, 'Time Series' AS color FROM 'timeseries.csv'
@@ -1843,11 +1843,11 @@ LABEL
     x =&gt; 'X', 
     y =&gt; 'Y'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="27">
-<div id="vis-1768833799379"></div>
+<div id="vis-1768836068198"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"__ggsql_const_color__":"Time Series","date":"2023-01-01","value":100.0},{"__ggsql_const_color__":"Time Series","date":"2023-01-08","value":110.0},{"__ggsql_const_color__":"Time Series","date":"2023-01-15","value":105.0},{"__ggsql_const_color__":"Time Series","date":"2023-01-22","value":115.0},{"__ggsql_const_color__":"Time Series","date":"2023-01-29","value":120.0},{"__ggsql_const_color__":"Time Series","date":"2023-02-05","value":118.0},{"__ggsql_const_color__":"Time Series","date":"2023-02-12","value":125.0},{"__ggsql_const_color__":"Time Series","date":"2023-02-19","value":130.0},{"__ggsql_const_color__":"Time Series","date":"2023-02-26","value":128.0},{"__ggsql_const_color__":"Time Series","date":"2023-03-05","value":135.0},{"__ggsql_const_color__":"Time Series","date":"2023-03-12","value":142.0},{"__ggsql_const_color__":"Time Series","date":"2023-03-19","value":138.0},{"__ggsql_const_color__":"Time Series","date":"2023-03-26","value":145.0},{"__ggsql_const_color__":"Time Series","date":"2023-04-02","value":150.0},{"__ggsql_const_color__":"Time Series","date":"2023-04-09","value":148.0},{"__ggsql_const_color__":"Time Series","date":"2023-04-16","value":155.0},{"__ggsql_const_color__":"Time Series","date":"2023-04-23","value":160.0},{"__ggsql_const_color__":"Time Series","date":"2023-04-30","value":158.0},{"__ggsql_const_color__":"Time Series","date":"2023-05-07","value":165.0},{"__ggsql_const_color__":"Time Series","date":"2023-05-14","value":170.0}],"__layer_1__":[{"__ggsql_const_color__":"Scatter","x":5.2,"y":18.5},{"__ggsql_const_color__":"Scatter","x":8.7,"y":22.3},{"__ggsql_const_color__":"Scatter","x":12.3,"y":28.9},{"__ggsql_const_color__":"Scatter","x":15.8,"y":35.2},{"__ggsql_const_color__":"Scatter","x":19.4,"y":42.7},{"__ggsql_const_color__":"Scatter","x":23.1,"y":38.6},{"__ggsql_const_color__":"Scatter","x":26.8,"y":45.1},{"__ggsql_const_color__":"Scatter","x":30.2,"y":52.8},{"__ggsql_const_color__":"Scatter","x":33.9,"y":48.3},{"__ggsql_const_color__":"Scatter","x":37.5,"y":55.9},{"__ggsql_const_color__":"Scatter","x":41.2,"y":62.4},{"__ggsql_const_color__":"Scatter","x":44.8,"y":58.7},{"__ggsql_const_color__":"Scatter","x":48.3,"y":65.2},{"__ggsql_const_color__":"Scatter","x":52.1,"y":71.8},{"__ggsql_const_color__":"Scatter","x":55.7,"y":68.1},{"__ggsql_const_color__":"Scatter","x":59.4,"y":74.6}]},"layer":[{"data":{"name":"__layer_0__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"date","title":"X","type":"temporal"},"y":{"field":"value","title":"Y","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"x","title":"X","type":"quantitative"},"y":{"field":"y","title":"Y","type":"quantitative"}},"mark":"point"}],"title":"Data from Multiple Files"};
-    const visId = 'vis-1768833799379';
+    const visId = 'vis-1768836068198';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -1900,7 +1900,7 @@ LABEL
 <h2 class="anchored" data-anchor-id="advanced-examples">Advanced Examples</h2>
 <section id="complete-regional-sales-analysis" class="level3">
 <h3 class="anchored" data-anchor-id="complete-regional-sales-analysis">Complete Regional Sales Analysis</h3>
-<div id="5884bda9" class="cell" data-execution_count="28">
+<div id="6605fd41" class="cell" data-execution_count="28">
 <pre class="ggsql cell-code"><code>SELECT
     sale_date,
     region,
@@ -1919,11 +1919,11 @@ LABEL
     x =&gt; 'Date', 
     y =&gt; 'Total Quantity'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="28">
-<div id="vis-1768833799391"></div>
+<div id="vis-1768836068208"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"__global__"},"datasets":{"__global__":[{"region":"North","sale_date":"2023-01-15","total_quantity":5.0},{"region":"North","sale_date":"2023-01-20","total_quantity":25.0},{"region":"North","sale_date":"2023-01-25","total_quantity":3.0},{"region":"South","sale_date":"2023-02-10","total_quantity":8.0},{"region":"South","sale_date":"2023-02-15","total_quantity":30.0},{"region":"South","sale_date":"2023-02-18","total_quantity":3.0},{"region":"East","sale_date":"2023-03-05","total_quantity":7.0},{"region":"East","sale_date":"2023-03-10","total_quantity":35.0},{"region":"East","sale_date":"2023-03-15","total_quantity":4.0},{"region":"West","sale_date":"2023-04-20","total_quantity":6.0},{"region":"West","sale_date":"2023-04-25","total_quantity":38.0},{"region":"West","sale_date":"2023-04-28","total_quantity":4.0},{"region":"North","sale_date":"2023-05-12","total_quantity":9.0},{"region":"North","sale_date":"2023-05-18","total_quantity":42.0},{"region":"North","sale_date":"2023-05-22","total_quantity":5.0},{"region":"South","sale_date":"2023-06-08","total_quantity":10.0},{"region":"South","sale_date":"2023-06-12","total_quantity":45.0},{"region":"South","sale_date":"2023-06-16","total_quantity":5.0},{"region":"East","sale_date":"2023-07-14","total_quantity":11.0},{"region":"East","sale_date":"2023-07-20","total_quantity":48.0},{"region":"East","sale_date":"2023-07-24","total_quantity":5.0},{"region":"West","sale_date":"2023-08-22","total_quantity":12.0},{"region":"West","sale_date":"2023-08-28","total_quantity":50.0},{"region":"West","sale_date":"2023-08-30","total_quantity":6.0},{"region":"North","sale_date":"2023-09-18","total_quantity":8.0},{"region":"North","sale_date":"2023-09-22","total_quantity":52.0},{"region":"North","sale_date":"2023-09-26","total_quantity":6.0},{"region":"South","sale_date":"2023-10-25","total_quantity":14.0},{"region":"South","sale_date":"2023-10-30","total_quantity":55.0},{"region":"South","sale_date":"2023-10-31","total_quantity":6.0},{"region":"East","sale_date":"2023-11-11","total_quantity":15.0},{"region":"East","sale_date":"2023-11-15","total_quantity":58.0},{"region":"East","sale_date":"2023-11-20","total_quantity":7.0},{"region":"West","sale_date":"2023-12-05","total_quantity":16.0},{"region":"West","sale_date":"2023-12-10","total_quantity":60.0},{"region":"West","sale_date":"2023-12-15","total_quantity":7.0}]},"facet":{"field":"region","type":"nominal"},"spec":{"layer":[{"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"x":{"field":"sale_date","title":"Date","type":"temporal"},"y":{"field":"total_quantity","title":"Total Quantity","type":"quantitative"}},"mark":"line"},{"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"x":{"field":"sale_date","title":"Date","type":"temporal"},"y":{"field":"total_quantity","title":"Total Quantity","type":"quantitative"}},"mark":"point"}]},"title":"Sales Trends by Region"};
-    const visId = 'vis-1768833799391';
+    const visId = 'vis-1768836068208';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
@@ -1973,7 +1973,7 @@ LABEL
 </section>
 <section id="multi-category-analysis" class="level3">
 <h3 class="anchored" data-anchor-id="multi-category-analysis">Multi-Category Analysis</h3>
-<div id="e140583d" class="cell" data-execution_count="29">
+<div id="3d5c6e29" class="cell" data-execution_count="29">
 <pre class="ggsql cell-code"><code>SELECT
     category,
     region,
@@ -1987,11 +1987,11 @@ LABEL
     x =&gt; 'Category', 
     y =&gt; 'Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="29">
-<div id="vis-1768833799403"></div>
+<div id="vis-1768836068217"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Clothing","region":"North","total_revenue":4600.0},{"category":"Clothing","region":"East","total_revenue":5700.0},{"category":"Furniture","region":"North","total_revenue":3100.0},{"category":"Furniture","region":"East","total_revenue":3750.0},{"category":"Electronics","region":"South","total_revenue":5400.0},{"category":"Electronics","region":"West","total_revenue":6300.0},{"category":"Electronics","region":"North","total_revenue":4500.0},{"category":"Electronics","region":"East","total_revenue":6000.0},{"category":"Clothing","region":"South","total_revenue":5100.0},{"category":"Clothing","region":"West","total_revenue":6300.0},{"category":"Furniture","region":"South","total_revenue":3400.0},{"category":"Furniture","region":"West","total_revenue":4050.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"x":{"field":"category","title":"Category","type":"nominal"},"y":{"field":"total_revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"bar"}],"title":"Revenue by Category and Region"};
-    const visId = 'vis-1768833799403';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Clothing","region":"North","total_revenue":4600.0},{"category":"Clothing","region":"East","total_revenue":5700.0},{"category":"Furniture","region":"North","total_revenue":3100.0},{"category":"Furniture","region":"East","total_revenue":3750.0},{"category":"Electronics","region":"North","total_revenue":4500.0},{"category":"Electronics","region":"East","total_revenue":6000.0},{"category":"Electronics","region":"South","total_revenue":5400.0},{"category":"Electronics","region":"West","total_revenue":6300.0},{"category":"Clothing","region":"South","total_revenue":5100.0},{"category":"Clothing","region":"West","total_revenue":6300.0},{"category":"Furniture","region":"South","total_revenue":3400.0},{"category":"Furniture","region":"West","total_revenue":4050.0}]},"layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"x":{"field":"category","title":"Category","type":"nominal"},"y":{"field":"total_revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"bar"}],"title":"Revenue by Category and Region"};
+    const visId = 'vis-1768836068217';
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {
