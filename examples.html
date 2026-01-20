@@ -260,16 +260,16 @@ ul.task-list li input[type="checkbox"] {
 <h2 class="anchored" data-anchor-id="basic-visualizations">Basic Visualizations</h2>
 <section id="simple-scatter-plot" class="level3">
 <h3 class="anchored" data-anchor-id="simple-scatter-plot">Simple Scatter Plot</h3>
-<div id="bea74ef8" class="cell" data-execution_count="5">
+<div id="2654b9b4" class="cell" data-execution_count="5">
 <pre class="ggsql cell-code"><code>SELECT x, y FROM 'data.csv'
 VISUALISE x, y
 DRAW point</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="5">
-<div id="vis-1768907267552"></div>
+<div id="vis-1768911374858"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"x":5.2,"y":18.5},{"x":8.7,"y":22.3},{"x":12.3,"y":28.9},{"x":15.8,"y":35.2},{"x":19.4,"y":42.7},{"x":23.1,"y":38.6},{"x":26.8,"y":45.1},{"x":30.2,"y":52.8},{"x":33.9,"y":48.3},{"x":37.5,"y":55.9},{"x":41.2,"y":62.4},{"x":44.8,"y":58.7},{"x":48.3,"y":65.2},{"x":52.1,"y":71.8},{"x":55.7,"y":68.1},{"x":59.4,"y":74.6}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"x":{"field":"x","title":"x","type":"quantitative"},"y":{"field":"y","title":"y","type":"quantitative"}},"mark":"point"}],"width":"container"};
-    const visId = 'vis-1768907267552';
+    const visId = 'vis-1768911374858';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -340,7 +340,7 @@ DRAW point</code></pre>
 </section>
 <section id="line-chart-with-date-scale" class="level3">
 <h3 class="anchored" data-anchor-id="line-chart-with-date-scale">Line Chart with Date Scale</h3>
-<div id="a49ec1a4" class="cell" data-execution_count="6">
+<div id="e1faab6d" class="cell" data-execution_count="6">
 <pre class="ggsql cell-code"><code>SELECT sale_date, revenue FROM 'sales.csv'
 WHERE category = 'Electronics'
 VISUALISE sale_date AS x, revenue AS y
@@ -351,11 +351,11 @@ LABEL
     x =&gt; 'Date', 
     y =&gt; 'Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="6">
-<div id="vis-1768907267565"></div>
+<div id="vis-1768911374870"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"revenue":1000.0,"sale_date":"2023-01-15"},{"revenue":1200.0,"sale_date":"2023-02-10"},{"revenue":1400.0,"sale_date":"2023-03-05"},{"revenue":1100.0,"sale_date":"2023-04-20"},{"revenue":1600.0,"sale_date":"2023-05-12"},{"revenue":1800.0,"sale_date":"2023-06-08"},{"revenue":2000.0,"sale_date":"2023-07-14"},{"revenue":2200.0,"sale_date":"2023-08-22"},{"revenue":1900.0,"sale_date":"2023-09-18"},{"revenue":2400.0,"sale_date":"2023-10-25"},{"revenue":2600.0,"sale_date":"2023-11-11"},{"revenue":3000.0,"sale_date":"2023-12-05"}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"x":{"field":"sale_date","title":"Date","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Electronics Revenue Over Time","width":"container"};
-    const visId = 'vis-1768907267565';
+    const visId = 'vis-1768911374870';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -426,7 +426,7 @@ LABEL
 </section>
 <section id="bar-chart-by-category" class="level3">
 <h3 class="anchored" data-anchor-id="bar-chart-by-category">Bar Chart by Category</h3>
-<div id="81d6959c" class="cell" data-execution_count="7">
+<div id="253081c1" class="cell" data-execution_count="7">
 <pre class="ggsql cell-code"><code>SELECT category, SUM(revenue) as total
 FROM 'sales.csv'
 GROUP BY category
@@ -437,11 +437,11 @@ LABEL
     x =&gt; 'Category', 
     y =&gt; 'Total Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="7">
-<div id="vis-1768907267575"></div>
+<div id="vis-1768911374882"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Furniture","total":14300.0},{"category":"Electronics","total":22200.0},{"category":"Clothing","total":21700.0}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"category","title":"category","type":"nominal"},"detail":{"field":"category","type":"nominal"},"width":{"value":0.9},"x":{"field":"category","title":"Category","type":"nominal"},"y":{"field":"total","title":"Total Revenue ($)","type":"quantitative"}},"mark":{"type":"bar","width":{"band":0.9}}}],"title":"Total Revenue by Category","width":"container"};
-    const visId = 'vis-1768907267575';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Clothing","total":21700.0},{"category":"Furniture","total":14300.0},{"category":"Electronics","total":22200.0}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"category","title":"category","type":"nominal"},"detail":{"field":"category","type":"nominal"},"width":{"value":0.9},"x":{"field":"category","title":"Category","type":"nominal"},"y":{"field":"total","title":"Total Revenue ($)","type":"quantitative"}},"mark":{"type":"bar","width":{"band":0.9}}}],"title":"Total Revenue by Category","width":"container"};
+    const visId = 'vis-1768911374882';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -512,17 +512,17 @@ LABEL
 </section>
 <section id="line-chart-with-multiple-lines-with-same-aesthetics" class="level3">
 <h3 class="anchored" data-anchor-id="line-chart-with-multiple-lines-with-same-aesthetics">Line chart with multiple lines with same aesthetics</h3>
-<div id="6d44a09d" class="cell" data-execution_count="8">
+<div id="aed4435a" class="cell" data-execution_count="8">
 <pre class="ggsql cell-code"><code>SELECT * FROM 'sales.csv'
 VISUALISE sale_date AS x, revenue AS y
 DRAW line
     PARTITION BY category</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="8">
-<div id="vis-1768907267584"></div>
+<div id="vis-1768911374892"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Electronics","quantity":5,"region":"North","revenue":1000.0,"sale_date":"2023-01-15"},{"category":"Electronics","quantity":8,"region":"South","revenue":1200.0,"sale_date":"2023-02-10"},{"category":"Electronics","quantity":7,"region":"East","revenue":1400.0,"sale_date":"2023-03-05"},{"category":"Electronics","quantity":6,"region":"West","revenue":1100.0,"sale_date":"2023-04-20"},{"category":"Electronics","quantity":9,"region":"North","revenue":1600.0,"sale_date":"2023-05-12"},{"category":"Electronics","quantity":10,"region":"South","revenue":1800.0,"sale_date":"2023-06-08"},{"category":"Electronics","quantity":11,"region":"East","revenue":2000.0,"sale_date":"2023-07-14"},{"category":"Electronics","quantity":12,"region":"West","revenue":2200.0,"sale_date":"2023-08-22"},{"category":"Electronics","quantity":8,"region":"North","revenue":1900.0,"sale_date":"2023-09-18"},{"category":"Electronics","quantity":14,"region":"South","revenue":2400.0,"sale_date":"2023-10-25"},{"category":"Electronics","quantity":15,"region":"East","revenue":2600.0,"sale_date":"2023-11-11"},{"category":"Electronics","quantity":16,"region":"West","revenue":3000.0,"sale_date":"2023-12-05"},{"category":"Clothing","quantity":25,"region":"North","revenue":800.0,"sale_date":"2023-01-20"},{"category":"Clothing","quantity":30,"region":"South","revenue":900.0,"sale_date":"2023-02-15"},{"category":"Clothing","quantity":35,"region":"East","revenue":1100.0,"sale_date":"2023-03-10"},{"category":"Clothing","quantity":38,"region":"West","revenue":1300.0,"sale_date":"2023-04-25"},{"category":"Clothing","quantity":42,"region":"North","revenue":1500.0,"sale_date":"2023-05-18"},{"category":"Clothing","quantity":45,"region":"South","revenue":1700.0,"sale_date":"2023-06-12"},{"category":"Clothing","quantity":48,"region":"East","revenue":1900.0,"sale_date":"2023-07-20"},{"category":"Clothing","quantity":50,"region":"West","revenue":2100.0,"sale_date":"2023-08-28"},{"category":"Clothing","quantity":52,"region":"North","revenue":2300.0,"sale_date":"2023-09-22"},{"category":"Clothing","quantity":55,"region":"South","revenue":2500.0,"sale_date":"2023-10-30"},{"category":"Clothing","quantity":58,"region":"East","revenue":2700.0,"sale_date":"2023-11-15"},{"category":"Clothing","quantity":60,"region":"West","revenue":2900.0,"sale_date":"2023-12-10"},{"category":"Furniture","quantity":3,"region":"North","revenue":600.0,"sale_date":"2023-01-25"},{"category":"Furniture","quantity":3,"region":"South","revenue":700.0,"sale_date":"2023-02-18"},{"category":"Furniture","quantity":4,"region":"East","revenue":850.0,"sale_date":"2023-03-15"},{"category":"Furniture","quantity":4,"region":"West","revenue":950.0,"sale_date":"2023-04-28"},{"category":"Furniture","quantity":5,"region":"North","revenue":1050.0,"sale_date":"2023-05-22"},{"category":"Furniture","quantity":5,"region":"South","revenue":1150.0,"sale_date":"2023-06-16"},{"category":"Furniture","quantity":5,"region":"East","revenue":1250.0,"sale_date":"2023-07-24"},{"category":"Furniture","quantity":6,"region":"West","revenue":1350.0,"sale_date":"2023-08-30"},{"category":"Furniture","quantity":6,"region":"North","revenue":1450.0,"sale_date":"2023-09-26"},{"category":"Furniture","quantity":6,"region":"South","revenue":1550.0,"sale_date":"2023-10-31"},{"category":"Furniture","quantity":7,"region":"East","revenue":1650.0,"sale_date":"2023-11-20"},{"category":"Furniture","quantity":7,"region":"West","revenue":1750.0,"sale_date":"2023-12-15"}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"detail":{"field":"category","type":"nominal"},"x":{"field":"sale_date","title":"sale_date","type":"temporal"},"y":{"field":"revenue","title":"revenue","type":"quantitative"}},"mark":"line"}],"width":"container"};
-    const visId = 'vis-1768907267584';
+    const visId = 'vis-1768911374892';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -598,7 +598,7 @@ DRAW line
 <section id="histogram" class="level3">
 <h3 class="anchored" data-anchor-id="histogram">Histogram</h3>
 <p>When using <code>DRAW histogram</code>, ggsql automatically bins continuous data and counts occurrences. You only need to specify the x aesthetic:</p>
-<div id="7413925a" class="cell" data-execution_count="9">
+<div id="a6cc238d" class="cell" data-execution_count="9">
 <pre class="ggsql cell-code"><code>SELECT revenue FROM 'sales.csv'
 VISUALISE revenue AS x
 DRAW histogram
@@ -607,11 +607,11 @@ LABEL
     x =&gt; 'Revenue ($)',
     y =&gt; 'Count'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="9">
-<div id="vis-1768907267596"></div>
+<div id="vis-1768911374905"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"revenue":1000.0},{"revenue":1200.0},{"revenue":1400.0},{"revenue":1100.0},{"revenue":1600.0},{"revenue":1800.0},{"revenue":2000.0},{"revenue":2200.0},{"revenue":1900.0},{"revenue":2400.0},{"revenue":2600.0},{"revenue":3000.0},{"revenue":800.0},{"revenue":900.0},{"revenue":1100.0},{"revenue":1300.0},{"revenue":1500.0},{"revenue":1700.0},{"revenue":1900.0},{"revenue":2100.0},{"revenue":2300.0},{"revenue":2500.0},{"revenue":2700.0},{"revenue":2900.0},{"revenue":600.0},{"revenue":700.0},{"revenue":850.0},{"revenue":950.0},{"revenue":1050.0},{"revenue":1150.0},{"revenue":1250.0},{"revenue":1350.0},{"revenue":1450.0},{"revenue":1550.0},{"revenue":1650.0},{"revenue":1750.0}],"__layer_0__":[{"__ggsql_stat__bin":2131.0344827594495,"__ggsql_stat__bin_end":2213.7931034491494,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":724.1379310345501,"__ggsql_stat__bin_end":806.8965517242501,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":1220.68965517275,"__ggsql_stat__bin_end":1303.44827586245,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":2048.27586206975,"__ggsql_stat__bin_end":2131.03448275945,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":2296.5517241388497,"__ggsql_stat__bin_end":2379.3103448285497,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":1551.72413793155,"__ggsql_stat__bin_end":1634.4827586212498,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":1717.24137931095,"__ggsql_stat__bin_end":1800.0000000006498,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":1882.75862069035,"__ggsql_stat__bin_end":1965.51724138005,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":2544.8275862079495,"__ggsql_stat__bin_end":2627.5862068976494,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":2958.6206896564495,"__ggsql_stat__bin_end":3041.3793103461494,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":2627.58620689765,"__ggsql_stat__bin_end":2710.3448275873498,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":558.62068965515,"__ggsql_stat__bin_end":641.3793103448501,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":972.41379310365,"__ggsql_stat__bin_end":1055.17241379335,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":1137.93103448305,"__ggsql_stat__bin_end":1220.6896551727498,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":1386.20689655215,"__ggsql_stat__bin_end":1468.96551724185,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":1055.17241379335,"__ggsql_stat__bin_end":1137.93103448305,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":889.65517241395,"__ggsql_stat__bin_end":972.41379310365,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":1634.48275862125,"__ggsql_stat__bin_end":1717.24137931095,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":1965.51724138005,"__ggsql_stat__bin_end":2048.27586206975,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":2379.3103448285497,"__ggsql_stat__bin_end":2462.0689655182496,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":1468.96551724185,"__ggsql_stat__bin_end":1551.72413793155,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":2462.06896551825,"__ggsql_stat__bin_end":2544.82758620795,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":2875.8620689667496,"__ggsql_stat__bin_end":2958.6206896564495,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":641.3793103448501,"__ggsql_stat__bin_end":724.1379310345501,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":806.89655172425,"__ggsql_stat__bin_end":889.65517241395,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":1303.44827586245,"__ggsql_stat__bin_end":1386.20689655215,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"x":{"field":"__ggsql_stat__bin","title":"Revenue ($)","type":"quantitative"},"x2":{"field":"__ggsql_stat__bin_end","type":"quantitative"},"y":{"field":"__ggsql_stat__count","title":"Count","type":"quantitative"},"y2":{"datum":0}},"mark":"bar"}],"title":"Revenue Distribution","width":"container"};
-    const visId = 'vis-1768907267596';
+    const visId = 'vis-1768911374905';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -683,7 +683,7 @@ LABEL
 <section id="bar-with-automatic-count" class="level3">
 <h3 class="anchored" data-anchor-id="bar-with-automatic-count">Bar with Automatic Count</h3>
 <p>When using <code>DRAW bar</code> without a y aesthetic, ggsql automatically counts occurrences of each x value:</p>
-<div id="7ad72236" class="cell" data-execution_count="10">
+<div id="b5d3feb0" class="cell" data-execution_count="10">
 <pre class="ggsql cell-code"><code>SELECT category FROM 'sales.csv'
 VISUALISE category AS x
 DRAW bar
@@ -692,11 +692,11 @@ LABEL
     x =&gt; 'Category',
     y =&gt; 'Count'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="10">
-<div id="vis-1768907267607"></div>
+<div id="vis-1768911374917"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"}],"__layer_0__":[{"__ggsql_stat__count":12,"__ggsql_stat__proportion":0.3333333333333333,"category":"Electronics"},{"__ggsql_stat__count":12,"__ggsql_stat__proportion":0.3333333333333333,"category":"Furniture"},{"__ggsql_stat__count":12,"__ggsql_stat__proportion":0.3333333333333333,"category":"Clothing"}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"width":{"value":0.9},"x":{"field":"category","title":"Category","type":"nominal"},"y":{"field":"__ggsql_stat__count","title":"Count","type":"quantitative"}},"mark":{"type":"bar","width":{"band":0.9}}}],"title":"Sales Count by Category","width":"container"};
-    const visId = 'vis-1768907267607';
+    const visId = 'vis-1768911374917';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -768,7 +768,7 @@ LABEL
 <section id="bar-with-weighted-count" class="level3">
 <h3 class="anchored" data-anchor-id="bar-with-weighted-count">Bar with Weighted Count</h3>
 <p>You can also specify a weight aesthetic to sum values instead of counting:</p>
-<div id="dc415b68" class="cell" data-execution_count="11">
+<div id="8d17014b" class="cell" data-execution_count="11">
 <pre class="ggsql cell-code"><code>SELECT category, revenue FROM 'sales.csv'
 VISUALISE category AS x, revenue AS weight
 DRAW bar
@@ -777,11 +777,11 @@ LABEL
     x =&gt; 'Category',
     y =&gt; 'Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="11">
-<div id="vis-1768907267619"></div>
+<div id="vis-1768911374929"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Electronics","revenue":1000.0},{"category":"Electronics","revenue":1200.0},{"category":"Electronics","revenue":1400.0},{"category":"Electronics","revenue":1100.0},{"category":"Electronics","revenue":1600.0},{"category":"Electronics","revenue":1800.0},{"category":"Electronics","revenue":2000.0},{"category":"Electronics","revenue":2200.0},{"category":"Electronics","revenue":1900.0},{"category":"Electronics","revenue":2400.0},{"category":"Electronics","revenue":2600.0},{"category":"Electronics","revenue":3000.0},{"category":"Clothing","revenue":800.0},{"category":"Clothing","revenue":900.0},{"category":"Clothing","revenue":1100.0},{"category":"Clothing","revenue":1300.0},{"category":"Clothing","revenue":1500.0},{"category":"Clothing","revenue":1700.0},{"category":"Clothing","revenue":1900.0},{"category":"Clothing","revenue":2100.0},{"category":"Clothing","revenue":2300.0},{"category":"Clothing","revenue":2500.0},{"category":"Clothing","revenue":2700.0},{"category":"Clothing","revenue":2900.0},{"category":"Furniture","revenue":600.0},{"category":"Furniture","revenue":700.0},{"category":"Furniture","revenue":850.0},{"category":"Furniture","revenue":950.0},{"category":"Furniture","revenue":1050.0},{"category":"Furniture","revenue":1150.0},{"category":"Furniture","revenue":1250.0},{"category":"Furniture","revenue":1350.0},{"category":"Furniture","revenue":1450.0},{"category":"Furniture","revenue":1550.0},{"category":"Furniture","revenue":1650.0},{"category":"Furniture","revenue":1750.0}],"__layer_0__":[{"__ggsql_stat__count":22200.0,"__ggsql_stat__proportion":0.38144329896907214,"category":"Electronics"},{"__ggsql_stat__count":14300.0,"__ggsql_stat__proportion":0.24570446735395188,"category":"Furniture"},{"__ggsql_stat__count":21700.0,"__ggsql_stat__proportion":0.3728522336769759,"category":"Clothing"}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"width":{"value":0.9},"x":{"field":"category","title":"Category","type":"nominal"},"y":{"field":"__ggsql_stat__count","title":"Revenue ($)","type":"quantitative"}},"mark":{"type":"bar","width":{"band":0.9}}}],"title":"Total Revenue by Category","width":"container"};
-    const visId = 'vis-1768907267619';
+    const visId = 'vis-1768911374929';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -854,7 +854,7 @@ LABEL
 <h3 class="anchored" data-anchor-id="histogram-settings">Histogram Settings</h3>
 <p>Control histogram binning with <code>SETTING</code> options:</p>
 <p><strong>Custom number of bins:</strong></p>
-<div id="63716dac" class="cell" data-execution_count="12">
+<div id="54285f05" class="cell" data-execution_count="12">
 <pre class="ggsql cell-code"><code>SELECT revenue FROM 'sales.csv'
 VISUALISE revenue AS x
 DRAW histogram 
@@ -864,11 +864,11 @@ LABEL
     x =&gt; 'Revenue ($)',
     y =&gt; 'Count'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="12">
-<div id="vis-1768907267630"></div>
+<div id="vis-1768911374943"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"revenue":1000.0},{"revenue":1200.0},{"revenue":1400.0},{"revenue":1100.0},{"revenue":1600.0},{"revenue":1800.0},{"revenue":2000.0},{"revenue":2200.0},{"revenue":1900.0},{"revenue":2400.0},{"revenue":2600.0},{"revenue":3000.0},{"revenue":800.0},{"revenue":900.0},{"revenue":1100.0},{"revenue":1300.0},{"revenue":1500.0},{"revenue":1700.0},{"revenue":1900.0},{"revenue":2100.0},{"revenue":2300.0},{"revenue":2500.0},{"revenue":2700.0},{"revenue":2900.0},{"revenue":600.0},{"revenue":700.0},{"revenue":850.0},{"revenue":950.0},{"revenue":1050.0},{"revenue":1150.0},{"revenue":1250.0},{"revenue":1350.0},{"revenue":1450.0},{"revenue":1550.0},{"revenue":1650.0},{"revenue":1750.0}],"__layer_0__":[{"__ggsql_stat__bin":2066.6666666668502,"__ggsql_stat__bin_end":2333.3333333335504,"__ggsql_stat__count":3,"__ggsql_stat__density":0.08333333333333333},{"__ggsql_stat__bin":2333.33333333355,"__ggsql_stat__bin_end":2600.00000000025,"__ggsql_stat__count":3,"__ggsql_stat__density":0.08333333333333333},{"__ggsql_stat__bin":466.66666666665,"__ggsql_stat__bin_end":733.3333333333501,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":1000.00000000005,"__ggsql_stat__bin_end":1266.66666666675,"__ggsql_stat__count":6,"__ggsql_stat__density":0.16666666666666666},{"__ggsql_stat__bin":733.33333333335,"__ggsql_stat__bin_end":1000.00000000005,"__ggsql_stat__count":5,"__ggsql_stat__density":0.1388888888888889},{"__ggsql_stat__bin":1266.66666666675,"__ggsql_stat__bin_end":1533.33333333345,"__ggsql_stat__count":5,"__ggsql_stat__density":0.1388888888888889},{"__ggsql_stat__bin":1533.33333333345,"__ggsql_stat__bin_end":1800.0000000001498,"__ggsql_stat__count":6,"__ggsql_stat__density":0.16666666666666666},{"__ggsql_stat__bin":1800.0000000001498,"__ggsql_stat__bin_end":2066.66666666685,"__ggsql_stat__count":3,"__ggsql_stat__density":0.08333333333333333},{"__ggsql_stat__bin":2866.6666666669503,"__ggsql_stat__bin_end":3133.3333333336504,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":2600.00000000025,"__ggsql_stat__bin_end":2866.6666666669503,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"x":{"field":"__ggsql_stat__bin","title":"Revenue ($)","type":"quantitative"},"x2":{"field":"__ggsql_stat__bin_end","type":"quantitative"},"y":{"field":"__ggsql_stat__count","title":"Count","type":"quantitative"},"y2":{"datum":0}},"mark":"bar"}],"title":"Revenue Distribution (10 bins)","width":"container"};
-    const visId = 'vis-1768907267630';
+    const visId = 'vis-1768911374943';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -937,7 +937,7 @@ LABEL
 </div>
 </div>
 <p><strong>Explicit bin width</strong> (overrides bins):</p>
-<div id="1b7a6969" class="cell" data-execution_count="13">
+<div id="40cbc63c" class="cell" data-execution_count="13">
 <pre class="ggsql cell-code"><code>SELECT revenue FROM 'sales.csv'
 VISUALISE revenue AS x
 DRAW histogram 
@@ -947,11 +947,11 @@ LABEL
     x =&gt; 'Revenue ($)',
     y =&gt; 'Count'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="13">
-<div id="vis-1768907267642"></div>
+<div id="vis-1768911374956"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"revenue":1000.0},{"revenue":1200.0},{"revenue":1400.0},{"revenue":1100.0},{"revenue":1600.0},{"revenue":1800.0},{"revenue":2000.0},{"revenue":2200.0},{"revenue":1900.0},{"revenue":2400.0},{"revenue":2600.0},{"revenue":3000.0},{"revenue":800.0},{"revenue":900.0},{"revenue":1100.0},{"revenue":1300.0},{"revenue":1500.0},{"revenue":1700.0},{"revenue":1900.0},{"revenue":2100.0},{"revenue":2300.0},{"revenue":2500.0},{"revenue":2700.0},{"revenue":2900.0},{"revenue":600.0},{"revenue":700.0},{"revenue":850.0},{"revenue":950.0},{"revenue":1050.0},{"revenue":1150.0},{"revenue":1250.0},{"revenue":1350.0},{"revenue":1450.0},{"revenue":1550.0},{"revenue":1650.0},{"revenue":1750.0}],"__layer_0__":[{"__ggsql_stat__bin":2850.0,"__ggsql_stat__bin_end":3350.0,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":350.0,"__ggsql_stat__bin_end":850.0,"__ggsql_stat__count":4,"__ggsql_stat__density":0.1111111111111111},{"__ggsql_stat__bin":1350.0,"__ggsql_stat__bin_end":1850.0,"__ggsql_stat__count":9,"__ggsql_stat__density":0.25},{"__ggsql_stat__bin":1850.0,"__ggsql_stat__bin_end":2350.0,"__ggsql_stat__count":6,"__ggsql_stat__density":0.16666666666666666},{"__ggsql_stat__bin":2350.0,"__ggsql_stat__bin_end":2850.0,"__ggsql_stat__count":4,"__ggsql_stat__density":0.1111111111111111},{"__ggsql_stat__bin":850.0,"__ggsql_stat__bin_end":1350.0,"__ggsql_stat__count":11,"__ggsql_stat__density":0.3055555555555556}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"x":{"field":"__ggsql_stat__bin","title":"Revenue ($)","type":"quantitative"},"x2":{"field":"__ggsql_stat__bin_end","type":"quantitative"},"y":{"field":"__ggsql_stat__count","title":"Count","type":"quantitative"},"y2":{"datum":0}},"mark":"bar"}],"title":"Revenue Distribution (500 bin width)","width":"container"};
-    const visId = 'vis-1768907267642';
+    const visId = 'vis-1768911374956';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -1020,7 +1020,7 @@ LABEL
 </div>
 </div>
 <p><strong>Left-closed intervals</strong> (default is right-closed <code>(a, b]</code>):</p>
-<div id="0b91e502" class="cell" data-execution_count="14">
+<div id="8da58773" class="cell" data-execution_count="14">
 <pre class="ggsql cell-code"><code>SELECT revenue FROM 'sales.csv'
 VISUALISE revenue AS x
 DRAW histogram 
@@ -1030,11 +1030,11 @@ LABEL
     x =&gt; 'Revenue ($)',
     y =&gt; 'Count'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="14">
-<div id="vis-1768907267653"></div>
+<div id="vis-1768911374970"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"revenue":1000.0},{"revenue":1200.0},{"revenue":1400.0},{"revenue":1100.0},{"revenue":1600.0},{"revenue":1800.0},{"revenue":2000.0},{"revenue":2200.0},{"revenue":1900.0},{"revenue":2400.0},{"revenue":2600.0},{"revenue":3000.0},{"revenue":800.0},{"revenue":900.0},{"revenue":1100.0},{"revenue":1300.0},{"revenue":1500.0},{"revenue":1700.0},{"revenue":1900.0},{"revenue":2100.0},{"revenue":2300.0},{"revenue":2500.0},{"revenue":2700.0},{"revenue":2900.0},{"revenue":600.0},{"revenue":700.0},{"revenue":850.0},{"revenue":950.0},{"revenue":1050.0},{"revenue":1150.0},{"revenue":1250.0},{"revenue":1350.0},{"revenue":1450.0},{"revenue":1550.0},{"revenue":1650.0},{"revenue":1750.0}],"__layer_0__":[{"__ggsql_stat__bin":1114.28571428565,"__ggsql_stat__bin_end":1457.1428571427498,"__ggsql_stat__count":7,"__ggsql_stat__density":0.19444444444444445},{"__ggsql_stat__bin":771.42857142855,"__ggsql_stat__bin_end":1114.28571428565,"__ggsql_stat__count":8,"__ggsql_stat__density":0.2222222222222222},{"__ggsql_stat__bin":2142.85714285695,"__ggsql_stat__bin_end":2485.7142857140498,"__ggsql_stat__count":3,"__ggsql_stat__density":0.08333333333333333},{"__ggsql_stat__bin":2828.5714285711497,"__ggsql_stat__bin_end":3171.4285714282496,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":2485.7142857140498,"__ggsql_stat__bin_end":2828.5714285711497,"__ggsql_stat__count":3,"__ggsql_stat__density":0.08333333333333333},{"__ggsql_stat__bin":1457.14285714275,"__ggsql_stat__bin_end":1799.99999999985,"__ggsql_stat__count":6,"__ggsql_stat__density":0.16666666666666666},{"__ggsql_stat__bin":1799.99999999985,"__ggsql_stat__bin_end":2142.85714285695,"__ggsql_stat__count":5,"__ggsql_stat__density":0.1388888888888889},{"__ggsql_stat__bin":428.5714285714501,"__ggsql_stat__bin_end":771.42857142855,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"x":{"field":"__ggsql_stat__bin","title":"Revenue ($)","type":"quantitative"},"x2":{"field":"__ggsql_stat__bin_end","type":"quantitative"},"y":{"field":"__ggsql_stat__count","title":"Count","type":"quantitative"},"y2":{"datum":0}},"mark":"bar"}],"title":"Revenue Distribution (left-closed intervals)","width":"container"};
-    const visId = 'vis-1768907267653';
+    const visId = 'vis-1768911374970';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -1106,7 +1106,7 @@ LABEL
 <section id="histogram-remapping" class="level3">
 <h3 class="anchored" data-anchor-id="histogram-remapping">Histogram Remapping</h3>
 <p>Histogram computes several statistics: <code>bin</code>, <code>bin_end</code>, <code>count</code>, and <code>density</code>. By default, <code>count</code> is mapped to <code>y</code>. Use <code>REMAPPING</code> to show density (proportion) instead:</p>
-<div id="1080aa78" class="cell" data-execution_count="15">
+<div id="86c09960" class="cell" data-execution_count="15">
 <pre class="ggsql cell-code"><code>SELECT revenue FROM 'sales.csv'
 VISUALISE revenue AS x
 DRAW histogram 
@@ -1116,11 +1116,11 @@ LABEL
     x =&gt; 'Revenue ($)',
     y =&gt; 'Density'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="15">
-<div id="vis-1768907267665"></div>
+<div id="vis-1768911374984"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"revenue":1000.0},{"revenue":1200.0},{"revenue":1400.0},{"revenue":1100.0},{"revenue":1600.0},{"revenue":1800.0},{"revenue":2000.0},{"revenue":2200.0},{"revenue":1900.0},{"revenue":2400.0},{"revenue":2600.0},{"revenue":3000.0},{"revenue":800.0},{"revenue":900.0},{"revenue":1100.0},{"revenue":1300.0},{"revenue":1500.0},{"revenue":1700.0},{"revenue":1900.0},{"revenue":2100.0},{"revenue":2300.0},{"revenue":2500.0},{"revenue":2700.0},{"revenue":2900.0},{"revenue":600.0},{"revenue":700.0},{"revenue":850.0},{"revenue":950.0},{"revenue":1050.0},{"revenue":1150.0},{"revenue":1250.0},{"revenue":1350.0},{"revenue":1450.0},{"revenue":1550.0},{"revenue":1650.0},{"revenue":1750.0}],"__layer_0__":[{"__ggsql_stat__bin":2131.0344827594495,"__ggsql_stat__bin_end":2213.7931034491494,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":724.1379310345501,"__ggsql_stat__bin_end":806.8965517242501,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":1220.68965517275,"__ggsql_stat__bin_end":1303.44827586245,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":2048.27586206975,"__ggsql_stat__bin_end":2131.03448275945,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":2296.5517241388497,"__ggsql_stat__bin_end":2379.3103448285497,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":1551.72413793155,"__ggsql_stat__bin_end":1634.4827586212498,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":1717.24137931095,"__ggsql_stat__bin_end":1800.0000000006498,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":1882.75862069035,"__ggsql_stat__bin_end":1965.51724138005,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":2544.8275862079495,"__ggsql_stat__bin_end":2627.5862068976494,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":2958.6206896564495,"__ggsql_stat__bin_end":3041.3793103461494,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":2627.58620689765,"__ggsql_stat__bin_end":2710.3448275873498,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":558.62068965515,"__ggsql_stat__bin_end":641.3793103448501,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":972.41379310365,"__ggsql_stat__bin_end":1055.17241379335,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":1137.93103448305,"__ggsql_stat__bin_end":1220.6896551727498,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":1386.20689655215,"__ggsql_stat__bin_end":1468.96551724185,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":1055.17241379335,"__ggsql_stat__bin_end":1137.93103448305,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":889.65517241395,"__ggsql_stat__bin_end":972.41379310365,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":1634.48275862125,"__ggsql_stat__bin_end":1717.24137931095,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":1965.51724138005,"__ggsql_stat__bin_end":2048.27586206975,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":2379.3103448285497,"__ggsql_stat__bin_end":2462.0689655182496,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":1468.96551724185,"__ggsql_stat__bin_end":1551.72413793155,"__ggsql_stat__count":2,"__ggsql_stat__density":0.05555555555555555},{"__ggsql_stat__bin":2462.06896551825,"__ggsql_stat__bin_end":2544.82758620795,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":2875.8620689667496,"__ggsql_stat__bin_end":2958.6206896564495,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":641.3793103448501,"__ggsql_stat__bin_end":724.1379310345501,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":806.89655172425,"__ggsql_stat__bin_end":889.65517241395,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776},{"__ggsql_stat__bin":1303.44827586245,"__ggsql_stat__bin_end":1386.20689655215,"__ggsql_stat__count":1,"__ggsql_stat__density":0.027777777777777776}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"x":{"field":"__ggsql_stat__bin","title":"Revenue ($)","type":"quantitative"},"x2":{"field":"__ggsql_stat__bin_end","type":"quantitative"},"y":{"field":"__ggsql_stat__density","title":"Density","type":"quantitative"},"y2":{"datum":0}},"mark":"bar"}],"title":"Revenue Density Distribution","width":"container"};
-    const visId = 'vis-1768907267665';
+    const visId = 'vis-1768911374984';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -1192,7 +1192,7 @@ LABEL
 <section id="bar-width-setting" class="level3">
 <h3 class="anchored" data-anchor-id="bar-width-setting">Bar Width Setting</h3>
 <p>Control bar width with the <code>width</code> setting (0-1 scale, default 0.9):</p>
-<div id="74c7b839" class="cell" data-execution_count="16">
+<div id="e7482a79" class="cell" data-execution_count="16">
 <pre class="ggsql cell-code"><code>SELECT category FROM 'sales.csv'
 VISUALISE category AS x
 DRAW bar 
@@ -1202,11 +1202,11 @@ LABEL
     x =&gt; 'Category',
     y =&gt; 'Count'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="16">
-<div id="vis-1768907267675"></div>
+<div id="vis-1768911374996"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"}],"__layer_0__":[{"__ggsql_stat__count":12,"__ggsql_stat__proportion":0.3333333333333333,"category":"Electronics"},{"__ggsql_stat__count":12,"__ggsql_stat__proportion":0.3333333333333333,"category":"Furniture"},{"__ggsql_stat__count":12,"__ggsql_stat__proportion":0.3333333333333333,"category":"Clothing"}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"width":{"value":0.5},"x":{"field":"category","title":"Category","type":"nominal"},"y":{"field":"__ggsql_stat__count","title":"Count","type":"quantitative"}},"mark":{"type":"bar","width":{"band":0.5}}}],"title":"Sales Count (Narrow Bars)","width":"container"};
-    const visId = 'vis-1768907267675';
+    const visId = 'vis-1768911374996';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -1278,7 +1278,7 @@ LABEL
 <section id="bar-remapping" class="level3">
 <h3 class="anchored" data-anchor-id="bar-remapping">Bar Remapping</h3>
 <p>Bar computes <code>count</code> and <code>proportion</code> statistics. By default, <code>count</code> is mapped to <code>y</code>. Use <code>REMAPPING</code> to show proportions instead:</p>
-<div id="88742a62" class="cell" data-execution_count="17">
+<div id="899f2b9f" class="cell" data-execution_count="17">
 <pre class="ggsql cell-code"><code>SELECT category FROM 'sales.csv'
 VISUALISE category AS x
 DRAW bar 
@@ -1288,11 +1288,11 @@ LABEL
     x =&gt; 'Category',
     y =&gt; 'Proportion'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="17">
-<div id="vis-1768907267686"></div>
+<div id="vis-1768911375008"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Electronics"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Clothing"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"},{"category":"Furniture"}],"__layer_0__":[{"__ggsql_stat__count":12,"__ggsql_stat__proportion":0.3333333333333333,"category":"Electronics"},{"__ggsql_stat__count":12,"__ggsql_stat__proportion":0.3333333333333333,"category":"Furniture"},{"__ggsql_stat__count":12,"__ggsql_stat__proportion":0.3333333333333333,"category":"Clothing"}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"width":{"value":0.9},"x":{"field":"category","title":"Category","type":"nominal"},"y":{"field":"__ggsql_stat__proportion","title":"Proportion","type":"quantitative"}},"mark":{"type":"bar","width":{"band":0.9}}}],"title":"Sales Proportion by Category","width":"container"};
-    const visId = 'vis-1768907267686';
+    const visId = 'vis-1768911375008';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -1361,7 +1361,7 @@ LABEL
 </div>
 </div>
 <p>Combine with <code>weight</code> to show weighted proportions:</p>
-<div id="08e8a643" class="cell" data-execution_count="18">
+<div id="dd9b2e5b" class="cell" data-execution_count="18">
 <pre class="ggsql cell-code"><code>SELECT category, revenue FROM 'sales.csv'
 VISUALISE category AS x, revenue AS weight
 DRAW bar 
@@ -1371,11 +1371,11 @@ LABEL
     x =&gt; 'Category',
     y =&gt; 'Share of Total Revenue'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="18">
-<div id="vis-1768907267696"></div>
+<div id="vis-1768911375020"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Electronics","revenue":1000.0},{"category":"Electronics","revenue":1200.0},{"category":"Electronics","revenue":1400.0},{"category":"Electronics","revenue":1100.0},{"category":"Electronics","revenue":1600.0},{"category":"Electronics","revenue":1800.0},{"category":"Electronics","revenue":2000.0},{"category":"Electronics","revenue":2200.0},{"category":"Electronics","revenue":1900.0},{"category":"Electronics","revenue":2400.0},{"category":"Electronics","revenue":2600.0},{"category":"Electronics","revenue":3000.0},{"category":"Clothing","revenue":800.0},{"category":"Clothing","revenue":900.0},{"category":"Clothing","revenue":1100.0},{"category":"Clothing","revenue":1300.0},{"category":"Clothing","revenue":1500.0},{"category":"Clothing","revenue":1700.0},{"category":"Clothing","revenue":1900.0},{"category":"Clothing","revenue":2100.0},{"category":"Clothing","revenue":2300.0},{"category":"Clothing","revenue":2500.0},{"category":"Clothing","revenue":2700.0},{"category":"Clothing","revenue":2900.0},{"category":"Furniture","revenue":600.0},{"category":"Furniture","revenue":700.0},{"category":"Furniture","revenue":850.0},{"category":"Furniture","revenue":950.0},{"category":"Furniture","revenue":1050.0},{"category":"Furniture","revenue":1150.0},{"category":"Furniture","revenue":1250.0},{"category":"Furniture","revenue":1350.0},{"category":"Furniture","revenue":1450.0},{"category":"Furniture","revenue":1550.0},{"category":"Furniture","revenue":1650.0},{"category":"Furniture","revenue":1750.0}],"__layer_0__":[{"__ggsql_stat__count":22200.0,"__ggsql_stat__proportion":0.38144329896907214,"category":"Electronics"},{"__ggsql_stat__count":14300.0,"__ggsql_stat__proportion":0.24570446735395188,"category":"Furniture"},{"__ggsql_stat__count":21700.0,"__ggsql_stat__proportion":0.3728522336769759,"category":"Clothing"}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"width":{"value":0.9},"x":{"field":"category","title":"Category","type":"nominal"},"y":{"field":"__ggsql_stat__proportion","title":"Share of Total Revenue","type":"quantitative"}},"mark":{"type":"bar","width":{"band":0.9}}}],"title":"Revenue Share by Category","width":"container"};
-    const visId = 'vis-1768907267696';
+    const visId = 'vis-1768911375020';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -1449,7 +1449,7 @@ LABEL
 <h2 class="anchored" data-anchor-id="multiple-layers">Multiple Layers</h2>
 <section id="line-with-points" class="level3">
 <h3 class="anchored" data-anchor-id="line-with-points">Line with Points</h3>
-<div id="22f3e7d3" class="cell" data-execution_count="19">
+<div id="23894412" class="cell" data-execution_count="19">
 <pre class="ggsql cell-code"><code>SELECT date, value FROM 'timeseries.csv'
 VISUALISE date AS x, value AS y
 DRAW line 
@@ -1462,11 +1462,11 @@ LABEL
     x =&gt; 'Date', 
     y =&gt; 'Value'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="19">
-<div id="vis-1768907267704"></div>
+<div id="vis-1768911375029"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"date":"2023-01-01","value":100.0},{"date":"2023-01-08","value":110.0},{"date":"2023-01-15","value":105.0},{"date":"2023-01-22","value":115.0},{"date":"2023-01-29","value":120.0},{"date":"2023-02-05","value":118.0},{"date":"2023-02-12","value":125.0},{"date":"2023-02-19","value":130.0},{"date":"2023-02-26","value":128.0},{"date":"2023-03-05","value":135.0},{"date":"2023-03-12","value":142.0},{"date":"2023-03-19","value":138.0},{"date":"2023-03-26","value":145.0},{"date":"2023-04-02","value":150.0},{"date":"2023-04-09","value":148.0},{"date":"2023-04-16","value":155.0},{"date":"2023-04-23","value":160.0},{"date":"2023-04-30","value":158.0},{"date":"2023-05-07","value":165.0},{"date":"2023-05-14","value":170.0}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"color":{"value":"#0000ff"},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"line"},{"data":{"name":"__global__"},"encoding":{"color":{"value":"#ff0000"},"size":{"value":30.0},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"point"}],"title":"Time Series with Points","width":"container"};
-    const visId = 'vis-1768907267704';
+    const visId = 'vis-1768911375029';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -1537,7 +1537,7 @@ LABEL
 </section>
 <section id="colored-lines-by-category" class="level3">
 <h3 class="anchored" data-anchor-id="colored-lines-by-category">Colored Lines by Category</h3>
-<div id="7f9fad51" class="cell" data-execution_count="20">
+<div id="dcaa2e27" class="cell" data-execution_count="20">
 <pre class="ggsql cell-code"><code>SELECT date, value, category FROM 'metrics.csv'
 VISUALISE date AS x, value AS y, category AS color
 DRAW line
@@ -1547,11 +1547,11 @@ LABEL
     x =&gt; 'Date', 
     y =&gt; 'Value'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="20">
-<div id="vis-1768907267713"></div>
+<div id="vis-1768911375051"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Sales","date":"2023-01-01","value":45.2},{"category":"Sales","date":"2023-02-01","value":52.1},{"category":"Sales","date":"2023-03-01","value":48.7},{"category":"Sales","date":"2023-04-01","value":58.3},{"category":"Sales","date":"2023-05-01","value":62.5},{"category":"Sales","date":"2023-06-01","value":67.8},{"category":"Sales","date":"2023-07-01","value":71.2},{"category":"Sales","date":"2023-08-01","value":75.6},{"category":"Sales","date":"2023-09-01","value":80.1},{"category":"Sales","date":"2023-10-01","value":85.4},{"category":"Sales","date":"2023-11-01","value":90.2},{"category":"Sales","date":"2023-12-01","value":95.8},{"category":"Marketing","date":"2023-01-01","value":120.5},{"category":"Marketing","date":"2023-02-01","value":135.2},{"category":"Marketing","date":"2023-03-01","value":128.9},{"category":"Marketing","date":"2023-04-01","value":142.3},{"category":"Marketing","date":"2023-05-01","value":155.7},{"category":"Marketing","date":"2023-06-01","value":148.2},{"category":"Marketing","date":"2023-07-01","value":162.8},{"category":"Marketing","date":"2023-08-01","value":175.4},{"category":"Marketing","date":"2023-09-01","value":168.9},{"category":"Marketing","date":"2023-10-01","value":182.5},{"category":"Marketing","date":"2023-11-01","value":195.1},{"category":"Marketing","date":"2023-12-01","value":188.7},{"category":"Support","date":"2023-01-01","value":78.3},{"category":"Support","date":"2023-02-01","value":82.1},{"category":"Support","date":"2023-03-01","value":75.6},{"category":"Support","date":"2023-04-01","value":85.9},{"category":"Support","date":"2023-05-01","value":92.4},{"category":"Support","date":"2023-06-01","value":88.7},{"category":"Support","date":"2023-07-01","value":95.2},{"category":"Support","date":"2023-08-01","value":101.8},{"category":"Support","date":"2023-09-01","value":97.5},{"category":"Support","date":"2023-10-01","value":105.3},{"category":"Support","date":"2023-11-01","value":112.6},{"category":"Support","date":"2023-12-01","value":108.9}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"category","title":"category","type":"nominal"},"detail":{"field":"category","type":"nominal"},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"line"}],"title":"Metrics by Category","width":"container"};
-    const visId = 'vis-1768907267713';
+    const visId = 'vis-1768911375051';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -1625,7 +1625,7 @@ LABEL
 <h2 class="anchored" data-anchor-id="faceting">Faceting</h2>
 <section id="facet-wrap-by-region" class="level3">
 <h3 class="anchored" data-anchor-id="facet-wrap-by-region">Facet Wrap by Region</h3>
-<div id="8f56c23c" class="cell" data-execution_count="21">
+<div id="e3d433b7" class="cell" data-execution_count="21">
 <pre class="ggsql cell-code"><code>SELECT sale_date, revenue, region FROM 'sales.csv'
 WHERE category = 'Electronics'
 VISUALISE sale_date AS x, revenue AS y
@@ -1637,11 +1637,11 @@ LABEL
     x =&gt; 'Date', 
     y =&gt; 'Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="21">
-<div id="vis-1768907267723"></div>
+<div id="vis-1768911375065"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"__global__"},"datasets":{"__global__":[{"region":"North","revenue":1000.0,"sale_date":"2023-01-15"},{"region":"South","revenue":1200.0,"sale_date":"2023-02-10"},{"region":"East","revenue":1400.0,"sale_date":"2023-03-05"},{"region":"West","revenue":1100.0,"sale_date":"2023-04-20"},{"region":"North","revenue":1600.0,"sale_date":"2023-05-12"},{"region":"South","revenue":1800.0,"sale_date":"2023-06-08"},{"region":"East","revenue":2000.0,"sale_date":"2023-07-14"},{"region":"West","revenue":2200.0,"sale_date":"2023-08-22"},{"region":"North","revenue":1900.0,"sale_date":"2023-09-18"},{"region":"South","revenue":2400.0,"sale_date":"2023-10-25"},{"region":"East","revenue":2600.0,"sale_date":"2023-11-11"},{"region":"West","revenue":3000.0,"sale_date":"2023-12-05"}]},"facet":{"field":"region","type":"nominal"},"height":"container","spec":{"layer":[{"encoding":{"x":{"field":"sale_date","title":"Date","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}]},"title":"Electronics Sales by Region","width":"container"};
-    const visId = 'vis-1768907267723';
+    const visId = 'vis-1768911375065';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -1712,7 +1712,7 @@ LABEL
 </section>
 <section id="facet-grid" class="level3">
 <h3 class="anchored" data-anchor-id="facet-grid">Facet Grid</h3>
-<div id="d3284d85" class="cell" data-execution_count="22">
+<div id="170b6efc" class="cell" data-execution_count="22">
 <pre class="ggsql cell-code"><code>SELECT
     DATE_TRUNC('month', sale_date) as month,
     region,
@@ -1741,11 +1741,11 @@ LABEL
     x =&gt; 'Month', 
     y =&gt; 'Value'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="22">
-<div id="vis-1768907267733"></div>
+<div id="vis-1768911375078"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"__global__"},"datasets":{"__global__":[{"category":"Electronics","month":"2023-01-01","region":"North","total_quantity_scaled":500.0,"total_revenue":1000.0},{"category":"Electronics","month":"2023-02-01","region":"South","total_quantity_scaled":800.0,"total_revenue":1200.0},{"category":"Electronics","month":"2023-12-01","region":"West","total_quantity_scaled":1600.0,"total_revenue":3000.0},{"category":"Clothing","month":"2023-03-01","region":"East","total_quantity_scaled":3500.0,"total_revenue":1100.0},{"category":"Clothing","month":"2023-05-01","region":"North","total_quantity_scaled":4200.0,"total_revenue":1500.0},{"category":"Clothing","month":"2023-06-01","region":"South","total_quantity_scaled":4500.0,"total_revenue":1700.0},{"category":"Clothing","month":"2023-07-01","region":"East","total_quantity_scaled":4800.0,"total_revenue":1900.0},{"category":"Clothing","month":"2023-09-01","region":"North","total_quantity_scaled":5200.0,"total_revenue":2300.0},{"category":"Furniture","month":"2023-04-01","region":"West","total_quantity_scaled":400.0,"total_revenue":950.0},{"category":"Furniture","month":"2023-08-01","region":"West","total_quantity_scaled":600.0,"total_revenue":1350.0},{"category":"Furniture","month":"2023-11-01","region":"East","total_quantity_scaled":700.0,"total_revenue":1650.0},{"category":"Electronics","month":"2023-10-01","region":"South","total_quantity_scaled":1400.0,"total_revenue":2400.0},{"category":"Clothing","month":"2023-04-01","region":"West","total_quantity_scaled":3800.0,"total_revenue":1300.0},{"category":"Clothing","month":"2023-08-01","region":"West","total_quantity_scaled":5000.0,"total_revenue":2100.0},{"category":"Clothing","month":"2023-11-01","region":"East","total_quantity_scaled":5800.0,"total_revenue":2700.0},{"category":"Furniture","month":"2023-03-01","region":"East","total_quantity_scaled":400.0,"total_revenue":850.0},{"category":"Furniture","month":"2023-05-01","region":"North","total_quantity_scaled":500.0,"total_revenue":1050.0},{"category":"Furniture","month":"2023-06-01","region":"South","total_quantity_scaled":500.0,"total_revenue":1150.0},{"category":"Furniture","month":"2023-07-01","region":"East","total_quantity_scaled":500.0,"total_revenue":1250.0},{"category":"Furniture","month":"2023-09-01","region":"North","total_quantity_scaled":600.0,"total_revenue":1450.0},{"category":"Electronics","month":"2023-04-01","region":"West","total_quantity_scaled":600.0,"total_revenue":1100.0},{"category":"Electronics","month":"2023-08-01","region":"West","total_quantity_scaled":1200.0,"total_revenue":2200.0},{"category":"Electronics","month":"2023-11-01","region":"East","total_quantity_scaled":1500.0,"total_revenue":2600.0},{"category":"Clothing","month":"2023-10-01","region":"South","total_quantity_scaled":5500.0,"total_revenue":2500.0},{"category":"Furniture","month":"2023-01-01","region":"North","total_quantity_scaled":300.0,"total_revenue":600.0},{"category":"Furniture","month":"2023-02-01","region":"South","total_quantity_scaled":300.0,"total_revenue":700.0},{"category":"Furniture","month":"2023-12-01","region":"West","total_quantity_scaled":700.0,"total_revenue":1750.0},{"category":"Electronics","month":"2023-03-01","region":"East","total_quantity_scaled":700.0,"total_revenue":1400.0},{"category":"Electronics","month":"2023-05-01","region":"North","total_quantity_scaled":900.0,"total_revenue":1600.0},{"category":"Electronics","month":"2023-06-01","region":"South","total_quantity_scaled":1000.0,"total_revenue":1800.0},{"category":"Electronics","month":"2023-07-01","region":"East","total_quantity_scaled":1100.0,"total_revenue":2000.0},{"category":"Electronics","month":"2023-09-01","region":"North","total_quantity_scaled":800.0,"total_revenue":1900.0},{"category":"Clothing","month":"2023-01-01","region":"North","total_quantity_scaled":2500.0,"total_revenue":800.0},{"category":"Clothing","month":"2023-02-01","region":"South","total_quantity_scaled":3000.0,"total_revenue":900.0},{"category":"Clothing","month":"2023-12-01","region":"West","total_quantity_scaled":6000.0,"total_revenue":2900.0},{"category":"Furniture","month":"2023-10-01","region":"South","total_quantity_scaled":600.0,"total_revenue":1550.0}]},"facet":{"column":{"field":"category","type":"nominal"},"row":{"field":"region","type":"nominal"}},"height":"container","spec":{"layer":[{"encoding":{"color":{"value":"#4682b4"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Value","type":"quantitative"}},"mark":"line"},{"encoding":{"color":{"value":"#00008b"},"size":{"value":30.0},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Value","type":"quantitative"}},"mark":"point"},{"encoding":{"color":{"value":"#ff7f50"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_quantity_scaled","title":"Value","type":"quantitative"}},"mark":"line"},{"encoding":{"color":{"value":"#ff4500"},"size":{"value":30.0},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_quantity_scaled","title":"Value","type":"quantitative"}},"mark":"point"}]},"title":"Monthly Revenue and Quantity by Region and Category","width":"container"};
-    const visId = 'vis-1768907267733';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"__global__"},"datasets":{"__global__":[{"category":"Electronics","month":"2023-10-01","region":"South","total_quantity_scaled":1400.0,"total_revenue":2400.0},{"category":"Clothing","month":"2023-04-01","region":"West","total_quantity_scaled":3800.0,"total_revenue":1300.0},{"category":"Clothing","month":"2023-08-01","region":"West","total_quantity_scaled":5000.0,"total_revenue":2100.0},{"category":"Clothing","month":"2023-11-01","region":"East","total_quantity_scaled":5800.0,"total_revenue":2700.0},{"category":"Furniture","month":"2023-03-01","region":"East","total_quantity_scaled":400.0,"total_revenue":850.0},{"category":"Furniture","month":"2023-05-01","region":"North","total_quantity_scaled":500.0,"total_revenue":1050.0},{"category":"Furniture","month":"2023-06-01","region":"South","total_quantity_scaled":500.0,"total_revenue":1150.0},{"category":"Furniture","month":"2023-07-01","region":"East","total_quantity_scaled":500.0,"total_revenue":1250.0},{"category":"Furniture","month":"2023-09-01","region":"North","total_quantity_scaled":600.0,"total_revenue":1450.0},{"category":"Electronics","month":"2023-04-01","region":"West","total_quantity_scaled":600.0,"total_revenue":1100.0},{"category":"Electronics","month":"2023-08-01","region":"West","total_quantity_scaled":1200.0,"total_revenue":2200.0},{"category":"Electronics","month":"2023-11-01","region":"East","total_quantity_scaled":1500.0,"total_revenue":2600.0},{"category":"Clothing","month":"2023-10-01","region":"South","total_quantity_scaled":5500.0,"total_revenue":2500.0},{"category":"Furniture","month":"2023-01-01","region":"North","total_quantity_scaled":300.0,"total_revenue":600.0},{"category":"Furniture","month":"2023-02-01","region":"South","total_quantity_scaled":300.0,"total_revenue":700.0},{"category":"Furniture","month":"2023-12-01","region":"West","total_quantity_scaled":700.0,"total_revenue":1750.0},{"category":"Electronics","month":"2023-01-01","region":"North","total_quantity_scaled":500.0,"total_revenue":1000.0},{"category":"Electronics","month":"2023-02-01","region":"South","total_quantity_scaled":800.0,"total_revenue":1200.0},{"category":"Electronics","month":"2023-12-01","region":"West","total_quantity_scaled":1600.0,"total_revenue":3000.0},{"category":"Clothing","month":"2023-03-01","region":"East","total_quantity_scaled":3500.0,"total_revenue":1100.0},{"category":"Clothing","month":"2023-05-01","region":"North","total_quantity_scaled":4200.0,"total_revenue":1500.0},{"category":"Clothing","month":"2023-06-01","region":"South","total_quantity_scaled":4500.0,"total_revenue":1700.0},{"category":"Clothing","month":"2023-07-01","region":"East","total_quantity_scaled":4800.0,"total_revenue":1900.0},{"category":"Clothing","month":"2023-09-01","region":"North","total_quantity_scaled":5200.0,"total_revenue":2300.0},{"category":"Furniture","month":"2023-04-01","region":"West","total_quantity_scaled":400.0,"total_revenue":950.0},{"category":"Furniture","month":"2023-08-01","region":"West","total_quantity_scaled":600.0,"total_revenue":1350.0},{"category":"Furniture","month":"2023-11-01","region":"East","total_quantity_scaled":700.0,"total_revenue":1650.0},{"category":"Electronics","month":"2023-03-01","region":"East","total_quantity_scaled":700.0,"total_revenue":1400.0},{"category":"Electronics","month":"2023-05-01","region":"North","total_quantity_scaled":900.0,"total_revenue":1600.0},{"category":"Electronics","month":"2023-06-01","region":"South","total_quantity_scaled":1000.0,"total_revenue":1800.0},{"category":"Electronics","month":"2023-07-01","region":"East","total_quantity_scaled":1100.0,"total_revenue":2000.0},{"category":"Electronics","month":"2023-09-01","region":"North","total_quantity_scaled":800.0,"total_revenue":1900.0},{"category":"Clothing","month":"2023-01-01","region":"North","total_quantity_scaled":2500.0,"total_revenue":800.0},{"category":"Clothing","month":"2023-02-01","region":"South","total_quantity_scaled":3000.0,"total_revenue":900.0},{"category":"Clothing","month":"2023-12-01","region":"West","total_quantity_scaled":6000.0,"total_revenue":2900.0},{"category":"Furniture","month":"2023-10-01","region":"South","total_quantity_scaled":600.0,"total_revenue":1550.0}]},"facet":{"column":{"field":"category","type":"nominal"},"row":{"field":"region","type":"nominal"}},"height":"container","spec":{"layer":[{"encoding":{"color":{"value":"#4682b4"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Value","type":"quantitative"}},"mark":"line"},{"encoding":{"color":{"value":"#00008b"},"size":{"value":30.0},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Value","type":"quantitative"}},"mark":"point"},{"encoding":{"color":{"value":"#ff7f50"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_quantity_scaled","title":"Value","type":"quantitative"}},"mark":"line"},{"encoding":{"color":{"value":"#ff4500"},"size":{"value":30.0},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_quantity_scaled","title":"Value","type":"quantitative"}},"mark":"point"}]},"title":"Monthly Revenue and Quantity by Region and Category","width":"container"};
+    const visId = 'vis-1768911375078';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -1819,7 +1819,7 @@ LABEL
 <h2 class="anchored" data-anchor-id="coordinate-transformations">Coordinate Transformations</h2>
 <section id="flipped-coordinates-horizontal-bar-chart" class="level3">
 <h3 class="anchored" data-anchor-id="flipped-coordinates-horizontal-bar-chart">Flipped Coordinates (Horizontal Bar Chart)</h3>
-<div id="11d327a4" class="cell" data-execution_count="23">
+<div id="899e8349" class="cell" data-execution_count="23">
 <pre class="ggsql cell-code"><code>SELECT region, SUM(revenue) as total
 FROM 'sales.csv'
 GROUP BY region
@@ -1832,11 +1832,11 @@ LABEL
     x =&gt; 'Region', 
     y =&gt; 'Total Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="23">
-<div id="vis-1768907267743"></div>
+<div id="vis-1768911375090"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"region":"West","total":16650.0},{"region":"East","total":15450.0},{"region":"South","total":13900.0},{"region":"North","total":12200.0}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"detail":{"field":"region","type":"nominal"},"width":{"value":0.9},"x":{"field":"total","title":"Total Revenue ($)","type":"quantitative"},"y":{"field":"region","title":"Region","type":"nominal"}},"mark":{"type":"bar","width":{"band":0.9}}}],"title":"Total Revenue by Region","width":"container"};
-    const visId = 'vis-1768907267743';
+    const visId = 'vis-1768911375090';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -1907,7 +1907,7 @@ LABEL
 </section>
 <section id="cartesian-with-axis-limits" class="level3">
 <h3 class="anchored" data-anchor-id="cartesian-with-axis-limits">Cartesian with Axis Limits</h3>
-<div id="2d79768b" class="cell" data-execution_count="24">
+<div id="eedb7a5d" class="cell" data-execution_count="24">
 <pre class="ggsql cell-code"><code>SELECT x, y FROM 'data.csv'
 VISUALISE x, y
 DRAW point 
@@ -1919,11 +1919,11 @@ LABEL
     x =&gt; 'X', 
     y =&gt; 'Y'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="24">
-<div id="vis-1768907267749"></div>
+<div id="vis-1768911375099"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"x":5.2,"y":18.5},{"x":8.7,"y":22.3},{"x":12.3,"y":28.9},{"x":15.8,"y":35.2},{"x":19.4,"y":42.7},{"x":23.1,"y":38.6},{"x":26.8,"y":45.1},{"x":30.2,"y":52.8},{"x":33.9,"y":48.3},{"x":37.5,"y":55.9},{"x":41.2,"y":62.4},{"x":44.8,"y":58.7},{"x":48.3,"y":65.2},{"x":52.1,"y":71.8},{"x":55.7,"y":68.1},{"x":59.4,"y":74.6}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"color":{"value":"#0000ff"},"size":{"value":4.0},"x":{"field":"x","scale":{"domain":[0.0,60.0]},"title":"X","type":"quantitative"},"y":{"field":"y","scale":{"domain":[0.0,70.0]},"title":"Y","type":"quantitative"}},"mark":"point"}],"title":"Scatter Plot with Custom Axis Limits","width":"container"};
-    const visId = 'vis-1768907267749';
+    const visId = 'vis-1768911375099';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -1994,7 +1994,7 @@ LABEL
 </section>
 <section id="pie-chart-with-polar-coordinates" class="level3">
 <h3 class="anchored" data-anchor-id="pie-chart-with-polar-coordinates">Pie Chart with Polar Coordinates</h3>
-<div id="77a25d23" class="cell" data-execution_count="25">
+<div id="3b4c203e" class="cell" data-execution_count="25">
 <pre class="ggsql cell-code"><code>SELECT category, SUM(revenue) as total
 FROM 'sales.csv'
 GROUP BY category
@@ -2004,11 +2004,11 @@ COORD polar
 LABEL 
     title =&gt; 'Revenue Distribution by Category'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="25">
-<div id="vis-1768907267770"></div>
+<div id="vis-1768911375110"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Furniture","total":14300.0},{"category":"Clothing","total":21700.0},{"category":"Electronics","total":22200.0}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"category","title":"category","type":"nominal"},"detail":{"field":"category","type":"nominal"},"theta":{"field":"total","title":"total","type":"quantitative"},"width":{"value":0.9}},"mark":"arc"}],"title":"Revenue Distribution by Category","width":"container"};
-    const visId = 'vis-1768907267770';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Clothing","total":21700.0},{"category":"Furniture","total":14300.0},{"category":"Electronics","total":22200.0}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"category","title":"category","type":"nominal"},"detail":{"field":"category","type":"nominal"},"theta":{"field":"total","title":"total","type":"quantitative"},"width":{"value":0.9}},"mark":"arc"}],"title":"Revenue Distribution by Category","width":"container"};
+    const visId = 'vis-1768911375110';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -2084,7 +2084,7 @@ LABEL
 <section id="different-constants-per-layer" class="level3">
 <h3 class="anchored" data-anchor-id="different-constants-per-layer">Different Constants Per Layer</h3>
 <p>Each layer can have its own constant value, creating a legend showing all values:</p>
-<div id="eecde57e" class="cell" data-execution_count="26">
+<div id="c46d9205" class="cell" data-execution_count="26">
 <pre class="ggsql cell-code"><code>WITH monthly AS (
     SELECT
         DATE_TRUNC('month', sale_date) as month,
@@ -2109,11 +2109,11 @@ LABEL
     x =&gt; 'Month', 
     y =&gt; 'Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="26">
-<div id="vis-1768907267783"></div>
+<div id="vis-1768911375124"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-06-01","revenue":1800.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-07-01","revenue":2000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-09-01","revenue":1900.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-02-01","revenue":1200.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-08-01","revenue":2200.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-10-01","revenue":2400.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-01-01","revenue":1000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-11-01","revenue":2600.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-03-01","revenue":1400.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-04-01","revenue":1100.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-05-01","revenue":1600.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-12-01","revenue":3000.0}],"__layer_1__":[{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-03-01","revenue":1100.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-04-01","revenue":1300.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-05-01","revenue":1500.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-12-01","revenue":2900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-01-01","revenue":800.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-11-01","revenue":2700.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-02-01","revenue":900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-08-01","revenue":2100.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-10-01","revenue":2500.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-06-01","revenue":1700.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-07-01","revenue":1900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-09-01","revenue":2300.0}],"__layer_2__":[{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-01-01","revenue":600.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-11-01","revenue":1650.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-03-01","revenue":850.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-04-01","revenue":950.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-05-01","revenue":1050.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-12-01","revenue":1750.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-06-01","revenue":1150.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-07-01","revenue":1250.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-09-01","revenue":1450.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-02-01","revenue":700.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-08-01","revenue":1350.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-10-01","revenue":1550.0}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_2__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Revenue by Category (Constant Colors)","width":"container"};
-    const visId = 'vis-1768907267783';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-06-01","revenue":1800.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-07-01","revenue":2000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-09-01","revenue":1900.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-02-01","revenue":1200.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-08-01","revenue":2200.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-10-01","revenue":2400.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-03-01","revenue":1400.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-04-01","revenue":1100.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-05-01","revenue":1600.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-12-01","revenue":3000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-01-01","revenue":1000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-11-01","revenue":2600.0}],"__layer_1__":[{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-03-01","revenue":1100.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-04-01","revenue":1300.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-05-01","revenue":1500.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-12-01","revenue":2900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-01-01","revenue":800.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-11-01","revenue":2700.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-06-01","revenue":1700.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-07-01","revenue":1900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-09-01","revenue":2300.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-02-01","revenue":900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-08-01","revenue":2100.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-10-01","revenue":2500.0}],"__layer_2__":[{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-01-01","revenue":600.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-11-01","revenue":1650.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-03-01","revenue":850.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-04-01","revenue":950.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-05-01","revenue":1050.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-12-01","revenue":1750.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-02-01","revenue":700.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-08-01","revenue":1350.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-10-01","revenue":1550.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-06-01","revenue":1150.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-07-01","revenue":1250.0},{"__ggsql_const_color__":"Furniture","category":"Furniture","month":"2023-09-01","revenue":1450.0}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_2__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Revenue by Category (Constant Colors)","width":"container"};
+    const visId = 'vis-1768911375124';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -2185,7 +2185,7 @@ LABEL
 <section id="mixed-constants-and-columns" class="level3">
 <h3 class="anchored" data-anchor-id="mixed-constants-and-columns">Mixed Constants and Columns</h3>
 <p>When mixing constant and column mappings for the same aesthetic, the axis/legend label uses the first non-constant column name:</p>
-<div id="563e2504" class="cell" data-execution_count="27">
+<div id="43958035" class="cell" data-execution_count="27">
 <pre class="ggsql cell-code"><code>SELECT date, value, category FROM 'metrics.csv'
 VISUALISE date AS x
 DRAW line 
@@ -2198,11 +2198,11 @@ LABEL
     title =&gt; 'Metrics with Threshold Line', 
     x =&gt; 'Date'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="27">
-<div id="vis-1768907267793"></div>
+<div id="vis-1768911375135"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-01-01","value":45.2},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-02-01","value":52.1},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-03-01","value":48.7},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-04-01","value":58.3},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-05-01","value":62.5},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-06-01","value":67.8},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-07-01","value":71.2},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-08-01","value":75.6},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-09-01","value":80.1},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-10-01","value":85.4},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-11-01","value":90.2},{"__ggsql_const_y_1__":120,"category":"Sales","date":"2023-12-01","value":95.8},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-01-01","value":120.5},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-02-01","value":135.2},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-03-01","value":128.9},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-04-01","value":142.3},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-05-01","value":155.7},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-06-01","value":148.2},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-07-01","value":162.8},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-08-01","value":175.4},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-09-01","value":168.9},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-10-01","value":182.5},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-11-01","value":195.1},{"__ggsql_const_y_1__":120,"category":"Marketing","date":"2023-12-01","value":188.7},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-01-01","value":78.3},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-02-01","value":82.1},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-03-01","value":75.6},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-04-01","value":85.9},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-05-01","value":92.4},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-06-01","value":88.7},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-07-01","value":95.2},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-08-01","value":101.8},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-09-01","value":97.5},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-10-01","value":105.3},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-11-01","value":112.6},{"__ggsql_const_y_1__":120,"category":"Support","date":"2023-12-01","value":108.9}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"category","title":"category","type":"nominal"},"detail":{"field":"category","type":"nominal"},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"value","type":"quantitative"}},"mark":"line"},{"data":{"name":"__global__"},"encoding":{"color":{"value":"#0000ff"},"size":{"value":20.0},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"__ggsql_const_y_1__","title":"value","type":"quantitative"}},"mark":"point"}],"title":"Metrics with Threshold Line","width":"container"};
-    const visId = 'vis-1768907267793';
+    const visId = 'vis-1768911375135';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -2274,7 +2274,7 @@ LABEL
 <section id="numeric-constants" class="level3">
 <h3 class="anchored" data-anchor-id="numeric-constants">Numeric Constants</h3>
 <p>Numbers work as constants too:</p>
-<div id="070511f6" class="cell" data-execution_count="28">
+<div id="f5bd6f63" class="cell" data-execution_count="28">
 <pre class="ggsql cell-code"><code>SELECT x, y FROM 'data.csv'
 VISUALISE x, y
 DRAW point 
@@ -2285,11 +2285,11 @@ DRAW point
 LABEL 
     title =&gt; 'Scatter Plot with Constant Sizes'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="28">
-<div id="vis-1768907267800"></div>
+<div id="vis-1768911375144"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"x":5.2,"y":18.5},{"x":8.7,"y":22.3},{"x":12.3,"y":28.9},{"x":15.8,"y":35.2},{"x":19.4,"y":42.7},{"x":23.1,"y":38.6},{"x":26.8,"y":45.1},{"x":30.2,"y":52.8},{"x":33.9,"y":48.3},{"x":37.5,"y":55.9},{"x":41.2,"y":62.4},{"x":44.8,"y":58.7},{"x":48.3,"y":65.2},{"x":52.1,"y":71.8},{"x":55.7,"y":68.1},{"x":59.4,"y":74.6}],"__layer_1__":[{"x":30.2,"y":52.8},{"x":37.5,"y":55.9},{"x":41.2,"y":62.4},{"x":44.8,"y":58.7},{"x":48.3,"y":65.2},{"x":52.1,"y":71.8},{"x":55.7,"y":68.1},{"x":59.4,"y":74.6}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"color":{"value":"#0000ff"},"size":{"value":100.0},"x":{"field":"x","title":"x","type":"quantitative"},"y":{"field":"y","title":"y","type":"quantitative"}},"mark":"point"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"value":"#ff0000"},"size":{"value":50.0},"x":{"field":"x","title":"x","type":"quantitative"},"y":{"field":"y","title":"y","type":"quantitative"}},"mark":"point"}],"title":"Scatter Plot with Constant Sizes","width":"container"};
-    const visId = 'vis-1768907267800';
+    const visId = 'vis-1768911375144';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -2363,7 +2363,7 @@ LABEL
 <h2 class="anchored" data-anchor-id="layer-filtering">Layer filtering</h2>
 <section id="filter-one-layer" class="level3">
 <h3 class="anchored" data-anchor-id="filter-one-layer">Filter one layer</h3>
-<div id="d95bd23c" class="cell" data-execution_count="29">
+<div id="cabf36a7" class="cell" data-execution_count="29">
 <pre class="ggsql cell-code"><code>SELECT date, value FROM 'timeseries.csv'
 VISUALISE date AS x, value AS y
 DRAW line 
@@ -2377,11 +2377,11 @@ LABEL
     x =&gt; 'Date', 
     y =&gt; 'Value'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="29">
-<div id="vis-1768907267808"></div>
+<div id="vis-1768911375154"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"date":"2023-01-01","value":100.0},{"date":"2023-01-08","value":110.0},{"date":"2023-01-15","value":105.0},{"date":"2023-01-22","value":115.0},{"date":"2023-01-29","value":120.0},{"date":"2023-02-05","value":118.0},{"date":"2023-02-12","value":125.0},{"date":"2023-02-19","value":130.0},{"date":"2023-02-26","value":128.0},{"date":"2023-03-05","value":135.0},{"date":"2023-03-12","value":142.0},{"date":"2023-03-19","value":138.0},{"date":"2023-03-26","value":145.0},{"date":"2023-04-02","value":150.0},{"date":"2023-04-09","value":148.0},{"date":"2023-04-16","value":155.0},{"date":"2023-04-23","value":160.0},{"date":"2023-04-30","value":158.0},{"date":"2023-05-07","value":165.0},{"date":"2023-05-14","value":170.0}],"__layer_1__":[{"date":"2023-01-01","value":100.0},{"date":"2023-01-08","value":110.0},{"date":"2023-01-15","value":105.0},{"date":"2023-01-22","value":115.0},{"date":"2023-01-29","value":120.0},{"date":"2023-02-05","value":118.0},{"date":"2023-02-12","value":125.0},{"date":"2023-02-26","value":128.0}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"color":{"value":"#0000ff"},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"value":"#ff0000"},"size":{"value":30.0},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"point"}],"title":"Time Series with Points","width":"container"};
-    const visId = 'vis-1768907267808';
+    const visId = 'vis-1768911375154';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -2456,7 +2456,7 @@ LABEL
 <section id="order-by-in-a-layer" class="level3">
 <h3 class="anchored" data-anchor-id="order-by-in-a-layer">ORDER BY in a layer</h3>
 <p>Use <code>ORDER BY</code> to ensure data is sorted correctly within a layer. This is especially important for line charts where the order of points affects the visual path:</p>
-<div id="814f7c93" class="cell" data-execution_count="30">
+<div id="5fb91f23" class="cell" data-execution_count="30">
 <pre class="ggsql cell-code"><code>WITH unordered_data AS (
     SELECT * FROM (VALUES
         (150.0, '2023-03-01'::DATE),
@@ -2479,11 +2479,11 @@ LABEL
     x =&gt; 'Date', 
     y =&gt; 'Value'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="30">
-<div id="vis-1768907267814"></div>
+<div id="vis-1768911375162"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"date":"2023-01-01","value":100.0},{"date":"2023-02-01","value":200.0},{"date":"2023-03-01","value":150.0},{"date":"2023-04-01","value":180.0},{"date":"2023-05-01","value":120.0}],"__layer_1__":[{"date":"2023-03-01","value":150.0},{"date":"2023-01-01","value":100.0},{"date":"2023-05-01","value":120.0},{"date":"2023-02-01","value":200.0},{"date":"2023-04-01","value":180.0}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"order":{"field":"__ggsql_order__","type":"quantitative"},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"line","transform":[{"window":[{"as":"__ggsql_order__","op":"row_number"}]}]},{"data":{"name":"__layer_1__"},"encoding":{"color":{"value":"#ff0000"},"size":{"value":40.0},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"point"}],"title":"Line Chart with ORDER BY","width":"container"};
-    const visId = 'vis-1768907267814';
+    const visId = 'vis-1768911375162';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -2555,7 +2555,7 @@ LABEL
 <section id="combining-filter-and-order-by" class="level3">
 <h3 class="anchored" data-anchor-id="combining-filter-and-order-by">Combining FILTER and ORDER BY</h3>
 <p>The <code>ORDER BY</code> clause can be combined with <code>FILTER</code> and other layer options:</p>
-<div id="e766d514" class="cell" data-execution_count="31">
+<div id="51185fd4" class="cell" data-execution_count="31">
 <pre class="ggsql cell-code"><code>SELECT date, value, category FROM 'metrics.csv'
 VISUALISE
 DRAW path 
@@ -2572,11 +2572,11 @@ LABEL
     x =&gt; 'Date', 
     y =&gt; 'Value'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="31">
-<div id="vis-1768907267825"></div>
+<div id="vis-1768911375174"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Sales","date":"2023-01-01","value":45.2},{"category":"Sales","date":"2023-02-01","value":52.1},{"category":"Sales","date":"2023-03-01","value":48.7},{"category":"Sales","date":"2023-04-01","value":58.3},{"category":"Sales","date":"2023-05-01","value":62.5},{"category":"Sales","date":"2023-06-01","value":67.8},{"category":"Sales","date":"2023-07-01","value":71.2},{"category":"Sales","date":"2023-08-01","value":75.6},{"category":"Sales","date":"2023-09-01","value":80.1},{"category":"Sales","date":"2023-10-01","value":85.4},{"category":"Sales","date":"2023-11-01","value":90.2},{"category":"Sales","date":"2023-12-01","value":95.8},{"category":"Marketing","date":"2023-01-01","value":120.5},{"category":"Marketing","date":"2023-02-01","value":135.2},{"category":"Marketing","date":"2023-03-01","value":128.9},{"category":"Marketing","date":"2023-04-01","value":142.3},{"category":"Marketing","date":"2023-05-01","value":155.7},{"category":"Marketing","date":"2023-06-01","value":148.2},{"category":"Marketing","date":"2023-07-01","value":162.8},{"category":"Marketing","date":"2023-08-01","value":175.4},{"category":"Marketing","date":"2023-09-01","value":168.9},{"category":"Marketing","date":"2023-10-01","value":182.5},{"category":"Marketing","date":"2023-11-01","value":195.1},{"category":"Marketing","date":"2023-12-01","value":188.7},{"category":"Support","date":"2023-01-01","value":78.3},{"category":"Support","date":"2023-02-01","value":82.1},{"category":"Support","date":"2023-03-01","value":75.6},{"category":"Support","date":"2023-04-01","value":85.9},{"category":"Support","date":"2023-05-01","value":92.4},{"category":"Support","date":"2023-06-01","value":88.7},{"category":"Support","date":"2023-07-01","value":95.2},{"category":"Support","date":"2023-08-01","value":101.8},{"category":"Support","date":"2023-09-01","value":97.5},{"category":"Support","date":"2023-10-01","value":105.3},{"category":"Support","date":"2023-11-01","value":112.6},{"category":"Support","date":"2023-12-01","value":108.9}],"__layer_0__":[{"category":"Sales","date":"2023-01-01","value":45.2},{"category":"Sales","date":"2023-03-01","value":48.7},{"category":"Sales","date":"2023-02-01","value":52.1},{"category":"Sales","date":"2023-04-01","value":58.3},{"category":"Sales","date":"2023-05-01","value":62.5},{"category":"Sales","date":"2023-06-01","value":67.8},{"category":"Sales","date":"2023-07-01","value":71.2},{"category":"Sales","date":"2023-08-01","value":75.6},{"category":"Sales","date":"2023-09-01","value":80.1},{"category":"Sales","date":"2023-10-01","value":85.4},{"category":"Sales","date":"2023-11-01","value":90.2},{"category":"Sales","date":"2023-12-01","value":95.8},{"category":"Marketing","date":"2023-01-01","value":120.5},{"category":"Marketing","date":"2023-03-01","value":128.9},{"category":"Marketing","date":"2023-02-01","value":135.2},{"category":"Marketing","date":"2023-04-01","value":142.3},{"category":"Marketing","date":"2023-06-01","value":148.2},{"category":"Marketing","date":"2023-05-01","value":155.7},{"category":"Marketing","date":"2023-07-01","value":162.8},{"category":"Marketing","date":"2023-09-01","value":168.9},{"category":"Marketing","date":"2023-08-01","value":175.4},{"category":"Marketing","date":"2023-10-01","value":182.5},{"category":"Marketing","date":"2023-12-01","value":188.7},{"category":"Marketing","date":"2023-11-01","value":195.1}],"__layer_1__":[{"category":"Sales","date":"2023-01-01","value":45.2},{"category":"Sales","date":"2023-02-01","value":52.1},{"category":"Sales","date":"2023-03-01","value":48.7},{"category":"Sales","date":"2023-04-01","value":58.3},{"category":"Sales","date":"2023-05-01","value":62.5},{"category":"Sales","date":"2023-06-01","value":67.8},{"category":"Sales","date":"2023-07-01","value":71.2},{"category":"Sales","date":"2023-08-01","value":75.6},{"category":"Sales","date":"2023-09-01","value":80.1},{"category":"Sales","date":"2023-10-01","value":85.4},{"category":"Sales","date":"2023-11-01","value":90.2},{"category":"Sales","date":"2023-12-01","value":95.8},{"category":"Marketing","date":"2023-01-01","value":120.5},{"category":"Marketing","date":"2023-02-01","value":135.2},{"category":"Marketing","date":"2023-03-01","value":128.9},{"category":"Marketing","date":"2023-04-01","value":142.3},{"category":"Marketing","date":"2023-05-01","value":155.7},{"category":"Marketing","date":"2023-06-01","value":148.2},{"category":"Marketing","date":"2023-07-01","value":162.8},{"category":"Marketing","date":"2023-08-01","value":175.4},{"category":"Marketing","date":"2023-09-01","value":168.9},{"category":"Marketing","date":"2023-10-01","value":182.5},{"category":"Marketing","date":"2023-11-01","value":195.1},{"category":"Marketing","date":"2023-12-01","value":188.7}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"color":{"field":"category","title":"category","type":"nominal"},"detail":{"field":"category","type":"nominal"},"order":{"field":"__ggsql_order__","type":"quantitative"},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"line","transform":[{"groupby":["category"],"window":[{"as":"__ggsql_order__","op":"row_number"}]}]},{"data":{"name":"__layer_1__"},"encoding":{"color":{"field":"category","title":"category","type":"nominal"},"detail":{"field":"category","type":"nominal"},"size":{"value":20.0},"x":{"field":"date","title":"Date","type":"temporal"},"y":{"field":"value","title":"Value","type":"quantitative"}},"mark":"point"}],"title":"Sales and Marketing Metrics (Ordered)","width":"container"};
-    const visId = 'vis-1768907267825';
+    const visId = 'vis-1768911375174';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -2650,7 +2650,7 @@ LABEL
 <h2 class="anchored" data-anchor-id="common-table-expressions-ctes">Common Table Expressions (CTEs)</h2>
 <section id="simple-cte-with-visualise-from" class="level3">
 <h3 class="anchored" data-anchor-id="simple-cte-with-visualise-from">Simple CTE with VISUALISE FROM</h3>
-<div id="53603499" class="cell" data-execution_count="32">
+<div id="03ebfbdd" class="cell" data-execution_count="32">
 <pre class="ggsql cell-code"><code>WITH monthly_sales AS (
     SELECT
         DATE_TRUNC('month', sale_date) as month,
@@ -2667,11 +2667,11 @@ LABEL
     x =&gt; 'Month', 
     y =&gt; 'Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="32">
-<div id="vis-1768907267836"></div>
+<div id="vis-1768911375187"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"month":"2023-04-01","total_revenue":3350.0},{"month":"2023-06-01","total_revenue":4650.0},{"month":"2023-10-01","total_revenue":6450.0},{"month":"2023-11-01","total_revenue":6950.0},{"month":"2023-12-01","total_revenue":7650.0},{"month":"2023-01-01","total_revenue":2400.0},{"month":"2023-03-01","total_revenue":3350.0},{"month":"2023-08-01","total_revenue":5650.0},{"month":"2023-09-01","total_revenue":5650.0},{"month":"2023-02-01","total_revenue":2800.0},{"month":"2023-07-01","total_revenue":5150.0},{"month":"2023-05-01","total_revenue":4150.0}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__global__"},"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"point"}],"title":"Monthly Revenue Trends","width":"container"};
-    const visId = 'vis-1768907267836';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"month":"2023-04-01","total_revenue":3350.0},{"month":"2023-06-01","total_revenue":4650.0},{"month":"2023-10-01","total_revenue":6450.0},{"month":"2023-11-01","total_revenue":6950.0},{"month":"2023-12-01","total_revenue":7650.0},{"month":"2023-05-01","total_revenue":4150.0},{"month":"2023-02-01","total_revenue":2800.0},{"month":"2023-07-01","total_revenue":5150.0},{"month":"2023-01-01","total_revenue":2400.0},{"month":"2023-03-01","total_revenue":3350.0},{"month":"2023-08-01","total_revenue":5650.0},{"month":"2023-09-01","total_revenue":5650.0}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__global__"},"encoding":{"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total_revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"point"}],"title":"Monthly Revenue Trends","width":"container"};
+    const visId = 'vis-1768911375187';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -2742,7 +2742,7 @@ LABEL
 </section>
 <section id="multiple-ctes" class="level3">
 <h3 class="anchored" data-anchor-id="multiple-ctes">Multiple CTEs</h3>
-<div id="891398f6" class="cell" data-execution_count="33">
+<div id="1f1ebab8" class="cell" data-execution_count="33">
 <pre class="ggsql cell-code"><code>WITH daily_sales AS (
     SELECT sale_date, region, SUM(revenue) as revenue
     FROM 'sales.csv'
@@ -2761,11 +2761,11 @@ LABEL
     x =&gt; 'Region', 
     y =&gt; 'Total Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="33">
-<div id="vis-1768907267848"></div>
+<div id="vis-1768911375202"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"region":"South","total":13900.0},{"region":"East","total":15450.0},{"region":"North","total":12200.0},{"region":"West","total":16650.0}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"detail":{"field":"region","type":"nominal"},"width":{"value":0.9},"x":{"field":"total","title":"Total Revenue ($)","type":"quantitative"},"y":{"field":"region","title":"Region","type":"nominal"}},"mark":{"type":"bar","width":{"band":0.9}}}],"title":"Total Revenue by Region","width":"container"};
-    const visId = 'vis-1768907267848';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"region":"East","total":15450.0},{"region":"North","total":12200.0},{"region":"West","total":16650.0},{"region":"South","total":13900.0}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"detail":{"field":"region","type":"nominal"},"width":{"value":0.9},"x":{"field":"total","title":"Total Revenue ($)","type":"quantitative"},"y":{"field":"region","title":"Region","type":"nominal"}},"mark":{"type":"bar","width":{"band":0.9}}}],"title":"Total Revenue by Region","width":"container"};
+    const visId = 'vis-1768911375202';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -2841,7 +2841,7 @@ LABEL
 <section id="comparing-actuals-vs-targets" class="level3">
 <h3 class="anchored" data-anchor-id="comparing-actuals-vs-targets">Comparing Actuals vs Targets</h3>
 <p>Each layer can reference a different CTE using <code>MAPPING ... FROM cte_name</code>:</p>
-<div id="263ac8b4" class="cell" data-execution_count="34">
+<div id="e3d76505" class="cell" data-execution_count="34">
 <pre class="ggsql cell-code"><code>WITH actuals AS (
     SELECT
         DATE_TRUNC('month', sale_date) as month,
@@ -2879,11 +2879,11 @@ LABEL
     x =&gt; 'Month', 
     y =&gt; 'Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="34">
-<div id="vis-1768907267862"></div>
+<div id="vis-1768911375217"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"__ggsql_const_color__":"Actual","month":"2023-01-01","value":2400.0},{"__ggsql_const_color__":"Actual","month":"2023-03-01","value":3350.0},{"__ggsql_const_color__":"Actual","month":"2023-08-01","value":5650.0},{"__ggsql_const_color__":"Actual","month":"2023-09-01","value":5650.0},{"__ggsql_const_color__":"Actual","month":"2023-04-01","value":3350.0},{"__ggsql_const_color__":"Actual","month":"2023-06-01","value":4650.0},{"__ggsql_const_color__":"Actual","month":"2023-10-01","value":6450.0},{"__ggsql_const_color__":"Actual","month":"2023-11-01","value":6950.0},{"__ggsql_const_color__":"Actual","month":"2023-12-01","value":7650.0},{"__ggsql_const_color__":"Actual","month":"2023-02-01","value":2800.0},{"__ggsql_const_color__":"Actual","month":"2023-07-01","value":5150.0},{"__ggsql_const_color__":"Actual","month":"2023-05-01","value":4150.0}],"__layer_1__":[{"__ggsql_const_color__":"Actual","month":"2023-01-01","value":2400.0},{"__ggsql_const_color__":"Actual","month":"2023-03-01","value":3350.0},{"__ggsql_const_color__":"Actual","month":"2023-08-01","value":5650.0},{"__ggsql_const_color__":"Actual","month":"2023-09-01","value":5650.0},{"__ggsql_const_color__":"Actual","month":"2023-04-01","value":3350.0},{"__ggsql_const_color__":"Actual","month":"2023-06-01","value":4650.0},{"__ggsql_const_color__":"Actual","month":"2023-10-01","value":6450.0},{"__ggsql_const_color__":"Actual","month":"2023-11-01","value":6950.0},{"__ggsql_const_color__":"Actual","month":"2023-12-01","value":7650.0},{"__ggsql_const_color__":"Actual","month":"2023-02-01","value":2800.0},{"__ggsql_const_color__":"Actual","month":"2023-07-01","value":5150.0},{"__ggsql_const_color__":"Actual","month":"2023-05-01","value":4150.0}],"__layer_2__":[{"__ggsql_const_color__":"Target","month":"2023-01-01","value":5000.0},{"__ggsql_const_color__":"Target","month":"2023-02-01","value":5500.0},{"__ggsql_const_color__":"Target","month":"2023-03-01","value":6000.0},{"__ggsql_const_color__":"Target","month":"2023-04-01","value":6500.0},{"__ggsql_const_color__":"Target","month":"2023-05-01","value":7000.0},{"__ggsql_const_color__":"Target","month":"2023-06-01","value":7500.0},{"__ggsql_const_color__":"Target","month":"2023-07-01","value":8000.0},{"__ggsql_const_color__":"Target","month":"2023-08-01","value":8500.0},{"__ggsql_const_color__":"Target","month":"2023-09-01","value":9000.0},{"__ggsql_const_color__":"Target","month":"2023-10-01","value":9500.0},{"__ggsql_const_color__":"Target","month":"2023-11-01","value":10000.0},{"__ggsql_const_color__":"Target","month":"2023-12-01","value":10500.0}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"value","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"size":{"value":30.0},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"value","title":"Revenue ($)","type":"quantitative"}},"mark":"point"},{"data":{"name":"__layer_2__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"value","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Revenue: Actual vs Target","width":"container"};
-    const visId = 'vis-1768907267862';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"__ggsql_const_color__":"Actual","month":"2023-02-01","value":2800.0},{"__ggsql_const_color__":"Actual","month":"2023-07-01","value":5150.0},{"__ggsql_const_color__":"Actual","month":"2023-05-01","value":4150.0},{"__ggsql_const_color__":"Actual","month":"2023-04-01","value":3350.0},{"__ggsql_const_color__":"Actual","month":"2023-06-01","value":4650.0},{"__ggsql_const_color__":"Actual","month":"2023-10-01","value":6450.0},{"__ggsql_const_color__":"Actual","month":"2023-11-01","value":6950.0},{"__ggsql_const_color__":"Actual","month":"2023-12-01","value":7650.0},{"__ggsql_const_color__":"Actual","month":"2023-01-01","value":2400.0},{"__ggsql_const_color__":"Actual","month":"2023-03-01","value":3350.0},{"__ggsql_const_color__":"Actual","month":"2023-08-01","value":5650.0},{"__ggsql_const_color__":"Actual","month":"2023-09-01","value":5650.0}],"__layer_1__":[{"__ggsql_const_color__":"Actual","month":"2023-02-01","value":2800.0},{"__ggsql_const_color__":"Actual","month":"2023-07-01","value":5150.0},{"__ggsql_const_color__":"Actual","month":"2023-05-01","value":4150.0},{"__ggsql_const_color__":"Actual","month":"2023-04-01","value":3350.0},{"__ggsql_const_color__":"Actual","month":"2023-06-01","value":4650.0},{"__ggsql_const_color__":"Actual","month":"2023-10-01","value":6450.0},{"__ggsql_const_color__":"Actual","month":"2023-11-01","value":6950.0},{"__ggsql_const_color__":"Actual","month":"2023-12-01","value":7650.0},{"__ggsql_const_color__":"Actual","month":"2023-01-01","value":2400.0},{"__ggsql_const_color__":"Actual","month":"2023-03-01","value":3350.0},{"__ggsql_const_color__":"Actual","month":"2023-08-01","value":5650.0},{"__ggsql_const_color__":"Actual","month":"2023-09-01","value":5650.0}],"__layer_2__":[{"__ggsql_const_color__":"Target","month":"2023-01-01","value":5000.0},{"__ggsql_const_color__":"Target","month":"2023-02-01","value":5500.0},{"__ggsql_const_color__":"Target","month":"2023-03-01","value":6000.0},{"__ggsql_const_color__":"Target","month":"2023-04-01","value":6500.0},{"__ggsql_const_color__":"Target","month":"2023-05-01","value":7000.0},{"__ggsql_const_color__":"Target","month":"2023-06-01","value":7500.0},{"__ggsql_const_color__":"Target","month":"2023-07-01","value":8000.0},{"__ggsql_const_color__":"Target","month":"2023-08-01","value":8500.0},{"__ggsql_const_color__":"Target","month":"2023-09-01","value":9000.0},{"__ggsql_const_color__":"Target","month":"2023-10-01","value":9500.0},{"__ggsql_const_color__":"Target","month":"2023-11-01","value":10000.0},{"__ggsql_const_color__":"Target","month":"2023-12-01","value":10500.0}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"value","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"size":{"value":30.0},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"value","title":"Revenue ($)","type":"quantitative"}},"mark":"point"},{"data":{"name":"__layer_2__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"value","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Revenue: Actual vs Target","width":"container"};
+    const visId = 'vis-1768911375217';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -2955,7 +2955,7 @@ LABEL
 <section id="cte-chain-raw-filtered-aggregated" class="level3">
 <h3 class="anchored" data-anchor-id="cte-chain-raw-filtered-aggregated">CTE Chain: Raw → Filtered → Aggregated</h3>
 <p>CTEs can reference other CTEs, creating a data transformation pipeline:</p>
-<div id="81db5c19" class="cell" data-execution_count="35">
+<div id="33937422" class="cell" data-execution_count="35">
 <pre class="ggsql cell-code"><code>WITH raw_data AS (
     SELECT sale_date, revenue, category, region
     FROM 'sales.csv'
@@ -2981,11 +2981,11 @@ LABEL
     x =&gt; 'Month', 
     y =&gt; 'Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="35">
-<div id="vis-1768907267876"></div>
+<div id="vis-1768911375233"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"month":"2023-01-01","region":"North","total":1000.0},{"month":"2023-11-01","region":"East","total":2600.0},{"month":"2023-03-01","region":"East","total":1400.0},{"month":"2023-04-01","region":"West","total":1100.0},{"month":"2023-05-01","region":"North","total":1600.0},{"month":"2023-12-01","region":"West","total":3000.0},{"month":"2023-02-01","region":"South","total":1200.0},{"month":"2023-07-01","region":"East","total":2000.0},{"month":"2023-09-01","region":"North","total":1900.0},{"month":"2023-10-01","region":"South","total":2400.0},{"month":"2023-06-01","region":"South","total":1800.0},{"month":"2023-08-01","region":"West","total":2200.0}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"detail":{"field":"region","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"detail":{"field":"region","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total","title":"Revenue ($)","type":"quantitative"}},"mark":"point"}],"title":"Electronics Revenue by Region (CTE Chain)","width":"container"};
-    const visId = 'vis-1768907267876';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"month":"2023-03-01","region":"East","total":1400.0},{"month":"2023-04-01","region":"West","total":1100.0},{"month":"2023-05-01","region":"North","total":1600.0},{"month":"2023-12-01","region":"West","total":3000.0},{"month":"2023-01-01","region":"North","total":1000.0},{"month":"2023-11-01","region":"East","total":2600.0},{"month":"2023-06-01","region":"South","total":1800.0},{"month":"2023-08-01","region":"West","total":2200.0},{"month":"2023-02-01","region":"South","total":1200.0},{"month":"2023-07-01","region":"East","total":2000.0},{"month":"2023-09-01","region":"North","total":1900.0},{"month":"2023-10-01","region":"South","total":2400.0}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"detail":{"field":"region","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"detail":{"field":"region","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"total","title":"Revenue ($)","type":"quantitative"}},"mark":"point"}],"title":"Electronics Revenue by Region (CTE Chain)","width":"container"};
+    const visId = 'vis-1768911375233';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -3057,7 +3057,7 @@ LABEL
 <section id="layer-from-with-filter" class="level3">
 <h3 class="anchored" data-anchor-id="layer-from-with-filter">Layer FROM with FILTER</h3>
 <p>Combine <code>FROM</code> with <code>FILTER</code> to get filtered subsets from a CTE:</p>
-<div id="e5306ca8" class="cell" data-execution_count="36">
+<div id="ef209428" class="cell" data-execution_count="36">
 <pre class="ggsql cell-code"><code>WITH all_sales AS (
     SELECT
         DATE_TRUNC('month', sale_date) as month,
@@ -3081,11 +3081,11 @@ LABEL
     x =&gt; 'Month', 
     y =&gt; 'Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="36">
-<div id="vis-1768907267888"></div>
+<div id="vis-1768911375247"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-06-01","revenue":1800.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-07-01","revenue":2000.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-09-01","revenue":1900.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-03-01","revenue":1100.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-04-01","revenue":1300.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-05-01","revenue":1500.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-12-01","revenue":2900.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-01-01","revenue":600.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-11-01","revenue":1650.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-02-01","revenue":1200.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-08-01","revenue":2200.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-10-01","revenue":2400.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-01-01","revenue":800.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-11-01","revenue":2700.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-03-01","revenue":850.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-04-01","revenue":950.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-05-01","revenue":1050.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-12-01","revenue":1750.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-03-01","revenue":1400.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-04-01","revenue":1100.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-05-01","revenue":1600.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-12-01","revenue":3000.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-06-01","revenue":1700.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-07-01","revenue":1900.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-09-01","revenue":2300.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-02-01","revenue":700.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-08-01","revenue":1350.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-10-01","revenue":1550.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-01-01","revenue":1000.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-11-01","revenue":2600.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-02-01","revenue":900.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-08-01","revenue":2100.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-10-01","revenue":2500.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-06-01","revenue":1150.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-07-01","revenue":1250.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-09-01","revenue":1450.0}],"__layer_1__":[{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-06-01","revenue":1800.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-07-01","revenue":2000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-09-01","revenue":1900.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-02-01","revenue":1200.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-08-01","revenue":2200.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-10-01","revenue":2400.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-03-01","revenue":1400.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-04-01","revenue":1100.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-05-01","revenue":1600.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-12-01","revenue":3000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-01-01","revenue":1000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-11-01","revenue":2600.0}],"__layer_2__":[{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-03-01","revenue":1100.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-04-01","revenue":1300.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-05-01","revenue":1500.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-12-01","revenue":2900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-01-01","revenue":800.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-11-01","revenue":2700.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-06-01","revenue":1700.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-07-01","revenue":1900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-09-01","revenue":2300.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-02-01","revenue":900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-08-01","revenue":2100.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-10-01","revenue":2500.0}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_2__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Revenue by Category (Filtered Layers)","width":"container"};
-    const visId = 'vis-1768907267888';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-02-01","revenue":1200.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-08-01","revenue":2200.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-10-01","revenue":2400.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-01-01","revenue":800.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-11-01","revenue":2700.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-03-01","revenue":850.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-04-01","revenue":950.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-05-01","revenue":1050.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-12-01","revenue":1750.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-06-01","revenue":1800.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-07-01","revenue":2000.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-09-01","revenue":1900.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-03-01","revenue":1100.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-04-01","revenue":1300.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-05-01","revenue":1500.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-12-01","revenue":2900.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-01-01","revenue":600.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-11-01","revenue":1650.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-01-01","revenue":1000.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-11-01","revenue":2600.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-02-01","revenue":900.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-08-01","revenue":2100.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-10-01","revenue":2500.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-06-01","revenue":1150.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-07-01","revenue":1250.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-09-01","revenue":1450.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-03-01","revenue":1400.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-04-01","revenue":1100.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-05-01","revenue":1600.0},{"__ggsql_const_color__":"All Categories","category":"Electronics","month":"2023-12-01","revenue":3000.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-06-01","revenue":1700.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-07-01","revenue":1900.0},{"__ggsql_const_color__":"All Categories","category":"Clothing","month":"2023-09-01","revenue":2300.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-02-01","revenue":700.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-08-01","revenue":1350.0},{"__ggsql_const_color__":"All Categories","category":"Furniture","month":"2023-10-01","revenue":1550.0}],"__layer_1__":[{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-02-01","revenue":1200.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-08-01","revenue":2200.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-10-01","revenue":2400.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-06-01","revenue":1800.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-07-01","revenue":2000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-09-01","revenue":1900.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-01-01","revenue":1000.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-11-01","revenue":2600.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-03-01","revenue":1400.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-04-01","revenue":1100.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-05-01","revenue":1600.0},{"__ggsql_const_color__":"Electronics","category":"Electronics","month":"2023-12-01","revenue":3000.0}],"__layer_2__":[{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-01-01","revenue":800.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-11-01","revenue":2700.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-03-01","revenue":1100.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-04-01","revenue":1300.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-05-01","revenue":1500.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-12-01","revenue":2900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-02-01","revenue":900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-08-01","revenue":2100.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-10-01","revenue":2500.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-06-01","revenue":1700.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-07-01","revenue":1900.0},{"__ggsql_const_color__":"Clothing","category":"Clothing","month":"2023-09-01","revenue":2300.0}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_2__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"month","title":"Month","type":"temporal"},"y":{"field":"revenue","title":"Revenue ($)","type":"quantitative"}},"mark":"line"}],"title":"Revenue by Category (Filtered Layers)","width":"container"};
+    const visId = 'vis-1768911375247';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -3157,7 +3157,7 @@ LABEL
 <section id="multiple-file-sources" class="level3">
 <h3 class="anchored" data-anchor-id="multiple-file-sources">Multiple File Sources</h3>
 <p>Layers can also reference different CSV files directly:</p>
-<div id="f026e872" class="cell" data-execution_count="37">
+<div id="bb06cf11" class="cell" data-execution_count="37">
 <pre class="ggsql cell-code"><code>VISUALISE
 DRAW line 
     MAPPING date AS x, value AS y, 'Time Series' AS color FROM 'timeseries.csv'
@@ -3168,11 +3168,11 @@ LABEL
     x =&gt; 'X', 
     y =&gt; 'Y'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="37">
-<div id="vis-1768907267904"></div>
+<div id="vis-1768911375268"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__layer_0__":[{"__ggsql_const_color__":"Time Series","date":"2023-01-01","value":100.0},{"__ggsql_const_color__":"Time Series","date":"2023-01-08","value":110.0},{"__ggsql_const_color__":"Time Series","date":"2023-01-15","value":105.0},{"__ggsql_const_color__":"Time Series","date":"2023-01-22","value":115.0},{"__ggsql_const_color__":"Time Series","date":"2023-01-29","value":120.0},{"__ggsql_const_color__":"Time Series","date":"2023-02-05","value":118.0},{"__ggsql_const_color__":"Time Series","date":"2023-02-12","value":125.0},{"__ggsql_const_color__":"Time Series","date":"2023-02-19","value":130.0},{"__ggsql_const_color__":"Time Series","date":"2023-02-26","value":128.0},{"__ggsql_const_color__":"Time Series","date":"2023-03-05","value":135.0},{"__ggsql_const_color__":"Time Series","date":"2023-03-12","value":142.0},{"__ggsql_const_color__":"Time Series","date":"2023-03-19","value":138.0},{"__ggsql_const_color__":"Time Series","date":"2023-03-26","value":145.0},{"__ggsql_const_color__":"Time Series","date":"2023-04-02","value":150.0},{"__ggsql_const_color__":"Time Series","date":"2023-04-09","value":148.0},{"__ggsql_const_color__":"Time Series","date":"2023-04-16","value":155.0},{"__ggsql_const_color__":"Time Series","date":"2023-04-23","value":160.0},{"__ggsql_const_color__":"Time Series","date":"2023-04-30","value":158.0},{"__ggsql_const_color__":"Time Series","date":"2023-05-07","value":165.0},{"__ggsql_const_color__":"Time Series","date":"2023-05-14","value":170.0}],"__layer_1__":[{"__ggsql_const_color__":"Scatter","x":5.2,"y":18.5},{"__ggsql_const_color__":"Scatter","x":8.7,"y":22.3},{"__ggsql_const_color__":"Scatter","x":12.3,"y":28.9},{"__ggsql_const_color__":"Scatter","x":15.8,"y":35.2},{"__ggsql_const_color__":"Scatter","x":19.4,"y":42.7},{"__ggsql_const_color__":"Scatter","x":23.1,"y":38.6},{"__ggsql_const_color__":"Scatter","x":26.8,"y":45.1},{"__ggsql_const_color__":"Scatter","x":30.2,"y":52.8},{"__ggsql_const_color__":"Scatter","x":33.9,"y":48.3},{"__ggsql_const_color__":"Scatter","x":37.5,"y":55.9},{"__ggsql_const_color__":"Scatter","x":41.2,"y":62.4},{"__ggsql_const_color__":"Scatter","x":44.8,"y":58.7},{"__ggsql_const_color__":"Scatter","x":48.3,"y":65.2},{"__ggsql_const_color__":"Scatter","x":52.1,"y":71.8},{"__ggsql_const_color__":"Scatter","x":55.7,"y":68.1},{"__ggsql_const_color__":"Scatter","x":59.4,"y":74.6}]},"height":"container","layer":[{"data":{"name":"__layer_0__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"date","title":"X","type":"temporal"},"y":{"field":"value","title":"Y","type":"quantitative"}},"mark":"line"},{"data":{"name":"__layer_1__"},"encoding":{"color":{"field":"__ggsql_const_color__","title":"color","type":"nominal"},"x":{"field":"x","title":"X","type":"quantitative"},"y":{"field":"y","title":"Y","type":"quantitative"}},"mark":"point"}],"title":"Data from Multiple Files","width":"container"};
-    const visId = 'vis-1768907267904';
+    const visId = 'vis-1768911375268';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -3246,7 +3246,7 @@ LABEL
 <h2 class="anchored" data-anchor-id="advanced-examples">Advanced Examples</h2>
 <section id="complete-regional-sales-analysis" class="level3">
 <h3 class="anchored" data-anchor-id="complete-regional-sales-analysis">Complete Regional Sales Analysis</h3>
-<div id="5ad5ea1f" class="cell" data-execution_count="38">
+<div id="57e5b303" class="cell" data-execution_count="38">
 <pre class="ggsql cell-code"><code>SELECT
     sale_date,
     region,
@@ -3265,11 +3265,11 @@ LABEL
     x =&gt; 'Date', 
     y =&gt; 'Total Quantity'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="38">
-<div id="vis-1768907267915"></div>
+<div id="vis-1768911375281"></div>
 <script type="text/javascript">
   (function() {
     const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"__global__"},"datasets":{"__global__":[{"region":"North","sale_date":"2023-01-15","total_quantity":5.0},{"region":"North","sale_date":"2023-01-20","total_quantity":25.0},{"region":"North","sale_date":"2023-01-25","total_quantity":3.0},{"region":"South","sale_date":"2023-02-10","total_quantity":8.0},{"region":"South","sale_date":"2023-02-15","total_quantity":30.0},{"region":"South","sale_date":"2023-02-18","total_quantity":3.0},{"region":"East","sale_date":"2023-03-05","total_quantity":7.0},{"region":"East","sale_date":"2023-03-10","total_quantity":35.0},{"region":"East","sale_date":"2023-03-15","total_quantity":4.0},{"region":"West","sale_date":"2023-04-20","total_quantity":6.0},{"region":"West","sale_date":"2023-04-25","total_quantity":38.0},{"region":"West","sale_date":"2023-04-28","total_quantity":4.0},{"region":"North","sale_date":"2023-05-12","total_quantity":9.0},{"region":"North","sale_date":"2023-05-18","total_quantity":42.0},{"region":"North","sale_date":"2023-05-22","total_quantity":5.0},{"region":"South","sale_date":"2023-06-08","total_quantity":10.0},{"region":"South","sale_date":"2023-06-12","total_quantity":45.0},{"region":"South","sale_date":"2023-06-16","total_quantity":5.0},{"region":"East","sale_date":"2023-07-14","total_quantity":11.0},{"region":"East","sale_date":"2023-07-20","total_quantity":48.0},{"region":"East","sale_date":"2023-07-24","total_quantity":5.0},{"region":"West","sale_date":"2023-08-22","total_quantity":12.0},{"region":"West","sale_date":"2023-08-28","total_quantity":50.0},{"region":"West","sale_date":"2023-08-30","total_quantity":6.0},{"region":"North","sale_date":"2023-09-18","total_quantity":8.0},{"region":"North","sale_date":"2023-09-22","total_quantity":52.0},{"region":"North","sale_date":"2023-09-26","total_quantity":6.0},{"region":"South","sale_date":"2023-10-25","total_quantity":14.0},{"region":"South","sale_date":"2023-10-30","total_quantity":55.0},{"region":"South","sale_date":"2023-10-31","total_quantity":6.0},{"region":"East","sale_date":"2023-11-11","total_quantity":15.0},{"region":"East","sale_date":"2023-11-15","total_quantity":58.0},{"region":"East","sale_date":"2023-11-20","total_quantity":7.0},{"region":"West","sale_date":"2023-12-05","total_quantity":16.0},{"region":"West","sale_date":"2023-12-10","total_quantity":60.0},{"region":"West","sale_date":"2023-12-15","total_quantity":7.0}]},"facet":{"field":"region","type":"nominal"},"height":"container","spec":{"layer":[{"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"detail":{"field":"region","type":"nominal"},"x":{"field":"sale_date","title":"Date","type":"temporal"},"y":{"field":"total_quantity","title":"Total Quantity","type":"quantitative"}},"mark":"line"},{"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"detail":{"field":"region","type":"nominal"},"x":{"field":"sale_date","title":"Date","type":"temporal"},"y":{"field":"total_quantity","title":"Total Quantity","type":"quantitative"}},"mark":"point"}]},"title":"Sales Trends by Region","width":"container"};
-    const visId = 'vis-1768907267915';
+    const visId = 'vis-1768911375281';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -3340,7 +3340,7 @@ LABEL
 </section>
 <section id="multi-category-analysis" class="level3">
 <h3 class="anchored" data-anchor-id="multi-category-analysis">Multi-Category Analysis</h3>
-<div id="5dcb1387" class="cell" data-execution_count="39">
+<div id="5bdaa6a2" class="cell" data-execution_count="39">
 <pre class="ggsql cell-code"><code>SELECT
     category,
     region,
@@ -3354,11 +3354,11 @@ LABEL
     x =&gt; 'Category', 
     y =&gt; 'Revenue ($)'</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="39">
-<div id="vis-1768907267925"></div>
+<div id="vis-1768911375293"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Electronics","region":"South","total_revenue":5400.0},{"category":"Electronics","region":"West","total_revenue":6300.0},{"category":"Clothing","region":"South","total_revenue":5100.0},{"category":"Clothing","region":"West","total_revenue":6300.0},{"category":"Furniture","region":"South","total_revenue":3400.0},{"category":"Furniture","region":"West","total_revenue":4050.0},{"category":"Electronics","region":"North","total_revenue":4500.0},{"category":"Electronics","region":"East","total_revenue":6000.0},{"category":"Clothing","region":"North","total_revenue":4600.0},{"category":"Clothing","region":"East","total_revenue":5700.0},{"category":"Furniture","region":"North","total_revenue":3100.0},{"category":"Furniture","region":"East","total_revenue":3750.0}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"detail":{"field":"region","type":"nominal"},"width":{"value":0.9},"x":{"field":"category","title":"Category","type":"nominal"},"y":{"field":"total_revenue","title":"Revenue ($)","type":"quantitative"}},"mark":{"type":"bar","width":{"band":0.9}}}],"title":"Revenue by Category and Region","width":"container"};
-    const visId = 'vis-1768907267925';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v5.json","datasets":{"__global__":[{"category":"Electronics","region":"North","total_revenue":4500.0},{"category":"Electronics","region":"East","total_revenue":6000.0},{"category":"Clothing","region":"South","total_revenue":5100.0},{"category":"Clothing","region":"West","total_revenue":6300.0},{"category":"Furniture","region":"South","total_revenue":3400.0},{"category":"Furniture","region":"West","total_revenue":4050.0},{"category":"Electronics","region":"South","total_revenue":5400.0},{"category":"Electronics","region":"West","total_revenue":6300.0},{"category":"Clothing","region":"North","total_revenue":4600.0},{"category":"Clothing","region":"East","total_revenue":5700.0},{"category":"Furniture","region":"North","total_revenue":3100.0},{"category":"Furniture","region":"East","total_revenue":3750.0}]},"height":"container","layer":[{"data":{"name":"__global__"},"encoding":{"color":{"field":"region","title":"region","type":"nominal"},"detail":{"field":"region","type":"nominal"},"width":{"value":0.9},"x":{"field":"category","title":"Category","type":"nominal"},"y":{"field":"total_revenue","title":"Revenue ($)","type":"quantitative"}},"mark":{"type":"bar","width":{"band":0.9}}}],"title":"Revenue by Category and Region","width":"container"};
+    const visId = 'vis-1768911375293';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
