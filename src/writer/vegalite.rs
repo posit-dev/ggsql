@@ -53,12 +53,12 @@ impl VegaLiteWriter {
             let mut row_obj = Map::new();
 
             for (col_idx, col_name) in column_names.iter().enumerate() {
-                let series = df.get_columns().get(col_idx).ok_or_else(|| {
+                let column = df.get_columns().get(col_idx).ok_or_else(|| {
                     GgsqlError::WriterError(format!("Failed to get column {}", col_name))
                 })?;
 
                 // Get value from series and convert to JSON Value
-                let value = self.series_value_at(series, row_idx)?;
+                let value = self.series_value_at(column.as_materialized_series(), row_idx)?;
                 row_obj.insert(col_name.to_string(), value);
             }
 
@@ -135,7 +135,7 @@ impl VegaLiteWriter {
                 let ca = series.date().map_err(|e| {
                     GgsqlError::WriterError(format!("Failed to cast to date: {}", e))
                 })?;
-                if let Some(days) = ca.get(idx) {
+                if let Some(days) = ca.phys.get(idx) {
                     let unix_epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
                     let date = unix_epoch + chrono::Duration::days(days as i64);
                     Ok(json!(date.format("%Y-%m-%d").to_string()))
@@ -148,7 +148,7 @@ impl VegaLiteWriter {
                 let ca = series.datetime().map_err(|e| {
                     GgsqlError::WriterError(format!("Failed to cast to datetime: {}", e))
                 })?;
-                if let Some(timestamp) = ca.get(idx) {
+                if let Some(timestamp) = ca.phys.get(idx) {
                     // Convert to microseconds based on time unit
                     let micros = match time_unit {
                         TimeUnit::Microseconds => timestamp,
@@ -171,7 +171,7 @@ impl VegaLiteWriter {
                 let ca = series.time().map_err(|e| {
                     GgsqlError::WriterError(format!("Failed to cast to time: {}", e))
                 })?;
-                if let Some(nanos) = ca.get(idx) {
+                if let Some(nanos) = ca.phys.get(idx) {
                     let hours = nanos / 3_600_000_000_000;
                     let minutes = (nanos % 3_600_000_000_000) / 60_000_000_000;
                     let seconds = (nanos % 60_000_000_000) / 1_000_000_000;
@@ -231,15 +231,15 @@ impl VegaLiteWriter {
 
     /// Infer Vega-Lite field type from DataFrame column
     fn infer_field_type(&self, df: &DataFrame, field: &str) -> String {
-        if let Ok(series) = df.column(field) {
+        if let Ok(column) = df.column(field) {
             use DataType::*;
-            match series.dtype() {
+            match column.dtype() {
                 Int8 | Int16 | Int32 | Int64 | UInt8 | UInt16 | UInt32 | UInt64 | Float32
                 | Float64 => "quantitative",
                 Boolean => "nominal",
                 String => {
                     // Check if string column contains numeric values
-                    if self.is_numeric_string_column(series) {
+                    if self.is_numeric_string_column(column.as_materialized_series()) {
                         "quantitative"
                     } else {
                         "nominal"
@@ -3306,7 +3306,7 @@ mod tests {
             .cast(&DataType::Date)
             .unwrap();
         let values = Series::new("value".into(), &[10, 20, 30]);
-        let df = DataFrame::new(vec![dates, values]).unwrap();
+        let df = DataFrame::new(vec![dates.into(), values.into()]).unwrap();
 
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
@@ -3341,7 +3341,7 @@ mod tests {
             .cast(&DataType::Datetime(TimeUnit::Microseconds, None))
             .unwrap();
         let values = Series::new("value".into(), &[10, 20, 30]);
-        let df = DataFrame::new(vec![datetimes, values]).unwrap();
+        let df = DataFrame::new(vec![datetimes.into(), values.into()]).unwrap();
 
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
@@ -3376,7 +3376,7 @@ mod tests {
             .cast(&DataType::Time)
             .unwrap();
         let values = Series::new("value".into(), &[10, 20, 30]);
-        let df = DataFrame::new(vec![times, values]).unwrap();
+        let df = DataFrame::new(vec![times.into(), values.into()]).unwrap();
 
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
@@ -3411,7 +3411,7 @@ mod tests {
             .cast(&DataType::Date)
             .unwrap();
         let revenue = Series::new("revenue".into(), &[100, 120, 110, 130, 125]);
-        let df = DataFrame::new(vec![dates, revenue]).unwrap();
+        let df = DataFrame::new(vec![dates.into(), revenue.into()]).unwrap();
 
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
@@ -3449,7 +3449,7 @@ mod tests {
             .cast(&DataType::Datetime(TimeUnit::Microseconds, None))
             .unwrap();
         let values = Series::new("value".into(), &[50, 75, 60]);
-        let df = DataFrame::new(vec![timestamps, values]).unwrap();
+        let df = DataFrame::new(vec![timestamps.into(), values.into()]).unwrap();
 
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
@@ -3490,7 +3490,7 @@ mod tests {
         let dates = Series::new("date".into(), &["2024-01-01", "2024-01-02", "2024-01-03"]);
         let values = Series::new("value".into(), &[100, 120, 110]);
         let categories = Series::new("category".into(), &["A", "A", "B"]);
-        let df = DataFrame::new(vec![dates, values, categories]).unwrap();
+        let df = DataFrame::new(vec![dates.into(), values.into(), categories.into()]).unwrap();
         let mut data = std::collections::HashMap::new();
         data.insert("__global__".to_string(), df);
 
@@ -3529,7 +3529,7 @@ mod tests {
         let values = Series::new("value".into(), &[100, 120]);
         let categories = Series::new("category".into(), &["A", "B"]);
         let regions = Series::new("region".into(), &["North", "South"]);
-        let df = DataFrame::new(vec![dates, values, categories, regions]).unwrap();
+        let df = DataFrame::new(vec![dates.into(), values.into(), categories.into(), regions.into()]).unwrap();
         let mut data = std::collections::HashMap::new();
         data.insert("__global__".to_string(), df);
 
@@ -3568,7 +3568,7 @@ mod tests {
 
         let dates = Series::new("date".into(), &["2024-01-01", "2024-01-02"]);
         let values = Series::new("value".into(), &[100, 120]);
-        let df = DataFrame::new(vec![dates, values]).unwrap();
+        let df = DataFrame::new(vec![dates.into(), values.into()]).unwrap();
         let mut data = std::collections::HashMap::new();
         data.insert("__global__".to_string(), df);
 
@@ -3600,7 +3600,7 @@ mod tests {
 
         let dates = Series::new("date".into(), &["2024-01-01", "2024-01-02"]);
         let values = Series::new("value".into(), &[100, 120]);
-        let df = DataFrame::new(vec![dates, values]).unwrap();
+        let df = DataFrame::new(vec![dates.into(), values.into()]).unwrap();
         let mut data = std::collections::HashMap::new();
         data.insert("__global__".to_string(), df);
 

@@ -21,7 +21,7 @@ tree-sitter = "0.25"
 csscolorparser = "0.8.1"
 
 # Data processing
-polars = { version = "0.43", features = ["lazy", "sql"] }
+polars = { version = "0.52", features = ["lazy", "sql"] }
 
 # Readers
 duckdb = { version = "1.1", features = ["bundled"] }
@@ -41,8 +41,8 @@ clap = { version = "4.4", features = ["derive"] }
 anyhow = "1.0"
 thiserror = "1.0"
 
-# Python bindings (future)
-pyo3 = "0.20"
+# Python bindings
+pyo3 = "0.26"
 
 # Testing
 proptest = "1.4"
