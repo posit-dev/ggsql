@@ -1,7 +1,7 @@
 /*!
-ggSQL Parser Module
+ggsql Parser Module
 
-Handles splitting ggSQL queries into SQL and visualization portions, then parsing
+Handles splitting ggsql queries into SQL and visualization portions, then parsing
 the visualization specification into a typed AST.
 
 ## Architecture
@@ -51,9 +51,9 @@ pub use ast::*;
 pub use error::ParseError;
 pub use splitter::split_query;
 
-/// Main entry point for parsing ggSQL queries
+/// Main entry point for parsing ggsql queries
 ///
-/// Takes a complete ggSQL query (SQL + VISUALISE) and returns a vector of
+/// Takes a complete ggsql query (SQL + VISUALISE) and returns a vector of
 /// parsed specifications (one per VISUALISE statement).
 pub fn parse_query(query: &str) -> Result<Vec<VizSpec>> {
     // Parse the full query using tree-sitter (includes SQL + VISUALISE portions)
@@ -65,7 +65,7 @@ pub fn parse_query(query: &str) -> Result<Vec<VizSpec>> {
     Ok(specs)
 }
 
-/// Parse the full ggSQL query (SQL + VISUALISE) using tree-sitter
+/// Parse the full ggsql query (SQL + VISUALISE) using tree-sitter
 fn parse_full_query(query: &str) -> Result<Tree> {
     let mut parser = tree_sitter::Parser::new();
 
@@ -89,7 +89,7 @@ fn parse_full_query(query: &str) -> Result<Tree> {
     Ok(tree)
 }
 
-/// Extract just the SQL portion from a ggSQL query
+/// Extract just the SQL portion from a ggsql query
 pub fn extract_sql(query: &str) -> Result<String> {
     let (sql_part, _) = splitter::split_query(query)?;
     Ok(sql_part)
@@ -147,9 +147,9 @@ mod tests {
         assert_eq!(specs[0].layers[1].geom, Geom::Point);
 
         // Second layer should have y and color
-        assert_eq!(specs[0].layers[1].aesthetics.len(), 2);
+        assert_eq!(specs[0].layers[1].mappings.len(), 2);
         assert!(matches!(
-            specs[0].layers[1].aesthetics.get("color"),
+            specs[0].layers[1].mappings.get("color"),
             Some(AestheticValue::Literal(LiteralValue::String(s))) if s == "value"
         ));
     }
@@ -212,7 +212,7 @@ mod tests {
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 1);
-        assert_eq!(specs[0].global_mapping, GlobalMapping::Empty);
+        assert!(specs[0].global_mappings.is_empty());
     }
 
     #[test]
@@ -327,7 +327,8 @@ mod tests {
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 1);
-        assert_eq!(specs[0].global_mapping, GlobalMapping::Wildcard);
+        assert!(specs[0].global_mappings.wildcard);
+        assert!(specs[0].global_mappings.aesthetics.is_empty());
     }
 
     #[test]
@@ -339,18 +340,19 @@ mod tests {
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 1);
-        match &specs[0].global_mapping {
-            GlobalMapping::Mappings(items) => {
-                assert_eq!(items.len(), 2);
-                assert!(
-                    matches!(&items[0], GlobalMappingItem::Explicit { column, aesthetic } if column == "date" && aesthetic == "x")
-                );
-                assert!(
-                    matches!(&items[1], GlobalMappingItem::Explicit { column, aesthetic } if column == "revenue" && aesthetic == "y")
-                );
-            }
-            _ => panic!("Expected Mappings variant"),
-        }
+        let mapping = &specs[0].global_mappings;
+        assert!(!mapping.wildcard);
+        assert_eq!(mapping.aesthetics.len(), 2);
+        assert!(mapping.aesthetics.contains_key("x"));
+        assert!(mapping.aesthetics.contains_key("y"));
+        assert_eq!(
+            mapping.aesthetics.get("x").unwrap().column_name(),
+            Some("date")
+        );
+        assert_eq!(
+            mapping.aesthetics.get("y").unwrap().column_name(),
+            Some("revenue")
+        );
     }
 
     #[test]
@@ -362,14 +364,18 @@ mod tests {
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 1);
-        match &specs[0].global_mapping {
-            GlobalMapping::Mappings(items) => {
-                assert_eq!(items.len(), 2);
-                assert!(matches!(&items[0], GlobalMappingItem::Implicit { name } if name == "x"));
-                assert!(matches!(&items[1], GlobalMappingItem::Implicit { name } if name == "y"));
-            }
-            _ => panic!("Expected Mappings variant"),
-        }
+        let mapping = &specs[0].global_mappings;
+        assert!(!mapping.wildcard);
+        assert_eq!(mapping.aesthetics.len(), 2);
+        // Implicit mappings are resolved at parse time: x -> x, y -> y
+        assert_eq!(
+            mapping.aesthetics.get("x").unwrap().column_name(),
+            Some("x")
+        );
+        assert_eq!(
+            mapping.aesthetics.get("y").unwrap().column_name(),
+            Some("y")
+        );
     }
 
     #[test]
@@ -381,17 +387,22 @@ mod tests {
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 1);
-        match &specs[0].global_mapping {
-            GlobalMapping::Mappings(items) => {
-                assert_eq!(items.len(), 3);
-                assert!(matches!(&items[0], GlobalMappingItem::Implicit { name } if name == "x"));
-                assert!(matches!(&items[1], GlobalMappingItem::Implicit { name } if name == "y"));
-                assert!(
-                    matches!(&items[2], GlobalMappingItem::Explicit { column, aesthetic } if column == "region" && aesthetic == "color")
-                );
-            }
-            _ => panic!("Expected Mappings variant"),
-        }
+        let mapping = &specs[0].global_mappings;
+        assert!(!mapping.wildcard);
+        assert_eq!(mapping.aesthetics.len(), 3);
+        // Implicit x and y, explicit color
+        assert_eq!(
+            mapping.aesthetics.get("x").unwrap().column_name(),
+            Some("x")
+        );
+        assert_eq!(
+            mapping.aesthetics.get("y").unwrap().column_name(),
+            Some("y")
+        );
+        assert_eq!(
+            mapping.aesthetics.get("color").unwrap().column_name(),
+            Some("region")
+        );
     }
 
     #[test]
@@ -403,7 +414,10 @@ mod tests {
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 1);
-        assert_eq!(specs[0].source, Some("sales".to_string()));
+        assert_eq!(
+            specs[0].source,
+            Some(DataSource::Identifier("sales".to_string()))
+        );
     }
 
     #[test]
@@ -416,6 +430,9 @@ mod tests {
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 1);
-        assert_eq!(specs[0].source, Some("cte".to_string()));
+        assert_eq!(
+            specs[0].source,
+            Some(DataSource::Identifier("cte".to_string()))
+        );
     }
 }

@@ -1,0 +1,354 @@
+/*-- scss:rules --*/
+
+.navbar {
+  .navbar-brand-logo {
+    width: 20px;
+  }
+  .nav-item.dropdown {
+    .dropdown-menu {
+      .dropdown-item {
+        code {
+          color: var(--brand-black);
+        }
+      }
+    }
+  }
+}
+
+code {
+  font-variant-ligatures: none
+}
+
+.hero-banner {
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--brand-paleteal, #DEF1EB);
+
+  &>p {
+    margin: 0;
+  }
+  .hero-image {
+    width: 100%;
+    max-width: 1200px;
+    height: auto;
+    object-fit: contain;
+  }
+  .hero-content {
+    width: 100%;
+    padding: 2rem;
+    background: var(--brand-darkteal);
+    text-align: center;
+
+    h1 {
+      font-size: 2.5rem;
+      font-weight: 600;
+      color: var(--brand-lightteal);
+      margin-bottom: 0.5rem;
+    }
+
+    p {
+      font-size: 1.25rem;
+      color: var(--brand-white);
+      max-width: 600px;
+      margin: 0 auto 1.5rem;
+    }
+  }
+
+  .hero-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+}
+
+
+.content-block {
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 4rem 2rem;
+  background: var(--brand-darkteal);
+  color: var(--brand-paleteal);
+
+  > * {
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  > h2 {
+    text-align: center;
+    font-size: 2rem;
+    color: var(--brand-paleteal);
+    margin-bottom: 3rem;
+    border-bottom-color: var(--brand-paleteal);
+  }
+
+  a {
+    color: var(--brand-lightteal);
+  }
+
+  &.alt-bg {
+    background: var(--brand-paleteal, #DEF1EB);
+    color: var(--brand-darkteal);
+
+    > h2 {
+      color: var(--brand-darkteal);
+      border-bottom-color: var(--brand-darkteal);
+    }
+
+    a {
+      color: var(--brand-teal);
+    }
+  }
+}
+
+.features {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.feature {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto 1fr;
+  column-gap: 2rem;
+  row-gap: 0.75rem;
+  background: white;
+  border-radius: 8px;
+  padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--brand-lightteal, #94D2BD);
+
+  h3 {
+    grid-column: 1;
+    grid-row: 1;
+    color: var(--brand-darkteal, #005F73);
+    font-size: 1.5rem;
+    margin: 0;
+  }
+
+  > p {
+    grid-column: 1;
+    grid-row: 2;
+    color: var(--brand-black, #001219);
+    line-height: 1.6;
+    margin: 0;
+  }
+
+  .code-copy-outer-scaffold {
+    grid-column: 2;
+    grid-row: 1 / -1;
+    margin: 0;
+    padding-top: 2.25rem;
+
+    .sourceCode {
+      margin: 0;
+    }
+
+    pre {
+      font-size: 0.85rem;
+      margin: 0;
+      border-radius: 4px;
+    }
+  }
+
+  &:nth-of-type(even) {
+    h3 {
+      grid-column: 2;
+    }
+
+    > p {
+      grid-column: 2;
+    }
+
+    .code-copy-outer-scaffold {
+      grid-column: 1;
+    }
+  }
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+
+    h3 {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    > p {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    .code-copy-outer-scaffold {
+      grid-column: 1;
+      grid-row: 3;
+      padding-top: 0;
+    }
+
+    &:nth-of-type(even) {
+      h3, > p, .code-copy-outer-scaffold {
+        grid-column: 1;
+      }
+    }
+  }
+}
+
+.workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 2rem;
+}
+
+.workflow-item {
+  text-align: center;
+  padding: 1.5rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  border-top: 3px solid var(--brand-teal, #0A9396);
+
+  h3 {
+    font-size: 1.1rem;
+    color: var(--brand-darkteal, #005F73);
+    margin-bottom: 0.75rem;
+  }
+
+  p {
+    font-size: 0.95rem;
+    color: var(--brand-black, #001219);
+    line-height: 1.5;
+    margin-bottom: 0.75rem;
+  }
+
+  a {
+    color: var(--brand-teal, #0A9396);
+    font-weight: 500;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+.example-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  align-items: start;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.example-code {
+  pre {
+    margin: 0;
+    border-radius: 8px;
+    max-height: 500px;
+    overflow-y: auto;
+  }
+}
+
+.example-description {
+  h3 {
+    color: var(--brand-darkteal, #005F73);
+    margin-bottom: 1rem;
+  }
+
+  ol {
+    padding-left: 1.25rem;
+
+    li {
+      margin-bottom: 0.5rem;
+      line-height: 1.5;
+    }
+  }
+
+  p {
+    margin-top: 1rem;
+    color: var(--brand-teal, #0A9396);
+    font-style: italic;
+  }
+}
+
+.cta-section {
+  text-align: center;
+  padding: 2rem 0;
+
+  h2 {
+    margin-bottom: 1rem;
+  }
+
+  > p {
+    font-size: 1.1rem;
+    color: var(--brand-darkteal, #005F73);
+    margin-bottom: 2rem;
+  }
+
+  .cta-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+}
+
+.btn {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.2s ease;
+
+  &.btn-lg {
+    padding: 0.875rem 2rem;
+    font-size: 1.1rem;
+  }
+
+  &.btn-primary {
+    background: var(--brand-darkteal, #005F73);
+    color: white;
+    border: 2px solid var(--brand-darkteal, #005F73);
+
+    &:hover {
+      background: var(--brand-teal, #0A9396);
+      border-color: var(--brand-teal, #0A9396);
+      color: white;
+      text-decoration: none;
+    }
+  }
+
+  &.btn-outline-primary {
+    background: transparent;
+    color: var(--brand-darkteal, #005F73);
+    border: 2px solid var(--brand-darkteal, #005F73);
+
+    &:hover {
+      background: var(--brand-darkteal, #005F73);
+      color: white;
+      text-decoration: none;
+    }
+  }
+
+  &.btn-outline-secondary {
+    background: transparent;
+    color: var(--brand-teal, #0A9396);
+    border: 2px solid var(--brand-teal, #0A9396);
+
+    &:hover {
+      background: var(--brand-teal, #0A9396);
+      color: white;
+      text-decoration: none;
+    }
+  }
+}

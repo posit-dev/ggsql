@@ -7,5 +7,10 @@ vsc-extension-quickstart.md
 **/.eslintrc.json
 **/*.map
 **/*.ts
+!**/*.d.ts
 node_modules/**
 .editorconfig
+src/**
+out/**/*.map
+package-lock.json
+*.vsix

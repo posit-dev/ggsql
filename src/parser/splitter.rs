@@ -1,12 +1,12 @@
 //! Query splitter using tree-sitter
 //!
-//! Splits ggSQL queries into SQL and visualization portions, and injects
+//! Splits ggsql queries into SQL and visualization portions, and injects
 //! SELECT * FROM <source> when VISUALISE FROM is used.
 
 use crate::{GgsqlError, Result};
 use tree_sitter::{Node, Parser};
 
-/// Split a ggSQL query into SQL and visualization portions
+/// Split a ggsql query into SQL and visualization portions
 ///
 /// Returns (sql_part, viz_part) where:
 /// - sql_part: SQL to execute (may be injected with SELECT * FROM if VISUALISE FROM is present)

@@ -1,12 +1,16 @@
 {
   "name": "ggsql",
-  "displayName": "ggSQL",
-  "description": "Syntax highlighting for ggSQL - SQL with declarative visualization",
+  "displayName": "ggsql",
+  "description": "Syntax highlighting and language runtime for ggsql - SQL with declarative visualization",
   "version": "0.1.0",
   "publisher": "ggsql",
   "engines": {
     "vscode": "^1.75.0"
   },
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "categories": [
     "Programming Languages"
   ],
@@ -26,10 +30,6 @@
     "languages": [
       {
         "id": "ggsql",
-        "aliases": [
-          "ggSQL",
-          "ggsql"
-        ],
         "extensions": [
           ".ggsql",
           ".ggsql.sql",
@@ -48,6 +48,37 @@
         "scopeName": "source.ggsql",
         "path": "./syntaxes/ggsql.tmLanguage.json"
       }
-    ]
+    ],
+    "languageRuntimes": [
+      {
+        "languageId": "ggsql"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "ggsql",
+      "properties": {
+        "ggsql.kernelPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the ggsql-jupyter executable. If empty, uses 'ggsql-jupyter' from PATH."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@posit-dev/positron": "^0.2.2",
+    "@types/node": "^18.x",
+    "@types/vscode": "^1.75.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.0.0"
   }
 }

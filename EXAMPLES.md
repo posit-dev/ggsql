@@ -1,6 +1,6 @@
-# ggSQL Examples
+# ggsql Examples
 
-This document provides a collection of basic examples demonstrating how to use ggSQL for data visualization.
+This document provides a collection of basic examples demonstrating how to use ggsql for data visualization.
 
 ## Table of Contents
 
@@ -246,7 +246,7 @@ FACET WRAP category SETTING scales => 'free_y'
 
 ## Common Table Expressions (CTEs)
 
-ggSQL supports two patterns for working with CTEs:
+ggsql supports two patterns for working with CTEs:
 
 1. **Traditional Pattern**: `WITH ... SELECT ... VISUALISE`
 2. **Shorthand Pattern**: `WITH ... VISUALISE FROM <cte>` (injected SELECT)
@@ -555,7 +555,7 @@ LABEL title => 'Distribution of Vehicles by Number of Cylinders',
 
 ## Global Mapping
 
-ggSQL supports global mappings at the VISUALISE level, which apply to all layers. This is the preferred style when multiple layers share the same aesthetic mappings.
+ggsql supports global mappings at the VISUALISE level, which apply to all layers. This is the preferred style when multiple layers share the same aesthetic mappings.
 
 ### Implicit Global Mapping
 
@@ -604,7 +604,7 @@ DRAW line MAPPING avg_temp AS y
 
 ## Case Insensitivity
 
-ggSQL keywords are case-insensitive. All of the following are valid:
+ggsql keywords are case-insensitive. All of the following are valid:
 
 ```sql
 -- Uppercase (traditional)

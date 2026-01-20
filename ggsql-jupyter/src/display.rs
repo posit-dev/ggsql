@@ -49,23 +49,44 @@ fn format_vegalite(spec: String) -> Value {
   (function() {{
     const spec = {};
     const visId = '{}';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {{
+      container.style.height = '100vh';
+    }}
+
+    const options = {{
+      "actions": true,
+    }};
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {{
       // Use require.js to load Vega libraries
       window.requirejs.config({{
         paths: {{
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
           'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
           'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min',
           'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min'
         }}
       }});
 
-      setTimeout(() => {{
-        window.requirejs(['vega-embed'], function(vegaEmbed) {{
-          vegaEmbed('#' + visId, spec, {{"actions": true}}).catch(console.error);
+      function docReady(fn) {{
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {{
+          fn();
         }});
-      }}, 100);
+      }}
+      docReady(function() {{
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {{
+            domReady(function () {{
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            }});
+        }});
+      }});
     }} else {{
       // Fallback for non-Jupyter environments
       function loadScript(src) {{
@@ -84,7 +105,7 @@ fn format_vegalite(spec: String) -> Value {
         loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6')
       ])
         .then(() => {{
-          vegaEmbed('#' + visId, spec, {{"actions": true}})
+          vegaEmbed('#' + visId, spec, options)
             .catch(console.error);
         }})
         .catch(err => {{
@@ -98,26 +119,16 @@ fn format_vegalite(spec: String) -> Value {
 
     json!({
         "data": {
-            // Primary MIME type - JupyterLab will render this natively (if vega5 extension installed)
-            "application/vnd.vegalite.v5+json": spec_value,
-
-            // HTML fallback - works everywhere with web connection
+            // HTML with embedded vega-embed for rendering
             "text/html": html,
-
-            // JSON fallback
-            "application/json": spec_value,
 
             // Text fallback
             "text/plain": "Vega-Lite visualization".to_string()
         },
-        "metadata": {
-            "application/vnd.vegalite.v5+json": {
-                "embedOptions": {
-                    "actions": true  // Show export/edit actions
-                }
-            }
-        },
-        "transient": {}
+        "metadata": {},
+        "transient": {},
+        // Route to Positron Plots pane
+        "output_location": "plot"
     })
 }
 
@@ -190,7 +201,7 @@ mod tests {
         let result = ExecutionResult::Visualization { spec };
         let display = format_display_data(result);
 
-        assert!(display["data"]["application/vnd.vegalite.v5+json"].is_object());
+        assert!(display["data"]["text/html"].is_string());
         assert!(display["data"]["text/plain"].is_string());
     }
 

@@ -1,5 +1,5 @@
 /**
- * Minimal ggSQL grammar without external scanner
+ * Minimal ggsql grammar without external scanner
  *
  * Uses a simple regex to capture SQL portion as opaque text
  */
@@ -328,23 +328,22 @@ module.exports = grammar({
       repeat($.viz_clause)
     ),
 
-    // Global mapping: wildcard (*), or list of explicit/implicit mappings
-    global_mapping: $ => choice(
-      $.wildcard_mapping,
-      seq(
-        $.global_mapping_item,
-        repeat(seq(',', $.global_mapping_item))
-      )
+    // Shared mapping list: comma-separated mapping elements
+    // Used by both global (VISUALISE) and layer (MAPPING) mappings
+    mapping_list: $ => seq(
+      $.mapping_element,
+      repeat(seq(',', $.mapping_element))
     ),
 
-    // Wildcard mapping: VISUALISE * (maps all columns implicitly)
-    wildcard_mapping: $ => '*',
-
-    // Global mapping item: explicit (col AS aes) or implicit (col)
-    global_mapping_item: $ => choice(
+    // Mapping element: wildcard, explicit, or implicit
+    mapping_element: $ => choice(
+      $.wildcard_mapping,   // *
       $.explicit_mapping,   // date AS x
       $.implicit_mapping    // x (becomes x AS x)
     ),
+
+    // Wildcard mapping: maps all columns to aesthetics with matching names
+    wildcard_mapping: $ => '*',
 
     // Explicit mapping: value AS aesthetic
     explicit_mapping: $ => seq(
@@ -355,6 +354,9 @@ module.exports = grammar({
 
     // Implicit mapping: just an identifier (column name = aesthetic name)
     implicit_mapping: $ => $.identifier,
+
+    // Global mapping after VISUALISE - uses shared mapping_list
+    global_mapping: $ => $.mapping_list,
 
     // All the visualization clauses (same as current grammar)
     viz_clause: $ => choice(
@@ -367,19 +369,28 @@ module.exports = grammar({
       $.theme_clause,
     ),
 
-    // DRAW clause - syntax: DRAW geom [MAPPING ...] [SETTING ...] [FILTER ...] [PARTITION BY ...] [ORDER BY ...]
+    // DRAW clause - syntax: DRAW geom [MAPPING ...] [REMAPPING ...] [SETTING ...] [FILTER ...] [PARTITION BY ...] [ORDER BY ...]
     draw_clause: $ => seq(
       caseInsensitive('DRAW'),
       $.geom_type,
       optional($.mapping_clause),
+      optional($.remapping_clause),
       optional($.setting_clause),
       optional($.filter_clause),
       optional($.partition_clause),
       optional($.order_clause)
     ),
 
+    // REMAPPING clause: maps stat-computed columns to aesthetics
+    // Syntax: REMAPPING count AS y, sum AS size
+    // Reuses mapping_list for parsing - stat names are treated as column references
+    remapping_clause: $ => seq(
+      caseInsensitive('REMAPPING'),
+      $.mapping_list
+    ),
+
     geom_type: $ => choice(
-      'point', 'line', 'path', 'bar', 'col', 'area', 'tile', 'polygon', 'ribbon',
+      'point', 'line', 'path', 'bar', 'area', 'tile', 'polygon', 'ribbon',
       'histogram', 'density', 'smooth', 'boxplot', 'violin',
       'text', 'label', 'segment', 'arrow', 'hline', 'vline', 'abline', 'errorbar'
     ),
@@ -387,6 +398,9 @@ module.exports = grammar({
     // MAPPING clause for aesthetic mappings: MAPPING col AS x, "blue" AS color [FROM source]
     // Supports: MAPPING x AS x, y AS y FROM cte
     //           MAPPING FROM cte (inherits global mappings)
+    //           MAPPING * (wildcard)
+    //           MAPPING *, x AS color (wildcard with explicit)
+    //           MAPPING x, y (implicit mappings)
     // Requires at least one of: aesthetic mappings or FROM clause
     mapping_clause: $ => seq(
       caseInsensitive('MAPPING'),
@@ -396,22 +410,15 @@ module.exports = grammar({
           caseInsensitive('FROM'),
           field('layer_source', choice($.identifier, $.string))
         ),
-        // Option 2: Mapping items, optionally followed by FROM
+        // Option 2: Mapping list (uses shared structure), optionally followed by FROM
         seq(
-          $.mapping_item,
-          repeat(seq(',', $.mapping_item)),
+          $.mapping_list,
           optional(seq(
             caseInsensitive('FROM'),
             field('layer_source', choice($.identifier, $.string))
           ))
         )
       )
-    ),
-
-    mapping_item: $ => seq(
-      field('value', $.mapping_value),
-      caseInsensitive('AS'),
-      field('aesthetic', $.aesthetic_name)
     ),
 
     mapping_value: $ => choice(
@@ -551,6 +558,8 @@ module.exports = grammar({
     aesthetic_name: $ => choice(
       // Position aesthetics
       'x', 'y', 'xmin', 'xmax', 'ymin', 'ymax', 'xend', 'yend',
+      // Aggregation aesthetic (for bar charts)
+      'weight',
       // Color aesthetics
       'color', 'colour', 'fill', 'opacity',
       // Size and shape

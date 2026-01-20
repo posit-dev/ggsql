@@ -5,10 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tree-sitter-ggsql"
 version = "0.1.0"
-description = "Tree-sitter grammar for ggSQL visualization language"
+description = "Tree-sitter grammar for ggsql visualization language"
 readme = "README.md"
 license = {text = "MIT"}
-authors = [{name = "ggSQL Team", email = "team@ggsql.org"}]
+authors = [{name = "ggsql Team", email = "team@ggsql.org"}]
 keywords = ["tree-sitter", "parser", "sql", "visualization", "grammar-of-graphics"]
 classifiers = [
     "Development Status :: 3 - Alpha",

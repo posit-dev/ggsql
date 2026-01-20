@@ -1,4 +1,4 @@
-//! Data source abstraction layer for ggSQL
+//! Data source abstraction layer for ggsql
 //!
 //! The reader module provides a pluggable interface for executing SQL queries
 //! against various data sources and returning Polars DataFrames for visualization.

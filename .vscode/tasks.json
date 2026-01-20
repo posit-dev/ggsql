@@ -1,0 +1,23 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build-ggsql-vscode",
+            "type": "npm",
+            "script": "watch",
+            "path": "ggsql-vscode",
+            "isBackground": true,
+            "problemMatcher": ["$tsc-watch"],
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}

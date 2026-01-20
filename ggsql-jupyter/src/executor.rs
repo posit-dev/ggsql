@@ -1,6 +1,6 @@
-//! Query execution module for ggSQL Jupyter kernel
+//! Query execution module for ggsql Jupyter kernel
 //!
-//! This module handles the execution of ggSQL queries using the existing
+//! This module handles the execution of ggsql queries using the existing
 //! ggsql library components (parser, DuckDB reader, Vega-Lite writer).
 
 use anyhow::Result;
@@ -12,7 +12,7 @@ use ggsql::{
 };
 use polars::frame::DataFrame;
 
-/// Result of executing a ggSQL query
+/// Result of executing a ggsql query
 #[derive(Debug)]
 pub enum ExecutionResult {
     /// Pure SQL query with no visualization
@@ -39,13 +39,13 @@ impl QueryExecutor {
         Ok(Self { reader, writer })
     }
 
-    /// Execute a ggSQL query
+    /// Execute a ggsql query
     ///
     /// This handles both pure SQL queries and queries with VISUALISE clauses.
     ///
     /// # Arguments
     ///
-    /// * `code` - The ggSQL query to execute
+    /// * `code` - The ggsql query to execute
     ///
     /// # Returns
     ///

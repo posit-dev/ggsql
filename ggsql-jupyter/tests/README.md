@@ -1,6 +1,6 @@
 # ggsql-jupyter Test Suite
 
-Comprehensive testing infrastructure for the ggSQL Jupyter kernel, validating Jupyter messaging protocol compliance and functional correctness.
+Comprehensive testing infrastructure for the ggsql Jupyter kernel, validating Jupyter messaging protocol compliance and functional correctness.
 
 ## Overview
 

@@ -1,0 +1,31 @@
+---
+title: "Installing ggsql"
+---
+
+ggsql is very much still a work in progress and the installation process reflects this. Eventually we will have proper installers but for now please follow this process if you wish to play around with it:
+
+1. **Clone the repository:**
+
+   ```bash
+   git clone https://github.com/georgestagg/ggsql
+   cd ggsql
+   ```
+
+2. **Install tree-sitter CLI:**
+
+   ```bash
+   npm install -g tree-sitter-cli
+   ```
+
+3. **Build the project:**
+
+   ```bash
+   cd tree-sitter-ggsql && tree-sitter generate && cd ..
+   cargo build
+   ```
+
+4. **Install the Jupyter kernel:**
+   ```bash
+   cargo run --package ggsql-jupyter -- --install
+   ```
+
