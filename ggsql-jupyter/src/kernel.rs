@@ -889,7 +889,7 @@ impl KernelServer {
     }
 }
 
-/// Check if ggSQL code is complete (balanced brackets, not in a string)
+/// Check if ggsql code is complete (balanced brackets, not in a string)
 /// If the code contains VISUALISE, it must also contain at least one DRAW layer
 fn is_code_complete(code: &str) -> bool {
     let trimmed = code.trim();

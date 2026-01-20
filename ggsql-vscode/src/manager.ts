@@ -182,9 +182,9 @@ function createKernelSpec(workspacePath?: string): JupyterKernelSpec {
 }
 
 /**
- * ggSQL Language Runtime Manager
+ * ggsql Language Runtime Manager
  *
- * Manages the lifecycle of ggSQL runtime sessions in Positron.
+ * Manages the lifecycle of ggsql runtime sessions in Positron.
  */
 export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
     private _context: vscode.ExtensionContext;
@@ -195,9 +195,9 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
     }
 
     /**
-     * Discover available ggSQL runtimes.
+     * Discover available ggsql runtimes.
      *
-     * Returns a single ggSQL runtime if the kernel is available.
+     * Returns a single ggsql runtime if the kernel is available.
      */
     discoverAllRuntimes(): AsyncGenerator<positron.LanguageRuntimeMetadata> {
         const context = this._context;

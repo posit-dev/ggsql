@@ -577,8 +577,9 @@ DRAW point
           (identifier)
           (select_statement
             (select_body
-              (sql_keyword)
-              (identifier)))))))
+              (from_clause
+                (table_ref
+                  table: (identifier)))))))))
   (visualise_statement
     (global_mapping
       (mapping_list
@@ -594,7 +595,9 @@ DRAW point
               (column_reference
                 (identifier)))
             aesthetic: (aesthetic_name)))))
-    source: (identifier)
+    (from_clause
+      (table_ref
+        table: (identifier)))
     (viz_clause
       (draw_clause
         (geom_type)))))
@@ -614,8 +617,9 @@ DRAW bar
     (sql_statement
       (select_statement
         (select_body
-          (sql_keyword)
-          (identifier)))))
+          (from_clause
+            (table_ref
+              table: (identifier)))))))
   (visualise_statement
     (global_mapping
       (mapping_list
@@ -677,7 +681,9 @@ DRAW bar MAPPING category AS x, total AS y
 
 (query
   (visualise_statement
-    source: (identifier)
+    (from_clause
+      (table_ref
+        table: (identifier)))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -907,8 +913,9 @@ DRAW point MAPPING x AS x, rn AS y
                   (identifier)))))
           (identifier)
           (identifier)
-          (sql_keyword)
-          (identifier)))))
+          (from_clause
+            (table_ref
+              table: (identifier)))))))
   (visualise_statement
     (viz_clause
       (draw_clause
@@ -954,8 +961,9 @@ DRAW point MAPPING x AS x, rnk AS y
                   (identifier)))))
           (identifier)
           (identifier)
-          (sql_keyword)
-          (identifier)))))
+          (from_clause
+            (table_ref
+              table: (identifier)))))))
   (visualise_statement
     (viz_clause
       (draw_clause
@@ -1007,8 +1015,9 @@ DRAW line MAPPING x AS x, total AS y
                 (frame_bound))))
           (identifier)
           (identifier)
-          (sql_keyword)
-          (identifier)))))
+          (from_clause
+            (table_ref
+              table: (identifier)))))))
   (visualise_statement
     (viz_clause
       (draw_clause
@@ -1055,10 +1064,13 @@ DRAW point MAPPING x AS x
             (select_statement
               (select_body
                 (identifier)
-                (sql_keyword)
-                (identifier))))))))
+                (from_clause
+                  (table_ref
+                    table: (identifier))))))))))
   (visualise_statement
-    source: (identifier)
+    (from_clause
+      (table_ref
+        table: (identifier)))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1101,8 +1113,9 @@ DRAW point MAPPING interval AS x
                     (number))))))
           (identifier)
           (identifier)
-          (sql_keyword)
-          (identifier)))))
+          (from_clause
+            (table_ref
+              table: (identifier)))))))
   (visualise_statement
     (viz_clause
       (draw_clause
@@ -1563,3 +1576,200 @@ DRAW bar MAPPING category AS x REMAPPING count AS y SETTING opacity => 0.8 FILTE
             (filter_token)
             (filter_token
               (string))))))))
+
+================================================================================
+Nested SELECT
+================================================================================
+
+SELECT x FROM (SELECT * FROM my_table)
+VISUALISE
+DRAW point MAPPING x AS x
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (identifier)
+          (from_clause
+            (table_ref
+              (subquery
+                (select_statement
+                  (select_body
+                    (from_clause
+                      (table_ref
+                        table: (identifier))))))))))))
+  (visualise_statement
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (mapping_clause
+          (mapping_list
+            (mapping_element
+              (explicit_mapping
+                value: (mapping_value
+                  (column_reference
+                    (identifier)))
+                aesthetic: (aesthetic_name)))))))))
+
+
+================================================================================
+Nested SELECT with alias
+================================================================================
+
+SELECT x FROM (SELECT * FROM my_table) AS sub
+VISUALISE
+DRAW point MAPPING x AS x
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (identifier)
+          (from_clause
+            (table_ref
+              (subquery
+                (select_statement
+                  (select_body
+                    (from_clause
+                      (table_ref
+                        table: (identifier))))))
+              alias: (identifier)))))))
+  (visualise_statement
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (mapping_clause
+          (mapping_list
+            (mapping_element
+              (explicit_mapping
+                value: (mapping_value
+                  (column_reference
+                    (identifier)))
+                aesthetic: (aesthetic_name)))))))))
+
+================================================================================
+Deeply nested SELECT
+================================================================================
+
+SELECT x FROM (SELECT y FROM (SELECT * FROM inner_table))
+VISUALISE
+DRAW point MAPPING x AS x
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (identifier)
+          (from_clause
+            (table_ref
+              (subquery
+                (select_statement
+                  (select_body
+                    (identifier)
+                    (from_clause
+                      (table_ref
+                        (subquery
+                          (select_statement
+                            (select_body
+                              (from_clause
+                                (table_ref
+                                  table: (identifier)))))))))))))))))
+  (visualise_statement
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (mapping_clause
+          (mapping_list
+            (mapping_element
+              (explicit_mapping
+                value: (mapping_value
+                  (column_reference
+                    (identifier)))
+                aesthetic: (aesthetic_name)))))))))
+
+================================================================================
+Multiple subqueries in FROM
+================================================================================
+
+SELECT * FROM (SELECT * FROM t1) AS a, (SELECT * FROM t2) AS b
+VISUALISE
+DRAW point MAPPING x AS x
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (from_clause
+            (table_ref
+              (subquery
+                (select_statement
+                  (select_body
+                    (from_clause
+                      (table_ref
+                        table: (identifier))))))
+              alias: (identifier))
+            (table_ref
+              (subquery
+                (select_statement
+                  (select_body
+                    (from_clause
+                      (table_ref
+                        table: (identifier))))))
+              alias: (identifier)))))))
+  (visualise_statement
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (mapping_clause
+          (mapping_list
+            (mapping_element
+              (explicit_mapping
+                value: (mapping_value
+                  (column_reference
+                    (identifier)))
+                aesthetic: (aesthetic_name)))))))))
+
+================================================================================
+Detecting builtin datasets
+================================================================================
+
+SELECT foo FROM ggsql:airquality
+VISUALISE
+DRAW point MAPPING x AS x FROM ggsql:penguins
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (identifier)
+          (from_clause
+            (table_ref
+              (builtin_dataset)))))))
+  (visualise_statement
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (mapping_clause
+          (mapping_list
+            (mapping_element
+              (explicit_mapping
+                (mapping_value
+                  (column_reference
+                    (identifier)))
+                (aesthetic_name))))
+          (builtin_dataset))))))

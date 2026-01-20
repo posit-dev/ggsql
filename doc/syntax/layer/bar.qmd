@@ -46,32 +46,32 @@ If `y` has not been mapped the layer will calculate it for you.
 
 Show the number of each species in the data
 
-```sql
-VISUALISE FROM penguins
+```{ggsql}
+VISUALISE FROM ggsql:penguins
 DRAW bar
     MAPPING species AS x
 ```
 
 Use `weight` to instead show the collective mass of each species
 
-```sql
-VISUALISE FROM penguins
+```{ggsql}
+VISUALISE FROM ggsql:penguins
 DRAW bar
     MAPPING species AS x, body_mass AS weight
 ```
 
 Map fill to a discrete value to create a stacked bar chart
 
-```sql
-VISUALISE FROM penguins
+```{ggsql}
+VISUALISE FROM ggsql:penguins
 DRAW bar
     MAPPING species AS x, island AS fill
 ```
 
 Map to y if the dataset already contains the value you want to show
 
-```sql
-SELECT MAX(body_mass) AS max_mass FROM penguins
+```{ggsql}
+SELECT species, MAX(body_mass) AS max_mass FROM ggsql:penguins
 GROUP BY species
 VISUALISE
 DRAW bar

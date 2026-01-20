@@ -35,6 +35,9 @@ code --install-extension ggsql-0.1.0.vsix
 git clone https://github.com/georgestagg/ggsql.git
 cd ggsql/ggsql-vscode
 
+# Install dependencies
+npm install
+
 # Install vsce (VSCode Extension Manager)
 npm install -g @vscode/vsce
 

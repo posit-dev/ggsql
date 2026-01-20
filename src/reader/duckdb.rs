@@ -2,6 +2,7 @@
 //!
 //! Provides a reader for DuckDB databases with direct Polars DataFrame integration.
 
+use crate::reader::data::init_builtin_data;
 use crate::reader::{connection::ConnectionInfo, Reader};
 use crate::{DataFrame, GgsqlError, Result};
 use duckdb::{params, Connection};
@@ -305,6 +306,17 @@ impl Reader for DuckDBReader {
             || trimmed.starts_with("UPDATE ")
             || trimmed.starts_with("DELETE ")
             || trimmed.starts_with("ALTER ");
+
+        // Initialise built-in datasets
+        let inits = init_builtin_data(sql)?;
+        for init in inits {
+            if let Err(e) = self.conn.execute(&init, params![]) {
+                return Err(GgsqlError::ReaderError(format!(
+                    "Failed to initialise built-in dataset: {}",
+                    e
+                )));
+            }
+        }
 
         if is_ddl {
             // For DDL, just execute and return an empty DataFrame

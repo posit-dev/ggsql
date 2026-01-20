@@ -26,6 +26,8 @@ pub mod duckdb;
 
 pub mod connection;
 
+pub mod data;
+
 #[cfg(feature = "duckdb")]
 pub use duckdb::DuckDBReader;
 

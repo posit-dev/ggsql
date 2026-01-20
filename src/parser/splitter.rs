@@ -95,18 +95,15 @@ pub fn split_query(query: &str) -> Result<(String, String)> {
 fn extract_from_identifier(node: &Node, source: &str) -> Option<String> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if child.kind() == "identifier" {
-            // Identifier: table name or CTE name
-            return Some(get_node_text(&child, source).to_string());
+        if child.kind() != "from_clause" {
+            continue;
         }
-        if child.kind() == "string" {
-            // String literal: file path (e.g., 'mtcars.csv')
-            // Return as-is with quotes - DuckDB handles it
-            return Some(get_node_text(&child, source).to_string());
-        }
-        if child.kind() == "viz_type" {
-            // If we hit viz_type without finding identifier/string, there's no FROM
-            return None;
+        let mut from_cursor = child.walk();
+        for table_ref in child.children(&mut from_cursor) {
+            if table_ref.kind() != "table_ref" {
+                continue;
+            }
+            return Some(get_node_text(&table_ref, source).to_string());
         }
     }
     None
@@ -179,17 +176,14 @@ mod tests {
         assert!(sql.contains("CREATE TABLE x AS SELECT 1;"));
         assert!(sql.contains("SELECT * FROM x"));
         assert!(viz.starts_with("VISUALISE FROM x"));
-    }
 
-    #[test]
-    fn test_visualise_from_after_create_without_semicolon_errors() {
+        // Without semicolon, the visualise statement should also be recognised
         let query = "CREATE TABLE x AS SELECT 1 VISUALISE FROM x";
-        let result = split_query(query);
+        let (sql, viz) = split_query(query).unwrap();
 
-        // Should error - tree-sitter doesn't recognize VISUALISE FROM without semicolon
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("Error parsing VISUALISE statement"));
+        assert!(sql.contains("CREATE TABLE x AS SELECT 1"));
+        assert!(sql.contains("SELECT * FROM x"));
+        assert!(viz.starts_with("VISUALISE FROM x"));
     }
 
     #[test]
