@@ -660,6 +660,25 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
         ));
     }
 
+    // Replace colour palettes by their hex codes
+    if matches!(
+        aesthetic.as_str(),
+        "stroke" | "colour" | "fill" | "color" | "col"
+    ) {
+        if let Some(ScalePropertyValue::Array(elements)) = properties.get("palette") {
+            let mut hex_codes = Vec::new();
+            for elem in elements {
+                if let ArrayElement::String(color) = elem {
+                    let hex = ArrayElement::String(color_to_hex(color));
+                    hex_codes.push(hex);
+                } else {
+                    hex_codes.push(elem.clone());
+                }
+            }
+            properties.insert("palette".to_string(), ScalePropertyValue::Array(hex_codes));
+        }
+    }
+
     Ok(Scale {
         aesthetic,
         scale_type,
@@ -3056,5 +3075,31 @@ mod tests {
             specs[0].layers[1].source.as_ref(),
             Some(DataSource::Identifier(name)) if name == "targets"
         ));
+    }
+
+    #[test]
+    fn test_colour_scale_hex_code_conversion() {
+        let query = r#"
+          VISUALISE foo AS x
+          SCALE color SETTING palette => ['rgb(0, 0, 255)', 'green', '#FF0000']
+        "#;
+        let specs = parse_test_query(query).unwrap();
+
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+
+        let scale_params = &scales[0].properties;
+        let palette = scale_params.get("palette");
+        assert!(palette.is_some());
+        let palette = palette.unwrap();
+
+        let mut ok = false;
+        if let ScalePropertyValue::Array(elems) = palette {
+            ok = matches!(&elems[0], ArrayElement::String(color) if color == "#0000ff");
+            ok = ok && matches!(&elems[1], ArrayElement::String(color) if color == "#008000");
+            ok = ok && matches!(&elems[2], ArrayElement::String(color) if color == "#ff0000");
+        }
+        assert!(ok);
+        eprintln!("{:?}", palette);
     }
 }
