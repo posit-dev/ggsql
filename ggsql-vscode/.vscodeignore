@@ -11,6 +11,7 @@ vsc-extension-quickstart.md
 node_modules/**
 .editorconfig
 src/**
+esbuild.js
 out/**/*.map
 package-lock.json
 *.vsix

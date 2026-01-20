@@ -58,6 +58,7 @@ module.exports = grammar({
     )),
 
     select_body: $ => prec.left(repeat1(choice(
+      $.from_clause,
       $.window_function,  // Window functions like ROW_NUMBER() OVER (...)
       $.function_call,    // Regular function calls like COUNT(), SUM()
       $.sql_keyword,
@@ -99,7 +100,8 @@ module.exports = grammar({
         $.subquery,
         ',', '(', ')', '*', '.', '=',
         /[^\s;(),'"]+/
-      ))
+      )),
+      optional($.select_statement)
     )),
 
     // INSERT statement
@@ -159,22 +161,36 @@ module.exports = grammar({
     },
 
     // Subquery in parentheses - fully recursive, can contain any SQL
-    // Higher precedence to prefer subquery interpretation over other_sql_statement
+    // Restructured to prioritize complete WITH/SELECT statements over token-by-token parsing
     subquery: $ => prec(1, seq(
       '(',
-      repeat1(choice(
-        $.window_function,   // Window functions inside subqueries
-        $.function_call,     // Function calls inside subqueries
-        $.with_statement,    // Allow nested CTEs
-        $.select_statement,
-        $.sql_keyword,
-        $.string,
-        $.number,
-        $.identifier,
-        $.subquery,  // Nested subqueries
-        ',', '*', '.', '=', '<', '>', '!',
-        token(/[^\s;(),'\"]+/)  // Any other SQL tokens
-      )),
+      choice(
+        // If starts with WITH or SELECT, parse as complete statement first
+        seq(
+          choice($.with_statement, $.select_statement),
+          optional(repeat(choice(
+            $.window_function,
+            $.function_call,
+            $.string,
+            $.number,
+            $.identifier,
+            $.subquery,
+            $.typecast_value,
+            ',', '*', '.', '=', '<', '>', '!'
+          )))
+        ),
+        // Otherwise, fall back to token-by-token parsing
+        repeat1(choice(
+          $.window_function,
+          $.function_call,
+          $.string,
+          $.number,
+          $.identifier,
+          $.subquery,
+          $.typecast_value,
+          ',', '*', '.', '=', '<', '>', '!'
+        ))
+      ),
       ')'
     )),
 
@@ -273,7 +289,15 @@ module.exports = grammar({
       $.identifier,
       $.number,
       $.string,
+      $.typecast_value,
       '*'
+    ),
+
+    typecast_value: $ => seq($.literal_value, "::", $.identifier),
+
+    builtin_dataset: $ => choice(
+      "ggsql:penguins",
+      "ggsql:airquality"
     ),
 
     window_specification: $ => seq(
@@ -318,13 +342,31 @@ module.exports = grammar({
       seq($.number, choice(caseInsensitive('PRECEDING'), caseInsensitive('FOLLOWING')))
     ),
 
+    table_ref: $ => prec.right(seq(
+      choice(
+        field('table', choice($.identifier, $.string, $.builtin_dataset)),
+        $.subquery,
+      ),
+      optional(seq('.', field('schema_table', $.identifier))), // Not sure what this is
+      optional(seq(
+        optional(caseInsensitive('AS')),
+        field('alias', $.identifier)
+      ))
+    )),
+
+    from_clause: $ => prec.right(1, seq(
+      caseInsensitive('FROM'),
+      $.table_ref,
+      repeat(seq(',', $.table_ref))
+    )),
+
     // VISUALISE/VISUALIZE [global_mapping] [FROM source] with clauses
     // Global mapping sets default aesthetics for all layers
     // FROM source can be an identifier (table/CTE) or string (file path)
     visualise_statement: $ => seq(
       choice(caseInsensitive('VISUALISE'), caseInsensitive('VISUALIZE')),
       optional($.global_mapping),
-      optional(seq(caseInsensitive('FROM'), field('source', choice($.identifier, $.string)))),
+      optional($.from_clause),
       repeat($.viz_clause)
     ),
 
@@ -408,14 +450,14 @@ module.exports = grammar({
         // Option 1: Just FROM (inherit global mappings)
         seq(
           caseInsensitive('FROM'),
-          field('layer_source', choice($.identifier, $.string))
+          field('layer_source', choice($.identifier, $.string, $.builtin_dataset))
         ),
         // Option 2: Mapping list (uses shared structure), optionally followed by FROM
         seq(
           $.mapping_list,
           optional(seq(
             caseInsensitive('FROM'),
-            field('layer_source', choice($.identifier, $.string))
+            field('layer_source', choice($.identifier, $.string, $.builtin_dataset))
           ))
         )
       )

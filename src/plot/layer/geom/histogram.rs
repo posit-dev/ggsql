@@ -242,8 +242,8 @@ pub fn extract_histogram_min_max(df: &DataFrame) -> Result<(f64, f64)> {
     let min_val = df
         .column("min_val")
         .ok()
-        .and_then(|s| s.f64().ok())
-        .and_then(|ca| ca.get(0))
+        .and_then(|s| s.get(0).ok())
+        .and_then(|s| s.try_extract::<f64>().ok())
         .ok_or_else(|| {
             GgsqlError::ValidationError("Could not extract min value for histogram".to_string())
         })?;
@@ -251,8 +251,8 @@ pub fn extract_histogram_min_max(df: &DataFrame) -> Result<(f64, f64)> {
     let max_val = df
         .column("max_val")
         .ok()
-        .and_then(|s| s.f64().ok())
-        .and_then(|ca| ca.get(0))
+        .and_then(|s| s.get(0).ok())
+        .and_then(|s| s.try_extract::<f64>().ok())
         .ok_or_else(|| {
             GgsqlError::ValidationError("Could not extract max value for histogram".to_string())
         })?;

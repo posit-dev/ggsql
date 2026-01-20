@@ -27,4 +27,27 @@ The line layer does not transform its data but passes it through unchanged
 
 ## Examples
 
-TBD
+Standard lineplot
+
+```{ggsql}
+VISUALISE FROM ggsql:airquality
+DRAW line
+    MAPPING Date AS x, Temp AS y
+```
+
+Use `PARTITION BY` to create multiple lines
+
+```{ggsql}
+VISUALISE FROM ggsql:airquality
+DRAW line
+    MAPPING Day AS x, Temp AS y
+    PARTITION BY Month
+```
+
+or split them with an aesthetic
+
+```{ggsql}
+VISUALISE FROM ggsql:airquality
+DRAW line
+    MAPPING Day AS x, Temp AS y, Month AS color
+```

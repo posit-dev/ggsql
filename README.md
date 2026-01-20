@@ -262,13 +262,17 @@ The `ggsql-vscode` extension provides syntax highlighting for ggsql files in Vis
 ### Installation
 
 ```bash
-# Package the extension
+# Install dependencies and package the extension
 cd ggsql-vscode
+npm install
 npm install -g @vscode/vsce
 vsce package
 
 # Install the VSIX file
 code --install-extension ggsql-0.1.0.vsix
+
+# For Positron integration, also install the kernel
+cargo run --package ggsql-jupyter -- --install
 ```
 
 ### Features

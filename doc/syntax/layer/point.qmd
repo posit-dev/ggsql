@@ -31,8 +31,8 @@ The point layer does not transform its data but passes it through unchanged
 
 Create a classic scatterplot
 
-```sql
-VISUALISE FROM penguins
+```{ggsql}
+VISUALISE FROM ggsql:penguins
 DRAW point
     MAPPING bill_len AS x, bill_dep AS y, species AS fill
     SETTING size => 30
@@ -40,16 +40,16 @@ DRAW point
 
 Map to size to create a bubble chart
 
-```sql
-VISUALISE FROM penguins
+```{ggsql}
+VISUALISE FROM ggsql:penguins
 DRAW point
     MAPPING bill_len AS x, bill_dep AS y, body_mass AS size
 ```
 
 Use filter to only plot a subset of the data
 
-```sql
-VISUALISE FROM penguins
+```{ggsql}
+VISUALISE FROM ggsql:penguins
 DRAW point
     MAPPING bill_len AS x, bill_dep AS y, species AS fill
     SETTING size => 30

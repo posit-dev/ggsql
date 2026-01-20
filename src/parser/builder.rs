@@ -84,17 +84,23 @@ fn build_visualise_statement(node: &Node, source: &str) -> Result<Plot> {
                 // Handle standalone wildcard (*) mapping
                 spec.global_mappings.wildcard = true;
             }
-            "identifier" | "string" => {
-                // This is the FROM source (table name or file path)
-                let text = get_node_text(&child, source);
-                spec.source = Some(match child.kind() {
-                    "string" => {
-                        // Remove surrounding quotes for file paths
-                        let path = text.trim_matches(|c| c == '\'' || c == '"');
-                        DataSource::FilePath(path.to_string())
+            "from_clause" => {
+                for from_child in child.children(&mut child.walk()) {
+                    if from_child.kind() == "table_ref" {
+                        let text = get_node_text(&from_child, source);
+                        let first_ref = from_child.named_child(0);
+                        if let Some(ref_node) = first_ref {
+                            spec.source = Some(match ref_node.kind() {
+                                "string" => {
+                                    let path = text.trim_matches(|c| c == '\'' || c == '"');
+                                    DataSource::FilePath(path.to_string())
+                                }
+                                _ => DataSource::Identifier(text.to_string()),
+                            });
+                        }
+                        break;
                     }
-                    _ => DataSource::Identifier(text.to_string()),
-                });
+                }
             }
             "viz_clause" => {
                 // Process visualization clause
