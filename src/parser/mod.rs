@@ -45,6 +45,7 @@ pub mod ast;
 pub mod builder;
 pub mod error;
 pub mod geom;
+pub mod layer;
 pub mod splitter;
 
 // Re-export key types
