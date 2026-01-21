@@ -448,10 +448,22 @@ mod tests {
         // Test that variant aesthetics (xmin, xmax) can contribute to primary aesthetic labels
         let mut spec = Plot::new();
         let layer = Layer::new(Geom::ribbon())
-            .with_aesthetic("xmin".to_string(), AestheticValue::standard_column("lower_bound"))
-            .with_aesthetic("xmax".to_string(), AestheticValue::standard_column("upper_bound"))
-            .with_aesthetic("ymin".to_string(), AestheticValue::standard_column("y_lower"))
-            .with_aesthetic("ymax".to_string(), AestheticValue::standard_column("y_upper"));
+            .with_aesthetic(
+                "xmin".to_string(),
+                AestheticValue::standard_column("lower_bound"),
+            )
+            .with_aesthetic(
+                "xmax".to_string(),
+                AestheticValue::standard_column("upper_bound"),
+            )
+            .with_aesthetic(
+                "ymin".to_string(),
+                AestheticValue::standard_column("y_lower"),
+            )
+            .with_aesthetic(
+                "ymax".to_string(),
+                AestheticValue::standard_column("y_upper"),
+            );
         spec.layers.push(layer);
 
         spec.compute_aesthetic_labels();
@@ -459,8 +471,14 @@ mod tests {
         let labels = spec.labels.as_ref().unwrap();
         // First variant encountered sets the label for the primary aesthetic
         // Note: HashMap iteration order may vary, so we just check both x and y have labels
-        assert!(labels.labels.contains_key("x"), "x label should be set from xmin or xmax");
-        assert!(labels.labels.contains_key("y"), "y label should be set from ymin or ymax");
+        assert!(
+            labels.labels.contains_key("x"),
+            "x label should be set from xmin or xmax"
+        );
+        assert!(
+            labels.labels.contains_key("y"),
+            "y label should be set from ymin or ymax"
+        );
     }
 
     #[test]
@@ -468,17 +486,31 @@ mod tests {
         // Test that user-specified labels take precedence over computed labels
         let mut spec = Plot::new();
         let layer = Layer::new(Geom::ribbon())
-            .with_aesthetic("xmin".to_string(), AestheticValue::standard_column("lower_bound"))
-            .with_aesthetic("xmax".to_string(), AestheticValue::standard_column("upper_bound"))
-            .with_aesthetic("ymin".to_string(), AestheticValue::standard_column("y_lower"))
-            .with_aesthetic("ymax".to_string(), AestheticValue::standard_column("y_upper"));
+            .with_aesthetic(
+                "xmin".to_string(),
+                AestheticValue::standard_column("lower_bound"),
+            )
+            .with_aesthetic(
+                "xmax".to_string(),
+                AestheticValue::standard_column("upper_bound"),
+            )
+            .with_aesthetic(
+                "ymin".to_string(),
+                AestheticValue::standard_column("y_lower"),
+            )
+            .with_aesthetic(
+                "ymax".to_string(),
+                AestheticValue::standard_column("y_upper"),
+            );
         spec.layers.push(layer);
 
         // Pre-set a user label for x
         let mut labels = Labels {
             labels: HashMap::new(),
         };
-        labels.labels.insert("x".to_string(), "Custom X Label".to_string());
+        labels
+            .labels
+            .insert("x".to_string(), "Custom X Label".to_string());
         spec.labels = Some(labels);
 
         spec.compute_aesthetic_labels();
@@ -504,8 +536,14 @@ mod tests {
             .with_aesthetic("x".to_string(), AestheticValue::standard_column("date"))
             .with_aesthetic("xmin".to_string(), AestheticValue::standard_column("lower"))
             .with_aesthetic("xmax".to_string(), AestheticValue::standard_column("upper"))
-            .with_aesthetic("ymin".to_string(), AestheticValue::standard_column("y_lower"))
-            .with_aesthetic("ymax".to_string(), AestheticValue::standard_column("y_upper"));
+            .with_aesthetic(
+                "ymin".to_string(),
+                AestheticValue::standard_column("y_lower"),
+            )
+            .with_aesthetic(
+                "ymax".to_string(),
+                AestheticValue::standard_column("y_upper"),
+            );
         spec.layers.push(layer2);
 
         spec.compute_aesthetic_labels();

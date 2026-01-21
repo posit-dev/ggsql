@@ -3966,7 +3966,9 @@ mod tests {
         let mut labels = Labels {
             labels: HashMap::new(),
         };
-        labels.labels.insert("y".to_string(), "Value Range".to_string());
+        labels
+            .labels
+            .insert("y".to_string(), "Value Range".to_string());
         labels.labels.insert("x".to_string(), "Date".to_string());
         spec.labels = Some(labels);
 
@@ -3982,8 +3984,7 @@ mod tests {
 
         // The x encoding should get the "Date" title
         assert_eq!(
-            vl_spec["layer"][0]["encoding"]["x"]["title"],
-            "Date",
+            vl_spec["layer"][0]["encoding"]["x"]["title"], "Date",
             "x should have the 'Date' title from labels"
         );
 
