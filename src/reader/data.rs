@@ -9,10 +9,8 @@ use crate::GgsqlError;
 // 2. Include the bytes of that parquet file in the binary, like is done
 //    beneath this block.
 // 3. Make a `prep_{dataset}_query()` convenience function.
-// 4. In the `init_builtin_dataset()` below, include a `match`-arm for your
-//    dataset.
-// 5. In the 'tree-sitter-ggsql/grammar.js' file, expand the 'builtin_dataset'
-//    rule to include your dataset.
+// 4. In the `init_builtin_data()` function below, include a `match`-arm for your
+//    dataset using the "ggsql:<dataset_name>" pattern.
 
 static PENGUINS: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -48,9 +46,9 @@ fn prep_builtin_dataset_query(name: &str, data: &[u8]) -> String {
 }
 
 pub fn init_builtin_data(sql: &str) -> Result<Vec<String>, GgsqlError> {
-    // This definition pulls out the dataset from SELECT {} FROM {string/identifiers} by
+    // This definition pulls out namespaced identifiers (e.g., ggsql:penguins) by
     // @select'ing the string/identifier token.
-    let token_def = r#"(builtin_dataset) @select"#;
+    let token_def = r#"(namespaced_identifier) @select"#;
     let mut tokens = tokens_from_tree(sql, token_def, "select")?;
     let mut result = Vec::new();
     if tokens.is_empty() {
@@ -62,13 +60,14 @@ pub fn init_builtin_data(sql: &str) -> Result<Vec<String>, GgsqlError> {
     tokens.dedup();
 
     for dataset in tokens {
+        // Only process ggsql namespace datasets
         let materialize_query = match dataset.as_str() {
-            "ggsql:penguins" => &prep_penguins_query(),
-            "ggsql:airquality" => &prep_airquality_query(),
-            _ => "",
+            "ggsql:penguins" => Some(prep_penguins_query()),
+            "ggsql:airquality" => Some(prep_airquality_query()),
+            _ => None, // Unknown namespace - ignored
         };
-        if !materialize_query.is_empty() {
-            result.push(materialize_query.to_string());
+        if let Some(query) = materialize_query {
+            result.push(query);
         }
     }
     Ok(result)

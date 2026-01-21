@@ -9,6 +9,7 @@ DRAW point MAPPING x AS x, y AS y
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -18,13 +19,15 @@ DRAW point MAPPING x AS x, y AS y
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))))))
 
 ================================================================================
@@ -38,19 +41,22 @@ DRAW line
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
@@ -67,14 +73,17 @@ DRAW point
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (implicit_mapping
-            (identifier)))
+            (identifier
+              (bare_identifier))))
         (mapping_element
           (implicit_mapping
-            (identifier)))))
+            (identifier
+              (bare_identifier))))))
     (viz_clause
       (draw_clause
         (geom_type)))))
@@ -90,6 +99,7 @@ DRAW point
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
@@ -109,19 +119,23 @@ DRAW line
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (implicit_mapping
-            (identifier)))
+            (identifier
+              (bare_identifier))))
         (mapping_element
           (implicit_mapping
-            (identifier)))
+            (identifier
+              (bare_identifier))))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
@@ -139,19 +153,22 @@ DRAW point MAPPING 'value' AS color
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
@@ -179,26 +196,31 @@ DRAW point SETTING opacity => 0.5, size => 3
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (implicit_mapping
-            (identifier)))
+            (identifier
+              (bare_identifier))))
         (mapping_element
           (implicit_mapping
-            (identifier)))))
+            (identifier
+              (bare_identifier))))))
     (viz_clause
       (draw_clause
         (geom_type)
         (setting_clause
           (parameter_assignment
             param: (parameter_name
-              (identifier))
+              (identifier
+                (bare_identifier)))
             value: (parameter_value
               (number)))
           (parameter_assignment
             param: (parameter_name
-              (identifier))
+              (identifier
+                (bare_identifier)))
             value: (parameter_value
               (number))))))))
 
@@ -213,14 +235,17 @@ DRAW point FILTER x > 10
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (implicit_mapping
-            (identifier)))
+            (identifier
+              (bare_identifier))))
         (mapping_element
           (implicit_mapping
-            (identifier)))))
+            (identifier
+              (bare_identifier))))))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -243,6 +268,7 @@ DRAW point MAPPING x AS x FILTER a > 10 AND b < 20
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -252,7 +278,8 @@ DRAW point MAPPING x AS x FILTER a > 10 AND b < 20
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))
         (filter_clause
           (filter_expression
@@ -279,6 +306,7 @@ DRAW point MAPPING x AS x FILTER a = 1 OR b = 2
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -288,7 +316,8 @@ DRAW point MAPPING x AS x FILTER a = 1 OR b = 2
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))
         (filter_clause
           (filter_expression
@@ -315,6 +344,7 @@ DRAW point MAPPING x AS x, y AS y SETTING opacity => 0.5 FILTER year > 2020
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -324,18 +354,21 @@ DRAW point MAPPING x AS x, y AS y SETTING opacity => 0.5 FILTER year > 2020
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))
         (setting_clause
           (parameter_assignment
             param: (parameter_name
-              (identifier))
+              (identifier
+                (bare_identifier)))
             value: (parameter_value
               (number))))
         (filter_clause
@@ -357,6 +390,7 @@ DRAW point MAPPING x AS x FILTER region = 'North'
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -366,7 +400,8 @@ DRAW point MAPPING x AS x FILTER region = 'North'
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))
         (filter_clause
           (filter_expression
@@ -387,14 +422,17 @@ DRAW point
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (implicit_mapping
-            (identifier)))
+            (identifier
+              (bare_identifier))))
         (mapping_element
           (implicit_mapping
-            (identifier)))))
+            (identifier
+              (bare_identifier))))))
     (viz_clause
       (draw_clause
         (geom_type)))))
@@ -413,19 +451,23 @@ THEME minimal
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (implicit_mapping
-            (identifier)))
+            (identifier
+              (bare_identifier))))
         (mapping_element
           (implicit_mapping
-            (identifier)))
+            (identifier
+              (bare_identifier))))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
@@ -468,14 +510,17 @@ LABEL title => 'My Plot', x => 'X Axis', y => 'Y Axis'
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (implicit_mapping
-            (identifier)))
+            (identifier
+              (bare_identifier))))
         (mapping_element
           (implicit_mapping
-            (identifier)))))
+            (identifier
+              (bare_identifier))))))
     (viz_clause
       (draw_clause
         (geom_type)))
@@ -503,14 +548,17 @@ COORD cartesian SETTING xlim => [0, 100]
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (implicit_mapping
-            (identifier)))
+            (identifier
+              (bare_identifier))))
         (mapping_element
           (implicit_mapping
-            (identifier)))))
+            (identifier
+              (bare_identifier))))))
     (viz_clause
       (draw_clause
         (geom_type)))
@@ -538,19 +586,22 @@ COORD flip
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
@@ -574,30 +625,38 @@ DRAW point
     (sql_statement
       (with_statement
         (cte_definition
-          (identifier)
+          (identifier
+            (bare_identifier))
           (select_statement
             (select_body
               (from_clause
                 (table_ref
-                  table: (identifier)))))))))
+                  table: (qualified_name
+                    (identifier
+                      (bare_identifier)))))))))))
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (from_clause
       (table_ref
-        table: (identifier)))
+        table: (qualified_name
+          (identifier
+            (bare_identifier)))))
     (viz_clause
       (draw_clause
         (geom_type)))))
@@ -619,21 +678,26 @@ DRAW bar
         (select_body
           (from_clause
             (table_ref
-              table: (identifier)))))))
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
@@ -644,20 +708,23 @@ Literal value in MAPPING
 ================================================================================
 
 VISUALISE x, y
-DRAW point MAPPING "blue" AS color
+DRAW point MAPPING 'blue' AS color
 
 --------------------------------------------------------------------------------
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (implicit_mapping
-            (identifier)))
+            (identifier
+              (bare_identifier))))
         (mapping_element
           (implicit_mapping
-            (identifier)))))
+            (identifier
+              (bare_identifier))))))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -681,9 +748,12 @@ DRAW bar MAPPING category AS x, total AS y
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (from_clause
       (table_ref
-        table: (identifier)))
+        table: (qualified_name
+          (identifier
+            (bare_identifier)))))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -693,13 +763,15 @@ DRAW bar MAPPING category AS x, total AS y
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))))))
 
 ================================================================================
@@ -714,6 +786,7 @@ DRAW point MAPPING date AS x, profit AS y
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -723,13 +796,15 @@ DRAW point MAPPING date AS x, profit AS y
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))))
     (viz_clause
       (draw_clause
@@ -740,13 +815,15 @@ DRAW point MAPPING date AS x, profit AS y
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))))))
 
 ================================================================================
@@ -760,6 +837,7 @@ DRAW point MAPPING x AS x, y AS y FROM my_cte
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -769,15 +847,19 @@ DRAW point MAPPING x AS x, y AS y FROM my_cte
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name))))
-          layer_source: (identifier))))))
+          layer_source: (qualified_name
+            (identifier
+              (bare_identifier))))))))
 
 ================================================================================
 PARTITION BY single column
@@ -790,26 +872,30 @@ DRAW line PARTITION BY category
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)
         (partition_clause
           (partition_columns
-            (identifier)))))))
+            (identifier
+              (bare_identifier))))))))
 
 ================================================================================
 PARTITION BY multiple columns
@@ -822,27 +908,32 @@ DRAW line PARTITION BY category, region
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)
         (partition_clause
           (partition_columns
-            (identifier)
-            (identifier)))))))
+            (identifier
+              (bare_identifier))
+            (identifier
+              (bare_identifier))))))))
 
 ================================================================================
 PARTITION BY with SETTING and FILTER
@@ -855,19 +946,22 @@ DRAW line SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY category
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
@@ -875,7 +969,8 @@ DRAW line SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY category
         (setting_clause
           (parameter_assignment
             param: (parameter_name
-              (identifier))
+              (identifier
+                (bare_identifier)))
             value: (parameter_value
               (number))))
         (filter_clause
@@ -887,7 +982,8 @@ DRAW line SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY category
               (number))))
         (partition_clause
           (partition_columns
-            (identifier)))))))
+            (identifier
+              (bare_identifier))))))))
 
 ================================================================================
 Window function ROW_NUMBER
@@ -904,19 +1000,27 @@ DRAW point MAPPING x AS x, rn AS y
     (sql_statement
       (select_statement
         (select_body
-          (identifier)
+          (identifier
+            (bare_identifier))
           (window_function
-            function: (identifier)
+            function: (identifier
+              (bare_identifier))
             (window_specification
               (window_order_clause
                 (order_item
-                  (identifier)))))
-          (identifier)
-          (identifier)
+                  (identifier
+                    (bare_identifier))))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
           (from_clause
             (table_ref
-              table: (identifier)))))))
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -926,13 +1030,15 @@ DRAW point MAPPING x AS x, rn AS y
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))))))
 
 ================================================================================
@@ -950,21 +1056,30 @@ DRAW point MAPPING x AS x, rnk AS y
     (sql_statement
       (select_statement
         (select_body
-          (identifier)
+          (identifier
+            (bare_identifier))
           (window_function
-            function: (identifier)
+            function: (identifier
+              (bare_identifier))
             (window_specification
               (window_partition_clause
-                (identifier))
+                (identifier
+                  (bare_identifier)))
               (window_order_clause
                 (order_item
-                  (identifier)))))
-          (identifier)
-          (identifier)
+                  (identifier
+                    (bare_identifier))))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
           (from_clause
             (table_ref
-              table: (identifier)))))))
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -974,13 +1089,15 @@ DRAW point MAPPING x AS x, rnk AS y
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))))))
 
 ================================================================================
@@ -998,27 +1115,36 @@ DRAW line MAPPING x AS x, total AS y
     (sql_statement
       (select_statement
         (select_body
-          (identifier)
+          (identifier
+            (bare_identifier))
           (window_function
-            function: (identifier)
+            function: (identifier
+              (bare_identifier))
             (function_args
               (function_arg
                 (positional_arg
-                  (identifier))))
+                  (identifier
+                    (bare_identifier)))))
             (window_specification
               (window_order_clause
                 (order_item
-                  (identifier)))
+                  (identifier
+                    (bare_identifier))))
               (frame_clause
                 (frame_bound
                   (number))
                 (frame_bound))))
-          (identifier)
-          (identifier)
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
           (from_clause
             (table_ref
-              table: (identifier)))))))
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1028,13 +1154,15 @@ DRAW line MAPPING x AS x, total AS y
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))))))
 
 ================================================================================
@@ -1052,25 +1180,35 @@ DRAW point MAPPING x AS x
     (sql_statement
       (with_statement
         (cte_definition
-          (identifier)
+          (identifier
+            (bare_identifier))
           (with_statement
             (cte_definition
-              (identifier)
+              (identifier
+                (bare_identifier))
               (select_statement
                 (select_body
                   (number)
-                  (identifier)
-                  (identifier))))
+                  (identifier
+                    (bare_identifier))
+                  (identifier
+                    (bare_identifier)))))
             (select_statement
               (select_body
-                (identifier)
+                (identifier
+                  (bare_identifier))
                 (from_clause
                   (table_ref
-                    table: (identifier))))))))))
+                    table: (qualified_name
+                      (identifier
+                        (bare_identifier))))))))))))
   (visualise_statement
+    (visualise_keyword)
     (from_clause
       (table_ref
-        table: (identifier)))
+        table: (qualified_name
+          (identifier
+            (bare_identifier)))))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1080,7 +1218,8 @@ DRAW point MAPPING x AS x
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))))))
 
 ================================================================================
@@ -1099,24 +1238,32 @@ DRAW point MAPPING interval AS x
       (select_statement
         (select_body
           (function_call
-            (identifier)
+            (identifier
+              (bare_identifier))
             (function_args
               (function_arg
                 (named_arg
-                  name: (identifier)
+                  name: (identifier
+                    (bare_identifier))
                   value: (positional_arg
                     (number))))
               (function_arg
                 (named_arg
-                  name: (identifier)
+                  name: (identifier
+                    (bare_identifier))
                   value: (positional_arg
                     (number))))))
-          (identifier)
-          (identifier)
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
           (from_clause
             (table_ref
-              table: (identifier)))))))
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1126,7 +1273,8 @@ DRAW point MAPPING interval AS x
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))))))
 
 ================================================================================
@@ -1140,19 +1288,22 @@ DRAW line ORDER BY date ASC
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
@@ -1160,7 +1311,8 @@ DRAW line ORDER BY date ASC
         (order_clause
           (order_expression
             (order_token
-              (identifier))
+              (identifier
+                (bare_identifier)))
             (order_token)))))))
 
 ================================================================================
@@ -1174,19 +1326,22 @@ DRAW point ORDER BY value DESC
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
@@ -1194,7 +1349,8 @@ DRAW point ORDER BY value DESC
         (order_clause
           (order_expression
             (order_token
-              (identifier))
+              (identifier
+                (bare_identifier)))
             (order_token)))))))
 
 ================================================================================
@@ -1208,19 +1364,22 @@ DRAW line ORDER BY category, date DESC
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
@@ -1228,10 +1387,12 @@ DRAW line ORDER BY category, date DESC
         (order_clause
           (order_expression
             (order_token
-              (identifier))
+              (identifier
+                (bare_identifier)))
             (order_token)
             (order_token
-              (identifier))
+              (identifier
+                (bare_identifier)))
             (order_token)))))))
 
 ================================================================================
@@ -1245,19 +1406,22 @@ DRAW point ORDER BY date ASC NULLS FIRST
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
@@ -1265,7 +1429,8 @@ DRAW point ORDER BY date ASC NULLS FIRST
         (order_clause
           (order_expression
             (order_token
-              (identifier))
+              (identifier
+                (bare_identifier)))
             (order_token)
             (order_token)
             (order_token)))))))
@@ -1281,19 +1446,22 @@ DRAW line ORDER BY value DESC NULLS LAST
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
@@ -1301,7 +1469,8 @@ DRAW line ORDER BY value DESC NULLS LAST
         (order_clause
           (order_expression
             (order_token
-              (identifier))
+              (identifier
+                (bare_identifier)))
             (order_token)
             (order_token)
             (order_token)))))))
@@ -1317,19 +1486,22 @@ DRAW point FILTER x > 0 ORDER BY x ASC
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
@@ -1344,7 +1516,8 @@ DRAW point FILTER x > 0 ORDER BY x ASC
         (order_clause
           (order_expression
             (order_token
-              (identifier))
+              (identifier
+                (bare_identifier)))
             (order_token)))))))
 
 ================================================================================
@@ -1358,30 +1531,35 @@ DRAW line PARTITION BY category ORDER BY date ASC
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)
         (partition_clause
           (partition_columns
-            (identifier)))
+            (identifier
+              (bare_identifier))))
         (order_clause
           (order_expression
             (order_token
-              (identifier))
+              (identifier
+                (bare_identifier)))
             (order_token)))))))
 
 ================================================================================
@@ -1395,19 +1573,22 @@ DRAW line SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY region ORDER BY
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
@@ -1415,7 +1596,8 @@ DRAW line SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY region ORDER BY
         (setting_clause
           (parameter_assignment
             param: (parameter_name
-              (identifier))
+              (identifier
+                (bare_identifier)))
             value: (parameter_value
               (number))))
         (filter_clause
@@ -1427,11 +1609,13 @@ DRAW line SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY region ORDER BY
               (number))))
         (partition_clause
           (partition_columns
-            (identifier)))
+            (identifier
+              (bare_identifier))))
         (order_clause
           (order_expression
             (order_token
-              (identifier))
+              (identifier
+                (bare_identifier)))
             (order_token)))))))
 
 ================================================================================
@@ -1445,13 +1629,15 @@ DRAW bar REMAPPING count AS y
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
@@ -1462,7 +1648,8 @@ DRAW bar REMAPPING count AS y
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))))))
 
 ================================================================================
@@ -1476,6 +1663,7 @@ DRAW histogram REMAPPING bin AS x, count AS y
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1485,13 +1673,15 @@ DRAW histogram REMAPPING bin AS x, count AS y
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))))))
 
 ================================================================================
@@ -1505,6 +1695,7 @@ DRAW bar MAPPING category AS x REMAPPING count AS size
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1514,7 +1705,8 @@ DRAW bar MAPPING category AS x REMAPPING count AS size
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))
         (remapping_clause
           (mapping_list
@@ -1522,7 +1714,8 @@ DRAW bar MAPPING category AS x REMAPPING count AS size
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))))))
 
 ================================================================================
@@ -1536,13 +1729,15 @@ DRAW bar MAPPING category AS x REMAPPING count AS y SETTING opacity => 0.8 FILTE
 
 (query
   (visualise_statement
+    (visualise_keyword)
     (global_mapping
       (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
-                (identifier)))
+                (identifier
+                  (bare_identifier))))
             aesthetic: (aesthetic_name)))))
     (viz_clause
       (draw_clause
@@ -1553,7 +1748,8 @@ DRAW bar MAPPING category AS x REMAPPING count AS y SETTING opacity => 0.8 FILTE
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))
         (remapping_clause
           (mapping_list
@@ -1561,12 +1757,14 @@ DRAW bar MAPPING category AS x REMAPPING count AS y SETTING opacity => 0.8 FILTE
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))
         (setting_clause
           (parameter_assignment
             param: (parameter_name
-              (identifier))
+              (identifier
+                (bare_identifier)))
             value: (parameter_value
               (number))))
         (filter_clause
@@ -1592,7 +1790,8 @@ DRAW point MAPPING x AS x
     (sql_statement
       (select_statement
         (select_body
-          (identifier)
+          (identifier
+            (bare_identifier))
           (from_clause
             (table_ref
               (subquery
@@ -1600,8 +1799,11 @@ DRAW point MAPPING x AS x
                   (select_body
                     (from_clause
                       (table_ref
-                        table: (identifier))))))))))))
+                        table: (qualified_name
+                          (identifier
+                            (bare_identifier))))))))))))))
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1611,9 +1813,9 @@ DRAW point MAPPING x AS x
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))))))
-
 
 ================================================================================
 Nested SELECT with alias
@@ -1630,7 +1832,8 @@ DRAW point MAPPING x AS x
     (sql_statement
       (select_statement
         (select_body
-          (identifier)
+          (identifier
+            (bare_identifier))
           (from_clause
             (table_ref
               (subquery
@@ -1638,9 +1841,13 @@ DRAW point MAPPING x AS x
                   (select_body
                     (from_clause
                       (table_ref
-                        table: (identifier))))))
-              alias: (identifier)))))))
+                        table: (qualified_name
+                          (identifier
+                            (bare_identifier))))))))
+              alias: (identifier
+                (bare_identifier))))))))
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1650,7 +1857,8 @@ DRAW point MAPPING x AS x
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))))))
 
 ================================================================================
@@ -1668,13 +1876,15 @@ DRAW point MAPPING x AS x
     (sql_statement
       (select_statement
         (select_body
-          (identifier)
+          (identifier
+            (bare_identifier))
           (from_clause
             (table_ref
               (subquery
                 (select_statement
                   (select_body
-                    (identifier)
+                    (identifier
+                      (bare_identifier))
                     (from_clause
                       (table_ref
                         (subquery
@@ -1682,8 +1892,11 @@ DRAW point MAPPING x AS x
                             (select_body
                               (from_clause
                                 (table_ref
-                                  table: (identifier)))))))))))))))))
+                                  table: (qualified_name
+                                    (identifier
+                                      (bare_identifier)))))))))))))))))))
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1693,7 +1906,8 @@ DRAW point MAPPING x AS x
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))))))
 
 ================================================================================
@@ -1718,17 +1932,24 @@ DRAW point MAPPING x AS x
                   (select_body
                     (from_clause
                       (table_ref
-                        table: (identifier))))))
-              alias: (identifier))
+                        table: (qualified_name
+                          (identifier
+                            (bare_identifier))))))))
+              alias: (identifier
+                (bare_identifier)))
             (table_ref
               (subquery
                 (select_statement
                   (select_body
                     (from_clause
                       (table_ref
-                        table: (identifier))))))
-              alias: (identifier)))))))
+                        table: (qualified_name
+                          (identifier
+                            (bare_identifier))))))))
+              alias: (identifier
+                (bare_identifier))))))))
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1738,14 +1959,15 @@ DRAW point MAPPING x AS x
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
-                    (identifier)))
+                    (identifier
+                      (bare_identifier))))
                 aesthetic: (aesthetic_name)))))))))
 
 ================================================================================
-Detecting builtin datasets
+Detecting namespaced datasets
 ================================================================================
 
-SELECT foo FROM ggsql:airquality
+SELECT `foo.bar` FROM ggsql:airquality
 VISUALISE
 DRAW point MAPPING x AS x FROM ggsql:penguins
 
@@ -1756,11 +1978,13 @@ DRAW point MAPPING x AS x FROM ggsql:penguins
     (sql_statement
       (select_statement
         (select_body
-          (identifier)
+          (identifier
+            (quoted_identifier))
           (from_clause
             (table_ref
-              (builtin_dataset)))))))
+              table: (namespaced_identifier)))))))
   (visualise_statement
+    (visualise_keyword)
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1768,8 +1992,112 @@ DRAW point MAPPING x AS x FROM ggsql:penguins
           (mapping_list
             (mapping_element
               (explicit_mapping
-                (mapping_value
+                value: (mapping_value
                   (column_reference
-                    (identifier)))
-                (aesthetic_name))))
-          (builtin_dataset))))))
+                    (identifier
+                      (bare_identifier))))
+                aesthetic: (aesthetic_name))))
+          layer_source: (namespaced_identifier))))))
+
+================================================================================
+Quoting identifiers with "
+================================================================================
+
+SELECT "foo.bar" FROM "baz"."bix"
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (identifier
+            (quoted_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (quoted_identifier))
+                (identifier
+                  (quoted_identifier))))))))))
+
+================================================================================
+Quoting identifiers with `
+================================================================================
+
+SELECT `foo.bar` FROM `baz`.`bix`
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (identifier
+            (quoted_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (quoted_identifier))
+                (identifier
+                  (quoted_identifier))))))))))
+
+================================================================================
+SELECT FROM with an unquoted data source
+================================================================================
+
+SELECT * FROM foo.bar
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (from_clause
+            (table_ref
+              (qualified_name
+                (identifier
+                  (bare_identifier))
+                (identifier
+                  (bare_identifier))))))))))
+
+================================================================================
+SELECT FROM with a ' quoted data source
+================================================================================
+
+SELECT * FROM 'data.csv'
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (from_clause
+            (table_ref
+              (string))))))))
+
+================================================================================
+SELECT FROM with a " quoted data source
+================================================================================
+
+SELECT * FROM "data.csv"
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (from_clause
+            (table_ref
+              (qualified_name
+                (identifier
+                  (quoted_identifier))))))))))

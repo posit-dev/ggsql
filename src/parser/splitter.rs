@@ -190,18 +190,14 @@ mod tests {
     fn test_visualise_from_after_insert_absorbed() {
         // The grammar's permissive INSERT rule absorbs VISUALISE as SQL tokens
         // This is a known limitation - without a semicolon, the INSERT consumes everything
-        let query = "INSERT INTO x VALUES (1) VISUALISE FROM x";
+        let query = "INSERT INTO x VALUES (1) VISUALISE FROM x DRAW";
         let result = split_query(query);
 
-        // The splitter succeeds but VISUALISE is consumed by INSERT
-        // This results in no proper VISUALISE statement being found
-        // The correct usage requires a semicolon: INSERT ...; VISUALISE FROM ...
+        // The SQL used to absorb visualise. We don't want this to happen again.
         assert!(result.is_ok());
         let (sql, viz) = result.unwrap();
-        // INSERT absorbed the entire query as SQL
         assert!(sql.contains("INSERT"));
-        // VIZ portion is empty since VISUALISE was absorbed
-        assert!(viz.is_empty() || !viz.contains("DRAW"));
+        assert!(viz.contains("DRAW"));
     }
 
     #[test]

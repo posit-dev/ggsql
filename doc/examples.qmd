@@ -181,8 +181,8 @@ LABEL
 ```{ggsql}
 SELECT * FROM ggsql:airquality
 VISUALISE Date AS x
-DRAW line MAPPING Ozone AS y, "Ozone" AS color
-DRAW line MAPPING Temp AS y, "Temp" AS color
+DRAW line MAPPING Ozone AS y, 'Ozone' AS color
+DRAW line MAPPING Temp AS y, 'Temp' AS color
 ```
 
 ### Bar Chart by Category

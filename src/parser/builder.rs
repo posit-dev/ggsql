@@ -1806,9 +1806,9 @@ mod tests {
     }
 
     #[test]
-    fn test_visualise_from_file_path_parquet() {
+    fn test_visualise_from_file_path_quote_parquet() {
         let query = r#"
-            VISUALISE FROM "data/sales.parquet"
+            VISUALISE FROM 'data/sales.parquet'
             DRAW bar MAPPING region AS x, total AS y
         "#;
 
@@ -1820,6 +1820,25 @@ mod tests {
         assert_eq!(
             specs[0].source,
             Some(DataSource::FilePath("data/sales.parquet".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_visualise_from_file_path_double_quote_parquet() {
+        let query = r#"
+            VISUALISE FROM "data/sales.parquet"
+            DRAW bar MAPPING region AS x, total AS y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+
+        let specs = result.unwrap();
+        // Source should be stored as identifier,
+        // duckdb accepts this to indicate reading from file
+        assert_eq!(
+            specs[0].source,
+            Some(DataSource::Identifier("\"data/sales.parquet\"".to_string()))
         );
     }
 
