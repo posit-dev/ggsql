@@ -24,3 +24,8 @@ e2e = ["altair>=5.0"]
 features = ["pyo3/extension-module"]
 python-source = "python"
 module-name = "ggsql._ggsql"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
