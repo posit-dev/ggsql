@@ -25,12 +25,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Caching
-        uses: actions/cache@v4
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**Cargo.lock')}}
-
+          shared-key: ${{ runner.os }}
+          cache-on-failure: true
+          
       - name: Build with cargo
         run: cargo build --verbose
 
