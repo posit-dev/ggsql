@@ -6,6 +6,7 @@ use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
 use std::collections::{HashMap, HashSet};
 
+use ggsql::naming::GLOBAL_DATA_KEY;
 use ggsql::parser::parse_query;
 use ggsql::writer::{VegaLiteWriter, Writer};
 use ggsql::AestheticValue;
@@ -75,7 +76,7 @@ fn render(py_df: PyDataFrame, viz: &str, writer: &str) -> PyResult<String> {
     // Note: We use pyo3-polars' bundled polars DataFrame, which may differ from ggsql's
     // The VegaLiteWriter only needs DataFrame for serialization to JSON
     let mut data_map: HashMap<String, DataFrame> = HashMap::new();
-    data_map.insert("__global__".to_string(), df);
+    data_map.insert(GLOBAL_DATA_KEY.to_string(), df);
 
     // Write using the specified writer
     match writer {
