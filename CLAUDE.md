@@ -512,7 +512,7 @@ impl Writer for VegaLiteWriter {
 
         // 2. Build Vega-Lite spec
         let mut vl_spec = json!({
-            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
             "data": {"values": data_values},
             "width": 600,
             "autosize": {"type": "fit", "contains": "padding"}
@@ -1286,7 +1286,7 @@ Plot {
 
 ```json
 {
-  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
   "data": {
     "values": [
       {"sale_date": "2024-01-01", "region": "North", "total": 150},

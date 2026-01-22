@@ -25,6 +25,12 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Caching
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ runner.os }}-publish
+          cache-on-failure: true
+
       - name: Setup quarto
         uses: quarto-dev/quarto-actions/setup@v2
 

@@ -23,6 +23,12 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Caching
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ runner.os }}-R-CMD-Check
+          cache-on-failure: true
+
       - name: Check disk space
         run: df -h
 

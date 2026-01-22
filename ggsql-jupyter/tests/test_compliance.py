@@ -111,10 +111,10 @@ class ggsqlKernelTests(jkt.KernelTests):
 
         # Check MIME types
         data = execute_result["content"]["data"]
-        self.assertIn("application/vnd.vegalite.v5+json", data)
+        self.assertIn("application/vnd.vegalite.v6+json", data)
 
         # Verify Vega-Lite spec structure
-        vega_spec = data["application/vnd.vegalite.v5+json"]
+        vega_spec = data["application/vnd.vegalite.v6+json"]
         self.assertIn("$schema", vega_spec)
         self.assertIn("data", vega_spec)
 

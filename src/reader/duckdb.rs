@@ -325,7 +325,7 @@ impl Reader for DuckDBReader {
                 .map_err(|e| GgsqlError::ReaderError(format!("Failed to execute DDL: {}", e)))?;
 
             // Return empty DataFrame for DDL statements
-            return DataFrame::new(Vec::<polars::prelude::Series>::new()).map_err(|e| {
+            return DataFrame::new(Vec::<polars::prelude::Column>::new()).map_err(|e| {
                 GgsqlError::ReaderError(format!("Failed to create empty DataFrame: {}", e))
             });
         }
@@ -403,7 +403,7 @@ impl Reader for DuckDBReader {
         let mut columns = Vec::new();
         for (col_idx, builder) in column_builders.into_iter().enumerate() {
             let series = builder.build(&column_names[col_idx])?;
-            columns.push(series);
+            columns.push(series.into());
         }
 
         // Create DataFrame from typed columns

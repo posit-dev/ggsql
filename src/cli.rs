@@ -337,7 +337,7 @@ fn print_table_fallback(query: &str, reader: &DuckDBReader, max_rows: usize) {
         let mut col_fmt: Vec<String> = vec![format!("{}{}", col_name, suffix)];
 
         // Format every cell in column, tracking width
-        let column_data = &data[col_id];
+        let column_data = data[col_id].as_materialized_series();
         for cell in column_data.iter().take(rows.len()) {
             let cell_fmt = format!("{}{}", cell, suffix);
             let nchar = cell_fmt.chars().count();
