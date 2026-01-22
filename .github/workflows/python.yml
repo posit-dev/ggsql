@@ -12,7 +12,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python: ['3.10', '3.11', '3.12', '3.13', '3.14']
+        python: ['3.10', '3.11', '3.12', '3.13']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -24,18 +24,24 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ggsql-python
+          shared-key: ${{ matrix.os }}-python
+
       - name: Build wheel
         uses: PyO3/maturin-action@v1
         with:
           working-directory: ggsql-python
           command: build
           args: --release
+          sccache: true
 
       - name: Install wheel and test
         shell: bash
         run: |
-          pip install ggsql-python/target/wheels/*.whl
-          pip install "ggsql[test]"
+          pip install --find-links ggsql-python/target/wheels/ ggsql[test]
           pytest ggsql-python/tests/test_ggsql.py -v
 
   e2e-test:
@@ -50,18 +56,23 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ggsql-python
+          shared-key: ubuntu-latest-python
+
       - name: Build wheel
         uses: PyO3/maturin-action@v1
         with:
           working-directory: ggsql-python
           command: build
           args: --release
+          sccache: true
 
       - name: Install wheel and E2E dependencies
         shell: bash
-        run: |
-          pip install ggsql-python/target/wheels/*.whl
-          pip install "ggsql[test,e2e]"
+        run: pip install --find-links ggsql-python/target/wheels/ ggsql[test,e2e]
 
       - name: Run E2E tests
         shell: bash
