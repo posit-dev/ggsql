@@ -31,7 +31,7 @@ use std::collections::HashMap;
 
 /// Vega-Lite JSON writer
 ///
-/// Generates Vega-Lite v5 specifications from ggsql specs and data.
+/// Generates Vega-Lite v6 specifications from ggsql specs and data.
 pub struct VegaLiteWriter {
     /// Vega-Lite schema version
     schema: String,
@@ -41,7 +41,7 @@ impl VegaLiteWriter {
     /// Create a new Vega-Lite writer with default settings
     pub fn new() -> Self {
         Self {
-            schema: "https://vega.github.io/schema/vega-lite/v5.json".to_string(),
+            schema: "https://vega.github.io/schema/vega-lite/v6.json".to_string(),
         }
     }
 
