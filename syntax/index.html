@@ -75,6 +75,12 @@ ul.task-list li input[type="checkbox"] {
 }</script>
 
 
+<meta property="og:title" content="Syntax – ggsql">
+<meta property="og:description" content="">
+<meta property="og:site_name" content="ggsql">
+<meta name="twitter:title" content="Syntax – ggsql">
+<meta name="twitter:description" content="">
+<meta name="twitter:card" content="summary">
 </head>
 
 <body class="nav-sidebar floating nav-fixed quarto-light">
@@ -165,6 +171,9 @@ ul.task-list li input[type="checkbox"] {
       </button>
     </div>
   </nav>
+  <div id="quarto-announcement" data-announcement-id="a3e2a40f560b81649f1436c0b08f2025" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
+<p>ggsql is still in early development and all functionality is subject to change</p>
+</div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
 </header>
 <!-- content -->
 <div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
@@ -422,7 +431,7 @@ ul.task-list li input[type="checkbox"] {
     }
       var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
       var mailtoRegex = new RegExp(/^mailto:/);
-        var filterRegex = new RegExp("https:\/\/georgestagg\.github\.io\/ggsql\/");
+        var filterRegex = new RegExp("ggsql\.org");
       var isInternal = (href) => {
           return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
       }

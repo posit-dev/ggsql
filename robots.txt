@@ -1,1 +1,1 @@
-Sitemap: https://georgestagg.github.io/ggsql/sitemap.xml
+Sitemap: ggsql.org/sitemap.xml
