@@ -790,6 +790,63 @@ When running in Positron IDE, the extension provides enhanced functionality:
 
 ---
 
+### 8. Python Bindings (`ggsql-python/`)
+
+**Responsibility**: Python bindings for ggsql, enabling Python users to render Altair charts using ggsql's VISUALISE syntax.
+
+**Features**:
+
+- PyO3-based Rust bindings compiled to a native Python extension
+- Works with any narwhals-compatible DataFrame (polars, pandas, etc.)
+- LazyFrames are collected automatically
+- Returns native `altair.Chart` objects for easy display and customization
+- Query splitting to separate SQL from VISUALISE portions
+
+**Installation**:
+
+```bash
+# From source (requires Rust toolchain and maturin)
+cd ggsql-python
+pip install maturin
+maturin develop
+```
+
+**API**:
+
+```python
+import ggsql
+import polars as pl
+
+# Split a ggSQL query into SQL and VISUALISE portions
+sql, viz = ggsql.split_query("""
+    SELECT date, revenue FROM sales
+    VISUALISE date AS x, revenue AS y
+    DRAW line
+""")
+
+# Execute SQL and render to Altair chart
+df = pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
+chart = ggsql.render_altair(df, "VISUALISE x, y DRAW point")
+
+# Display or save
+chart.display()  # In Jupyter
+chart.save("chart.html")
+```
+
+**Functions**:
+
+- `split_query(query: str) -> tuple[str, str]` - Split ggSQL query into SQL and VISUALISE portions
+- `render_altair(df, viz, **kwargs) -> altair.Chart` - Render DataFrame with VISUALISE spec to Altair chart
+
+**Dependencies**:
+
+- Python >= 3.10
+- altair >= 5.0
+- narwhals >= 2.15
+- polars >= 1.0
+
+---
+
 ## Feature Flags and Build Configuration
 
 ggsql uses Cargo feature flags to enable optional functionality and reduce binary size.
@@ -822,9 +879,9 @@ ggsql uses Cargo feature flags to enable optional functionality and reduce binar
   - Includes: `axum`, `tokio`, `tower-http`, `tracing`, `duckdb`, `vegalite`
   - Required for building `ggsql-rest` server
 
-**Future features**:
+**Python bindings**:
 
-- `python` - Python bindings via PyO3 (planned)
+- `ggsql-python` - Python bindings via PyO3 (separate crate, not a feature flag)
 
 ### Building with Custom Features
 
@@ -850,7 +907,7 @@ cargo build --all-features
 - `postgres` → `postgres` crate (future)
 - `sqlite` → `rusqlite` crate (future)
 - `rest-api` → `axum`, `tokio`, `tower-http`, `tracing`, `tracing-subscriber`
-- `python` → `pyo3` crate (future)
+- `ggsql-python` → `pyo3`, `narwhals`, `altair` (separate workspace crate)
 
 ---
 
