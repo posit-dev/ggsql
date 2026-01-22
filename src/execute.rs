@@ -9,7 +9,7 @@ use crate::plot::{
     AestheticValue, ArrayElement, ColumnInfo, Layer, LiteralValue, ScaleType, Schema, StatResult,
 };
 use crate::{parser, DataFrame, DataSource, Facet, GgsqlError, Plot, Result};
-use polars::prelude::{ChunkAgg, DataType, Series};
+use polars::prelude::{ChunkAgg, Column, DataType};
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Parser};
 
@@ -1126,21 +1126,21 @@ fn resolve_scales(spec: &mut Plot, data_map: &HashMap<String, DataFrame>) -> Res
         .iter()
         .enumerate()
         .filter_map(|(idx, scale)| {
-            // Find Series references directly for this aesthetic (including family members)
-            let series_refs = find_series_for_aesthetic(
+            // Find column references directly for this aesthetic (including family members)
+            let column_refs = find_columns_for_aesthetic(
                 &spec.global_mappings,
                 &spec.layers,
                 &scale.aesthetic,
                 data_map,
             );
 
-            if series_refs.is_empty() {
+            if column_refs.is_empty() {
                 return None;
             }
 
             // Infer scale_type if not already set
             let inferred_type = if scale.scale_type.is_none() {
-                Some(infer_scale_type(series_refs[0].dtype()))
+                Some(infer_scale_type(column_refs[0].dtype()))
             } else {
                 None
             };
@@ -1155,7 +1155,7 @@ fn resolve_scales(spec: &mut Plot, data_map: &HashMap<String, DataFrame>) -> Res
             let inferred_domain = if scale.input_range.is_none() && !scale.has_domain() {
                 effective_type
                     .as_ref()
-                    .and_then(|st| compute_domain_from_series(&series_refs, st))
+                    .and_then(|st| compute_domain_from_columns(&column_refs, st))
             } else {
                 None
             };
@@ -1182,16 +1182,16 @@ fn resolve_scales(spec: &mut Plot, data_map: &HashMap<String, DataFrame>) -> Res
     Ok(())
 }
 
-/// Find all Series for an aesthetic (including family members like xmin/xmax for "x").
+/// Find all columns for an aesthetic (including family members like xmin/xmax for "x").
 /// Each mapping is looked up in its corresponding data source.
-/// Returns references to the Series found.
-fn find_series_for_aesthetic<'a>(
+/// Returns references to the Columns found.
+fn find_columns_for_aesthetic<'a>(
     global_mappings: &crate::plot::Mappings,
     layers: &[Layer],
     aesthetic: &str,
     data_map: &'a HashMap<String, DataFrame>,
-) -> Vec<&'a Series> {
-    let mut series_refs = Vec::new();
+) -> Vec<&'a Column> {
+    let mut column_refs = Vec::new();
     let aesthetics_to_check = get_aesthetic_family(aesthetic);
     let global_df = data_map.get(naming::GLOBAL_DATA_KEY);
 
@@ -1199,8 +1199,8 @@ fn find_series_for_aesthetic<'a>(
     if let Some(df) = global_df {
         for aes_name in &aesthetics_to_check {
             if let Some(AestheticValue::Column { name, .. }) = global_mappings.get(aes_name) {
-                if let Ok(series) = df.column(name) {
-                    series_refs.push(series);
+                if let Ok(column) = df.column(name) {
+                    column_refs.push(column);
                 }
             }
         }
@@ -1213,15 +1213,15 @@ fn find_series_for_aesthetic<'a>(
         if let Some(df) = df {
             for aes_name in &aesthetics_to_check {
                 if let Some(AestheticValue::Column { name, .. }) = layer.mappings.get(aes_name) {
-                    if let Ok(series) = df.column(name) {
-                        series_refs.push(series);
+                    if let Ok(column) = df.column(name) {
+                        column_refs.push(column);
                     }
                 }
             }
         }
     }
 
-    series_refs
+    column_refs
 }
 
 /// Get all aesthetics in the same family as the given aesthetic.
@@ -1272,9 +1272,9 @@ fn infer_scale_type(dtype: &DataType) -> ScaleType {
 // Domain Inference Helpers
 // =============================================================================
 
-/// Compute domain (min/max or unique values) from pre-collected Series references.
-fn compute_domain_from_series(
-    series_refs: &[&Series],
+/// Compute domain (min/max or unique values) from pre-collected Column references.
+fn compute_domain_from_columns(
+    column_refs: &[&Column],
     scale_type: &ScaleType,
 ) -> Option<Vec<ArrayElement>> {
     match scale_type {
@@ -1283,23 +1283,24 @@ fn compute_domain_from_series(
         | ScaleType::Log
         | ScaleType::Log10
         | ScaleType::Log2
-        | ScaleType::Sqrt => compute_numeric_domain(series_refs),
-        ScaleType::Date => compute_date_domain(series_refs),
-        ScaleType::DateTime => compute_datetime_domain(series_refs),
+        | ScaleType::Sqrt => compute_numeric_domain(column_refs),
+        ScaleType::Date => compute_date_domain(column_refs),
+        ScaleType::DateTime => compute_datetime_domain(column_refs),
         ScaleType::Discrete | ScaleType::Ordinal | ScaleType::Categorical => {
-            compute_discrete_domain(series_refs)
+            compute_discrete_domain(column_refs)
         }
         // Skip for other scale types (Identity, color palettes, Time, etc.)
         _ => None,
     }
 }
 
-/// Compute numeric domain as [min, max] from Series.
-fn compute_numeric_domain(series_refs: &[&Series]) -> Option<Vec<ArrayElement>> {
+/// Compute numeric domain as [min, max] from Columns.
+fn compute_numeric_domain(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
     let mut global_min: Option<f64> = None;
     let mut global_max: Option<f64> = None;
 
-    for series in series_refs {
+    for column in column_refs {
+        let series = column.as_materialized_series();
         if let Ok(ca) = series.cast(&DataType::Float64) {
             if let Ok(f64_series) = ca.f64() {
                 if let Some(min) = f64_series.min() {
@@ -1318,17 +1319,20 @@ fn compute_numeric_domain(series_refs: &[&Series]) -> Option<Vec<ArrayElement>> 
     }
 }
 
-/// Compute date domain as [min_date, max_date] ISO strings from Series.
-fn compute_date_domain(series_refs: &[&Series]) -> Option<Vec<ArrayElement>> {
+/// Compute date domain as [min_date, max_date] ISO strings from Columns.
+fn compute_date_domain(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
     let mut global_min: Option<i32> = None;
     let mut global_max: Option<i32> = None;
 
-    for series in series_refs {
-        if let Ok(ca) = series.date() {
-            if let Some(min) = ca.min() {
+    for column in column_refs {
+        let series = column.as_materialized_series();
+        if let Ok(date_ca) = series.date() {
+            // Get the underlying physical representation (Int32) for min/max
+            let physical = &date_ca.phys;
+            if let Some(min) = physical.min() {
                 global_min = Some(global_min.map_or(min, |m| m.min(min)));
             }
-            if let Some(max) = ca.max() {
+            if let Some(max) = physical.max() {
                 global_max = Some(global_max.map_or(max, |m| m.max(max)));
             }
         }
@@ -1348,17 +1352,20 @@ fn compute_date_domain(series_refs: &[&Series]) -> Option<Vec<ArrayElement>> {
     }
 }
 
-/// Compute datetime domain as [min, max] ISO datetime strings from Series.
-fn compute_datetime_domain(series_refs: &[&Series]) -> Option<Vec<ArrayElement>> {
+/// Compute datetime domain as [min, max] ISO datetime strings from Columns.
+fn compute_datetime_domain(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
     let mut global_min: Option<i64> = None;
     let mut global_max: Option<i64> = None;
 
-    for series in series_refs {
-        if let Ok(ca) = series.datetime() {
-            if let Some(min) = ca.min() {
+    for column in column_refs {
+        let series = column.as_materialized_series();
+        if let Ok(dt_ca) = series.datetime() {
+            // Get the underlying physical representation (Int64) for min/max
+            let physical = &dt_ca.phys;
+            if let Some(min) = physical.min() {
                 global_min = Some(global_min.map_or(min, |m| m.min(min)));
             }
-            if let Some(max) = ca.max() {
+            if let Some(max) = physical.max() {
                 global_max = Some(global_max.map_or(max, |m| m.max(max)));
             }
         }
@@ -1382,11 +1389,12 @@ fn compute_datetime_domain(series_refs: &[&Series]) -> Option<Vec<ArrayElement>>
     }
 }
 
-/// Compute discrete domain as unique sorted values from Series.
-fn compute_discrete_domain(series_refs: &[&Series]) -> Option<Vec<ArrayElement>> {
+/// Compute discrete domain as unique sorted values from Columns.
+fn compute_discrete_domain(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
     let mut unique_values: Vec<String> = Vec::new();
 
-    for series in series_refs {
+    for column in column_refs {
+        let series = column.as_materialized_series();
         if let Ok(unique) = series.unique() {
             for i in 0..unique.len() {
                 if let Ok(val) = unique.get(i) {
@@ -1406,7 +1414,12 @@ fn compute_discrete_domain(series_refs: &[&Series]) -> Option<Vec<ArrayElement>>
         None
     } else {
         unique_values.sort();
-        Some(unique_values.into_iter().map(ArrayElement::String).collect())
+        Some(
+            unique_values
+                .into_iter()
+                .map(ArrayElement::String)
+                .collect(),
+        )
     }
 }
 
@@ -3189,11 +3202,11 @@ mod tests {
     fn test_infer_domain_numeric() {
         use polars::prelude::*;
 
-        // Create numeric series
-        let series = Series::new("x".into(), &[1.0f64, 5.0, 10.0, 3.0]);
-        let series_refs = vec![&series];
+        // Create numeric column
+        let column: Column = Series::new("x".into(), &[1.0f64, 5.0, 10.0, 3.0]).into();
+        let column_refs = vec![&column];
 
-        let domain = compute_numeric_domain(&series_refs);
+        let domain = compute_numeric_domain(&column_refs);
         assert!(domain.is_some());
         let domain = domain.unwrap();
         assert_eq!(domain.len(), 2);
@@ -3212,11 +3225,11 @@ mod tests {
     fn test_infer_domain_numeric_integer() {
         use polars::prelude::*;
 
-        // Create integer series (should cast to f64)
-        let series = Series::new("y".into(), &[10i32, 20, 30, 5]);
-        let series_refs = vec![&series];
+        // Create integer column (should cast to f64)
+        let column: Column = Series::new("y".into(), &[10i32, 20, 30, 5]).into();
+        let column_refs = vec![&column];
 
-        let domain = compute_numeric_domain(&series_refs);
+        let domain = compute_numeric_domain(&column_refs);
         assert!(domain.is_some());
         let domain = domain.unwrap();
 
@@ -3230,19 +3243,19 @@ mod tests {
     }
 
     #[test]
-    fn test_infer_domain_numeric_multiple_series() {
+    fn test_infer_domain_numeric_multiple_columns() {
         use polars::prelude::*;
 
-        // Two series with different ranges - should combine
-        let series1 = Series::new("x".into(), &[1.0f64, 5.0]);
-        let series2 = Series::new("xmax".into(), &[10.0f64, 20.0]);
-        let series_refs = vec![&series1, &series2];
+        // Two columns with different ranges - should combine
+        let column1: Column = Series::new("x".into(), &[1.0f64, 5.0]).into();
+        let column2: Column = Series::new("xmax".into(), &[10.0f64, 20.0]).into();
+        let column_refs = vec![&column1, &column2];
 
-        let domain = compute_numeric_domain(&series_refs);
+        let domain = compute_numeric_domain(&column_refs);
         assert!(domain.is_some());
         let domain = domain.unwrap();
 
-        // Should combine: min=1.0 (from series1), max=20.0 (from series2)
+        // Should combine: min=1.0 (from column1), max=20.0 (from column2)
         match (&domain[0], &domain[1]) {
             (ArrayElement::Number(min), ArrayElement::Number(max)) => {
                 assert_eq!(*min, 1.0);
@@ -3256,17 +3269,18 @@ mod tests {
     fn test_infer_domain_date() {
         use polars::prelude::*;
 
-        // Create date series: 2024-01-15, 2024-03-20, 2024-02-01
+        // Create date column: 2024-01-15, 2024-03-20, 2024-02-01
         // Days since epoch (1970-01-01):
         // 2024-01-15 = 19737 days
         // 2024-02-01 = 19754 days
         // 2024-03-20 = 19802 days
-        let series = Series::new("date".into(), &[19737i32, 19802, 19754])
+        let column: Column = Series::new("date".into(), &[19737i32, 19802, 19754])
             .cast(&DataType::Date)
-            .unwrap();
-        let series_refs = vec![&series];
+            .unwrap()
+            .into();
+        let column_refs = vec![&column];
 
-        let domain = compute_date_domain(&series_refs);
+        let domain = compute_date_domain(&column_refs);
         assert!(domain.is_some());
         let domain = domain.unwrap();
         assert_eq!(domain.len(), 2);
@@ -3284,22 +3298,18 @@ mod tests {
     fn test_infer_domain_discrete() {
         use polars::prelude::*;
 
-        // Create string series with duplicates
-        let series = Series::new("category".into(), &["B", "A", "C", "A", "B"]);
-        let series_refs = vec![&series];
+        // Create string column with duplicates
+        let column: Column = Series::new("category".into(), &["B", "A", "C", "A", "B"]).into();
+        let column_refs = vec![&column];
 
-        let domain = compute_discrete_domain(&series_refs);
+        let domain = compute_discrete_domain(&column_refs);
         assert!(domain.is_some());
         let domain = domain.unwrap();
 
         // Should be sorted unique values: ["A", "B", "C"]
         assert_eq!(domain.len(), 3);
         match (&domain[0], &domain[1], &domain[2]) {
-            (
-                ArrayElement::String(a),
-                ArrayElement::String(b),
-                ArrayElement::String(c),
-            ) => {
+            (ArrayElement::String(a), ArrayElement::String(b), ArrayElement::String(c)) => {
                 assert_eq!(a, "A");
                 assert_eq!(b, "B");
                 assert_eq!(c, "C");
@@ -3312,11 +3322,12 @@ mod tests {
     fn test_infer_domain_discrete_with_nulls() {
         use polars::prelude::*;
 
-        // Create string series with null values
-        let series: Series = Series::new("category".into(), &[Some("B"), None, Some("A"), Some("B")]);
-        let series_refs = vec![&series];
+        // Create string column with null values
+        let column: Column =
+            Series::new("category".into(), &[Some("B"), None, Some("A"), Some("B")]).into();
+        let column_refs = vec![&column];
 
-        let domain = compute_discrete_domain(&series_refs);
+        let domain = compute_discrete_domain(&column_refs);
         assert!(domain.is_some());
         let domain = domain.unwrap();
 
@@ -3337,7 +3348,8 @@ mod tests {
 
         // Create a Plot with a scale that needs domain inference
         let mut spec = Plot::new();
-        spec.global_mappings.insert("x", AestheticValue::standard_column("value"));
+        spec.global_mappings
+            .insert("x", AestheticValue::standard_column("value"));
         spec.scales.push(crate::plot::Scale::new("x"));
         spec.layers.push(Layer::new(Geom::point()));
 
@@ -3375,13 +3387,11 @@ mod tests {
 
         // Create a Plot with a scale that already has a domain
         let mut spec = Plot::new();
-        spec.global_mappings.insert("x", AestheticValue::standard_column("value"));
+        spec.global_mappings
+            .insert("x", AestheticValue::standard_column("value"));
 
         let mut scale = crate::plot::Scale::new("x");
-        scale.input_range = Some(vec![
-            ArrayElement::Number(0.0),
-            ArrayElement::Number(100.0),
-        ]);
+        scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         spec.scales.push(scale);
         spec.layers.push(Layer::new(Geom::point()));
 
@@ -3402,8 +3412,8 @@ mod tests {
         let domain = scale.input_range.as_ref().unwrap();
         match (&domain[0], &domain[1]) {
             (ArrayElement::Number(min), ArrayElement::Number(max)) => {
-                assert_eq!(*min, 0.0);  // Original explicit value
-                assert_eq!(*max, 100.0);  // Original explicit value
+                assert_eq!(*min, 0.0); // Original explicit value
+                assert_eq!(*max, 100.0); // Original explicit value
             }
             _ => panic!("Expected Number elements"),
         }
@@ -3415,8 +3425,10 @@ mod tests {
 
         // Create a Plot where "y" scale should get domain from ymin and ymax columns
         let mut spec = Plot::new();
-        spec.global_mappings.insert("ymin", AestheticValue::standard_column("low"));
-        spec.global_mappings.insert("ymax", AestheticValue::standard_column("high"));
+        spec.global_mappings
+            .insert("ymin", AestheticValue::standard_column("low"));
+        spec.global_mappings
+            .insert("ymax", AestheticValue::standard_column("high"));
         spec.scales.push(crate::plot::Scale::new("y"));
         spec.layers.push(Layer::new(Geom::errorbar()));
 
