@@ -6,7 +6,7 @@ website:
   description: |
     The home of ggsql. A declarative visualisation language build on top of SQL
     and the grammar of graphics.
-  site-url: https://ggsql.org
+  site-url: ggsql.org
   repo-url: https://github.com/ggsql-dev/ggsql
   issue-url: https://github.com/ggsql-dev/ggsql/issues
   repo-branch: gh-pages
