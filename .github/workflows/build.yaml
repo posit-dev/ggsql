@@ -24,8 +24,12 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Check disk space
-        run: df -h
+      - name: Caching
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**Cargo.lock')}}
 
       - name: Build with cargo
         run: cargo build --verbose
