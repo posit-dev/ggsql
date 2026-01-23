@@ -95,6 +95,7 @@ enum ColumnBuilder {
     Decimal(Vec<Option<f64>>),     // Convert to Float64
     HugeInt(Vec<Option<i128>>),    // Will check overflow
     Blob(Vec<Option<String>>),     // Convert to String
+    List(Vec<Option<Vec<f64>>>),   // List of numeric values
     Fallback(Vec<Option<String>>), // Fallback for unsupported types
 }
 
@@ -120,6 +121,7 @@ impl ColumnBuilder {
             Type::Decimal => ColumnBuilder::Decimal(Vec::new()),
             Type::HugeInt => ColumnBuilder::HugeInt(Vec::new()),
             Type::Blob => ColumnBuilder::Blob(Vec::new()),
+            Type::List(_) => ColumnBuilder::List(Vec::new()),
             _ => ColumnBuilder::Fallback(Vec::new()),
         }
     }
@@ -180,6 +182,15 @@ impl ColumnBuilder {
                 // Blob: try to get as String, or use empty string
                 let val: Option<String> = row.get(col_idx).ok();
                 values.push(val.or(Some(String::new())));
+            }
+            List(ref mut values) => {
+                // Workaround: Lists from DuckDB don't support FromSql
+                // Convert to string and parse as JSON array
+                let val: Option<Vec<f64>> = row.get::<_, String>(col_idx).ok().and_then(|s| {
+                    // Parse JSON array string like "[1.0, 2.0, 3.0]"
+                    serde_json::from_str::<Vec<f64>>(&s).ok()
+                });
+                values.push(val);
             }
             Fallback(ref mut values) => {
                 // Fallback: try to get as String, or use empty string
@@ -281,6 +292,25 @@ impl ColumnBuilder {
                     column_name
                 );
                 Series::new(column_name.into(), values)
+            }
+            List(values) => {
+                // Create a List series with Float64 elements
+                // Build a ListChunked using the builder pattern
+                let mut builder = ListPrimitiveChunkedBuilder::<Float64Type>::new(
+                    column_name.into(),
+                    values.len(),
+                    5, // estimated inner list size
+                    DataType::Float64,
+                );
+
+                for opt_vec in values {
+                    match opt_vec {
+                        Some(vec) => builder.append_slice(&vec),
+                        None => builder.append_null(),
+                    }
+                }
+
+                builder.finish().into_series()
             }
             Fallback(values) => {
                 eprintln!(
