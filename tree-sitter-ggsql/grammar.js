@@ -371,7 +371,7 @@ module.exports = grammar({
 
     // VISUALISE keyword as explicit high-precedence token
     visualise_keyword: $ => token(prec(10, choice(
-      caseInsensitive("VISUALISE"), 
+      caseInsensitive("VISUALISE"),
       caseInsensitive("VISUALIZE")
     ))),
 
@@ -491,7 +491,8 @@ module.exports = grammar({
     parameter_value: $ => choice(
       $.string,
       $.number,
-      $.boolean
+      $.boolean,
+      $.null_literal
     ),
 
     // PARTITION BY clause for grouping: PARTITION BY category, region
@@ -649,7 +650,7 @@ module.exports = grammar({
       caseInsensitive('DATETIME')     // datetime data
     ),
 
-    // FROM clause - input domain specification
+    // FROM clause - input range specification
     scale_from_clause: $ => seq(
       caseInsensitive('FROM'),
       $.array
@@ -729,7 +730,7 @@ module.exports = grammar({
 
     coord_property_name: $ => choice(
       'xlim', 'ylim', 'ratio', 'theta', 'clip',
-      // Also allow aesthetic names as properties (for domain specification)
+      // Also allow aesthetic names as properties (for range specification)
       $.aesthetic_name
     ),
 
@@ -857,8 +858,11 @@ module.exports = grammar({
     array_element: $ => choice(
       $.string,
       $.number,
-      $.boolean
+      $.boolean,
+      $.null_literal
     ),
+
+    null_literal: $ => caseInsensitive('NULL'),
 
     // Comments
     comment: $ => choice(

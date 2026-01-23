@@ -1117,7 +1117,7 @@ where
 /// 2. Infers input_range (domain) from data values if not explicitly set
 ///
 /// The function inspects columns mapped to the aesthetic (including family
-/// members like xmin/xmax for "x") and computes appropriate domains.
+/// members like xmin/xmax for "x") and computes appropriate ranges.
 fn resolve_scales(spec: &mut Plot, data_map: &HashMap<String, DataFrame>) -> Result<()> {
     // Collect inferred properties for scales that need them
     // This avoids borrow conflicts between spec.scales iteration and spec access
@@ -1145,24 +1145,32 @@ fn resolve_scales(spec: &mut Plot, data_map: &HashMap<String, DataFrame>) -> Res
                 None
             };
 
-            // Use either the inferred type or the existing type for domain computation
+            // Use either the inferred type or the existing type for range computation
             let effective_type = inferred_type
                 .as_ref()
                 .or(scale.scale_type.as_ref())
                 .cloned();
 
-            // Infer input_range if not already set and no domain in properties
-            let inferred_domain = if scale.input_range.is_none() && !scale.has_domain() {
+            // Check if we need to infer input range:
+            // 1. No explicit input_range (FROM clause), OR
+            // 2. Explicit range contains Null placeholders that need filling
+            let needs_inference = scale.input_range.is_none()
+                || scale
+                    .input_range
+                    .as_ref()
+                    .is_some_and(|r| input_range_has_nulls(r));
+
+            let inferred_input_range = if needs_inference {
                 effective_type
                     .as_ref()
-                    .and_then(|st| compute_domain_from_columns(&column_refs, st))
+                    .and_then(|st| compute_input_range_from_columns(&column_refs, st))
             } else {
                 None
             };
 
             // Only return if we inferred something
-            if inferred_type.is_some() || inferred_domain.is_some() {
-                Some((idx, inferred_type, inferred_domain))
+            if inferred_type.is_some() || inferred_input_range.is_some() {
+                Some((idx, inferred_type, inferred_input_range))
             } else {
                 None
             }
@@ -1170,12 +1178,25 @@ fn resolve_scales(spec: &mut Plot, data_map: &HashMap<String, DataFrame>) -> Res
         .collect();
 
     // Apply the inferred properties
-    for (idx, scale_type, domain) in inferred_props {
+    for (idx, scale_type, range) in inferred_props {
         if let Some(st) = scale_type {
             spec.scales[idx].scale_type = Some(st);
         }
-        if let Some(d) = domain {
-            spec.scales[idx].input_range = Some(d);
+        if let Some(inferred) = range {
+            match &spec.scales[idx].input_range {
+                Some(explicit) if input_range_has_nulls(explicit) => {
+                    // Merge: replace nulls with inferred values
+                    spec.scales[idx].input_range =
+                        Some(merge_input_range_with_inferred(explicit, &inferred));
+                }
+                None => {
+                    // No explicit range, use fully inferred range
+                    spec.scales[idx].input_range = Some(inferred);
+                }
+                _ => {
+                    // Explicit range without nulls - keep as-is
+                }
+            }
         }
     }
 
@@ -1269,33 +1290,51 @@ fn infer_scale_type(dtype: &DataType) -> ScaleType {
 }
 
 // =============================================================================
-// Domain Inference Helpers
+// Input Range Inference Helpers
 // =============================================================================
 
-/// Compute domain (min/max or unique values) from pre-collected Column references.
-fn compute_domain_from_columns(
+/// Check if an input range array contains any Null placeholders
+fn input_range_has_nulls(range: &[ArrayElement]) -> bool {
+    range.iter().any(|e| matches!(e, ArrayElement::Null))
+}
+
+/// Merge an explicit input range containing Null placeholders with inferred values.
+/// Null positions are replaced with corresponding inferred values.
+fn merge_input_range_with_inferred(
+    explicit: &[ArrayElement],
+    inferred: &[ArrayElement],
+) -> Vec<ArrayElement> {
+    explicit
+        .iter()
+        .enumerate()
+        .map(|(i, exp)| {
+            if matches!(exp, ArrayElement::Null) {
+                // Use inferred value if available, otherwise keep Null
+                inferred.get(i).cloned().unwrap_or(ArrayElement::Null)
+            } else {
+                exp.clone()
+            }
+        })
+        .collect()
+}
+
+/// Compute input range (min/max or unique values) from pre-collected Column references.
+fn compute_input_range_from_columns(
     column_refs: &[&Column],
     scale_type: &ScaleType,
 ) -> Option<Vec<ArrayElement>> {
     match scale_type {
-        ScaleType::Continuous
-        | ScaleType::Linear
-        | ScaleType::Log
-        | ScaleType::Log10
-        | ScaleType::Log2
-        | ScaleType::Sqrt => compute_numeric_domain(column_refs),
-        ScaleType::Date => compute_date_domain(column_refs),
-        ScaleType::DateTime => compute_datetime_domain(column_refs),
-        ScaleType::Discrete | ScaleType::Ordinal | ScaleType::Categorical => {
-            compute_discrete_domain(column_refs)
-        }
+        ScaleType::Continuous => compute_numeric_input_range(column_refs),
+        ScaleType::Date => compute_date_input_range(column_refs),
+        ScaleType::DateTime => compute_datetime_input_range(column_refs),
+        ScaleType::Discrete => compute_discrete_input_range(column_refs),
         // Skip for other scale types (Identity, color palettes, Time, etc.)
         _ => None,
     }
 }
 
-/// Compute numeric domain as [min, max] from Columns.
-fn compute_numeric_domain(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
+/// Compute numeric input range as [min, max] from Columns.
+fn compute_numeric_input_range(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
     let mut global_min: Option<f64> = None;
     let mut global_max: Option<f64> = None;
 
@@ -1319,8 +1358,8 @@ fn compute_numeric_domain(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> 
     }
 }
 
-/// Compute date domain as [min_date, max_date] ISO strings from Columns.
-fn compute_date_domain(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
+/// Compute date input range as [min_date, max_date] ISO strings from Columns.
+fn compute_date_input_range(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
     let mut global_min: Option<i32> = None;
     let mut global_max: Option<i32> = None;
 
@@ -1352,8 +1391,8 @@ fn compute_date_domain(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
     }
 }
 
-/// Compute datetime domain as [min, max] ISO datetime strings from Columns.
-fn compute_datetime_domain(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
+/// Compute datetime input range as [min, max] ISO datetime strings from Columns.
+fn compute_datetime_input_range(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
     let mut global_min: Option<i64> = None;
     let mut global_max: Option<i64> = None;
 
@@ -1389,8 +1428,8 @@ fn compute_datetime_domain(column_refs: &[&Column]) -> Option<Vec<ArrayElement>>
     }
 }
 
-/// Compute discrete domain as unique sorted values from Columns.
-fn compute_discrete_domain(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
+/// Compute discrete input range as unique sorted values from Columns.
+fn compute_discrete_input_range(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
     let mut unique_values: Vec<String> = Vec::new();
 
     for column in column_refs {
@@ -3195,24 +3234,24 @@ mod tests {
     }
 
     // =========================================================================
-    // Domain Inference Tests
+    // Input Range Inference Tests
     // =========================================================================
 
     #[test]
-    fn test_infer_domain_numeric() {
+    fn test_infer_input_range_numeric() {
         use polars::prelude::*;
 
         // Create numeric column
         let column: Column = Series::new("x".into(), &[1.0f64, 5.0, 10.0, 3.0]).into();
         let column_refs = vec![&column];
 
-        let domain = compute_numeric_domain(&column_refs);
-        assert!(domain.is_some());
-        let domain = domain.unwrap();
-        assert_eq!(domain.len(), 2);
+        let range = compute_numeric_input_range(&column_refs);
+        assert!(range.is_some());
+        let range = range.unwrap();
+        assert_eq!(range.len(), 2);
 
         // Should be [min, max] = [1.0, 10.0]
-        match (&domain[0], &domain[1]) {
+        match (&range[0], &range[1]) {
             (ArrayElement::Number(min), ArrayElement::Number(max)) => {
                 assert_eq!(*min, 1.0);
                 assert_eq!(*max, 10.0);
@@ -3222,18 +3261,18 @@ mod tests {
     }
 
     #[test]
-    fn test_infer_domain_numeric_integer() {
+    fn test_infer_input_range_numeric_integer() {
         use polars::prelude::*;
 
         // Create integer column (should cast to f64)
         let column: Column = Series::new("y".into(), &[10i32, 20, 30, 5]).into();
         let column_refs = vec![&column];
 
-        let domain = compute_numeric_domain(&column_refs);
-        assert!(domain.is_some());
-        let domain = domain.unwrap();
+        let range = compute_numeric_input_range(&column_refs);
+        assert!(range.is_some());
+        let range = range.unwrap();
 
-        match (&domain[0], &domain[1]) {
+        match (&range[0], &range[1]) {
             (ArrayElement::Number(min), ArrayElement::Number(max)) => {
                 assert_eq!(*min, 5.0);
                 assert_eq!(*max, 30.0);
@@ -3243,7 +3282,7 @@ mod tests {
     }
 
     #[test]
-    fn test_infer_domain_numeric_multiple_columns() {
+    fn test_infer_input_range_numeric_multiple_columns() {
         use polars::prelude::*;
 
         // Two columns with different ranges - should combine
@@ -3251,12 +3290,12 @@ mod tests {
         let column2: Column = Series::new("xmax".into(), &[10.0f64, 20.0]).into();
         let column_refs = vec![&column1, &column2];
 
-        let domain = compute_numeric_domain(&column_refs);
-        assert!(domain.is_some());
-        let domain = domain.unwrap();
+        let range = compute_numeric_input_range(&column_refs);
+        assert!(range.is_some());
+        let range = range.unwrap();
 
         // Should combine: min=1.0 (from column1), max=20.0 (from column2)
-        match (&domain[0], &domain[1]) {
+        match (&range[0], &range[1]) {
             (ArrayElement::Number(min), ArrayElement::Number(max)) => {
                 assert_eq!(*min, 1.0);
                 assert_eq!(*max, 20.0);
@@ -3266,7 +3305,7 @@ mod tests {
     }
 
     #[test]
-    fn test_infer_domain_date() {
+    fn test_infer_input_range_date() {
         use polars::prelude::*;
 
         // Create date column: 2024-01-15, 2024-03-20, 2024-02-01
@@ -3280,12 +3319,12 @@ mod tests {
             .into();
         let column_refs = vec![&column];
 
-        let domain = compute_date_domain(&column_refs);
-        assert!(domain.is_some());
-        let domain = domain.unwrap();
-        assert_eq!(domain.len(), 2);
+        let range = compute_date_input_range(&column_refs);
+        assert!(range.is_some());
+        let range = range.unwrap();
+        assert_eq!(range.len(), 2);
 
-        match (&domain[0], &domain[1]) {
+        match (&range[0], &range[1]) {
             (ArrayElement::String(min), ArrayElement::String(max)) => {
                 assert_eq!(min, "2024-01-15");
                 assert_eq!(max, "2024-03-20");
@@ -3295,20 +3334,20 @@ mod tests {
     }
 
     #[test]
-    fn test_infer_domain_discrete() {
+    fn test_infer_input_range_discrete() {
         use polars::prelude::*;
 
         // Create string column with duplicates
         let column: Column = Series::new("category".into(), &["B", "A", "C", "A", "B"]).into();
         let column_refs = vec![&column];
 
-        let domain = compute_discrete_domain(&column_refs);
-        assert!(domain.is_some());
-        let domain = domain.unwrap();
+        let range = compute_discrete_input_range(&column_refs);
+        assert!(range.is_some());
+        let range = range.unwrap();
 
         // Should be sorted unique values: ["A", "B", "C"]
-        assert_eq!(domain.len(), 3);
-        match (&domain[0], &domain[1], &domain[2]) {
+        assert_eq!(range.len(), 3);
+        match (&range[0], &range[1], &range[2]) {
             (ArrayElement::String(a), ArrayElement::String(b), ArrayElement::String(c)) => {
                 assert_eq!(a, "A");
                 assert_eq!(b, "B");
@@ -3319,7 +3358,7 @@ mod tests {
     }
 
     #[test]
-    fn test_infer_domain_discrete_with_nulls() {
+    fn test_infer_input_range_discrete_with_nulls() {
         use polars::prelude::*;
 
         // Create string column with null values
@@ -3327,13 +3366,13 @@ mod tests {
             Series::new("category".into(), &[Some("B"), None, Some("A"), Some("B")]).into();
         let column_refs = vec![&column];
 
-        let domain = compute_discrete_domain(&column_refs);
-        assert!(domain.is_some());
-        let domain = domain.unwrap();
+        let range = compute_discrete_input_range(&column_refs);
+        assert!(range.is_some());
+        let range = range.unwrap();
 
         // Nulls should be excluded, result should be ["A", "B"]
-        assert_eq!(domain.len(), 2);
-        match (&domain[0], &domain[1]) {
+        assert_eq!(range.len(), 2);
+        match (&range[0], &range[1]) {
             (ArrayElement::String(a), ArrayElement::String(b)) => {
                 assert_eq!(a, "A");
                 assert_eq!(b, "B");
@@ -3343,10 +3382,10 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_scales_infers_domain() {
+    fn test_resolve_scales_infers_input_range() {
         use polars::prelude::*;
 
-        // Create a Plot with a scale that needs domain inference
+        // Create a Plot with a scale that needs range inference
         let mut spec = Plot::new();
         spec.global_mappings
             .insert("x", AestheticValue::standard_column("value"));
@@ -3370,9 +3409,9 @@ mod tests {
         assert_eq!(scale.scale_type, Some(ScaleType::Continuous));
         assert!(scale.input_range.is_some());
 
-        let domain = scale.input_range.as_ref().unwrap();
-        assert_eq!(domain.len(), 2);
-        match (&domain[0], &domain[1]) {
+        let range = scale.input_range.as_ref().unwrap();
+        assert_eq!(range.len(), 2);
+        match (&range[0], &range[1]) {
             (ArrayElement::Number(min), ArrayElement::Number(max)) => {
                 assert_eq!(*min, 1.0);
                 assert_eq!(*max, 10.0);
@@ -3382,10 +3421,10 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_scales_preserves_explicit_domain() {
+    fn test_resolve_scales_preserves_explicit_input_range() {
         use polars::prelude::*;
 
-        // Create a Plot with a scale that already has a domain
+        // Create a Plot with a scale that already has a range
         let mut spec = Plot::new();
         spec.global_mappings
             .insert("x", AestheticValue::standard_column("value"));
@@ -3407,10 +3446,10 @@ mod tests {
         // Resolve scales
         resolve_scales(&mut spec, &data_map).unwrap();
 
-        // Check that explicit domain was preserved (not overwritten with [1, 10])
+        // Check that explicit range was preserved (not overwritten with [1, 10])
         let scale = &spec.scales[0];
-        let domain = scale.input_range.as_ref().unwrap();
-        match (&domain[0], &domain[1]) {
+        let range = scale.input_range.as_ref().unwrap();
+        match (&range[0], &range[1]) {
             (ArrayElement::Number(min), ArrayElement::Number(max)) => {
                 assert_eq!(*min, 0.0); // Original explicit value
                 assert_eq!(*max, 100.0); // Original explicit value
@@ -3420,10 +3459,10 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_scales_from_aesthetic_family_domain() {
+    fn test_resolve_scales_from_aesthetic_family_input_range() {
         use polars::prelude::*;
 
-        // Create a Plot where "y" scale should get domain from ymin and ymax columns
+        // Create a Plot where "y" scale should get range from ymin and ymax columns
         let mut spec = Plot::new();
         spec.global_mappings
             .insert("ymin", AestheticValue::standard_column("low"));
@@ -3445,16 +3484,162 @@ mod tests {
         // Resolve scales
         resolve_scales(&mut spec, &data_map).unwrap();
 
-        // Check that domain was inferred from both ymin and ymax columns
+        // Check that range was inferred from both ymin and ymax columns
         let scale = &spec.scales[0];
         assert!(scale.input_range.is_some());
 
-        let domain = scale.input_range.as_ref().unwrap();
-        match (&domain[0], &domain[1]) {
+        let range = scale.input_range.as_ref().unwrap();
+        match (&range[0], &range[1]) {
             (ArrayElement::Number(min), ArrayElement::Number(max)) => {
                 // min should be 5.0 (from low column), max should be 30.0 (from high column)
                 assert_eq!(*min, 5.0);
                 assert_eq!(*max, 30.0);
+            }
+            _ => panic!("Expected Number elements"),
+        }
+    }
+
+    // =========================================================================
+    // Partial Input Range Inference Tests (null placeholders)
+    // =========================================================================
+
+    #[test]
+    fn test_input_range_has_nulls_with_nulls() {
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Null];
+        assert!(input_range_has_nulls(&range));
+    }
+
+    #[test]
+    fn test_input_range_has_nulls_without_nulls() {
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+        assert!(!input_range_has_nulls(&range));
+    }
+
+    #[test]
+    fn test_merge_input_range_with_inferred_min_null() {
+        // FROM [null, 100] with inferred [1, 10] → [1, 100]
+        let explicit = vec![ArrayElement::Null, ArrayElement::Number(100.0)];
+        let inferred = vec![ArrayElement::Number(1.0), ArrayElement::Number(10.0)];
+
+        let merged = merge_input_range_with_inferred(&explicit, &inferred);
+
+        assert_eq!(merged.len(), 2);
+        match (&merged[0], &merged[1]) {
+            (ArrayElement::Number(min), ArrayElement::Number(max)) => {
+                assert_eq!(*min, 1.0); // From inferred
+                assert_eq!(*max, 100.0); // From explicit
+            }
+            _ => panic!("Expected Number elements"),
+        }
+    }
+
+    #[test]
+    fn test_merge_input_range_with_inferred_max_null() {
+        // FROM [0, null] with inferred [1, 10] → [0, 10]
+        let explicit = vec![ArrayElement::Number(0.0), ArrayElement::Null];
+        let inferred = vec![ArrayElement::Number(1.0), ArrayElement::Number(10.0)];
+
+        let merged = merge_input_range_with_inferred(&explicit, &inferred);
+
+        assert_eq!(merged.len(), 2);
+        match (&merged[0], &merged[1]) {
+            (ArrayElement::Number(min), ArrayElement::Number(max)) => {
+                assert_eq!(*min, 0.0); // From explicit
+                assert_eq!(*max, 10.0); // From inferred
+            }
+            _ => panic!("Expected Number elements"),
+        }
+    }
+
+    #[test]
+    fn test_merge_input_range_with_inferred_both_null() {
+        // FROM [null, null] with inferred [1, 10] → [1, 10]
+        let explicit = vec![ArrayElement::Null, ArrayElement::Null];
+        let inferred = vec![ArrayElement::Number(1.0), ArrayElement::Number(10.0)];
+
+        let merged = merge_input_range_with_inferred(&explicit, &inferred);
+
+        assert_eq!(merged.len(), 2);
+        match (&merged[0], &merged[1]) {
+            (ArrayElement::Number(min), ArrayElement::Number(max)) => {
+                assert_eq!(*min, 1.0); // From inferred
+                assert_eq!(*max, 10.0); // From inferred
+            }
+            _ => panic!("Expected Number elements"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_scales_partial_input_range_explicit_min_null_max() {
+        use polars::prelude::*;
+
+        // Create a Plot with a scale that has [0, null] (explicit min, infer max)
+        let mut spec = Plot::new();
+        spec.global_mappings
+            .insert("x", AestheticValue::standard_column("value"));
+
+        let mut scale = crate::plot::Scale::new("x");
+        scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Null]);
+        spec.scales.push(scale);
+        spec.layers.push(Layer::new(Geom::point()));
+
+        // Create data with values 1-10
+        let df = df! {
+            "value" => &[1.0f64, 5.0, 10.0]
+        }
+        .unwrap();
+
+        let mut data_map = HashMap::new();
+        data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
+
+        // Resolve scales
+        resolve_scales(&mut spec, &data_map).unwrap();
+
+        // Check that range is [0, 10] (explicit min, inferred max)
+        let scale = &spec.scales[0];
+        let range = scale.input_range.as_ref().unwrap();
+        match (&range[0], &range[1]) {
+            (ArrayElement::Number(min), ArrayElement::Number(max)) => {
+                assert_eq!(*min, 0.0); // Explicit value
+                assert_eq!(*max, 10.0); // Inferred from data
+            }
+            _ => panic!("Expected Number elements"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_scales_partial_input_range_null_min_explicit_max() {
+        use polars::prelude::*;
+
+        // Create a Plot with a scale that has [null, 100] (infer min, explicit max)
+        let mut spec = Plot::new();
+        spec.global_mappings
+            .insert("x", AestheticValue::standard_column("value"));
+
+        let mut scale = crate::plot::Scale::new("x");
+        scale.input_range = Some(vec![ArrayElement::Null, ArrayElement::Number(100.0)]);
+        spec.scales.push(scale);
+        spec.layers.push(Layer::new(Geom::point()));
+
+        // Create data with values 1-10
+        let df = df! {
+            "value" => &[1.0f64, 5.0, 10.0]
+        }
+        .unwrap();
+
+        let mut data_map = HashMap::new();
+        data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
+
+        // Resolve scales
+        resolve_scales(&mut spec, &data_map).unwrap();
+
+        // Check that range is [1, 100] (inferred min, explicit max)
+        let scale = &spec.scales[0];
+        let range = scale.input_range.as_ref().unwrap();
+        match (&range[0], &range[1]) {
+            (ArrayElement::Number(min), ArrayElement::Number(max)) => {
+                assert_eq!(*min, 1.0); // Inferred from data
+                assert_eq!(*max, 100.0); // Explicit value
             }
             _ => panic!("Expected Number elements"),
         }

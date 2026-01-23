@@ -205,6 +205,8 @@ pub enum ParameterValue {
     Number(f64),
     Boolean(bool),
     Array(Vec<ArrayElement>),
+    /// Null value to explicitly opt out of a setting
+    Null,
 }
 
 /// Elements in arrays (shared type for property values)
@@ -213,6 +215,8 @@ pub enum ArrayElement {
     String(String),
     Number(f64),
     Boolean(bool),
+    /// Null placeholder for partial input range inference (e.g., SCALE x FROM [0, null])
+    Null,
 }
 
 impl ArrayElement {
@@ -222,6 +226,7 @@ impl ArrayElement {
             ArrayElement::String(s) => serde_json::Value::String(s.clone()),
             ArrayElement::Number(n) => serde_json::json!(n),
             ArrayElement::Boolean(b) => serde_json::Value::Bool(*b),
+            ArrayElement::Null => serde_json::Value::Null,
         }
     }
 }
@@ -236,7 +241,13 @@ impl ParameterValue {
             ParameterValue::Array(arr) => {
                 serde_json::Value::Array(arr.iter().map(|e| e.to_json()).collect())
             }
+            ParameterValue::Null => serde_json::Value::Null,
         }
+    }
+
+    /// Check if this is a null value
+    pub fn is_null(&self) -> bool {
+        matches!(self, ParameterValue::Null)
     }
 
     /// Try to extract as a string value

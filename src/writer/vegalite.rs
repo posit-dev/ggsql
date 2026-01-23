@@ -290,30 +290,8 @@ impl VegaLiteWriter {
                             ScaleType::Discrete => "nominal",
                             ScaleType::Binned => "quantitative", // Binned data is still quantitative
 
-                            // Legacy continuous scales
-                            ScaleType::Linear
-                            | ScaleType::Log10
-                            | ScaleType::Log
-                            | ScaleType::Log2
-                            | ScaleType::Sqrt
-                            | ScaleType::Reverse => "quantitative",
-
-                            // Legacy discrete scales
-                            ScaleType::Ordinal | ScaleType::Categorical | ScaleType::Manual => {
-                                "nominal"
-                            }
-
                             // Temporal scales
                             ScaleType::Date | ScaleType::DateTime | ScaleType::Time => "temporal",
-
-                            // Color palettes (legacy)
-                            ScaleType::Viridis
-                            | ScaleType::Plasma
-                            | ScaleType::Magma
-                            | ScaleType::Inferno
-                            | ScaleType::Cividis
-                            | ScaleType::Diverging
-                            | ScaleType::Sequential => "quantitative",
 
                             ScaleType::Identity => {
                                 identity_scale = true;
@@ -321,8 +299,8 @@ impl VegaLiteWriter {
                             }
                         }
                         .to_string()
-                    } else if scale.has_domain() {
-                        // If domain is specified without explicit type (via input_range or properties):
+                    } else if scale.input_range.is_some() {
+                        // If domain is specified without explicit type:
                         // - For size/opacity: keep quantitative (domain sets range, not categories)
                         // - For color/x/y: treat as ordinal (discrete categories)
                         if aesthetic == "size" || aesthetic == "opacity" {
@@ -361,9 +339,9 @@ impl VegaLiteWriter {
                 // (same scale lookup as used above for field_type)
                 if let Some(scale) = spec.find_scale(primary) {
                     // Apply scale properties from SCALE if specified
-                    use crate::plot::{ArrayElement, OutputRange, ParameterValue};
+                    use crate::plot::{ArrayElement, OutputRange};
 
-                    // Apply domain from input_range (new FROM clause) or legacy properties.domain
+                    // Apply domain from input_range (FROM clause)
                     if let Some(ref domain_values) = scale.input_range {
                         let domain_json: Vec<Value> = domain_values
                             .iter()
@@ -371,25 +349,13 @@ impl VegaLiteWriter {
                                 ArrayElement::String(s) => json!(s),
                                 ArrayElement::Number(n) => json!(n),
                                 ArrayElement::Boolean(b) => json!(b),
-                            })
-                            .collect();
-                        scale_obj.insert("domain".to_string(), json!(domain_json));
-                    } else if let Some(ParameterValue::Array(domain_values)) =
-                        scale.properties.get("domain")
-                    {
-                        // Legacy: domain in properties
-                        let domain_json: Vec<Value> = domain_values
-                            .iter()
-                            .map(|elem| match elem {
-                                ArrayElement::String(s) => json!(s),
-                                ArrayElement::Number(n) => json!(n),
-                                ArrayElement::Boolean(b) => json!(b),
+                                ArrayElement::Null => json!(null),
                             })
                             .collect();
                         scale_obj.insert("domain".to_string(), json!(domain_json));
                     }
 
-                    // Apply range from output_range (new TO clause) or legacy properties
+                    // Apply range from output_range (TO clause)
                     if let Some(ref output_range) = scale.output_range {
                         match output_range {
                             OutputRange::Array(range_values) => {
@@ -399,6 +365,7 @@ impl VegaLiteWriter {
                                         ArrayElement::String(s) => json!(s),
                                         ArrayElement::Number(n) => json!(n),
                                         ArrayElement::Boolean(b) => json!(b),
+                                        ArrayElement::Null => json!(null),
                                     })
                                     .collect();
                                 scale_obj.insert("range".to_string(), json!(range_json));
@@ -411,32 +378,6 @@ impl VegaLiteWriter {
                                 );
                             }
                         }
-                    } else if let Some(range_prop) = scale.properties.get("range") {
-                        // Legacy: range in properties
-                        if let ParameterValue::Array(range_values) = range_prop {
-                            let range_json: Vec<Value> = range_values
-                                .iter()
-                                .map(|elem| match elem {
-                                    ArrayElement::String(s) => json!(s),
-                                    ArrayElement::Number(n) => json!(n),
-                                    ArrayElement::Boolean(b) => json!(b),
-                                })
-                                .collect();
-                            scale_obj.insert("range".to_string(), json!(range_json));
-                        }
-                    } else if let Some(ParameterValue::Array(palette_values)) =
-                        scale.properties.get("palette")
-                    {
-                        // Legacy: palette as range (fallback for color scales)
-                        let range_json: Vec<Value> = palette_values
-                            .iter()
-                            .map(|elem| match elem {
-                                ArrayElement::String(s) => json!(s),
-                                ArrayElement::Number(n) => json!(n),
-                                ArrayElement::Boolean(b) => json!(b),
-                            })
-                            .collect();
-                        scale_obj.insert("range".to_string(), json!(range_json));
                     }
                 }
                 // We don't automatically want to include 0 in our position scales
@@ -698,8 +639,8 @@ impl VegaLiteWriter {
                 }
                 _ if self.is_aesthetic_name(prop_name) => {
                     // Aesthetic domain specification
-                    if let Some(domain) = self.extract_domain(prop_value)? {
-                        self.apply_aesthetic_domain(vl_spec, prop_name, domain)?;
+                    if let Some(domain) = self.extract_input_range(prop_value)? {
+                        self.apply_aesthetic_input_range(vl_spec, prop_name, domain)?;
                     }
                 }
                 _ => {
@@ -916,7 +857,7 @@ impl VegaLiteWriter {
         }
     }
 
-    fn extract_domain(&self, value: &ParameterValue) -> Result<Option<Vec<Value>>> {
+    fn extract_input_range(&self, value: &ParameterValue) -> Result<Option<Vec<Value>>> {
         match value {
             ParameterValue::Array(arr) => {
                 let domain: Vec<Value> = arr
@@ -925,6 +866,7 @@ impl VegaLiteWriter {
                         ArrayElement::String(s) => json!(s),
                         ArrayElement::Number(n) => json!(n),
                         ArrayElement::Boolean(b) => json!(b),
+                        ArrayElement::Null => json!(null),
                     })
                     .collect();
                 Ok(Some(domain))
@@ -959,7 +901,7 @@ impl VegaLiteWriter {
         Ok(())
     }
 
-    fn apply_aesthetic_domain(
+    fn apply_aesthetic_input_range(
         &self,
         vl_spec: &mut Value,
         aesthetic: &str,
@@ -2949,7 +2891,7 @@ mod tests {
     }
 
     #[test]
-    fn test_coord_cartesian_aesthetic_domain() {
+    fn test_coord_cartesian_aesthetic_input_range() {
         use crate::plot::Coord;
 
         let writer = VegaLiteWriter::new();

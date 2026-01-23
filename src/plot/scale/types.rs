@@ -23,7 +23,7 @@ pub struct Scale {
     /// Scale type (optional, inferred if not specified)
     /// Now specified as modifier: SCALE DATE x, SCALE CONTINUOUS y
     pub scale_type: Option<ScaleType>,
-    /// Input domain specification (FROM clause)
+    /// Input range specification (FROM clause)
     /// Maps to Vega-Lite's scale.domain
     pub input_range: Option<Vec<ArrayElement>>,
     /// Output range specification (TO clause)
@@ -46,11 +46,6 @@ impl Scale {
             transform_method: None,
             properties: HashMap::new(),
         }
-    }
-
-    /// Check if this scale has a domain specification (either input_range or properties.domain)
-    pub fn has_domain(&self) -> bool {
-        self.input_range.is_some() || self.properties.contains_key("domain")
     }
 }
 
@@ -79,26 +74,6 @@ pub enum ScaleType {
     Date,
     DateTime,
     Time,
-
-    // Legacy/internal types (kept for backwards compatibility in writer)
-    Linear,
-    Log10,
-    Log,
-    Log2,
-    Sqrt,
-    Reverse,
-    Ordinal,
-    Categorical,
-    Manual,
-
-    // Color palettes (now specified via TO clause, kept for internal use)
-    Viridis,
-    Plasma,
-    Magma,
-    Inferno,
-    Cividis,
-    Diverging,
-    Sequential,
 
     // Special
     Identity,

@@ -113,7 +113,7 @@ fn build_visualise_statement(node: &Node, source: &str) -> Result<Plot> {
         }
     }
 
-    // Validate no conflicts between SCALE and COORD domain specifications
+    // Validate no conflicts between SCALE and COORD input range specifications
     validate_scale_coord_conflicts(&spec)?;
 
     Ok(spec)
@@ -203,10 +203,10 @@ fn parse_explicit_mapping(node: &Node, source: &str) -> Result<(String, Aestheti
     }
 }
 
-/// Check for conflicts between SCALE domain and COORD aesthetic domain specifications
+/// Check for conflicts between SCALE input range and COORD aesthetic input range specifications
 fn validate_scale_coord_conflicts(spec: &Plot) -> Result<()> {
     if let Some(ref coord) = spec.coord {
-        // Get all aesthetic names that have domains in COORD
+        // Get all aesthetic names that have input ranges in COORD
         let coord_aesthetics: Vec<String> = coord
             .properties
             .keys()
@@ -214,18 +214,15 @@ fn validate_scale_coord_conflicts(spec: &Plot) -> Result<()> {
             .cloned()
             .collect();
 
-        // Check if any of these also have domain in SCALE
+        // Check if any of these also have input range in SCALE
         for aesthetic in coord_aesthetics {
             for scale in &spec.scales {
-                if scale.aesthetic == aesthetic {
-                    // Check if this scale has a domain (via input_range or legacy properties.domain)
-                    if scale.has_domain() {
-                        return Err(GgsqlError::ParseError(format!(
-                            "Domain for '{}' specified in both SCALE and COORD clauses. \
-                            Please specify domain in only one location.",
-                            aesthetic
-                        )));
-                    }
+                if scale.aesthetic == aesthetic && scale.input_range.is_some() {
+                    return Err(GgsqlError::ParseError(format!(
+                        "Input range for '{}' specified in both SCALE and COORD clauses. \
+                        Please specify input range in only one location.",
+                        aesthetic
+                    )));
                 }
             }
         }
@@ -478,7 +475,7 @@ fn parse_parameter_assignment(node: &Node, source: &str) -> Result<(String, Para
     Ok((param_name, param_value.unwrap()))
 }
 
-/// Parse a parameter_value (string, number, or boolean)
+/// Parse a parameter_value (string, number, boolean, or null)
 fn parse_parameter_value(node: &Node, source: &str) -> Result<ParameterValue> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -499,6 +496,9 @@ fn parse_parameter_value(node: &Node, source: &str) -> Result<ParameterValue> {
                 let text = get_node_text(&child, source);
                 let bool_val = text == "true";
                 return Ok(ParameterValue::Boolean(bool_val));
+            }
+            "null_literal" => {
+                return Ok(ParameterValue::Null);
             }
             _ => {}
         }
@@ -771,6 +771,9 @@ fn parse_array(node: &Node, source: &str) -> Result<Vec<ArrayElement>> {
                         let text = get_node_text(&elem_child, source);
                         let bool_val = text == "true";
                         values.push(ArrayElement::Boolean(bool_val));
+                    }
+                    "null_literal" => {
+                        values.push(ArrayElement::Null);
                     }
                     _ => continue,
                 }
@@ -1063,6 +1066,7 @@ fn parse_coord_property_value(node: &Node, source: &str) -> Result<ParameterValu
             let bool_val = text == "true";
             Ok(ParameterValue::Boolean(bool_val))
         }
+        "null_literal" => Ok(ParameterValue::Null),
         "array" => {
             // Parse array of values
             let mut values = Vec::new();
@@ -1430,7 +1434,7 @@ mod tests {
     }
 
     #[test]
-    fn test_coord_cartesian_valid_aesthetic_domain() {
+    fn test_coord_cartesian_valid_aesthetic_input_range() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color
@@ -1462,7 +1466,7 @@ mod tests {
     }
 
     #[test]
-    fn test_coord_flip_valid_aesthetic_domain() {
+    fn test_coord_flip_valid_aesthetic_input_range() {
         let query = r#"
             VISUALISE
             DRAW bar MAPPING category AS x, value AS y, region AS color
@@ -1544,7 +1548,7 @@ mod tests {
     }
 
     #[test]
-    fn test_coord_polar_valid_aesthetic_domain() {
+    fn test_coord_polar_valid_aesthetic_input_range() {
         let query = r#"
             VISUALISE
             DRAW bar MAPPING category AS x, value AS y, region AS color
@@ -1592,11 +1596,11 @@ mod tests {
     }
 
     // ========================================
-    // SCALE/COORD Domain Conflict Tests
+    // SCALE/COORD Input Range Conflict Tests
     // ========================================
 
     #[test]
-    fn test_scale_coord_conflict_x_domain() {
+    fn test_scale_coord_conflict_x_input_range() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
@@ -1609,11 +1613,11 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err
             .to_string()
-            .contains("Domain for 'x' specified in both SCALE and COORD"));
+            .contains("Input range for 'x' specified in both SCALE and COORD"));
     }
 
     #[test]
-    fn test_scale_coord_conflict_color_domain() {
+    fn test_scale_coord_conflict_color_input_range() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color
@@ -1626,7 +1630,7 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err
             .to_string()
-            .contains("Domain for 'color' specified in both SCALE and COORD"));
+            .contains("Input range for 'color' specified in both SCALE and COORD"));
     }
 
     #[test]
@@ -1643,7 +1647,7 @@ mod tests {
     }
 
     #[test]
-    fn test_scale_coord_no_conflict_scale_without_domain() {
+    fn test_scale_coord_no_conflict_scale_without_input_range() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
@@ -3125,5 +3129,101 @@ mod tests {
         }
         assert!(ok);
         eprintln!("{:?}", output_range);
+    }
+
+    // ========================================
+    // Null in Scale Input Range Tests
+    // ========================================
+
+    #[test]
+    fn test_scale_from_with_null_max() {
+        // SCALE x FROM [0, null] - explicit min, infer max
+        let query = r#"
+            VISUALISE x, y
+            DRAW point
+            SCALE x FROM [0, null]
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "x");
+
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 2);
+        assert!(matches!(&input_range[0], ArrayElement::Number(n) if *n == 0.0));
+        assert!(matches!(&input_range[1], ArrayElement::Null));
+    }
+
+    #[test]
+    fn test_scale_from_with_null_min() {
+        // SCALE x FROM [null, 100] - infer min, explicit max
+        let query = r#"
+            VISUALISE x, y
+            DRAW point
+            SCALE x FROM [null, 100]
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 2);
+        assert!(matches!(&input_range[0], ArrayElement::Null));
+        assert!(matches!(&input_range[1], ArrayElement::Number(n) if *n == 100.0));
+    }
+
+    #[test]
+    fn test_scale_from_with_both_nulls() {
+        // SCALE x FROM [null, null] - infer both (same as no FROM clause)
+        let query = r#"
+            VISUALISE x, y
+            DRAW point
+            SCALE x FROM [null, null]
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 2);
+        assert!(matches!(&input_range[0], ArrayElement::Null));
+        assert!(matches!(&input_range[1], ArrayElement::Null));
+    }
+
+    #[test]
+    fn test_scale_from_with_null_case_insensitive() {
+        // NULL should be case-insensitive
+        let query = r#"
+            VISUALISE x, y
+            DRAW point
+            SCALE x FROM [0, NULL]
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert!(matches!(&input_range[1], ArrayElement::Null));
+    }
+
+    #[test]
+    fn test_scale_date_from_with_null() {
+        // DATE scale with partial input range: explicit start, infer end
+        let query = r#"
+            VISUALISE date AS x, value AS y
+            DRAW line
+            SCALE DATE x FROM ['2024-01-01', null]
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 2);
+        assert!(matches!(&input_range[0], ArrayElement::String(s) if s == "2024-01-01"));
+        assert!(matches!(&input_range[1], ArrayElement::Null));
     }
 }

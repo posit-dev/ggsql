@@ -188,6 +188,14 @@
           "match": "\\b(?i:SCALE)\\b"
         },
         {
+          "name": "keyword.control.scale-modifier.ggsql",
+          "match": "\\b(?i:CONTINUOUS|DISCRETE|BINNED|DATE|DATETIME|IDENTITY)\\b"
+        },
+        {
+          "name": "keyword.control.scale-subclause.ggsql",
+          "match": "\\b(?i:FROM|TO|VIA)\\b"
+        },
+        {
           "name": "keyword.control.setting.ggsql",
           "match": "\\b(?i:SETTING)\\b"
         },
@@ -196,12 +204,20 @@
           "match": "(?<!\\S)=>(?!\\S)"
         },
         {
-          "name": "variable.parameter.scale-property.ggsql",
-          "match": "\\b(type|limits|breaks|labels|expand|direction|na_value|palette|domain|range)\\b"
+          "name": "variable.parameter.aesthetic.ggsql",
+          "match": "\\b(x|y|color|colour|fill|stroke|opacity|size|shape|linetype|linewidth)\\b"
         },
         {
-          "name": "constant.language.scale-type.ggsql",
-          "match": "\\b(linear|log|log10|log2|sqrt|reverse|categorical|ordinal|date|datetime|time|viridis|plasma|magma|inferno|diverging)\\b"
+          "name": "variable.parameter.scale-property.ggsql",
+          "match": "\\b(limits|breaks|labels|expand|direction|na_value)\\b"
+        },
+        {
+          "name": "constant.language.palette.ggsql",
+          "match": "\\b(viridis|plasma|magma|inferno|cividis|diverging|sequential)\\b"
+        },
+        {
+          "name": "constant.language.scale-transform.ggsql",
+          "match": "\\b(linear|log|log10|log2|sqrt)\\b"
         }
       ]
     },

@@ -990,7 +990,7 @@ DRAW line
 **Syntax**:
 
 ```sql
-SCALE [TYPE] <aesthetic> [FROM <domain>] [TO <range>] [VIA <transform>] [SETTING <properties>]
+SCALE [TYPE] <aesthetic> [FROM <input>] [TO <output>] [VIA <transform>] [SETTING <properties>]
 ```
 
 **Type Modifiers** (optional, placed before aesthetic):
@@ -1003,7 +1003,7 @@ SCALE [TYPE] <aesthetic> [FROM <domain>] [TO <range>] [VIA <transform>] [SETTING
 
 **Subclauses**:
 
-- **`FROM [...]`** - Input domain specification (maps to Vega-Lite `scale.domain`)
+- **`FROM [...]`** - Input range specification (maps to Vega-Lite `scale.domain`)
 - **`TO [...]`** or **`TO palette`** - Output range as array or named palette (maps to Vega-Lite `scale.range` or `scale.scheme`)
 - **`VIA transform`** - Transformation method (reserved for future use)
 - **`SETTING ...`** - Additional properties (e.g., `breaks`)
@@ -1020,15 +1020,15 @@ SCALE DATE x
 -- Enables proper date axis formatting
 ```
 
-**Domain Specification** (FROM clause):
+**Input Range Specification** (FROM clause):
 
-The `FROM` clause explicitly sets the input domain for a scale:
+The `FROM` clause explicitly sets the input range for a scale:
 
 ```sql
--- Set domain for discrete scale
+-- Set range for discrete scale
 SCALE DISCRETE color FROM ['A', 'B', 'C']
 
--- Set domain for continuous scale
+-- Set range for continuous scale
 SCALE CONTINUOUS x FROM [0, 100]
 ```
 
@@ -1044,7 +1044,7 @@ SCALE color FROM ['A', 'B'] TO ['red', 'blue']
 SCALE color TO viridis
 ```
 
-**Note**: Cannot specify domain in both SCALE and COORD for the same aesthetic (will error).
+**Note**: Cannot specify range in both SCALE and COORD for the same aesthetic (will error).
 
 **Examples**:
 
@@ -1052,16 +1052,16 @@ SCALE color TO viridis
 -- Date scale
 SCALE DATE x
 
--- Continuous scale with domain
+-- Continuous scale with input range
 SCALE CONTINUOUS y FROM [0, 100]
 
--- Discrete color scale with domain and explicit range
+-- Discrete color scale with input range and output range
 SCALE DISCRETE color FROM ['A', 'B', 'C'] TO ['red', 'green', 'blue']
 
 -- Color scale with named palette
 SCALE color TO viridis
 
--- Scale with domain and additional settings
+-- Scale with input range and additional settings
 SCALE DATE x FROM ['2024-01-01', '2024-12-31'] SETTING breaks => '1 month'
 ```
 
@@ -1119,22 +1119,22 @@ COORD SETTING <properties>
 
 - `xlim => [min, max]` - Set x-axis limits
 - `ylim => [min, max]` - Set y-axis limits
-- `<aesthetic> => [values...]` - Set domain for any aesthetic (color, fill, size, etc.)
+- `<aesthetic> => [values...]` - Set range for any aesthetic (color, fill, size, etc.)
 
 **Flip**:
 
-- `<aesthetic> => [values...]` - Set domain for any aesthetic
+- `<aesthetic> => [values...]` - Set range for any aesthetic
 
 **Polar**:
 
 - `theta => <aesthetic>` - Which aesthetic maps to angle (defaults to `y`)
-- `<aesthetic> => [values...]` - Set domain for any aesthetic
+- `<aesthetic> => [values...]` - Set range for any aesthetic
 
 **Important Notes**:
 
 1. **Axis limits auto-swap**: `xlim => [100, 0]` automatically becomes `[0, 100]`
 2. **ggplot2 compatibility**: `coord_flip` preserves axis label names (labels stay with aesthetic names, not visual position)
-3. **Domain conflicts**: Error if same aesthetic has domain in both SCALE and COORD
+3. **Range conflicts**: Error if same aesthetic has input range in both SCALE and COORD
 4. **Multi-layer support**: All coordinate transforms apply to all layers
 
 **Status**:
@@ -1150,7 +1150,7 @@ COORD SETTING <properties>
 -- Cartesian with axis limits
 COORD cartesian SETTING xlim => [0, 100], ylim => [0, 50]
 
--- Cartesian with aesthetic domain
+-- Cartesian with aesthetic range
 COORD cartesian SETTING color => O ['red', 'green', 'blue']
 
 -- Cartesian shorthand (type optional when using SETTING)
@@ -1159,7 +1159,7 @@ COORD SETTING xlim => [0, 100]
 -- Flip coordinates for horizontal bar chart
 COORD flip
 
--- Flip with aesthetic domain
+-- Flip with aesthetic range
 COORD flip SETTING color => ['A', 'B', 'C']
 
 -- Polar for pie chart (theta defaults to y)
