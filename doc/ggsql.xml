@@ -109,6 +109,15 @@
       <item>WRAP</item>
       <item>ORDER</item>
       <item>PARTITION</item>
+      <item>TO</item>
+      <item>VIA</item>
+    </list>
+
+    <!-- Scale Type Modifiers (before aesthetic name in SCALE) -->
+    <list name="scale_modifiers">
+      <item>CONTINUOUS</item>
+      <item>DISCRETE</item>
+      <item>BINNED</item>
     </list>
 
     <!-- Geom Types (only in DRAW context) -->
@@ -526,6 +535,9 @@
         <WordDetect attribute="Keyword" context="#stay" String="FROM" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
+
+        <!-- Scale type modifiers (CONTINUOUS, DISCRETE, BINNED) -->
+        <keyword attribute="Keyword" context="#stay" String="scale_modifiers"/>
 
         <!-- Scale types - only highlighted here -->
         <keyword attribute="Data Type" context="#stay" String="scale_types"/>
