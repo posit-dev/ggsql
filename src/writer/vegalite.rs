@@ -404,33 +404,33 @@ impl VegaLiteWriter {
                         }
                     }
 
-                    // Handle transform method (VIA clause)
-                    if let Some(ref transform) = scale.transform_method {
-                        match transform.as_str() {
-                            "identity" => {} // Linear (default), no additional scale properties needed
-                            "log10" => {
+                    // Handle transform (VIA clause)
+                    if let Some(ref transform) = scale.transform {
+                        use crate::plot::scale::TransformKind;
+                        match transform.transform_kind() {
+                            TransformKind::Identity => {} // Linear (default), no additional scale properties needed
+                            TransformKind::Log10 => {
                                 scale_obj.insert("type".to_string(), json!("log"));
                                 scale_obj.insert("base".to_string(), json!(10));
                                 scale_obj.insert("zero".to_string(), json!(false));
                             }
-                            "log" => {
+                            TransformKind::Log => {
                                 // Natural logarithm - Vega-Lite uses "log" with base e
                                 scale_obj.insert("type".to_string(), json!("log"));
                                 scale_obj.insert("base".to_string(), json!(std::f64::consts::E));
                                 scale_obj.insert("zero".to_string(), json!(false));
                             }
-                            "log2" => {
+                            TransformKind::Log2 => {
                                 scale_obj.insert("type".to_string(), json!("log"));
                                 scale_obj.insert("base".to_string(), json!(2));
                                 scale_obj.insert("zero".to_string(), json!(false));
                             }
-                            "sqrt" => {
+                            TransformKind::Sqrt => {
                                 scale_obj.insert("type".to_string(), json!("sqrt"));
                             }
-                            "asinh" | "pseudo_log" => {
+                            TransformKind::Asinh | TransformKind::PseudoLog => {
                                 scale_obj.insert("type".to_string(), json!("symlog"));
                             }
-                            _ => {} // Unknown transform, ignore
                         }
                     }
 
@@ -438,6 +438,47 @@ impl VegaLiteWriter {
                     use crate::plot::ParameterValue;
                     if let Some(ParameterValue::Boolean(true)) = scale.properties.get("reverse") {
                         scale_obj.insert("reverse".to_string(), json!(true));
+                    }
+
+                    // Handle resolved breaks -> axis.values or legend.values
+                    if let Some(ref breaks) = scale.resolved_breaks {
+                        use crate::plot::ArrayElement;
+                        let values: Vec<Value> = breaks
+                            .iter()
+                            .map(|e| match e {
+                                ArrayElement::String(s) => json!(s),
+                                ArrayElement::Number(n) => json!(n),
+                                ArrayElement::Boolean(b) => json!(b),
+                                ArrayElement::Null => json!(null),
+                            })
+                            .collect();
+
+                        // Positional aesthetics use axis.values, others use legend.values
+                        if matches!(
+                            aesthetic,
+                            "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
+                        ) {
+                            // Add to axis object
+                            if !encoding.get("axis").map_or(false, |v| v.is_null()) {
+                                let axis = encoding.get_mut("axis").and_then(|v| v.as_object_mut());
+                                if let Some(axis_map) = axis {
+                                    axis_map.insert("values".to_string(), json!(values));
+                                } else {
+                                    encoding["axis"] = json!({"values": values});
+                                }
+                            }
+                        } else {
+                            // Add to legend object for non-positional aesthetics
+                            if !encoding.get("legend").map_or(false, |v| v.is_null()) {
+                                let legend =
+                                    encoding.get_mut("legend").and_then(|v| v.as_object_mut());
+                                if let Some(legend_map) = legend {
+                                    legend_map.insert("values".to_string(), json!(values));
+                                } else {
+                                    encoding["legend"] = json!({"values": values});
+                                }
+                            }
+                        }
                     }
                 }
                 // We don't automatically want to include 0 in our position scales
@@ -4123,5 +4164,159 @@ mod tests {
             !(ymin_has_title && ymax_has_title),
             "Only one of ymin/ymax should get the title (first wins per family)"
         );
+    }
+
+    #[test]
+    fn test_resolved_breaks_positional_axis_values() {
+        // Test that resolved_breaks for positional aesthetics maps to axis.values
+        use crate::plot::scale::Scale;
+        use crate::plot::ArrayElement;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add a scale with resolved breaks for x
+        let mut scale = Scale::new("x");
+        scale.resolved_breaks = Some(vec![
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(25.0),
+            ArrayElement::Number(50.0),
+            ArrayElement::Number(75.0),
+            ArrayElement::Number(100.0),
+        ]);
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[10, 50, 90],
+            "y" => &[1, 2, 3],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // The x encoding should have axis.values
+        let axis_values = &vl_spec["layer"][0]["encoding"]["x"]["axis"]["values"];
+        assert!(axis_values.is_array(), "axis.values should be an array");
+        assert_eq!(
+            axis_values.as_array().unwrap().len(),
+            5,
+            "axis.values should have 5 elements"
+        );
+        assert_eq!(axis_values[0], 0.0);
+        assert_eq!(axis_values[4], 100.0);
+    }
+
+    #[test]
+    fn test_resolved_breaks_color_legend_values() {
+        // Test that resolved_breaks for non-positional aesthetics maps to legend.values
+        use crate::plot::scale::Scale;
+        use crate::plot::ArrayElement;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "color".to_string(),
+                AestheticValue::standard_column("z".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add a scale with resolved breaks for color
+        let mut scale = Scale::new("color");
+        scale.resolved_breaks = Some(vec![
+            ArrayElement::Number(10.0),
+            ArrayElement::Number(50.0),
+            ArrayElement::Number(90.0),
+        ]);
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[4, 5, 6],
+            "z" => &[10.0, 50.0, 90.0],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // The color encoding should have legend.values
+        let legend_values = &vl_spec["layer"][0]["encoding"]["color"]["legend"]["values"];
+        assert!(legend_values.is_array(), "legend.values should be an array");
+        assert_eq!(
+            legend_values.as_array().unwrap().len(),
+            3,
+            "legend.values should have 3 elements"
+        );
+        assert_eq!(legend_values[0], 10.0);
+        assert_eq!(legend_values[2], 90.0);
+    }
+
+    #[test]
+    fn test_resolved_breaks_string_values() {
+        // Test that resolved_breaks with string values (e.g., dates) work correctly
+        use crate::plot::scale::Scale;
+        use crate::plot::ArrayElement;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("date".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add a date scale with resolved breaks as strings
+        let mut scale = Scale::new("x");
+        scale.scale_type = Some(crate::plot::ScaleType::date());
+        scale.resolved_breaks = Some(vec![
+            ArrayElement::String("2024-01-01".to_string()),
+            ArrayElement::String("2024-02-01".to_string()),
+            ArrayElement::String("2024-03-01".to_string()),
+        ]);
+        spec.scales.push(scale);
+
+        let df = df! {
+            "date" => &["2024-01-15", "2024-02-15", "2024-03-15"],
+            "y" => &[1, 2, 3],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // The x encoding should have axis.values with date strings
+        let axis_values = &vl_spec["layer"][0]["encoding"]["x"]["axis"]["values"];
+        assert!(axis_values.is_array(), "axis.values should be an array");
+        assert_eq!(axis_values[0], "2024-01-01");
+        assert_eq!(axis_values[1], "2024-02-01");
+        assert_eq!(axis_values[2], "2024-03-01");
     }
 }

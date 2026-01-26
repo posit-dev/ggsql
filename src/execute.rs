@@ -1176,13 +1176,13 @@ fn resolve_scales(spec: &mut Plot, data_map: &HashMap<String, DataFrame>) -> Res
                     GgsqlError::ValidationError(format!("Scale '{}': {}", aesthetic, e))
                 })?;
 
-            // Resolve transform method (fills in default, validates user input)
+            // Resolve transform (fills in default, validates user input)
             let resolved_transform = st
-                .resolve_transform(&aesthetic, spec.scales[idx].transform_method.as_deref())
+                .resolve_transform(&aesthetic, spec.scales[idx].transform.as_ref())
                 .map_err(|e| {
                     GgsqlError::ValidationError(format!("Scale '{}': {}", aesthetic, e))
                 })?;
-            spec.scales[idx].transform_method = Some(resolved_transform);
+            spec.scales[idx].transform = Some(resolved_transform);
 
             // Resolve input range using the scale type's method
             let resolved_range = st

@@ -4,7 +4,7 @@
 //! handling all the node types defined in the grammar.
 
 use crate::plot::layer::geom::Geom;
-use crate::plot::scale::{color_to_hex, is_color_aesthetic};
+use crate::plot::scale::{color_to_hex, is_color_aesthetic, Transform};
 use crate::plot::*;
 use crate::{GgsqlError, Result};
 use std::collections::HashMap;
@@ -620,7 +620,7 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
     let mut scale_type: Option<ScaleType> = None;
     let mut input_range: Option<Vec<ArrayElement>> = None;
     let mut output_range: Option<OutputRange> = None;
-    let mut transform_method: Option<String> = None;
+    let mut transform: Option<Transform> = None;
     let mut properties = HashMap::new();
 
     let mut cursor = node.walk();
@@ -644,8 +644,8 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
                 output_range = parse_scale_to_clause(&child, source)?;
             }
             "scale_via_clause" => {
-                // Parse VIA identifier -> transform_method
-                transform_method = parse_scale_via_clause(&child, source)?;
+                // Parse VIA identifier -> transform
+                transform = parse_scale_via_clause(&child, source)?;
             }
             "setting_clause" => {
                 // Reuse existing setting_clause parser
@@ -684,8 +684,9 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
         scale_type,
         input_range,
         output_range,
-        transform_method,
+        transform,
         properties,
+        resolved_breaks: None,
     })
 }
 
@@ -735,14 +736,22 @@ fn parse_scale_to_clause(node: &Node, source: &str) -> Result<Option<OutputRange
 }
 
 /// Parse VIA clause: VIA identifier
-fn parse_scale_via_clause(node: &Node, source: &str) -> Result<Option<String>> {
+fn parse_scale_via_clause(node: &Node, source: &str) -> Result<Option<Transform>> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if matches!(
             child.kind(),
             "identifier" | "bare_identifier" | "quoted_identifier"
         ) {
-            return Ok(Some(get_node_text(&child, source)));
+            let transform_name = get_node_text(&child, source);
+            return match Transform::from_name(&transform_name) {
+                Some(t) => Ok(Some(t)),
+                None => Err(GgsqlError::ParseError(format!(
+                    "Unknown transform: '{}'. Valid transforms are: {}",
+                    transform_name,
+                    crate::plot::scale::ALL_TRANSFORM_NAMES.join(", ")
+                ))),
+            };
         }
     }
     Ok(None)

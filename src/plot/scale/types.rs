@@ -7,6 +7,7 @@ use std::collections::HashMap;
 
 use super::super::types::{ArrayElement, ParameterValue};
 use super::scale_type::ScaleType;
+use super::transform::Transform;
 
 /// Scale configuration (from SCALE clause)
 ///
@@ -30,10 +31,14 @@ pub struct Scale {
     /// Output range specification (TO clause)
     /// Either explicit values or a named palette
     pub output_range: Option<OutputRange>,
-    /// Transformation method (VIA clause, reserved for future use)
-    pub transform_method: Option<String>,
+    /// Transformation (VIA clause)
+    pub transform: Option<Transform>,
     /// Additional scale properties (SETTING clause)
     pub properties: HashMap<String, ParameterValue>,
+    /// Resolved break positions (computed at execution time)
+    /// Maps to Vega-Lite's axis.values or legend.values
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_breaks: Option<Vec<ArrayElement>>,
 }
 
 impl Scale {
@@ -44,8 +49,9 @@ impl Scale {
             scale_type: None,
             input_range: None,
             output_range: None,
-            transform_method: None,
+            transform: None,
             properties: HashMap::new(),
+            resolved_breaks: None,
         }
     }
 }

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use polars::prelude::{ChunkAgg, Column, DataType};
 
-use super::{ScaleTypeKind, ScaleTypeTrait};
+use super::{ScaleTypeKind, ScaleTypeTrait, TransformKind};
 use crate::plot::{ArrayElement, ParameterValue};
 
 /// Continuous scale type - for continuous numeric data
@@ -20,30 +20,30 @@ impl ScaleTypeTrait for Continuous {
         "continuous"
     }
 
-    fn allowed_transforms(&self) -> &'static [&'static str] {
+    fn allowed_transforms(&self) -> &'static [TransformKind] {
         &[
-            "identity",
-            "log10",
-            "log2",
-            "log",
-            "sqrt",
-            "asinh",
-            "pseudo_log",
+            TransformKind::Identity,
+            TransformKind::Log10,
+            TransformKind::Log2,
+            TransformKind::Log,
+            TransformKind::Sqrt,
+            TransformKind::Asinh,
+            TransformKind::PseudoLog,
         ]
     }
 
-    fn default_transform(&self, aesthetic: &str) -> &'static str {
+    fn default_transform(&self, aesthetic: &str) -> TransformKind {
         match aesthetic {
-            "size" => "sqrt", // Area-proportional scaling
-            _ => "identity",
+            "size" => TransformKind::Sqrt, // Area-proportional scaling
+            _ => TransformKind::Identity,
         }
     }
 
     fn allowed_properties(&self, aesthetic: &str) -> &'static [&'static str] {
         if super::is_positional_aesthetic(aesthetic) {
-            &["expand", "oob", "reverse"]
+            &["expand", "oob", "reverse", "breaks", "pretty"]
         } else {
-            &["oob", "reverse"]
+            &["oob", "reverse", "breaks", "pretty"]
         }
     }
 
@@ -56,6 +56,10 @@ impl ScaleTypeTrait for Continuous {
                 super::default_oob(aesthetic).to_string(),
             )),
             "reverse" => Some(ParameterValue::Boolean(false)),
+            "breaks" => Some(ParameterValue::Number(
+                super::super::breaks::DEFAULT_BREAK_COUNT as f64,
+            )),
+            "pretty" => Some(ParameterValue::Boolean(true)),
             _ => None,
         }
     }

@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use super::transform::{Transform, TransformKind};
 use crate::plot::{ArrayElement, ParameterValue};
 
 // Scale type implementations
@@ -171,8 +172,8 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Transforms determine how data values are mapped to visual space.
     ///
     /// Default: only "identity" (no transformation).
-    fn allowed_transforms(&self) -> &'static [&'static str] {
-        &["identity"]
+    fn allowed_transforms(&self) -> &'static [TransformKind] {
+        &[TransformKind::Identity]
     }
 
     /// Returns the default transform for this scale type and aesthetic.
@@ -180,30 +181,34 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// - `size`: defaults to `sqrt` (area-proportional scaling)
     /// - others: default to `identity`
     ///
-    /// Default: "identity" for all aesthetics.
-    fn default_transform(&self, _aesthetic: &str) -> &'static str {
-        "identity"
+    /// Default: identity for all aesthetics.
+    fn default_transform(&self, _aesthetic: &str) -> TransformKind {
+        TransformKind::Identity
     }
 
-    /// Resolve and validate the transform method.
+    /// Resolve and validate the transform.
     /// If user_transform is None, returns default_transform(aesthetic).
     /// If user_transform is Some, validates it's in allowed_transforms().
     fn resolve_transform(
         &self,
         aesthetic: &str,
-        user_transform: Option<&str>,
-    ) -> Result<String, String> {
+        user_transform: Option<&Transform>,
+    ) -> Result<Transform, String> {
         match user_transform {
-            None => Ok(self.default_transform(aesthetic).to_string()),
+            None => Ok(Transform::from_kind(self.default_transform(aesthetic))),
             Some(t) => {
-                if self.allowed_transforms().contains(&t) {
-                    Ok(t.to_string())
+                if self.allowed_transforms().contains(&t.transform_kind()) {
+                    Ok(t.clone())
                 } else {
                     Err(format!(
-                        "Transform '{}' not supported for {} scale. Allowed: {:?}",
-                        t,
+                        "Transform '{}' not supported for {} scale. Allowed: {}",
+                        t.name(),
                         self.name(),
                         self.allowed_transforms()
+                            .iter()
+                            .map(|k| k.name())
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     ))
                 }
             }
@@ -263,6 +268,98 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         }
 
         Ok(resolved)
+    }
+
+    /// Resolve break positions for this scale.
+    ///
+    /// Uses the resolved input range, properties, and transform to calculate
+    /// appropriate break positions. This is transform-aware: log scales will
+    /// produce breaks at powers of the base (or 1-2-5 pattern if pretty=true),
+    /// sqrt scales will produce breaks that are evenly spaced in sqrt-space, etc.
+    ///
+    /// Returns None for scale types that don't support breaks (like Discrete, Identity).
+    /// Returns Some(breaks) with appropriate break values otherwise.
+    ///
+    /// # Arguments
+    /// * `input_range` - The resolved input range (min/max values)
+    /// * `properties` - Resolved properties including `breaks` count and `pretty` flag
+    /// * `transform` - The resolved transform
+    fn resolve_breaks(
+        &self,
+        input_range: Option<&[ArrayElement]>,
+        properties: &HashMap<String, ParameterValue>,
+        transform: Option<&Transform>,
+    ) -> Option<Vec<ArrayElement>> {
+        // Only applicable to continuous-like scales
+        if !self.supports_breaks() {
+            return None;
+        }
+
+        // Extract min/max from input range
+        let (min, max) = match input_range {
+            Some(range) if range.len() >= 2 => {
+                let min = match &range[0] {
+                    ArrayElement::Number(n) => *n,
+                    _ => return None,
+                };
+                let max = match &range[range.len() - 1] {
+                    ArrayElement::Number(n) => *n,
+                    _ => return None,
+                };
+                (min, max)
+            }
+            _ => return None,
+        };
+
+        if min >= max {
+            return None;
+        }
+
+        // Get break count from properties
+        let count = match properties.get("breaks") {
+            Some(ParameterValue::Number(n)) => *n as usize,
+            _ => super::breaks::DEFAULT_BREAK_COUNT,
+        };
+
+        // Get pretty flag from properties (defaults to true)
+        let pretty = match properties.get("pretty") {
+            Some(ParameterValue::Boolean(b)) => *b,
+            _ => true,
+        };
+
+        // Use transform's calculate_breaks method if present and not identity
+        let breaks = match transform {
+            Some(t) if !t.is_identity() => t.calculate_breaks(min, max, count, pretty),
+            _ => {
+                // Identity transform or no transform - use default pretty/linear breaks
+                if pretty {
+                    super::breaks::pretty_breaks(min, max, count)
+                } else {
+                    super::breaks::linear_breaks(min, max, count)
+                }
+            }
+        };
+
+        if breaks.is_empty() {
+            None
+        } else {
+            Some(breaks.into_iter().map(ArrayElement::Number).collect())
+        }
+    }
+
+    /// Returns whether this scale type supports the `breaks` property.
+    ///
+    /// Continuous, Binned, Date, DateTime, and Time scales support breaks.
+    /// Discrete and Identity scales do not.
+    fn supports_breaks(&self) -> bool {
+        matches!(
+            self.scale_type_kind(),
+            ScaleTypeKind::Continuous
+                | ScaleTypeKind::Binned
+                | ScaleTypeKind::Date
+                | ScaleTypeKind::DateTime
+                | ScaleTypeKind::Time
+        )
     }
 }
 
@@ -411,25 +508,43 @@ impl ScaleType {
     }
 
     /// Returns the list of transforms this scale type supports.
-    pub fn allowed_transforms(&self) -> &'static [&'static str] {
+    pub fn allowed_transforms(&self) -> &'static [TransformKind] {
         self.0.allowed_transforms()
     }
 
     /// Returns the default transform for this scale type and aesthetic.
-    pub fn default_transform(&self, aesthetic: &str) -> &'static str {
+    pub fn default_transform(&self, aesthetic: &str) -> TransformKind {
         self.0.default_transform(aesthetic)
     }
 
-    /// Resolve and validate the transform method.
+    /// Resolve and validate the transform.
     ///
     /// If user_transform is None, returns default_transform(aesthetic).
     /// If user_transform is Some, validates it's in allowed_transforms().
     pub fn resolve_transform(
         &self,
         aesthetic: &str,
-        user_transform: Option<&str>,
-    ) -> Result<String, String> {
+        user_transform: Option<&Transform>,
+    ) -> Result<Transform, String> {
         self.0.resolve_transform(aesthetic, user_transform)
+    }
+
+    /// Resolve break positions for this scale.
+    ///
+    /// Uses the resolved input range, properties, and transform to calculate
+    /// appropriate break positions. This is transform-aware.
+    pub fn resolve_breaks(
+        &self,
+        input_range: Option<&[ArrayElement]>,
+        properties: &HashMap<String, ParameterValue>,
+        transform: Option<&Transform>,
+    ) -> Option<Vec<ArrayElement>> {
+        self.0.resolve_breaks(input_range, properties, transform)
+    }
+
+    /// Returns whether this scale type supports the `breaks` property.
+    pub fn supports_breaks(&self) -> bool {
+        self.0.supports_breaks()
     }
 }
 
@@ -1444,58 +1559,72 @@ mod tests {
     #[test]
     fn test_continuous_default_transform_identity() {
         // Most aesthetics default to identity
-        assert_eq!(ScaleType::continuous().default_transform("x"), "identity");
-        assert_eq!(ScaleType::continuous().default_transform("y"), "identity");
+        assert_eq!(
+            ScaleType::continuous().default_transform("x"),
+            TransformKind::Identity
+        );
+        assert_eq!(
+            ScaleType::continuous().default_transform("y"),
+            TransformKind::Identity
+        );
         assert_eq!(
             ScaleType::continuous().default_transform("color"),
-            "identity"
+            TransformKind::Identity
         );
     }
 
     #[test]
     fn test_continuous_default_transform_size_is_sqrt() {
         // Size aesthetic defaults to sqrt for area-proportional scaling
-        assert_eq!(ScaleType::continuous().default_transform("size"), "sqrt");
+        assert_eq!(
+            ScaleType::continuous().default_transform("size"),
+            TransformKind::Sqrt
+        );
     }
 
     #[test]
     fn test_continuous_allows_log_transforms() {
         let transforms = ScaleType::continuous().allowed_transforms();
-        assert!(transforms.contains(&"identity"));
-        assert!(transforms.contains(&"log10"));
-        assert!(transforms.contains(&"log2"));
-        assert!(transforms.contains(&"log"));
-        assert!(transforms.contains(&"sqrt"));
-        assert!(transforms.contains(&"asinh"));
-        assert!(transforms.contains(&"pseudo_log"));
-        // reverse is now a property, not a transform
-        assert!(!transforms.contains(&"reverse"));
+        assert!(transforms.contains(&TransformKind::Identity));
+        assert!(transforms.contains(&TransformKind::Log10));
+        assert!(transforms.contains(&TransformKind::Log2));
+        assert!(transforms.contains(&TransformKind::Log));
+        assert!(transforms.contains(&TransformKind::Sqrt));
+        assert!(transforms.contains(&TransformKind::Asinh));
+        assert!(transforms.contains(&TransformKind::PseudoLog));
     }
 
     #[test]
     fn test_binned_allows_log_transforms() {
         let transforms = ScaleType::binned().allowed_transforms();
-        assert!(transforms.contains(&"identity"));
-        assert!(transforms.contains(&"log10"));
-        assert!(transforms.contains(&"sqrt"));
-        assert!(transforms.contains(&"asinh"));
+        assert!(transforms.contains(&TransformKind::Identity));
+        assert!(transforms.contains(&TransformKind::Log10));
+        assert!(transforms.contains(&TransformKind::Sqrt));
+        assert!(transforms.contains(&TransformKind::Asinh));
     }
 
     #[test]
     fn test_binned_default_transform_size_is_sqrt() {
-        assert_eq!(ScaleType::binned().default_transform("size"), "sqrt");
-        assert_eq!(ScaleType::binned().default_transform("x"), "identity");
+        assert_eq!(
+            ScaleType::binned().default_transform("size"),
+            TransformKind::Sqrt
+        );
+        assert_eq!(
+            ScaleType::binned().default_transform("x"),
+            TransformKind::Identity
+        );
     }
 
     #[test]
     fn test_discrete_only_allows_identity_transform() {
         let transforms = ScaleType::discrete().allowed_transforms();
-        assert_eq!(transforms, &["identity"]);
+        assert_eq!(transforms, &[TransformKind::Identity]);
     }
 
     #[test]
     fn test_discrete_rejects_log_transform() {
-        let result = ScaleType::discrete().resolve_transform("color", Some("log10"));
+        let log10 = Transform::log10();
+        let result = ScaleType::discrete().resolve_transform("color", Some(&log10));
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("log10"));
@@ -1506,64 +1635,56 @@ mod tests {
     #[test]
     fn test_identity_scale_only_allows_identity_transform() {
         let transforms = ScaleType::identity().allowed_transforms();
-        assert_eq!(transforms, &["identity"]);
+        assert_eq!(transforms, &[TransformKind::Identity]);
     }
 
     #[test]
     fn test_resolve_transform_fills_default() {
         // Without user input, fills in default
         let result = ScaleType::continuous().resolve_transform("x", None);
-        assert_eq!(result.unwrap(), "identity");
+        assert_eq!(result.unwrap().transform_kind(), TransformKind::Identity);
 
         let result = ScaleType::continuous().resolve_transform("size", None);
-        assert_eq!(result.unwrap(), "sqrt");
+        assert_eq!(result.unwrap().transform_kind(), TransformKind::Sqrt);
     }
 
     #[test]
     fn test_resolve_transform_validates_user_input() {
         // Valid user input is accepted
-        let result = ScaleType::continuous().resolve_transform("y", Some("log10"));
-        assert_eq!(result.unwrap(), "log10");
+        let log10 = Transform::log10();
+        let result = ScaleType::continuous().resolve_transform("y", Some(&log10));
+        assert_eq!(result.unwrap().transform_kind(), TransformKind::Log10);
 
-        // Invalid user input is rejected
-        let result = ScaleType::continuous().resolve_transform("y", Some("invalid"));
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("invalid"));
-        assert!(err.contains("not supported"));
+        // Invalid user input is rejected (we can't easily test this anymore since
+        // Transform::from_name returns None for invalid names)
     }
 
     #[test]
     fn test_date_allows_identity_only() {
         let transforms = ScaleType::date().allowed_transforms();
-        assert!(transforms.contains(&"identity"));
-        // reverse is now a property, not a transform
-        assert!(!transforms.contains(&"reverse"));
-        assert!(!transforms.contains(&"log10"));
-        assert!(!transforms.contains(&"sqrt"));
+        assert!(transforms.contains(&TransformKind::Identity));
+        assert!(!transforms.contains(&TransformKind::Log10));
+        assert!(!transforms.contains(&TransformKind::Sqrt));
     }
 
     #[test]
     fn test_datetime_allows_identity_only() {
         let transforms = ScaleType::datetime().allowed_transforms();
-        assert!(transforms.contains(&"identity"));
-        // reverse is now a property, not a transform
-        assert!(!transforms.contains(&"reverse"));
-        assert!(!transforms.contains(&"log10"));
+        assert!(transforms.contains(&TransformKind::Identity));
+        assert!(!transforms.contains(&TransformKind::Log10));
     }
 
     #[test]
     fn test_time_allows_identity_only() {
         let transforms = ScaleType::time().allowed_transforms();
-        assert!(transforms.contains(&"identity"));
-        // reverse is now a property, not a transform
-        assert!(!transforms.contains(&"reverse"));
-        assert!(!transforms.contains(&"sqrt"));
+        assert!(transforms.contains(&TransformKind::Identity));
+        assert!(!transforms.contains(&TransformKind::Sqrt));
     }
 
     #[test]
     fn test_date_rejects_log_transform() {
-        let result = ScaleType::date().resolve_transform("x", Some("log10"));
+        let log10 = Transform::log10();
+        let result = ScaleType::date().resolve_transform("x", Some(&log10));
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("log10"));
@@ -1572,31 +1693,24 @@ mod tests {
     }
 
     #[test]
-    fn test_date_rejects_reverse_transform() {
-        // reverse is now a property, not a transform
-        let result = ScaleType::date().resolve_transform("x", Some("reverse"));
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_continuous_accepts_all_valid_transforms() {
-        // reverse is now a property, not a transform
-        for transform in &[
-            "identity",
-            "log10",
-            "log2",
-            "log",
-            "sqrt",
-            "asinh",
-            "pseudo_log",
+        for kind in &[
+            TransformKind::Identity,
+            TransformKind::Log10,
+            TransformKind::Log2,
+            TransformKind::Log,
+            TransformKind::Sqrt,
+            TransformKind::Asinh,
+            TransformKind::PseudoLog,
         ] {
-            let result = ScaleType::continuous().resolve_transform("y", Some(transform));
+            let transform = Transform::from_kind(*kind);
+            let result = ScaleType::continuous().resolve_transform("y", Some(&transform));
             assert!(
                 result.is_ok(),
-                "Expected transform '{}' to be valid for continuous scale",
-                transform
+                "Expected transform '{:?}' to be valid for continuous scale",
+                kind
             );
-            assert_eq!(result.unwrap(), *transform);
+            assert_eq!(result.unwrap().transform_kind(), *kind);
         }
     }
 
@@ -1679,5 +1793,284 @@ mod tests {
 
         let result = ScaleType::identity().resolve_properties("x", &props);
         assert!(result.is_err());
+    }
+
+    // =========================================================================
+    // Breaks and Pretty Property Tests
+    // =========================================================================
+
+    #[test]
+    fn test_breaks_property_default_is_5() {
+        let props = HashMap::new();
+        let resolved = ScaleType::continuous()
+            .resolve_properties("x", &props)
+            .unwrap();
+        assert_eq!(resolved.get("breaks"), Some(&ParameterValue::Number(5.0)));
+    }
+
+    #[test]
+    fn test_pretty_property_default_is_true() {
+        let props = HashMap::new();
+        let resolved = ScaleType::continuous()
+            .resolve_properties("x", &props)
+            .unwrap();
+        assert_eq!(resolved.get("pretty"), Some(&ParameterValue::Boolean(true)));
+    }
+
+    #[test]
+    fn test_breaks_property_accepts_number() {
+        let mut props = HashMap::new();
+        props.insert("breaks".to_string(), ParameterValue::Number(10.0));
+
+        let result = ScaleType::continuous().resolve_properties("x", &props);
+        assert!(result.is_ok());
+        let resolved = result.unwrap();
+        assert_eq!(resolved.get("breaks"), Some(&ParameterValue::Number(10.0)));
+    }
+
+    #[test]
+    fn test_breaks_property_accepts_array() {
+        use crate::plot::ArrayElement;
+
+        let mut props = HashMap::new();
+        props.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+
+        let result = ScaleType::continuous().resolve_properties("x", &props);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_pretty_property_accepts_false() {
+        let mut props = HashMap::new();
+        props.insert("pretty".to_string(), ParameterValue::Boolean(false));
+
+        let result = ScaleType::continuous().resolve_properties("x", &props);
+        assert!(result.is_ok());
+        let resolved = result.unwrap();
+        assert_eq!(
+            resolved.get("pretty"),
+            Some(&ParameterValue::Boolean(false))
+        );
+    }
+
+    #[test]
+    fn test_breaks_supported_by_continuous_scales() {
+        let mut props = HashMap::new();
+        props.insert("breaks".to_string(), ParameterValue::Number(5.0));
+
+        for scale_type in &[
+            ScaleType::continuous(),
+            ScaleType::binned(),
+            ScaleType::date(),
+            ScaleType::datetime(),
+            ScaleType::time(),
+        ] {
+            let result = scale_type.resolve_properties("x", &props);
+            assert!(
+                result.is_ok(),
+                "Scale {:?} should support breaks property",
+                scale_type.scale_type_kind()
+            );
+        }
+    }
+
+    #[test]
+    fn test_discrete_does_not_support_breaks() {
+        let mut props = HashMap::new();
+        props.insert("breaks".to_string(), ParameterValue::Number(5.0));
+
+        let result = ScaleType::discrete().resolve_properties("x", &props);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .contains("does not support SETTING 'breaks'"));
+    }
+
+    #[test]
+    fn test_identity_does_not_support_breaks() {
+        let mut props = HashMap::new();
+        props.insert("breaks".to_string(), ParameterValue::Number(5.0));
+
+        let result = ScaleType::identity().resolve_properties("x", &props);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_date_scale_accepts_string_breaks() {
+        let mut props = HashMap::new();
+        props.insert(
+            "breaks".to_string(),
+            ParameterValue::String("month".to_string()),
+        );
+
+        // Date scale should accept string breaks (for temporal intervals)
+        let result = ScaleType::date().resolve_properties("x", &props);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_breaks_available_for_non_positional_aesthetics() {
+        // breaks should work for color legends too
+        let mut props = HashMap::new();
+        props.insert("breaks".to_string(), ParameterValue::Number(4.0));
+
+        let result = ScaleType::continuous().resolve_properties("color", &props);
+        assert!(result.is_ok());
+    }
+
+    // =========================================================================
+    // resolve_breaks Tests
+    // =========================================================================
+
+    #[test]
+    fn test_resolve_breaks_continuous_identity() {
+        let input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
+        let mut props = HashMap::new();
+        props.insert("breaks".to_string(), ParameterValue::Number(5.0));
+        props.insert("pretty".to_string(), ParameterValue::Boolean(true));
+
+        let identity = Transform::identity();
+        let breaks =
+            ScaleType::continuous().resolve_breaks(input_range.as_deref(), &props, Some(&identity));
+
+        assert!(breaks.is_some());
+        let breaks = breaks.unwrap();
+        // Pretty breaks should produce nice numbers
+        assert!(!breaks.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_breaks_continuous_log10() {
+        let input_range = Some(vec![
+            ArrayElement::Number(1.0),
+            ArrayElement::Number(1000.0),
+        ]);
+        let mut props = HashMap::new();
+        props.insert("breaks".to_string(), ParameterValue::Number(10.0));
+        props.insert("pretty".to_string(), ParameterValue::Boolean(false));
+
+        let log10 = Transform::log10();
+        let breaks =
+            ScaleType::continuous().resolve_breaks(input_range.as_deref(), &props, Some(&log10));
+
+        assert!(breaks.is_some());
+        let breaks = breaks.unwrap();
+        // Should have powers of 10: 1, 10, 100, 1000
+        assert!(breaks.contains(&ArrayElement::Number(1.0)));
+        assert!(breaks.contains(&ArrayElement::Number(10.0)));
+        assert!(breaks.contains(&ArrayElement::Number(100.0)));
+        assert!(breaks.contains(&ArrayElement::Number(1000.0)));
+    }
+
+    #[test]
+    fn test_resolve_breaks_continuous_log10_pretty() {
+        let input_range = Some(vec![ArrayElement::Number(1.0), ArrayElement::Number(100.0)]);
+        let mut props = HashMap::new();
+        props.insert("breaks".to_string(), ParameterValue::Number(10.0));
+        props.insert("pretty".to_string(), ParameterValue::Boolean(true));
+
+        let log10 = Transform::log10();
+        let breaks =
+            ScaleType::continuous().resolve_breaks(input_range.as_deref(), &props, Some(&log10));
+
+        assert!(breaks.is_some());
+        let breaks = breaks.unwrap();
+        // Should have 1-2-5 pattern: 1, 2, 5, 10, 20, 50, 100
+        assert!(breaks.contains(&ArrayElement::Number(1.0)));
+        assert!(breaks.contains(&ArrayElement::Number(10.0)));
+        assert!(breaks.contains(&ArrayElement::Number(100.0)));
+    }
+
+    #[test]
+    fn test_resolve_breaks_continuous_sqrt() {
+        let input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
+        let mut props = HashMap::new();
+        props.insert("breaks".to_string(), ParameterValue::Number(5.0));
+        props.insert("pretty".to_string(), ParameterValue::Boolean(false));
+
+        let sqrt = Transform::sqrt();
+        let breaks =
+            ScaleType::continuous().resolve_breaks(input_range.as_deref(), &props, Some(&sqrt));
+
+        assert!(breaks.is_some());
+        let breaks = breaks.unwrap();
+        assert_eq!(breaks.len(), 5);
+    }
+
+    #[test]
+    fn test_resolve_breaks_discrete_returns_none() {
+        let input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
+        let props = HashMap::new();
+
+        let breaks = ScaleType::discrete().resolve_breaks(input_range.as_deref(), &props, None);
+
+        // Discrete scales don't support breaks
+        assert!(breaks.is_none());
+    }
+
+    #[test]
+    fn test_resolve_breaks_identity_scale_returns_none() {
+        let input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
+        let props = HashMap::new();
+
+        let breaks = ScaleType::identity().resolve_breaks(input_range.as_deref(), &props, None);
+
+        // Identity scales don't support breaks
+        assert!(breaks.is_none());
+    }
+
+    #[test]
+    fn test_resolve_breaks_no_input_range() {
+        let props = HashMap::new();
+
+        let breaks = ScaleType::continuous().resolve_breaks(None, &props, None);
+
+        // Can't calculate breaks without input range
+        assert!(breaks.is_none());
+    }
+
+    #[test]
+    fn test_resolve_breaks_uses_default_count() {
+        let input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
+        let props = HashMap::new(); // No explicit breaks count
+
+        let identity = Transform::identity();
+        let breaks =
+            ScaleType::continuous().resolve_breaks(input_range.as_deref(), &props, Some(&identity));
+
+        assert!(breaks.is_some());
+        // Default is 5 breaks, should produce something close
+    }
+
+    #[test]
+    fn test_supports_breaks_continuous() {
+        assert!(ScaleType::continuous().supports_breaks());
+    }
+
+    #[test]
+    fn test_supports_breaks_binned() {
+        assert!(ScaleType::binned().supports_breaks());
+    }
+
+    #[test]
+    fn test_supports_breaks_date() {
+        assert!(ScaleType::date().supports_breaks());
+    }
+
+    #[test]
+    fn test_supports_breaks_discrete_false() {
+        assert!(!ScaleType::discrete().supports_breaks());
+    }
+
+    #[test]
+    fn test_supports_breaks_identity_false() {
+        assert!(!ScaleType::identity().supports_breaks());
     }
 }
