@@ -31,7 +31,7 @@ A declarative visualization language that extends SQL with powerful data visuali
 
 Write standard SQL queries and seamlessly extend them with visualization clauses. Your existing SQL knowledge transfers directly.
 
-```{.sql .code-example}
+```{.ggsql .code-example}
 SELECT date, revenue, region
 FROM sales
 WHERE year = 2024
@@ -45,11 +45,11 @@ DRAW line
 
 Compose visualizations from independent layers, scales, and coordinates. Mix and match geoms, facets, and themes for precise control.
 
-```{.sql .code-example}
+```{.ggsql .code-example}
 DRAW line 
-    MAPPING x AS date, y AS value
+    MAPPING date AS x, value AS y
 DRAW point 
-    MAPPING x AS date, y AS value
+    MAPPING date AS x, value AS y
 SCALE x 
     SETTING type => 'date'
 FACET WRAP region
@@ -61,7 +61,7 @@ FACET WRAP region
 
 Connect to DuckDB, PostgreSQL, or SQLite. Output to Vega-Lite, ggplot2, or render directly to PNG.
 
-```{.sql .code-example}
+```{.ggsql .code-example}
 -- Use any data source
 ggsql exec "SELECT ..."
   --reader duckdb://data.db
@@ -127,7 +127,7 @@ Parse, validate, and execute queries from the command line. Perfect for automati
 ::: {.example-container}
 
 ::: {.example-code}
-```{.sql}
+```{.ggsql}
 -- Create a multi-layer visualization
 SELECT date, revenue, region
 FROM sales

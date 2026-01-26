@@ -18,6 +18,7 @@ impl GeomTrait for AbLine {
                 "intercept",
                 "color",
                 "colour",
+                "stroke",
                 "linetype",
                 "linewidth",
                 "opacity",

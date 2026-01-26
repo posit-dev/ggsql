@@ -14,7 +14,7 @@ impl GeomTrait for Tile {
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
             supported: &[
-                "x", "y", "color", "colour", "fill", "width", "height", "opacity",
+                "x", "y", "color", "colour", "fill", "stroke", "width", "height", "opacity",
             ],
             required: &["x", "y"],
             hidden: &[],

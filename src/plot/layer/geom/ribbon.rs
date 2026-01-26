@@ -13,7 +13,9 @@ impl GeomTrait for Ribbon {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &["x", "ymin", "ymax", "color", "colour", "fill", "opacity"],
+            supported: &[
+                "x", "ymin", "ymax", "color", "colour", "fill", "stroke", "opacity",
+            ],
             required: &["x", "ymin", "ymax"],
             hidden: &[],
         }

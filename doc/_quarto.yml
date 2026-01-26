@@ -84,6 +84,8 @@ website:
 
 format:
   html:
+    syntax-definitions:
+      - ggsql.xml
     theme:
       - cosmo
       - brand

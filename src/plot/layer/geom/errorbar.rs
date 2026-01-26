@@ -22,6 +22,7 @@ impl GeomTrait for ErrorBar {
                 "xmax",
                 "color",
                 "colour",
+                "stroke",
                 "linewidth",
                 "opacity",
             ],

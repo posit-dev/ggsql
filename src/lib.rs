@@ -524,8 +524,8 @@ mod integration_tests {
         let query = r#"
             SELECT 1 as x, 10 as y
             VISUALISE x, y
-            DRAW line MAPPING 'value' AS color
-            DRAW point MAPPING 'value2' AS color
+            DRAW line MAPPING 'value' AS linetype
+            DRAW point MAPPING 'value2' AS shape
         "#;
 
         // Prepare data - this parses, injects constants into global data, and replaces literals with columns
@@ -553,12 +553,12 @@ mod integration_tests {
         let global_df = prepared.data.get(naming::GLOBAL_DATA_KEY).unwrap();
         let col_names = global_df.get_column_names();
         assert!(
-            col_names.iter().any(|c| *c == "__ggsql_const_color_0__"),
+            col_names.iter().any(|c| *c == "__ggsql_const_linetype_0__"),
             "Global data should have layer 0 color constant: {:?}",
             col_names
         );
         assert!(
-            col_names.iter().any(|c| *c == "__ggsql_const_color_1__"),
+            col_names.iter().any(|c| *c == "__ggsql_const_shape_1__"),
             "Global data should have layer 1 color constant: {:?}",
             col_names
         );
@@ -572,18 +572,19 @@ mod integration_tests {
         assert_eq!(vl_spec["layer"].as_array().unwrap().len(), 2);
 
         // Verify the color aesthetic is mapped to layer-indexed synthetic columns
-        let layer0_color = &vl_spec["layer"][0]["encoding"]["color"];
-        let layer1_color = &vl_spec["layer"][1]["encoding"]["color"];
+        // Note: linetype is mapped to Vega-Lite's strokeDash channel
+        let layer0_color = &vl_spec["layer"][0]["encoding"]["strokeDash"];
+        let layer1_color = &vl_spec["layer"][1]["encoding"]["shape"];
 
-        // Color should be field-mapped to layer-indexed columns
+        // Constants should be field-mapped to layer-indexed columns
         assert_eq!(
             layer0_color["field"].as_str().unwrap(),
-            "__ggsql_const_color_0__",
+            "__ggsql_const_linetype_0__",
             "Layer 0 color should map to layer-indexed column"
         );
         assert_eq!(
             layer1_color["field"].as_str().unwrap(),
-            "__ggsql_const_color_1__",
+            "__ggsql_const_shape_1__",
             "Layer 1 color should map to layer-indexed column"
         );
 
@@ -594,18 +595,18 @@ mod integration_tests {
         // Verify constant values appear in the global data with layer-indexed names
         let data_row = &global_data.as_array().unwrap()[0];
         assert_eq!(
-            data_row["__ggsql_const_color_0__"], "value",
+            data_row["__ggsql_const_linetype_0__"], "value",
             "Layer 0 constant should be 'value'"
         );
         assert_eq!(
-            data_row["__ggsql_const_color_1__"], "value2",
+            data_row["__ggsql_const_shape_1__"], "value2",
             "Layer 1 constant should be 'value2'"
         );
     }
 
     #[test]
-    fn test_end_to_end_facet_with_constant_colors() {
-        // Test faceting with multiple layers that have constant color mappings
+    fn test_end_to_end_facet_with_constant_strokes() {
+        // Test faceting with multiple layers that have constant stroke mappings
         // This verifies the fix for faceting compatibility with constants
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
@@ -629,10 +630,10 @@ mod integration_tests {
             SELECT month, region, category, revenue, quantity * 10 as qty_scaled
             FROM facet_test
             VISUALISE month AS x
-            DRAW line MAPPING revenue AS y, 'value' AS color
-            DRAW point MAPPING revenue AS y, 'value2' AS color SETTING size => 30
-            DRAW line MAPPING qty_scaled AS y, 'value3' AS color
-            DRAW point MAPPING qty_scaled AS y, 'value4' AS color SETTING size => 30
+            DRAW line MAPPING revenue AS y, 'value' AS stroke
+            DRAW point MAPPING revenue AS y, 'value2' AS stroke SETTING size => 30
+            DRAW line MAPPING qty_scaled AS y, 'value3' AS stroke
+            DRAW point MAPPING qty_scaled AS y, 'value4' AS stroke SETTING size => 30
             SCALE x SETTING type => 'date'
             FACET region BY category
         "#;
@@ -667,19 +668,19 @@ mod integration_tests {
         let global_df = prepared.data.get(naming::GLOBAL_DATA_KEY).unwrap();
         let col_names = global_df.get_column_names();
         assert!(
-            col_names.iter().any(|c| *c == "__ggsql_const_color_0__"),
+            col_names.iter().any(|c| *c == "__ggsql_const_stroke_0__"),
             "Should have layer 0 color constant"
         );
         assert!(
-            col_names.iter().any(|c| *c == "__ggsql_const_color_1__"),
+            col_names.iter().any(|c| *c == "__ggsql_const_stroke_1__"),
             "Should have layer 1 color constant"
         );
         assert!(
-            col_names.iter().any(|c| *c == "__ggsql_const_color_2__"),
+            col_names.iter().any(|c| *c == "__ggsql_const_stroke_2__"),
             "Should have layer 2 color constant"
         );
         assert!(
-            col_names.iter().any(|c| *c == "__ggsql_const_color_3__"),
+            col_names.iter().any(|c| *c == "__ggsql_const_stroke_3__"),
             "Should have layer 3 color constant"
         );
 
@@ -699,7 +700,7 @@ mod integration_tests {
     #[test]
     fn test_end_to_end_global_constant_in_visualise() {
         // Test that global constants in VISUALISE clause work correctly
-        // e.g., VISUALISE date AS x, value AS y, 'value' AS color
+        // e.g., VISUALISE date AS x, value AS y, 'value' AS stroke
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
@@ -716,10 +717,10 @@ mod integration_tests {
             )
             .unwrap();
 
-        // Query with global constant color in VISUALISE clause
+        // Query with global constant stroke in VISUALISE clause
         let query = r#"
             SELECT date, value FROM timeseries
-            VISUALISE date AS x, value AS y, 'value' AS color
+            VISUALISE date AS x, value AS y, 'value' AS stroke
             DRAW line
             DRAW point SETTING size => 50
             SCALE x SETTING type => 'date'
@@ -738,13 +739,13 @@ mod integration_tests {
         let global_df = prepared.data.get(naming::GLOBAL_DATA_KEY).unwrap();
         let col_names = global_df.get_column_names();
         assert!(
-            col_names.iter().any(|c| *c == "__ggsql_const_color_0__"),
-            "Should have layer 0 color constant: {:?}",
+            col_names.iter().any(|c| *c == "__ggsql_const_stroke_0__"),
+            "Should have layer 0 stroke constant: {:?}",
             col_names
         );
         assert!(
-            col_names.iter().any(|c| *c == "__ggsql_const_color_1__"),
-            "Should have layer 1 color constant: {:?}",
+            col_names.iter().any(|c| *c == "__ggsql_const_stroke_1__"),
+            "Should have layer 1 stroke constant: {:?}",
             col_names
         );
 
@@ -756,23 +757,23 @@ mod integration_tests {
         // Both layers should have color field-mapped to their indexed constant columns
         assert_eq!(vl_spec["layer"].as_array().unwrap().len(), 2);
         assert_eq!(
-            vl_spec["layer"][0]["encoding"]["color"]["field"]
+            vl_spec["layer"][0]["encoding"]["stroke"]["field"]
                 .as_str()
                 .unwrap(),
-            "__ggsql_const_color_0__"
+            "__ggsql_const_stroke_0__"
         );
         assert_eq!(
-            vl_spec["layer"][1]["encoding"]["color"]["field"]
+            vl_spec["layer"][1]["encoding"]["stroke"]["field"]
                 .as_str()
                 .unwrap(),
-            "__ggsql_const_color_1__"
+            "__ggsql_const_stroke_1__"
         );
 
         // Both constants should have the same value "value"
         let data = &vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
             .as_array()
             .unwrap()[0];
-        assert_eq!(data["__ggsql_const_color_0__"], "value");
-        assert_eq!(data["__ggsql_const_color_1__"], "value");
+        assert_eq!(data["__ggsql_const_stroke_0__"], "value");
+        assert_eq!(data["__ggsql_const_stroke_1__"], "value");
     }
 }

@@ -17,6 +17,7 @@ impl GeomTrait for HLine {
                 "yintercept",
                 "color",
                 "colour",
+                "stroke",
                 "linetype",
                 "linewidth",
                 "opacity",

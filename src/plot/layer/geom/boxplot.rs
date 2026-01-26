@@ -14,7 +14,7 @@ impl GeomTrait for Boxplot {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &["x", "y", "color", "colour", "fill", "opacity"],
+            supported: &["x", "y", "color", "colour", "fill", "stroke", "opacity"],
             required: &["x", "y"],
             hidden: &[],
         }

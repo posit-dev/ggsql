@@ -905,7 +905,7 @@ All clauses (MAPPING, SETTING, PARTITION BY, FILTER) are optional.
 Maps data values (columns or literals) to visual aesthetics. Syntax: `value AS aesthetic`
 
 - **Position**: `x`, `y`, `xmin`, `xmax`, `ymin`, `ymax`
-- **Color**: `color`, `fill`, `opacity`
+- **Color**: `color`, `fill`, `stroke`, `opacity`
 - **Size/Shape**: `size`, `shape`, `linetype`, `linewidth`
 - **Text**: `label`, `family`, `fontface`
 

@@ -17,6 +17,7 @@ impl GeomTrait for VLine {
                 "xintercept",
                 "color",
                 "colour",
+                "stroke",
                 "linetype",
                 "linewidth",
                 "opacity",

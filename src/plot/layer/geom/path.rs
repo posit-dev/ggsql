@@ -18,6 +18,7 @@ impl GeomTrait for Path {
                 "y",
                 "color",
                 "colour",
+                "stroke",
                 "linetype",
                 "linewidth",
                 "opacity",

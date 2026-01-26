@@ -21,7 +21,9 @@ impl GeomTrait for Histogram {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &["x", "weight", "color", "colour", "fill", "opacity"],
+            supported: &[
+                "x", "weight", "color", "colour", "fill", "stroke", "opacity",
+            ],
             required: &["x"],
             // y and x2 are produced by stat_histogram but not valid for manual MAPPING
             hidden: &["y", "x2"],

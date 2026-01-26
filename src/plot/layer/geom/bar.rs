@@ -27,7 +27,7 @@ impl GeomTrait for Bar {
             // If y is missing: stat computes COUNT or SUM(weight)
             // weight: optional, if mapped uses SUM(weight) instead of COUNT(*)
             supported: &[
-                "x", "y", "weight", "color", "colour", "fill", "width", "opacity",
+                "x", "y", "weight", "color", "colour", "fill", "stroke", "width", "opacity",
             ],
             required: &[],
             hidden: &[],

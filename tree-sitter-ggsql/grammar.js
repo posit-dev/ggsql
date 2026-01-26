@@ -609,7 +609,7 @@ module.exports = grammar({
       // Aggregation aesthetic (for bar charts)
       'weight',
       // Color aesthetics
-      'color', 'colour', 'fill', 'opacity',
+      'color', 'colour', 'fill', 'stroke', 'opacity',
       // Size and shape
       'size', 'shape', 'linetype', 'linewidth', 'width', 'height',
       // Text aesthetics

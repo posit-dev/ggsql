@@ -18,6 +18,7 @@ impl GeomTrait for Line {
                 "y",
                 "color",
                 "colour",
+                "stroke",
                 "linetype",
                 "linewidth",
                 "opacity",

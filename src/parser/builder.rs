@@ -385,11 +385,14 @@ fn parse_mapping_element(node: &Node, source: &str, mappings: &mut Mappings) -> 
             }
             "explicit_mapping" => {
                 let (aesthetic, value) = parse_explicit_mapping(&child, source)?;
-                mappings.insert(aesthetic, value);
+                mappings.insert(normalise_aes_name(&aesthetic), value);
             }
             "implicit_mapping" | "identifier" => {
                 let name = get_node_text(&child, source);
-                mappings.insert(&name, AestheticValue::standard_column(&name));
+                mappings.insert(
+                    normalise_aes_name(&name),
+                    AestheticValue::standard_column(&name),
+                );
             }
             _ => continue,
         }
@@ -1011,6 +1014,7 @@ fn is_aesthetic_name(name: &str) -> bool {
             | "color"
             | "colour"
             | "fill"
+            | "stroke"
             | "opacity"
             | "size"
             | "shape"
@@ -1362,6 +1366,12 @@ fn with_statement_has_trailing_select(with_node: &Node) -> bool {
     false
 }
 
+pub fn normalise_aes_name(name: &str) -> String {
+    match name {
+        "col" | "colour" => "color".to_string(),
+        _ => name.to_string(),
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2880,6 +2890,7 @@ mod tests {
         assert_eq!(specs[0].layers[0].mappings.len(), 0);
 
         // Point layer should have color from layer MAPPING
+        // color should expand into stroke and fill
         assert_eq!(specs[0].layers[1].mappings.len(), 1);
         assert!(specs[0].layers[1].mappings.contains_key("color"));
     }

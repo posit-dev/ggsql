@@ -1,0 +1,854 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE language>
+<language name="ggsql"
+          version="1"
+          kateversion="5.0"
+          section="Database"
+          extensions="*.gsql;*.ggsql"
+          mimetype="text/x-ggsql"
+          casesensitive="0"
+          author="George Stagg"
+          license="MIT">
+  <highlighting>
+    <!-- SQL Keywords -->
+    <list name="sql_keywords">
+      <item>SELECT</item>
+      <item>FROM</item>
+      <item>WHERE</item>
+      <item>GROUP</item>
+      <item>ORDER</item>
+      <item>BY</item>
+      <item>HAVING</item>
+      <item>LIMIT</item>
+      <item>OFFSET</item>
+      <item>DISTINCT</item>
+      <item>ALL</item>
+      <item>JOIN</item>
+      <item>LEFT</item>
+      <item>RIGHT</item>
+      <item>INNER</item>
+      <item>OUTER</item>
+      <item>CROSS</item>
+      <item>FULL</item>
+      <item>NATURAL</item>
+      <item>LATERAL</item>
+      <item>ON</item>
+      <item>WITH</item>
+      <item>RECURSIVE</item>
+      <item>AS</item>
+      <item>INSERT</item>
+      <item>UPDATE</item>
+      <item>DELETE</item>
+      <item>CREATE</item>
+      <item>DROP</item>
+      <item>ALTER</item>
+      <item>TRUNCATE</item>
+      <item>INTO</item>
+      <item>VALUES</item>
+      <item>SET</item>
+      <item>TABLE</item>
+      <item>VIEW</item>
+      <item>INDEX</item>
+      <item>DATABASE</item>
+      <item>SCHEMA</item>
+      <item>TEMP</item>
+      <item>TEMPORARY</item>
+      <item>CASE</item>
+      <item>WHEN</item>
+      <item>THEN</item>
+      <item>ELSE</item>
+      <item>END</item>
+      <item>OVER</item>
+      <item>PARTITION</item>
+      <item>ROWS</item>
+      <item>RANGE</item>
+      <item>UNBOUNDED</item>
+      <item>PRECEDING</item>
+      <item>FOLLOWING</item>
+      <item>CURRENT</item>
+      <item>ROW</item>
+      <item>NULLS</item>
+      <item>FIRST</item>
+      <item>LAST</item>
+      <item>UNION</item>
+      <item>INTERSECT</item>
+      <item>EXCEPT</item>
+      <item>AND</item>
+      <item>OR</item>
+      <item>NOT</item>
+      <item>IN</item>
+      <item>BETWEEN</item>
+      <item>LIKE</item>
+      <item>ILIKE</item>
+      <item>EXISTS</item>
+      <item>IS</item>
+      <item>ANY</item>
+      <item>ASC</item>
+      <item>DESC</item>
+    </list>
+
+    <!-- ggsql Main Clause Keywords (triggers context switch) -->
+    <list name="clause_keywords">
+      <item>DRAW</item>
+      <item>SCALE</item>
+      <item>COORD</item>
+      <item>FACET</item>
+      <item>LABEL</item>
+      <item>GUIDE</item>
+      <item>THEME</item>
+      <item>VISUALISE</item>
+      <item>VISUALIZE</item>
+    </list>
+
+    <!-- ggsql Sub-keywords -->
+    <list name="viz_subkeywords">
+      <item>MAPPING</item>
+      <item>REMAPPING</item>
+      <item>SETTING</item>
+      <item>FILTER</item>
+      <item>WRAP</item>
+      <item>ORDER</item>
+      <item>PARTITION</item>
+    </list>
+
+    <!-- Geom Types (only in DRAW context) -->
+    <list name="geoms">
+      <item>point</item>
+      <item>line</item>
+      <item>path</item>
+      <item>bar</item>
+      <item>col</item>
+      <item>area</item>
+      <item>tile</item>
+      <item>polygon</item>
+      <item>ribbon</item>
+      <item>histogram</item>
+      <item>density</item>
+      <item>smooth</item>
+      <item>boxplot</item>
+      <item>violin</item>
+      <item>text</item>
+      <item>label</item>
+      <item>segment</item>
+      <item>arrow</item>
+      <item>hline</item>
+      <item>vline</item>
+      <item>abline</item>
+      <item>errorbar</item>
+    </list>
+
+    <!-- Aesthetics -->
+    <list name="aesthetics">
+      <item>x</item>
+      <item>y</item>
+      <item>xmin</item>
+      <item>xmax</item>
+      <item>ymin</item>
+      <item>ymax</item>
+      <item>xend</item>
+      <item>yend</item>
+      <item>weight</item>
+      <item>color</item>
+      <item>colour</item>
+      <item>fill</item>
+      <item>stroke</item>
+      <item>opacity</item>
+      <item>size</item>
+      <item>shape</item>
+      <item>linetype</item>
+      <item>linewidth</item>
+      <item>width</item>
+      <item>height</item>
+      <item>family</item>
+      <item>fontface</item>
+      <item>hjust</item>
+      <item>vjust</item>
+    </list>
+
+    <!-- Scale Types (only in SCALE context) -->
+    <list name="scale_types">
+      <item>linear</item>
+      <item>log</item>
+      <item>log10</item>
+      <item>log2</item>
+      <item>sqrt</item>
+      <item>reverse</item>
+      <item>categorical</item>
+      <item>ordinal</item>
+      <item>date</item>
+      <item>datetime</item>
+      <item>time</item>
+      <item>viridis</item>
+      <item>plasma</item>
+      <item>magma</item>
+      <item>inferno</item>
+      <item>cividis</item>
+      <item>diverging</item>
+      <item>sequential</item>
+      <item>identity</item>
+      <item>manual</item>
+    </list>
+
+    <!-- Coordinate Types (only in COORD context) -->
+    <list name="coord_types">
+      <item>cartesian</item>
+      <item>polar</item>
+      <item>flip</item>
+      <item>fixed</item>
+      <item>trans</item>
+      <item>map</item>
+      <item>quickmap</item>
+    </list>
+
+    <!-- Theme Names (only in THEME context) -->
+    <list name="theme_names">
+      <item>minimal</item>
+      <item>classic</item>
+      <item>gray</item>
+      <item>grey</item>
+      <item>bw</item>
+      <item>dark</item>
+      <item>light</item>
+      <item>void</item>
+    </list>
+
+    <!-- Guide Types (only in GUIDE context) -->
+    <list name="guide_types">
+      <item>legend</item>
+      <item>colorbar</item>
+      <item>axis</item>
+      <item>none</item>
+    </list>
+
+    <!-- Facet Scales (only in FACET context) -->
+    <list name="facet_scales">
+      <item>fixed</item>
+      <item>free</item>
+      <item>free_x</item>
+      <item>free_y</item>
+    </list>
+
+    <!-- Scale Properties -->
+    <list name="scale_properties">
+      <item>type</item>
+      <item>limits</item>
+      <item>breaks</item>
+      <item>labels</item>
+      <item>expand</item>
+      <item>direction</item>
+      <item>na_value</item>
+      <item>palette</item>
+      <item>domain</item>
+      <item>range</item>
+    </list>
+
+    <!-- Coord Properties -->
+    <list name="coord_properties">
+      <item>xlim</item>
+      <item>ylim</item>
+      <item>ratio</item>
+      <item>theta</item>
+      <item>clip</item>
+    </list>
+
+    <!-- Label Properties -->
+    <list name="label_properties">
+      <item>title</item>
+      <item>subtitle</item>
+      <item>caption</item>
+      <item>tag</item>
+    </list>
+
+    <!-- Guide Properties -->
+    <list name="guide_properties">
+      <item>position</item>
+      <item>direction</item>
+      <item>nrow</item>
+      <item>ncol</item>
+      <item>title</item>
+      <item>title_position</item>
+      <item>label_position</item>
+      <item>text_angle</item>
+      <item>text_size</item>
+      <item>reverse</item>
+      <item>order</item>
+    </list>
+
+    <!-- Theme Properties -->
+    <list name="theme_properties">
+      <item>background</item>
+      <item>panel_background</item>
+      <item>panel_grid</item>
+      <item>panel_grid_major</item>
+      <item>panel_grid_minor</item>
+      <item>text_size</item>
+      <item>text_family</item>
+      <item>title_size</item>
+      <item>axis_text_size</item>
+      <item>axis_line</item>
+      <item>axis_line_width</item>
+      <item>panel_border</item>
+      <item>plot_margin</item>
+      <item>panel_spacing</item>
+      <item>legend_background</item>
+      <item>legend_position</item>
+      <item>legend_direction</item>
+    </list>
+
+    <!-- SQL Functions -->
+    <list name="sql_functions">
+      <item>count</item>
+      <item>sum</item>
+      <item>avg</item>
+      <item>min</item>
+      <item>max</item>
+      <item>stddev</item>
+      <item>variance</item>
+      <item>array_agg</item>
+      <item>string_agg</item>
+      <item>group_concat</item>
+      <item>row_number</item>
+      <item>rank</item>
+      <item>dense_rank</item>
+      <item>ntile</item>
+      <item>lag</item>
+      <item>lead</item>
+      <item>first_value</item>
+      <item>last_value</item>
+      <item>nth_value</item>
+      <item>cume_dist</item>
+      <item>percent_rank</item>
+      <item>date_trunc</item>
+      <item>date_part</item>
+      <item>datepart</item>
+      <item>datename</item>
+      <item>dateadd</item>
+      <item>datediff</item>
+      <item>extract</item>
+      <item>now</item>
+      <item>current_date</item>
+      <item>current_time</item>
+      <item>current_timestamp</item>
+      <item>getdate</item>
+      <item>getutcdate</item>
+      <item>strftime</item>
+      <item>strptime</item>
+      <item>make_date</item>
+      <item>make_time</item>
+      <item>make_timestamp</item>
+      <item>concat</item>
+      <item>substring</item>
+      <item>substr</item>
+      <item>length</item>
+      <item>len</item>
+      <item>char_length</item>
+      <item>lower</item>
+      <item>upper</item>
+      <item>trim</item>
+      <item>ltrim</item>
+      <item>rtrim</item>
+      <item>replace</item>
+      <item>lpad</item>
+      <item>rpad</item>
+      <item>split_part</item>
+      <item>string_split</item>
+      <item>format</item>
+      <item>printf</item>
+      <item>abs</item>
+      <item>ceil</item>
+      <item>ceiling</item>
+      <item>floor</item>
+      <item>round</item>
+      <item>trunc</item>
+      <item>truncate</item>
+      <item>mod</item>
+      <item>power</item>
+      <item>exp</item>
+      <item>ln</item>
+      <item>sign</item>
+      <item>sin</item>
+      <item>cos</item>
+      <item>tan</item>
+      <item>asin</item>
+      <item>acos</item>
+      <item>atan</item>
+      <item>atan2</item>
+      <item>pi</item>
+      <item>degrees</item>
+      <item>radians</item>
+      <item>random</item>
+      <item>rand</item>
+      <item>cast</item>
+      <item>convert</item>
+      <item>coalesce</item>
+      <item>nullif</item>
+      <item>ifnull</item>
+      <item>isnull</item>
+      <item>nvl</item>
+      <item>try_cast</item>
+      <item>typeof</item>
+      <item>greatest</item>
+      <item>least</item>
+      <item>decode</item>
+      <item>json</item>
+      <item>json_extract</item>
+      <item>json_value</item>
+      <item>json_query</item>
+      <item>json_object</item>
+      <item>json_array</item>
+      <item>to_json</item>
+      <item>from_json</item>
+      <item>unnest</item>
+      <item>generate_series</item>
+    </list>
+
+    <!-- Constants -->
+    <list name="constants">
+      <item>NULL</item>
+      <item>TRUE</item>
+      <item>FALSE</item>
+    </list>
+
+    <contexts>
+      <!-- Main context -->
+      <context name="Normal" attribute="Normal Text" lineEndContext="#stay">
+        <!-- Comments first -->
+        <Detect2Chars char="-" char1="-" attribute="Comment" context="Comment"/>
+        <Detect2Chars char="/" char1="*" attribute="Comment" context="CommentMulti" beginRegion="comment"/>
+
+        <!-- Strings -->
+        <DetectChar char="'" attribute="String" context="StringSingle"/>
+        <DetectChar char="&quot;" attribute="String" context="StringDouble"/>
+
+        <!-- Numbers -->
+        <RegExpr attribute="Number" context="#stay" String="-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?"/>
+
+        <!-- Clause keywords trigger context switches -->
+        <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
+
+        <!-- Fat arrow operator -->
+        <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
+
+        <!-- SQL Keywords -->
+        <keyword attribute="Keyword" context="#stay" String="sql_keywords"/>
+
+        <!-- VISUALISE keyword - switch to VisualiseClause context -->
+        <WordDetect attribute="Keyword" context="VisualiseClause" String="VISUALISE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="VisualiseClause" String="VISUALIZE" insensitive="true"/>
+
+        <!-- Sub-keywords -->
+        <keyword attribute="Keyword" context="#stay" String="viz_subkeywords"/>
+
+        <!-- SQL Functions (followed by parenthesis) -->
+        <keyword attribute="Function" context="#stay" String="sql_functions"/>
+
+        <!-- Constants -->
+        <keyword attribute="Constant" context="#stay" String="constants"/>
+
+        <!-- Operators -->
+        <AnyChar attribute="Operator" context="#stay" String="=!&lt;&gt;+-*/%"/>
+        <DetectChar char="(" attribute="Symbol" context="#stay"/>
+        <DetectChar char=")" attribute="Symbol" context="#stay"/>
+        <DetectChar char="[" attribute="Symbol" context="#stay"/>
+        <DetectChar char="]" attribute="Symbol" context="#stay"/>
+        <DetectChar char="," attribute="Symbol" context="#stay"/>
+        <DetectChar char=";" attribute="Symbol" context="#stay"/>
+        <DetectChar char="." attribute="Symbol" context="#stay"/>
+        <Detect2Chars char=":" char1=":" attribute="Operator" context="#stay"/>
+      </context>
+
+      <!-- DRAW clause context -->
+      <context name="DrawClause" attribute="Normal Text" lineEndContext="#stay">
+        <Detect2Chars char="-" char1="-" attribute="Comment" context="Comment"/>
+        <Detect2Chars char="/" char1="*" attribute="Comment" context="CommentMulti" beginRegion="comment"/>
+        <DetectChar char="'" attribute="String" context="StringSingle"/>
+        <DetectChar char="&quot;" attribute="String" context="StringDouble"/>
+        <RegExpr attribute="Number" context="#stay" String="-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?"/>
+
+        <!-- Exit to other clause contexts -->
+        <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="#stay" String="FROM" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
+
+        <!-- Geom types - only highlighted here -->
+        <keyword attribute="Data Type" context="#stay" String="geoms"/>
+
+        <!-- Aesthetics -->
+        <keyword attribute="Attribute" context="#stay" String="aesthetics"/>
+
+        <!-- Sub-keywords -->
+        <keyword attribute="Keyword" context="#stay" String="viz_subkeywords"/>
+
+        <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
+        <AnyChar attribute="Operator" context="#stay" String="=!&lt;&gt;+-*/%"/>
+        <DetectChar char="(" attribute="Symbol" context="#stay"/>
+        <DetectChar char=")" attribute="Symbol" context="#stay"/>
+        <DetectChar char="[" attribute="Symbol" context="#stay"/>
+        <DetectChar char="]" attribute="Symbol" context="#stay"/>
+        <DetectChar char="," attribute="Symbol" context="#stay"/>
+      </context>
+
+      <!-- SCALE clause context -->
+      <context name="ScaleClause" attribute="Normal Text" lineEndContext="#stay">
+        <Detect2Chars char="-" char1="-" attribute="Comment" context="Comment"/>
+        <Detect2Chars char="/" char1="*" attribute="Comment" context="CommentMulti" beginRegion="comment"/>
+        <DetectChar char="'" attribute="String" context="StringSingle"/>
+        <DetectChar char="&quot;" attribute="String" context="StringDouble"/>
+        <RegExpr attribute="Number" context="#stay" String="-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?"/>
+
+        <!-- Exit to other clause contexts -->
+        <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="#stay" String="FROM" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
+
+        <!-- Scale types - only highlighted here -->
+        <keyword attribute="Data Type" context="#stay" String="scale_types"/>
+
+        <!-- Scale properties -->
+        <keyword attribute="Attribute" context="#stay" String="scale_properties"/>
+
+        <!-- Aesthetics (for scale aesthetic name) -->
+        <keyword attribute="Attribute" context="#stay" String="aesthetics"/>
+
+        <!-- Sub-keywords -->
+        <keyword attribute="Keyword" context="#stay" String="viz_subkeywords"/>
+
+        <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
+        <AnyChar attribute="Operator" context="#stay" String="=!&lt;&gt;+-*/%"/>
+        <DetectChar char="(" attribute="Symbol" context="#stay"/>
+        <DetectChar char=")" attribute="Symbol" context="#stay"/>
+        <DetectChar char="[" attribute="Symbol" context="#stay"/>
+        <DetectChar char="]" attribute="Symbol" context="#stay"/>
+        <DetectChar char="," attribute="Symbol" context="#stay"/>
+      </context>
+
+      <!-- COORD clause context -->
+      <context name="CoordClause" attribute="Normal Text" lineEndContext="#stay">
+        <Detect2Chars char="-" char1="-" attribute="Comment" context="Comment"/>
+        <Detect2Chars char="/" char1="*" attribute="Comment" context="CommentMulti" beginRegion="comment"/>
+        <DetectChar char="'" attribute="String" context="StringSingle"/>
+        <DetectChar char="&quot;" attribute="String" context="StringDouble"/>
+        <RegExpr attribute="Number" context="#stay" String="-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?"/>
+
+        <!-- Exit to other clause contexts -->
+        <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="#stay" String="FROM" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
+
+        <!-- Coord types - only highlighted here -->
+        <keyword attribute="Data Type" context="#stay" String="coord_types"/>
+
+        <!-- Coord properties -->
+        <keyword attribute="Attribute" context="#stay" String="coord_properties"/>
+
+        <!-- Aesthetics -->
+        <keyword attribute="Attribute" context="#stay" String="aesthetics"/>
+
+        <!-- Sub-keywords -->
+        <keyword attribute="Keyword" context="#stay" String="viz_subkeywords"/>
+
+        <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
+        <AnyChar attribute="Operator" context="#stay" String="=!&lt;&gt;+-*/%"/>
+        <DetectChar char="(" attribute="Symbol" context="#stay"/>
+        <DetectChar char=")" attribute="Symbol" context="#stay"/>
+        <DetectChar char="[" attribute="Symbol" context="#stay"/>
+        <DetectChar char="]" attribute="Symbol" context="#stay"/>
+        <DetectChar char="," attribute="Symbol" context="#stay"/>
+      </context>
+
+      <!-- FACET clause context -->
+      <context name="FacetClause" attribute="Normal Text" lineEndContext="#stay">
+        <Detect2Chars char="-" char1="-" attribute="Comment" context="Comment"/>
+        <Detect2Chars char="/" char1="*" attribute="Comment" context="CommentMulti" beginRegion="comment"/>
+        <DetectChar char="'" attribute="String" context="StringSingle"/>
+        <DetectChar char="&quot;" attribute="String" context="StringDouble"/>
+        <RegExpr attribute="Number" context="#stay" String="-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?"/>
+
+        <!-- Exit to other clause contexts -->
+        <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="#stay" String="FROM" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
+
+        <!-- Facet scales - only highlighted here -->
+        <keyword attribute="Data Type" context="#stay" String="facet_scales"/>
+
+        <!-- WRAP keyword -->
+        <WordDetect attribute="Keyword" context="#stay" String="WRAP" insensitive="true"/>
+
+        <!-- scales property -->
+        <WordDetect attribute="Attribute" context="#stay" String="scales" insensitive="true"/>
+
+        <!-- Sub-keywords -->
+        <keyword attribute="Keyword" context="#stay" String="viz_subkeywords"/>
+
+        <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
+        <AnyChar attribute="Operator" context="#stay" String="=!&lt;&gt;+-*/%"/>
+        <DetectChar char="(" attribute="Symbol" context="#stay"/>
+        <DetectChar char=")" attribute="Symbol" context="#stay"/>
+        <DetectChar char="[" attribute="Symbol" context="#stay"/>
+        <DetectChar char="]" attribute="Symbol" context="#stay"/>
+        <DetectChar char="," attribute="Symbol" context="#stay"/>
+      </context>
+
+      <!-- LABEL clause context -->
+      <context name="LabelClause" attribute="Normal Text" lineEndContext="#stay">
+        <Detect2Chars char="-" char1="-" attribute="Comment" context="Comment"/>
+        <Detect2Chars char="/" char1="*" attribute="Comment" context="CommentMulti" beginRegion="comment"/>
+        <DetectChar char="'" attribute="String" context="StringSingle"/>
+        <DetectChar char="&quot;" attribute="String" context="StringDouble"/>
+        <RegExpr attribute="Number" context="#stay" String="-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?"/>
+
+        <!-- Exit to other clause contexts -->
+        <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="#stay" String="FROM" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
+
+        <!-- Label properties -->
+        <keyword attribute="Attribute" context="#stay" String="label_properties"/>
+
+        <!-- Aesthetics (for legend labels) -->
+        <keyword attribute="Attribute" context="#stay" String="aesthetics"/>
+
+        <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
+        <AnyChar attribute="Operator" context="#stay" String="=!&lt;&gt;+-*/%"/>
+        <DetectChar char="(" attribute="Symbol" context="#stay"/>
+        <DetectChar char=")" attribute="Symbol" context="#stay"/>
+        <DetectChar char="[" attribute="Symbol" context="#stay"/>
+        <DetectChar char="]" attribute="Symbol" context="#stay"/>
+        <DetectChar char="," attribute="Symbol" context="#stay"/>
+      </context>
+
+      <!-- GUIDE clause context -->
+      <context name="GuideClause" attribute="Normal Text" lineEndContext="#stay">
+        <Detect2Chars char="-" char1="-" attribute="Comment" context="Comment"/>
+        <Detect2Chars char="/" char1="*" attribute="Comment" context="CommentMulti" beginRegion="comment"/>
+        <DetectChar char="'" attribute="String" context="StringSingle"/>
+        <DetectChar char="&quot;" attribute="String" context="StringDouble"/>
+        <RegExpr attribute="Number" context="#stay" String="-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?"/>
+
+        <!-- Exit to other clause contexts -->
+        <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="#stay" String="FROM" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
+
+        <!-- Guide types - only highlighted here -->
+        <keyword attribute="Data Type" context="#stay" String="guide_types"/>
+
+        <!-- Guide properties -->
+        <keyword attribute="Attribute" context="#stay" String="guide_properties"/>
+
+        <!-- Aesthetics -->
+        <keyword attribute="Attribute" context="#stay" String="aesthetics"/>
+
+        <!-- Sub-keywords -->
+        <keyword attribute="Keyword" context="#stay" String="viz_subkeywords"/>
+
+        <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
+        <AnyChar attribute="Operator" context="#stay" String="=!&lt;&gt;+-*/%"/>
+        <DetectChar char="(" attribute="Symbol" context="#stay"/>
+        <DetectChar char=")" attribute="Symbol" context="#stay"/>
+        <DetectChar char="[" attribute="Symbol" context="#stay"/>
+        <DetectChar char="]" attribute="Symbol" context="#stay"/>
+        <DetectChar char="," attribute="Symbol" context="#stay"/>
+      </context>
+
+      <!-- THEME clause context -->
+      <context name="ThemeClause" attribute="Normal Text" lineEndContext="#stay">
+        <Detect2Chars char="-" char1="-" attribute="Comment" context="Comment"/>
+        <Detect2Chars char="/" char1="*" attribute="Comment" context="CommentMulti" beginRegion="comment"/>
+        <DetectChar char="'" attribute="String" context="StringSingle"/>
+        <DetectChar char="&quot;" attribute="String" context="StringDouble"/>
+        <RegExpr attribute="Number" context="#stay" String="-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?"/>
+
+        <!-- Exit to other clause contexts -->
+        <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="#stay" String="FROM" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
+
+        <!-- Theme names - only highlighted here -->
+        <keyword attribute="Data Type" context="#stay" String="theme_names"/>
+
+        <!-- Theme properties -->
+        <keyword attribute="Attribute" context="#stay" String="theme_properties"/>
+
+        <!-- Sub-keywords -->
+        <keyword attribute="Keyword" context="#stay" String="viz_subkeywords"/>
+
+        <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
+        <AnyChar attribute="Operator" context="#stay" String="=!&lt;&gt;+-*/%"/>
+        <DetectChar char="(" attribute="Symbol" context="#stay"/>
+        <DetectChar char=")" attribute="Symbol" context="#stay"/>
+        <DetectChar char="[" attribute="Symbol" context="#stay"/>
+        <DetectChar char="]" attribute="Symbol" context="#stay"/>
+        <DetectChar char="," attribute="Symbol" context="#stay"/>
+      </context>
+
+      <!-- VISUALISE clause context -->
+      <context name="VisualiseClause" attribute="Normal Text" lineEndContext="#stay">
+        <Detect2Chars char="-" char1="-" attribute="Comment" context="Comment"/>
+        <Detect2Chars char="/" char1="*" attribute="Comment" context="CommentMulti" beginRegion="comment"/>
+        <DetectChar char="'" attribute="String" context="StringSingle"/>
+        <DetectChar char="&quot;" attribute="String" context="StringDouble"/>
+        <RegExpr attribute="Number" context="#stay" String="-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?"/>
+
+        <!-- Exit to other clause contexts -->
+        <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="VisualiseClause" String="VISUALISE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="VisualiseClause" String="VISUALIZE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="#stay" String="FROM" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
+
+        <!-- Aesthetics - highlighted after VISUALISE -->
+        <keyword attribute="Attribute" context="#stay" String="aesthetics"/>
+
+        <!-- AS, FROM, FILTER keywords -->
+        <WordDetect attribute="Keyword" context="#stay" String="AS" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="#stay" String="FILTER" insensitive="true"/>
+
+        <!-- Wildcard -->
+        <DetectChar char="*" attribute="Operator" context="#stay"/>
+
+        <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
+        <AnyChar attribute="Operator" context="#stay" String="=!&lt;&gt;+-*/%"/>
+        <DetectChar char="(" attribute="Symbol" context="#stay"/>
+        <DetectChar char=")" attribute="Symbol" context="#stay"/>
+        <DetectChar char="[" attribute="Symbol" context="#stay"/>
+        <DetectChar char="]" attribute="Symbol" context="#stay"/>
+        <DetectChar char="," attribute="Symbol" context="#stay"/>
+      </context>
+
+      <!-- Single-quoted string -->
+      <context name="StringSingle" attribute="String" lineEndContext="#stay">
+        <DetectChar char="'" attribute="String" context="#pop"/>
+        <Detect2Chars char="'" char1="'" attribute="String" context="#stay"/>
+        <RegExpr attribute="Special Character" context="#stay" String="\\." />
+      </context>
+
+      <!-- Double-quoted string/identifier -->
+      <context name="StringDouble" attribute="String" lineEndContext="#stay">
+        <DetectChar char="&quot;" attribute="String" context="#pop"/>
+        <Detect2Chars char="&quot;" char1="&quot;" attribute="String" context="#stay"/>
+        <RegExpr attribute="Special Character" context="#stay" String="\\." />
+      </context>
+
+      <!-- Single-line comment -->
+      <context name="Comment" attribute="Comment" lineEndContext="#pop">
+        <DetectSpaces/>
+        <IncludeRules context="##Comments"/>
+      </context>
+
+      <!-- Multi-line comment -->
+      <context name="CommentMulti" attribute="Comment" lineEndContext="#stay">
+        <Detect2Chars char="*" char1="/" attribute="Comment" context="#pop" endRegion="comment"/>
+        <IncludeRules context="##Comments"/>
+      </context>
+    </contexts>
+
+    <itemDatas>
+      <itemData name="Normal Text"      defStyleNum="dsNormal"/>
+      <itemData name="Keyword"          defStyleNum="dsKeyword"/>
+      <itemData name="Function"         defStyleNum="dsFunction"/>
+      <itemData name="Data Type"        defStyleNum="dsDataType"/>
+      <itemData name="Attribute"        defStyleNum="dsAttribute"/>
+      <itemData name="String"           defStyleNum="dsString"/>
+      <itemData name="Special Character" defStyleNum="dsSpecialChar"/>
+      <itemData name="Number"           defStyleNum="dsDecVal"/>
+      <itemData name="Constant"         defStyleNum="dsConstant"/>
+      <itemData name="Comment"          defStyleNum="dsComment"/>
+      <itemData name="Operator"         defStyleNum="dsOperator"/>
+      <itemData name="Symbol"           defStyleNum="dsNormal"/>
+    </itemDatas>
+  </highlighting>
+
+  <general>
+    <comments>
+      <comment name="singleLine" start="--"/>
+      <comment name="multiLine" start="/*" end="*/" region="comment"/>
+    </comments>
+    <keywords casesensitive="0" weakDeliminator="_"/>
+  </general>
+</language>

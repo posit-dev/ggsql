@@ -20,6 +20,7 @@ impl GeomTrait for Arrow {
                 "yend",
                 "color",
                 "colour",
+                "stroke",
                 "linetype",
                 "linewidth",
                 "opacity",

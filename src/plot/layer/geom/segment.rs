@@ -20,6 +20,7 @@ impl GeomTrait for Segment {
                 "yend",
                 "color",
                 "colour",
+                "stroke",
                 "linetype",
                 "linewidth",
                 "opacity",
