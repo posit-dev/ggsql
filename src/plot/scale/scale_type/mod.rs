@@ -139,13 +139,14 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     ///
     /// The input_range is provided so discrete scales can size the output appropriately.
     ///
-    /// Returns None if no default is appropriate (e.g., x/y position aesthetics).
+    /// Returns Ok(None) if no default is appropriate (e.g., x/y position aesthetics).
+    /// Returns Err if the palette doesn't have enough colors for the input range.
     fn default_output_range(
         &self,
         _aesthetic: &str,
         _input_range: Option<&[ArrayElement]>,
-    ) -> Option<Vec<ArrayElement>> {
-        None // Default implementation: no default range
+    ) -> Result<Option<Vec<ArrayElement>>, String> {
+        Ok(None) // Default implementation: no default range
     }
 }
 
@@ -276,7 +277,7 @@ impl ScaleType {
         &self,
         aesthetic: &str,
         input_range: Option<&[ArrayElement]>,
-    ) -> Option<Vec<ArrayElement>> {
+    ) -> Result<Option<Vec<ArrayElement>>, String> {
         self.0.default_output_range(aesthetic, input_range)
     }
 }

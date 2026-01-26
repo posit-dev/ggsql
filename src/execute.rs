@@ -1152,8 +1152,9 @@ fn resolve_scales(spec: &mut Plot, data_map: &HashMap<String, DataFrame>) -> Res
 
             // Resolve output range (only if not already set)
             if spec.scales[idx].output_range.is_none() {
-                if let Some(default_range) =
-                    st.default_output_range(&aesthetic, spec.scales[idx].input_range.as_deref())
+                if let Some(default_range) = st
+                    .default_output_range(&aesthetic, spec.scales[idx].input_range.as_deref())
+                    .map_err(GgsqlError::ValidationError)?
                 {
                     spec.scales[idx].output_range = Some(OutputRange::Array(default_range));
                 }
@@ -1161,7 +1162,7 @@ fn resolve_scales(spec: &mut Plot, data_map: &HashMap<String, DataFrame>) -> Res
         }
 
         // Expand named palettes to explicit arrays
-        if let Some(OutputRange::Palette(ref name)) = spec.scales[idx].output_range {
+        if let Some(OutputRange::Palette(ref name)) = spec.scales[idx].output_range.clone() {
             use crate::plot::scale::palettes;
 
             // Determine if this is a color or shape aesthetic
@@ -1177,8 +1178,9 @@ fn resolve_scales(spec: &mut Plot, data_map: &HashMap<String, DataFrame>) -> Res
                     .as_ref()
                     .map(|r| r.len())
                     .unwrap_or(palette.len());
-                spec.scales[idx].output_range =
-                    Some(OutputRange::Array(palettes::expand_palette(palette, count)));
+                let expanded = palettes::expand_palette(palette, count, name)
+                    .map_err(GgsqlError::ValidationError)?;
+                spec.scales[idx].output_range = Some(OutputRange::Array(expanded));
             }
             // If palette not found, leave as Palette variant for Vega-Lite to handle
         }

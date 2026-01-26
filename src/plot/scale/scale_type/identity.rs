@@ -41,8 +41,8 @@ impl ScaleTypeTrait for Identity {
         &self,
         _aesthetic: &str,
         _input_range: Option<&[ArrayElement]>,
-    ) -> Option<Vec<ArrayElement>> {
-        None // Identity scales use inferred defaults
+    ) -> Result<Option<Vec<ArrayElement>>, String> {
+        Ok(None) // Identity scales use inferred defaults
     }
 }
 

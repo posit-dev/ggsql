@@ -47,20 +47,31 @@ impl ScaleTypeTrait for Discrete {
         &self,
         aesthetic: &str,
         input_range: Option<&[ArrayElement]>,
-    ) -> Option<Vec<ArrayElement>> {
+    ) -> Result<Option<Vec<ArrayElement>>, String> {
         use super::super::palettes;
 
         let count = input_range.map(|r| r.len()).unwrap_or(0);
         if count == 0 {
-            return None;
+            return Ok(None);
         }
 
         match aesthetic {
             "color" | "colour" | "fill" | "stroke" => {
-                Some(palettes::expand_palette(palettes::default_color_palette(), count))
+                let palette = palettes::get_color_palette("ggsql")
+                    .ok_or_else(|| "Default color palette 'ggsql' not found".to_string())?;
+                Ok(Some(palettes::expand_palette(palette, count, "ggsql")?))
             }
-            "shape" => Some(palettes::expand_palette(palettes::default_shape_palette(), count)),
-            _ => None,
+            "shape" => {
+                let palette = palettes::get_shape_palette("default")
+                    .ok_or_else(|| "Default shape palette not found".to_string())?;
+                Ok(Some(palettes::expand_palette(palette, count, "default")?))
+            }
+            "linetype" => {
+                let palette = palettes::get_linetype_palette("default")
+                    .ok_or_else(|| "Default linetype palette not found".to_string())?;
+                Ok(Some(palettes::expand_palette(palette, count, "default")?))
+            }
+            _ => Ok(None),
         }
     }
 }

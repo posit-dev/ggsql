@@ -22,6 +22,7 @@
 
 use crate::naming;
 use crate::plot::layer::geom::{GeomAesthetics, GeomType};
+use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path};
 use crate::plot::{ArrayElement, Coord, CoordType, LiteralValue, ParameterValue};
 use crate::writer::Writer;
 use crate::{AestheticValue, DataFrame, Geom, GgsqlError, Plot, Result};
@@ -364,7 +365,28 @@ impl VegaLiteWriter {
                                 let range_json: Vec<Value> = range_values
                                     .iter()
                                     .map(|elem| match elem {
-                                        ArrayElement::String(s) => json!(s),
+                                        ArrayElement::String(s) => {
+                                            // For shape aesthetic, convert to SVG path
+                                            if aesthetic == "shape" {
+                                                if let Some(svg_path) = shape_to_svg_path(s) {
+                                                    json!(svg_path)
+                                                } else {
+                                                    // Unknown shape, pass through
+                                                    json!(s)
+                                                }
+                                            // For linetype aesthetic, convert to dash array
+                                            } else if aesthetic == "linetype" {
+                                                if let Some(dash_array) = linetype_to_stroke_dash(s)
+                                                {
+                                                    json!(dash_array)
+                                                } else {
+                                                    // Unknown linetype, pass through
+                                                    json!(s)
+                                                }
+                                            } else {
+                                                json!(s)
+                                            }
+                                        }
                                         ArrayElement::Number(n) => json!(n),
                                         ArrayElement::Boolean(b) => json!(b),
                                         ArrayElement::Null => json!(null),
@@ -417,7 +439,14 @@ impl VegaLiteWriter {
     /// Map ggsql aesthetic name to Vega-Lite encoding channel name
     fn map_aesthetic_name(&self, aesthetic: &str) -> String {
         match aesthetic {
+            // Color aesthetics
             "fill" => "color",
+            "colour" => "color",
+            // Line aesthetics
+            "linetype" => "strokeDash",
+            "linewidth" => "strokeWidth",
+            // Text aesthetics
+            "label" => "text",
             _ => aesthetic,
         }
         .to_string()
@@ -1314,8 +1343,19 @@ mod tests {
     #[test]
     fn test_aesthetic_name_mapping() {
         let writer = VegaLiteWriter::new();
+        // Pass-through aesthetics
         assert_eq!(writer.map_aesthetic_name("x"), "x");
+        assert_eq!(writer.map_aesthetic_name("y"), "y");
+        assert_eq!(writer.map_aesthetic_name("color"), "color");
+        assert_eq!(writer.map_aesthetic_name("opacity"), "opacity");
+        assert_eq!(writer.map_aesthetic_name("size"), "size");
+        assert_eq!(writer.map_aesthetic_name("shape"), "shape");
+        // Mapped aesthetics
         assert_eq!(writer.map_aesthetic_name("fill"), "color");
+        assert_eq!(writer.map_aesthetic_name("colour"), "color");
+        assert_eq!(writer.map_aesthetic_name("linetype"), "strokeDash");
+        assert_eq!(writer.map_aesthetic_name("linewidth"), "strokeWidth");
+        assert_eq!(writer.map_aesthetic_name("label"), "text");
     }
 
     #[test]
@@ -1859,7 +1899,8 @@ mod tests {
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["layer"][0]["encoding"]["linetype"]["value"], true);
+        // linetype is mapped to strokeDash in Vega-Lite
+        assert_eq!(vl_spec["layer"][0]["encoding"]["strokeDash"]["value"], true);
     }
 
     #[test]

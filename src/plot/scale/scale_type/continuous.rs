@@ -55,13 +55,29 @@ impl ScaleTypeTrait for Continuous {
         &self,
         aesthetic: &str,
         _input_range: Option<&[ArrayElement]>,
-    ) -> Option<Vec<ArrayElement>> {
+    ) -> Result<Option<Vec<ArrayElement>>, String> {
+        use super::super::palettes;
+
         match aesthetic {
-            // TODO: Fill in preferred defaults
-            // "size" => Some(vec![...]),
-            // "opacity" | "alpha" => Some(vec![...]),
-            // "linewidth" => Some(vec![...]),
-            _ => None,
+            "stroke" | "fill" | "colour" | "color" => {
+                let palette = palettes::get_color_palette("sequential")
+                    .ok_or_else(|| "Default color palette 'ggsql' not found".to_string())?;
+                Ok(Some(
+                    palette
+                        .iter()
+                        .map(|col: &&str| ArrayElement::String(col.to_string()))
+                        .collect(),
+                ))
+            }
+            "size" | "linewidth" => Ok(Some(vec![
+                ArrayElement::Number(1.0),
+                ArrayElement::Number(6.0),
+            ])),
+            "opacity" => Ok(Some(vec![
+                ArrayElement::Number(0.1),
+                ArrayElement::Number(1.0),
+            ])),
+            _ => Ok(None),
         }
     }
 }
