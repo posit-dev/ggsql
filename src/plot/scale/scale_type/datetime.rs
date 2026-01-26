@@ -20,11 +20,15 @@ impl ScaleTypeTrait for DateTime {
         "datetime"
     }
 
+    fn allowed_transforms(&self) -> &'static [&'static str] {
+        &["identity"]
+    }
+
     fn allowed_properties(&self, aesthetic: &str) -> &'static [&'static str] {
         if super::is_positional_aesthetic(aesthetic) {
-            &["expand", "oob"]
+            &["expand", "oob", "reverse"]
         } else {
-            &["oob"]
+            &["oob", "reverse"]
         }
     }
 
@@ -36,6 +40,7 @@ impl ScaleTypeTrait for DateTime {
             "oob" => Some(ParameterValue::String(
                 super::default_oob(aesthetic).to_string(),
             )),
+            "reverse" => Some(ParameterValue::Boolean(false)),
             _ => None,
         }
     }

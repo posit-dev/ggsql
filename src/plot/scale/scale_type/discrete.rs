@@ -25,14 +25,15 @@ impl ScaleTypeTrait for Discrete {
     }
 
     fn allowed_properties(&self, _aesthetic: &str) -> &'static [&'static str] {
-        // Discrete scales support oob (censor or keep, not squish)
-        &["oob"]
+        // Discrete scales support oob (censor or keep, not squish) and reverse
+        &["oob", "reverse"]
     }
 
     fn get_property_default(&self, _aesthetic: &str, name: &str) -> Option<ParameterValue> {
         match name {
             // Discrete scales only support "censor" - always default to it
             "oob" => Some(ParameterValue::String(super::OOB_CENSOR.to_string())),
+            "reverse" => Some(ParameterValue::Boolean(false)),
             _ => None,
         }
     }

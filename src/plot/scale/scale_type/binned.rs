@@ -20,11 +20,30 @@ impl ScaleTypeTrait for Binned {
         "binned"
     }
 
+    fn allowed_transforms(&self) -> &'static [&'static str] {
+        &[
+            "identity",
+            "log10",
+            "log2",
+            "log",
+            "sqrt",
+            "asinh",
+            "pseudo_log",
+        ]
+    }
+
+    fn default_transform(&self, aesthetic: &str) -> &'static str {
+        match aesthetic {
+            "size" => "sqrt", // Area-proportional scaling
+            _ => "identity",
+        }
+    }
+
     fn allowed_properties(&self, aesthetic: &str) -> &'static [&'static str] {
         if super::is_positional_aesthetic(aesthetic) {
-            &["expand", "oob"]
+            &["expand", "oob", "reverse"]
         } else {
-            &["oob"]
+            &["oob", "reverse"]
         }
     }
 
@@ -36,6 +55,7 @@ impl ScaleTypeTrait for Binned {
             "oob" => Some(ParameterValue::String(
                 super::default_oob(aesthetic).to_string(),
             )),
+            "reverse" => Some(ParameterValue::Boolean(false)),
             _ => None,
         }
     }

@@ -167,6 +167,49 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         None
     }
 
+    /// Returns the list of transforms this scale type supports.
+    /// Transforms determine how data values are mapped to visual space.
+    ///
+    /// Default: only "identity" (no transformation).
+    fn allowed_transforms(&self) -> &'static [&'static str] {
+        &["identity"]
+    }
+
+    /// Returns the default transform for this scale type and aesthetic.
+    /// The aesthetic matters because some aesthetics have special defaults:
+    /// - `size`: defaults to `sqrt` (area-proportional scaling)
+    /// - others: default to `identity`
+    ///
+    /// Default: "identity" for all aesthetics.
+    fn default_transform(&self, _aesthetic: &str) -> &'static str {
+        "identity"
+    }
+
+    /// Resolve and validate the transform method.
+    /// If user_transform is None, returns default_transform(aesthetic).
+    /// If user_transform is Some, validates it's in allowed_transforms().
+    fn resolve_transform(
+        &self,
+        aesthetic: &str,
+        user_transform: Option<&str>,
+    ) -> Result<String, String> {
+        match user_transform {
+            None => Ok(self.default_transform(aesthetic).to_string()),
+            Some(t) => {
+                if self.allowed_transforms().contains(&t) {
+                    Ok(t.to_string())
+                } else {
+                    Err(format!(
+                        "Transform '{}' not supported for {} scale. Allowed: {:?}",
+                        t,
+                        self.name(),
+                        self.allowed_transforms()
+                    ))
+                }
+            }
+        }
+    }
+
     /// Resolve and validate properties. NOT meant to be overridden by implementations.
     /// - Validates all properties are in allowed_properties()
     /// - Applies defaults via get_property_default()
@@ -365,6 +408,28 @@ impl ScaleType {
         properties: &HashMap<String, ParameterValue>,
     ) -> Result<HashMap<String, ParameterValue>, String> {
         self.0.resolve_properties(aesthetic, properties)
+    }
+
+    /// Returns the list of transforms this scale type supports.
+    pub fn allowed_transforms(&self) -> &'static [&'static str] {
+        self.0.allowed_transforms()
+    }
+
+    /// Returns the default transform for this scale type and aesthetic.
+    pub fn default_transform(&self, aesthetic: &str) -> &'static str {
+        self.0.default_transform(aesthetic)
+    }
+
+    /// Resolve and validate the transform method.
+    ///
+    /// If user_transform is None, returns default_transform(aesthetic).
+    /// If user_transform is Some, validates it's in allowed_transforms().
+    pub fn resolve_transform(
+        &self,
+        aesthetic: &str,
+        user_transform: Option<&str>,
+    ) -> Result<String, String> {
+        self.0.resolve_transform(aesthetic, user_transform)
     }
 }
 
@@ -1122,14 +1187,15 @@ mod tests {
 
     #[test]
     fn test_resolve_properties_defaults_for_discrete() {
-        // Empty properties should be allowed for discrete, defaults to oob
+        // Empty properties should be allowed for discrete, defaults to oob and reverse
         let props = HashMap::new();
         let result = ScaleType::discrete().resolve_properties("color", &props);
         assert!(result.is_ok());
         let resolved = result.unwrap();
-        // Discrete now supports oob with default value
+        // Discrete now supports oob and reverse with default values
         assert!(resolved.contains_key("oob"));
-        assert_eq!(resolved.len(), 1); // Only oob
+        assert!(resolved.contains_key("reverse"));
+        assert_eq!(resolved.len(), 2); // oob and reverse
     }
 
     #[test]
@@ -1369,5 +1435,249 @@ mod tests {
             resolved.get("oob"),
             Some(&ParameterValue::String("censor".into()))
         );
+    }
+
+    // =========================================================================
+    // Transform Tests
+    // =========================================================================
+
+    #[test]
+    fn test_continuous_default_transform_identity() {
+        // Most aesthetics default to identity
+        assert_eq!(ScaleType::continuous().default_transform("x"), "identity");
+        assert_eq!(ScaleType::continuous().default_transform("y"), "identity");
+        assert_eq!(
+            ScaleType::continuous().default_transform("color"),
+            "identity"
+        );
+    }
+
+    #[test]
+    fn test_continuous_default_transform_size_is_sqrt() {
+        // Size aesthetic defaults to sqrt for area-proportional scaling
+        assert_eq!(ScaleType::continuous().default_transform("size"), "sqrt");
+    }
+
+    #[test]
+    fn test_continuous_allows_log_transforms() {
+        let transforms = ScaleType::continuous().allowed_transforms();
+        assert!(transforms.contains(&"identity"));
+        assert!(transforms.contains(&"log10"));
+        assert!(transforms.contains(&"log2"));
+        assert!(transforms.contains(&"log"));
+        assert!(transforms.contains(&"sqrt"));
+        assert!(transforms.contains(&"asinh"));
+        assert!(transforms.contains(&"pseudo_log"));
+        // reverse is now a property, not a transform
+        assert!(!transforms.contains(&"reverse"));
+    }
+
+    #[test]
+    fn test_binned_allows_log_transforms() {
+        let transforms = ScaleType::binned().allowed_transforms();
+        assert!(transforms.contains(&"identity"));
+        assert!(transforms.contains(&"log10"));
+        assert!(transforms.contains(&"sqrt"));
+        assert!(transforms.contains(&"asinh"));
+    }
+
+    #[test]
+    fn test_binned_default_transform_size_is_sqrt() {
+        assert_eq!(ScaleType::binned().default_transform("size"), "sqrt");
+        assert_eq!(ScaleType::binned().default_transform("x"), "identity");
+    }
+
+    #[test]
+    fn test_discrete_only_allows_identity_transform() {
+        let transforms = ScaleType::discrete().allowed_transforms();
+        assert_eq!(transforms, &["identity"]);
+    }
+
+    #[test]
+    fn test_discrete_rejects_log_transform() {
+        let result = ScaleType::discrete().resolve_transform("color", Some("log10"));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("log10"));
+        assert!(err.contains("not supported"));
+        assert!(err.contains("discrete"));
+    }
+
+    #[test]
+    fn test_identity_scale_only_allows_identity_transform() {
+        let transforms = ScaleType::identity().allowed_transforms();
+        assert_eq!(transforms, &["identity"]);
+    }
+
+    #[test]
+    fn test_resolve_transform_fills_default() {
+        // Without user input, fills in default
+        let result = ScaleType::continuous().resolve_transform("x", None);
+        assert_eq!(result.unwrap(), "identity");
+
+        let result = ScaleType::continuous().resolve_transform("size", None);
+        assert_eq!(result.unwrap(), "sqrt");
+    }
+
+    #[test]
+    fn test_resolve_transform_validates_user_input() {
+        // Valid user input is accepted
+        let result = ScaleType::continuous().resolve_transform("y", Some("log10"));
+        assert_eq!(result.unwrap(), "log10");
+
+        // Invalid user input is rejected
+        let result = ScaleType::continuous().resolve_transform("y", Some("invalid"));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("invalid"));
+        assert!(err.contains("not supported"));
+    }
+
+    #[test]
+    fn test_date_allows_identity_only() {
+        let transforms = ScaleType::date().allowed_transforms();
+        assert!(transforms.contains(&"identity"));
+        // reverse is now a property, not a transform
+        assert!(!transforms.contains(&"reverse"));
+        assert!(!transforms.contains(&"log10"));
+        assert!(!transforms.contains(&"sqrt"));
+    }
+
+    #[test]
+    fn test_datetime_allows_identity_only() {
+        let transforms = ScaleType::datetime().allowed_transforms();
+        assert!(transforms.contains(&"identity"));
+        // reverse is now a property, not a transform
+        assert!(!transforms.contains(&"reverse"));
+        assert!(!transforms.contains(&"log10"));
+    }
+
+    #[test]
+    fn test_time_allows_identity_only() {
+        let transforms = ScaleType::time().allowed_transforms();
+        assert!(transforms.contains(&"identity"));
+        // reverse is now a property, not a transform
+        assert!(!transforms.contains(&"reverse"));
+        assert!(!transforms.contains(&"sqrt"));
+    }
+
+    #[test]
+    fn test_date_rejects_log_transform() {
+        let result = ScaleType::date().resolve_transform("x", Some("log10"));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("log10"));
+        assert!(err.contains("not supported"));
+        assert!(err.contains("date"));
+    }
+
+    #[test]
+    fn test_date_rejects_reverse_transform() {
+        // reverse is now a property, not a transform
+        let result = ScaleType::date().resolve_transform("x", Some("reverse"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_continuous_accepts_all_valid_transforms() {
+        // reverse is now a property, not a transform
+        for transform in &[
+            "identity",
+            "log10",
+            "log2",
+            "log",
+            "sqrt",
+            "asinh",
+            "pseudo_log",
+        ] {
+            let result = ScaleType::continuous().resolve_transform("y", Some(transform));
+            assert!(
+                result.is_ok(),
+                "Expected transform '{}' to be valid for continuous scale",
+                transform
+            );
+            assert_eq!(result.unwrap(), *transform);
+        }
+    }
+
+    // =========================================================================
+    // Reverse Property Tests
+    // =========================================================================
+
+    #[test]
+    fn test_reverse_property_default_false() {
+        let props = HashMap::new();
+
+        // Continuous scale should have reverse default to false
+        let resolved = ScaleType::continuous()
+            .resolve_properties("x", &props)
+            .unwrap();
+        assert_eq!(
+            resolved.get("reverse"),
+            Some(&ParameterValue::Boolean(false))
+        );
+
+        // Same for non-positional aesthetics
+        let resolved = ScaleType::continuous()
+            .resolve_properties("color", &props)
+            .unwrap();
+        assert_eq!(
+            resolved.get("reverse"),
+            Some(&ParameterValue::Boolean(false))
+        );
+    }
+
+    #[test]
+    fn test_reverse_property_accepts_true() {
+        let mut props = HashMap::new();
+        props.insert("reverse".to_string(), ParameterValue::Boolean(true));
+
+        let resolved = ScaleType::continuous()
+            .resolve_properties("x", &props)
+            .unwrap();
+        assert_eq!(
+            resolved.get("reverse"),
+            Some(&ParameterValue::Boolean(true))
+        );
+    }
+
+    #[test]
+    fn test_reverse_property_supported_by_all_scales() {
+        let mut props = HashMap::new();
+        props.insert("reverse".to_string(), ParameterValue::Boolean(true));
+
+        // All scale types should support reverse property
+        for scale_type in &[
+            ScaleType::continuous(),
+            ScaleType::binned(),
+            ScaleType::date(),
+            ScaleType::datetime(),
+            ScaleType::time(),
+            ScaleType::discrete(),
+        ] {
+            let result = scale_type.resolve_properties("x", &props);
+            assert!(
+                result.is_ok(),
+                "Scale {:?} should support reverse property",
+                scale_type.scale_type_kind()
+            );
+            let resolved = result.unwrap();
+            assert_eq!(
+                resolved.get("reverse"),
+                Some(&ParameterValue::Boolean(true)),
+                "Scale {:?} should preserve reverse=true",
+                scale_type.scale_type_kind()
+            );
+        }
+    }
+
+    #[test]
+    fn test_identity_scale_rejects_reverse_property() {
+        // Identity scale should not support reverse (no properties at all)
+        let mut props = HashMap::new();
+        props.insert("reverse".to_string(), ParameterValue::Boolean(true));
+
+        let result = ScaleType::identity().resolve_properties("x", &props);
+        assert!(result.is_err());
     }
 }

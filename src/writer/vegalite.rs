@@ -403,6 +403,42 @@ impl VegaLiteWriter {
                             }
                         }
                     }
+
+                    // Handle transform method (VIA clause)
+                    if let Some(ref transform) = scale.transform_method {
+                        match transform.as_str() {
+                            "identity" => {} // Linear (default), no additional scale properties needed
+                            "log10" => {
+                                scale_obj.insert("type".to_string(), json!("log"));
+                                scale_obj.insert("base".to_string(), json!(10));
+                                scale_obj.insert("zero".to_string(), json!(false));
+                            }
+                            "log" => {
+                                // Natural logarithm - Vega-Lite uses "log" with base e
+                                scale_obj.insert("type".to_string(), json!("log"));
+                                scale_obj.insert("base".to_string(), json!(std::f64::consts::E));
+                                scale_obj.insert("zero".to_string(), json!(false));
+                            }
+                            "log2" => {
+                                scale_obj.insert("type".to_string(), json!("log"));
+                                scale_obj.insert("base".to_string(), json!(2));
+                                scale_obj.insert("zero".to_string(), json!(false));
+                            }
+                            "sqrt" => {
+                                scale_obj.insert("type".to_string(), json!("sqrt"));
+                            }
+                            "asinh" | "pseudo_log" => {
+                                scale_obj.insert("type".to_string(), json!("symlog"));
+                            }
+                            _ => {} // Unknown transform, ignore
+                        }
+                    }
+
+                    // Handle reverse property (SETTING clause)
+                    use crate::plot::ParameterValue;
+                    if let Some(ParameterValue::Boolean(true)) = scale.properties.get("reverse") {
+                        scale_obj.insert("reverse".to_string(), json!(true));
+                    }
                 }
                 // We don't automatically want to include 0 in our position scales
                 if aesthetic == "x" || aesthetic == "y" {
