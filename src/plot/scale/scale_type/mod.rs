@@ -31,37 +31,25 @@ use crate::plot::{ArrayElement, ParameterValue};
 // Scale type implementations
 mod binned;
 mod continuous;
-mod date;
-mod datetime;
 mod discrete;
 mod identity;
-mod time;
 
 // Re-export scale type structs for direct access if needed
 pub use binned::Binned;
 pub use continuous::Continuous;
-pub use date::Date;
-pub use datetime::DateTime;
 pub use discrete::Discrete;
 pub use identity::Identity;
-pub use time::Time;
 
 /// Enum of all scale types for pattern matching and serialization
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ScaleTypeKind {
-    /// Continuous numeric data
+    /// Continuous numeric data (also used for temporal data with temporal transforms)
     Continuous,
     /// Categorical/discrete data
     Discrete,
-    /// Binned/bucketed data
+    /// Binned/bucketed data (also supports temporal transforms)
     Binned,
-    /// Date data (maps to temporal type)
-    Date,
-    /// DateTime data (maps to temporal type)
-    DateTime,
-    /// Time data (maps to temporal type)
-    Time,
     /// Identity scale (use inferred type)
     Identity,
 }
@@ -72,9 +60,6 @@ impl std::fmt::Display for ScaleTypeKind {
             ScaleTypeKind::Continuous => "continuous",
             ScaleTypeKind::Discrete => "discrete",
             ScaleTypeKind::Binned => "binned",
-            ScaleTypeKind::Date => "date",
-            ScaleTypeKind::DateTime => "datetime",
-            ScaleTypeKind::Time => "time",
             ScaleTypeKind::Identity => "identity",
         };
         write!(f, "{}", s)
@@ -176,26 +161,46 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         &[TransformKind::Identity]
     }
 
-    /// Returns the default transform for this scale type and aesthetic.
-    /// The aesthetic matters because some aesthetics have special defaults:
-    /// - `size`: defaults to `sqrt` (area-proportional scaling)
-    /// - others: default to `identity`
+    /// Returns the default transform for this scale type, aesthetic, and column data type.
     ///
-    /// Default: identity for all aesthetics.
-    fn default_transform(&self, _aesthetic: &str) -> TransformKind {
-        TransformKind::Identity
+    /// The transform is inferred in order of priority:
+    /// 1. Column data type (Date -> Date transform, DateTime -> DateTime transform, etc.)
+    /// 2. Aesthetic defaults (`size` -> sqrt for area-proportional scaling)
+    /// 3. Identity (default)
+    ///
+    /// The column_dtype parameter enables automatic temporal transform inference when
+    /// a Date, DateTime, or Time column is mapped to an aesthetic.
+    fn default_transform(&self, aesthetic: &str, column_dtype: Option<&DataType>) -> TransformKind {
+        // First check column data type for temporal transforms
+        if let Some(dtype) = column_dtype {
+            match dtype {
+                DataType::Date => return TransformKind::Date,
+                DataType::Datetime(_, _) => return TransformKind::DateTime,
+                DataType::Time => return TransformKind::Time,
+                _ => {}
+            }
+        }
+
+        // Fall back to aesthetic-based defaults
+        match aesthetic {
+            "size" => TransformKind::Sqrt,
+            _ => TransformKind::Identity,
+        }
     }
 
     /// Resolve and validate the transform.
-    /// If user_transform is None, returns default_transform(aesthetic).
+    /// If user_transform is None, returns default_transform(aesthetic, column_dtype).
     /// If user_transform is Some, validates it's in allowed_transforms().
     fn resolve_transform(
         &self,
         aesthetic: &str,
         user_transform: Option<&Transform>,
+        column_dtype: Option<&DataType>,
     ) -> Result<Transform, String> {
         match user_transform {
-            None => Ok(Transform::from_kind(self.default_transform(aesthetic))),
+            None => Ok(Transform::from_kind(
+                self.default_transform(aesthetic, column_dtype),
+            )),
             Some(t) => {
                 if self.allowed_transforms().contains(&t.transform_kind()) {
                     Ok(t.clone())
@@ -349,16 +354,12 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
     /// Returns whether this scale type supports the `breaks` property.
     ///
-    /// Continuous, Binned, Date, DateTime, and Time scales support breaks.
+    /// Continuous and Binned scales support breaks.
     /// Discrete and Identity scales do not.
     fn supports_breaks(&self) -> bool {
         matches!(
             self.scale_type_kind(),
-            ScaleTypeKind::Continuous
-                | ScaleTypeKind::Binned
-                | ScaleTypeKind::Date
-                | ScaleTypeKind::DateTime
-                | ScaleTypeKind::Time
+            ScaleTypeKind::Continuous | ScaleTypeKind::Binned
         )
     }
 }
@@ -386,21 +387,6 @@ impl ScaleType {
         Self(Arc::new(Binned))
     }
 
-    /// Create a Date scale type
-    pub fn date() -> Self {
-        Self(Arc::new(Date))
-    }
-
-    /// Create a DateTime scale type
-    pub fn datetime() -> Self {
-        Self(Arc::new(DateTime))
-    }
-
-    /// Create a Time scale type
-    pub fn time() -> Self {
-        Self(Arc::new(Time))
-    }
-
     /// Create an Identity scale type
     pub fn identity() -> Self {
         Self(Arc::new(Identity))
@@ -410,10 +396,11 @@ impl ScaleType {
     ///
     /// Maps data types to appropriate scale types:
     /// - Numeric types (Int*, UInt*, Float*) → Continuous
-    /// - Date → Date
-    /// - Datetime → DateTime
-    /// - Time → Time
+    /// - Temporal types (Date, Datetime, Time) → Continuous (with temporal transforms)
     /// - Boolean, String, other → Discrete
+    ///
+    /// Note: Temporal data uses Continuous scale type with temporal transforms
+    /// (Date, DateTime, Time transforms) for break calculation and formatting.
     pub fn infer(dtype: &DataType) -> Self {
         match dtype {
             DataType::Int8
@@ -426,9 +413,9 @@ impl ScaleType {
             | DataType::UInt64
             | DataType::Float32
             | DataType::Float64 => Self::continuous(),
-            DataType::Date => Self::date(),
-            DataType::Datetime(_, _) => Self::datetime(),
-            DataType::Time => Self::time(),
+            // Temporal types are fundamentally continuous (days/µs/ns since epoch)
+            // The temporal transform is inferred from the column data type
+            DataType::Date | DataType::Datetime(_, _) | DataType::Time => Self::continuous(),
             DataType::Boolean | DataType::String => Self::discrete(),
             _ => Self::discrete(),
         }
@@ -440,9 +427,6 @@ impl ScaleType {
             ScaleTypeKind::Continuous => Self::continuous(),
             ScaleTypeKind::Discrete => Self::discrete(),
             ScaleTypeKind::Binned => Self::binned(),
-            ScaleTypeKind::Date => Self::date(),
-            ScaleTypeKind::DateTime => Self::datetime(),
-            ScaleTypeKind::Time => Self::time(),
             ScaleTypeKind::Identity => Self::identity(),
         }
     }
@@ -512,21 +496,22 @@ impl ScaleType {
         self.0.allowed_transforms()
     }
 
-    /// Returns the default transform for this scale type and aesthetic.
-    pub fn default_transform(&self, aesthetic: &str) -> TransformKind {
-        self.0.default_transform(aesthetic)
+    /// Returns the default transform for this scale type, aesthetic, and column data type.
+    pub fn default_transform(&self, aesthetic: &str, column_dtype: Option<&DataType>) -> TransformKind {
+        self.0.default_transform(aesthetic, column_dtype)
     }
 
     /// Resolve and validate the transform.
     ///
-    /// If user_transform is None, returns default_transform(aesthetic).
+    /// If user_transform is None, returns default_transform(aesthetic, column_dtype).
     /// If user_transform is Some, validates it's in allowed_transforms().
     pub fn resolve_transform(
         &self,
         aesthetic: &str,
         user_transform: Option<&Transform>,
+        column_dtype: Option<&DataType>,
     ) -> Result<Transform, String> {
-        self.0.resolve_transform(aesthetic, user_transform)
+        self.0.resolve_transform(aesthetic, user_transform, column_dtype)
     }
 
     /// Resolve break positions for this scale.
@@ -741,8 +726,8 @@ mod tests {
         let discrete = ScaleType::discrete();
         assert_eq!(discrete.scale_type_kind(), ScaleTypeKind::Discrete);
 
-        let date = ScaleType::date();
-        assert_eq!(date.scale_type_kind(), ScaleTypeKind::Date);
+        let binned = ScaleType::binned();
+        assert_eq!(binned.scale_type_kind(), ScaleTypeKind::Binned);
     }
 
     #[test]
@@ -758,7 +743,7 @@ mod tests {
     #[test]
     fn test_scale_type_display() {
         assert_eq!(format!("{}", ScaleType::continuous()), "continuous");
-        assert_eq!(format!("{}", ScaleType::datetime()), "datetime");
+        assert_eq!(format!("{}", ScaleType::binned()), "binned");
     }
 
     #[test]
@@ -776,7 +761,7 @@ mod tests {
     #[test]
     fn test_scale_type_name() {
         assert_eq!(ScaleType::continuous().name(), "continuous");
-        assert_eq!(ScaleType::date().name(), "date");
+        assert_eq!(ScaleType::binned().name(), "binned");
         assert_eq!(ScaleType::identity().name(), "identity");
     }
 
@@ -792,12 +777,9 @@ mod tests {
 
     #[test]
     fn test_scale_type_is_discrete() {
-        // Default is true for most scale types
+        // Default is true for most scale types (not truly discrete, but inverted for legacy reasons)
         assert!(ScaleType::continuous().is_discrete());
         assert!(ScaleType::binned().is_discrete());
-        assert!(ScaleType::date().is_discrete());
-        assert!(ScaleType::datetime().is_discrete());
-        assert!(ScaleType::time().is_discrete());
 
         // Discrete and Identity return false
         assert!(!ScaleType::discrete().is_discrete());
@@ -806,14 +788,18 @@ mod tests {
 
     #[test]
     fn test_allows_data_type() {
-        // Continuous allows numeric types
+        use polars::prelude::TimeUnit;
+
+        // Continuous allows numeric types AND temporal types (temporal is fundamentally continuous)
         assert!(ScaleType::continuous().allows_data_type(&DataType::Float64));
         assert!(ScaleType::continuous().allows_data_type(&DataType::Int32));
         assert!(ScaleType::continuous().allows_data_type(&DataType::UInt64));
+        assert!(ScaleType::continuous().allows_data_type(&DataType::Date));
+        assert!(ScaleType::continuous().allows_data_type(&DataType::Datetime(TimeUnit::Microseconds, None)));
+        assert!(ScaleType::continuous().allows_data_type(&DataType::Time));
         assert!(!ScaleType::continuous().allows_data_type(&DataType::String));
-        assert!(!ScaleType::continuous().allows_data_type(&DataType::Date));
 
-        // Binned allows numeric types (same as continuous)
+        // Binned allows numeric types AND temporal types (same as continuous)
         assert!(ScaleType::binned().allows_data_type(&DataType::Float64));
         assert!(ScaleType::binned().allows_data_type(&DataType::Int32));
         assert!(!ScaleType::binned().allows_data_type(&DataType::String));
@@ -823,25 +809,6 @@ mod tests {
         assert!(ScaleType::discrete().allows_data_type(&DataType::Boolean));
         assert!(!ScaleType::discrete().allows_data_type(&DataType::Float64));
         assert!(!ScaleType::discrete().allows_data_type(&DataType::Int32));
-
-        // Date allows only Date
-        assert!(ScaleType::date().allows_data_type(&DataType::Date));
-        assert!(!ScaleType::date().allows_data_type(&DataType::String));
-        assert!(!ScaleType::date().allows_data_type(&DataType::Float64));
-
-        // DateTime allows Datetime with any time unit
-        use polars::prelude::TimeUnit;
-        assert!(ScaleType::datetime()
-            .allows_data_type(&DataType::Datetime(TimeUnit::Milliseconds, None)));
-        assert!(ScaleType::datetime()
-            .allows_data_type(&DataType::Datetime(TimeUnit::Microseconds, None)));
-        assert!(!ScaleType::datetime().allows_data_type(&DataType::Date));
-        assert!(!ScaleType::datetime().allows_data_type(&DataType::Time));
-
-        // Time allows only Time
-        assert!(ScaleType::time().allows_data_type(&DataType::Time));
-        assert!(!ScaleType::time().allows_data_type(&DataType::Date));
-        assert!(!ScaleType::time().allows_data_type(&DataType::String));
 
         // Identity allows everything
         assert!(ScaleType::identity().allows_data_type(&DataType::String));
@@ -1039,13 +1006,13 @@ mod tests {
         );
         assert_eq!(ScaleType::infer(&DataType::UInt16), ScaleType::continuous());
 
-        // Temporal
-        assert_eq!(ScaleType::infer(&DataType::Date), ScaleType::date());
+        // Temporal - now inferred as Continuous (with temporal transforms)
+        assert_eq!(ScaleType::infer(&DataType::Date), ScaleType::continuous());
         assert_eq!(
             ScaleType::infer(&DataType::Datetime(TimeUnit::Microseconds, None)),
-            ScaleType::datetime()
+            ScaleType::continuous()
         );
-        assert_eq!(ScaleType::infer(&DataType::Time), ScaleType::time());
+        assert_eq!(ScaleType::infer(&DataType::Time), ScaleType::continuous());
 
         // Discrete
         assert_eq!(ScaleType::infer(&DataType::String), ScaleType::discrete());
@@ -1292,9 +1259,9 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_properties_date_supports_expand() {
+    fn test_resolve_properties_continuous_supports_expand() {
         let props = HashMap::new();
-        let resolved = ScaleType::date().resolve_properties("x", &props).unwrap();
+        let resolved = ScaleType::continuous().resolve_properties("x", &props).unwrap();
 
         // Should have default expand
         assert!(resolved.contains_key("expand"));
@@ -1480,9 +1447,6 @@ mod tests {
         for scale_type in &[
             ScaleType::continuous(),
             ScaleType::binned(),
-            ScaleType::date(),
-            ScaleType::datetime(),
-            ScaleType::time(),
         ] {
             let resolved = scale_type.resolve_properties("color", &props).unwrap();
             assert!(
@@ -1558,17 +1522,17 @@ mod tests {
 
     #[test]
     fn test_continuous_default_transform_identity() {
-        // Most aesthetics default to identity
+        // Most aesthetics default to identity (when no column dtype is specified)
         assert_eq!(
-            ScaleType::continuous().default_transform("x"),
+            ScaleType::continuous().default_transform("x", None),
             TransformKind::Identity
         );
         assert_eq!(
-            ScaleType::continuous().default_transform("y"),
+            ScaleType::continuous().default_transform("y", None),
             TransformKind::Identity
         );
         assert_eq!(
-            ScaleType::continuous().default_transform("color"),
+            ScaleType::continuous().default_transform("color", None),
             TransformKind::Identity
         );
     }
@@ -1577,7 +1541,40 @@ mod tests {
     fn test_continuous_default_transform_size_is_sqrt() {
         // Size aesthetic defaults to sqrt for area-proportional scaling
         assert_eq!(
-            ScaleType::continuous().default_transform("size"),
+            ScaleType::continuous().default_transform("size", None),
+            TransformKind::Sqrt
+        );
+    }
+
+    #[test]
+    fn test_continuous_default_transform_infers_temporal() {
+        use polars::prelude::*;
+
+        // Date column -> Date transform
+        assert_eq!(
+            ScaleType::continuous().default_transform("x", Some(&DataType::Date)),
+            TransformKind::Date
+        );
+
+        // DateTime column -> DateTime transform
+        assert_eq!(
+            ScaleType::continuous().default_transform("x", Some(&DataType::Datetime(TimeUnit::Microseconds, None))),
+            TransformKind::DateTime
+        );
+
+        // Time column -> Time transform
+        assert_eq!(
+            ScaleType::continuous().default_transform("x", Some(&DataType::Time)),
+            TransformKind::Time
+        );
+
+        // Non-temporal column -> falls back to aesthetic default
+        assert_eq!(
+            ScaleType::continuous().default_transform("x", Some(&DataType::Int64)),
+            TransformKind::Identity
+        );
+        assert_eq!(
+            ScaleType::continuous().default_transform("size", Some(&DataType::Float64)),
             TransformKind::Sqrt
         );
     }
@@ -1606,11 +1603,11 @@ mod tests {
     #[test]
     fn test_binned_default_transform_size_is_sqrt() {
         assert_eq!(
-            ScaleType::binned().default_transform("size"),
+            ScaleType::binned().default_transform("size", None),
             TransformKind::Sqrt
         );
         assert_eq!(
-            ScaleType::binned().default_transform("x"),
+            ScaleType::binned().default_transform("x", None),
             TransformKind::Identity
         );
     }
@@ -1624,7 +1621,7 @@ mod tests {
     #[test]
     fn test_discrete_rejects_log_transform() {
         let log = Transform::log();
-        let result = ScaleType::discrete().resolve_transform("color", Some(&log));
+        let result = ScaleType::discrete().resolve_transform("color", Some(&log), None);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("log"));
@@ -1641,10 +1638,10 @@ mod tests {
     #[test]
     fn test_resolve_transform_fills_default() {
         // Without user input, fills in default
-        let result = ScaleType::continuous().resolve_transform("x", None);
+        let result = ScaleType::continuous().resolve_transform("x", None, None);
         assert_eq!(result.unwrap().transform_kind(), TransformKind::Identity);
 
-        let result = ScaleType::continuous().resolve_transform("size", None);
+        let result = ScaleType::continuous().resolve_transform("size", None, None);
         assert_eq!(result.unwrap().transform_kind(), TransformKind::Sqrt);
     }
 
@@ -1652,44 +1649,11 @@ mod tests {
     fn test_resolve_transform_validates_user_input() {
         // Valid user input is accepted
         let log = Transform::log();
-        let result = ScaleType::continuous().resolve_transform("y", Some(&log));
+        let result = ScaleType::continuous().resolve_transform("y", Some(&log), None);
         assert_eq!(result.unwrap().transform_kind(), TransformKind::Log10);
 
         // Invalid user input is rejected (we can't easily test this anymore since
         // Transform::from_name returns None for invalid names)
-    }
-
-    #[test]
-    fn test_date_allows_identity_only() {
-        let transforms = ScaleType::date().allowed_transforms();
-        assert!(transforms.contains(&TransformKind::Identity));
-        assert!(!transforms.contains(&TransformKind::Log10));
-        assert!(!transforms.contains(&TransformKind::Sqrt));
-    }
-
-    #[test]
-    fn test_datetime_allows_identity_only() {
-        let transforms = ScaleType::datetime().allowed_transforms();
-        assert!(transforms.contains(&TransformKind::Identity));
-        assert!(!transforms.contains(&TransformKind::Log10));
-    }
-
-    #[test]
-    fn test_time_allows_identity_only() {
-        let transforms = ScaleType::time().allowed_transforms();
-        assert!(transforms.contains(&TransformKind::Identity));
-        assert!(!transforms.contains(&TransformKind::Sqrt));
-    }
-
-    #[test]
-    fn test_date_rejects_log_transform() {
-        let log = Transform::log();
-        let result = ScaleType::date().resolve_transform("x", Some(&log));
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("log"));
-        assert!(err.contains("not supported"));
-        assert!(err.contains("date"));
     }
 
     #[test]
@@ -1702,9 +1666,12 @@ mod tests {
             TransformKind::Sqrt,
             TransformKind::Asinh,
             TransformKind::PseudoLog,
+            TransformKind::Date,
+            TransformKind::DateTime,
+            TransformKind::Time,
         ] {
             let transform = Transform::from_kind(*kind);
-            let result = ScaleType::continuous().resolve_transform("y", Some(&transform));
+            let result = ScaleType::continuous().resolve_transform("y", Some(&transform), None);
             assert!(
                 result.is_ok(),
                 "Expected transform '{:?}' to be valid for continuous scale",
@@ -1764,9 +1731,6 @@ mod tests {
         for scale_type in &[
             ScaleType::continuous(),
             ScaleType::binned(),
-            ScaleType::date(),
-            ScaleType::datetime(),
-            ScaleType::time(),
             ScaleType::discrete(),
         ] {
             let result = scale_type.resolve_properties("x", &props);
@@ -1865,13 +1829,7 @@ mod tests {
         let mut props = HashMap::new();
         props.insert("breaks".to_string(), ParameterValue::Number(5.0));
 
-        for scale_type in &[
-            ScaleType::continuous(),
-            ScaleType::binned(),
-            ScaleType::date(),
-            ScaleType::datetime(),
-            ScaleType::time(),
-        ] {
+        for scale_type in &[ScaleType::continuous(), ScaleType::binned()] {
             let result = scale_type.resolve_properties("x", &props);
             assert!(
                 result.is_ok(),
@@ -1900,19 +1858,6 @@ mod tests {
 
         let result = ScaleType::identity().resolve_properties("x", &props);
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_date_scale_accepts_string_breaks() {
-        let mut props = HashMap::new();
-        props.insert(
-            "breaks".to_string(),
-            ParameterValue::String("month".to_string()),
-        );
-
-        // Date scale should accept string breaks (for temporal intervals)
-        let result = ScaleType::date().resolve_properties("x", &props);
-        assert!(result.is_ok());
     }
 
     #[test]
@@ -2057,11 +2002,6 @@ mod tests {
     #[test]
     fn test_supports_breaks_binned() {
         assert!(ScaleType::binned().supports_breaks());
-    }
-
-    #[test]
-    fn test_supports_breaks_date() {
-        assert!(ScaleType::date().supports_breaks());
     }
 
     #[test]

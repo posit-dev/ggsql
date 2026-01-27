@@ -642,12 +642,12 @@ module.exports = grammar({
     ),
 
     // Scale types - describe the nature of the data
+    // Note: DATE/DATETIME are no longer scale types - temporal handling is done
+    // via transforms that are automatically inferred from column data types
     scale_type_identifier: $ => choice(
       caseInsensitive('CONTINUOUS'),  // continuous numeric data
       caseInsensitive('DISCRETE'),    // categorical/discrete data
-      caseInsensitive('BINNED'),      // binned/bucketed data
-      caseInsensitive('DATE'),        // date data
-      caseInsensitive('DATETIME')     // datetime data
+      caseInsensitive('BINNED')       // binned/bucketed data
     ),
 
     // FROM clause - input range specification

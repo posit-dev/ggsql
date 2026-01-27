@@ -257,6 +257,42 @@ impl VegaLiteWriter {
         }
     }
 
+    /// Determine Vega-Lite field type from scale specification
+    fn determine_field_type_from_scale(
+        &self,
+        scale: &crate::plot::Scale,
+        inferred: &str,
+        aesthetic: &str,
+        identity_scale: &mut bool,
+    ) -> String {
+        // Use scale type if explicitly specified
+        if let Some(scale_type) = &scale.scale_type {
+            use crate::plot::ScaleTypeKind;
+            match scale_type.scale_type_kind() {
+                ScaleTypeKind::Continuous => "quantitative",
+                ScaleTypeKind::Discrete => "nominal",
+                ScaleTypeKind::Binned => "quantitative", // Binned data is still quantitative
+                ScaleTypeKind::Identity => {
+                    *identity_scale = true;
+                    inferred
+                }
+            }
+            .to_string()
+        } else if scale.input_range.is_some() {
+            // If domain is specified without explicit type:
+            // - For size/opacity: keep quantitative (domain sets range, not categories)
+            // - For color/x/y: treat as ordinal (discrete categories)
+            if aesthetic == "size" || aesthetic == "opacity" {
+                "quantitative".to_string()
+            } else {
+                "ordinal".to_string()
+            }
+        } else {
+            // Scale exists but no type specified, use inferred
+            inferred.to_string()
+        }
+    }
+
     /// Build encoding channel from aesthetic mapping
     ///
     /// The `titled_families` set tracks which aesthetic families have already received
@@ -282,38 +318,28 @@ impl VegaLiteWriter {
                 let mut identity_scale = false;
 
                 let field_type = if let Some(scale) = spec.find_scale(primary) {
-                    // Use scale type if explicitly specified
-                    if let Some(scale_type) = &scale.scale_type {
-                        use crate::plot::ScaleTypeKind;
-                        match scale_type.scale_type_kind() {
-                            // New data type indicators
-                            ScaleTypeKind::Continuous => "quantitative",
-                            ScaleTypeKind::Discrete => "nominal",
-                            ScaleTypeKind::Binned => "quantitative", // Binned data is still quantitative
-
-                            // Temporal scales
-                            ScaleTypeKind::Date | ScaleTypeKind::DateTime | ScaleTypeKind::Time => {
-                                "temporal"
-                            }
-
-                            ScaleTypeKind::Identity => {
-                                identity_scale = true;
-                                inferred.as_str()
-                            }
-                        }
-                        .to_string()
-                    } else if scale.input_range.is_some() {
-                        // If domain is specified without explicit type:
-                        // - For size/opacity: keep quantitative (domain sets range, not categories)
-                        // - For color/x/y: treat as ordinal (discrete categories)
-                        if aesthetic == "size" || aesthetic == "opacity" {
-                            "quantitative".to_string()
+                    // Check if the transform indicates temporal data
+                    // (Transform takes precedence since it's resolved from column dtype)
+                    if let Some(ref transform) = scale.transform {
+                        if transform.is_temporal() {
+                            "temporal".to_string()
                         } else {
-                            "ordinal".to_string()
+                            // Non-temporal transform, fall through to scale type check
+                            self.determine_field_type_from_scale(
+                                scale,
+                                &inferred,
+                                aesthetic,
+                                &mut identity_scale,
+                            )
                         }
                     } else {
-                        // Scale exists but no type specified, infer from data
-                        inferred
+                        // No transform, check scale type
+                        self.determine_field_type_from_scale(
+                            scale,
+                            &inferred,
+                            aesthetic,
+                            &mut identity_scale,
+                        )
                     }
                 } else {
                     // No scale specification, infer from data
@@ -431,6 +457,11 @@ impl VegaLiteWriter {
                             TransformKind::Asinh | TransformKind::PseudoLog => {
                                 scale_obj.insert("type".to_string(), json!("symlog"));
                             }
+                            // Temporal transforms are identity in numeric space;
+                            // the field type ("temporal") is set based on the transform kind
+                            TransformKind::Date
+                            | TransformKind::DateTime
+                            | TransformKind::Time => {}
                         }
                     }
 
@@ -4276,7 +4307,7 @@ mod tests {
     #[test]
     fn test_resolved_breaks_string_values() {
         // Test that resolved_breaks with string values (e.g., dates) work correctly
-        use crate::plot::scale::Scale;
+        use crate::plot::scale::{Scale, Transform};
         use crate::plot::ArrayElement;
 
         let writer = VegaLiteWriter::new();
@@ -4293,9 +4324,10 @@ mod tests {
             );
         spec.layers.push(layer);
 
-        // Add a date scale with resolved breaks as strings
+        // Add a continuous scale with Date transform and resolved breaks as strings
         let mut scale = Scale::new("x");
-        scale.scale_type = Some(crate::plot::ScaleType::date());
+        scale.scale_type = Some(crate::plot::ScaleType::continuous());
+        scale.transform = Some(Transform::date()); // Temporal transform
         scale.resolved_breaks = Some(vec![
             ArrayElement::String("2024-01-01".to_string()),
             ArrayElement::String("2024-02-01".to_string()),

@@ -690,16 +690,17 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
     })
 }
 
-/// Parse scale type identifier (CONTINUOUS, DISCRETE, BINNED, DATE, DATETIME)
+/// Parse scale type identifier (CONTINUOUS, DISCRETE, BINNED)
+///
+/// Note: DATE and DATETIME are no longer scale types - temporal handling is done
+/// via transforms that are automatically inferred from column data types.
 fn parse_scale_type_identifier(text: &str) -> Result<ScaleType> {
     match text.to_lowercase().as_str() {
         "continuous" => Ok(ScaleType::continuous()),
         "discrete" => Ok(ScaleType::discrete()),
         "binned" => Ok(ScaleType::binned()),
-        "date" => Ok(ScaleType::date()),
-        "datetime" => Ok(ScaleType::datetime()),
         _ => Err(GgsqlError::ParseError(format!(
-            "Unknown scale type: {}",
+            "Unknown scale type: '{}'. Valid types: continuous, discrete, binned",
             text
         ))),
     }
@@ -3217,12 +3218,14 @@ mod tests {
     }
 
     #[test]
-    fn test_scale_date_from_with_null() {
-        // DATE scale with partial input range: explicit start, infer end
+    fn test_scale_from_with_null() {
+        // Scale with partial input range: explicit start, infer end
+        // Note: DATE/DATETIME are no longer scale types - temporal handling is done
+        // via transforms that are automatically inferred from column data types
         let query = r#"
             VISUALISE date AS x, value AS y
             DRAW line
-            SCALE DATE x FROM ['2024-01-01', null]
+            SCALE x FROM ['2024-01-01', null]
         "#;
 
         let specs = parse_test_query(query).unwrap();
@@ -3233,5 +3236,25 @@ mod tests {
         assert_eq!(input_range.len(), 2);
         assert!(matches!(&input_range[0], ArrayElement::String(s) if s == "2024-01-01"));
         assert!(matches!(&input_range[1], ArrayElement::Null));
+    }
+
+    #[test]
+    fn test_scale_via_date_transform() {
+        // Explicit date transform via VIA clause
+        let query = r#"
+            VISUALISE date AS x, value AS y
+            DRAW line
+            SCALE x VIA date
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "x");
+        assert!(scales[0].transform.is_some());
+        assert_eq!(
+            scales[0].transform.as_ref().unwrap().name(),
+            "date"
+        );
     }
 }

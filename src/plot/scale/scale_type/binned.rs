@@ -29,10 +29,25 @@ impl ScaleTypeTrait for Binned {
             TransformKind::Sqrt,
             TransformKind::Asinh,
             TransformKind::PseudoLog,
+            // Temporal transforms for date/datetime/time data
+            TransformKind::Date,
+            TransformKind::DateTime,
+            TransformKind::Time,
         ]
     }
 
-    fn default_transform(&self, aesthetic: &str) -> TransformKind {
+    fn default_transform(&self, aesthetic: &str, column_dtype: Option<&DataType>) -> TransformKind {
+        // First check column data type for temporal transforms
+        if let Some(dtype) = column_dtype {
+            match dtype {
+                DataType::Date => return TransformKind::Date,
+                DataType::Datetime(_, _) => return TransformKind::DateTime,
+                DataType::Time => return TransformKind::Time,
+                _ => {}
+            }
+        }
+
+        // Fall back to aesthetic-based defaults
         match aesthetic {
             "size" => TransformKind::Sqrt, // Area-proportional scaling
             _ => TransformKind::Identity,
@@ -77,6 +92,10 @@ impl ScaleTypeTrait for Binned {
                 | DataType::UInt64
                 | DataType::Float32
                 | DataType::Float64
+                // Temporal types supported via temporal transforms
+                | DataType::Date
+                | DataType::Datetime(_, _)
+                | DataType::Time
         )
     }
 

@@ -37,16 +37,22 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 mod asinh;
+mod date;
+mod datetime;
 mod identity;
 mod log;
 mod pseudo_log;
 mod sqrt;
+mod time;
 
 pub use self::asinh::Asinh;
+pub use self::date::Date;
+pub use self::datetime::DateTime;
 pub use self::identity::Identity;
 pub use self::log::Log;
 pub use self::pseudo_log::PseudoLog;
 pub use self::sqrt::Sqrt;
+pub use self::time::Time;
 
 /// Enum of all transform types for pattern matching and serialization
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -66,6 +72,12 @@ pub enum TransformKind {
     Asinh,
     /// Symmetric log
     PseudoLog,
+    /// Date transform (days since epoch)
+    Date,
+    /// DateTime transform (microseconds since epoch)
+    DateTime,
+    /// Time transform (nanoseconds since midnight)
+    Time,
 }
 
 impl TransformKind {
@@ -79,7 +91,18 @@ impl TransformKind {
             TransformKind::Sqrt => "sqrt",
             TransformKind::Asinh => "asinh",
             TransformKind::PseudoLog => "pseudo_log",
+            TransformKind::Date => "date",
+            TransformKind::DateTime => "datetime",
+            TransformKind::Time => "time",
         }
+    }
+
+    /// Returns true if this is a temporal transform
+    pub fn is_temporal(&self) -> bool {
+        matches!(
+            self,
+            TransformKind::Date | TransformKind::DateTime | TransformKind::Time
+        )
     }
 }
 
@@ -221,6 +244,21 @@ impl Transform {
         Self(Arc::new(PseudoLog::natural()))
     }
 
+    /// Create a Date transform (for date data - days since epoch)
+    pub fn date() -> Self {
+        Self(Arc::new(Date))
+    }
+
+    /// Create a DateTime transform (for datetime data - microseconds since epoch)
+    pub fn datetime() -> Self {
+        Self(Arc::new(DateTime))
+    }
+
+    /// Create a Time transform (for time data - nanoseconds since midnight)
+    pub fn time() -> Self {
+        Self(Arc::new(Time))
+    }
+
     /// Create a Transform from a string name
     ///
     /// Returns None if the name is not recognized.
@@ -246,6 +284,9 @@ impl Transform {
             "pseudo_log" | "pseudo_log10" => Some(Self::pseudo_log()),
             "pseudo_log2" => Some(Self::pseudo_log2()),
             "pseudo_ln" => Some(Self::pseudo_ln()),
+            "date" => Some(Self::date()),
+            "datetime" => Some(Self::datetime()),
+            "time" => Some(Self::time()),
             _ => None,
         }
     }
@@ -260,6 +301,9 @@ impl Transform {
             TransformKind::Sqrt => Self::sqrt(),
             TransformKind::Asinh => Self::asinh(),
             TransformKind::PseudoLog => Self::pseudo_log(),
+            TransformKind::Date => Self::date(),
+            TransformKind::DateTime => Self::datetime(),
+            TransformKind::Time => Self::time(),
         }
     }
 
@@ -316,6 +360,11 @@ impl Transform {
     /// Returns true if this is the identity transform
     pub fn is_identity(&self) -> bool {
         self.transform_kind() == TransformKind::Identity
+    }
+
+    /// Returns true if this is a temporal transform (Date, DateTime, or Time)
+    pub fn is_temporal(&self) -> bool {
+        self.transform_kind().is_temporal()
     }
 }
 
@@ -377,6 +426,9 @@ pub const ALL_TRANSFORM_NAMES: &[&str] = &[
     "pseudo_log10", // alias for pseudo_log
     "pseudo_log2",
     "pseudo_ln",
+    "date",
+    "datetime",
+    "time",
 ];
 
 #[cfg(test)]

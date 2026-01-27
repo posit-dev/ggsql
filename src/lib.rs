@@ -634,7 +634,6 @@ mod integration_tests {
             DRAW point MAPPING revenue AS y, 'value2' AS stroke SETTING size => 30
             DRAW line MAPPING qty_scaled AS y, 'value3' AS stroke
             DRAW point MAPPING qty_scaled AS y, 'value4' AS stroke SETTING size => 30
-            SCALE DATE x
             FACET region BY category
         "#;
 
@@ -723,7 +722,6 @@ mod integration_tests {
             VISUALISE date AS x, value AS y, 'value' AS stroke
             DRAW line
             DRAW point SETTING size => 50
-            SCALE DATE x
         "#;
 
         let prepared =

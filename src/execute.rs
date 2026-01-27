@@ -1359,9 +1359,12 @@ fn resolve_scales(spec: &mut Plot, data_map: &HashMap<String, DataFrame>) -> Res
                     GgsqlError::ValidationError(format!("Scale '{}': {}", aesthetic, e))
                 })?;
 
-            // Resolve transform (fills in default, validates user input)
+            // Get column dtype for transform inference (use first column's type)
+            let column_dtype = column_refs.first().map(|c| c.dtype().clone());
+
+            // Resolve transform (fills in default based on column dtype, validates user input)
             let resolved_transform = st
-                .resolve_transform(&aesthetic, spec.scales[idx].transform.as_ref())
+                .resolve_transform(&aesthetic, spec.scales[idx].transform.as_ref(), column_dtype.as_ref())
                 .map_err(|e| {
                     GgsqlError::ValidationError(format!("Scale '{}': {}", aesthetic, e))
                 })?;
@@ -3339,11 +3342,11 @@ mod tests {
         // Find the x scale
         let x_scale = spec.find_scale("x").expect("x scale should exist");
 
-        // Should be inferred as Date from Date column
+        // Date columns now use Continuous scale type with temporal transform
         assert_eq!(
             x_scale.scale_type,
-            Some(ScaleType::date()),
-            "Date column should infer Date scale type"
+            Some(ScaleType::continuous()),
+            "Date column should infer Continuous scale type"
         );
     }
 
@@ -3463,16 +3466,16 @@ mod tests {
         );
         assert_eq!(ScaleType::infer(&DataType::UInt16), ScaleType::continuous());
 
-        // Test temporal types
-        assert_eq!(ScaleType::infer(&DataType::Date), ScaleType::date());
+        // Temporal types now use Continuous scale (with temporal transforms)
+        assert_eq!(ScaleType::infer(&DataType::Date), ScaleType::continuous());
         assert_eq!(
             ScaleType::infer(&DataType::Datetime(
                 polars::prelude::TimeUnit::Microseconds,
                 None
             )),
-            ScaleType::datetime()
+            ScaleType::continuous()
         );
-        assert_eq!(ScaleType::infer(&DataType::Time), ScaleType::time());
+        assert_eq!(ScaleType::infer(&DataType::Time), ScaleType::continuous());
 
         // Test discrete types
         assert_eq!(ScaleType::infer(&DataType::String), ScaleType::discrete());
@@ -3584,15 +3587,17 @@ mod tests {
             crate::plot::ParameterValue::Number(0.0),
         );
 
-        let range = ScaleType::date()
+        // Date columns now use Continuous scale which treats dates as numeric (days since epoch)
+        let range = ScaleType::continuous()
             .resolve_input_range(None, &[&column], &props)
             .unwrap();
         assert!(range.is_some());
         let range = range.unwrap();
         assert_eq!(range.len(), 2);
 
-        assert_eq!(range[0], ArrayElement::String("2024-01-15".into()));
-        assert_eq!(range[1], ArrayElement::String("2024-03-20".into()));
+        // Continuous scale returns numeric range (days since epoch)
+        assert_eq!(range[0], ArrayElement::Number(19737.0));
+        assert_eq!(range[1], ArrayElement::Number(19802.0));
     }
 
     #[test]
