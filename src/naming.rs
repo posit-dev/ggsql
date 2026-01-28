@@ -225,6 +225,21 @@ pub fn is_synthetic_column(name: &str) -> bool {
     is_const_column(name) || is_stat_column(name)
 }
 
+/// Generate bin end column name for a binned column.
+///
+/// Used by the Vega-Lite writer to store the upper bound of a bin
+/// when using `bin: "binned"` encoding with x2/y2 channels.
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// assert_eq!(naming::bin_end_column("temperature"), "__ggsql_bin_end_temperature__");
+/// assert_eq!(naming::bin_end_column("x"), "__ggsql_bin_end_x__");
+/// ```
+pub fn bin_end_column(column: &str) -> String {
+    format!("{}bin_end_{}{}", GGSQL_PREFIX, column, GGSQL_SUFFIX)
+}
+
 /// Extract the stat name from a stat column (for display purposes).
 ///
 /// Returns the human-readable name from a stat column name.
@@ -343,6 +358,16 @@ mod tests {
         assert_eq!(GLOBAL_DATA_KEY, "__ggsql_global__");
         assert_eq!(ORDER_COLUMN, "__ggsql_order__");
         assert_eq!(SCHEMA_ALIAS, "__schema__");
+    }
+
+    #[test]
+    fn test_bin_end_column() {
+        assert_eq!(
+            bin_end_column("temperature"),
+            "__ggsql_bin_end_temperature__"
+        );
+        assert_eq!(bin_end_column("x"), "__ggsql_bin_end_x__");
+        assert_eq!(bin_end_column("value"), "__ggsql_bin_end_value__");
     }
 
     #[test]

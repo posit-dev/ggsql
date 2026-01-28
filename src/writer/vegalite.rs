@@ -22,7 +22,7 @@
 
 use crate::naming;
 use crate::plot::layer::geom::{GeomAesthetics, GeomType};
-use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path};
+use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path, ScaleTypeKind};
 use crate::plot::{ArrayElement, Coord, CoordType, LiteralValue, ParameterValue};
 use crate::writer::Writer;
 use crate::{AestheticValue, DataFrame, Geom, GgsqlError, Plot, Result};
@@ -197,6 +197,124 @@ impl VegaLiteWriter {
         }
     }
 
+    /// Given a bin center value and breaks array, return (bin_start, bin_end).
+    ///
+    /// The breaks array contains bin edges [e0, e1, e2, ...]. Each bin center
+    /// is computed as (lower + upper) / 2. This function reverses that to find
+    /// which bin a center value belongs to.
+    fn center_to_bin_edges(center: f64, breaks: &[f64]) -> Option<(f64, f64)> {
+        for i in 0..breaks.len().saturating_sub(1) {
+            let lower = breaks[i];
+            let upper = breaks[i + 1];
+            let expected_center = (lower + upper) / 2.0;
+            if (center - expected_center).abs() < 1e-9 {
+                return Some((lower, upper));
+            }
+        }
+        None
+    }
+
+    /// Convert Polars DataFrame to Vega-Lite data values with bin columns.
+    ///
+    /// For columns with binned scales, this replaces the center value with bin_start
+    /// and adds a corresponding bin_end column.
+    fn dataframe_to_values_with_bins(
+        &self,
+        df: &DataFrame,
+        binned_columns: &HashMap<String, Vec<f64>>,
+    ) -> Result<Vec<Value>> {
+        let mut values = Vec::new();
+        let height = df.height();
+        let column_names = df.get_column_names();
+
+        for row_idx in 0..height {
+            let mut row_obj = Map::new();
+
+            for (col_idx, col_name) in column_names.iter().enumerate() {
+                let column = df.get_columns().get(col_idx).ok_or_else(|| {
+                    GgsqlError::WriterError(format!("Failed to get column {}", col_name))
+                })?;
+
+                // Get value from series and convert to JSON Value
+                let value = self.series_value_at(column.as_materialized_series(), row_idx)?;
+
+                // Check if this column has binned data
+                let col_name_str = col_name.to_string();
+                if let Some(breaks) = binned_columns.get(&col_name_str) {
+                    if let Some(center) = value.as_f64() {
+                        if let Some((start, end)) = Self::center_to_bin_edges(center, breaks) {
+                            // Replace center with bin_start
+                            row_obj.insert(col_name_str.clone(), json!(start));
+                            // Add bin_end column
+                            row_obj.insert(naming::bin_end_column(&col_name_str), json!(end));
+                            continue;
+                        }
+                    }
+                }
+
+                // Not binned or couldn't resolve edges - use original value
+                row_obj.insert(col_name.to_string(), value);
+            }
+
+            values.push(Value::Object(row_obj));
+        }
+
+        Ok(values)
+    }
+
+    /// Collect binned column information from spec.
+    ///
+    /// Returns a map of column name -> breaks array for all columns with binned scales.
+    fn collect_binned_columns(&self, spec: &Plot) -> HashMap<String, Vec<f64>> {
+        let mut binned_columns: HashMap<String, Vec<f64>> = HashMap::new();
+
+        for scale in &spec.scales {
+            // Check if this is a binned scale
+            let is_binned = scale
+                .scale_type
+                .as_ref()
+                .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)
+                .unwrap_or(false);
+
+            if !is_binned {
+                continue;
+            }
+
+            // Get breaks array from scale properties
+            if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
+                let break_values: Vec<f64> = breaks
+                    .iter()
+                    .filter_map(|e| match e {
+                        ArrayElement::Number(v) => Some(*v),
+                        _ => None,
+                    })
+                    .collect();
+
+                if break_values.len() >= 2 {
+                    // Find column name for this aesthetic from all layers
+                    for layer in &spec.layers {
+                        if let Some(AestheticValue::Column { name: col, .. }) =
+                            layer.mappings.aesthetics.get(&scale.aesthetic)
+                        {
+                            binned_columns.insert(col.clone(), break_values.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        binned_columns
+    }
+
+    /// Check if an aesthetic has a binned scale in the spec.
+    fn is_binned_aesthetic(&self, aesthetic: &str, spec: &Plot) -> bool {
+        let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+        spec.find_scale(primary)
+            .and_then(|s| s.scale_type.as_ref())
+            .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)
+            .unwrap_or(false)
+    }
+
     /// Map ggsql Geom to Vega-Lite mark type
     fn geom_to_mark(&self, geom: &Geom) -> String {
         match geom.geom_type() {
@@ -346,10 +464,23 @@ impl VegaLiteWriter {
                     inferred
                 };
 
+                // Check if this aesthetic has a binned scale
+                let is_binned = spec
+                    .find_scale(primary)
+                    .and_then(|s| s.scale_type.as_ref())
+                    .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)
+                    .unwrap_or(false);
+
                 let mut encoding = json!({
                     "field": col,
                     "type": field_type,
                 });
+
+                // For binned scales, add bin: "binned" to enable Vega-Lite's binned data handling
+                // This allows proper axis tick placement at bin edges and range labels in legends
+                if is_binned {
+                    encoding["bin"] = json!("binned");
+                }
 
                 // Apply title only once per aesthetic family
                 // (primary was already computed above for scale lookup)
@@ -472,6 +603,8 @@ impl VegaLiteWriter {
 
                     // Handle resolved breaks -> axis.values or legend.values
                     // breaks is stored as Array in properties after resolution
+                    // For binned scales, we still need to set axis.values manually because
+                    // Vega-Lite's automatic tick placement with bin:"binned" only works for equal-width bins
                     if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
                         use crate::plot::ArrayElement;
                         let values: Vec<Value> = breaks
@@ -1181,10 +1314,18 @@ impl Writer for VegaLiteWriter {
             }
         }
 
+        // Collect binned column information from spec
+        let binned_columns = self.collect_binned_columns(spec);
+
         // Build datasets - convert all DataFrames to Vega-Lite format
+        // For binned columns, replace center values with bin_start and add bin_end columns
         let mut datasets = Map::new();
         for (key, df) in data {
-            let values = self.dataframe_to_values(df)?;
+            let values = if binned_columns.is_empty() {
+                self.dataframe_to_values(df)?
+            } else {
+                self.dataframe_to_values_with_bins(df, &binned_columns)?
+            };
             datasets.insert(key.clone(), json!(values));
         }
         vl_spec["datasets"] = Value::Object(datasets);
@@ -1264,6 +1405,18 @@ impl Writer for VegaLiteWriter {
                 let channel_encoding =
                     self.build_encoding_channel(aesthetic, value, df, spec, &mut titled_families)?;
                 encoding.insert(channel_name, channel_encoding);
+
+                // For binned positional aesthetics (x, y), add x2/y2 channel with bin_end column
+                // This enables proper bin width rendering in Vega-Lite
+                if matches!(aesthetic.as_str(), "x" | "y")
+                    && self.is_binned_aesthetic(aesthetic, spec)
+                {
+                    if let AestheticValue::Column { name: col, .. } = value {
+                        let end_col = naming::bin_end_column(col);
+                        let end_channel = format!("{}2", aesthetic); // "x2" or "y2"
+                        encoding.insert(end_channel, json!({"field": end_col}));
+                    }
+                }
             }
 
             // Also add aesthetic parameters from SETTING as literal encodings
@@ -1428,7 +1581,7 @@ impl Writer for VegaLiteWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::{Labels, Layer, LiteralValue, ParameterValue};
+    use crate::plot::{Labels, Layer, LiteralValue, ParameterValue, Scale};
     use std::collections::HashMap;
 
     /// Helper to wrap a DataFrame in a data map for testing
@@ -4358,5 +4511,269 @@ mod tests {
         assert_eq!(axis_values[0], "2024-01-01");
         assert_eq!(axis_values[1], "2024-02-01");
         assert_eq!(axis_values[2], "2024-03-01");
+    }
+
+    #[test]
+    fn test_center_to_bin_edges() {
+        // Test basic bin edge lookup
+        let breaks = vec![0.0, 10.0, 20.0, 30.0];
+
+        // Center of first bin (0+10)/2 = 5
+        let result = VegaLiteWriter::center_to_bin_edges(5.0, &breaks);
+        assert_eq!(result, Some((0.0, 10.0)));
+
+        // Center of second bin (10+20)/2 = 15
+        let result = VegaLiteWriter::center_to_bin_edges(15.0, &breaks);
+        assert_eq!(result, Some((10.0, 20.0)));
+
+        // Center of last bin (20+30)/2 = 25
+        let result = VegaLiteWriter::center_to_bin_edges(25.0, &breaks);
+        assert_eq!(result, Some((20.0, 30.0)));
+
+        // Value not matching any bin center
+        let result = VegaLiteWriter::center_to_bin_edges(7.0, &breaks);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_center_to_bin_edges_uneven_breaks() {
+        // Non-evenly-spaced breaks
+        let breaks = vec![0.0, 10.0, 25.0, 100.0];
+
+        // Center of [0, 10] = 5
+        assert_eq!(
+            VegaLiteWriter::center_to_bin_edges(5.0, &breaks),
+            Some((0.0, 10.0))
+        );
+
+        // Center of [10, 25] = 17.5
+        assert_eq!(
+            VegaLiteWriter::center_to_bin_edges(17.5, &breaks),
+            Some((10.0, 25.0))
+        );
+
+        // Center of [25, 100] = 62.5
+        assert_eq!(
+            VegaLiteWriter::center_to_bin_edges(62.5, &breaks),
+            Some((25.0, 100.0))
+        );
+    }
+
+    #[test]
+    fn test_binned_scale_adds_bin_encoding() {
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::bar())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("temperature".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("count".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add a binned scale for x
+        let mut scale = Scale::new("x");
+        scale.scale_type = Some(crate::plot::ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(10.0),
+                ArrayElement::Number(20.0),
+                ArrayElement::Number(30.0),
+            ]),
+        );
+        spec.scales.push(scale);
+
+        // Data with bin center values (5, 15, 25)
+        let df = df! {
+            "temperature" => &[5.0, 15.0, 25.0],
+            "count" => &[10, 20, 30],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // The x encoding should have bin: "binned"
+        assert_eq!(
+            vl_spec["layer"][0]["encoding"]["x"]["bin"],
+            json!("binned"),
+            "Binned scale should add bin: \"binned\" to encoding"
+        );
+
+        // Should also have x2 channel for bin end
+        assert!(
+            vl_spec["layer"][0]["encoding"]["x2"].is_object(),
+            "Binned x scale should add x2 channel"
+        );
+        assert_eq!(
+            vl_spec["layer"][0]["encoding"]["x2"]["field"],
+            naming::bin_end_column("temperature")
+        );
+    }
+
+    #[test]
+    fn test_binned_scale_transforms_data() {
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::bar())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("count".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add a binned scale
+        let mut scale = Scale::new("x");
+        scale.scale_type = Some(crate::plot::ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(10.0),
+                ArrayElement::Number(20.0),
+            ]),
+        );
+        spec.scales.push(scale);
+
+        // Data with bin center values: 5 (center of [0, 10]), 15 (center of [10, 20])
+        let df = df! {
+            "value" => &[5.0, 15.0],
+            "count" => &[100, 200],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Check that data was transformed: center values replaced with bin_start
+        let data = &vl_spec["datasets"][naming::GLOBAL_DATA_KEY];
+
+        // First row: center 5 -> bin_start 0
+        assert_eq!(
+            data[0]["value"], 0.0,
+            "Bin center should be replaced with bin_start"
+        );
+        // First row should have bin_end column
+        assert_eq!(
+            data[0][naming::bin_end_column("value")],
+            10.0,
+            "Should have bin_end column"
+        );
+
+        // Second row: center 15 -> bin_start 10
+        assert_eq!(data[1]["value"], 10.0);
+        assert_eq!(data[1][naming::bin_end_column("value")], 20.0);
+    }
+
+    #[test]
+    fn test_binned_scale_sets_axis_values_from_breaks() {
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::bar())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("temp".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("count".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add a binned scale with breaks (including uneven spacing)
+        let mut scale = Scale::new("x");
+        scale.scale_type = Some(crate::plot::ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(10.0),
+                ArrayElement::Number(25.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+        spec.scales.push(scale);
+
+        let df = df! {
+            "temp" => &[5.0, 17.5, 62.5],
+            "count" => &[10, 20, 30],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // For binned scales with arbitrary breaks, axis.values should be set
+        // to the breaks array for proper tick placement at bin edges
+        let axis_values = &vl_spec["layer"][0]["encoding"]["x"]["axis"]["values"];
+        assert!(
+            axis_values.is_array(),
+            "Binned scale should set axis.values"
+        );
+        assert_eq!(axis_values[0], 0.0);
+        assert_eq!(axis_values[1], 10.0);
+        assert_eq!(axis_values[2], 25.0);
+        assert_eq!(axis_values[3], 100.0);
+    }
+
+    #[test]
+    fn test_non_binned_scale_still_sets_axis_values() {
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add a continuous (non-binned) scale with breaks
+        let mut scale = Scale::new("x");
+        scale.scale_type = Some(crate::plot::ScaleType::continuous());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[10, 60, 90],
+            "y" => &[1, 2, 3],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // For non-binned scales, axis.values should still be set
+        let axis_values = &vl_spec["layer"][0]["encoding"]["x"]["axis"]["values"];
+        assert!(
+            axis_values.is_array(),
+            "Non-binned scale should set axis.values"
+        );
+        assert_eq!(axis_values[0], 0.0);
+        assert_eq!(axis_values[1], 50.0);
+        assert_eq!(axis_values[2], 100.0);
     }
 }
