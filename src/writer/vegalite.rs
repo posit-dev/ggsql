@@ -20,14 +20,15 @@
 //! // Can be rendered in browser with vega-embed
 //! ```
 
-use crate::naming;
 use crate::plot::layer::geom::{GeomAesthetics, GeomType};
 use crate::plot::{ArrayElement, Coord, CoordType, LiteralValue, ParameterValue};
 use crate::writer::Writer;
+use crate::{naming, Layer};
 use crate::{AestheticValue, DataFrame, Geom, GgsqlError, Plot, Result};
 use polars::prelude::*;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
+use std::ops::Not;
 
 /// Vega-Lite JSON writer
 ///
@@ -1057,7 +1058,6 @@ impl Writer for VegaLiteWriter {
             let values = self.dataframe_to_values(df)?;
             datasets.insert(key.clone(), json!(values));
         }
-        vl_spec["datasets"] = Value::Object(datasets);
 
         // Determine if faceting requires unified data (no per-layer data entries)
         let faceting_mode = spec.facet.is_some();
@@ -1178,8 +1178,18 @@ impl Writer for VegaLiteWriter {
             }
 
             layer_spec["encoding"] = Value::Object(encoding);
-            layers.push(layer_spec);
+
+            // For boxplots we actually append several layers
+            if layer.geom.geom_type() == GeomType::Boxplot {
+                let boxplot_layers = render_boxplot(df, layer_spec, layer, self, &mut datasets)?;
+                layers.extend(boxplot_layers);
+            } else {
+                layers.push(layer_spec);
+            }
         }
+
+        // Assign datasets to vl_spec after all layers have been processed
+        vl_spec["datasets"] = Value::Object(datasets);
 
         vl_spec["layer"] = json!(layers);
 
@@ -1293,6 +1303,184 @@ impl Writer for VegaLiteWriter {
 
         Ok(())
     }
+}
+
+fn render_boxplot(
+    data: &DataFrame,
+    prototype: Value,
+    layer: &Layer,
+    writer: &VegaLiteWriter,
+    datasets: &mut Map<String, Value>,
+) -> Result<Vec<Value>> {
+    let mut layers: Vec<Value> = Vec::new();
+
+    let type_col = naming::stat_column("type");
+    let type_col = type_col.as_str();
+    let value_col = naming::stat_column("value");
+    let value_col = value_col.as_str();
+
+    let x_col = layer
+        .mappings
+        .get("x")
+        .and_then(|x| x.column_name())
+        .ok_or_else(|| {
+            GgsqlError::WriterError("Failed to find column for 'x' aesthetic".to_string())
+        })?;
+    let y_col = layer
+        .mappings
+        .get("y")
+        .and_then(|y| y.column_name())
+        .ok_or_else(|| {
+            GgsqlError::WriterError("Failed to find column for 'y' aesthetic".to_string())
+        })?;
+
+    // Set orientation
+    // Note: Getting orientation to work should be accommodated upstream.
+    let is_horizontal = x_col == value_col;
+    let group_col = if is_horizontal { y_col } else { x_col };
+    let offset = if is_horizontal { "yOffset" } else { "xOffset" };
+    let value_var1 = if is_horizontal { "x" } else { "y" };
+    let value_var2 = if is_horizontal { "x2" } else { "y2" };
+
+    // Find grouping columns (all columns except 'type' and 'value')
+    let grouping_cols: Vec<&str> = data
+        .get_column_names()
+        .iter()
+        .filter(|&col| col.as_str() != type_col && col.as_str() != value_col)
+        .map(|&s| s.as_str())
+        .collect();
+    let dodge_groups: Vec<&str> = grouping_cols
+        .iter()
+        .filter(|&&col| col != group_col)
+        .copied()
+        .collect();
+
+    // Render outliers
+    let is_outlier = data
+        .column(type_col)
+        .and_then(|s| s.str())
+        .map(|s| s.equal("outlier"))
+        .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
+
+    let mut points: Option<Value> = None;
+    if is_outlier.any() {
+        let mut outliers = prototype.clone();
+
+        let outlier_data = data
+            .filter(&is_outlier)
+            .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
+        let outlier_data = writer.dataframe_to_values(&outlier_data)?;
+        outliers["mark"] = json!({"type": "point"});
+        outliers["data"] = json!({"values": outlier_data});
+        points = Some(outliers);
+    }
+
+    let summary = data
+        .filter(&is_outlier.not())
+        .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
+
+    // Pivot from long to wide format, giving every metric its own column
+    let summary = polars_ops::frame::pivot::pivot_stable(
+        &summary,
+        [type_col],                  // on: column to pivot (becomes new columns)
+        Some(grouping_cols.clone()), // index: row identifiers
+        Some([value_col]),           // values: data to spread
+        false,                       // sort_columns
+        None,                        // agg_fn
+        None,                        // separator
+    )
+    .map_err(|e| GgsqlError::WriterError(format!("Pivot failed: {}", e)))?;
+    let summary_values = writer.dataframe_to_values(&summary)?;
+
+    // Initialise boxplot parts by cloning prototypes
+    // This gives us all non-position encoding channels from upstream
+    let mut lower_whiskers = prototype.clone(); // Upper whiskers will be cloned later
+    let mut box_part = prototype.clone();
+    let mut median_line = prototype.clone();
+
+    // Derive dataset name from the layer's existing dataset name
+    let base_dataset_name = prototype["data"]["name"].as_str();
+    let summary_dataset_name = format!(
+        "{}_boxplot_summary",
+        base_dataset_name.unwrap_or("__ggsql_layer__")
+    );
+    let summary_data_ref = json!({"name": &summary_dataset_name});
+    lower_whiskers["data"] = summary_data_ref.clone();
+    box_part["data"] = summary_data_ref.clone();
+    median_line["data"] = summary_data_ref;
+
+    // Set marks and defaults
+    let mut width = 0.9;
+    if let Some(ParameterValue::Number(num)) = layer.parameters.get("width") {
+        width = *num;
+    }
+    let default_stroke = "black"; // This is a temporary solution until we have proper geom defaults
+    let default_fill = "#FFFFFF00"; // Setting these in the 'mark' will allow them to be overridden by encoding
+
+    lower_whiskers["mark"] = json!({"type": "rule", "stroke": default_stroke});
+    box_part["mark"] = json!({
+        "type": "bar",
+        "width": {"band": width},
+        "align": "center",
+        "stroke": default_stroke,
+        "color": default_fill
+    });
+    median_line["mark"] = json!({
+        "type": "tick",
+        "stroke": default_stroke,
+        "width": {"band": width},
+        "align": "center"
+    });
+
+    // Build encodings for the 5 boxplot numbers
+    let mut summary_encoding = HashMap::new();
+    for aes in &["lower", "upper", "q1", "q3", "median"] {
+        // We derive these from x/y so we also take any relevant scale information
+        let mut template = prototype["encoding"][value_var1].clone();
+        template["field"] = json!(*aes);
+        summary_encoding.insert(*aes, template);
+    }
+
+    // Set encodings
+    let mut upper_whiskers = lower_whiskers.clone();
+    lower_whiskers["encoding"][value_var1] = summary_encoding["q1"].clone();
+    lower_whiskers["encoding"][value_var2] = summary_encoding["lower"].clone();
+    upper_whiskers["encoding"][value_var1] = summary_encoding["q3"].clone();
+    upper_whiskers["encoding"][value_var2] = summary_encoding["upper"].clone();
+    box_part["encoding"][value_var1] = summary_encoding["q1"].clone();
+    box_part["encoding"][value_var2] = summary_encoding["q3"].clone();
+    median_line["encoding"][value_var1] = summary_encoding["median"].clone();
+
+    // Dodging
+    if !dodge_groups.is_empty() {
+        // We're dodging on the first non-axis group, rather than all groups.
+        // This is simplified because we may later have to coordinate with other
+        // layer types how dodging will work in general.
+        let offset_val = json!({"field": dodge_groups[0]});
+        if let Some(ref mut point_layer) = points {
+            point_layer["encoding"][offset] = offset_val.clone();
+        }
+        lower_whiskers["encoding"][offset] = offset_val.clone();
+        upper_whiskers["encoding"][offset] = offset_val.clone();
+        box_part["encoding"][offset] = offset_val.clone();
+        median_line["encoding"][offset] = offset_val;
+    }
+    if let Some(point_layer) = points {
+        layers.push(point_layer);
+    }
+    layers.push(lower_whiskers);
+    layers.push(upper_whiskers);
+    layers.push(box_part);
+    layers.push(median_line);
+
+    // Add the boxplot summary dataset directly to the datasets object
+    datasets.insert(summary_dataset_name, json!(summary_values));
+    if let Some(name) = base_dataset_name {
+        // Remove the previous layer data, it has been consumed.
+        datasets.remove(name);
+    }
+
+    Ok(layers)
 }
 
 #[cfg(test)]

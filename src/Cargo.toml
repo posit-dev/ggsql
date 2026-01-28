@@ -29,6 +29,7 @@ csscolorparser.workspace = true
 
 # Data processing
 polars.workspace = true
+polars-ops.workspace = true
 
 # Readers
 duckdb = { workspace = true, optional = true }
