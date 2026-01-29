@@ -3482,10 +3482,7 @@ mod tests {
 
         // Check label_template was parsed
         assert!(scales[0].label_mapping.is_none()); // No explicit mappings
-        assert_eq!(
-            scales[0].label_template,
-            Some("{} units".to_string())
-        );
+        assert_eq!(scales[0].label_template, Some("{} units".to_string()));
     }
 
     #[test]
@@ -3505,10 +3502,7 @@ mod tests {
         assert_eq!(label_mapping.get("A"), Some(&Some("Alpha".to_string())));
 
         // Check template was also parsed
-        assert_eq!(
-            scales[0].label_template,
-            Some("Category {}".to_string())
-        );
+        assert_eq!(scales[0].label_template, Some("Category {}".to_string()));
     }
 
     #[test]
@@ -3523,10 +3517,7 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
         let scales = &specs[0].scales;
 
-        assert_eq!(
-            scales[0].label_template,
-            Some("{:UPPER}".to_string())
-        );
+        assert_eq!(scales[0].label_template, Some("{:UPPER}".to_string()));
     }
 
     #[test]
@@ -3541,9 +3532,6 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
         let scales = &specs[0].scales;
 
-        assert_eq!(
-            scales[0].label_template,
-            Some("{:time %b %Y}".to_string())
-        );
+        assert_eq!(scales[0].label_template, Some("{:time %b %Y}".to_string()));
     }
 }

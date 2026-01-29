@@ -5474,10 +5474,17 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Find the x scale
-        let x_scale = result.specs[0].scales.iter().find(|s| s.aesthetic == "x").unwrap();
+        let x_scale = result.specs[0]
+            .scales
+            .iter()
+            .find(|s| s.aesthetic == "x")
+            .unwrap();
 
         // Check that label_mapping was populated from the template
-        assert!(x_scale.label_mapping.is_some(), "label_mapping should be set");
+        assert!(
+            x_scale.label_mapping.is_some(),
+            "label_mapping should be set"
+        );
         let label_mapping = x_scale.label_mapping.as_ref().unwrap();
 
         // The exact break values depend on pretty breaks algorithm, but they should have ' units' suffix
@@ -5508,10 +5515,17 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Find the x scale
-        let x_scale = result.specs[0].scales.iter().find(|s| s.aesthetic == "x").unwrap();
+        let x_scale = result.specs[0]
+            .scales
+            .iter()
+            .find(|s| s.aesthetic == "x")
+            .unwrap();
 
         // Check that label_mapping was populated from the template
-        assert!(x_scale.label_mapping.is_some(), "label_mapping should be set");
+        assert!(
+            x_scale.label_mapping.is_some(),
+            "label_mapping should be set"
+        );
         let label_mapping = x_scale.label_mapping.as_ref().unwrap();
 
         // Check uppercase transformations
@@ -5547,10 +5561,17 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Find the x scale
-        let x_scale = result.specs[0].scales.iter().find(|s| s.aesthetic == "x").unwrap();
+        let x_scale = result.specs[0]
+            .scales
+            .iter()
+            .find(|s| s.aesthetic == "x")
+            .unwrap();
 
         // Check that label_mapping was populated
-        assert!(x_scale.label_mapping.is_some(), "label_mapping should be set");
+        assert!(
+            x_scale.label_mapping.is_some(),
+            "label_mapping should be set"
+        );
         let label_mapping = x_scale.label_mapping.as_ref().unwrap();
 
         // A should have explicit mapping
@@ -5588,10 +5609,17 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         // Find the x scale
-        let x_scale = result.specs[0].scales.iter().find(|s| s.aesthetic == "x").unwrap();
+        let x_scale = result.specs[0]
+            .scales
+            .iter()
+            .find(|s| s.aesthetic == "x")
+            .unwrap();
 
         // Check that label_mapping was populated
-        assert!(x_scale.label_mapping.is_some(), "label_mapping should be set");
+        assert!(
+            x_scale.label_mapping.is_some(),
+            "label_mapping should be set"
+        );
         let label_mapping = x_scale.label_mapping.as_ref().unwrap();
 
         assert_eq!(

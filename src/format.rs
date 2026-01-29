@@ -182,8 +182,9 @@ pub fn apply_label_template(
             ArrayElement::Null => continue,
         };
 
+        let break_val = key.clone();
         // Only apply template if no explicit mapping exists
-        if !result.contains_key(&key) {
+        result.entry(key).or_insert_with(|| {
             let label = if placeholders.is_empty() {
                 // No placeholders - use template as literal string
                 template.to_string()
@@ -192,13 +193,13 @@ pub fn apply_label_template(
                 // Process in reverse order to preserve string indices
                 let mut label = template.to_string();
                 for parsed in placeholders.iter().rev() {
-                    let transformed = apply_transformation(&key, &parsed.placeholder);
+                    let transformed = apply_transformation(&break_val, &parsed.placeholder);
                     label = label.replace(&parsed.match_text, &transformed);
                 }
                 label
             };
-            result.insert(key, Some(label));
-        }
+            Some(label)
+        });
     }
 
     result
@@ -320,14 +321,8 @@ mod tests {
         ];
         let result = apply_label_template(&breaks, "Constant Label", &None);
 
-        assert_eq!(
-            result.get("A"),
-            Some(&Some("Constant Label".to_string()))
-        );
-        assert_eq!(
-            result.get("B"),
-            Some(&Some("Constant Label".to_string()))
-        );
+        assert_eq!(result.get("A"), Some(&Some("Constant Label".to_string())));
+        assert_eq!(result.get("B"), Some(&Some("Constant Label".to_string())));
     }
 
     #[test]
@@ -390,10 +385,7 @@ mod tests {
 
     #[test]
     fn test_number_format_decimal_places() {
-        let breaks = vec![
-            ArrayElement::Number(25.5),
-            ArrayElement::Number(100.0),
-        ];
+        let breaks = vec![ArrayElement::Number(25.5), ArrayElement::Number(100.0)];
         let result = apply_label_template(&breaks, "${:num %.2f}", &None);
 
         assert_eq!(result.get("25.5"), Some(&Some("$25.50".to_string())));
