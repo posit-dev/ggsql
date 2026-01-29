@@ -2095,3 +2095,147 @@ SELECT * FROM "data.csv"
               (qualified_name
                 (identifier
                   (quoted_identifier))))))))))
+
+================================================================================
+SCALE RENAMING with explicit mappings
+================================================================================
+
+VISUALISE x, y
+DRAW point
+SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_renaming_clause
+          (renaming_assignment
+            from: (string)
+            to: (string))
+          (renaming_assignment
+            from: (string)
+            to: (string)))))))
+
+================================================================================
+SCALE RENAMING with NULL suppression
+================================================================================
+
+VISUALISE x, y
+DRAW bar
+SCALE DISCRETE x RENAMING 'internal' => NULL
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_renaming_clause
+          (renaming_assignment
+            from: (string)
+            to: (null_literal)))))))
+
+================================================================================
+SCALE RENAMING with wildcard template
+================================================================================
+
+VISUALISE x, y
+DRAW point
+SCALE CONTINUOUS x RENAMING * => '{} units'
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_renaming_clause
+          (renaming_assignment
+            to: (string)))))))
+
+================================================================================
+SCALE RENAMING with mixed explicit and wildcard
+================================================================================
+
+VISUALISE x, y
+DRAW bar
+SCALE DISCRETE x RENAMING 'A' => 'Alpha', * => 'Category {}'
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_renaming_clause
+          (renaming_assignment
+            from: (string)
+            to: (string))
+          (renaming_assignment
+            to: (string)))))))

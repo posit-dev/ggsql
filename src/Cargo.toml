@@ -54,6 +54,7 @@ thiserror.workspace = true
 # Utilities
 regex.workspace = true
 chrono.workspace = true
+sprintf = "0.4"
 const_format.workspace = true
 uuid.workspace = true
 

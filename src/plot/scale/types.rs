@@ -47,6 +47,11 @@ pub struct Scale {
     /// Example: `RENAMING 'A' => 'Alpha', 'internal' => NULL`
     #[serde(default)]
     pub label_mapping: Option<HashMap<String, Option<String>>>,
+    /// Template for generating labels from break values (RENAMING * => '...')
+    /// The `{}` placeholder is replaced with each break value at resolution time.
+    /// Example: Some("{} units") -> {"0": "0 units", "25": "25 units", ...}
+    #[serde(default)]
+    pub label_template: Option<String>,
 }
 
 impl Scale {
@@ -61,6 +66,7 @@ impl Scale {
             properties: HashMap::new(),
             resolved: false,
             label_mapping: None,
+            label_template: None,
         }
     }
 }

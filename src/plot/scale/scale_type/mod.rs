@@ -637,6 +637,28 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             // If breaks is already Array, user provided it - leave as-is
         }
 
+        // 5. Apply label template if present (RENAMING * => '...')
+        // For continuous/binned scales, apply to breaks array
+        // For discrete scales, apply to input_range (domain values)
+        if let Some(ref template) = scale.label_template {
+            let values_to_label = if self.supports_breaks() {
+                // Continuous/Binned: use breaks
+                match scale.properties.get("breaks") {
+                    Some(ParameterValue::Array(breaks)) => Some(breaks.clone()),
+                    _ => None,
+                }
+            } else {
+                // Discrete: use input_range
+                scale.input_range.clone()
+            };
+
+            if let Some(values) = values_to_label {
+                let generated_labels =
+                    crate::format::apply_label_template(&values, template, &scale.label_mapping);
+                scale.label_mapping = Some(generated_labels);
+            }
+        }
+
         // Mark scale as resolved
         scale.resolved = true;
 

@@ -623,6 +623,7 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
     let mut transform: Option<Transform> = None;
     let mut properties = HashMap::new();
     let mut label_mapping: Option<HashMap<String, Option<String>>> = None;
+    let mut label_template: Option<String> = None;
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -653,8 +654,12 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
                 properties = parse_setting_clause(&child, source)?;
             }
             "scale_renaming_clause" => {
-                // Parse RENAMING 'A' => 'Alpha', 'B' => 'Beta'
-                label_mapping = Some(parse_scale_renaming_clause(&child, source)?);
+                // Parse RENAMING 'A' => 'Alpha', 'B' => 'Beta', * => '{} units'
+                let (mappings, template) = parse_scale_renaming_clause(&child, source)?;
+                if !mappings.is_empty() {
+                    label_mapping = Some(mappings);
+                }
+                label_template = template;
             }
             _ => {}
         }
@@ -693,6 +698,7 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
         properties,
         resolved: false,
         label_mapping,
+        label_template,
     })
 }
 
@@ -764,30 +770,35 @@ fn parse_scale_via_clause(node: &Node, source: &str) -> Result<Option<Transform>
     Ok(None)
 }
 
-/// Parse RENAMING clause: RENAMING 'A' => 'Alpha', 'B' => 'Beta', 'internal' => NULL
+/// Parse RENAMING clause: RENAMING 'A' => 'Alpha', 'B' => 'Beta', 'internal' => NULL, * => '{} units'
 ///
-/// Returns a HashMap where:
-/// - Key: original value (string representation)
-/// - Value: Some(label) for renamed labels, None for suppressed labels (NULL)
+/// Returns a tuple of:
+/// - HashMap where: Key = original value, Value = Some(label) or None for suppressed labels
+/// - Optional template string for wildcard mappings (* => '...')
 fn parse_scale_renaming_clause(
     node: &Node,
     source: &str,
-) -> Result<HashMap<String, Option<String>>> {
+) -> Result<(HashMap<String, Option<String>>, Option<String>)> {
     let mut mappings = HashMap::new();
+    let mut template: Option<String> = None;
     let mut cursor = node.walk();
 
     for child in node.children(&mut cursor) {
         if child.kind() == "renaming_assignment" {
             let mut from_value: Option<String> = None;
+            let mut is_wildcard = false;
             let mut to_value: Option<Option<String>> = None; // None = not set, Some(None) = NULL
 
             let mut assignment_cursor = child.walk();
             for assignment_child in child.children(&mut assignment_cursor) {
                 match assignment_child.kind() {
+                    "*" => {
+                        is_wildcard = true;
+                    }
                     "string" => {
                         let text = get_node_text(&assignment_child, source);
                         let unquoted = text.trim_matches(|c| c == '\'' || c == '"').to_string();
-                        if from_value.is_none() {
+                        if from_value.is_none() && !is_wildcard {
                             from_value = Some(unquoted);
                         } else {
                             to_value = Some(Some(unquoted));
@@ -796,7 +807,7 @@ fn parse_scale_renaming_clause(
                     "number" => {
                         // Handle numeric keys for continuous/binned scales
                         let text = get_node_text(&assignment_child, source);
-                        if from_value.is_none() {
+                        if from_value.is_none() && !is_wildcard {
                             from_value = Some(text);
                         }
                     }
@@ -808,13 +819,19 @@ fn parse_scale_renaming_clause(
                 }
             }
 
-            if let (Some(from), Some(to)) = (from_value, to_value) {
+            if is_wildcard {
+                // Wildcard: * => 'template'
+                if let Some(Some(tmpl)) = to_value {
+                    template = Some(tmpl);
+                }
+            } else if let (Some(from), Some(to)) = (from_value, to_value) {
+                // Explicit mapping: 'A' => 'Alpha'
                 mappings.insert(from, to);
             }
         }
     }
 
-    Ok(mappings)
+    Ok((mappings, template))
 }
 
 /// Parse an array node into Vec<ArrayElement>
@@ -3449,5 +3466,84 @@ mod tests {
         // Check RENAMING was parsed
         let label_mapping = scales[0].label_mapping.as_ref().unwrap();
         assert_eq!(label_mapping.get("A"), Some(&Some("Option A".to_string())));
+    }
+
+    #[test]
+    fn test_scale_renaming_wildcard_template() {
+        // Wildcard template for label generation
+        let query = r#"
+            VISUALISE x AS x, y AS y
+            DRAW point
+            SCALE CONTINUOUS x RENAMING * => '{} units'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        // Check label_template was parsed
+        assert!(scales[0].label_mapping.is_none()); // No explicit mappings
+        assert_eq!(
+            scales[0].label_template,
+            Some("{} units".to_string())
+        );
+    }
+
+    #[test]
+    fn test_scale_renaming_wildcard_with_explicit() {
+        // Mixed explicit mappings and wildcard template
+        let query = r#"
+            VISUALISE x AS x, y AS y
+            DRAW point
+            SCALE DISCRETE x RENAMING 'A' => 'Alpha', * => 'Category {}'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        // Check explicit mapping was parsed
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+        assert_eq!(label_mapping.get("A"), Some(&Some("Alpha".to_string())));
+
+        // Check template was also parsed
+        assert_eq!(
+            scales[0].label_template,
+            Some("Category {}".to_string())
+        );
+    }
+
+    #[test]
+    fn test_scale_renaming_wildcard_uppercase() {
+        // Wildcard template with uppercase transformation
+        let query = r#"
+            VISUALISE x AS x, y AS y
+            DRAW bar
+            SCALE DISCRETE x RENAMING * => '{:UPPER}'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        assert_eq!(
+            scales[0].label_template,
+            Some("{:UPPER}".to_string())
+        );
+    }
+
+    #[test]
+    fn test_scale_renaming_wildcard_datetime() {
+        // Wildcard template with datetime formatting
+        let query = r#"
+            VISUALISE date AS x, value AS y
+            DRAW line
+            SCALE CONTINUOUS x RENAMING * => '{:time %b %Y}'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        assert_eq!(
+            scales[0].label_template,
+            Some("{:time %b %Y}".to_string())
+        );
     }
 }

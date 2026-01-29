@@ -5454,4 +5454,155 @@ mod tests {
             "Continuous column with SCALE BINNED should be added to partition_by"
         );
     }
+
+    // =============================================================================
+    // Label Template Tests
+    // =============================================================================
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_label_template_continuous_with_breaks() {
+        // Test that wildcard template is applied to break values for continuous scales
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES (0, 10), (50, 20), (100, 30)) AS t(x, y)
+            VISUALISE x AS x, y AS y
+            DRAW point
+            SCALE CONTINUOUS x SETTING breaks => 3 RENAMING * => '{} units'
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Find the x scale
+        let x_scale = result.specs[0].scales.iter().find(|s| s.aesthetic == "x").unwrap();
+
+        // Check that label_mapping was populated from the template
+        assert!(x_scale.label_mapping.is_some(), "label_mapping should be set");
+        let label_mapping = x_scale.label_mapping.as_ref().unwrap();
+
+        // The exact break values depend on pretty breaks algorithm, but they should have ' units' suffix
+        for (key, label) in label_mapping {
+            if let Some(label_str) = label {
+                assert!(
+                    label_str.ends_with(" units"),
+                    "Label '{}' for key '{}' should end with ' units'",
+                    label_str,
+                    key
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_label_template_discrete_uppercase() {
+        // Test that wildcard template is applied to discrete scale domain values
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES ('north', 10), ('south', 20), ('east', 30)) AS t(region, value)
+            VISUALISE region AS x, value AS y
+            DRAW bar
+            SCALE DISCRETE x RENAMING * => '{:UPPER}'
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Find the x scale
+        let x_scale = result.specs[0].scales.iter().find(|s| s.aesthetic == "x").unwrap();
+
+        // Check that label_mapping was populated from the template
+        assert!(x_scale.label_mapping.is_some(), "label_mapping should be set");
+        let label_mapping = x_scale.label_mapping.as_ref().unwrap();
+
+        // Check uppercase transformations
+        assert_eq!(
+            label_mapping.get("north"),
+            Some(&Some("NORTH".to_string())),
+            "north should be transformed to NORTH"
+        );
+        assert_eq!(
+            label_mapping.get("south"),
+            Some(&Some("SOUTH".to_string())),
+            "south should be transformed to SOUTH"
+        );
+        assert_eq!(
+            label_mapping.get("east"),
+            Some(&Some("EAST".to_string())),
+            "east should be transformed to EAST"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_label_template_explicit_takes_priority() {
+        // Test that explicit mappings take priority over template
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20), ('C', 30)) AS t(cat, value)
+            VISUALISE cat AS x, value AS y
+            DRAW bar
+            SCALE DISCRETE x RENAMING 'A' => 'Alpha', * => 'Category {}'
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Find the x scale
+        let x_scale = result.specs[0].scales.iter().find(|s| s.aesthetic == "x").unwrap();
+
+        // Check that label_mapping was populated
+        assert!(x_scale.label_mapping.is_some(), "label_mapping should be set");
+        let label_mapping = x_scale.label_mapping.as_ref().unwrap();
+
+        // A should have explicit mapping
+        assert_eq!(
+            label_mapping.get("A"),
+            Some(&Some("Alpha".to_string())),
+            "A should keep explicit mapping 'Alpha'"
+        );
+
+        // B and C should have template-generated labels
+        assert_eq!(
+            label_mapping.get("B"),
+            Some(&Some("Category B".to_string())),
+            "B should get template label 'Category B'"
+        );
+        assert_eq!(
+            label_mapping.get("C"),
+            Some(&Some("Category C".to_string())),
+            "C should get template label 'Category C'"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_label_template_title_case() {
+        // Test Title case transformation
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES ('us east', 10), ('eu west', 20)) AS t(region, value)
+            VISUALISE region AS x, value AS y
+            DRAW bar
+            SCALE DISCRETE x RENAMING * => 'Region: {:Title}'
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Find the x scale
+        let x_scale = result.specs[0].scales.iter().find(|s| s.aesthetic == "x").unwrap();
+
+        // Check that label_mapping was populated
+        assert!(x_scale.label_mapping.is_some(), "label_mapping should be set");
+        let label_mapping = x_scale.label_mapping.as_ref().unwrap();
+
+        assert_eq!(
+            label_mapping.get("us east"),
+            Some(&Some("Region: Us East".to_string())),
+            "Should apply Title case transformation with prefix"
+        );
+        assert_eq!(
+            label_mapping.get("eu west"),
+            Some(&Some("Region: Eu West".to_string())),
+            "Should apply Title case transformation with prefix"
+        );
+    }
 }

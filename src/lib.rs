@@ -33,6 +33,7 @@ ggsql splits queries at the `VISUALISE` boundary:
 - [`writers`] - Output format abstraction layer
 */
 
+pub mod format;
 pub mod naming;
 pub mod parser;
 pub mod plot;

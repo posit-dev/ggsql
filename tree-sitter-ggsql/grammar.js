@@ -652,7 +652,11 @@ module.exports = grammar({
     ),
 
     renaming_assignment: $ => seq(
-      field('from', choice($.string, $.number)),  // Accept string or number keys
+      field('from', choice(
+        '*',                              // Wildcard for template
+        $.string,
+        $.number
+      )),
       '=>',
       field('to', choice($.string, $.null_literal))  // String label or NULL to suppress
     ),
