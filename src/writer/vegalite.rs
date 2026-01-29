@@ -4241,4 +4241,191 @@ mod tests {
             "Only one of ymin/ymax should get the title (first wins per family)"
         );
     }
+
+    #[test]
+    fn test_boxplot_vertical_with_outliers() {
+        use polars::prelude::*;
+
+        let writer = VegaLiteWriter::new();
+
+        // Create boxplot data in long format (as produced by stat_boxplot)
+        // This simulates boxplot statistics for two categories with outliers
+        let df = df! {
+            "category" => &["A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "B", "B", "B", "B", "B", "B", "B", "B", "B"],
+            naming::stat_column("type").as_str() => &["lower", "q1", "median", "q3", "upper", "min", "max", "outlier", "outlier", "outlier", "lower", "q1", "median", "q3", "upper", "min", "max", "outlier", "outlier"],
+            naming::stat_column("value").as_str() => &[10.0, 15.0, 20.0, 25.0, 30.0, 10.0, 30.0, 5.0, 35.0, 40.0, 20.0, 25.0, 30.0, 35.0, 40.0, 20.0, 40.0, 15.0, 50.0],
+        }
+        .unwrap();
+
+        // Create a boxplot layer
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::boxplot())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("category".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column(naming::stat_column("value")),
+            );
+        spec.layers.push(layer);
+
+        // Generate Vega-Lite JSON
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Verify that boxplot produces multiple layers (outliers + 4 boxplot components)
+        assert!(vl_spec["layer"].is_array());
+        let layers = vl_spec["layer"].as_array().unwrap();
+        assert_eq!(layers.len(), 5, "Boxplot with outliers should produce 5 layers: outliers, lower whisker, upper whisker, box, median");
+
+        // Verify first layer is outliers (point marks)
+        assert_eq!(
+            layers[0]["mark"]["type"], "point",
+            "First layer should be outlier points"
+        );
+
+        // Verify outlier layer has inline data (not from the summary dataset)
+        assert!(
+            layers[0]["data"]["values"].is_array(),
+            "Outliers should have inline data"
+        );
+        let outlier_data = layers[0]["data"]["values"].as_array().unwrap();
+        assert_eq!(
+            outlier_data.len(),
+            5,
+            "Should have 5 outlier points (3 for A, 2 for B)"
+        );
+
+        // Verify outlier data structure
+        let first_outlier = &outlier_data[0];
+        assert!(first_outlier["category"].is_string());
+        assert!(first_outlier[naming::stat_column("value").as_str()].is_number());
+        assert_eq!(
+            first_outlier[naming::stat_column("type").as_str()],
+            "outlier"
+        );
+
+        // Verify whiskers (rule marks)
+        assert_eq!(
+            layers[1]["mark"]["type"], "rule",
+            "Second layer should be lower whisker"
+        );
+        assert_eq!(
+            layers[2]["mark"]["type"], "rule",
+            "Third layer should be upper whisker"
+        );
+
+        // Verify box (bar mark)
+        assert_eq!(
+            layers[3]["mark"]["type"], "bar",
+            "Fourth layer should be box"
+        );
+
+        // Verify median (tick mark)
+        assert_eq!(
+            layers[4]["mark"]["type"], "tick",
+            "Fifth layer should be median line"
+        );
+
+        // Verify that box/whisker/median layers use the boxplot summary dataset
+        let dataset_name = layers[1]["data"]["name"].as_str().unwrap();
+        assert!(dataset_name.contains("boxplot_summary"));
+        for i in 1..5 {
+            assert_eq!(layers[i]["data"]["name"].as_str().unwrap(), dataset_name);
+        }
+
+        // Verify that the summary dataset exists and has the correct structure
+        assert!(vl_spec["datasets"][dataset_name].is_array());
+        let summary_data = vl_spec["datasets"][dataset_name].as_array().unwrap();
+        assert_eq!(
+            summary_data.len(),
+            2,
+            "Should have summary stats for 2 categories"
+        );
+
+        // Verify that summary has the five-number columns
+        let first_row = &summary_data[0];
+        assert!(first_row["lower"].is_number());
+        assert!(first_row["upper"].is_number());
+        assert!(first_row["q1"].is_number());
+        assert!(first_row["q3"].is_number());
+        assert!(first_row["median"].is_number());
+        assert!(first_row["category"].is_string());
+
+        // Verify encodings use y for values (vertical orientation)
+        assert!(layers[1]["encoding"]["y"].is_object());
+        assert!(layers[1]["encoding"]["y2"].is_object());
+        assert_eq!(layers[1]["encoding"]["y"]["field"], "q1");
+        assert_eq!(layers[1]["encoding"]["y2"]["field"], "lower");
+    }
+
+    #[test]
+    fn test_boxplot_horizontal_with_grouping() {
+        // NOTE: This test verifies the render_boxplot() logic for horizontal orientation
+        // and grouping, but actual orientation detection is not yet implemented upstream
+        // in the stat pipeline. This test uses manually constructed data
+        // to verify the rendering logic works correctly when given horizontal data.
+        use polars::prelude::*;
+
+        let writer = VegaLiteWriter::new();
+
+        // Create horizontal boxplot data with grouping
+        // Horizontal means x has the values, y has the categories
+        let df = df! {
+            "category" => &["A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "A"],
+            "region" => &["North", "North", "North", "North", "North", "North", "North", "South", "South", "South", "South", "South", "South", "South"],
+            naming::stat_column("type").as_str() => &["lower", "q1", "median", "q3", "upper", "min", "max", "lower", "q1", "median", "q3", "upper", "min", "max"],
+            naming::stat_column("value").as_str() => &[10.0, 15.0, 20.0, 25.0, 30.0, 10.0, 30.0, 20.0, 25.0, 30.0, 35.0, 40.0, 20.0, 40.0],
+        }
+        .unwrap();
+
+        // Create a horizontal boxplot layer (x = value, y = category)
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::boxplot())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column(naming::stat_column("value")),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("category".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Generate Vega-Lite JSON
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Verify multiple layers
+        assert!(vl_spec["layer"].is_array());
+        let layers = vl_spec["layer"].as_array().unwrap();
+        assert_eq!(layers.len(), 4, "Boxplot should produce 4 layers");
+
+        // Verify encodings use x for values (horizontal orientation)
+        assert!(layers[0]["encoding"]["x"].is_object());
+        assert!(layers[0]["encoding"]["x2"].is_object());
+        assert_eq!(layers[0]["encoding"]["x"]["field"], "q1");
+        assert_eq!(layers[0]["encoding"]["x2"]["field"], "lower");
+
+        // Verify yOffset is used for dodging (since we have region grouping)
+        assert!(
+            layers[0]["encoding"]["yOffset"].is_object(),
+            "Should have yOffset for dodging"
+        );
+        assert_eq!(layers[0]["encoding"]["yOffset"]["field"], "region");
+
+        // Verify summary dataset has both category and region
+        let dataset_name = layers[0]["data"]["name"].as_str().unwrap();
+        let summary_data = vl_spec["datasets"][dataset_name].as_array().unwrap();
+        assert_eq!(
+            summary_data.len(),
+            2,
+            "Should have summary for 2 region groups within category A"
+        );
+
+        let first_row = &summary_data[0];
+        assert!(first_row["category"].is_string());
+        assert!(first_row["region"].is_string());
+    }
 }
