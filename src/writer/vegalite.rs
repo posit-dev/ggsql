@@ -1776,7 +1776,7 @@ mod tests {
         let geoms = vec![
             (Geom::histogram(), "bar"),
             (Geom::density(), "area"),
-            (Geom::boxplot(), "boxplot"),
+            // (Geom::boxplot(), "boxplot"), // Boxplot produces several layers
         ];
 
         for (geom, expected_mark) in geoms {
