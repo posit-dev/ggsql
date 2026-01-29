@@ -566,6 +566,7 @@ pub struct LayerQueryResult {
 ///
 /// Note: This function takes `&mut Layer` because stat transforms may add new aesthetic mappings
 /// (e.g., mapping y to `__ggsql_stat__count` for histogram or bar count).
+#[allow(clippy::too_many_arguments)]
 fn build_layer_query<F>(
     layer: &mut Layer,
     schema: &Schema,

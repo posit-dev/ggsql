@@ -32,7 +32,7 @@ csscolorparser = "0.8.1"
 polars = { version = "0.52", features = ["lazy", "sql", "ipc"] }
 
 # Readers
-duckdb = { version = "1.1", features = ["bundled", "vtab-arrow"] }
+duckdb = { version = "1.4", features = ["bundled", "vtab-arrow"] }
 arrow = { version = "56", default-features = false, features = ["ipc"] }
 postgres = "0.19"
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls"] }
