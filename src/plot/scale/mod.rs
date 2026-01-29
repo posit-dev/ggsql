@@ -15,8 +15,8 @@ pub use crate::format::apply_label_template;
 pub use colour::{color_to_hex, gradient, interpolate_colors, is_color_aesthetic, ColorSpace};
 pub use linetype::linetype_to_stroke_dash;
 pub use scale_type::{
-    Binned, Continuous, Discrete, Identity, InputRange, ScaleDataContext, ScaleType, ScaleTypeKind,
-    ScaleTypeTrait, OOB_CENSOR, OOB_KEEP, OOB_SQUISH,
+    Binned, CastTargetType, Continuous, Discrete, Identity, InputRange, ScaleDataContext,
+    ScaleType, ScaleTypeKind, ScaleTypeTrait, SqlTypeNames, OOB_CENSOR, OOB_KEEP, OOB_SQUISH,
 };
 pub use shape::shape_to_svg_path;
 pub use transform::{Transform, TransformKind, TransformTrait, ALL_TRANSFORM_NAMES};

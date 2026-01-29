@@ -10,6 +10,24 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 // =============================================================================
+// Array Element Type (for coercion)
+// =============================================================================
+
+/// Type of an ArrayElement value, used for type inference and coercion.
+///
+/// This enum represents the semantic type of values in a scale's input range,
+/// allowing discrete scales to infer the target type from their domain values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArrayElementType {
+    String,
+    Number,
+    Boolean,
+    Date,
+    DateTime,
+    Time,
+}
+
+// =============================================================================
 // Schema Types (derived from input data)
 // =============================================================================
 
@@ -268,7 +286,233 @@ fn format_number(n: f64) -> String {
     }
 }
 
+/// Get type name for error messages
+fn target_type_name(t: ArrayElementType) -> &'static str {
+    match t {
+        ArrayElementType::String => "string",
+        ArrayElementType::Number => "number",
+        ArrayElementType::Boolean => "boolean",
+        ArrayElementType::Date => "date",
+        ArrayElementType::DateTime => "datetime",
+        ArrayElementType::Time => "time",
+    }
+}
+
 impl ArrayElement {
+    /// Get the type of this element.
+    ///
+    /// Returns None for Null values.
+    pub fn element_type(&self) -> Option<ArrayElementType> {
+        match self {
+            Self::String(_) => Some(ArrayElementType::String),
+            Self::Number(_) => Some(ArrayElementType::Number),
+            Self::Boolean(_) => Some(ArrayElementType::Boolean),
+            Self::Date(_) => Some(ArrayElementType::Date),
+            Self::DateTime(_) => Some(ArrayElementType::DateTime),
+            Self::Time(_) => Some(ArrayElementType::Time),
+            Self::Null => None,
+        }
+    }
+
+    /// Infer the dominant type from a collection of ArrayElements.
+    ///
+    /// Used by discrete scales to determine the target type from their input range.
+    /// Nulls are ignored. Returns None if all values are null or the slice is empty.
+    ///
+    /// If multiple types are present, uses priority: Boolean > Number > Date > DateTime > Time > String
+    /// (Boolean is highest because it's most specific; String is lowest as it's the fallback)
+    pub fn infer_type(values: &[ArrayElement]) -> Option<ArrayElementType> {
+        let mut found_bool = false;
+        let mut found_number = false;
+        let mut found_date = false;
+        let mut found_datetime = false;
+        let mut found_time = false;
+        let mut found_string = false;
+
+        for elem in values {
+            match elem {
+                Self::Boolean(_) => found_bool = true,
+                Self::Number(_) => found_number = true,
+                Self::Date(_) => found_date = true,
+                Self::DateTime(_) => found_datetime = true,
+                Self::Time(_) => found_time = true,
+                Self::String(_) => found_string = true,
+                Self::Null => {}
+            }
+        }
+
+        // Priority order: most specific to least specific
+        if found_bool {
+            Some(ArrayElementType::Boolean)
+        } else if found_number {
+            Some(ArrayElementType::Number)
+        } else if found_date {
+            Some(ArrayElementType::Date)
+        } else if found_datetime {
+            Some(ArrayElementType::DateTime)
+        } else if found_time {
+            Some(ArrayElementType::Time)
+        } else if found_string {
+            Some(ArrayElementType::String)
+        } else {
+            None
+        }
+    }
+
+    /// Coerce this element to the target type.
+    ///
+    /// Returns Ok with the coerced value, or Err with a description if coercion is impossible.
+    ///
+    /// Coercion paths:
+    /// - String → Boolean: "true"/"false"/"yes"/"no"/"1"/"0" (case-insensitive)
+    /// - String → Number: parse as f64
+    /// - String → Date/DateTime/Time: parse ISO format
+    /// - Number → Boolean: 0 = false, non-zero = true
+    /// - Number → String: format as string
+    /// - Number → Date: interpret as days since Unix epoch
+    /// - Number → DateTime: interpret as microseconds since Unix epoch
+    /// - Number → Time: interpret as nanoseconds since midnight
+    /// - Boolean → Number: false = 0, true = 1
+    /// - Boolean → String: "true"/"false"
+    /// - Null → any: stays Null
+    pub fn coerce_to(&self, target: ArrayElementType) -> Result<ArrayElement, String> {
+        // Already the right type?
+        if self.element_type() == Some(target) {
+            return Ok(self.clone());
+        }
+
+        // Null stays Null
+        if matches!(self, Self::Null) {
+            return Ok(Self::Null);
+        }
+
+        match (self, target) {
+            // String → Boolean
+            (Self::String(s), ArrayElementType::Boolean) => match s.to_lowercase().as_str() {
+                "true" | "yes" | "1" => Ok(Self::Boolean(true)),
+                "false" | "no" | "0" => Ok(Self::Boolean(false)),
+                _ => Err(format!("Cannot coerce string '{}' to boolean", s)),
+            },
+
+            // String → Number
+            (Self::String(s), ArrayElementType::Number) => s
+                .parse::<f64>()
+                .map(Self::Number)
+                .map_err(|_| format!("Cannot coerce string '{}' to number", s)),
+
+            // String → Date
+            (Self::String(s), ArrayElementType::Date) => {
+                Self::from_date_string(s).ok_or_else(|| {
+                    format!("Cannot coerce string '{}' to date (expected YYYY-MM-DD)", s)
+                })
+            }
+
+            // String → DateTime
+            (Self::String(s), ArrayElementType::DateTime) => Self::from_datetime_string(s)
+                .ok_or_else(|| format!("Cannot coerce string '{}' to datetime", s)),
+
+            // String → Time
+            (Self::String(s), ArrayElementType::Time) => Self::from_time_string(s)
+                .ok_or_else(|| format!("Cannot coerce string '{}' to time (expected HH:MM:SS)", s)),
+
+            // String → String (identity, already handled above but for completeness)
+            (Self::String(s), ArrayElementType::String) => Ok(Self::String(s.clone())),
+
+            // Number → Boolean
+            (Self::Number(n), ArrayElementType::Boolean) => Ok(Self::Boolean(*n != 0.0)),
+
+            // Number → String
+            (Self::Number(n), ArrayElementType::String) => Ok(Self::String(format_number(*n))),
+
+            // Number → Date (days since epoch)
+            (Self::Number(n), ArrayElementType::Date) => Ok(Self::Date(*n as i32)),
+
+            // Number → DateTime (microseconds since epoch)
+            (Self::Number(n), ArrayElementType::DateTime) => Ok(Self::DateTime(*n as i64)),
+
+            // Number → Time (nanoseconds since midnight)
+            (Self::Number(n), ArrayElementType::Time) => Ok(Self::Time(*n as i64)),
+
+            // Boolean → Number
+            (Self::Boolean(b), ArrayElementType::Number) => {
+                Ok(Self::Number(if *b { 1.0 } else { 0.0 }))
+            }
+
+            // Boolean → String
+            (Self::Boolean(b), ArrayElementType::String) => Ok(Self::String(b.to_string())),
+
+            // Boolean → temporal types: not supported
+            (Self::Boolean(_), ArrayElementType::Date)
+            | (Self::Boolean(_), ArrayElementType::DateTime)
+            | (Self::Boolean(_), ArrayElementType::Time) => Err(format!(
+                "Cannot coerce boolean to {}",
+                target_type_name(target)
+            )),
+
+            // Date → String
+            (Self::Date(d), ArrayElementType::String) => Ok(Self::String(date_to_iso_string(*d))),
+
+            // Date → Number (days since epoch)
+            (Self::Date(d), ArrayElementType::Number) => Ok(Self::Number(*d as f64)),
+
+            // DateTime → String
+            (Self::DateTime(dt), ArrayElementType::String) => {
+                Ok(Self::String(datetime_to_iso_string(*dt)))
+            }
+
+            // DateTime → Number (microseconds since epoch)
+            (Self::DateTime(dt), ArrayElementType::Number) => Ok(Self::Number(*dt as f64)),
+
+            // Time → String
+            (Self::Time(t), ArrayElementType::String) => Ok(Self::String(time_to_iso_string(*t))),
+
+            // Time → Number (nanoseconds since midnight)
+            (Self::Time(t), ArrayElementType::Number) => Ok(Self::Number(*t as f64)),
+
+            // Temporal → Boolean: not supported
+            (Self::Date(_), ArrayElementType::Boolean)
+            | (Self::DateTime(_), ArrayElementType::Boolean)
+            | (Self::Time(_), ArrayElementType::Boolean) => {
+                Err(format!("Cannot coerce {} to boolean", self.type_name()))
+            }
+
+            // Cross-temporal conversions: not supported (lossy)
+            (Self::Date(_), ArrayElementType::DateTime)
+            | (Self::Date(_), ArrayElementType::Time)
+            | (Self::DateTime(_), ArrayElementType::Date)
+            | (Self::DateTime(_), ArrayElementType::Time)
+            | (Self::Time(_), ArrayElementType::Date)
+            | (Self::Time(_), ArrayElementType::DateTime) => Err(format!(
+                "Cannot coerce {} to {}",
+                self.type_name(),
+                target_type_name(target)
+            )),
+
+            // Identity cases (already handled by early return, but needed for exhaustiveness)
+            (Self::Number(n), ArrayElementType::Number) => Ok(Self::Number(*n)),
+            (Self::Boolean(b), ArrayElementType::Boolean) => Ok(Self::Boolean(*b)),
+            (Self::Date(d), ArrayElementType::Date) => Ok(Self::Date(*d)),
+            (Self::DateTime(dt), ArrayElementType::DateTime) => Ok(Self::DateTime(*dt)),
+            (Self::Time(t), ArrayElementType::Time) => Ok(Self::Time(*t)),
+
+            // Null cases are handled at the top
+            (Self::Null, _) => Ok(Self::Null),
+        }
+    }
+
+    /// Get the type name for error messages.
+    fn type_name(&self) -> &'static str {
+        match self {
+            Self::String(_) => "string",
+            Self::Number(_) => "number",
+            Self::Boolean(_) => "boolean",
+            Self::Date(_) => "date",
+            Self::DateTime(_) => "datetime",
+            Self::Time(_) => "time",
+            Self::Null => "null",
+        }
+    }
+
     /// Convert to f64 for numeric calculations
     pub fn to_f64(&self) -> Option<f64> {
         match self {
@@ -555,5 +799,273 @@ mod tests {
     fn test_invalid_time_returns_none() {
         assert!(ArrayElement::from_time_string("not-a-time").is_none());
         assert!(ArrayElement::from_time_string("25:00:00").is_none());
+    }
+
+    // =============================================================================
+    // ArrayElementType tests
+    // =============================================================================
+
+    #[test]
+    fn test_element_type() {
+        assert_eq!(
+            ArrayElement::String("hello".to_string()).element_type(),
+            Some(ArrayElementType::String)
+        );
+        assert_eq!(
+            ArrayElement::Number(42.0).element_type(),
+            Some(ArrayElementType::Number)
+        );
+        assert_eq!(
+            ArrayElement::Boolean(true).element_type(),
+            Some(ArrayElementType::Boolean)
+        );
+        assert_eq!(
+            ArrayElement::Date(100).element_type(),
+            Some(ArrayElementType::Date)
+        );
+        assert_eq!(
+            ArrayElement::DateTime(1000000).element_type(),
+            Some(ArrayElementType::DateTime)
+        );
+        assert_eq!(
+            ArrayElement::Time(1000000000).element_type(),
+            Some(ArrayElementType::Time)
+        );
+        assert_eq!(ArrayElement::Null.element_type(), None);
+    }
+
+    #[test]
+    fn test_infer_type_boolean() {
+        let values = vec![ArrayElement::Boolean(true), ArrayElement::Boolean(false)];
+        assert_eq!(
+            ArrayElement::infer_type(&values),
+            Some(ArrayElementType::Boolean)
+        );
+    }
+
+    #[test]
+    fn test_infer_type_number() {
+        let values = vec![ArrayElement::Number(1.0), ArrayElement::Number(2.0)];
+        assert_eq!(
+            ArrayElement::infer_type(&values),
+            Some(ArrayElementType::Number)
+        );
+    }
+
+    #[test]
+    fn test_infer_type_string() {
+        let values = vec![
+            ArrayElement::String("a".to_string()),
+            ArrayElement::String("b".to_string()),
+        ];
+        assert_eq!(
+            ArrayElement::infer_type(&values),
+            Some(ArrayElementType::String)
+        );
+    }
+
+    #[test]
+    fn test_infer_type_date() {
+        let values = vec![ArrayElement::Date(100), ArrayElement::Date(200)];
+        assert_eq!(
+            ArrayElement::infer_type(&values),
+            Some(ArrayElementType::Date)
+        );
+    }
+
+    #[test]
+    fn test_infer_type_with_nulls() {
+        let values = vec![
+            ArrayElement::Null,
+            ArrayElement::Boolean(true),
+            ArrayElement::Null,
+        ];
+        assert_eq!(
+            ArrayElement::infer_type(&values),
+            Some(ArrayElementType::Boolean)
+        );
+    }
+
+    #[test]
+    fn test_infer_type_all_nulls() {
+        let values = vec![ArrayElement::Null, ArrayElement::Null];
+        assert_eq!(ArrayElement::infer_type(&values), None);
+    }
+
+    #[test]
+    fn test_infer_type_empty() {
+        let values: Vec<ArrayElement> = vec![];
+        assert_eq!(ArrayElement::infer_type(&values), None);
+    }
+
+    #[test]
+    fn test_infer_type_priority_boolean_over_string() {
+        // If there are mixed types, Boolean has priority over String
+        let values = vec![
+            ArrayElement::Boolean(true),
+            ArrayElement::String("hello".to_string()),
+        ];
+        assert_eq!(
+            ArrayElement::infer_type(&values),
+            Some(ArrayElementType::Boolean)
+        );
+    }
+
+    #[test]
+    fn test_infer_type_priority_number_over_string() {
+        let values = vec![
+            ArrayElement::Number(42.0),
+            ArrayElement::String("hello".to_string()),
+        ];
+        assert_eq!(
+            ArrayElement::infer_type(&values),
+            Some(ArrayElementType::Number)
+        );
+    }
+
+    // =============================================================================
+    // coerce_to tests
+    // =============================================================================
+
+    #[test]
+    fn test_coerce_string_to_boolean_true() {
+        let elem = ArrayElement::String("true".to_string());
+        let result = elem.coerce_to(ArrayElementType::Boolean).unwrap();
+        assert_eq!(result, ArrayElement::Boolean(true));
+
+        // Also test case insensitivity
+        let elem = ArrayElement::String("TRUE".to_string());
+        let result = elem.coerce_to(ArrayElementType::Boolean).unwrap();
+        assert_eq!(result, ArrayElement::Boolean(true));
+    }
+
+    #[test]
+    fn test_coerce_string_to_boolean_false() {
+        let elem = ArrayElement::String("false".to_string());
+        let result = elem.coerce_to(ArrayElementType::Boolean).unwrap();
+        assert_eq!(result, ArrayElement::Boolean(false));
+
+        let elem = ArrayElement::String("no".to_string());
+        let result = elem.coerce_to(ArrayElementType::Boolean).unwrap();
+        assert_eq!(result, ArrayElement::Boolean(false));
+    }
+
+    #[test]
+    fn test_coerce_string_to_boolean_error() {
+        let elem = ArrayElement::String("maybe".to_string());
+        let result = elem.coerce_to(ArrayElementType::Boolean);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .contains("Cannot coerce string 'maybe' to boolean"));
+    }
+
+    #[test]
+    fn test_coerce_string_to_number() {
+        let elem = ArrayElement::String("42.5".to_string());
+        let result = elem.coerce_to(ArrayElementType::Number).unwrap();
+        assert_eq!(result, ArrayElement::Number(42.5));
+    }
+
+    #[test]
+    fn test_coerce_string_to_number_error() {
+        let elem = ArrayElement::String("not a number".to_string());
+        let result = elem.coerce_to(ArrayElementType::Number);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_coerce_string_to_date() {
+        let elem = ArrayElement::String("2024-01-15".to_string());
+        let result = elem.coerce_to(ArrayElementType::Date).unwrap();
+        assert!(matches!(result, ArrayElement::Date(_)));
+        assert_eq!(result.to_key_string(), "2024-01-15");
+    }
+
+    #[test]
+    fn test_coerce_string_to_date_error() {
+        let elem = ArrayElement::String("not-a-date".to_string());
+        let result = elem.coerce_to(ArrayElementType::Date);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_coerce_number_to_boolean() {
+        let elem = ArrayElement::Number(1.0);
+        let result = elem.coerce_to(ArrayElementType::Boolean).unwrap();
+        assert_eq!(result, ArrayElement::Boolean(true));
+
+        let elem = ArrayElement::Number(0.0);
+        let result = elem.coerce_to(ArrayElementType::Boolean).unwrap();
+        assert_eq!(result, ArrayElement::Boolean(false));
+    }
+
+    #[test]
+    fn test_coerce_number_to_string() {
+        let elem = ArrayElement::Number(42.5);
+        let result = elem.coerce_to(ArrayElementType::String).unwrap();
+        assert_eq!(result, ArrayElement::String("42.5".to_string()));
+
+        // Integer format
+        let elem = ArrayElement::Number(42.0);
+        let result = elem.coerce_to(ArrayElementType::String).unwrap();
+        assert_eq!(result, ArrayElement::String("42".to_string()));
+    }
+
+    #[test]
+    fn test_coerce_boolean_to_number() {
+        let elem = ArrayElement::Boolean(true);
+        let result = elem.coerce_to(ArrayElementType::Number).unwrap();
+        assert_eq!(result, ArrayElement::Number(1.0));
+
+        let elem = ArrayElement::Boolean(false);
+        let result = elem.coerce_to(ArrayElementType::Number).unwrap();
+        assert_eq!(result, ArrayElement::Number(0.0));
+    }
+
+    #[test]
+    fn test_coerce_boolean_to_string() {
+        let elem = ArrayElement::Boolean(true);
+        let result = elem.coerce_to(ArrayElementType::String).unwrap();
+        assert_eq!(result, ArrayElement::String("true".to_string()));
+    }
+
+    #[test]
+    fn test_coerce_null_stays_null() {
+        let elem = ArrayElement::Null;
+        let result = elem.coerce_to(ArrayElementType::Boolean).unwrap();
+        assert_eq!(result, ArrayElement::Null);
+
+        let result = elem.coerce_to(ArrayElementType::Number).unwrap();
+        assert_eq!(result, ArrayElement::Null);
+    }
+
+    #[test]
+    fn test_coerce_same_type_identity() {
+        let elem = ArrayElement::Boolean(true);
+        let result = elem.coerce_to(ArrayElementType::Boolean).unwrap();
+        assert_eq!(result, ArrayElement::Boolean(true));
+
+        let elem = ArrayElement::Number(42.0);
+        let result = elem.coerce_to(ArrayElementType::Number).unwrap();
+        assert_eq!(result, ArrayElement::Number(42.0));
+    }
+
+    #[test]
+    fn test_coerce_date_to_string() {
+        let elem = ArrayElement::from_date_string("2024-01-15").unwrap();
+        let result = elem.coerce_to(ArrayElementType::String).unwrap();
+        assert_eq!(result, ArrayElement::String("2024-01-15".to_string()));
+    }
+
+    #[test]
+    fn test_coerce_cross_temporal_not_supported() {
+        let elem = ArrayElement::Date(100);
+        let result = elem.coerce_to(ArrayElementType::DateTime);
+        assert!(result.is_err());
+
+        let elem = ArrayElement::DateTime(100000);
+        let result = elem.coerce_to(ArrayElementType::Date);
+        assert!(result.is_err());
     }
 }

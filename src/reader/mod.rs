@@ -68,4 +68,40 @@ pub trait Reader {
     ///
     /// Ok(()) if all columns exist, otherwise an error
     fn validate_columns(&self, sql: &str, columns: &[String]) -> Result<()>;
+
+    // =========================================================================
+    // SQL Type Names for Casting
+    // =========================================================================
+
+    /// SQL type name for numeric columns (e.g., "DOUBLE", "FLOAT", "NUMERIC")
+    ///
+    /// Used for casting string columns to numbers for binning.
+    /// Returns None if the database doesn't support this cast.
+    fn number_type_name(&self) -> Option<&str> {
+        Some("DOUBLE")
+    }
+
+    /// SQL type name for DATE columns (e.g., "DATE", "date")
+    ///
+    /// Used for casting string columns to dates for temporal binning.
+    /// Returns None if the database doesn't support native date types.
+    fn date_type_name(&self) -> Option<&str> {
+        Some("DATE")
+    }
+
+    /// SQL type name for DATETIME/TIMESTAMP columns
+    ///
+    /// Used for casting string columns to timestamps for temporal binning.
+    /// Returns None if the database doesn't support this type.
+    fn datetime_type_name(&self) -> Option<&str> {
+        Some("TIMESTAMP")
+    }
+
+    /// SQL type name for TIME columns
+    ///
+    /// Used for casting string columns to time values for temporal binning.
+    /// Returns None if the database doesn't support this type.
+    fn time_type_name(&self) -> Option<&str> {
+        Some("TIME")
+    }
 }

@@ -621,6 +621,7 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
     let mut input_range: Option<Vec<ArrayElement>> = None;
     let mut output_range: Option<OutputRange> = None;
     let mut transform: Option<Transform> = None;
+    let mut explicit_transform = false;
     let mut properties = HashMap::new();
     let mut label_mapping: Option<HashMap<String, Option<String>>> = None;
     let mut label_template: Option<String> = None;
@@ -648,6 +649,8 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
             "scale_via_clause" => {
                 // Parse VIA identifier -> transform
                 transform = parse_scale_via_clause(&child, source)?;
+                // Mark as explicit transform (user specified VIA clause)
+                explicit_transform = transform.is_some();
             }
             "setting_clause" => {
                 // Reuse existing setting_clause parser
@@ -695,6 +698,7 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
         input_range,
         output_range,
         transform,
+        explicit_transform,
         properties,
         resolved: false,
         label_mapping,

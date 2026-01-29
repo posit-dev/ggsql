@@ -6,8 +6,8 @@
 use crate::naming;
 use crate::plot::layer::geom::{GeomAesthetics, AESTHETIC_FAMILIES};
 use crate::plot::{
-    AestheticValue, ColumnInfo, Layer, LiteralValue, OutputRange, Scale, ScaleType, ScaleTypeKind,
-    Schema, StatResult,
+    AestheticValue, ArrayElement, ArrayElementType, ColumnInfo, Layer, LiteralValue, OutputRange,
+    Scale, ScaleType, ScaleTypeKind, Schema, StatResult,
 };
 use crate::{parser, DataFrame, DataSource, Facet, GgsqlError, Plot, Result};
 use polars::prelude::Column;
@@ -768,8 +768,24 @@ fn transform_global_sql(sql: &str, materialized_ctes: &HashSet<String>) -> Optio
 /// columns with bin centers based on resolved breaks.
 ///
 /// This must happen BEFORE stat transforms so that data is transformed first.
-fn apply_pre_stat_transform(query: &str, layer: &Layer, scales: &[crate::plot::Scale]) -> String {
-    use crate::plot::scale::ScaleTypeKind;
+///
+/// # Arguments
+///
+/// * `query` - The base query to transform
+/// * `layer` - The layer configuration
+/// * `schema` - The layer's schema (used for column dtype lookup)
+/// * `scales` - All resolved scales
+fn apply_pre_stat_transform(
+    query: &str,
+    layer: &Layer,
+    schema: &Schema,
+    scales: &[crate::plot::Scale],
+) -> String {
+    use crate::plot::scale::{ScaleTypeKind, SqlTypeNames};
+    use polars::prelude::DataType;
+
+    // Create default type names (DuckDB defaults)
+    let type_names = SqlTypeNames::duckdb();
 
     let mut transform_exprs: Vec<(String, String)> = vec![];
 
@@ -786,6 +802,13 @@ fn apply_pre_stat_transform(query: &str, layer: &Layer, scales: &[crate::plot::S
             continue;
         };
 
+        // Find column dtype from schema
+        let col_dtype = schema
+            .iter()
+            .find(|c| c.name == col_name)
+            .map(|c| c.dtype.clone())
+            .unwrap_or(DataType::String); // Default to String if not found
+
         // Find scale for this aesthetic
         if let Some(scale) = scales.iter().find(|s| s.aesthetic == *aesthetic) {
             if let Some(ref scale_type) = scale.scale_type {
@@ -794,7 +817,9 @@ fn apply_pre_stat_transform(query: &str, layer: &Layer, scales: &[crate::plot::S
                     continue;
                 }
                 // Get binning SQL from scale type
-                if let Some(sql) = scale_type.pre_stat_transform_sql(&col_name, scale) {
+                if let Some(sql) =
+                    scale_type.pre_stat_transform_sql(&col_name, &col_dtype, scale, &type_names)
+                {
                     transform_exprs.push((col_name, sql));
                 }
             }
@@ -953,7 +978,7 @@ where
 
     // Apply pre-stat transformations (e.g., binning for Binned scales)
     // This must happen before stat transforms so that data is transformed first
-    query = apply_pre_stat_transform(&query, layer, scales);
+    query = apply_pre_stat_transform(&query, layer, schema, scales);
 
     // Apply statistical transformation (after filter, uses combined group_by)
     // Returns StatResult::Identity for no transformation, StatResult::Transformed for transformed query
@@ -1489,7 +1514,7 @@ where
 
     // Resolve scale types from data for scales without explicit types
     for spec in &mut specs {
-        resolve_scales(spec, &data_map)?;
+        resolve_scales(spec, &mut data_map)?;
     }
 
     // Apply out-of-bounds handling to data based on scale oob properties
@@ -1683,21 +1708,372 @@ fn column_info_from_literal(aesthetic: &str, lit: &LiteralValue) -> Option<Colum
 }
 
 // =============================================================================
+// Scale Type Coercion
+// =============================================================================
+
+/// Infer the target type for coercion based on scale kind.
+///
+/// Different scale kinds determine type differently:
+/// - **Discrete**: Type from input range (e.g., `FROM [true, false]` → Boolean)
+/// - **Continuous**: Type from transform (e.g., `VIA date` → Date, `VIA log10` → Number)
+/// - **Binned**: No coercion (binning happens in SQL before DataFrame)
+/// - **Identity**: No coercion
+fn infer_scale_target_type(scale: &Scale) -> Option<ArrayElementType> {
+    let scale_type = scale.scale_type.as_ref()?;
+
+    match scale_type.scale_type_kind() {
+        // Discrete: type from input range
+        ScaleTypeKind::Discrete => scale
+            .input_range
+            .as_ref()
+            .and_then(|r| ArrayElement::infer_type(r)),
+        // Continuous: type from transform
+        ScaleTypeKind::Continuous => scale.transform.as_ref().map(|t| t.target_type()),
+        // Binned: no coercion (binning happens in SQL before DataFrame)
+        ScaleTypeKind::Binned => None,
+        // Identity: no coercion
+        ScaleTypeKind::Identity => None,
+    }
+}
+
+/// Coerce a Polars column to the target ArrayElementType.
+///
+/// Returns a new DataFrame with the coerced column, or an error if coercion fails.
+fn coerce_column_to_type(
+    df: &DataFrame,
+    column_name: &str,
+    target_type: ArrayElementType,
+) -> Result<DataFrame> {
+    use polars::prelude::{DataType, NamedFrom, Series};
+
+    let column = df.column(column_name).map_err(|e| {
+        GgsqlError::ValidationError(format!("Column '{}' not found: {}", column_name, e))
+    })?;
+
+    let series = column.as_materialized_series();
+    let dtype = series.dtype();
+
+    // Check if already the target type
+    let already_target_type = match (dtype, target_type) {
+        (DataType::Boolean, ArrayElementType::Boolean) => true,
+        (
+            DataType::Float64 | DataType::Int64 | DataType::Int32 | DataType::Float32,
+            ArrayElementType::Number,
+        ) => true,
+        (DataType::Date, ArrayElementType::Date) => true,
+        (DataType::Datetime(_, _), ArrayElementType::DateTime) => true,
+        (DataType::Time, ArrayElementType::Time) => true,
+        (DataType::String, ArrayElementType::String) => true,
+        _ => false,
+    };
+
+    if already_target_type {
+        return Ok(df.clone());
+    }
+
+    // Coerce based on target type
+    let new_series: Series = match target_type {
+        ArrayElementType::Boolean => {
+            // Convert to boolean
+            match dtype {
+                DataType::String => {
+                    let str_series = series.str().map_err(|e| {
+                        GgsqlError::ValidationError(format!(
+                            "Cannot convert column '{}' to string for boolean coercion: {}",
+                            column_name, e
+                        ))
+                    })?;
+
+                    let bool_vec: Vec<Option<bool>> = str_series
+                        .into_iter()
+                        .enumerate()
+                        .map(|(idx, opt_s)| match opt_s {
+                            None => Ok(None),
+                            Some(s) => match s.to_lowercase().as_str() {
+                                "true" | "yes" | "1" => Ok(Some(true)),
+                                "false" | "no" | "0" => Ok(Some(false)),
+                                _ => Err(GgsqlError::ValidationError(format!(
+                                    "Column '{}' row {}: Cannot coerce string '{}' to boolean",
+                                    column_name, idx, s
+                                ))),
+                            },
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+
+                    Series::new(column_name.into(), bool_vec)
+                }
+                DataType::Int64 | DataType::Int32 | DataType::Float64 | DataType::Float32 => {
+                    let f64_series = series.cast(&DataType::Float64).map_err(|e| {
+                        GgsqlError::ValidationError(format!(
+                            "Cannot cast column '{}' to float64: {}",
+                            column_name, e
+                        ))
+                    })?;
+                    let ca = f64_series.f64().map_err(|e| {
+                        GgsqlError::ValidationError(format!(
+                            "Cannot get float64 chunked array: {}",
+                            e
+                        ))
+                    })?;
+                    let bool_vec: Vec<Option<bool>> =
+                        ca.into_iter().map(|opt| opt.map(|n| n != 0.0)).collect();
+                    Series::new(column_name.into(), bool_vec)
+                }
+                _ => {
+                    return Err(GgsqlError::ValidationError(format!(
+                        "Cannot coerce column '{}' of type {:?} to boolean",
+                        column_name, dtype
+                    )));
+                }
+            }
+        }
+
+        ArrayElementType::Number => {
+            // Convert to float64
+            series.cast(&DataType::Float64).map_err(|e| {
+                GgsqlError::ValidationError(format!(
+                    "Cannot coerce column '{}' to number: {}",
+                    column_name, e
+                ))
+            })?
+        }
+
+        ArrayElementType::Date => {
+            // Convert to date (from string)
+            match dtype {
+                DataType::String => {
+                    let str_series = series.str().map_err(|e| {
+                        GgsqlError::ValidationError(format!(
+                            "Cannot convert column '{}' to string for date coercion: {}",
+                            column_name, e
+                        ))
+                    })?;
+
+                    let date_vec: Vec<Option<i32>> = str_series
+                        .into_iter()
+                        .enumerate()
+                        .map(|(idx, opt_s)| {
+                            match opt_s {
+                                None => Ok(None),
+                                Some(s) => {
+                                    ArrayElement::from_date_string(s)
+                                        .and_then(|e| match e {
+                                            ArrayElement::Date(d) => Some(d),
+                                            _ => None,
+                                        })
+                                        .ok_or_else(|| {
+                                            GgsqlError::ValidationError(format!(
+                                                "Column '{}' row {}: Cannot coerce string '{}' to date (expected YYYY-MM-DD)",
+                                                column_name, idx, s
+                                            ))
+                                        })
+                                        .map(Some)
+                                }
+                            }
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+
+                    Series::new(column_name.into(), date_vec)
+                        .cast(&DataType::Date)
+                        .map_err(|e| {
+                            GgsqlError::ValidationError(format!("Cannot create date series: {}", e))
+                        })?
+                }
+                _ => {
+                    return Err(GgsqlError::ValidationError(format!(
+                        "Cannot coerce column '{}' of type {:?} to date",
+                        column_name, dtype
+                    )));
+                }
+            }
+        }
+
+        ArrayElementType::DateTime => {
+            // Convert to datetime (from string)
+            match dtype {
+                DataType::String => {
+                    let str_series = series.str().map_err(|e| {
+                        GgsqlError::ValidationError(format!(
+                            "Cannot convert column '{}' to string for datetime coercion: {}",
+                            column_name, e
+                        ))
+                    })?;
+
+                    let dt_vec: Vec<Option<i64>> = str_series
+                        .into_iter()
+                        .enumerate()
+                        .map(|(idx, opt_s)| match opt_s {
+                            None => Ok(None),
+                            Some(s) => ArrayElement::from_datetime_string(s)
+                                .and_then(|e| match e {
+                                    ArrayElement::DateTime(dt) => Some(dt),
+                                    _ => None,
+                                })
+                                .ok_or_else(|| {
+                                    GgsqlError::ValidationError(format!(
+                                        "Column '{}' row {}: Cannot coerce string '{}' to datetime",
+                                        column_name, idx, s
+                                    ))
+                                })
+                                .map(Some),
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+
+                    use polars::prelude::TimeUnit;
+                    Series::new(column_name.into(), dt_vec)
+                        .cast(&DataType::Datetime(TimeUnit::Microseconds, None))
+                        .map_err(|e| {
+                            GgsqlError::ValidationError(format!(
+                                "Cannot create datetime series: {}",
+                                e
+                            ))
+                        })?
+                }
+                _ => {
+                    return Err(GgsqlError::ValidationError(format!(
+                        "Cannot coerce column '{}' of type {:?} to datetime",
+                        column_name, dtype
+                    )));
+                }
+            }
+        }
+
+        ArrayElementType::Time => {
+            // Convert to time (from string)
+            match dtype {
+                DataType::String => {
+                    let str_series = series.str().map_err(|e| {
+                        GgsqlError::ValidationError(format!(
+                            "Cannot convert column '{}' to string for time coercion: {}",
+                            column_name, e
+                        ))
+                    })?;
+
+                    let time_vec: Vec<Option<i64>> = str_series
+                        .into_iter()
+                        .enumerate()
+                        .map(|(idx, opt_s)| {
+                            match opt_s {
+                                None => Ok(None),
+                                Some(s) => {
+                                    ArrayElement::from_time_string(s)
+                                        .and_then(|e| match e {
+                                            ArrayElement::Time(t) => Some(t),
+                                            _ => None,
+                                        })
+                                        .ok_or_else(|| {
+                                            GgsqlError::ValidationError(format!(
+                                                "Column '{}' row {}: Cannot coerce string '{}' to time (expected HH:MM:SS)",
+                                                column_name, idx, s
+                                            ))
+                                        })
+                                        .map(Some)
+                                }
+                            }
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+
+                    Series::new(column_name.into(), time_vec)
+                        .cast(&DataType::Time)
+                        .map_err(|e| {
+                            GgsqlError::ValidationError(format!("Cannot create time series: {}", e))
+                        })?
+                }
+                _ => {
+                    return Err(GgsqlError::ValidationError(format!(
+                        "Cannot coerce column '{}' of type {:?} to time",
+                        column_name, dtype
+                    )));
+                }
+            }
+        }
+
+        ArrayElementType::String => {
+            // Convert to string
+            series.cast(&DataType::String).map_err(|e| {
+                GgsqlError::ValidationError(format!(
+                    "Cannot coerce column '{}' to string: {}",
+                    column_name, e
+                ))
+            })?
+        }
+    };
+
+    // Replace the column in the DataFrame
+    let mut new_df = df.clone();
+    let _ = new_df.replace(column_name, new_series);
+    Ok(new_df)
+}
+
+/// Coerce columns mapped to an aesthetic in all relevant DataFrames.
+///
+/// This function finds all columns mapped to the given aesthetic across all layers
+/// and coerces them to the target type.
+fn coerce_aesthetic_columns(
+    layers: &[Layer],
+    data_map: &mut HashMap<String, DataFrame>,
+    aesthetic: &str,
+    target_type: ArrayElementType,
+) -> Result<()> {
+    let aesthetics_to_check = get_aesthetic_family(aesthetic);
+    let global_key = naming::GLOBAL_DATA_KEY.to_string();
+
+    // Track which (data_key, column_name) pairs we've already coerced
+    let mut coerced: HashSet<(String, String)> = HashSet::new();
+
+    // Check each layer's mapping → look up in layer data OR global data
+    for (i, layer) in layers.iter().enumerate() {
+        let layer_key = naming::layer_key(i);
+
+        for aes_name in &aesthetics_to_check {
+            if let Some(AestheticValue::Column { name, .. }) = layer.mappings.get(*aes_name) {
+                // Determine which data source to use
+                let data_key = if data_map.contains_key(&layer_key) {
+                    layer_key.clone()
+                } else if data_map.contains_key(&global_key) {
+                    global_key.clone()
+                } else {
+                    continue;
+                };
+
+                // Skip if already coerced
+                let key = (data_key.clone(), name.clone());
+                if coerced.contains(&key) {
+                    continue;
+                }
+
+                // Check if column exists in this DataFrame
+                if let Some(df) = data_map.get(&data_key) {
+                    if df.column(name).is_ok() {
+                        let coerced_df = coerce_column_to_type(df, name, target_type)?;
+                        data_map.insert(data_key.clone(), coerced_df);
+                        coerced.insert(key);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// =============================================================================
 // Scale Resolution
 // =============================================================================
 
 /// Resolve scale properties from data after materialization.
 ///
 /// For each scale, this function:
-/// 1. Infers scale_type from column data types if not explicitly set
-/// 2. Uses the unified `resolve` method to fill in input_range, transform, and breaks
-/// 3. Resolves output_range if not already set
+/// 1. Infers target type and coerces columns if needed
+/// 2. Infers scale_type from column data types if not explicitly set
+/// 3. Uses the unified `resolve` method to fill in input_range, transform, and breaks
+/// 4. Resolves output_range if not already set
 ///
 /// The function inspects columns mapped to the aesthetic (including family
 /// members like xmin/xmax for "x") and computes appropriate ranges.
 ///
 /// Scales that were already resolved pre-stat (Binned scales) are skipped.
-fn resolve_scales(spec: &mut Plot, data_map: &HashMap<String, DataFrame>) -> Result<()> {
+fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>) -> Result<()> {
     use crate::plot::scale::ScaleDataContext;
 
     for idx in 0..spec.scales.len() {
@@ -1711,7 +2087,14 @@ fn resolve_scales(spec: &mut Plot, data_map: &HashMap<String, DataFrame>) -> Res
             continue;
         }
 
+        // NEW: Infer target type and coerce columns if needed
+        // This enables e.g. SCALE DISCRETE color FROM [true, false] to coerce string "true"/"false" to boolean
+        if let Some(target_type) = infer_scale_target_type(&spec.scales[idx]) {
+            coerce_aesthetic_columns(&spec.layers, data_map, &aesthetic, target_type)?;
+        }
+
         // Find column references for this aesthetic (including family members)
+        // NOTE: Must be called AFTER coercion so column types are correct
         let column_refs = find_columns_for_aesthetic(&spec.layers, &aesthetic, data_map);
 
         if column_refs.is_empty() {
@@ -1855,7 +2238,7 @@ fn get_aesthetic_family(aesthetic: &str) -> Vec<&str> {
 // =============================================================================
 
 use crate::plot::scale::{OOB_CENSOR, OOB_KEEP, OOB_SQUISH};
-use crate::plot::{ArrayElement, ParameterValue};
+use crate::plot::ParameterValue;
 
 /// Apply out-of-bounds handling to data based on scale oob properties.
 ///
@@ -2069,7 +2452,7 @@ mod tests {
     use crate::naming;
     use crate::plot::{ArrayElement, SqlExpression};
     use crate::Geom;
-    use polars::prelude::DataType;
+    use polars::prelude::{DataType, IntoColumn};
 
     #[cfg(feature = "duckdb")]
     #[test]
@@ -4036,7 +4419,7 @@ mod tests {
         data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
 
         // Resolve scales
-        resolve_scales(&mut spec, &data_map).unwrap();
+        resolve_scales(&mut spec, &mut data_map).unwrap();
 
         // Check that both scale_type and input_range were inferred
         let scale = &spec.scales[0];
@@ -4085,7 +4468,7 @@ mod tests {
         data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
 
         // Resolve scales
-        resolve_scales(&mut spec, &data_map).unwrap();
+        resolve_scales(&mut spec, &mut data_map).unwrap();
 
         // Check that explicit range was preserved (not overwritten with [1, 10])
         let scale = &spec.scales[0];
@@ -4131,7 +4514,7 @@ mod tests {
         data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
 
         // Resolve scales
-        resolve_scales(&mut spec, &data_map).unwrap();
+        resolve_scales(&mut spec, &mut data_map).unwrap();
 
         // Check that range was inferred from both ymin and ymax columns
         let scale = &spec.scales[0];
@@ -4262,7 +4645,7 @@ mod tests {
         data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
 
         // Resolve scales
-        resolve_scales(&mut spec, &data_map).unwrap();
+        resolve_scales(&mut spec, &mut data_map).unwrap();
 
         // Check that range is [0, 10] (explicit min, inferred max)
         let scale = &spec.scales[0];
@@ -4307,7 +4690,7 @@ mod tests {
         data_map.insert(naming::GLOBAL_DATA_KEY.to_string(), df);
 
         // Resolve scales
-        resolve_scales(&mut spec, &data_map).unwrap();
+        resolve_scales(&mut spec, &mut data_map).unwrap();
 
         // Check that range is [1, 100] (inferred min, explicit max)
         let scale = &spec.scales[0];
@@ -5628,5 +6011,288 @@ mod tests {
             Some(&Some("Region: Eu West".to_string())),
             "Should apply Title case transformation with prefix"
         );
+    }
+
+    // =============================================================================
+    // Scale Type Coercion Tests
+    // =============================================================================
+
+    #[test]
+    fn test_infer_scale_target_type_discrete_boolean_range() {
+        use crate::plot::scale::ScaleType;
+
+        // Discrete scale with boolean input range should infer Boolean type
+        let scale = Scale {
+            aesthetic: "color".to_string(),
+            scale_type: Some(ScaleType::discrete()),
+            input_range: Some(vec![
+                ArrayElement::Boolean(true),
+                ArrayElement::Boolean(false),
+            ]),
+            output_range: None,
+            transform: None,
+            explicit_transform: false,
+            properties: HashMap::new(),
+            resolved: false,
+            label_mapping: None,
+            label_template: None,
+        };
+
+        let target_type = infer_scale_target_type(&scale);
+        assert_eq!(target_type, Some(ArrayElementType::Boolean));
+    }
+
+    #[test]
+    fn test_infer_scale_target_type_discrete_string_range() {
+        use crate::plot::scale::ScaleType;
+
+        // Discrete scale with string input range should infer String type
+        let scale = Scale {
+            aesthetic: "color".to_string(),
+            scale_type: Some(ScaleType::discrete()),
+            input_range: Some(vec![
+                ArrayElement::String("A".to_string()),
+                ArrayElement::String("B".to_string()),
+            ]),
+            output_range: None,
+            transform: None,
+            explicit_transform: false,
+            properties: HashMap::new(),
+            resolved: false,
+            label_mapping: None,
+            label_template: None,
+        };
+
+        let target_type = infer_scale_target_type(&scale);
+        assert_eq!(target_type, Some(ArrayElementType::String));
+    }
+
+    #[test]
+    fn test_infer_scale_target_type_continuous_date_transform() {
+        use crate::plot::scale::{ScaleType, Transform};
+
+        // Continuous scale with date transform should infer Date type
+        let scale = Scale {
+            aesthetic: "x".to_string(),
+            scale_type: Some(ScaleType::continuous()),
+            input_range: None,
+            output_range: None,
+            transform: Some(Transform::date()),
+            explicit_transform: true,
+            properties: HashMap::new(),
+            resolved: false,
+            label_mapping: None,
+            label_template: None,
+        };
+
+        let target_type = infer_scale_target_type(&scale);
+        assert_eq!(target_type, Some(ArrayElementType::Date));
+    }
+
+    #[test]
+    fn test_infer_scale_target_type_continuous_log_transform() {
+        use crate::plot::scale::{ScaleType, Transform};
+
+        // Continuous scale with log transform should infer Number type
+        let scale = Scale {
+            aesthetic: "y".to_string(),
+            scale_type: Some(ScaleType::continuous()),
+            input_range: None,
+            output_range: None,
+            transform: Some(Transform::log()),
+            explicit_transform: true,
+            properties: HashMap::new(),
+            resolved: false,
+            label_mapping: None,
+            label_template: None,
+        };
+
+        let target_type = infer_scale_target_type(&scale);
+        assert_eq!(target_type, Some(ArrayElementType::Number));
+    }
+
+    #[test]
+    fn test_infer_scale_target_type_binned_returns_none() {
+        use crate::plot::scale::ScaleType;
+
+        // Binned scales should return None (no coercion - binning happens in SQL)
+        let scale = Scale {
+            aesthetic: "x".to_string(),
+            scale_type: Some(ScaleType::binned()),
+            input_range: None,
+            output_range: None,
+            transform: None,
+            explicit_transform: false,
+            properties: HashMap::new(),
+            resolved: false,
+            label_mapping: None,
+            label_template: None,
+        };
+
+        let target_type = infer_scale_target_type(&scale);
+        assert_eq!(target_type, None);
+    }
+
+    #[test]
+    fn test_infer_scale_target_type_identity_returns_none() {
+        use crate::plot::scale::ScaleType;
+
+        // Identity scales should return None (no coercion)
+        let scale = Scale {
+            aesthetic: "label".to_string(),
+            scale_type: Some(ScaleType::identity()),
+            input_range: None,
+            output_range: None,
+            transform: None,
+            explicit_transform: false,
+            properties: HashMap::new(),
+            resolved: false,
+            label_mapping: None,
+            label_template: None,
+        };
+
+        let target_type = infer_scale_target_type(&scale);
+        assert_eq!(target_type, None);
+    }
+
+    #[test]
+    fn test_infer_scale_target_type_continuous_no_transform() {
+        use crate::plot::scale::ScaleType;
+
+        // Continuous scale without transform should return None (no coercion)
+        let scale = Scale {
+            aesthetic: "x".to_string(),
+            scale_type: Some(ScaleType::continuous()),
+            input_range: None,
+            output_range: None,
+            transform: None,
+            explicit_transform: false,
+            properties: HashMap::new(),
+            resolved: false,
+            label_mapping: None,
+            label_template: None,
+        };
+
+        let target_type = infer_scale_target_type(&scale);
+        assert_eq!(target_type, None);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_coerce_column_string_to_boolean() {
+        use polars::prelude::{NamedFrom, Series};
+
+        // Create a DataFrame with string column
+        let series = Series::new("flag".into(), vec!["true", "false", "TRUE", "FALSE"]);
+        let df = DataFrame::new(vec![series.into_column()]).unwrap();
+
+        // Coerce to boolean
+        let result = coerce_column_to_type(&df, "flag", ArrayElementType::Boolean).unwrap();
+
+        // Verify the column was converted
+        let col = result.column("flag").unwrap();
+        assert_eq!(col.dtype(), &polars::prelude::DataType::Boolean);
+
+        let bool_series = col.as_materialized_series();
+        let bool_vec: Vec<Option<bool>> = bool_series.bool().unwrap().into_iter().collect();
+        assert_eq!(
+            bool_vec,
+            vec![Some(true), Some(false), Some(true), Some(false)]
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_coerce_column_string_to_boolean_error() {
+        use polars::prelude::{NamedFrom, Series};
+
+        // Create a DataFrame with invalid string values
+        let series = Series::new("flag".into(), vec!["true", "maybe", "false"]);
+        let df = DataFrame::new(vec![series.into_column()]).unwrap();
+
+        // Coerce should fail
+        let result = coerce_column_to_type(&df, "flag", ArrayElementType::Boolean);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match err {
+            GgsqlError::ValidationError(msg) => {
+                assert!(msg.contains("Cannot coerce string 'maybe' to boolean"));
+            }
+            _ => panic!("Expected ValidationError"),
+        }
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_coerce_column_string_to_date() {
+        use polars::prelude::{NamedFrom, Series};
+
+        // Create a DataFrame with date strings
+        let series = Series::new("date".into(), vec!["2024-01-15", "2024-06-30"]);
+        let df = DataFrame::new(vec![series.into_column()]).unwrap();
+
+        // Coerce to date
+        let result = coerce_column_to_type(&df, "date", ArrayElementType::Date).unwrap();
+
+        // Verify the column was converted
+        let col = result.column("date").unwrap();
+        assert_eq!(col.dtype(), &polars::prelude::DataType::Date);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_coerce_column_already_correct_type() {
+        use polars::prelude::{NamedFrom, Series};
+
+        // Create a DataFrame with boolean column
+        let series = Series::new("flag".into(), vec![true, false]);
+        let df = DataFrame::new(vec![series.into_column()]).unwrap();
+
+        // Coerce to boolean (same type) should be a no-op
+        let result = coerce_column_to_type(&df, "flag", ArrayElementType::Boolean).unwrap();
+
+        // Verify the column is still boolean
+        let col = result.column("flag").unwrap();
+        assert_eq!(col.dtype(), &polars::prelude::DataType::Boolean);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_discrete_boolean_range_coerces_string_column() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Query that produces string "true"/"false" values with discrete boolean scale
+        let query = r#"
+            SELECT
+                n,
+                n * 10 as value,
+                CASE WHEN n % 2 = 0 THEN 'true' ELSE 'false' END as is_even
+            FROM generate_series(1, 6) AS t(n)
+            VISUALISE n AS x, value AS y, is_even AS color
+            DRAW point
+            SCALE DISCRETE color FROM [true, false]
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Verify the scale has boolean input range
+        let color_scale = result.specs[0]
+            .scales
+            .iter()
+            .find(|s| s.aesthetic == "fill" || s.aesthetic == "stroke")
+            .expect("Should have fill or stroke scale");
+
+        // The input_range should contain boolean values (coerced from string column)
+        let input_range = color_scale
+            .input_range
+            .as_ref()
+            .expect("Should have input_range");
+        for elem in input_range {
+            assert!(
+                matches!(elem, ArrayElement::Boolean(_)),
+                "Input range should contain Boolean values, got {:?}",
+                elem
+            );
+        }
     }
 }

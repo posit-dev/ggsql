@@ -34,6 +34,12 @@ pub struct Scale {
     pub output_range: Option<OutputRange>,
     /// Transformation (VIA clause)
     pub transform: Option<Transform>,
+    /// Whether the transform was explicitly specified by the user (VIA clause).
+    /// Used to determine whether to apply type casting in binned scales.
+    /// If true, the transform was specified explicitly (e.g., `VIA date`).
+    /// If false, the transform was inferred from the column data type.
+    #[serde(default)]
+    pub explicit_transform: bool,
     /// Additional scale properties (SETTING clause)
     /// Note: `breaks` can be either a Number (count) or Array (explicit positions).
     /// If scalar at parse time, it's converted to Array during resolution.
@@ -63,6 +69,7 @@ impl Scale {
             input_range: None,
             output_range: None,
             transform: None,
+            explicit_transform: false,
             properties: HashMap::new(),
             resolved: false,
             label_mapping: None,

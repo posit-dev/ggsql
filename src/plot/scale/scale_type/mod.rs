@@ -694,7 +694,20 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     ///
     /// Only Binned scales implement this (returns binning SQL).
     /// Default returns None (no transformation).
-    fn pre_stat_transform_sql(&self, _column_name: &str, _scale: &super::Scale) -> Option<String> {
+    ///
+    /// # Arguments
+    ///
+    /// * `column_name` - The column to transform
+    /// * `column_dtype` - The column's data type from the schema
+    /// * `scale` - The resolved scale specification
+    /// * `type_names` - SQL type names for casting (from Reader)
+    fn pre_stat_transform_sql(
+        &self,
+        _column_name: &str,
+        _column_dtype: &DataType,
+        _scale: &super::Scale,
+        _type_names: &SqlTypeNames,
+    ) -> Option<String> {
         None
     }
 }
@@ -894,12 +907,22 @@ impl ScaleType {
     /// BEFORE stat transforms run. Returns SQL expression to wrap the column.
     ///
     /// Only Binned scales implement this (returns binning SQL).
+    ///
+    /// # Arguments
+    ///
+    /// * `column_name` - The column to transform
+    /// * `column_dtype` - The column's data type from the schema
+    /// * `scale` - The resolved scale specification
+    /// * `type_names` - SQL type names for casting (from Reader)
     pub fn pre_stat_transform_sql(
         &self,
         column_name: &str,
+        column_dtype: &DataType,
         scale: &super::Scale,
+        type_names: &SqlTypeNames,
     ) -> Option<String> {
-        self.0.pre_stat_transform_sql(column_name, scale)
+        self.0
+            .pre_stat_transform_sql(column_name, column_dtype, scale, type_names)
     }
 }
 
@@ -1083,6 +1106,68 @@ pub(super) fn get_expand_factors(properties: &HashMap<String, ParameterValue>) -
         .get("expand")
         .and_then(parse_expand_value)
         .unwrap_or((DEFAULT_EXPAND_MULT, DEFAULT_EXPAND_ADD))
+}
+
+// =============================================================================
+// SQL Type Names for Casting (used in binning)
+// =============================================================================
+
+/// Target type for binning operations.
+///
+/// When a column's data type doesn't match the transform's target type
+/// (e.g., STRING column with a DATE transform), the binning SQL needs
+/// to cast values to the correct type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CastTargetType {
+    /// Numeric type (DOUBLE, FLOAT, etc.)
+    Number,
+    /// Date type (DATE)
+    Date,
+    /// DateTime/Timestamp type (TIMESTAMP)
+    DateTime,
+    /// Time type (TIME)
+    Time,
+}
+
+/// SQL type names for casting in binning queries.
+///
+/// These names are database-specific and provided by the Reader trait.
+/// When a binned scale has a type mismatch (e.g., STRING column with
+/// explicit DATE transform), the generated SQL needs to cast values.
+#[derive(Debug, Clone, Default)]
+pub struct SqlTypeNames {
+    /// SQL type name for numeric columns (e.g., "DOUBLE")
+    pub number: Option<String>,
+    /// SQL type name for DATE columns (e.g., "DATE")
+    pub date: Option<String>,
+    /// SQL type name for DATETIME columns (e.g., "TIMESTAMP")
+    pub datetime: Option<String>,
+    /// SQL type name for TIME columns (e.g., "TIME")
+    pub time: Option<String>,
+}
+
+impl SqlTypeNames {
+    /// Create SqlTypeNames with default DuckDB type names.
+    pub fn duckdb() -> Self {
+        Self {
+            number: Some("DOUBLE".to_string()),
+            date: Some("DATE".to_string()),
+            datetime: Some("TIMESTAMP".to_string()),
+            time: Some("TIME".to_string()),
+        }
+    }
+
+    /// Get the SQL type name for a target type.
+    ///
+    /// Returns None if the type is not supported by the database.
+    pub fn for_target(&self, target: CastTargetType) -> Option<&str> {
+        match target {
+            CastTargetType::Number => self.number.as_deref(),
+            CastTargetType::Date => self.date.as_deref(),
+            CastTargetType::DateTime => self.datetime.as_deref(),
+            CastTargetType::Time => self.time.as_deref(),
+        }
+    }
 }
 
 #[cfg(test)]

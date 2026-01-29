@@ -105,9 +105,7 @@ fn compute_unique_values(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
     }
 
     // Check if all columns are boolean
-    let all_boolean = column_refs
-        .iter()
-        .all(|c| c.dtype() == &DataType::Boolean);
+    let all_boolean = column_refs.iter().all(|c| c.dtype() == &DataType::Boolean);
 
     if all_boolean {
         // For boolean columns, return ArrayElement::Boolean values

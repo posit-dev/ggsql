@@ -397,6 +397,66 @@ impl Transform {
     pub fn is_temporal(&self) -> bool {
         self.transform_kind().is_temporal()
     }
+
+    /// Return the target ArrayElementType for this transform.
+    ///
+    /// Used by continuous/binned scales to determine the coercion target
+    /// based on the transform. Temporal transforms target their respective
+    /// temporal types; all other transforms target Number.
+    pub fn target_type(&self) -> crate::plot::ArrayElementType {
+        use crate::plot::ArrayElementType;
+        match self.transform_kind() {
+            TransformKind::Date => ArrayElementType::Date,
+            TransformKind::DateTime => ArrayElementType::DateTime,
+            TransformKind::Time => ArrayElementType::Time,
+            // All other transforms (Identity, Log, Sqrt, etc.) work on numbers
+            _ => ArrayElementType::Number,
+        }
+    }
+
+    /// Format a numeric value as an ISO string for SQL literals.
+    ///
+    /// Temporal transforms convert their internal numeric representation
+    /// (days/microseconds/nanoseconds) back to ISO date/time strings.
+    /// Returns None for non-temporal transforms.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let date_transform = Transform::date();
+    /// // 19724 days since epoch = 2024-01-01
+    /// assert_eq!(date_transform.format_as_iso(19724.0), Some("2024-01-01".to_string()));
+    ///
+    /// let identity = Transform::identity();
+    /// assert_eq!(identity.format_as_iso(100.0), None);
+    /// ```
+    pub fn format_as_iso(&self, value: f64) -> Option<String> {
+        use chrono::{DateTime as ChronoDateTime, NaiveDate, NaiveTime};
+
+        /// Days from CE to Unix epoch (1970-01-01)
+        const UNIX_EPOCH_CE_DAYS: i32 = 719163;
+
+        match self.transform_kind() {
+            TransformKind::Date => {
+                let days = value as i32;
+                NaiveDate::from_num_days_from_ce_opt(days + UNIX_EPOCH_CE_DAYS)
+                    .map(|d| d.format("%Y-%m-%d").to_string())
+            }
+            TransformKind::DateTime => {
+                let micros = value as i64;
+                ChronoDateTime::from_timestamp_micros(micros)
+                    .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string())
+            }
+            TransformKind::Time => {
+                let nanos = value as i64;
+                let secs = (nanos / 1_000_000_000) as u32;
+                let nano_part = (nanos % 1_000_000_000) as u32;
+                NaiveTime::from_num_seconds_from_midnight_opt(secs, nano_part)
+                    .map(|t| t.format("%H:%M:%S").to_string())
+            }
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Debug for Transform {
@@ -574,5 +634,33 @@ mod tests {
         assert_eq!(format!("{}", TransformKind::Log10), "log");
         assert_eq!(format!("{}", TransformKind::Log), "ln");
         assert_eq!(format!("{}", TransformKind::PseudoLog), "pseudo_log");
+    }
+
+    #[test]
+    fn test_transform_target_type() {
+        use crate::plot::ArrayElementType;
+
+        // Temporal transforms target their respective types
+        assert_eq!(Transform::date().target_type(), ArrayElementType::Date);
+        assert_eq!(
+            Transform::datetime().target_type(),
+            ArrayElementType::DateTime
+        );
+        assert_eq!(Transform::time().target_type(), ArrayElementType::Time);
+
+        // All other transforms target Number
+        assert_eq!(
+            Transform::identity().target_type(),
+            ArrayElementType::Number
+        );
+        assert_eq!(Transform::log().target_type(), ArrayElementType::Number);
+        assert_eq!(Transform::log2().target_type(), ArrayElementType::Number);
+        assert_eq!(Transform::ln().target_type(), ArrayElementType::Number);
+        assert_eq!(Transform::sqrt().target_type(), ArrayElementType::Number);
+        assert_eq!(Transform::asinh().target_type(), ArrayElementType::Number);
+        assert_eq!(
+            Transform::pseudo_log().target_type(),
+            ArrayElementType::Number
+        );
     }
 }
