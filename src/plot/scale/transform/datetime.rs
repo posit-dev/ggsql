@@ -8,6 +8,7 @@ use chrono::Datelike;
 
 use super::{TransformKind, TransformTrait};
 use crate::plot::scale::breaks::minor_breaks_linear;
+use crate::plot::ArrayElement;
 
 /// DateTime transform - for datetime data (microseconds since epoch)
 ///
@@ -123,6 +124,22 @@ impl TransformTrait for DateTime {
 
     fn default_minor_break_count(&self) -> usize {
         3
+    }
+
+    fn wrap_numeric(&self, value: f64) -> ArrayElement {
+        ArrayElement::DateTime(value as i64)
+    }
+
+    fn parse_value(&self, elem: &ArrayElement) -> ArrayElement {
+        match elem {
+            ArrayElement::String(s) => {
+                ArrayElement::from_datetime_string(s).unwrap_or_else(|| elem.clone())
+            }
+            ArrayElement::Number(n) => self.wrap_numeric(*n),
+            // DateTime values pass through unchanged
+            ArrayElement::DateTime(_) => elem.clone(),
+            other => other.clone(),
+        }
     }
 }
 

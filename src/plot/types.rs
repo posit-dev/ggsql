@@ -4,6 +4,7 @@
 //! settings, and values. These are the building blocks used in AST types
 //! to capture what the user specified in their query.
 
+use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use polars::prelude::DataType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -224,9 +225,109 @@ pub enum ArrayElement {
     Boolean(bool),
     /// Null placeholder for partial input range inference (e.g., SCALE x FROM [0, null])
     Null,
+    /// Date value (days since Unix epoch 1970-01-01)
+    Date(i32),
+    /// DateTime value (microseconds since Unix epoch)
+    DateTime(i64),
+    /// Time value (nanoseconds since midnight)
+    Time(i64),
+}
+
+/// Days from CE to Unix epoch (1970-01-01)
+const UNIX_EPOCH_CE_DAYS: i32 = 719163;
+
+/// Convert days-since-epoch to ISO date string
+fn date_to_iso_string(days: i32) -> String {
+    NaiveDate::from_num_days_from_ce_opt(days + UNIX_EPOCH_CE_DAYS)
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|| days.to_string())
+}
+
+/// Convert microseconds-since-epoch to ISO datetime string
+fn datetime_to_iso_string(micros: i64) -> String {
+    DateTime::from_timestamp_micros(micros)
+        .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string())
+        .unwrap_or_else(|| micros.to_string())
+}
+
+/// Convert nanoseconds-since-midnight to ISO time string
+fn time_to_iso_string(nanos: i64) -> String {
+    let secs = (nanos / 1_000_000_000) as u32;
+    let nano_part = (nanos % 1_000_000_000) as u32;
+    NaiveTime::from_num_seconds_from_midnight_opt(secs, nano_part)
+        .map(|t| t.format("%H:%M:%S").to_string())
+        .unwrap_or_else(|| format!("{}ns", nanos))
+}
+
+/// Format number for display (remove trailing zeros for integers)
+fn format_number(n: f64) -> String {
+    if n.fract() == 0.0 {
+        format!("{:.0}", n)
+    } else {
+        n.to_string()
+    }
 }
 
 impl ArrayElement {
+    /// Convert to f64 for numeric calculations
+    pub fn to_f64(&self) -> Option<f64> {
+        match self {
+            Self::Number(n) => Some(*n),
+            Self::Date(d) => Some(*d as f64),
+            Self::DateTime(dt) => Some(*dt as f64),
+            Self::Time(t) => Some(*t as f64),
+            _ => None,
+        }
+    }
+
+    /// Parse ISO date string "YYYY-MM-DD" to Date variant
+    pub fn from_date_string(s: &str) -> Option<Self> {
+        NaiveDate::parse_from_str(s, "%Y-%m-%d")
+            .ok()
+            .map(|d| Self::Date(d.num_days_from_ce() - UNIX_EPOCH_CE_DAYS))
+    }
+
+    /// Parse ISO datetime string to DateTime variant
+    pub fn from_datetime_string(s: &str) -> Option<Self> {
+        // Try multiple formats: with/without fractional seconds, with/without Z
+        for fmt in &[
+            "%Y-%m-%dT%H:%M:%S%.f",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
+        ] {
+            if let Ok(dt) = NaiveDateTime::parse_from_str(s, fmt) {
+                return Some(Self::DateTime(dt.and_utc().timestamp_micros()));
+            }
+        }
+        None
+    }
+
+    /// Parse ISO time string "HH:MM:SS[.sss]" to Time variant
+    pub fn from_time_string(s: &str) -> Option<Self> {
+        for fmt in &["%H:%M:%S%.f", "%H:%M:%S", "%H:%M"] {
+            if let Ok(t) = NaiveTime::parse_from_str(s, fmt) {
+                // Convert to nanoseconds since midnight
+                let nanos =
+                    t.num_seconds_from_midnight() as i64 * 1_000_000_000 + t.nanosecond() as i64;
+                return Some(Self::Time(nanos));
+            }
+        }
+        None
+    }
+
+    /// Convert to string for HashMap keys and display
+    pub fn to_key_string(&self) -> String {
+        match self {
+            Self::String(s) => s.clone(),
+            Self::Number(n) => format_number(*n),
+            Self::Boolean(b) => b.to_string(),
+            Self::Null => "null".to_string(),
+            Self::Date(d) => date_to_iso_string(*d),
+            Self::DateTime(dt) => datetime_to_iso_string(*dt),
+            Self::Time(t) => time_to_iso_string(*t),
+        }
+    }
+
     /// Convert to a serde_json::Value
     pub fn to_json(&self) -> serde_json::Value {
         match self {
@@ -234,6 +335,10 @@ impl ArrayElement {
             ArrayElement::Number(n) => serde_json::json!(n),
             ArrayElement::Boolean(b) => serde_json::Value::Bool(*b),
             ArrayElement::Null => serde_json::Value::Null,
+            // Temporal types serialize as ISO strings for JSON
+            ArrayElement::Date(d) => serde_json::Value::String(date_to_iso_string(*d)),
+            ArrayElement::DateTime(dt) => serde_json::Value::String(datetime_to_iso_string(*dt)),
+            ArrayElement::Time(t) => serde_json::Value::String(time_to_iso_string(*t)),
         }
     }
 }
@@ -321,5 +426,134 @@ impl SqlExpression {
     /// Consume and return the raw SQL text
     pub fn into_string(self) -> String {
         self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_date_from_string() {
+        let elem = ArrayElement::from_date_string("2024-01-15").unwrap();
+        assert!(matches!(elem, ArrayElement::Date(_)));
+        assert_eq!(elem.to_key_string(), "2024-01-15");
+    }
+
+    #[test]
+    fn test_date_from_string_roundtrip() {
+        // Test that parsing and converting back produces the same date
+        let original = "2024-06-30";
+        let elem = ArrayElement::from_date_string(original).unwrap();
+        assert_eq!(elem.to_key_string(), original);
+    }
+
+    #[test]
+    fn test_datetime_from_string() {
+        let elem = ArrayElement::from_datetime_string("2024-01-15T10:30:00").unwrap();
+        assert!(matches!(elem, ArrayElement::DateTime(_)));
+        assert!(elem.to_key_string().starts_with("2024-01-15T10:30:00"));
+    }
+
+    #[test]
+    fn test_datetime_from_string_with_space() {
+        let elem = ArrayElement::from_datetime_string("2024-01-15 10:30:00").unwrap();
+        assert!(matches!(elem, ArrayElement::DateTime(_)));
+    }
+
+    #[test]
+    fn test_time_from_string() {
+        let elem = ArrayElement::from_time_string("14:30:00").unwrap();
+        assert!(matches!(elem, ArrayElement::Time(_)));
+        assert_eq!(elem.to_key_string(), "14:30:00");
+    }
+
+    #[test]
+    fn test_time_from_string_with_millis() {
+        let elem = ArrayElement::from_time_string("14:30:00.123").unwrap();
+        assert!(matches!(elem, ArrayElement::Time(_)));
+    }
+
+    #[test]
+    fn test_time_from_string_short() {
+        let elem = ArrayElement::from_time_string("14:30").unwrap();
+        assert!(matches!(elem, ArrayElement::Time(_)));
+        assert_eq!(elem.to_key_string(), "14:30:00");
+    }
+
+    #[test]
+    fn test_date_to_f64() {
+        // 2024-01-15 is roughly 19738 days since epoch (1970-01-01)
+        let elem = ArrayElement::from_date_string("2024-01-15").unwrap();
+        let days = elem.to_f64().unwrap();
+        // Verify the date is in a reasonable range
+        assert!(days > 19000.0 && days < 20000.0);
+    }
+
+    #[test]
+    fn test_time_to_f64() {
+        let elem = ArrayElement::from_time_string("12:00:00").unwrap();
+        let nanos = elem.to_f64().unwrap();
+        // 12 hours = 12 * 60 * 60 * 1_000_000_000 nanoseconds
+        assert_eq!(nanos, 43_200_000_000_000.0);
+    }
+
+    #[test]
+    fn test_date_to_json() {
+        let elem = ArrayElement::from_date_string("2024-01-15").unwrap();
+        let json = elem.to_json();
+        assert_eq!(json, serde_json::json!("2024-01-15"));
+    }
+
+    #[test]
+    fn test_datetime_to_json() {
+        let elem = ArrayElement::from_datetime_string("2024-01-15T10:30:00").unwrap();
+        let json = elem.to_json();
+        // Datetime serializes as ISO string
+        assert!(json.is_string());
+        assert!(json.as_str().unwrap().starts_with("2024-01-15T10:30:00"));
+    }
+
+    #[test]
+    fn test_time_to_json() {
+        let elem = ArrayElement::from_time_string("14:30:00").unwrap();
+        let json = elem.to_json();
+        assert_eq!(json, serde_json::json!("14:30:00"));
+    }
+
+    #[test]
+    fn test_number_to_f64() {
+        let elem = ArrayElement::Number(42.5);
+        assert_eq!(elem.to_f64(), Some(42.5));
+    }
+
+    #[test]
+    fn test_string_to_f64_returns_none() {
+        let elem = ArrayElement::String("hello".to_string());
+        assert_eq!(elem.to_f64(), None);
+    }
+
+    #[test]
+    fn test_to_key_string_number_integer() {
+        let elem = ArrayElement::Number(25.0);
+        assert_eq!(elem.to_key_string(), "25");
+    }
+
+    #[test]
+    fn test_to_key_string_number_decimal() {
+        let elem = ArrayElement::Number(25.5);
+        assert_eq!(elem.to_key_string(), "25.5");
+    }
+
+    #[test]
+    fn test_invalid_date_returns_none() {
+        assert!(ArrayElement::from_date_string("not-a-date").is_none());
+        assert!(ArrayElement::from_date_string("2024/01/15").is_none());
+    }
+
+    #[test]
+    fn test_invalid_time_returns_none() {
+        assert!(ArrayElement::from_time_string("not-a-time").is_none());
+        assert!(ArrayElement::from_time_string("25:00:00").is_none());
     }
 }

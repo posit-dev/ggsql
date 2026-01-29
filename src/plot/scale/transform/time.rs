@@ -6,6 +6,7 @@
 
 use super::{TransformKind, TransformTrait};
 use crate::plot::scale::breaks::minor_breaks_linear;
+use crate::plot::ArrayElement;
 
 /// Time transform - for time data (nanoseconds since midnight)
 ///
@@ -117,6 +118,22 @@ impl TransformTrait for Time {
 
     fn default_minor_break_count(&self) -> usize {
         3
+    }
+
+    fn wrap_numeric(&self, value: f64) -> ArrayElement {
+        ArrayElement::Time(value as i64)
+    }
+
+    fn parse_value(&self, elem: &ArrayElement) -> ArrayElement {
+        match elem {
+            ArrayElement::String(s) => {
+                ArrayElement::from_time_string(s).unwrap_or_else(|| elem.clone())
+            }
+            ArrayElement::Number(n) => self.wrap_numeric(*n),
+            // Time values pass through unchanged
+            ArrayElement::Time(_) => elem.clone(),
+            other => other.clone(),
+        }
     }
 }
 

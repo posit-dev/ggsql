@@ -174,6 +174,22 @@ impl ScaleTypeTrait for Binned {
     /// - Each bin is represented by its center value `(lower + upper) / 2`
     /// - Boundary values are not lost (edge bins include endpoints)
     /// - Data is binned BEFORE any stat transforms are applied
+    ///
+    /// # Temporal Data Limitation
+    ///
+    /// For temporal columns (Date, DateTime, Time), the generated SQL uses raw numeric
+    /// values (days/microseconds/nanoseconds since epoch) rather than proper date literals:
+    ///
+    /// ```sql
+    /// CASE WHEN date_col >= 19724 AND date_col < 19755 THEN 19739.5 ...
+    /// ```
+    ///
+    /// This works in DuckDB because it stores temporal types as integers internally and
+    /// handles the comparison correctly. For other databases that require explicit date
+    /// literals, this would need enhancement to:
+    /// 1. Detect the transform type (Date/DateTime/Time) from the scale
+    /// 2. Convert numeric break values back to ISO strings
+    /// 3. Generate proper date literals: `DATE '2024-01-01'`, `TIMESTAMP '...'`, etc.
     fn pre_stat_transform_sql(
         &self,
         column_name: &str,
@@ -190,14 +206,8 @@ impl ScaleTypeTrait for Binned {
             return None;
         }
 
-        // Extract numeric break values
-        let break_values: Vec<f64> = breaks
-            .iter()
-            .filter_map(|e| match e {
-                ArrayElement::Number(v) => Some(*v),
-                _ => None,
-            })
-            .collect();
+        // Extract numeric break values (handles Number, Date, DateTime, Time via to_f64)
+        let break_values: Vec<f64> = breaks.iter().filter_map(|e| e.to_f64()).collect();
 
         if break_values.len() < 2 {
             return None;
@@ -428,5 +438,105 @@ mod tests {
         let binned = Binned;
         let allowed = binned.allowed_properties("x");
         assert!(allowed.contains(&"closed"));
+    }
+
+    #[test]
+    fn test_pre_stat_transform_sql_with_date_breaks() {
+        // Test that Date breaks are correctly handled via to_f64()
+        let binned = Binned;
+        let mut scale = Scale::new("x");
+
+        // Use Date variants instead of Number
+        // 2024-01-01 = 19724 days, 2024-02-01 = 19755 days, 2024-03-01 = 19784 days
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Date(19724), // 2024-01-01
+                ArrayElement::Date(19755), // 2024-02-01
+                ArrayElement::Date(19784), // 2024-03-01
+            ]),
+        );
+
+        let sql = binned.pre_stat_transform_sql("date_col", &scale);
+
+        // Should successfully generate SQL (not return None due to filtered-out breaks)
+        assert!(sql.is_some(), "SQL should be generated for Date breaks");
+        let sql = sql.unwrap();
+
+        // Verify the SQL contains the expected day values
+        assert!(
+            sql.contains("19724"),
+            "SQL should contain first break value"
+        );
+        assert!(
+            sql.contains("19755"),
+            "SQL should contain second break value"
+        );
+        assert!(
+            sql.contains("19784"),
+            "SQL should contain third break value"
+        );
+
+        // Verify bin centers: (19724+19755)/2 = 19739.5, (19755+19784)/2 = 19769.5
+        assert!(
+            sql.contains("THEN 19739.5"),
+            "SQL should contain first bin center"
+        );
+        assert!(
+            sql.contains("THEN 19769.5"),
+            "SQL should contain second bin center"
+        );
+    }
+
+    #[test]
+    fn test_pre_stat_transform_sql_with_datetime_breaks() {
+        // Test that DateTime breaks are correctly handled via to_f64()
+        let binned = Binned;
+        let mut scale = Scale::new("x");
+
+        // Use DateTime variants (microseconds since epoch)
+        // Some arbitrary microsecond values for testing
+        let dt1: i64 = 1_704_067_200_000_000; // 2024-01-01 00:00:00 UTC
+        let dt2: i64 = 1_706_745_600_000_000; // 2024-02-01 00:00:00 UTC
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::DateTime(dt1),
+                ArrayElement::DateTime(dt2),
+            ]),
+        );
+
+        let sql = binned.pre_stat_transform_sql("datetime_col", &scale);
+
+        // Should successfully generate SQL
+        assert!(sql.is_some(), "SQL should be generated for DateTime breaks");
+    }
+
+    #[test]
+    fn test_pre_stat_transform_sql_with_time_breaks() {
+        // Test that Time breaks are correctly handled via to_f64()
+        let binned = Binned;
+        let mut scale = Scale::new("x");
+
+        // Use Time variants (nanoseconds since midnight)
+        // 6:00 AM = 6 * 60 * 60 * 1_000_000_000 ns
+        // 12:00 PM = 12 * 60 * 60 * 1_000_000_000 ns
+        // 18:00 PM = 18 * 60 * 60 * 1_000_000_000 ns
+        let t1: i64 = 6 * 60 * 60 * 1_000_000_000;
+        let t2: i64 = 12 * 60 * 60 * 1_000_000_000;
+        let t3: i64 = 18 * 60 * 60 * 1_000_000_000;
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Time(t1),
+                ArrayElement::Time(t2),
+                ArrayElement::Time(t3),
+            ]),
+        );
+
+        let sql = binned.pre_stat_transform_sql("time_col", &scale);
+
+        // Should successfully generate SQL
+        assert!(sql.is_some(), "SQL should be generated for Time breaks");
     }
 }

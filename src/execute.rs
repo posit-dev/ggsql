@@ -1904,15 +1904,11 @@ fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -> Re
                     };
                     apply_oob_to_column_numeric(df, &col_name, range_min, range_max, oob_mode)?
                 } else {
-                    // Discrete range - collect allowed values as strings
+                    // Discrete range - collect allowed values as strings using to_key_string
                     let allowed_values: std::collections::HashSet<String> = input_range
                         .iter()
-                        .filter_map(|elem| match elem {
-                            ArrayElement::String(s) => Some(s.clone()),
-                            ArrayElement::Number(n) => Some(n.to_string()),
-                            ArrayElement::Boolean(b) => Some(b.to_string()),
-                            ArrayElement::Null => None,
-                        })
+                        .filter(|elem| !matches!(elem, ArrayElement::Null))
+                        .map(|elem| elem.to_key_string())
                         .collect();
                     apply_oob_to_column_discrete(df, &col_name, &allowed_values, oob_mode)?
                 };

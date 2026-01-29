@@ -8,6 +8,7 @@ use chrono::Datelike;
 
 use super::{TransformKind, TransformTrait};
 use crate::plot::scale::breaks::minor_breaks_linear;
+use crate::plot::ArrayElement;
 
 /// Date transform - for date data (days since epoch)
 ///
@@ -116,6 +117,22 @@ impl TransformTrait for Date {
     fn default_minor_break_count(&self) -> usize {
         // 3 minor ticks per major interval works well for dates
         3
+    }
+
+    fn wrap_numeric(&self, value: f64) -> ArrayElement {
+        ArrayElement::Date(value as i32)
+    }
+
+    fn parse_value(&self, elem: &ArrayElement) -> ArrayElement {
+        match elem {
+            ArrayElement::String(s) => {
+                ArrayElement::from_date_string(s).unwrap_or_else(|| elem.clone())
+            }
+            ArrayElement::Number(n) => self.wrap_numeric(*n),
+            // Date values pass through unchanged
+            ArrayElement::Date(_) => elem.clone(),
+            other => other.clone(),
+        }
     }
 }
 

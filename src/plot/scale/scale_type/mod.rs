@@ -510,17 +510,11 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             return None;
         }
 
-        // Extract min/max from input range
+        // Extract min/max from input range using to_f64() for temporal support
         let (min, max) = match input_range {
             Some(range) if range.len() >= 2 => {
-                let min = match &range[0] {
-                    ArrayElement::Number(n) => *n,
-                    _ => return None,
-                };
-                let max = match &range[range.len() - 1] {
-                    ArrayElement::Number(n) => *n,
-                    _ => return None,
-                };
+                let min = range[0].to_f64()?;
+                let max = range[range.len() - 1].to_f64()?;
                 (min, max)
             }
             _ => return None,
@@ -543,22 +537,27 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         };
 
         // Use transform's calculate_breaks method if present and not identity
-        let breaks = match transform {
-            Some(t) if !t.is_identity() => t.calculate_breaks(min, max, count, pretty),
+        let breaks: Vec<ArrayElement> = match transform {
+            Some(t) if !t.is_identity() => {
+                let raw_breaks = t.calculate_breaks(min, max, count, pretty);
+                // Wrap breaks in the appropriate ArrayElement type using transform
+                raw_breaks.into_iter().map(|v| t.wrap_numeric(v)).collect()
+            }
             _ => {
                 // Identity transform or no transform - use default pretty/linear breaks
-                if pretty {
+                let raw_breaks = if pretty {
                     super::breaks::pretty_breaks(min, max, count)
                 } else {
                     super::breaks::linear_breaks(min, max, count)
-                }
+                };
+                raw_breaks.into_iter().map(ArrayElement::Number).collect()
             }
         };
 
         if breaks.is_empty() {
             None
         } else {
-            Some(breaks.into_iter().map(ArrayElement::Number).collect())
+            Some(breaks)
         }
     }
 
@@ -584,7 +583,8 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Default implementation:
     /// 1. Resolves input_range from context (or merges with existing partial range)
     /// 2. Resolves transform from context dtype if not set
-    /// 3. If breaks is a scalar Number, calculates break positions and stores as Array
+    /// 3. Converts input_range values using transform (e.g., ISO strings → Date/DateTime/Time)
+    /// 4. If breaks is a scalar Number, calculates break positions and stores as Array
     fn resolve(
         &self,
         scale: &mut super::Scale,
@@ -596,7 +596,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
         // 2. Resolve transform from context dtype and aesthetic
         let resolved_transform = self.resolve_transform(aesthetic, None, context.dtype.as_ref())?;
-        scale.transform = Some(resolved_transform);
+        scale.transform = Some(resolved_transform.clone());
 
         // 3. Resolve input range
         // If scale already has input_range with Null values, merge with context
@@ -618,26 +618,48 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             }
         }
 
-        // 4. Calculate breaks if supports_breaks()
-        // If breaks is a scalar Number (count), calculate actual break positions and store as Array
-        // If breaks is already an Array, user provided explicit breaks - leave as-is
-        if self.supports_breaks() {
-            if let Some(ParameterValue::Number(_)) = scale.properties.get("breaks") {
-                // Scalar count → calculate actual breaks and store as Array
-                if let Some(breaks) = self.resolve_breaks(
-                    scale.input_range.as_deref(),
-                    &scale.properties,
-                    scale.transform.as_ref(),
-                ) {
-                    scale
-                        .properties
-                        .insert("breaks".to_string(), ParameterValue::Array(breaks));
-                }
-            }
-            // If breaks is already Array, user provided it - leave as-is
+        // 4. Convert input_range values using transform (e.g., ISO strings → Date/DateTime/Time)
+        // This ensures temporal scales properly parse user-provided date strings
+        if let Some(ref input_range) = scale.input_range {
+            let converted: Vec<ArrayElement> = input_range
+                .iter()
+                .map(|elem| resolved_transform.parse_value(elem))
+                .collect();
+            scale.input_range = Some(converted);
         }
 
-        // 5. Apply label template if present (RENAMING * => '...')
+        // 5. Calculate breaks if supports_breaks()
+        // If breaks is a scalar Number (count), calculate actual break positions and store as Array
+        // If breaks is already an Array, user provided explicit breaks - convert using transform
+        if self.supports_breaks() {
+            match scale.properties.get("breaks") {
+                Some(ParameterValue::Number(_)) => {
+                    // Scalar count → calculate actual breaks and store as Array
+                    if let Some(breaks) = self.resolve_breaks(
+                        scale.input_range.as_deref(),
+                        &scale.properties,
+                        scale.transform.as_ref(),
+                    ) {
+                        scale
+                            .properties
+                            .insert("breaks".to_string(), ParameterValue::Array(breaks));
+                    }
+                }
+                Some(ParameterValue::Array(explicit_breaks)) => {
+                    // User provided explicit breaks - convert using transform
+                    let converted: Vec<ArrayElement> = explicit_breaks
+                        .iter()
+                        .map(|elem| resolved_transform.parse_value(elem))
+                        .collect();
+                    scale
+                        .properties
+                        .insert("breaks".to_string(), ParameterValue::Array(converted));
+                }
+                _ => {}
+            }
+        }
+
+        // 6. Apply label template if present (RENAMING * => '...')
         // For continuous/binned scales, apply to breaks array
         // For discrete scales, apply to input_range (domain values)
         if let Some(ref template) = scale.label_template {
@@ -1035,13 +1057,14 @@ pub(super) fn expand_numeric_range(
         return range.to_vec();
     }
 
-    let min = match &range[0] {
-        ArrayElement::Number(n) => *n,
-        _ => return range.to_vec(),
+    // Use to_f64() to handle Number, Date, DateTime, and Time variants
+    let min = match range[0].to_f64() {
+        Some(n) => n,
+        None => return range.to_vec(),
     };
-    let max = match &range[1] {
-        ArrayElement::Number(n) => *n,
-        _ => return range.to_vec(),
+    let max = match range[1].to_f64() {
+        Some(n) => n,
+        None => return range.to_vec(),
     };
 
     let span = max - min;

@@ -36,6 +36,8 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::plot::ArrayElement;
+
 mod asinh;
 mod date;
 mod datetime;
@@ -189,6 +191,25 @@ pub trait TransformTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     ///
     /// Maps a value from transformed space back to data space.
     fn inverse(&self, value: f64) -> f64;
+
+    /// Wrap a numeric value in the appropriate ArrayElement type.
+    ///
+    /// Temporal transforms override to return Date/DateTime/Time variants.
+    /// Default returns ArrayElement::Number.
+    fn wrap_numeric(&self, value: f64) -> ArrayElement {
+        ArrayElement::Number(value)
+    }
+
+    /// Parse a value into the appropriate ArrayElement type for this transform.
+    ///
+    /// Temporal transforms parse ISO date/time strings into Date/DateTime/Time variants.
+    /// Default passes through the value unchanged, wrapping numbers via wrap_numeric.
+    fn parse_value(&self, elem: &ArrayElement) -> ArrayElement {
+        match elem {
+            ArrayElement::Number(n) => self.wrap_numeric(*n),
+            other => other.clone(),
+        }
+    }
 }
 
 /// Wrapper struct for transform trait objects
@@ -355,6 +376,16 @@ impl Transform {
     /// Inverse transformation: transform(x) -> x
     pub fn inverse(&self, value: f64) -> f64 {
         self.0.inverse(value)
+    }
+
+    /// Wrap a numeric value in the appropriate ArrayElement type
+    pub fn wrap_numeric(&self, value: f64) -> ArrayElement {
+        self.0.wrap_numeric(value)
+    }
+
+    /// Parse a value into the appropriate ArrayElement type for this transform
+    pub fn parse_value(&self, elem: &ArrayElement) -> ArrayElement {
+        self.0.parse_value(elem)
     }
 
     /// Returns true if this is the identity transform

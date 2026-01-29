@@ -23,7 +23,10 @@
 use crate::naming;
 use crate::plot::layer::geom::{GeomAesthetics, GeomType};
 use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path, ScaleTypeKind};
-use crate::plot::{ArrayElement, Coord, CoordType, LiteralValue, ParameterValue};
+// ArrayElement is used in tests and for pattern matching; suppress unused import warning
+#[allow(unused_imports)]
+use crate::plot::ArrayElement;
+use crate::plot::{Coord, CoordType, LiteralValue, ParameterValue};
 use crate::writer::Writer;
 use crate::{AestheticValue, DataFrame, Geom, GgsqlError, Plot, Result};
 use polars::prelude::*;
@@ -316,13 +319,7 @@ impl VegaLiteWriter {
 
             // Get breaks array from scale properties
             if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
-                let break_values: Vec<f64> = breaks
-                    .iter()
-                    .filter_map(|e| match e {
-                        ArrayElement::Number(v) => Some(*v),
-                        _ => None,
-                    })
-                    .collect();
+                let break_values: Vec<f64> = breaks.iter().filter_map(|e| e.to_f64()).collect();
 
                 if break_values.len() >= 2 {
                     // Find column name for this aesthetic from all layers
@@ -537,15 +534,8 @@ impl VegaLiteWriter {
 
                     // Apply domain from input_range (FROM clause)
                     if let Some(ref domain_values) = scale.input_range {
-                        let domain_json: Vec<Value> = domain_values
-                            .iter()
-                            .map(|elem| match elem {
-                                ArrayElement::String(s) => json!(s),
-                                ArrayElement::Number(n) => json!(n),
-                                ArrayElement::Boolean(b) => json!(b),
-                                ArrayElement::Null => json!(null),
-                            })
-                            .collect();
+                        let domain_json: Vec<Value> =
+                            domain_values.iter().map(|elem| elem.to_json()).collect();
                         scale_obj.insert("domain".to_string(), json!(domain_json));
                     }
 
@@ -578,9 +568,8 @@ impl VegaLiteWriter {
                                                 json!(s)
                                             }
                                         }
-                                        ArrayElement::Number(n) => json!(n),
-                                        ArrayElement::Boolean(b) => json!(b),
-                                        ArrayElement::Null => json!(null),
+                                        // All other types use to_json()
+                                        other => other.to_json(),
                                     })
                                     .collect();
                                 scale_obj.insert("range".to_string(), json!(range_json));
@@ -640,16 +629,7 @@ impl VegaLiteWriter {
                     // For binned scales, we still need to set axis.values manually because
                     // Vega-Lite's automatic tick placement with bin:"binned" only works for equal-width bins
                     if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
-                        use crate::plot::ArrayElement;
-                        let values: Vec<Value> = breaks
-                            .iter()
-                            .map(|e| match e {
-                                ArrayElement::String(s) => json!(s),
-                                ArrayElement::Number(n) => json!(n),
-                                ArrayElement::Boolean(b) => json!(b),
-                                ArrayElement::Null => json!(null),
-                            })
-                            .collect();
+                        let values: Vec<Value> = breaks.iter().map(|e| e.to_json()).collect();
 
                         // Positional aesthetics use axis.values, others use legend.values
                         if matches!(
@@ -1163,22 +1143,12 @@ impl VegaLiteWriter {
                         arr.len()
                     )));
                 }
-                let min = match &arr[0] {
-                    ArrayElement::Number(n) => *n,
-                    _ => {
-                        return Err(GgsqlError::WriterError(
-                            "xlim/ylim values must be numbers".to_string(),
-                        ))
-                    }
-                };
-                let max = match &arr[1] {
-                    ArrayElement::Number(n) => *n,
-                    _ => {
-                        return Err(GgsqlError::WriterError(
-                            "xlim/ylim values must be numbers".to_string(),
-                        ))
-                    }
-                };
+                let min = arr[0].to_f64().ok_or_else(|| {
+                    GgsqlError::WriterError("xlim/ylim values must be numeric".to_string())
+                })?;
+                let max = arr[1].to_f64().ok_or_else(|| {
+                    GgsqlError::WriterError("xlim/ylim values must be numeric".to_string())
+                })?;
 
                 // Auto-swap if reversed
                 let (min, max) = if min > max { (max, min) } else { (min, max) };
@@ -1194,15 +1164,7 @@ impl VegaLiteWriter {
     fn extract_input_range(&self, value: &ParameterValue) -> Result<Option<Vec<Value>>> {
         match value {
             ParameterValue::Array(arr) => {
-                let domain: Vec<Value> = arr
-                    .iter()
-                    .map(|elem| match elem {
-                        ArrayElement::String(s) => json!(s),
-                        ArrayElement::Number(n) => json!(n),
-                        ArrayElement::Boolean(b) => json!(b),
-                        ArrayElement::Null => json!(null),
-                    })
-                    .collect();
+                let domain: Vec<Value> = arr.iter().map(|elem| elem.to_json()).collect();
                 Ok(Some(domain))
             }
             _ => Ok(None),

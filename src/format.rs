@@ -136,14 +136,8 @@ fn format_number_with_spec(value: &str, fmt: &str) -> String {
     value.to_string()
 }
 
-/// Format number for display (remove trailing zeros for integers)
-fn format_number(n: f64) -> String {
-    if n.fract() == 0.0 {
-        format!("{:.0}", n)
-    } else {
-        n.to_string()
-    }
-}
+// Note: format_number is now in ArrayElement::to_key_string() in types.rs
+// We use ArrayElement::to_key_string() directly for consistency
 
 /// Apply a label template to an array of break values.
 ///
@@ -175,12 +169,11 @@ pub fn apply_label_template(
     let placeholders = parse_placeholders(template);
 
     for elem in breaks {
-        let key = match elem {
-            ArrayElement::String(s) => s.clone(),
-            ArrayElement::Number(n) => format_number(*n),
-            ArrayElement::Boolean(b) => b.to_string(),
-            ArrayElement::Null => continue,
-        };
+        // Skip null values
+        if matches!(elem, ArrayElement::Null) {
+            continue;
+        }
+        let key = elem.to_key_string();
 
         let break_val = key.clone();
         // Only apply template if no explicit mapping exists
@@ -326,16 +319,16 @@ mod tests {
     }
 
     #[test]
-    fn test_format_number_integer() {
-        assert_eq!(format_number(0.0), "0");
-        assert_eq!(format_number(25.0), "25");
-        assert_eq!(format_number(-100.0), "-100");
+    fn test_to_key_string_number_integer() {
+        assert_eq!(ArrayElement::Number(0.0).to_key_string(), "0");
+        assert_eq!(ArrayElement::Number(25.0).to_key_string(), "25");
+        assert_eq!(ArrayElement::Number(-100.0).to_key_string(), "-100");
     }
 
     #[test]
-    fn test_format_number_decimal() {
-        assert_eq!(format_number(25.5), "25.5");
-        assert_eq!(format_number(0.123), "0.123");
+    fn test_to_key_string_number_decimal() {
+        assert_eq!(ArrayElement::Number(25.5).to_key_string(), "25.5");
+        assert_eq!(ArrayElement::Number(0.123).to_key_string(), "0.123");
     }
 
     #[test]
