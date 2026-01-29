@@ -14,7 +14,7 @@ use super::transform::Transform;
 /// New syntax: `SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]`
 ///
 /// Examples:
-/// - `SCALE DATE x`
+/// - `SCALE x VIA date`
 /// - `SCALE CONTINUOUS y FROM [0, 100]`
 /// - `SCALE DISCRETE color FROM ['A', 'B'] TO ['red', 'blue']`
 /// - `SCALE color TO viridis`
@@ -24,7 +24,7 @@ pub struct Scale {
     /// The aesthetic this scale applies to
     pub aesthetic: String,
     /// Scale type (optional, inferred if not specified)
-    /// Now specified as modifier: SCALE DATE x, SCALE CONTINUOUS y
+    /// Now specified as modifier: SCALE x VIA date, SCALE CONTINUOUS y
     pub scale_type: Option<ScaleType>,
     /// Input range specification (FROM clause)
     /// Maps to Vega-Lite's scale.domain

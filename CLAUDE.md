@@ -10,7 +10,7 @@
 SELECT date, revenue, region FROM sales WHERE year = 2024
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
-SCALE DATE x
+SCALE x VIA date
 COORD cartesian SETTING ylim => [0, 100000]
 LABEL title => 'Sales by Region', x => 'Date', y => 'Revenue'
 THEME minimal
@@ -709,7 +709,7 @@ SELECT * FROM (VALUES
 SELECT * FROM sales
 VISUALISE
 DRAW line MAPPING date AS x, revenue AS y, region AS color
-SCALE DATE x
+SCALE x VIA date
 LABEL title => 'Sales Trends'
 ```
 
@@ -873,7 +873,7 @@ Where `<global_mapping>` can be:
 | -------------- | ---------- | ------------------ | ------------------------------------ |
 | `VISUALISE`    | ✅ Yes     | Entry point        | `VISUALISE date AS x, revenue AS y`  |
 | `DRAW`         | ✅ Yes     | Define layers      | `DRAW line MAPPING date AS x, value AS y` |
-| `SCALE`        | ✅ Yes     | Configure scales   | `SCALE DATE x`                            |
+| `SCALE`        | ✅ Yes     | Configure scales   | `SCALE x VIA date`                            |
 | `FACET`        | ❌ No      | Small multiples    | `FACET WRAP region`                  |
 | `COORD`        | ❌ No      | Coordinate system  | `COORD cartesian SETTING xlim => [0,100]` |
 | `LABEL`        | ❌ No      | Text labels        | `LABEL title => 'My Chart', x => 'Date'`   |
@@ -1015,7 +1015,7 @@ SCALE [TYPE] <aesthetic> [FROM <input>] [TO <output>] [VIA <transform>] [SETTING
 **Critical for Date Formatting**:
 
 ```sql
-SCALE DATE x
+SCALE x VIA date
 -- Maps to Vega-Lite field type = "temporal"
 -- Enables proper date axis formatting
 ```
@@ -1050,7 +1050,7 @@ SCALE color TO viridis
 
 ```sql
 -- Date scale
-SCALE DATE x
+SCALE x VIA date
 
 -- Continuous scale with input range
 SCALE CONTINUOUS y FROM [0, 100]
@@ -1062,7 +1062,7 @@ SCALE DISCRETE color FROM ['A', 'B', 'C'] TO ['red', 'green', 'blue']
 SCALE color TO viridis
 
 -- Scale with input range and additional settings
-SCALE DATE x FROM ['2024-01-01', '2024-12-31'] SETTING breaks => '1 month'
+SCALE x VIA date FROM ['2024-01-01', '2024-12-31'] SETTING breaks => '1 month'
 ```
 
 ### FACET Clause
@@ -1234,7 +1234,7 @@ DRAW line
     MAPPING sale_date AS x, total AS y, region AS color
 DRAW point
     MAPPING sale_date AS x, total AS y, region AS color
-SCALE DATE x
+SCALE x VIA date
 FACET WRAP region
 LABEL title => 'Sales Trends by Region', x => 'Date', y => 'Total Quantity'
 THEME minimal
