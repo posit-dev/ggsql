@@ -6,8 +6,16 @@
     { "include": "#comments" },
     { "include": "#strings" },
     { "include": "#numbers" },
-    { "include": "#visualise-statement" },
+    { "include": "#sql-functions" },
+    { "include": "#draw-clause" },
+    { "include": "#scale-clause" },
+    { "include": "#facet-clause" },
+    { "include": "#coord-clause" },
+    { "include": "#label-clause" },
+    { "include": "#guide-clause" },
+    { "include": "#theme-clause" },
     { "include": "#sql-keywords" },
+    { "include": "#visualise-clause" },
     { "include": "#operators" }
   ],
   "repository": {
@@ -61,16 +69,20 @@
     "operators": {
       "patterns": [
         {
-          "name": "keyword.operator.comparison.ggsql",
-          "match": "<=|>=|<>|<|>|="
+          "name": "keyword.operator.fatarrow.ggsql",
+          "match": "=>"
         },
         {
-          "name": "keyword.operator.logical.ggsql",
-          "match": "\\b(?i:AND|OR|NOT|IN|BETWEEN|LIKE|EXISTS)\\b"
+          "name": "keyword.operator.comparison.ggsql",
+          "match": "<=|>=|<>|!=|<|>|="
         },
         {
           "name": "keyword.operator.arithmetic.ggsql",
-          "match": "\\+|-|\\*|/|%"
+          "match": "\\+|-|\\*|/|%|\\|\\|"
+        },
+        {
+          "name": "keyword.operator.cast.ggsql",
+          "match": "::"
         },
         {
           "name": "punctuation.separator.comma.ggsql",
@@ -86,43 +98,114 @@
         }
       ]
     },
+    "sql-functions": {
+      "patterns": [
+        {
+          "comment": "Aggregate functions",
+          "match": "(?i)\\b(count|sum|avg|min|max|stddev|variance|array_agg|string_agg|group_concat)\\b\\s*\\(",
+          "captures": {
+            "1": { "name": "support.function.aggregate.sql" }
+          }
+        },
+        {
+          "comment": "Window/ranking functions",
+          "match": "(?i)\\b(row_number|rank|dense_rank|ntile|lag|lead|first_value|last_value|nth_value|cume_dist|percent_rank)\\b\\s*\\(",
+          "captures": {
+            "1": { "name": "support.function.window.sql" }
+          }
+        },
+        {
+          "comment": "DateTime functions",
+          "match": "(?i)\\b(date_trunc|date_part|datepart|datename|dateadd|datediff|extract|now|current_date|current_time|current_timestamp|getdate|getutcdate|strftime|strptime|make_date|make_time|make_timestamp)\\b\\s*\\(",
+          "captures": {
+            "1": { "name": "support.function.datetime.sql" }
+          }
+        },
+        {
+          "comment": "String functions",
+          "match": "(?i)\\b(concat|substring|substr|left|right|length|len|char_length|lower|upper|trim|ltrim|rtrim|replace|reverse|repeat|lpad|rpad|split_part|string_split|format|printf|regexp_replace|regexp_extract|regexp_matches)\\b\\s*\\(",
+          "captures": {
+            "1": { "name": "support.function.string.sql" }
+          }
+        },
+        {
+          "comment": "Mathematical functions",
+          "match": "(?i)\\b(abs|ceil|ceiling|floor|round|trunc|truncate|mod|power|sqrt|exp|ln|log|log10|log2|sign|sin|cos|tan|asin|acos|atan|atan2|pi|degrees|radians|random|rand)\\b\\s*\\(",
+          "captures": {
+            "1": { "name": "support.function.math.sql" }
+          }
+        },
+        {
+          "comment": "Conversion/type functions",
+          "match": "(?i)\\b(cast|convert|coalesce|nullif|ifnull|isnull|nvl|try_cast|typeof)\\b\\s*\\(",
+          "captures": {
+            "1": { "name": "support.function.conversion.sql" }
+          }
+        },
+        {
+          "comment": "Conditional functions",
+          "match": "(?i)\\b(if|iff|iif|greatest|least|decode)\\b\\s*\\(",
+          "captures": {
+            "1": { "name": "support.function.conditional.sql" }
+          }
+        },
+        {
+          "comment": "JSON functions",
+          "match": "(?i)\\b(json|json_extract|json_extract_path|json_extract_string|json_value|json_query|json_object|json_array|json_array_length|to_json|from_json)\\b\\s*\\(",
+          "captures": {
+            "1": { "name": "support.function.json.sql" }
+          }
+        },
+        {
+          "comment": "List/array functions",
+          "match": "(?i)\\b(list|list_value|list_aggregate|array_length|unnest|generate_series|range)\\b\\s*\\(",
+          "captures": {
+            "1": { "name": "support.function.array.sql" }
+          }
+        }
+      ]
+    },
     "sql-keywords": {
       "patterns": [
         {
-          "name": "keyword.other.sql.select.ggsql",
-          "match": "\\b(?i:SELECT|FROM|WHERE|GROUP BY|ORDER BY|HAVING|LIMIT|OFFSET|DISTINCT|ALL)\\b"
+          "name": "keyword.other.ggsql",
+          "match": "\\b(?i:SELECT|FROM|WHERE|GROUP|ORDER|BY|HAVING|LIMIT|OFFSET|DISTINCT|ALL)\\b"
         },
         {
-          "name": "keyword.other.sql.join.ggsql",
-          "match": "\\b(?i:JOIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|OUTER JOIN|CROSS JOIN|LATERAL|ON)\\b"
+          "name": "keyword.other.ggsql",
+          "match": "\\b(?i:JOIN|LEFT|RIGHT|INNER|OUTER|CROSS|FULL|NATURAL|LATERAL|ON)\\b"
         },
         {
-          "name": "keyword.other.sql.cte.ggsql",
+          "name": "keyword.other.ggsql",
           "match": "\\b(?i:WITH|RECURSIVE|AS)\\b"
         },
         {
-          "name": "keyword.other.sql.dml.ggsql",
+          "name": "keyword.other.ggsql",
           "match": "\\b(?i:INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TRUNCATE|INTO|VALUES|SET)\\b"
         },
         {
-          "name": "keyword.other.sql.ddl.ggsql",
+          "name": "keyword.other.ggsql",
           "match": "\\b(?i:TABLE|VIEW|INDEX|DATABASE|SCHEMA|TEMP|TEMPORARY)\\b"
         },
         {
-          "name": "keyword.other.sql.aggregate.ggsql",
-          "match": "\\b(?i:COUNT|SUM|AVG|MIN|MAX|STDDEV|VARIANCE)\\b"
+          "name": "keyword.other.ggsql",
+          "match": "\\b(?i:CASE|WHEN|THEN|ELSE|END)\\b"
         },
         {
-          "name": "keyword.other.sql.function.ggsql",
-          "match": "\\b(?i:DATE_TRUNC|EXTRACT|CAST|COALESCE|NULLIF|CASE|WHEN|THEN|ELSE|END)\\b"
+          "name": "keyword.other.ggsql",
+          "match": "\\b(?i:OVER|PARTITION|ROWS|RANGE|UNBOUNDED|PRECEDING|FOLLOWING|CURRENT|ROW|NULLS|FIRST|LAST)\\b"
         },
         {
-          "name": "keyword.other.sql.window.ggsql",
-          "match": "\\b(?i:OVER|PARTITION BY|ROW_NUMBER|RANK|DENSE_RANK|LAG|LEAD)\\b"
-        },
-        {
-          "name": "keyword.other.sql.setop.ggsql",
+          "name": "keyword.other.ggsql",
           "match": "\\b(?i:UNION|INTERSECT|EXCEPT)\\b"
+        },
+        {
+          "name": "keyword.other.ggsql",
+          "match": "\\b(?i:AND|OR|NOT|IN|BETWEEN|LIKE|ILIKE|EXISTS|IS|ANY)\\b"
+        },
+        {
+          "name": "keyword.other.ggsql",
+          "match": "\\b(?i:ASC|DESC)\\b"
         },
         {
           "name": "constant.language.null.ggsql",
@@ -130,187 +213,195 @@
         }
       ]
     },
-    "visualise-statement": {
+    "visualise-clause": {
+      "begin": "(?i)\\b(VISUALISE|VISUALIZE)\\b",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.ggsql" }
+      },
+      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|GUIDE|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#strings" },
+        { "include": "#numbers" },
+        { "include": "#aesthetics" },
+        {
+          "name": "keyword.other.ggsql",
+          "match": "\\b(?i:AS|FROM|FILTER)\\b"
+        },
+        {
+          "name": "keyword.operator.fatarrow.ggsql",
+          "match": "=>"
+        },
+        {
+          "name": "punctuation.separator.comma.ggsql",
+          "match": ","
+        },
+        {
+          "name": "punctuation.bracket.round.ggsql",
+          "match": "\\(|\\)"
+        },
+        {
+          "name": "keyword.operator.wildcard.ggsql",
+          "match": "\\*"
+        }
+      ]
+    },
+    "aesthetics": {
       "patterns": [
         {
-          "name": "keyword.control.visualise.ggsql",
-          "match": "\\b(?i:VISUALISE|VISUALIZE)\\b"
+          "name": "support.type.aesthetic.ggsql",
+          "match": "\\b(x|y|xmin|xmax|ymin|ymax|xend|yend|weight|color|colour|fill|stroke|opacity|size|shape|linetype|linewidth|width|height|label|family|fontface|hjust|vjust)\\b"
+        }
+      ]
+    },
+    "common-clause-patterns": {
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#strings" },
+        { "include": "#numbers" },
+        { "include": "#aesthetics" },
+        {
+          "name": "keyword.operator.fatarrow.ggsql",
+          "match": "=>"
         },
         {
-          "name": "constant.language.viz-type.ggsql",
-          "match": "\\b(?i:PLOT|TABLE|MAP)\\b"
+          "name": "keyword.other.ggsql",
+          "match": "\\b(?i:MAPPING|REMAPPING|SETTING|FILTER|FROM|ORDER|BY|PARTITION)\\b"
         },
-        { "include": "#draw-clause" },
-        { "include": "#scale-clause" },
-        { "include": "#facet-clause" },
-        { "include": "#coord-clause" },
-        { "include": "#label-clause" },
-        { "include": "#guide-clause" },
-        { "include": "#theme-clause" }
+        {
+          "name": "punctuation.separator.comma.ggsql",
+          "match": ","
+        },
+        {
+          "name": "punctuation.bracket.square.ggsql",
+          "match": "\\[|\\]"
+        },
+        {
+          "name": "punctuation.bracket.round.ggsql",
+          "match": "\\(|\\)"
+        }
       ]
     },
     "draw-clause": {
+      "begin": "(?i)\\b(DRAW)\\b",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.ggsql" }
+      },
+      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|GUIDE|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
-        {
-          "name": "keyword.control.visualise.ggsql",
-          "match": "\\b(?i:DRAW)\\b"
-        },
-        {
-          "name": "keyword.control.mapping.ggsql",
-          "match": "\\b(?i:MAPPING)\\b"
-        },
-        {
-          "name": "keyword.control.setting.ggsql",
-          "match": "\\b(?i:SETTING)\\b"
-        },
-        {
-          "name": "keyword.control.fatarrow.ggsql",
-          "match": "(?<!\\S)=>(?!\\S)"
-        },
-        {
-          "name": "keyword.control.filter.ggsql",
-          "match": "\\b(?i:FILTER)\\b"
-        },
         {
           "name": "support.type.geom.ggsql",
           "match": "\\b(point|line|path|bar|col|area|tile|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|hline|vline|abline|errorbar)\\b"
         },
-        {
-          "name": "variable.parameter.aesthetic.ggsql",
-          "match": "\\b(x|y|xmin|xmax|ymin|ymax|xend|yend|color|colour|fill|stroke|opacity|size|shape|linetype|linewidth|width|height|label|family|fontface|hjust|vjust)\\b"
-        }
+        { "include": "#common-clause-patterns" }
       ]
     },
     "scale-clause": {
+      "begin": "(?i)\\b(SCALE)\\b",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.ggsql" }
+      },
+      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|GUIDE|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
-          "name": "keyword.control.scale.ggsql",
-          "match": "\\b(?i:SCALE)\\b"
+          "name": "constant.language.scale-type.ggsql",
+          "match": "\\b(linear|log|log10|log2|sqrt|reverse|categorical|ordinal|date|datetime|time|viridis|plasma|magma|inferno|cividis|diverging|sequential|identity|manual)\\b"
         },
         {
-          "name": "keyword.control.setting.ggsql",
-          "match": "\\b(?i:SETTING)\\b"
-        },
-        {
-          "name": "keyword.control.fatarrow.ggsql",
-          "match": "(?<!\\S)=>(?!\\S)"
-        },
-        {
-          "name": "variable.parameter.scale-property.ggsql",
+          "name": "support.type.property.ggsql",
           "match": "\\b(type|limits|breaks|labels|expand|direction|na_value|palette|domain|range)\\b"
         },
-        {
-          "name": "constant.language.scale-type.ggsql",
-          "match": "\\b(linear|log|log10|log2|sqrt|reverse|categorical|ordinal|date|datetime|time|viridis|plasma|magma|inferno|diverging)\\b"
-        }
+        { "include": "#common-clause-patterns" }
       ]
     },
     "facet-clause": {
+      "begin": "(?i)\\b(FACET)\\b",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.ggsql" }
+      },
+      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|GUIDE|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
-          "name": "keyword.control.facet.ggsql",
-          "match": "\\b(?i:FACET|WRAP|BY)\\b"
-        },
-        {
-          "name": "keyword.control.setting.ggsql",
-          "match": "\\b(?i:SETTING)\\b"
-        },
-        {
-          "name": "keyword.control.fatarrow.ggsql",
-          "match": "(?<!\\S)=>(?!\\S)"
+          "name": "keyword.other.ggsql",
+          "match": "\\b(?i:WRAP)\\b"
         },
         {
           "name": "constant.language.facet-scales.ggsql",
           "match": "\\b(fixed|free|free_x|free_y)\\b"
         },
         {
-          "name": "variable.parameter.facet-property.ggsql",
+          "name": "support.type.property.ggsql",
           "match": "\\b(scales)\\b"
-        }
+        },
+        { "include": "#common-clause-patterns" }
       ]
     },
     "coord-clause": {
+      "begin": "(?i)\\b(COORD)\\b",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.ggsql" }
+      },
+      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|GUIDE|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
-          "name": "keyword.control.coord.ggsql",
-          "match": "\\b(?i:COORD)\\b"
-        },
-        {
-          "name": "keyword.control.setting.ggsql",
-          "match": "\\b(?i:SETTING)\\b"
-        },
-        {
-          "name": "keyword.control.fatarrow.ggsql",
-          "match": "(?<!\\S)=>(?!\\S)"
-        },
-        {
-          "name": "support.type.geom.ggsql",
+          "name": "support.type.coord.ggsql",
           "match": "\\b(cartesian|polar|flip|fixed|trans|map|quickmap)\\b"
         },
         {
-          "name": "variable.parameter.coord-property.ggsql",
+          "name": "support.type.property.ggsql",
           "match": "\\b(xlim|ylim|ratio|theta|clip)\\b"
-        }
+        },
+        { "include": "#common-clause-patterns" }
       ]
     },
     "label-clause": {
+      "begin": "(?i)\\b(LABEL)\\b",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.ggsql" }
+      },
+      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|GUIDE|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
-          "name": "keyword.control.label.ggsql",
-          "match": "\\b(?i:LABEL)\\b"
+          "name": "support.type.property.ggsql",
+          "match": "\\b(title|subtitle|x|y|caption|tag|color|colour|fill|size|shape|linetype)\\b"
         },
-        {
-          "name": "variable.parameter.label-type.ggsql",
-          "match": "\\b(title|subtitle|x|y|caption|tag)\\b"
-        }
+        { "include": "#common-clause-patterns" }
       ]
     },
     "guide-clause": {
+      "begin": "(?i)\\b(GUIDE)\\b",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.ggsql" }
+      },
+      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|GUIDE|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
-        {
-          "name": "keyword.control.guide.ggsql",
-          "match": "\\b(?i:GUIDE)\\b"
-        },
-        {
-          "name": "keyword.control.setting.ggsql",
-          "match": "\\b(?i:SETTING)\\b"
-        },
-        {
-          "name": "keyword.control.fatarrow.ggsql",
-          "match": "(?<!\\S)=>(?!\\S)"
-        },
         {
           "name": "constant.language.guide-type.ggsql",
           "match": "\\b(legend|colorbar|axis|none)\\b"
         },
         {
-          "name": "variable.parameter.guide-property.ggsql",
+          "name": "support.type.property.ggsql",
           "match": "\\b(position|direction|nrow|ncol|title|title_position|label_position|text_angle|text_size|reverse|order)\\b"
-        }
+        },
+        { "include": "#common-clause-patterns" }
       ]
     },
     "theme-clause": {
+      "begin": "(?i)\\b(THEME)\\b",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.ggsql" }
+      },
+      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|GUIDE|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
-          "name": "keyword.control.theme.ggsql",
-          "match": "\\b(?i:THEME)\\b"
-        },
-        {
-          "name": "keyword.control.setting.ggsql",
-          "match": "\\b(?i:SETTING)\\b"
-        },
-        {
-          "name": "keyword.control.fatarrow.ggsql",
-          "match": "(?<!\\S)=>(?!\\S)"
-        },
-        {
-          "name": "support.type.geom.ggsql",
+          "name": "support.type.theme.ggsql",
           "match": "\\b(minimal|classic|gray|grey|bw|dark|light|void)\\b"
         },
         {
-          "name": "variable.parameter.theme-property.ggsql",
+          "name": "support.type.property.ggsql",
           "match": "\\b(background|panel_background|panel_grid|panel_grid_major|panel_grid_minor|text_size|text_family|title_size|axis_text_size|axis_line|axis_line_width|panel_border|plot_margin|panel_spacing|legend_background|legend_position|legend_direction)\\b"
-        }
+        },
+        { "include": "#common-clause-patterns" }
       ]
     }
   }

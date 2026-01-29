@@ -22,6 +22,14 @@ jobs:
           sudo docker image prune --all --force
           sudo docker builder prune -a
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 

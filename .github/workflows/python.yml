@@ -1,0 +1,72 @@
+name: Python
+
+on:
+  push:
+    paths: ['ggsql-python/**', '.github/workflows/python.yml']
+  pull_request:
+    paths: ['ggsql-python/**', '.github/workflows/python.yml']
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ['3.10', '3.11', '3.12', '3.13']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ggsql-python
+          shared-key: ${{ matrix.os }}-python
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: ggsql-python
+          command: build
+          args: --release
+          sccache: true
+
+      - name: Install wheel and test dependencies
+        shell: bash
+        run: pip install --find-links target/wheels/ ggsql[test]
+
+      - name: Run tests
+        shell: bash
+        run: pytest ggsql-python/tests/ -v
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
+      - name: Check Rust formatting
+        run: cargo fmt --package ggsql-python -- --check
+
+      - name: Clippy
+        run: cargo clippy --package ggsql-python -- -D warnings

@@ -1,0 +1,18 @@
+[package]
+name = "ggsql-python"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Python bindings for ggsql"
+
+[lib]
+name = "_ggsql"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.26", features = ["extension-module"] }
+polars = { workspace = true, features = ["ipc"] }
+ggsql = { path = "../src", default-features = false, features = ["vegalite"] }
+
+[features]
+default = []
