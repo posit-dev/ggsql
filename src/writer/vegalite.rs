@@ -426,6 +426,8 @@ impl VegaLiteWriter {
     fn map_aesthetic_name(&self, aesthetic: &str) -> String {
         match aesthetic {
             "fill" => "color",
+            "linewidth" => "strokeWidth",
+            "linetype" => "strokeDash",
             _ => aesthetic,
         }
         .to_string()
@@ -2054,7 +2056,7 @@ mod tests {
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["layer"][0]["encoding"]["linetype"]["value"], true);
+        assert_eq!(vl_spec["layer"][0]["encoding"]["strokeDash"]["value"], true);
     }
 
     #[test]
