@@ -39,6 +39,9 @@ jobs:
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
 
+      - name: Build ggsql binary
+        run: cargo build --release --package ggsql --bin ggsql
+
       - name: Build NSIS installer
         run: |
           cd src
@@ -92,10 +95,16 @@ jobs:
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
 
+      - name: Build ggsql binary (x86_64)
+        run: cargo build --release --package ggsql --bin ggsql
+
       - name: Build DMG installer (x86_64)
         run: |
           cd src
           cargo packager --release --formats dmg
+
+      - name: Build ggsql binary (aarch64)
+        run: cargo build --release --package ggsql --bin ggsql --target aarch64-apple-darwin
 
       - name: Build DMG installer (aarch64)
         run: |
@@ -140,13 +149,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libgtk-3-dev \
-            libwebkit2gtk-4.0-dev \
+            libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
             patchelf
 
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
+
+      - name: Build ggsql binary
+        run: cargo build --release --package ggsql --bin ggsql
 
       - name: Build Debian package
         run: |

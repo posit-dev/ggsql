@@ -86,7 +86,7 @@ identifier = "com.ggsql.app"
 category = "DeveloperTool"
 publisher = "ggsql Team"
 authors = ["ggsql Team"]
-icons = ["../doc/assets/icon.svg", "../doc/assets/logo.png"]
+icons = ["../doc/assets/logo.png"]
 license-file = "../LICENSE.md"
 out-dir = "target/release/packager"
 
