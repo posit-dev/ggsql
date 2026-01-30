@@ -16,12 +16,12 @@ classifiers = [
 ]
 dependencies = [
     "altair>=5.0",
-    "narwhals>=2.15.0",
+    "narwhals>=1.0",
     "polars>=1.0",
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=7.0"]
+test = ["pytest>=7.0", "pandas>=2.0"]
 dev = ["maturin>=1.4"]
 
 [tool.maturin]

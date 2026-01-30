@@ -8,10 +8,40 @@ use std::io::Cursor;
 
 use ggsql::api::{prepare as rust_prepare, validate as rust_validate, Prepared, ValidationWarning};
 use ggsql::reader::{DuckDBReader as RustDuckDBReader, Reader};
-use ggsql::writer::VegaLiteWriter as RustVegaLiteWriter;
-use ggsql::GgsqlError;
+use ggsql::writer::{VegaLiteWriter as RustVegaLiteWriter, Writer};
 
 use polars::prelude::{DataFrame, IpcReader, IpcWriter, SerReader, SerWriter};
+
+// ============================================================================
+// Custom Exception Types
+// ============================================================================
+
+// Base exception for all ggsql errors
+pyo3::create_exception!(ggsql, PyGgsqlError, pyo3::exceptions::PyException);
+
+// Specific exception types
+pyo3::create_exception!(ggsql, PyParseError, PyGgsqlError);
+pyo3::create_exception!(ggsql, PyValidationError, PyGgsqlError);
+pyo3::create_exception!(ggsql, PyReaderError, PyGgsqlError);
+pyo3::create_exception!(ggsql, PyWriterError, PyGgsqlError);
+pyo3::create_exception!(ggsql, NoVisualiseError, PyGgsqlError);
+
+/// Convert a GgsqlError to the appropriate Python exception
+fn ggsql_error_to_pyerr(e: ggsql::GgsqlError) -> PyErr {
+    use ggsql::GgsqlError;
+    match e {
+        GgsqlError::ParseError(msg) => PyParseError::new_err(msg),
+        GgsqlError::ValidationError(msg) => PyValidationError::new_err(msg),
+        GgsqlError::ReaderError(msg) => PyReaderError::new_err(msg),
+        GgsqlError::WriterError(msg) => PyWriterError::new_err(msg),
+        GgsqlError::NoVisualise => {
+            NoVisualiseError::new_err("Query has no VISUALISE clause".to_string())
+        }
+        GgsqlError::InternalError(msg) => {
+            PyGgsqlError::new_err(format!("Internal error: {}", msg))
+        }
+    }
+}
 
 // ============================================================================
 // Helper Functions for DataFrame Conversion
@@ -53,31 +83,6 @@ fn py_to_polars(py: Python<'_>, df: &Bound<'_, PyAny>) -> PyResult<DataFrame> {
     })
 }
 
-/// Convert a Python polars DataFrame to Rust DataFrame - for use inside Python::attach
-/// This variant is used by PyReaderBridge where we already hold the GIL.
-fn py_to_polars_inner(df: &Bound<'_, PyAny>) -> PyResult<DataFrame> {
-    let py = df.py();
-    let io = py.import("io")?;
-    let bytes_io = io.call_method0("BytesIO")?;
-
-    df.call_method1("write_ipc", (&bytes_io,)).map_err(|_| {
-        PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-            "Reader.execute() must return a polars.DataFrame",
-        )
-    })?;
-
-    bytes_io.call_method1("seek", (0i64,))?;
-    let ipc_bytes: Vec<u8> = bytes_io.call_method0("read")?.extract()?;
-    let cursor = Cursor::new(ipc_bytes);
-
-    IpcReader::new(cursor).finish().map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-            "Failed to deserialize DataFrame: {}",
-            e
-        ))
-    })
-}
-
 /// Convert validation errors/warnings to a Python list of dicts
 fn errors_to_pylist(
     py: Python<'_>,
@@ -115,171 +120,115 @@ fn warnings_to_pylist(py: Python<'_>, warnings: &[ValidationWarning]) -> PyResul
 }
 
 // ============================================================================
-// PyReaderBridge - Bridges Python reader objects to Rust Reader trait
-// ============================================================================
-
-/// Bridges a Python reader object to the Rust Reader trait.
-///
-/// This allows any Python object with an `execute(sql: str) -> polars.DataFrame`
-/// method to be used as a ggsql reader.
-struct PyReaderBridge {
-    obj: Py<PyAny>,
-}
-
-impl Reader for PyReaderBridge {
-    fn execute(&self, sql: &str) -> ggsql::Result<DataFrame> {
-        Python::attach(|py| {
-            let bound = self.obj.bind(py);
-            let result = bound
-                .call_method1("execute", (sql,))
-                .map_err(|e| GgsqlError::ReaderError(format!("Reader.execute() failed: {}", e)))?;
-            py_to_polars_inner(&result).map_err(|e| GgsqlError::ReaderError(e.to_string()))
-        })
-    }
-
-    fn supports_register(&self) -> bool {
-        Python::attach(|py| {
-            self.obj
-                .bind(py)
-                .call_method0("supports_register")
-                .and_then(|r| r.extract::<bool>())
-                .unwrap_or(false)
-        })
-    }
-
-    fn register(&mut self, name: &str, df: DataFrame) -> ggsql::Result<()> {
-        Python::attach(|py| {
-            let py_df =
-                polars_to_py(py, &df).map_err(|e| GgsqlError::ReaderError(e.to_string()))?;
-            self.obj
-                .bind(py)
-                .call_method1("register", (name, py_df))
-                .map_err(|e| GgsqlError::ReaderError(format!("Reader.register() failed: {}", e)))?;
-            Ok(())
-        })
-    }
-}
-
-// ============================================================================
-// Native Reader Detection Macro
-// ============================================================================
-
-/// Macro to try native readers and fall back to bridge.
-/// Adding new native readers = add to the macro invocation list.
-macro_rules! try_native_readers {
-    ($query:expr, $reader:expr, $($native_type:ty),*) => {{
-        $(
-            if let Ok(native) = $reader.downcast::<$native_type>() {
-                return rust_prepare($query, &native.borrow().inner)
-                    .map(|p| PyPrepared { inner: p })
-                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()));
-            }
-        )*
-    }};
-}
-
-// ============================================================================
 // PyDuckDBReader
 // ============================================================================
 
-/// DuckDB database reader for executing SQL queries.
+/// DuckDB database reader for executing SQL queries and ggsql visualizations.
 ///
 /// Creates an in-memory or file-based DuckDB connection that can execute
 /// SQL queries and register DataFrames as queryable tables.
-///
-/// Examples
-/// --------
-/// >>> reader = DuckDBReader("duckdb://memory")
-/// >>> df = reader.execute("SELECT 1 as x, 2 as y")
-///
-/// >>> reader = DuckDBReader("duckdb://memory")
-/// >>> reader.register("data", pl.DataFrame({"x": [1, 2, 3]}))
-/// >>> df = reader.execute("SELECT * FROM data WHERE x > 1")
 #[pyclass(name = "DuckDBReader", unsendable)]
 struct PyDuckDBReader {
     inner: RustDuckDBReader,
+    connection: String,
 }
 
 #[pymethods]
 impl PyDuckDBReader {
     /// Create a new DuckDB reader from a connection string.
-    ///
-    /// Parameters
-    /// ----------
-    /// connection : str
-    ///     Connection string. Use "duckdb://memory" for in-memory database
-    ///     or "duckdb://path/to/file.db" for file-based database.
-    ///
-    /// Returns
-    /// -------
-    /// DuckDBReader
-    ///     A configured DuckDB reader instance.
-    ///
-    /// Raises
-    /// ------
-    /// ValueError
-    ///     If the connection string is invalid or the database cannot be opened.
     #[new]
     fn new(connection: &str) -> PyResult<Self> {
         let inner = RustDuckDBReader::from_connection_string(connection)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
-        Ok(Self { inner })
+            .map_err(ggsql_error_to_pyerr)?;
+        Ok(Self {
+            inner,
+            connection: connection.to_string(),
+        })
+    }
+
+    fn __repr__(&self) -> String {
+        format!("<DuckDBReader connection={:?}>", self.connection)
+    }
+
+    /// Execute a ggsql query with optional DataFrame registration.
+    ///
+    /// DataFrames are registered before query execution and automatically
+    /// unregistered afterward (even on error) to avoid polluting the namespace.
+    #[pyo3(signature = (query, data=None))]
+    fn execute(
+        &mut self,
+        py: Python<'_>,
+        query: &str,
+        data: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<PyPrepared> {
+        // First, validate that the query has a VISUALISE clause
+        let validated = rust_validate(query).map_err(ggsql_error_to_pyerr)?;
+
+        if !validated.has_visual() {
+            return Err(NoVisualiseError::new_err(
+                "Query has no VISUALISE clause. Use execute_sql() for plain SQL queries.",
+            ));
+        }
+
+        // Collect table names to register
+        let mut table_names: Vec<String> = Vec::new();
+
+        // Register DataFrames
+        if let Some(data_dict) = data {
+            for (key, value) in data_dict.iter() {
+                let name: String = key.extract()?;
+                let rust_df = py_to_polars(py, &value)?;
+                self.inner
+                    .register(&name, rust_df)
+                    .map_err(ggsql_error_to_pyerr)?;
+                table_names.push(name);
+            }
+        }
+
+        // Execute the query, ensuring cleanup happens even on error
+        let result = rust_prepare(query, &self.inner);
+
+        // Always unregister tables (cleanup in finally-style)
+        for name in &table_names {
+            self.inner.unregister(name);
+        }
+
+        // Return the result (or propagate the error)
+        result
+            .map(|p| PyPrepared { inner: p })
+            .map_err(ggsql_error_to_pyerr)
+    }
+
+    /// Execute a SQL query and return the result as a DataFrame.
+    ///
+    /// This is for plain SQL queries without visualization. For ggsql queries
+    /// with VISUALISE clauses, use execute() instead.
+    #[pyo3(name = "execute_sql")]
+    fn execute_sql(&self, py: Python<'_>, sql: &str) -> PyResult<Py<PyAny>> {
+        let df = self
+            .inner
+            .execute_sql(sql)
+            .map_err(ggsql_error_to_pyerr)?;
+        polars_to_py(py, &df)
     }
 
     /// Register a DataFrame as a queryable table.
     ///
     /// After registration, the DataFrame can be queried by name in SQL.
-    ///
-    /// Parameters
-    /// ----------
-    /// name : str
-    ///     The table name to register under.
-    /// df : polars.DataFrame
-    ///     The DataFrame to register. Must be a polars DataFrame.
-    ///
-    /// Raises
-    /// ------
-    /// ValueError
-    ///     If registration fails or the table name is invalid.
+    /// Note: When using execute(), DataFrames are automatically registered
+    /// and unregistered, so manual registration is usually unnecessary.
     fn register(&mut self, py: Python<'_>, name: &str, df: &Bound<'_, PyAny>) -> PyResult<()> {
         let rust_df = py_to_polars(py, df)?;
         self.inner
             .register(name, rust_df)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+            .map_err(ggsql_error_to_pyerr)
     }
 
-    /// Execute a SQL query and return the result as a DataFrame.
+    /// Unregister a table by name.
     ///
-    /// Parameters
-    /// ----------
-    /// sql : str
-    ///     The SQL query to execute.
-    ///
-    /// Returns
-    /// -------
-    /// polars.DataFrame
-    ///     The query result as a polars DataFrame.
-    ///
-    /// Raises
-    /// ------
-    /// ValueError
-    ///     If the SQL is invalid or execution fails.
-    fn execute(&self, py: Python<'_>, sql: &str) -> PyResult<Py<PyAny>> {
-        let df = self
-            .inner
-            .execute(sql)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
-        polars_to_py(py, &df)
-    }
-
-    /// Check if this reader supports DataFrame registration.
-    ///
-    /// Returns
-    /// -------
-    /// bool
-    ///     True if register() is supported, False otherwise.
-    fn supports_register(&self) -> bool {
-        self.inner.supports_register()
+    /// Fails silently if the table doesn't exist.
+    fn unregister(&mut self, name: &str) {
+        self.inner.unregister(name);
     }
 }
 
@@ -287,16 +236,11 @@ impl PyDuckDBReader {
 // PyVegaLiteWriter
 // ============================================================================
 
-/// Vega-Lite JSON output writer.
+/// Vega-Lite JSON output writer (internal).
 ///
 /// Converts prepared visualization specifications to Vega-Lite v6 JSON.
-///
-/// Examples
-/// --------
-/// >>> writer = VegaLiteWriter()
-/// >>> prepared = prepare("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point", reader)
-/// >>> json_output = prepared.render(writer)
-#[pyclass(name = "VegaLiteWriter")]
+/// Use the Python VegaLiteWriter class which wraps this and adds render_chart().
+#[pyclass(name = "_VegaLiteWriter")]
 struct PyVegaLiteWriter {
     inner: RustVegaLiteWriter,
 }
@@ -304,16 +248,22 @@ struct PyVegaLiteWriter {
 #[pymethods]
 impl PyVegaLiteWriter {
     /// Create a new Vega-Lite writer.
-    ///
-    /// Returns
-    /// -------
-    /// VegaLiteWriter
-    ///     A configured Vega-Lite writer instance.
     #[new]
     fn new() -> Self {
         Self {
             inner: RustVegaLiteWriter::new(),
         }
+    }
+
+    fn __repr__(&self) -> &'static str {
+        "<VegaLiteWriter>"
+    }
+
+    /// Render a prepared visualization to Vega-Lite JSON.
+    fn render(&self, spec: &PyPrepared) -> PyResult<String> {
+        self.inner
+            .render(&spec.inner)
+            .map_err(ggsql_error_to_pyerr)
     }
 }
 
@@ -337,62 +287,41 @@ struct PyValidated {
 
 #[pymethods]
 impl PyValidated {
+    fn __repr__(&self) -> String {
+        format!(
+            "<Validated valid={} has_visual={} errors={}>",
+            self.valid,
+            self.has_visual,
+            self.errors.len()
+        )
+    }
+
     /// Whether the query contains a VISUALISE clause.
-    ///
-    /// Returns
-    /// -------
-    /// bool
-    ///     True if the query has a VISUALISE clause.
     fn has_visual(&self) -> bool {
         self.has_visual
     }
 
     /// The SQL portion (before VISUALISE).
-    ///
-    /// Returns
-    /// -------
-    /// str
-    ///     The SQL part of the query.
     fn sql(&self) -> &str {
         &self.sql
     }
 
     /// The VISUALISE portion (raw text).
-    ///
-    /// Returns
-    /// -------
-    /// str
-    ///     The VISUALISE part of the query.
     fn visual(&self) -> &str {
         &self.visual
     }
 
     /// Whether the query is valid (no errors).
-    ///
-    /// Returns
-    /// -------
-    /// bool
-    ///     True if the query is syntactically and semantically valid.
     fn valid(&self) -> bool {
         self.valid
     }
 
     /// Validation errors (fatal issues).
-    ///
-    /// Returns
-    /// -------
-    /// list[dict]
-    ///     List of error dictionaries with 'message' and optional 'location' keys.
     fn errors(&self, py: Python<'_>) -> PyResult<Py<PyList>> {
         errors_to_pylist(py, &self.errors)
     }
 
     /// Validation warnings (non-fatal issues).
-    ///
-    /// Returns
-    /// -------
-    /// list[dict]
-    ///     List of warning dictionaries with 'message' and optional 'location' keys.
     fn warnings(&self, py: Python<'_>) -> PyResult<Py<PyList>> {
         errors_to_pylist(py, &self.warnings)
     }
@@ -402,16 +331,10 @@ impl PyValidated {
 // PyPrepared
 // ============================================================================
 
-/// Result of prepare(), ready for rendering.
+/// Result of reader.execute(), ready for rendering.
 ///
 /// Contains the resolved plot specification, data, and metadata.
-/// Use render() to generate Vega-Lite JSON output.
-///
-/// Examples
-/// --------
-/// >>> prepared = prepare("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point", reader)
-/// >>> print(f"Rows: {prepared.metadata()['rows']}")
-/// >>> json_output = prepared.render(VegaLiteWriter())
+/// Use writer.render(spec) or writer.render_chart(spec) to generate output.
 #[pyclass(name = "Prepared")]
 struct PyPrepared {
     inner: Prepared,
@@ -419,34 +342,17 @@ struct PyPrepared {
 
 #[pymethods]
 impl PyPrepared {
-    /// Render to output format (Vega-Lite JSON).
-    ///
-    /// Parameters
-    /// ----------
-    /// writer : VegaLiteWriter
-    ///     The writer to use for rendering.
-    ///
-    /// Returns
-    /// -------
-    /// str
-    ///     The Vega-Lite JSON specification as a string.
-    ///
-    /// Raises
-    /// ------
-    /// ValueError
-    ///     If rendering fails.
-    fn render(&self, writer: &PyVegaLiteWriter) -> PyResult<String> {
-        self.inner
-            .render(&writer.inner)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    fn __repr__(&self) -> String {
+        let m = self.inner.metadata();
+        format!(
+            "<Prepared rows={} columns={} layers={}>",
+            m.rows,
+            m.columns.len(),
+            m.layer_count
+        )
     }
 
     /// Get visualization metadata.
-    ///
-    /// Returns
-    /// -------
-    /// dict
-    ///     Dictionary with 'rows', 'columns', and 'layer_count' keys.
     fn metadata(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
         let m = self.inner.metadata();
         let dict = PyDict::new(py);
@@ -457,56 +363,26 @@ impl PyPrepared {
     }
 
     /// The main SQL query that was executed.
-    ///
-    /// Returns
-    /// -------
-    /// str
-    ///     The SQL query string.
     fn sql(&self) -> &str {
         self.inner.sql()
     }
 
     /// The VISUALISE portion (raw text).
-    ///
-    /// Returns
-    /// -------
-    /// str
-    ///     The VISUALISE clause text.
     fn visual(&self) -> &str {
         self.inner.visual()
     }
 
     /// Number of layers.
-    ///
-    /// Returns
-    /// -------
-    /// int
-    ///     The number of DRAW clauses in the visualization.
     fn layer_count(&self) -> usize {
         self.inner.layer_count()
     }
 
     /// Get global data (main query result).
-    ///
-    /// Returns
-    /// -------
-    /// polars.DataFrame | None
-    ///     The main query result DataFrame, or None if not available.
     fn data(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         self.inner.data().map(|df| polars_to_py(py, df)).transpose()
     }
 
     /// Get layer-specific data (from FILTER or FROM clause).
-    ///
-    /// Parameters
-    /// ----------
-    /// index : int
-    ///     The layer index (0-based).
-    ///
-    /// Returns
-    /// -------
-    /// polars.DataFrame | None
-    ///     The layer-specific DataFrame, or None if the layer uses global data.
     fn layer_data(&self, py: Python<'_>, index: usize) -> PyResult<Option<Py<PyAny>>> {
         self.inner
             .layer_data(index)
@@ -515,16 +391,6 @@ impl PyPrepared {
     }
 
     /// Get stat transform data (e.g., histogram bins, density estimates).
-    ///
-    /// Parameters
-    /// ----------
-    /// index : int
-    ///     The layer index (0-based).
-    ///
-    /// Returns
-    /// -------
-    /// polars.DataFrame | None
-    ///     The stat transform DataFrame, or None if no stat transform.
     fn stat_data(&self, py: Python<'_>, index: usize) -> PyResult<Option<Py<PyAny>>> {
         self.inner
             .stat_data(index)
@@ -533,41 +399,16 @@ impl PyPrepared {
     }
 
     /// Layer filter/source query, or None if using global data.
-    ///
-    /// Parameters
-    /// ----------
-    /// index : int
-    ///     The layer index (0-based).
-    ///
-    /// Returns
-    /// -------
-    /// str | None
-    ///     The filter SQL query, or None if the layer uses global data directly.
     fn layer_sql(&self, index: usize) -> Option<String> {
         self.inner.layer_sql(index).map(|s| s.to_string())
     }
 
     /// Stat transform query, or None if no stat transform.
-    ///
-    /// Parameters
-    /// ----------
-    /// index : int
-    ///     The layer index (0-based).
-    ///
-    /// Returns
-    /// -------
-    /// str | None
-    ///     The stat transform SQL query, or None if no stat transform.
     fn stat_sql(&self, index: usize) -> Option<String> {
         self.inner.stat_sql(index).map(|s| s.to_string())
     }
 
     /// Validation warnings from preparation.
-    ///
-    /// Returns
-    /// -------
-    /// list[dict]
-    ///     List of warning dictionaries with 'message' and optional 'location' keys.
     fn warnings(&self, py: Python<'_>) -> PyResult<Py<PyList>> {
         warnings_to_pylist(py, self.inner.warnings())
     }
@@ -578,25 +419,9 @@ impl PyPrepared {
 // ============================================================================
 
 /// Validate query syntax and semantics without executing SQL.
-///
-/// Parameters
-/// ----------
-/// query : str
-///     The ggsql query to validate.
-///
-/// Returns
-/// -------
-/// Validated
-///     Validation result with query inspection methods.
-///
-/// Raises
-/// ------
-/// ValueError
-///     If validation fails unexpectedly (not for syntax errors, which are captured).
 #[pyfunction]
 fn validate(query: &str) -> PyResult<PyValidated> {
-    let v = rust_validate(query)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+    let v = rust_validate(query).map_err(ggsql_error_to_pyerr)?;
 
     Ok(PyValidated {
         sql: v.sql().to_string(),
@@ -626,61 +451,20 @@ fn validate(query: &str) -> PyResult<PyValidated> {
     })
 }
 
-/// Prepare a query for visualization. Main entry point for the Rust API.
-///
-/// Parameters
-/// ----------
-/// query : str
-///     The ggsql query to prepare.
-/// reader : DuckDBReader | object
-///     The database reader to execute SQL against. Can be a native DuckDBReader
-///     for optimal performance, or any Python object with an
-///     `execute(sql: str) -> polars.DataFrame` method.
-///
-/// Returns
-/// -------
-/// Prepared
-///     A prepared visualization ready for rendering.
-///
-/// Raises
-/// ------
-/// ValueError
-///     If parsing, validation, or SQL execution fails.
-///
-/// Examples
-/// --------
-/// >>> # Using native reader (fast path)
-/// >>> reader = DuckDBReader("duckdb://memory")
-/// >>> prepared = prepare("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point", reader)
-/// >>> json_output = prepared.render(VegaLiteWriter())
-///
-/// >>> # Using custom Python reader
-/// >>> class MyReader:
-/// ...     def execute(self, sql: str) -> pl.DataFrame:
-/// ...         return pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
-/// >>> reader = MyReader()
-/// >>> prepared = prepare("SELECT * FROM data VISUALISE x, y DRAW point", reader)
-#[pyfunction]
-fn prepare(query: &str, reader: &Bound<'_, PyAny>) -> PyResult<PyPrepared> {
-    // Fast path: try all known native reader types
-    // Add new native readers to this list as they're implemented
-    try_native_readers!(query, reader, PyDuckDBReader);
-
-    // Bridge path: wrap Python object as Reader
-    let bridge = PyReaderBridge {
-        obj: reader.clone().unbind(),
-    };
-    rust_prepare(query, &bridge)
-        .map(|p| PyPrepared { inner: p })
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
-}
-
 // ============================================================================
 // Module Registration
 // ============================================================================
 
 #[pymodule]
 fn _ggsql(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // Exception classes (exported without the Py prefix)
+    m.add("GgsqlError", m.py().get_type::<PyGgsqlError>())?;
+    m.add("ParseError", m.py().get_type::<PyParseError>())?;
+    m.add("ValidationError", m.py().get_type::<PyValidationError>())?;
+    m.add("ReaderError", m.py().get_type::<PyReaderError>())?;
+    m.add("WriterError", m.py().get_type::<PyWriterError>())?;
+    m.add("NoVisualiseError", m.py().get_type::<NoVisualiseError>())?;
+
     // Classes
     m.add_class::<PyDuckDBReader>()?;
     m.add_class::<PyVegaLiteWriter>()?;
@@ -689,7 +473,6 @@ fn _ggsql(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Functions
     m.add_function(wrap_pyfunction!(validate, m)?)?;
-    m.add_function(wrap_pyfunction!(prepare, m)?)?;
 
     Ok(())
 }
