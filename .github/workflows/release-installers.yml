@@ -43,14 +43,12 @@ jobs:
         run: cargo build --release --package ggsql --bin ggsql
 
       - name: Build NSIS installer
-        run: |
-          cd src
-          cargo packager --release --formats nsis
+        run: cargo packager --release --formats nsis
+        working-directory: src
 
       - name: Build MSI installer
-        run: |
-          cd src
-          cargo packager --release --formats wix
+        run: cargo packager --release --formats wix
+        working-directory: src
 
       - name: Upload NSIS installer
         uses: actions/upload-artifact@v4
@@ -99,17 +97,15 @@ jobs:
         run: cargo build --release --package ggsql --bin ggsql
 
       - name: Build DMG installer (x86_64)
-        run: |
-          cd src
-          cargo packager --release --formats dmg
+        run: cargo packager --release --formats dmg
+        working-directory: src
 
       - name: Build ggsql binary (aarch64)
         run: cargo build --release --package ggsql --bin ggsql --target aarch64-apple-darwin
 
       - name: Build DMG installer (aarch64)
-        run: |
-          cd src
-          cargo packager --release --target aarch64-apple-darwin --formats dmg
+        run: cargo packager --release --target aarch64-apple-darwin --formats dmg
+        working-directory: src
 
       - name: Upload DMG installers
         uses: actions/upload-artifact@v4
@@ -161,9 +157,8 @@ jobs:
         run: cargo build --release --package ggsql --bin ggsql
 
       - name: Build Debian package
-        run: |
-          cd src
-          cargo packager --release --formats deb
+        run: cargo packager --release --formats deb
+        working-directory: src
 
       - name: Upload Debian package
         uses: actions/upload-artifact@v4
