@@ -911,6 +911,85 @@ cargo build --all-features
 
 ---
 
+## Release & Distribution
+
+### Cross-Platform Installers
+
+ggsql uses [cargo-packager](https://github.com/crabnebula-dev/cargo-packager) to create native installers for Windows, macOS, and Linux. See [INSTALLERS.md](../INSTALLERS.md) for detailed build instructions.
+
+**Supported Formats**:
+
+- **Windows**: NSIS (.exe), MSI (.msi)
+- **macOS**: DMG (.dmg)
+- **Linux**: Debian (.deb)
+
+**What Gets Packaged**:
+
+- ✅ `ggsql` CLI binary only
+- ❌ `ggsql-rest` API server (install separately with `cargo install ggsql --features rest-api`)
+- ❌ `ggsql-jupyter` kernel (install separately with `cargo install ggsql-jupyter`)
+
+### Release Process
+
+**Creating a Release**:
+
+1. **Update version** in workspace `Cargo.toml`
+2. **Update CHANGELOG** (if exists) with release notes
+3. **Test installers locally** (at least one platform):
+   ```bash
+   cd src
+   cargo packager --release --formats nsis    # Windows
+   cargo packager --release --formats dmg     # macOS
+   cargo packager --release --formats deb     # Linux
+   ```
+4. **Create and push version tag**:
+   ```bash
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+5. **GitHub Actions will automatically**:
+   - Build installers for all platforms
+   - Create GitHub Release
+   - Attach installers as release assets
+   - Generate release notes
+
+**Manual Workflow Trigger** (for testing):
+```bash
+gh workflow run release-installers.yml
+```
+
+### Known Limitations
+
+**Installers**:
+
+- Installers are unsigned (users may see security warnings)
+- macOS installers require users to run `xattr -cr /Applications/ggsql.app` if unsigned
+- Windows SmartScreen may show "Windows protected your PC" warning
+- Production releases should use code signing certificates
+
+**License Display**:
+
+- LICENSE.md must use ASCII quotes (not Unicode smart quotes) for proper Windows installer display
+- Verify with: `cargo packager --release --formats nsis` and test installer UI
+
+### Distribution Channels
+
+**Current**:
+
+- GitHub Releases (automated via GitHub Actions)
+- Manual local builds via cargo-packager
+
+**Future** (not yet implemented):
+
+- Homebrew tap (macOS/Linux)
+- Chocolatey (Windows)
+- Scoop (Windows)
+- apt repository (Debian/Ubuntu)
+- crates.io (Rust library)
+- PyPI (Python bindings)
+
+---
+
 ## Grammar Deep Dive
 
 ### ggsql Grammar Structure
