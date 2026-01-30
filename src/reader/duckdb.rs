@@ -626,7 +626,9 @@ mod tests {
         reader.register("my_table", df).unwrap();
 
         // Query the registered table
-        let result = reader.execute_sql("SELECT * FROM my_table ORDER BY x").unwrap();
+        let result = reader
+            .execute_sql("SELECT * FROM my_table ORDER BY x")
+            .unwrap();
         assert_eq!(result.shape(), (3, 2));
         assert_eq!(result.get_column_names(), vec!["x", "y"]);
     }

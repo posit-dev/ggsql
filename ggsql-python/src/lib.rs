@@ -37,9 +37,7 @@ fn ggsql_error_to_pyerr(e: ggsql::GgsqlError) -> PyErr {
         GgsqlError::NoVisualise => {
             NoVisualiseError::new_err("Query has no VISUALISE clause".to_string())
         }
-        GgsqlError::InternalError(msg) => {
-            PyGgsqlError::new_err(format!("Internal error: {}", msg))
-        }
+        GgsqlError::InternalError(msg) => PyGgsqlError::new_err(format!("Internal error: {}", msg)),
     }
 }
 
@@ -138,8 +136,8 @@ impl PyDuckDBReader {
     /// Create a new DuckDB reader from a connection string.
     #[new]
     fn new(connection: &str) -> PyResult<Self> {
-        let inner = RustDuckDBReader::from_connection_string(connection)
-            .map_err(ggsql_error_to_pyerr)?;
+        let inner =
+            RustDuckDBReader::from_connection_string(connection).map_err(ggsql_error_to_pyerr)?;
         Ok(Self {
             inner,
             connection: connection.to_string(),
@@ -205,10 +203,7 @@ impl PyDuckDBReader {
     /// with VISUALISE clauses, use execute() instead.
     #[pyo3(name = "execute_sql")]
     fn execute_sql(&self, py: Python<'_>, sql: &str) -> PyResult<Py<PyAny>> {
-        let df = self
-            .inner
-            .execute_sql(sql)
-            .map_err(ggsql_error_to_pyerr)?;
+        let df = self.inner.execute_sql(sql).map_err(ggsql_error_to_pyerr)?;
         polars_to_py(py, &df)
     }
 
@@ -261,9 +256,7 @@ impl PyVegaLiteWriter {
 
     /// Render a prepared visualization to Vega-Lite JSON.
     fn render(&self, spec: &PyPrepared) -> PyResult<String> {
-        self.inner
-            .render(&spec.inner)
-            .map_err(ggsql_error_to_pyerr)
+        self.inner.render(&spec.inner).map_err(ggsql_error_to_pyerr)
     }
 }
 
