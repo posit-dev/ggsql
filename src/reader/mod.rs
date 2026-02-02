@@ -147,6 +147,26 @@ pub trait Reader {
         )))
     }
 
+    /// Unregister a previously registered table
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The table name to unregister
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success.
+    ///
+    /// # Default Implementation
+    ///
+    /// Returns an error by default. Override for readers that support registration.
+    fn unregister(&mut self, name: &str) -> Result<()> {
+        Err(GgsqlError::ReaderError(format!(
+            "This reader does not support unregistering table '{}'",
+            name
+        )))
+    }
+
     /// Check if this reader supports DataFrame registration
     ///
     /// # Returns

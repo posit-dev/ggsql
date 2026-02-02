@@ -377,6 +377,9 @@ pub trait Reader {
     /// Register a DataFrame as a queryable table
     fn register(&mut self, name: &str, df: DataFrame) -> Result<()>;
 
+    /// Unregister a previously registered table
+    fn unregister(&mut self, name: &str) -> Result<()>;
+
     /// Check if this reader supports DataFrame registration
     fn supports_register(&self) -> bool;
 }
@@ -421,6 +424,13 @@ class DuckDBReader:
         Args:
             name: Table name
             df: Polars DataFrame or narwhals-compatible DataFrame
+        """
+
+    def unregister(self, name: str) -> None:
+        """Unregister a previously registered table.
+
+        Args:
+            name: Table name to unregister
         """
 
     def execute_sql(self, sql: str) -> polars.DataFrame:

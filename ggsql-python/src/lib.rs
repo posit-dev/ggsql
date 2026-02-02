@@ -159,6 +159,18 @@ impl Reader for PyReaderBridge {
             Ok(())
         })
     }
+
+    fn unregister(&mut self, name: &str) -> ggsql::Result<()> {
+        Python::attach(|py| {
+            self.obj
+                .bind(py)
+                .call_method1("unregister", (name,))
+                .map_err(|e| {
+                    GgsqlError::ReaderError(format!("Reader.unregister() failed: {}", e))
+                })?;
+            Ok(())
+        })
+    }
 }
 
 // ============================================================================
@@ -246,6 +258,23 @@ impl PyDuckDBReader {
         let rust_df = py_to_polars(py, df)?;
         self.inner
             .register(name, rust_df)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    }
+
+    /// Unregister a previously registered table.
+    ///
+    /// Parameters
+    /// ----------
+    /// name : str
+    ///     The table name to unregister.
+    ///
+    /// Raises
+    /// ------
+    /// ValueError
+    ///     If the table wasn't registered via this reader or unregistration fails.
+    fn unregister(&mut self, name: &str) -> PyResult<()> {
+        self.inner
+            .unregister(name)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
     }
 

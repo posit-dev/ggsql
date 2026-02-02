@@ -126,6 +126,7 @@ reader = ggsql.DuckDBReader("duckdb:///path/to/file.db")  # File database
 **Methods:**
 
 - `register(name: str, df: polars.DataFrame)` - Register a DataFrame as a queryable table
+- `unregister(name: str)` - Unregister a previously registered table
 - `execute_sql(sql: str) -> polars.DataFrame` - Execute SQL and return results
 - `supports_register() -> bool` - Check if registration is supported
 
@@ -266,6 +267,7 @@ json_output = writer.render(spec)
 
 - `supports_register() -> bool` - Return `True` if your reader supports DataFrame registration
 - `register(name: str, df: polars.DataFrame) -> None` - Register a DataFrame as a queryable table
+- `unregister(name: str) -> None` - Unregister a previously registered table
 
 ```python
 class AdvancedReader:
@@ -283,6 +285,9 @@ class AdvancedReader:
 
     def register(self, name: str, df: pl.DataFrame) -> None:
         self.tables[name] = df
+
+    def unregister(self, name: str) -> None:
+        del self.tables[name]
 ```
 
 Native readers like `DuckDBReader` use an optimized fast path, while custom Python readers are automatically bridged via IPC serialization.

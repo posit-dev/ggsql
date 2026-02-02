@@ -209,6 +209,7 @@ let json = writer.render(&spec)?;
 
 - `execute_sql(sql)` - Run SQL, return DataFrame
 - `register(name, df)` - Register DataFrame as table
+- `unregister(name)` - Unregister a previously registered table
 - Implementation: `DuckDBReader`
 
 **Writer trait** (output format abstraction):
@@ -1000,6 +1001,7 @@ Optional methods for custom readers:
 
 - `supports_register() -> bool` - Return `True` if registration is supported
 - `register(name: str, df: polars.DataFrame) -> None` - Register a DataFrame as a table
+- `unregister(name: str) -> None` - Unregister a previously registered table
 
 Native readers (e.g., `DuckDBReader`) use an optimized fast path, while custom Python readers are automatically bridged via IPC serialization.
 

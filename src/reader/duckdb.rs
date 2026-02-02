@@ -10,6 +10,7 @@ use duckdb::vtab::arrow::{arrow_recordbatch_to_query_params, ArrowVTab};
 use duckdb::{params, Connection};
 use polars::io::SerWriter;
 use polars::prelude::*;
+use std::collections::HashSet;
 use std::io::Cursor;
 
 /// DuckDB database reader
@@ -32,6 +33,7 @@ use std::io::Cursor;
 /// ```
 pub struct DuckDBReader {
     conn: Connection,
+    registered_tables: HashSet<String>,
 }
 
 impl DuckDBReader {
@@ -75,7 +77,10 @@ impl DuckDBReader {
                 GgsqlError::ReaderError(format!("Failed to register arrow function: {}", e))
             })?;
 
-        Ok(Self { conn })
+        Ok(Self {
+            conn,
+            registered_tables: HashSet::new(),
+        })
     }
 
     /// Get a reference to the underlying DuckDB connection
@@ -523,6 +528,30 @@ impl Reader for DuckDBReader {
             GgsqlError::ReaderError(format!("Failed to register table '{}': {}", name, e))
         })?;
 
+        // Track the table so we can unregister it later
+        self.registered_tables.insert(name.to_string());
+
+        Ok(())
+    }
+
+    fn unregister(&mut self, name: &str) -> Result<()> {
+        // Only allow unregistering tables we created via register()
+        if !self.registered_tables.contains(name) {
+            return Err(GgsqlError::ReaderError(format!(
+                "Table '{}' was not registered via this reader",
+                name
+            )));
+        }
+
+        // Drop the temp table
+        let sql = format!("DROP TABLE IF EXISTS \"{}\"", name);
+        self.conn.execute(&sql, []).map_err(|e| {
+            GgsqlError::ReaderError(format!("Failed to unregister table '{}': {}", name, e))
+        })?;
+
+        // Remove from tracking
+        self.registered_tables.remove(name);
+
         Ok(())
     }
 
@@ -703,5 +732,55 @@ mod tests {
         let result = reader.execute_sql("SELECT * FROM empty_table").unwrap();
         assert_eq!(result.shape(), (0, 2));
         assert_eq!(result.get_column_names(), vec!["x", "y"]);
+    }
+
+    #[test]
+    fn test_unregister() {
+        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let df = DataFrame::new(vec![Column::new("x".into(), vec![1i32, 2, 3])]).unwrap();
+
+        reader.register("test_data", df).unwrap();
+
+        // Should be queryable
+        let result = reader.execute_sql("SELECT * FROM test_data").unwrap();
+        assert_eq!(result.height(), 3);
+
+        // Unregister
+        reader.unregister("test_data").unwrap();
+
+        // Should no longer exist
+        let result = reader.execute_sql("SELECT * FROM test_data");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_unregister_not_registered() {
+        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create a table directly (not via register)
+        reader
+            .connection()
+            .execute("CREATE TABLE user_table (x INT)", params![])
+            .unwrap();
+
+        // Should fail - we didn't register this via register()
+        let result = reader.unregister("user_table");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("was not registered via this reader"));
+    }
+
+    #[test]
+    fn test_reregister_after_unregister() {
+        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let df = DataFrame::new(vec![Column::new("x".into(), vec![1i32, 2, 3])]).unwrap();
+
+        reader.register("data", df.clone()).unwrap();
+        reader.unregister("data").unwrap();
+
+        // Should be able to register again
+        reader.register("data", df).unwrap();
+        let result = reader.execute_sql("SELECT * FROM data").unwrap();
+        assert_eq!(result.height(), 3);
     }
 }
