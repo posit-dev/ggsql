@@ -529,6 +529,8 @@ impl VegaLiteWriter {
                 }
 
                 let mut scale_obj = serde_json::Map::new();
+                // Track if we're using a color range array (needs gradient legend)
+                let mut needs_gradient_legend = false;
 
                 // Use scale properties from the primary aesthetic's scale
                 // (same scale lookup as used above for field_type)
@@ -544,6 +546,7 @@ impl VegaLiteWriter {
                     }
 
                     // Apply range from output_range (TO clause)
+
                     if let Some(ref output_range) = scale.output_range {
                         match output_range {
                             OutputRange::Array(range_values) => {
@@ -577,6 +580,16 @@ impl VegaLiteWriter {
                                     })
                                     .collect();
                                 scale_obj.insert("range".to_string(), json!(range_json));
+
+                                // For continuous color scales with range array, use gradient legend
+                                if matches!(aesthetic, "fill" | "stroke")
+                                    && matches!(
+                                        scale.scale_type.as_ref().map(|st| st.scale_type_kind()),
+                                        Some(ScaleTypeKind::Continuous)
+                                    )
+                                {
+                                    needs_gradient_legend = true;
+                                }
                             }
                             OutputRange::Palette(palette_name) => {
                                 // Named palette - expand to color scheme
@@ -708,6 +721,19 @@ impl VegaLiteWriter {
                     encoding["scale"] = json!(Value::Null)
                 } else if !scale_obj.is_empty() {
                     encoding["scale"] = json!(scale_obj);
+                }
+
+                // For continuous color scales with range array, use gradient legend
+                // (scheme-based scales automatically get gradient legends from Vega-Lite)
+                if needs_gradient_legend {
+                    // Merge gradient type into existing legend object (preserves values, etc.)
+                    if let Some(legend_obj) = encoding.get_mut("legend").and_then(|v| v.as_object_mut()) {
+                        legend_obj.insert("type".to_string(), json!("gradient"));
+                    } else if !encoding.get("legend").is_some_and(|v| v.is_null()) {
+                        // No legend object yet, create one with gradient type
+                        encoding["legend"] = json!({"type": "gradient"});
+                    }
+                    // If legend is explicitly null, leave it (user disabled legend via GUIDE)
                 }
 
                 // Hide axis for dummy columns (e.g., x when bar chart has no x mapped)

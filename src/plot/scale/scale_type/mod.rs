@@ -647,10 +647,14 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         };
 
         // Step 2: Apply expansion to the final merged range (if continuous/numeric)
+        // Then clip to the transform's valid domain to prevent invalid values
+        // (e.g., expansion producing negative values for log scales)
         if let Some(range) = base_range {
             let is_continuous = range.iter().all(|e| matches!(e, ArrayElement::Number(_)));
             if is_continuous {
-                scale.input_range = Some(expand_numeric_range(&range, mult, add));
+                let expanded = expand_numeric_range(&range, mult, add);
+                scale.input_range =
+                    Some(clip_to_transform_domain(&expanded, &resolved_transform));
             } else {
                 // Discrete ranges don't get expanded
                 scale.input_range = Some(range);
@@ -670,6 +674,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         // 5. Calculate breaks if supports_breaks()
         // If breaks is a scalar Number (count), calculate actual break positions and store as Array
         // If breaks is already an Array, user provided explicit breaks - convert using transform
+        // Then filter breaks to the input range (break algorithms may produce "nice" values outside range)
         if self.supports_breaks() {
             match scale.properties.get("breaks") {
                 Some(ParameterValue::Number(_)) => {
@@ -679,9 +684,15 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                         &scale.properties,
                         scale.transform.as_ref(),
                     ) {
+                        // Filter breaks to input range
+                        let filtered = if let Some(ref range) = scale.input_range {
+                            super::super::breaks::filter_breaks_to_range(&breaks, range)
+                        } else {
+                            breaks
+                        };
                         scale
                             .properties
-                            .insert("breaks".to_string(), ParameterValue::Array(breaks));
+                            .insert("breaks".to_string(), ParameterValue::Array(filtered));
                     }
                 }
                 Some(ParameterValue::Array(explicit_breaks)) => {
@@ -690,9 +701,15 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                         .iter()
                         .map(|elem| resolved_transform.parse_value(elem))
                         .collect();
+                    // Filter breaks to input range
+                    let filtered = if let Some(ref range) = scale.input_range {
+                        super::super::breaks::filter_breaks_to_range(&converted, range)
+                    } else {
+                        converted
+                    };
                     scale
                         .properties
-                        .insert("breaks".to_string(), ParameterValue::Array(converted));
+                        .insert("breaks".to_string(), ParameterValue::Array(filtered));
                 }
                 _ => {}
             }
@@ -732,16 +749,17 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Resolve output range (TO clause) for a scale.
     ///
     /// 1. If no output_range is set, fills from `default_output_range()` (full palette)
-    /// 2. Sizes the output_range based on scale type:
+    /// 2. Converts Palette variants to Array (expand named palette to colors)
+    /// 3. Sizes the output_range based on scale type:
     ///    - Continuous: Keeps as-is (full palette for Vega-Lite interpolation)
     ///    - Discrete: Truncates to match `input_range.len()` (category count)
     ///    - Binned: Truncates/interpolates to match `breaks.len() - 1` (bin count)
     ///
     /// # Default Implementation
     ///
-    /// The default implementation handles continuous scales: it fills from
-    /// `default_output_range()` if not set, but does not size the array.
-    /// Vega-Lite will interpolate across the full palette.
+    /// The default implementation handles continuous scales: it converts Palette
+    /// to Array (so Vega-Lite gets actual colors to interpolate), and fills from
+    /// `default_output_range()` if not set. Does not size the array.
     ///
     /// Discrete and Binned scales override this to size the output appropriately.
     fn resolve_output_range(
@@ -749,12 +767,34 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         scale: &mut super::Scale,
         aesthetic: &str,
     ) -> Result<(), String> {
-        use super::OutputRange;
+        use super::{palettes, OutputRange};
 
-        // Fill default if not set
-        if scale.output_range.is_none() {
-            if let Some(default_range) = self.default_output_range(aesthetic, scale)? {
-                scale.output_range = Some(OutputRange::Array(default_range));
+        // Phase 1: Ensure we have an Array (convert Palette or fill default)
+        match &scale.output_range {
+            None => {
+                // No output range - fill from default
+                if let Some(default_range) = self.default_output_range(aesthetic, scale)? {
+                    scale.output_range = Some(OutputRange::Array(default_range));
+                }
+            }
+            Some(OutputRange::Palette(name)) => {
+                // Named palette - convert to Array (full palette for interpolation)
+                let palette = match aesthetic {
+                    "shape" => palettes::get_shape_palette(name),
+                    "linetype" => palettes::get_linetype_palette(name),
+                    _ => palettes::get_color_palette(name),
+                };
+                if let Some(palette) = palette {
+                    let arr: Vec<_> = palette
+                        .iter()
+                        .map(|s| ArrayElement::String(s.to_string()))
+                        .collect();
+                    scale.output_range = Some(OutputRange::Array(arr));
+                }
+                // If palette not found, leave as Palette for Vega-Lite to handle as scheme
+            }
+            Some(OutputRange::Array(_)) => {
+                // Already an array, nothing to do
             }
         }
 
@@ -1232,6 +1272,36 @@ pub(super) fn get_expand_factors(properties: &HashMap<String, ParameterValue>) -
         .get("expand")
         .and_then(parse_expand_value)
         .unwrap_or((DEFAULT_EXPAND_MULT, DEFAULT_EXPAND_ADD))
+}
+
+/// Clip an input range to a transform's valid domain.
+///
+/// This prevents expansion from producing invalid values for transforms
+/// with restricted domains (e.g., log scales which exclude 0 and negatives).
+pub(super) fn clip_to_transform_domain(
+    range: &[ArrayElement],
+    transform: &Transform,
+) -> Vec<ArrayElement> {
+    if range.len() < 2 {
+        return range.to_vec();
+    }
+
+    let (domain_min, domain_max) = transform.allowed_domain();
+    let mut result = range.to_vec();
+
+    if let Some(min) = result[0].to_f64() {
+        if min < domain_min {
+            result[0] = ArrayElement::Number(domain_min);
+        }
+    }
+
+    if let Some(max) = result[1].to_f64() {
+        if max > domain_max {
+            result[1] = ArrayElement::Number(domain_max);
+        }
+    }
+
+    result
 }
 
 // =============================================================================
@@ -3030,5 +3100,84 @@ mod tests {
         assert_eq!(names.for_target(CastTargetType::Time), Some("TIME"));
         assert_eq!(names.for_target(CastTargetType::String), Some("VARCHAR"));
         assert_eq!(names.for_target(CastTargetType::Boolean), Some("BOOLEAN"));
+    }
+
+    // =========================================================================
+    // clip_to_transform_domain Tests
+    // =========================================================================
+
+    #[test]
+    fn test_clip_to_transform_domain_identity() {
+        // Identity transform allows all values, so no clipping
+        let transform = Transform::identity();
+        let range = vec![ArrayElement::Number(-100.0), ArrayElement::Number(100.0)];
+        let clipped = clip_to_transform_domain(&range, &transform);
+        assert_eq!(clipped[0], ArrayElement::Number(-100.0));
+        assert_eq!(clipped[1], ArrayElement::Number(100.0));
+    }
+
+    #[test]
+    fn test_clip_to_transform_domain_log() {
+        // Log transform excludes 0 and negative values
+        let transform = Transform::from_kind(TransformKind::Log10);
+        let range = vec![ArrayElement::Number(-5.0), ArrayElement::Number(100.0)];
+        let clipped = clip_to_transform_domain(&range, &transform);
+        // Min should be clipped to f64::MIN_POSITIVE
+        assert_eq!(clipped[0], ArrayElement::Number(f64::MIN_POSITIVE));
+        assert_eq!(clipped[1], ArrayElement::Number(100.0));
+    }
+
+    #[test]
+    fn test_clip_to_transform_domain_sqrt() {
+        // Sqrt transform requires non-negative values
+        let transform = Transform::from_kind(TransformKind::Sqrt);
+        let range = vec![ArrayElement::Number(-5.0), ArrayElement::Number(100.0)];
+        let clipped = clip_to_transform_domain(&range, &transform);
+        // Min should be clipped to 0.0
+        assert_eq!(clipped[0], ArrayElement::Number(0.0));
+        assert_eq!(clipped[1], ArrayElement::Number(100.0));
+    }
+
+    #[test]
+    fn test_clip_to_transform_domain_both_sides() {
+        // Test clipping both min and max (though unrealistic for typical transforms)
+        let transform = Transform::from_kind(TransformKind::Time);
+        // Time is 0 to 24 hours in nanoseconds
+        let range = vec![ArrayElement::Number(-1000.0), ArrayElement::Number(1e20)];
+        let clipped = clip_to_transform_domain(&range, &transform);
+        // Min should be clipped to 0.0
+        assert_eq!(clipped[0], ArrayElement::Number(0.0));
+        // Max should be clipped to max time nanos (24 * 3600 * 1e9)
+        let max_time = 24.0 * 3600.0 * 1e9;
+        assert_eq!(clipped[1], ArrayElement::Number(max_time));
+    }
+
+    #[test]
+    fn test_clip_to_transform_domain_no_clipping_needed() {
+        // Values already within domain - no clipping
+        let transform = Transform::from_kind(TransformKind::Log10);
+        let range = vec![ArrayElement::Number(0.001), ArrayElement::Number(1000.0)];
+        let clipped = clip_to_transform_domain(&range, &transform);
+        assert_eq!(clipped[0], ArrayElement::Number(0.001));
+        assert_eq!(clipped[1], ArrayElement::Number(1000.0));
+    }
+
+    #[test]
+    fn test_expansion_clipped_to_log_domain() {
+        // Simulate what happens when expansion produces invalid values for log scale
+        // Data: [0.001, 0.01], with 50% expansion produces negative min
+        let range = vec![ArrayElement::Number(0.001), ArrayElement::Number(0.01)];
+        // span = 0.009, expansion = 0.0045
+        // expanded_min = 0.001 - 0.0045 = -0.0035
+        // expanded_max = 0.01 + 0.0045 = 0.0145
+        let expanded = expand_numeric_range(&range, 0.5, 0.0);
+        assert!(expanded[0].to_f64().unwrap() < 0.0);
+
+        // Now clip to log domain
+        let transform = Transform::from_kind(TransformKind::Log10);
+        let clipped = clip_to_transform_domain(&expanded, &transform);
+        // Min should be clipped to f64::MIN_POSITIVE
+        assert_eq!(clipped[0], ArrayElement::Number(f64::MIN_POSITIVE));
+        assert_eq!(clipped[1].to_f64().unwrap(), 0.0145);
     }
 }
