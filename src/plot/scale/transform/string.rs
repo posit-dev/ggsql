@@ -103,8 +103,8 @@ mod tests {
         let t = String;
         assert_eq!(t.wrap_numeric(42.0), ArrayElement::String("42".to_string()));
         assert_eq!(
-            t.wrap_numeric(-3.14),
-            ArrayElement::String("-3.14".to_string())
+            t.wrap_numeric(-3.54),
+            ArrayElement::String("-3.54".to_string())
         );
     }
 
