@@ -16,6 +16,14 @@ import altair
 
 import ggsql
 
+# Optional dependency for ibis test
+try:
+    import ibis
+
+    HAS_IBIS = hasattr(ibis, "duckdb")
+except ImportError:
+    HAS_IBIS = False
+
 
 class TestValidate:
     """Tests for validate() function."""
@@ -496,3 +504,37 @@ class TestCustomReader:
         assert len(reader.execute_calls) > 0
         # All calls should be valid SQL strings
         assert all(isinstance(sql, str) for sql in reader.execute_calls)
+
+    @pytest.mark.skipif(not HAS_IBIS, reason="ibis not installed")
+    def test_custom_reader_ibis(self):
+        """Test custom reader using ibis as backend."""
+
+        class IbisReader:
+            def __init__(self):
+                self.con = ibis.duckdb.connect()
+
+            def execute_sql(self, sql: str) -> pl.DataFrame:
+                return self.con.con.execute(sql).pl()
+
+            def supports_register(self) -> bool:
+                return True
+
+            def register(self, name: str, df: pl.DataFrame) -> None:
+                self.con.create_table(name, df.to_arrow(), overwrite=True)
+
+            def unregister(self, name: str) -> None:
+                self.con.drop_table(name)
+
+        reader = IbisReader()
+        df = pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
+        reader.register("mydata", df)
+
+        spec = ggsql.execute(
+            "SELECT * FROM mydata VISUALISE x, y DRAW point",
+            reader,
+        )
+
+        assert spec.metadata()["rows"] == 3
+        writer = ggsql.VegaLiteWriter()
+        json_output = writer.render(spec)
+        assert "point" in json_output

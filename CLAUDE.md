@@ -147,7 +147,7 @@ DRAW line MAPPING month AS x, total AS y
 
 ---
 
-## Public API (`src/api.rs`)
+## Public API
 
 ### Quick Start
 
@@ -190,7 +190,6 @@ let json = writer.render(&spec)?;
 
 **`Spec`** - Result of `reader.execute()`, ready for rendering:
 
-- `render(writer)` - Generate output (Vega-Lite JSON)
 - `plot()` - Resolved plot specification
 - `metadata()` - Rows, columns, layer count
 - `warnings()` - Validation warnings from execution

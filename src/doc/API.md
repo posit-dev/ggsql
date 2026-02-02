@@ -477,9 +477,6 @@ class Validated:
 
 ```python
 class Spec:
-    def render(self, writer: VegaLiteWriter) -> str:
-        """Render to output format."""
-
     def metadata(self) -> dict:
         """Get metadata as dict with keys: rows, columns, layer_count."""
 

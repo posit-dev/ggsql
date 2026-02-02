@@ -158,7 +158,6 @@ Result of `reader.execute()`, containing resolved visualization ready for render
 
 **Methods:**
 
-- `render(writer: VegaLiteWriter) -> str` - Generate Vega-Lite JSON
 - `metadata() -> dict` - Get `{"rows": int, "columns": list[str], "layer_count": int}`
 - `sql() -> str` - The executed SQL query
 - `visual() -> str` - The VISUALISE clause
@@ -291,6 +290,53 @@ class AdvancedReader:
 ```
 
 Native readers like `DuckDBReader` use an optimized fast path, while custom Python readers are automatically bridged via IPC serialization.
+
+### Ibis Reader Example
+
+[Ibis](https://ibis-project.org/) provides a unified Python API for SQL operations across multiple backends. Here's how to create an ibis-based custom reader:
+
+```python
+import ggsql
+import polars as pl
+import ibis
+
+class IbisReader:
+    """Custom reader using ibis as the SQL backend."""
+
+    def __init__(self, backend="duckdb"):
+        if backend == "duckdb":
+            self.con = ibis.duckdb.connect()
+        elif backend == "sqlite":
+            self.con = ibis.sqlite.connect()
+        # Add other backends as needed
+
+    def execute_sql(self, sql: str) -> pl.DataFrame:
+        return self.con.con.execute(sql).pl()
+
+    def supports_register(self) -> bool:
+        return True
+
+    def register(self, name: str, df: pl.DataFrame) -> None:
+        self.con.create_table(name, df.to_arrow(), overwrite=True)
+
+    def unregister(self, name: str) -> None:
+        self.con.drop_table(name)
+
+# Usage
+reader = IbisReader()
+df = pl.DataFrame({
+    "date": ["2024-01-01", "2024-01-02", "2024-01-03"],
+    "revenue": [100, 150, 120],
+})
+reader.register("sales", df)
+
+spec = ggsql.execute(
+    "SELECT * FROM sales VISUALISE date AS x, revenue AS y DRAW line",
+    reader
+)
+writer = ggsql.VegaLiteWriter()
+print(writer.render(spec))
+```
 
 ## Development
 
