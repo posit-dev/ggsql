@@ -266,7 +266,7 @@
         },
         {
           "name": "keyword.other.ggsql",
-          "match": "\\b(?i:MAPPING|REMAPPING|SETTING|FILTER|FROM|ORDER|BY|PARTITION)\\b"
+          "match": "\\b(?i:MAPPING|REMAPPING|SETTING|FILTER|FROM|ORDER|BY|PARTITION|RENAMING)\\b"
         },
         {
           "name": "punctuation.separator.comma.ggsql",
