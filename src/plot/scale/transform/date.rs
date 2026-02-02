@@ -7,7 +7,7 @@
 use chrono::Datelike;
 
 use super::{TransformKind, TransformTrait};
-use crate::plot::scale::breaks::minor_breaks_linear;
+use crate::plot::scale::breaks::{integer_breaks, minor_breaks_linear};
 use crate::plot::ArrayElement;
 
 /// Date transform - for date data (days since epoch)
@@ -99,8 +99,8 @@ impl TransformTrait for Date {
         if pretty {
             calculate_pretty_date_breaks(min, max, n, interval)
         } else {
-            // For non-pretty, fall back to linear breaks in day-space
-            calculate_linear_date_breaks(min, max, n)
+            // For non-pretty, use integer breaks since dates are whole days
+            integer_breaks(min, max, n, false)
         }
     }
 
@@ -286,16 +286,6 @@ fn calculate_pretty_date_breaks(min: f64, max: f64, n: usize, interval: DateInte
     breaks
 }
 
-/// Calculate linear breaks in day-space
-fn calculate_linear_date_breaks(min: f64, max: f64, n: usize) -> Vec<f64> {
-    if n <= 1 {
-        return vec![min];
-    }
-
-    let step = (max - min) / (n - 1) as f64;
-    (0..n).map(|i| min + i as f64 * step).collect()
-}
-
 /// Round to a "nice" step value (1, 2, 5, 10, 20, 50, etc.)
 fn nice_step(step: f64) -> f64 {
     if step <= 0.0 {
@@ -408,9 +398,25 @@ mod tests {
     fn test_date_breaks_linear() {
         let t = Date;
         let breaks = t.calculate_breaks(0.0, 100.0, 5, false);
-        assert_eq!(breaks.len(), 5);
-        assert_eq!(breaks[0], 0.0);
-        assert_eq!(breaks[4], 100.0);
+        // Should have integer day breaks
+        assert!(!breaks.is_empty());
+        assert!(breaks[0] <= 0.0);
+        assert!(*breaks.last().unwrap() >= 100.0);
+        // All breaks should be integers (whole days)
+        for b in &breaks {
+            assert_eq!(*b, b.round(), "Break {} should be a whole day", b);
+        }
+        // Breaks should be evenly spaced
+        if breaks.len() >= 2 {
+            let step = breaks[1] - breaks[0];
+            for i in 1..breaks.len() {
+                let gap = breaks[i] - breaks[i - 1];
+                assert!(
+                    (gap - step).abs() < 0.01,
+                    "Date breaks should be evenly spaced"
+                );
+            }
+        }
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! Integer transform implementation (linear with integer rounding)
 
 use super::{TransformKind, TransformTrait};
-use crate::plot::scale::breaks::{linear_breaks, minor_breaks_linear, pretty_breaks};
+use crate::plot::scale::breaks::{integer_breaks, minor_breaks_linear};
 use crate::plot::ArrayElement;
 
 /// Integer transform - linear scale with integer rounding
@@ -30,13 +30,8 @@ impl TransformTrait for Integer {
     }
 
     fn calculate_breaks(&self, min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
-        // Calculate breaks then round to integers
-        let breaks = if pretty {
-            pretty_breaks(min, max, n)
-        } else {
-            linear_breaks(min, max, n)
-        };
-        breaks.into_iter().map(|v| v.round()).collect()
+        // Use dedicated integer breaks function for proper even spacing
+        integer_breaks(min, max, n, pretty)
     }
 
     fn calculate_minor_breaks(
@@ -45,10 +40,21 @@ impl TransformTrait for Integer {
         n: usize,
         range: Option<(f64, f64)>,
     ) -> Vec<f64> {
-        minor_breaks_linear(major_breaks, n, range)
-            .into_iter()
-            .map(|v| v.round())
-            .collect()
+        // For integer scales, minor breaks should also be integers
+        // Filter out any that would round to a major break
+        let minors = minor_breaks_linear(major_breaks, n, range);
+        let rounded: Vec<f64> = minors.iter().map(|v| v.round()).collect();
+
+        // Deduplicate and remove any that coincide with major breaks
+        let mut result = Vec::new();
+        for r in rounded {
+            if !major_breaks.iter().any(|&m| (m - r).abs() < 0.5)
+                && !result.iter().any(|&v: &f64| (v - r).abs() < 0.5)
+            {
+                result.push(r);
+            }
+        }
+        result
     }
 
     fn transform(&self, value: f64) -> f64 {
@@ -126,6 +132,71 @@ mod tests {
         let breaks = t.calculate_breaks(0.0, 100.0, 5, true);
         for b in &breaks {
             assert_eq!(*b, b.round(), "Break {} should be rounded", b);
+        }
+    }
+
+    #[test]
+    fn test_integer_breaks_evenly_spaced() {
+        let t = Integer;
+        // Breaks should be evenly spaced (all gaps equal)
+        let breaks = t.calculate_breaks(0.0, 100.0, 5, true);
+        if breaks.len() >= 2 {
+            let step = breaks[1] - breaks[0];
+            for i in 1..breaks.len() {
+                let gap = breaks[i] - breaks[i - 1];
+                assert!(
+                    (gap - step).abs() < 0.01,
+                    "Uneven spacing: gap {} != step {} at index {}",
+                    gap,
+                    step,
+                    i
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_integer_breaks_small_range() {
+        let t = Integer;
+        // Small range should give consecutive integers
+        let breaks = t.calculate_breaks(0.0, 5.0, 5, true);
+        // Should be [0, 1, 2, 3, 4, 5] or similar consecutive sequence
+        for b in &breaks {
+            assert_eq!(*b, b.round(), "Break {} should be integer", b);
+        }
+        // Verify even spacing
+        if breaks.len() >= 2 {
+            let step = breaks[1] - breaks[0];
+            for i in 1..breaks.len() {
+                let gap = breaks[i] - breaks[i - 1];
+                assert!(
+                    (gap - step).abs() < 0.01,
+                    "Uneven spacing in small range: gap {} != step {}",
+                    gap,
+                    step
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_integer_breaks_small_range_linear() {
+        let t = Integer;
+        // Test the problematic case: range 0-5 with n=5
+        // Previously this would give [0, 1.25, 2.5, 3.75, 5] → rounded [0, 1, 3, 4, 5]
+        // Now it should give evenly spaced integers
+        let breaks = t.calculate_breaks(0.0, 5.0, 5, false);
+        for b in &breaks {
+            assert_eq!(*b, b.round(), "Break {} should be integer", b);
+        }
+        // The breaks should not have the "2.5 rounds to 3" problem
+        // i.e., should not skip 2 and have both 1 and 3
+        if breaks.contains(&1.0) && breaks.contains(&3.0) {
+            assert!(
+                breaks.contains(&2.0),
+                "Should include 2.0, got {:?}",
+                breaks
+            );
         }
     }
 

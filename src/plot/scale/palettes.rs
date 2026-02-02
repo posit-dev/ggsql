@@ -10,7 +10,7 @@ use crate::plot::ArrayElement;
 
 /// ggsql 10 - default categorical palette
 pub const GGSQL10: &[&str] = &[
-    "#0067A5", "#F3C300", "#875692", "#F38400", "#008856", "#BE0032", "#A1CAF1", "#E68FAC",
+    "#0067A5", "#F3C300", "#008856", "#F38400", "#875692", "#BE0032", "#A1CAF1", "#E68FAC",
     "#8DB600", "#654522",
 ];
 

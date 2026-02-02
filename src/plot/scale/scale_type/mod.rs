@@ -614,22 +614,46 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         scale.transform = Some(resolved_transform.clone());
 
         // 3. Resolve input range
-        // If scale already has input_range with Null values, merge with context
-        // If scale has no input_range, use context
-        if let Some(ref range) = context.range {
-            let (mult, add) = get_expand_factors(&scale.properties);
-            let context_range = match range {
-                InputRange::Continuous(r) => expand_numeric_range(r, mult, add),
-                InputRange::Discrete(r) => r.clone(),
-            };
+        // Strategy: First merge user range with context (filling nulls), then apply expansion
+        // This ensures expansion is calculated on the final range span
+        let (mult, add) = get_expand_factors(&scale.properties);
 
-            if let Some(ref user_range) = scale.input_range {
-                // Merge: replace Null values in user_range with values from context_range
-                let merged = merge_with_context(user_range, &context_range);
-                scale.input_range = Some(merged);
+        // Step 1: Determine the base range (before expansion)
+        let base_range: Option<Vec<ArrayElement>> = if let Some(ref user_range) = scale.input_range {
+            if input_range_has_nulls(user_range) {
+                // User provided partial range with Nulls - merge with context (not expanded yet)
+                if let Some(ref range) = context.range {
+                    let context_values = match range {
+                        InputRange::Continuous(r) => r.clone(),
+                        InputRange::Discrete(r) => r.clone(),
+                    };
+                    Some(merge_with_context(user_range, &context_values))
+                } else {
+                    // No context range, keep user range as-is (Nulls will remain)
+                    Some(user_range.clone())
+                }
             } else {
-                // No user range, use context range
-                scale.input_range = Some(context_range);
+                // User provided complete range - use as-is for now
+                Some(user_range.clone())
+            }
+        } else if let Some(ref range) = context.range {
+            // No user range, use context range
+            Some(match range {
+                InputRange::Continuous(r) => r.clone(),
+                InputRange::Discrete(r) => r.clone(),
+            })
+        } else {
+            None
+        };
+
+        // Step 2: Apply expansion to the final merged range (if continuous/numeric)
+        if let Some(range) = base_range {
+            let is_continuous = range.iter().all(|e| matches!(e, ArrayElement::Number(_)));
+            if is_continuous {
+                scale.input_range = Some(expand_numeric_range(&range, mult, add));
+            } else {
+                // Discrete ranges don't get expanded
+                scale.input_range = Some(range);
             }
         }
 
@@ -696,9 +720,46 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             }
         }
 
+        // 7. Resolve output range (TO clause)
+        self.resolve_output_range(scale, aesthetic)?;
+
         // Mark scale as resolved
         scale.resolved = true;
 
+        Ok(())
+    }
+
+    /// Resolve output range (TO clause) for a scale.
+    ///
+    /// 1. If no output_range is set, fills from `default_output_range()` (full palette)
+    /// 2. Sizes the output_range based on scale type:
+    ///    - Continuous: Keeps as-is (full palette for Vega-Lite interpolation)
+    ///    - Discrete: Truncates to match `input_range.len()` (category count)
+    ///    - Binned: Truncates/interpolates to match `breaks.len() - 1` (bin count)
+    ///
+    /// # Default Implementation
+    ///
+    /// The default implementation handles continuous scales: it fills from
+    /// `default_output_range()` if not set, but does not size the array.
+    /// Vega-Lite will interpolate across the full palette.
+    ///
+    /// Discrete and Binned scales override this to size the output appropriately.
+    fn resolve_output_range(
+        &self,
+        scale: &mut super::Scale,
+        aesthetic: &str,
+    ) -> Result<(), String> {
+        use super::OutputRange;
+
+        // Fill default if not set
+        if scale.output_range.is_none() {
+            if let Some(default_range) = self.default_output_range(aesthetic, scale)? {
+                scale.output_range = Some(OutputRange::Array(default_range));
+            }
+        }
+
+        // Continuous scales: keep output_range as-is (no sizing needed)
+        // Vega-Lite will interpolate across the full palette
         Ok(())
     }
 
@@ -977,6 +1038,17 @@ impl ScaleType {
         target_dtype: &DataType,
     ) -> Option<CastTargetType> {
         self.0.required_cast_type(column_dtype, target_dtype)
+    }
+
+    /// Resolve output range (TO clause) for a scale.
+    ///
+    /// Fills from `default_output_range()` if not set, then sizes based on scale type.
+    pub fn resolve_output_range(
+        &self,
+        scale: &mut super::Scale,
+        aesthetic: &str,
+    ) -> Result<(), String> {
+        self.0.resolve_output_range(scale, aesthetic)
     }
 }
 

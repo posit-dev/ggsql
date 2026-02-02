@@ -218,6 +218,88 @@ pub fn linear_breaks(min: f64, max: f64, n: usize) -> Vec<f64> {
     (0..n).map(|i| min + step * i as f64).collect()
 }
 
+/// Calculate breaks for integer scales with even spacing.
+///
+/// Unlike simply rounding the output of `pretty_breaks`, this function
+/// ensures that breaks are evenly spaced integers. For small ranges where
+/// the natural step would be < 1, it uses step = 1 and generates consecutive
+/// integers.
+///
+/// # Arguments
+/// - `min`: Minimum data value
+/// - `max`: Maximum data value
+/// - `n`: Target number of breaks
+/// - `pretty`: If true, use "nice" integer step sizes (1, 2, 5, 10, 20, ...).
+///   If false, use exact linear spacing rounded to integers.
+pub fn integer_breaks(min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
+    if n == 0 || min >= max || !min.is_finite() || !max.is_finite() {
+        return vec![];
+    }
+
+    let range = max - min;
+    let int_min = min.floor() as i64;
+    let int_max = max.ceil() as i64;
+    let int_range = int_max - int_min;
+
+    // For very small ranges, just return consecutive integers
+    if int_range <= n as i64 {
+        return (int_min..=int_max).map(|i| i as f64).collect();
+    }
+
+    if pretty {
+        // Use "nice" integer step sizes: 1, 2, 5, 10, 20, 25, 50, 100, ...
+        let rough_step = range / (n as f64);
+
+        // Find nice integer step (must be >= 1)
+        let nice_step = if rough_step < 1.0 {
+            1
+        } else {
+            let magnitude = 10f64.powf(rough_step.log10().floor()) as i64;
+            let residual = rough_step / magnitude as f64;
+
+            let multiplier = if residual <= 1.0 {
+                1
+            } else if residual <= 2.0 {
+                2
+            } else if residual <= 5.0 {
+                5
+            } else {
+                10
+            };
+
+            (magnitude * multiplier).max(1)
+        };
+
+        // Find starting point (nice_min <= min, aligned to step)
+        let nice_min = (int_min / nice_step) * nice_step;
+
+        // Generate breaks
+        let mut breaks = vec![];
+        let mut value = nice_min;
+        while value <= int_max {
+            breaks.push(value as f64);
+            value += nice_step;
+        }
+        breaks
+    } else {
+        // Linear spacing with integer step (at least 1)
+        let step = ((int_range as f64) / (n as f64 - 1.0)).ceil() as i64;
+        let step = step.max(1);
+
+        let mut breaks = vec![];
+        let mut value = int_min;
+        while value <= int_max && breaks.len() < n {
+            breaks.push(value as f64);
+            value += step;
+        }
+        // Ensure we include the max if we haven't reached it
+        if breaks.last().map(|&v| v < int_max as f64).unwrap_or(true) {
+            breaks.push(int_max as f64);
+        }
+        breaks
+    }
+}
+
 /// Filter breaks to only those within the given range.
 pub fn filter_breaks_to_range(
     breaks: &[ArrayElement],
@@ -1482,6 +1564,100 @@ mod tests {
     fn test_linear_breaks_zero_count() {
         let breaks = linear_breaks(0.0, 100.0, 0);
         assert!(breaks.is_empty());
+    }
+
+    // =========================================================================
+    // Integer Breaks Tests
+    // =========================================================================
+
+    #[test]
+    fn test_integer_breaks_pretty_basic() {
+        let breaks = integer_breaks(0.0, 100.0, 5, true);
+        // Should produce nice round integers
+        assert!(!breaks.is_empty());
+        for b in &breaks {
+            assert_eq!(*b, b.round(), "Break {} should be integer", b);
+        }
+        // Should cover the range
+        assert!(*breaks.first().unwrap() <= 0.0);
+        assert!(*breaks.last().unwrap() >= 100.0);
+    }
+
+    #[test]
+    fn test_integer_breaks_evenly_spaced() {
+        let breaks = integer_breaks(0.0, 100.0, 5, true);
+        // All gaps should be equal (evenly spaced)
+        if breaks.len() >= 2 {
+            let step = breaks[1] - breaks[0];
+            for i in 1..breaks.len() {
+                let gap = breaks[i] - breaks[i - 1];
+                assert!(
+                    (gap - step).abs() < 0.01,
+                    "Uneven spacing: gap {} != step {} at breaks {:?}",
+                    gap,
+                    step,
+                    breaks
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_integer_breaks_small_range() {
+        // For range 0-5, should get consecutive integers
+        let breaks = integer_breaks(0.0, 5.0, 10, true);
+        assert_eq!(breaks, vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
+    }
+
+    #[test]
+    fn test_integer_breaks_no_rounding_problem() {
+        // This tests the specific bug: linear breaks [0, 1.25, 2.5, 3.75, 5]
+        // when rounded become [0, 1, 3, 4, 5] (uneven because 2.5 rounds to 3)
+        let breaks = integer_breaks(0.0, 5.0, 5, false);
+        // All breaks should be integers
+        for b in &breaks {
+            assert_eq!(*b, b.round(), "Break {} should be integer", b);
+        }
+        // Should be evenly spaced
+        if breaks.len() >= 2 {
+            let step = breaks[1] - breaks[0];
+            for i in 1..breaks.len() {
+                let gap = breaks[i] - breaks[i - 1];
+                assert!(
+                    (gap - step).abs() < 0.01,
+                    "Uneven spacing (the rounding bug): {:?}",
+                    breaks
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_integer_breaks_large_range() {
+        let breaks = integer_breaks(0.0, 1_000_000.0, 5, true);
+        assert!(!breaks.is_empty());
+        // Should have nice round numbers like 0, 200000, 400000, ...
+        for b in &breaks {
+            assert_eq!(*b, b.round(), "Break {} should be integer", b);
+        }
+    }
+
+    #[test]
+    fn test_integer_breaks_negative_range() {
+        let breaks = integer_breaks(-50.0, 50.0, 5, true);
+        assert!(!breaks.is_empty());
+        for b in &breaks {
+            assert_eq!(*b, b.round(), "Break {} should be integer", b);
+        }
+    }
+
+    #[test]
+    fn test_integer_breaks_edge_cases() {
+        assert!(integer_breaks(0.0, 100.0, 0, true).is_empty());
+        assert!(integer_breaks(100.0, 0.0, 5, true).is_empty()); // min > max
+        assert!(integer_breaks(50.0, 50.0, 5, true).is_empty()); // min == max
+        assert!(integer_breaks(f64::NAN, 100.0, 5, true).is_empty());
+        assert!(integer_breaks(0.0, f64::INFINITY, 5, true).is_empty());
     }
 
     // =========================================================================

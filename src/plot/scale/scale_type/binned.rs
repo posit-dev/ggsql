@@ -132,29 +132,22 @@ impl ScaleTypeTrait for Binned {
     fn default_output_range(
         &self,
         aesthetic: &str,
-        scale: &super::super::Scale,
+        _scale: &super::super::Scale,
     ) -> Result<Option<Vec<ArrayElement>>, String> {
-        use super::super::colour::{interpolate_colors, ColorSpace};
         use super::super::palettes;
 
-        // Get bin count from resolved breaks
-        let bin_count = match scale.properties.get("breaks") {
-            Some(ParameterValue::Array(breaks)) if breaks.len() >= 2 => breaks.len() - 1,
-            _ => return Ok(None), // No breaks resolved yet
-        };
-
+        // Return full palette - sizing/interpolation is done in resolve_output_range()
         match aesthetic {
             // Note: "color"/"colour" already split to fill/stroke before scale resolution
             "stroke" | "fill" => {
-                // Get sequential palette and interpolate to get bin_count evenly-spaced colors
                 let palette = palettes::get_color_palette("sequential")
                     .ok_or_else(|| "Default color palette 'sequential' not found".to_string())?;
-
-                // Convert &[&str] to Vec<&str> for interpolate_colors
-                let palette_vec: Vec<&str> = palette.to_vec();
-                let colors = interpolate_colors(&palette_vec, bin_count, ColorSpace::Oklab)?;
-
-                Ok(Some(colors.into_iter().map(ArrayElement::String).collect()))
+                Ok(Some(
+                    palette
+                        .iter()
+                        .map(|s| ArrayElement::String(s.to_string()))
+                        .collect(),
+                ))
             }
             "size" | "linewidth" => Ok(Some(vec![
                 ArrayElement::Number(1.0),
@@ -167,15 +160,103 @@ impl ScaleTypeTrait for Binned {
             "shape" => {
                 let palette = palettes::get_shape_palette("default")
                     .ok_or_else(|| "Default shape palette not found".to_string())?;
-                palettes::expand_palette(palette, bin_count, "default").map(Some)
+                Ok(Some(
+                    palette
+                        .iter()
+                        .map(|s| ArrayElement::String(s.to_string()))
+                        .collect(),
+                ))
             }
             "linetype" => {
                 let palette = palettes::get_linetype_palette("default")
                     .ok_or_else(|| "Default linetype palette not found".to_string())?;
-                palettes::expand_palette(palette, bin_count, "default").map(Some)
+                Ok(Some(
+                    palette
+                        .iter()
+                        .map(|s| ArrayElement::String(s.to_string()))
+                        .collect(),
+                ))
             }
             _ => Ok(None),
         }
+    }
+
+    fn resolve_output_range(
+        &self,
+        scale: &mut super::super::Scale,
+        aesthetic: &str,
+    ) -> Result<(), String> {
+        use super::super::colour::{interpolate_colors, ColorSpace};
+        use super::super::{palettes, OutputRange};
+
+        // Get bin count from resolved breaks
+        let bin_count = match scale.properties.get("breaks") {
+            Some(ParameterValue::Array(breaks)) if breaks.len() >= 2 => breaks.len() - 1,
+            _ => return Ok(()), // No breaks resolved yet
+        };
+
+        // Phase 1: Ensure we have an Array (convert Palette or fill default)
+        match &scale.output_range {
+            None => {
+                // No output range - fill from default
+                if let Some(default_range) = self.default_output_range(aesthetic, scale)? {
+                    scale.output_range = Some(OutputRange::Array(default_range));
+                }
+            }
+            Some(OutputRange::Palette(name)) => {
+                // Named palette - convert to Array
+                let palette = match aesthetic {
+                    "shape" => palettes::get_shape_palette(name),
+                    "linetype" => palettes::get_linetype_palette(name),
+                    _ => palettes::get_color_palette(name),
+                };
+                if let Some(palette) = palette {
+                    let arr: Vec<_> = palette
+                        .iter()
+                        .map(|s| ArrayElement::String(s.to_string()))
+                        .collect();
+                    scale.output_range = Some(OutputRange::Array(arr));
+                }
+                // If palette not found, leave as Palette for Vega-Lite to handle
+            }
+            Some(OutputRange::Array(_)) => {
+                // Already an array, nothing to do
+            }
+        }
+
+        // Phase 2: Size to bin count (with interpolation for colors)
+        if let Some(OutputRange::Array(ref arr)) = scale.output_range.clone() {
+            if matches!(aesthetic, "fill" | "stroke") && arr.len() >= 2 {
+                // Interpolate colors to exact bin_count
+                let hex_strs: Vec<&str> = arr
+                    .iter()
+                    .filter_map(|e| match e {
+                        ArrayElement::String(s) => Some(s.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                let interpolated = interpolate_colors(&hex_strs, bin_count, ColorSpace::Oklab)?;
+                scale.output_range = Some(OutputRange::Array(
+                    interpolated.into_iter().map(ArrayElement::String).collect(),
+                ));
+            } else {
+                // Non-color: truncate/error like discrete
+                if arr.len() < bin_count {
+                    return Err(format!(
+                        "Output range has {} values but {} bins needed",
+                        arr.len(),
+                        bin_count
+                    ));
+                }
+                if arr.len() > bin_count {
+                    scale.output_range = Some(OutputRange::Array(
+                        arr.iter().take(bin_count).cloned().collect(),
+                    ));
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Generate SQL for pre-stat binning transformation.

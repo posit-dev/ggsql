@@ -130,35 +130,105 @@ impl ScaleTypeTrait for Discrete {
     fn default_output_range(
         &self,
         aesthetic: &str,
-        scale: &super::super::Scale,
+        _scale: &super::super::Scale,
     ) -> Result<Option<Vec<ArrayElement>>, String> {
         use super::super::palettes;
 
-        // Get count from input_range length (discrete scales use unique values)
-        let count = scale.input_range.as_ref().map(|r| r.len()).unwrap_or(0);
-        if count == 0 {
-            return Ok(None);
-        }
-
+        // Return full palette - sizing is done in resolve_output_range()
         match aesthetic {
             // Note: "color"/"colour" already split to fill/stroke before scale resolution
             "fill" | "stroke" => {
                 let palette = palettes::get_color_palette("ggsql")
                     .ok_or_else(|| "Default color palette 'ggsql' not found".to_string())?;
-                Ok(Some(palettes::expand_palette(palette, count, "ggsql")?))
+                Ok(Some(
+                    palette
+                        .iter()
+                        .map(|s| ArrayElement::String(s.to_string()))
+                        .collect(),
+                ))
             }
             "shape" => {
                 let palette = palettes::get_shape_palette("default")
                     .ok_or_else(|| "Default shape palette not found".to_string())?;
-                Ok(Some(palettes::expand_palette(palette, count, "default")?))
+                Ok(Some(
+                    palette
+                        .iter()
+                        .map(|s| ArrayElement::String(s.to_string()))
+                        .collect(),
+                ))
             }
             "linetype" => {
                 let palette = palettes::get_linetype_palette("default")
                     .ok_or_else(|| "Default linetype palette not found".to_string())?;
-                Ok(Some(palettes::expand_palette(palette, count, "default")?))
+                Ok(Some(
+                    palette
+                        .iter()
+                        .map(|s| ArrayElement::String(s.to_string()))
+                        .collect(),
+                ))
             }
             _ => Ok(None),
         }
+    }
+
+    fn resolve_output_range(
+        &self,
+        scale: &mut super::super::Scale,
+        aesthetic: &str,
+    ) -> Result<(), String> {
+        use super::super::{palettes, OutputRange};
+
+        // Phase 1: Ensure we have an Array (convert Palette or fill default)
+        match &scale.output_range {
+            None => {
+                // No output range - fill from default
+                if let Some(default_range) = self.default_output_range(aesthetic, scale)? {
+                    scale.output_range = Some(OutputRange::Array(default_range));
+                }
+            }
+            Some(OutputRange::Palette(name)) => {
+                // Named palette - convert to Array
+                let palette = match aesthetic {
+                    "shape" => palettes::get_shape_palette(name),
+                    "linetype" => palettes::get_linetype_palette(name),
+                    _ => palettes::get_color_palette(name),
+                };
+                if let Some(palette) = palette {
+                    let arr: Vec<_> = palette
+                        .iter()
+                        .map(|s| ArrayElement::String(s.to_string()))
+                        .collect();
+                    scale.output_range = Some(OutputRange::Array(arr));
+                }
+                // If palette not found, leave as Palette for Vega-Lite to handle
+            }
+            Some(OutputRange::Array(_)) => {
+                // Already an array, nothing to do
+            }
+        }
+
+        // Phase 2: Size the Array to match category count
+        let count = scale.input_range.as_ref().map(|r| r.len()).unwrap_or(0);
+        if count == 0 {
+            return Ok(());
+        }
+
+        if let Some(OutputRange::Array(ref arr)) = scale.output_range.clone() {
+            if arr.len() < count {
+                return Err(format!(
+                    "Output range has {} values but {} categories needed",
+                    arr.len(),
+                    count
+                ));
+            }
+            if arr.len() > count {
+                scale.output_range = Some(OutputRange::Array(
+                    arr.iter().take(count).cloned().collect(),
+                ));
+            }
+        }
+
+        Ok(())
     }
 }
 

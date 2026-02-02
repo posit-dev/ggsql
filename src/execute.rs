@@ -6,7 +6,7 @@
 use crate::naming;
 use crate::plot::layer::geom::{GeomAesthetics, AESTHETIC_FAMILIES};
 use crate::plot::{
-    AestheticValue, ArrayElement, ArrayElementType, ColumnInfo, Layer, LiteralValue, OutputRange,
+    AestheticValue, ArrayElement, ArrayElementType, ColumnInfo, Layer, LiteralValue,
     ParameterValue, Scale, ScaleType, ScaleTypeKind, Schema, StatResult,
 };
 use crate::{parser, DataFrame, DataSource, Facet, GgsqlError, Plot, Result};
@@ -2857,9 +2857,8 @@ fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>) ->
         let aesthetic = spec.scales[idx].aesthetic.clone();
 
         // Skip scales that were already resolved pre-stat (e.g., Binned scales)
+        // (resolve_output_range is now handled inside the unified resolve() method)
         if spec.scales[idx].resolved {
-            // Still need to resolve output_range for pre-resolved scales
-            resolve_output_range(&mut spec.scales[idx], &aesthetic)?;
             continue;
         }
 
@@ -2894,59 +2893,12 @@ fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>) ->
             // Build context from actual data columns
             let context = ScaleDataContext::from_columns(&column_refs, use_discrete_range);
 
-            // Use unified resolve method
+            // Use unified resolve method (includes resolve_output_range)
             st.resolve(&mut spec.scales[idx], &context, &aesthetic)
                 .map_err(|e| {
                     GgsqlError::ValidationError(format!("Scale '{}': {}", aesthetic, e))
                 })?;
         }
-
-        // Resolve output range
-        resolve_output_range(&mut spec.scales[idx], &aesthetic)?;
-    }
-
-    Ok(())
-}
-
-/// Resolve output range for a scale.
-///
-/// 1. If no output_range is set, gets default from scale type
-/// 2. Expands named palettes to explicit arrays
-fn resolve_output_range(scale: &mut crate::plot::Scale, aesthetic: &str) -> Result<()> {
-    use crate::plot::scale::palettes;
-
-    // Resolve output range (only if not already set)
-    if scale.output_range.is_none() {
-        if let Some(ref st) = scale.scale_type {
-            if let Some(default_range) = st
-                .default_output_range(aesthetic, scale)
-                .map_err(GgsqlError::ValidationError)?
-            {
-                scale.output_range = Some(OutputRange::Array(default_range));
-            }
-        }
-    }
-
-    // Expand named palettes to explicit arrays
-    if let Some(OutputRange::Palette(ref name)) = scale.output_range.clone() {
-        // Determine if this is a color or shape aesthetic
-        let palette_values = match aesthetic {
-            "shape" => palettes::get_shape_palette(name),
-            _ => palettes::get_color_palette(name),
-        };
-
-        if let Some(palette) = palette_values {
-            // Size to input_range length, or use full palette
-            let count = scale
-                .input_range
-                .as_ref()
-                .map(|r| r.len())
-                .unwrap_or(palette.len());
-            let expanded = palettes::expand_palette(palette, count, name)
-                .map_err(GgsqlError::ValidationError)?;
-            scale.output_range = Some(OutputRange::Array(expanded));
-        }
-        // If palette not found, leave as Palette variant for Vega-Lite to handle
     }
 
     Ok(())
