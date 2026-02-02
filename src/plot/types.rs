@@ -532,8 +532,35 @@ impl ArrayElement {
     }
 
     /// Parse ISO datetime string to DateTime variant
+    ///
+    /// Supports timezone-aware formats:
+    /// - RFC3339: `2024-01-15T10:30:00Z`, `2024-01-15T10:30:00+05:30`
+    /// - With offset: `2024-01-15T10:30:00+0530`
+    ///
+    /// And timezone-naive formats (interpreted as UTC):
+    /// - `2024-01-15T10:30:00`, `2024-01-15T10:30:00.123`
+    /// - `2024-01-15 10:30:00`
     pub fn from_datetime_string(s: &str) -> Option<Self> {
-        // Try multiple formats: with/without fractional seconds, with/without Z
+        // Try RFC3339/ISO8601 with timezone first (e.g., "2024-01-15T10:30:00Z", "2024-01-15T10:30:00+05:30")
+        if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+            return Some(Self::DateTime(dt.timestamp_micros()));
+        }
+
+        // Try formats with explicit timezone offset (non-RFC3339 variants)
+        for fmt in &[
+            "%Y-%m-%dT%H:%M:%S%.f%:z", // 2024-01-15T10:30:00.123+05:30
+            "%Y-%m-%dT%H:%M:%S%:z",    // 2024-01-15T10:30:00+05:30
+            "%Y-%m-%dT%H:%M:%S%.f%z",  // 2024-01-15T10:30:00.123+0530
+            "%Y-%m-%dT%H:%M:%S%z",     // 2024-01-15T10:30:00+0530
+            "%Y-%m-%d %H:%M:%S%:z",    // 2024-01-15 10:30:00+05:30
+            "%Y-%m-%d %H:%M:%S%z",     // 2024-01-15 10:30:00+0530
+        ] {
+            if let Ok(dt) = DateTime::parse_from_str(s, fmt) {
+                return Some(Self::DateTime(dt.timestamp_micros()));
+            }
+        }
+
+        // Fall back to naive (timezone-unaware), assumed UTC
         for fmt in &[
             "%Y-%m-%dT%H:%M:%S%.f",
             "%Y-%m-%dT%H:%M:%S",
@@ -769,6 +796,47 @@ mod tests {
     #[test]
     fn test_datetime_from_string_with_space() {
         let elem = ArrayElement::from_datetime_string("2024-01-15 10:30:00").unwrap();
+        assert!(matches!(elem, ArrayElement::DateTime(_)));
+    }
+
+    #[test]
+    fn test_datetime_from_string_with_z() {
+        // UTC timezone indicator
+        let elem = ArrayElement::from_datetime_string("2024-01-15T10:30:00Z").unwrap();
+        assert!(matches!(elem, ArrayElement::DateTime(_)));
+        assert_eq!(elem.to_key_string(), "2024-01-15T10:30:00");
+    }
+
+    #[test]
+    fn test_datetime_from_string_with_positive_offset() {
+        // +05:30 offset (e.g., India Standard Time)
+        // 10:30 IST = 05:00 UTC
+        let elem = ArrayElement::from_datetime_string("2024-01-15T10:30:00+05:30").unwrap();
+        assert!(matches!(elem, ArrayElement::DateTime(_)));
+        assert_eq!(elem.to_key_string(), "2024-01-15T05:00:00");
+    }
+
+    #[test]
+    fn test_datetime_from_string_with_negative_offset() {
+        // -08:00 offset (e.g., Pacific Standard Time)
+        // 10:30 PST = 18:30 UTC
+        let elem = ArrayElement::from_datetime_string("2024-01-15T10:30:00-08:00").unwrap();
+        assert!(matches!(elem, ArrayElement::DateTime(_)));
+        assert_eq!(elem.to_key_string(), "2024-01-15T18:30:00");
+    }
+
+    #[test]
+    fn test_datetime_from_string_with_zero_offset() {
+        // Explicit +00:00 (same as Z)
+        let elem = ArrayElement::from_datetime_string("2024-01-15T10:30:00+00:00").unwrap();
+        assert!(matches!(elem, ArrayElement::DateTime(_)));
+        assert_eq!(elem.to_key_string(), "2024-01-15T10:30:00");
+    }
+
+    #[test]
+    fn test_datetime_from_string_with_fractional_and_tz() {
+        // Fractional seconds with timezone
+        let elem = ArrayElement::from_datetime_string("2024-01-15T10:30:00.123Z").unwrap();
         assert!(matches!(elem, ArrayElement::DateTime(_)));
     }
 

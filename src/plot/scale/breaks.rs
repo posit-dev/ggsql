@@ -7,9 +7,169 @@ use crate::plot::ArrayElement;
 /// Default number of breaks
 pub const DEFAULT_BREAK_COUNT: usize = 5;
 
-/// Calculate pretty breaks using "nice numbers" algorithm.
-/// Based on Wilkinson's algorithm (similar to R's pretty()).
+// =============================================================================
+// Wilkinson Extended Algorithm
+// =============================================================================
+
+/// "Nice" step multipliers in order of preference (most preferred first).
+/// From Talbot et al. "An Extension of Wilkinson's Algorithm for Positioning Tick Labels on Axes"
+const Q: &[f64] = &[1.0, 5.0, 2.0, 2.5, 4.0, 3.0];
+
+/// Default scoring weights
+const W_SIMPLICITY: f64 = 0.2;
+const W_COVERAGE: f64 = 0.25;
+const W_DENSITY: f64 = 0.5;
+const W_LEGIBILITY: f64 = 0.05;
+
+/// Calculate breaks using Wilkinson Extended labeling algorithm.
+///
+/// This algorithm searches for optimal axis labeling by scoring candidates
+/// on simplicity, coverage, density, and legibility.
+///
+/// Reference: Talbot, Lin, Hanrahan (2010) "An Extension of Wilkinson's Algorithm
+/// for Positioning Tick Labels on Axes"
+pub fn wilkinson_extended(min: f64, max: f64, target_count: usize) -> Vec<f64> {
+    if target_count == 0 || min >= max || !min.is_finite() || !max.is_finite() {
+        return vec![];
+    }
+
+    let range = max - min;
+
+    let mut best_score = f64::NEG_INFINITY;
+    let mut best_breaks: Vec<f64> = vec![];
+
+    // Search through possible labelings
+    // j = skip factor (1 = every Q value, 2 = every other, etc.)
+    for j in 1..=target_count.max(10) {
+        // q_index = which Q value to use
+        for (q_index, &q) in Q.iter().enumerate() {
+            // Simplicity score for this q
+            let q_score = simplicity_score(q_index, Q.len(), j);
+
+            // Early termination: if best possible score can't beat current best
+            if q_score + W_COVERAGE + W_DENSITY + W_LEGIBILITY < best_score {
+                continue;
+            }
+
+            // k = actual number of ticks (varies around target)
+            for k in 2..=(target_count * 2).max(10) {
+                let density = density_score(k, target_count);
+
+                // Early termination check
+                if q_score + W_COVERAGE + density + W_LEGIBILITY < best_score {
+                    continue;
+                }
+
+                // Calculate step size
+                let delta = (range / (k as f64 - 1.0)) * (j as f64);
+                let step = q * nice_step_size(delta / q);
+
+                // Find nice min that covers data
+                let nice_min = (min / step).floor() * step;
+                let nice_max = nice_min + step * (k as f64 - 1.0);
+
+                // Check coverage
+                if nice_max < max {
+                    continue; // Doesn't cover data
+                }
+
+                let coverage = coverage_score(min, max, nice_min, nice_max);
+                let legibility = 1.0; // Simplified: all formats equally legible
+
+                let score = W_SIMPLICITY * q_score
+                    + W_COVERAGE * coverage
+                    + W_DENSITY * density
+                    + W_LEGIBILITY * legibility;
+
+                if score > best_score {
+                    best_score = score;
+                    best_breaks = generate_breaks(nice_min, step, k);
+                }
+            }
+        }
+    }
+
+    // Fallback to simple algorithm if search failed
+    if best_breaks.is_empty() {
+        return pretty_breaks_simple(min, max, target_count);
+    }
+
+    best_breaks
+}
+
+/// Simplicity score: prefer earlier Q values and smaller skip factors
+fn simplicity_score(q_index: usize, q_len: usize, j: usize) -> f64 {
+    1.0 - (q_index as f64) / (q_len as f64) - (j as f64 - 1.0) / 10.0
+}
+
+/// Coverage score: penalize extending too far beyond data range
+fn coverage_score(data_min: f64, data_max: f64, label_min: f64, label_max: f64) -> f64 {
+    let data_range = data_max - data_min;
+    let label_range = label_max - label_min;
+
+    if label_range == 0.0 {
+        return 0.0;
+    }
+
+    // Penalize for extending beyond data
+    let extension = (label_range - data_range) / data_range;
+    (1.0 - 0.5 * extension).max(0.0)
+}
+
+/// Density score: prefer getting close to target count
+fn density_score(actual: usize, target: usize) -> f64 {
+    let ratio = actual as f64 / target as f64;
+    // Prefer slight under-density to over-density
+    if ratio >= 1.0 {
+        2.0 - ratio
+    } else {
+        ratio
+    }
+}
+
+/// Round to nearest power of 10
+fn nice_step_size(x: f64) -> f64 {
+    10f64.powf(x.log10().round())
+}
+
+/// Generate break positions
+fn generate_breaks(start: f64, step: f64, count: usize) -> Vec<f64> {
+    (0..count).map(|i| start + step * i as f64).collect()
+}
+
+/// Wilkinson Extended with preference for including zero.
+///
+/// Useful for bar charts and other visualizations where zero is meaningful.
+pub fn wilkinson_extended_include_zero(min: f64, max: f64, target_count: usize) -> Vec<f64> {
+    // If zero is already in range, use standard algorithm
+    if min <= 0.0 && max >= 0.0 {
+        return wilkinson_extended(min, max, target_count);
+    }
+
+    // Extend range to include zero
+    let extended_min = if min > 0.0 { 0.0 } else { min };
+    let extended_max = if max < 0.0 { 0.0 } else { max };
+
+    wilkinson_extended(extended_min, extended_max, target_count)
+}
+
+// =============================================================================
+// Pretty Breaks (Public API)
+// =============================================================================
+
+/// Calculate pretty breaks using Wilkinson Extended labeling algorithm.
+///
+/// This is the main entry point for "nice" axis break calculation.
+/// Uses an optimization-based approach to find breaks that balance
+/// simplicity, coverage, and density.
 pub fn pretty_breaks(min: f64, max: f64, n: usize) -> Vec<f64> {
+    wilkinson_extended(min, max, n)
+}
+
+/// Legacy simple "nice numbers" algorithm.
+///
+/// Kept for comparison and fallback purposes.
+pub fn pretty_breaks_simple(min: f64, max: f64, n: usize) -> Vec<f64> {
     if n == 0 || min >= max {
         return vec![];
     }
@@ -1999,5 +2159,119 @@ mod tests {
         assert_eq!(auto, MinorBreakSpec::Auto);
         assert_eq!(count, MinorBreakSpec::Count(4));
         assert_eq!(interval, MinorBreakSpec::Interval("week".to_string()));
+    }
+
+    // =========================================================================
+    // Wilkinson Extended Tests
+    // =========================================================================
+
+    #[test]
+    fn test_wilkinson_basic() {
+        let breaks = wilkinson_extended(0.0, 100.0, 5);
+        assert!(!breaks.is_empty());
+        assert!(breaks.len() >= 3 && breaks.len() <= 10);
+        // Should produce nice round numbers
+        assert!(breaks.iter().all(|&b| b == b.round()));
+    }
+
+    #[test]
+    fn test_wilkinson_prefers_nice_numbers() {
+        let breaks = wilkinson_extended(0.0, 97.0, 5);
+        // Should prefer 0, 20, 40, 60, 80, 100 over something like 0, 24.25, ...
+        for b in &breaks {
+            let normalized = b / 10.0;
+            // Check divisible by nice numbers (1, 2, 2.5, 5, 10)
+            let is_nice = normalized.fract() == 0.0
+                || (normalized * 2.0).fract() == 0.0
+                || (normalized * 4.0).fract() == 0.0;
+            assert!(is_nice, "Break {} is not a nice number", b);
+        }
+    }
+
+    #[test]
+    fn test_wilkinson_covers_data() {
+        let breaks = wilkinson_extended(7.3, 94.2, 5);
+        assert!(*breaks.first().unwrap() <= 7.3);
+        assert!(*breaks.last().unwrap() >= 94.2);
+    }
+
+    #[test]
+    fn test_wilkinson_small_range() {
+        let breaks = wilkinson_extended(0.1, 0.9, 5);
+        assert!(!breaks.is_empty());
+        // Should handle fractional ranges
+    }
+
+    #[test]
+    fn test_wilkinson_large_range() {
+        let breaks = wilkinson_extended(0.0, 1_000_000.0, 5);
+        assert!(!breaks.is_empty());
+        // Should produce nice round numbers in millions
+    }
+
+    #[test]
+    fn test_wilkinson_negative_range() {
+        let breaks = wilkinson_extended(-50.0, 50.0, 5);
+        assert!(!breaks.is_empty());
+        // Should likely include zero or values near zero
+        assert!(breaks.iter().any(|&b| b.abs() < 20.0));
+    }
+
+    #[test]
+    fn test_wilkinson_edge_cases() {
+        assert!(wilkinson_extended(0.0, 100.0, 0).is_empty());
+        assert!(wilkinson_extended(100.0, 0.0, 5).is_empty()); // min > max
+        assert!(wilkinson_extended(50.0, 50.0, 5).is_empty()); // min == max
+        assert!(wilkinson_extended(f64::NAN, 100.0, 5).is_empty());
+        assert!(wilkinson_extended(0.0, f64::INFINITY, 5).is_empty());
+    }
+
+    #[test]
+    fn test_wilkinson_vs_simple_quality() {
+        // Test case where Wilkinson should produce results
+        let wilkinson = wilkinson_extended(0.0, 97.0, 5);
+        let simple = pretty_breaks_simple(0.0, 97.0, 5);
+
+        // Both should produce non-empty results
+        assert!(!wilkinson.is_empty());
+        assert!(!simple.is_empty());
+
+        // Wilkinson should get reasonably close to target count
+        assert!(wilkinson.len() >= 3 && wilkinson.len() <= 10);
+    }
+
+    #[test]
+    fn test_wilkinson_include_zero() {
+        // Test the include_zero variant
+        let breaks = wilkinson_extended_include_zero(20.0, 80.0, 5);
+        // Should extend to include zero
+        assert!(*breaks.first().unwrap() <= 0.0);
+    }
+
+    #[test]
+    fn test_wilkinson_include_zero_already_in_range() {
+        // When zero is already in range, should behave like regular wilkinson
+        let breaks = wilkinson_extended_include_zero(-10.0, 90.0, 5);
+        assert!(!breaks.is_empty());
+        // Should cover the range
+        assert!(*breaks.first().unwrap() <= -10.0);
+        assert!(*breaks.last().unwrap() >= 90.0);
+    }
+
+    #[test]
+    fn test_wilkinson_include_zero_negative_range() {
+        // Test with negative-only range
+        let breaks = wilkinson_extended_include_zero(-80.0, -20.0, 5);
+        // Should extend to include zero
+        assert!(*breaks.last().unwrap() >= 0.0);
+    }
+
+    #[test]
+    fn test_pretty_breaks_simple_preserved() {
+        // Ensure the simple algorithm is still available and works
+        let breaks = pretty_breaks_simple(0.0, 100.0, 5);
+        assert!(!breaks.is_empty());
+        assert!(breaks[0] <= 0.0);
+        assert!(*breaks.last().unwrap() >= 100.0);
     }
 }

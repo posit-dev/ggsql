@@ -326,7 +326,7 @@ impl Transform {
     /// ```
     pub fn from_name(name: &str) -> Option<Self> {
         match name {
-            "identity" => Some(Self::identity()),
+            "identity" | "linear" => Some(Self::identity()),
             "log" | "log10" => Some(Self::log()),
             "log2" => Some(Self::log2()),
             "ln" => Some(Self::ln()),
