@@ -412,7 +412,6 @@ module.exports = grammar({
       $.facet_clause,
       $.coord_clause,
       $.label_clause,
-      $.guide_clause,
       $.theme_clause,
     ),
 
@@ -773,32 +772,6 @@ module.exports = grammar({
       'title', 'subtitle', 'x', 'y', 'caption', 'tag',
       // Aesthetic names for legend titles
       'color', 'colour', 'fill', 'size', 'shape', 'linetype'
-    ),
-
-    // GUIDE clause - GUIDE aesthetic SETTING prop => value, ...
-    guide_clause: $ => seq(
-      caseInsensitive('GUIDE'),
-      $.aesthetic_name,
-      caseInsensitive('SETTING'),
-      optional(seq(
-        $.guide_property,
-        repeat(seq(',', $.guide_property))
-      ))
-    ),
-
-    guide_property: $ => choice(
-      seq('type', '=>', $.guide_type),
-      seq($.guide_property_name, '=>', choice($.string, $.number, $.boolean))
-    ),
-
-    guide_type: $ => choice(
-      'legend', 'colorbar', 'axis', 'none'
-    ),
-
-    guide_property_name: $ => choice(
-      'position', 'direction', 'nrow', 'ncol', 'title',
-      'title_position', 'label_position', 'text_angle', 'text_size',
-      'reverse', 'order'
     ),
 
     // THEME clause - THEME [name] [SETTING prop => value, ...]

@@ -79,7 +79,6 @@
 
 ; Property names
 (coord_property_name) @property
-(guide_property_name) @property
 (theme_property_name) @property
 (label_type) @property
 

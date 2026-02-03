@@ -711,30 +711,89 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                         .properties
                         .insert("breaks".to_string(), ParameterValue::Array(filtered));
                 }
+                Some(ParameterValue::String(interval_str)) => {
+                    // Temporal interval string like "2 months", "week"
+                    // Only valid for temporal transforms (Date, DateTime, Time)
+                    use super::super::breaks::{
+                        temporal_breaks_date, temporal_breaks_datetime, temporal_breaks_time,
+                        TemporalInterval,
+                    };
+
+                    if let Some(interval) = TemporalInterval::create_from_str(interval_str) {
+                        if let Some(ref range) = scale.input_range {
+                            let breaks: Vec<ArrayElement> =
+                                match resolved_transform.transform_kind() {
+                                    TransformKind::Date => {
+                                        let min = range[0].to_f64().unwrap_or(0.0) as i32;
+                                        let max =
+                                            range[range.len() - 1].to_f64().unwrap_or(0.0) as i32;
+                                        temporal_breaks_date(min, max, interval)
+                                            .into_iter()
+                                            .map(ArrayElement::String)
+                                            .collect()
+                                    }
+                                    TransformKind::DateTime => {
+                                        let min = range[0].to_f64().unwrap_or(0.0) as i64;
+                                        let max =
+                                            range[range.len() - 1].to_f64().unwrap_or(0.0) as i64;
+                                        temporal_breaks_datetime(min, max, interval)
+                                            .into_iter()
+                                            .map(ArrayElement::String)
+                                            .collect()
+                                    }
+                                    TransformKind::Time => {
+                                        let min = range[0].to_f64().unwrap_or(0.0) as i64;
+                                        let max =
+                                            range[range.len() - 1].to_f64().unwrap_or(0.0) as i64;
+                                        temporal_breaks_time(min, max, interval)
+                                            .into_iter()
+                                            .map(ArrayElement::String)
+                                            .collect()
+                                    }
+                                    _ => vec![], // Non-temporal transforms don't support interval strings
+                                };
+
+                            if !breaks.is_empty() {
+                                // Convert string breaks to appropriate temporal ArrayElement types
+                                let converted: Vec<ArrayElement> = breaks
+                                    .iter()
+                                    .map(|elem| resolved_transform.parse_value(elem))
+                                    .collect();
+                                // Filter to input range
+                                let filtered =
+                                    super::super::breaks::filter_breaks_to_range(&converted, range);
+                                scale
+                                    .properties
+                                    .insert("breaks".to_string(), ParameterValue::Array(filtered));
+                            }
+                        }
+                    }
+                }
                 _ => {}
             }
         }
 
-        // 6. Apply label template if present (RENAMING * => '...')
+        // 6. Apply label template (RENAMING * => '...')
+        // Default to '{}' to ensure we control formatting instead of Vega-Lite
         // For continuous/binned scales, apply to breaks array
         // For discrete scales, apply to input_range (domain values)
-        if let Some(ref template) = scale.label_template {
-            let values_to_label = if self.supports_breaks() {
-                // Continuous/Binned: use breaks
-                match scale.properties.get("breaks") {
-                    Some(ParameterValue::Array(breaks)) => Some(breaks.clone()),
-                    _ => None,
-                }
-            } else {
-                // Discrete: use input_range
-                scale.input_range.clone()
-            };
+        let template = scale.label_template.as_deref().unwrap_or("{}");
 
-            if let Some(values) = values_to_label {
-                let generated_labels =
-                    crate::format::apply_label_template(&values, template, &scale.label_mapping);
-                scale.label_mapping = Some(generated_labels);
+        let values_to_label = if self.supports_breaks() {
+            // Continuous/Binned: use breaks
+            match scale.properties.get("breaks") {
+                Some(ParameterValue::Array(breaks)) => Some(breaks.clone()),
+                _ => None,
             }
+        } else {
+            // Discrete: use input_range
+            scale.input_range.clone()
+        };
+
+        if let Some(values) = values_to_label {
+            let generated_labels =
+                crate::format::apply_label_template(&values, template, &scale.label_mapping);
+            scale.label_mapping = Some(generated_labels);
         }
 
         // 7. Resolve output range (TO clause)
@@ -2919,6 +2978,147 @@ mod tests {
     #[test]
     fn test_supports_breaks_identity_false() {
         assert!(!ScaleType::identity().supports_breaks());
+    }
+
+    #[test]
+    fn test_resolve_string_interval_breaks_date() {
+        use crate::plot::scale::Scale;
+
+        // Set up a date scale with an interval string like "2 months"
+        let mut scale = Scale::new("x");
+        scale.scale_type = Some(ScaleType::continuous());
+        scale.transform = Some(Transform::date());
+        // Date range: 2024-01-15 to 2024-06-15 (roughly 5 months)
+        // 2024-01-15 = day 19738, 2024-06-15 = day 19889
+        scale.input_range = Some(vec![
+            ArrayElement::Date(19738), // 2024-01-15
+            ArrayElement::Date(19889), // 2024-06-15
+        ]);
+        scale
+            .properties
+            .insert("breaks".to_string(), ParameterValue::String("2 months".to_string()));
+
+        let context = ScaleDataContext::new();
+        ScaleType::continuous()
+            .resolve(&mut scale, &context, "x")
+            .unwrap();
+
+        // Should have converted to Array with date breaks
+        match scale.properties.get("breaks") {
+            Some(ParameterValue::Array(breaks)) => {
+                assert!(!breaks.is_empty(), "breaks should not be empty");
+                // Check that the breaks are Date types
+                for brk in breaks {
+                    assert!(
+                        matches!(brk, ArrayElement::Date(_)),
+                        "breaks should be Date elements"
+                    );
+                }
+            }
+            _ => panic!("breaks should be an Array after resolution"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_string_interval_breaks_datetime() {
+        use crate::plot::scale::Scale;
+
+        // Set up a datetime scale with an interval string like "month"
+        let mut scale = Scale::new("x");
+        scale.scale_type = Some(ScaleType::continuous());
+        scale.transform = Some(Transform::datetime());
+        // DateTime range: 2024-01-01 to 2024-04-01 (3 months)
+        // Microseconds since epoch for these dates
+        let jan1_2024_us = 1704067200_i64 * 1_000_000; // 2024-01-01 00:00:00 UTC
+        let apr1_2024_us = 1711929600_i64 * 1_000_000; // 2024-04-01 00:00:00 UTC
+        scale.input_range = Some(vec![
+            ArrayElement::DateTime(jan1_2024_us),
+            ArrayElement::DateTime(apr1_2024_us),
+        ]);
+        scale
+            .properties
+            .insert("breaks".to_string(), ParameterValue::String("month".to_string()));
+
+        let context = ScaleDataContext::new();
+        ScaleType::continuous()
+            .resolve(&mut scale, &context, "x")
+            .unwrap();
+
+        // Should have converted to Array with datetime breaks
+        match scale.properties.get("breaks") {
+            Some(ParameterValue::Array(breaks)) => {
+                assert!(!breaks.is_empty(), "breaks should not be empty");
+                // Check that the breaks are DateTime types
+                for brk in breaks {
+                    assert!(
+                        matches!(brk, ArrayElement::DateTime(_)),
+                        "breaks should be DateTime elements"
+                    );
+                }
+            }
+            _ => panic!("breaks should be an Array after resolution"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_string_interval_breaks_invalid_interval() {
+        use crate::plot::scale::Scale;
+
+        // Invalid interval string should be ignored (no crash)
+        let mut scale = Scale::new("x");
+        scale.scale_type = Some(ScaleType::continuous());
+        scale.transform = Some(Transform::date());
+        scale.input_range = Some(vec![
+            ArrayElement::Date(19738),
+            ArrayElement::Date(19889),
+        ]);
+        scale
+            .properties
+            .insert("breaks".to_string(), ParameterValue::String("invalid_interval".to_string()));
+
+        let context = ScaleDataContext::new();
+        // Should not error, just leave breaks as-is
+        ScaleType::continuous()
+            .resolve(&mut scale, &context, "x")
+            .unwrap();
+
+        // breaks should still be a String (not converted)
+        match scale.properties.get("breaks") {
+            Some(ParameterValue::String(_)) => {
+                // Expected - invalid interval was ignored
+            }
+            _ => panic!("invalid interval should leave breaks unchanged"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_string_interval_breaks_non_temporal_ignored() {
+        use crate::plot::scale::Scale;
+
+        // String interval on non-temporal transform should be ignored
+        let mut scale = Scale::new("x");
+        scale.scale_type = Some(ScaleType::continuous());
+        scale.transform = Some(Transform::identity()); // Not temporal
+        scale.input_range = Some(vec![
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(100.0),
+        ]);
+        scale
+            .properties
+            .insert("breaks".to_string(), ParameterValue::String("2 months".to_string()));
+
+        let context = ScaleDataContext::new();
+        ScaleType::continuous()
+            .resolve(&mut scale, &context, "x")
+            .unwrap();
+
+        // breaks should still be a String (not converted)
+        match scale.properties.get("breaks") {
+            Some(ParameterValue::String(_)) => {
+                // Expected - non-temporal transform ignores interval strings
+            }
+            _ => panic!("non-temporal transform should leave breaks unchanged"),
+        }
     }
 
     // =========================================================================

@@ -51,7 +51,6 @@ COORD flip
 LABEL title => 'Top 10 Product Categories',
       x => 'Category',
       y => 'Total Sales'
-GUIDE fill SETTING type => 'none'
 THEME dark
 
 -- ============================================================================
@@ -135,10 +134,6 @@ LABEL title => 'Sales Performance Analysis',
       y => 'Revenue (log scale)',
       color => 'Product Category',
       size => 'Quantity Sold'
-GUIDE color SETTING
-    type => 'legend',
-    position => 'right',
-    title => 'Categories'
 THEME grey
 
 -- ============================================================================
@@ -200,7 +195,6 @@ LABEL title => 'Featured Products: Price vs Rating',
       x => 'Price ($)',
       y => 'Customer Rating',
       size => 'Total Sales'
-GUIDE size SETTING type => 'legend', position => 'bottom'
 
 -- ============================================================================
 -- Example 11: Multiple VISUALISE Statements

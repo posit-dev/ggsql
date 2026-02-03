@@ -23,4 +23,4 @@ pub use scale_type::{
 
 pub use shape::shape_to_svg_path;
 pub use transform::{Transform, TransformKind, TransformTrait, ALL_TRANSFORM_NAMES};
-pub use types::{Guide, GuideType, OutputRange, Scale};
+pub use types::{OutputRange, Scale};

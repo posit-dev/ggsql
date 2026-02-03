@@ -39,11 +39,25 @@ use std::collections::HashMap;
 /// - `Some(label)` → rename to that label
 /// - `None` → suppress label (empty string)
 ///
-/// Example output: `"datum.label == 'A' ? 'Alpha' : datum.label == 'B' ? 'Beta' : datum.label"`
-fn build_label_expr(mappings: &HashMap<String, Option<String>>) -> String {
+/// For non-temporal scales:
+/// - Uses `datum.label` for comparisons
+/// - Example: `"datum.label == 'A' ? 'Alpha' : datum.label == 'B' ? 'Beta' : datum.label"`
+///
+/// For temporal scales:
+/// - Uses `timeFormat(datum.value, 'fmt')` for comparisons
+/// - This is necessary because `datum.label` contains Vega-Lite's formatted label (e.g., "Jan 1, 2024")
+///   but our label_mapping keys are ISO format strings (e.g., "2024-01-01")
+/// - Example: `"timeFormat(datum.value, '%Y-%m-%d') == '2024-01-01' ? 'Q1 Start' : datum.label"`
+fn build_label_expr(mappings: &HashMap<String, Option<String>>, time_format: Option<&str>) -> String {
     if mappings.is_empty() {
         return "datum.label".to_string();
     }
+
+    // Build the comparison expression based on whether this is temporal
+    let comparison_expr = match time_format {
+        Some(fmt) => format!("timeFormat(datum.value, '{}')", fmt),
+        None => "datum.label".to_string(),
+    };
 
     let mut parts: Vec<String> = mappings
         .iter()
@@ -52,11 +66,11 @@ fn build_label_expr(mappings: &HashMap<String, Option<String>>) -> String {
             match to {
                 Some(label) => {
                     let to_escaped = label.replace('\'', "\\'");
-                    format!("datum.label == '{}' ? '{}'", from_escaped, to_escaped)
+                    format!("{} == '{}' ? '{}'", comparison_expr, from_escaped, to_escaped)
                 }
                 None => {
                     // NULL suppresses the label (empty string)
-                    format!("datum.label == '{}' ? ''", from_escaped)
+                    format!("{} == '{}' ? ''", comparison_expr, from_escaped)
                 }
             }
         })
@@ -684,7 +698,19 @@ impl VegaLiteWriter {
                     // Handle label_mapping -> labelExpr (RENAMING clause)
                     if let Some(ref label_mapping) = scale.label_mapping {
                         if !label_mapping.is_empty() {
-                            let label_expr = build_label_expr(label_mapping);
+                            // For temporal scales, use timeFormat() to compare against ISO keys
+                            // because datum.label contains Vega-Lite's formatted label (e.g., "Jan 1, 2024")
+                            // but our label_mapping keys are ISO format strings (e.g., "2024-01-01")
+                            use crate::plot::scale::TransformKind;
+                            let time_format = scale.transform.as_ref().and_then(|t| {
+                                match t.transform_kind() {
+                                    TransformKind::Date => Some("%Y-%m-%d"),
+                                    TransformKind::DateTime => Some("%Y-%m-%dT%H:%M:%S"),
+                                    TransformKind::Time => Some("%H:%M:%S"),
+                                    _ => None,
+                                }
+                            });
+                            let label_expr = build_label_expr(label_mapping, time_format);
 
                             if matches!(
                                 aesthetic,
@@ -768,106 +794,6 @@ impl VegaLiteWriter {
             _ => aesthetic,
         }
         .to_string()
-    }
-
-    /// Apply guide configurations to encoding channels
-    fn apply_guides_to_encoding(&self, encoding: &mut Map<String, Value>, spec: &Plot) {
-        use crate::plot::GuideType;
-
-        for guide in &spec.guides {
-            let channel_name = self.map_aesthetic_name(&guide.aesthetic);
-
-            // Skip if this channel doesn't exist in the encoding
-            if !encoding.contains_key(&channel_name) {
-                continue;
-            }
-
-            // Handle guide type
-            match &guide.guide_type {
-                Some(GuideType::None) => {
-                    // Remove legend for this channel
-                    if let Some(channel) = encoding.get_mut(&channel_name) {
-                        channel["legend"] = json!(null);
-                    }
-                }
-                Some(GuideType::Legend) => {
-                    // Apply legend properties
-                    if let Some(channel) = encoding.get_mut(&channel_name) {
-                        let mut legend = json!({});
-
-                        for (prop_name, prop_value) in &guide.properties {
-                            let value = prop_value.to_json();
-
-                            // Map property names to Vega-Lite legend properties
-                            match prop_name.as_str() {
-                                "title" => legend["title"] = value,
-                                "position" => legend["orient"] = value,
-                                "direction" => legend["direction"] = value,
-                                "nrow" => legend["rowPadding"] = value,
-                                "ncol" => legend["columnPadding"] = value,
-                                "title_position" => legend["titleAnchor"] = value,
-                                _ => {
-                                    // Pass through other properties
-                                    legend[prop_name] = value;
-                                }
-                            }
-                        }
-
-                        if !legend.as_object().unwrap().is_empty() {
-                            channel["legend"] = legend;
-                        }
-                    }
-                }
-                Some(GuideType::ColorBar) => {
-                    // For color bars, similar to legend but with gradient
-                    if let Some(channel) = encoding.get_mut(&channel_name) {
-                        let mut legend = json!({"type": "gradient"});
-
-                        for (prop_name, prop_value) in &guide.properties {
-                            let value = prop_value.to_json();
-
-                            match prop_name.as_str() {
-                                "title" => legend["title"] = value,
-                                "position" => legend["orient"] = value,
-                                _ => legend[prop_name] = value,
-                            }
-                        }
-
-                        channel["legend"] = legend;
-                    }
-                }
-                Some(GuideType::Axis) => {
-                    // Apply axis properties
-                    if let Some(channel) = encoding.get_mut(&channel_name) {
-                        let mut axis = json!({});
-
-                        for (prop_name, prop_value) in &guide.properties {
-                            let value = prop_value.to_json();
-
-                            // Map property names to Vega-Lite axis properties
-                            match prop_name.as_str() {
-                                "title" => axis["title"] = value,
-                                "text_angle" => axis["labelAngle"] = value,
-                                "text_size" => axis["labelFontSize"] = value,
-                                _ => axis[prop_name] = value,
-                            }
-                        }
-
-                        if !axis.as_object().unwrap().is_empty() {
-                            channel["axis"] = axis;
-                        }
-                    }
-                }
-                None => {
-                    // No specific guide type, just apply properties generically
-                    if let Some(channel) = encoding.get_mut(&channel_name) {
-                        for (prop_name, prop_value) in &guide.properties {
-                            channel[prop_name] = prop_value.to_json();
-                        }
-                    }
-                }
-            }
-        }
     }
 
     /// Validate column references for a single layer against its specific DataFrame
@@ -1522,11 +1448,6 @@ impl Writer for VegaLiteWriter {
                 );
             }
 
-            // Apply guides to first layer's encoding only (they apply globally)
-            if layer_idx == 0 {
-                self.apply_guides_to_encoding(&mut encoding, spec);
-            }
-
             layer_spec["encoding"] = Value::Object(encoding);
             layers.push(layer_spec);
         }
@@ -1537,17 +1458,6 @@ impl Writer for VegaLiteWriter {
         // This must happen AFTER layers are built since transforms modify layer encodings
         let first_df = data.get(&layer_data_keys[0]).unwrap();
         self.apply_coord_transforms(spec, first_df, &mut vl_spec)?;
-
-        // Apply guide configurations for multi-layer specs
-        if spec.layers.len() > 1 && !spec.guides.is_empty() {
-            let mut resolve = json!({"legend": {}, "scale": {}});
-            for guide in &spec.guides {
-                let channel = self.map_aesthetic_name(&guide.aesthetic);
-                resolve["legend"][&channel] = json!("shared");
-                resolve["scale"][&channel] = json!("shared");
-            }
-            vl_spec["resolve"] = resolve;
-        }
 
         // Handle faceting if present
         if let Some(facet) = &spec.facet {
@@ -2707,391 +2617,6 @@ mod tests {
         assert_eq!(data[0]["y"], 2);
         assert_eq!(data[99]["x"], 100);
         assert_eq!(data[99]["y"], 200);
-    }
-
-    // ========================================
-    // Guide Tests
-    // ========================================
-
-    #[test]
-    fn test_guide_none_hides_legend() {
-        use crate::plot::{Guide, GuideType};
-
-        let writer = VegaLiteWriter::new();
-
-        let mut spec = Plot::new();
-        let layer = Layer::new(Geom::point())
-            .with_aesthetic(
-                "x".to_string(),
-                AestheticValue::standard_column("x".to_string()),
-            )
-            .with_aesthetic(
-                "y".to_string(),
-                AestheticValue::standard_column("y".to_string()),
-            )
-            .with_aesthetic(
-                "color".to_string(),
-                AestheticValue::standard_column("category".to_string()),
-            );
-        spec.layers.push(layer);
-
-        // Add guide to hide color legend
-        spec.guides.push(Guide {
-            aesthetic: "color".to_string(),
-            guide_type: Some(GuideType::None),
-            properties: HashMap::new(),
-        });
-
-        let df = df! {
-            "x" => &[1, 2, 3],
-            "y" => &[4, 5, 6],
-            "category" => &["A", "B", "C"],
-        }
-        .unwrap();
-
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
-        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
-
-        assert_eq!(
-            vl_spec["layer"][0]["encoding"]["color"]["legend"],
-            json!(null)
-        );
-    }
-
-    #[test]
-    fn test_guide_legend_with_title() {
-        use crate::plot::{Guide, GuideType, ParameterValue};
-
-        let writer = VegaLiteWriter::new();
-
-        let mut spec = Plot::new();
-        let layer = Layer::new(Geom::point())
-            .with_aesthetic(
-                "x".to_string(),
-                AestheticValue::standard_column("x".to_string()),
-            )
-            .with_aesthetic(
-                "y".to_string(),
-                AestheticValue::standard_column("y".to_string()),
-            )
-            .with_aesthetic(
-                "color".to_string(),
-                AestheticValue::standard_column("category".to_string()),
-            );
-        spec.layers.push(layer);
-
-        // Add guide with custom title
-        let mut properties = HashMap::new();
-        properties.insert(
-            "title".to_string(),
-            ParameterValue::String("Product Type".to_string()),
-        );
-        spec.guides.push(Guide {
-            aesthetic: "color".to_string(),
-            guide_type: Some(GuideType::Legend),
-            properties,
-        });
-
-        let df = df! {
-            "x" => &[1, 2, 3],
-            "y" => &[4, 5, 6],
-            "category" => &["A", "B", "C"],
-        }
-        .unwrap();
-
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
-        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
-
-        assert_eq!(
-            vl_spec["layer"][0]["encoding"]["color"]["legend"]["title"],
-            "Product Type"
-        );
-    }
-
-    #[test]
-    fn test_guide_legend_position() {
-        use crate::plot::{Guide, GuideType, ParameterValue};
-
-        let writer = VegaLiteWriter::new();
-
-        let mut spec = Plot::new();
-        let layer = Layer::new(Geom::point())
-            .with_aesthetic(
-                "x".to_string(),
-                AestheticValue::standard_column("x".to_string()),
-            )
-            .with_aesthetic(
-                "y".to_string(),
-                AestheticValue::standard_column("y".to_string()),
-            )
-            .with_aesthetic(
-                "size".to_string(),
-                AestheticValue::standard_column("value".to_string()),
-            );
-        spec.layers.push(layer);
-
-        // Add guide with custom position
-        let mut properties = HashMap::new();
-        properties.insert(
-            "position".to_string(),
-            ParameterValue::String("bottom".to_string()),
-        );
-        spec.guides.push(Guide {
-            aesthetic: "size".to_string(),
-            guide_type: Some(GuideType::Legend),
-            properties,
-        });
-
-        let df = df! {
-            "x" => &[1, 2, 3],
-            "y" => &[4, 5, 6],
-            "value" => &[10, 20, 30],
-        }
-        .unwrap();
-
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
-        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
-
-        // position maps to orient in Vega-Lite
-        assert_eq!(
-            vl_spec["layer"][0]["encoding"]["size"]["legend"]["orient"],
-            "bottom"
-        );
-    }
-
-    #[test]
-    fn test_guide_colorbar() {
-        use crate::plot::{Guide, GuideType, ParameterValue};
-
-        let writer = VegaLiteWriter::new();
-
-        let mut spec = Plot::new();
-        let layer = Layer::new(Geom::point())
-            .with_aesthetic(
-                "x".to_string(),
-                AestheticValue::standard_column("x".to_string()),
-            )
-            .with_aesthetic(
-                "y".to_string(),
-                AestheticValue::standard_column("y".to_string()),
-            )
-            .with_aesthetic(
-                "color".to_string(),
-                AestheticValue::standard_column("temperature".to_string()),
-            );
-        spec.layers.push(layer);
-
-        // Add colorbar guide
-        let mut properties = HashMap::new();
-        properties.insert(
-            "title".to_string(),
-            ParameterValue::String("Temperature (°C)".to_string()),
-        );
-        spec.guides.push(Guide {
-            aesthetic: "color".to_string(),
-            guide_type: Some(GuideType::ColorBar),
-            properties,
-        });
-
-        let df = df! {
-            "x" => &[1, 2, 3],
-            "y" => &[4, 5, 6],
-            "temperature" => &[20, 25, 30],
-        }
-        .unwrap();
-
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
-        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
-
-        assert_eq!(
-            vl_spec["layer"][0]["encoding"]["color"]["legend"]["type"],
-            "gradient"
-        );
-        assert_eq!(
-            vl_spec["layer"][0]["encoding"]["color"]["legend"]["title"],
-            "Temperature (°C)"
-        );
-    }
-
-    #[test]
-    fn test_guide_axis() {
-        use crate::plot::{Guide, GuideType, ParameterValue};
-
-        let writer = VegaLiteWriter::new();
-
-        let mut spec = Plot::new();
-        let layer = Layer::new(Geom::bar())
-            .with_aesthetic(
-                "x".to_string(),
-                AestheticValue::standard_column("category".to_string()),
-            )
-            .with_aesthetic(
-                "y".to_string(),
-                AestheticValue::standard_column("value".to_string()),
-            );
-        spec.layers.push(layer);
-
-        // Add axis guide for x
-        let mut properties = HashMap::new();
-        properties.insert(
-            "title".to_string(),
-            ParameterValue::String("Product Category".to_string()),
-        );
-        properties.insert("text_angle".to_string(), ParameterValue::Number(45.0));
-        spec.guides.push(Guide {
-            aesthetic: "x".to_string(),
-            guide_type: Some(GuideType::Axis),
-            properties,
-        });
-
-        let df = df! {
-            "category" => &["A", "B", "C"],
-            "value" => &[10, 20, 30],
-        }
-        .unwrap();
-
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
-        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
-
-        assert_eq!(
-            vl_spec["layer"][0]["encoding"]["x"]["axis"]["title"],
-            "Product Category"
-        );
-        assert_eq!(
-            vl_spec["layer"][0]["encoding"]["x"]["axis"]["labelAngle"],
-            45.0
-        );
-    }
-
-    #[test]
-    fn test_multiple_guides() {
-        use crate::plot::{Guide, GuideType, ParameterValue};
-
-        let writer = VegaLiteWriter::new();
-
-        let mut spec = Plot::new();
-        let layer = Layer::new(Geom::point())
-            .with_aesthetic(
-                "x".to_string(),
-                AestheticValue::standard_column("x".to_string()),
-            )
-            .with_aesthetic(
-                "y".to_string(),
-                AestheticValue::standard_column("y".to_string()),
-            )
-            .with_aesthetic(
-                "color".to_string(),
-                AestheticValue::standard_column("category".to_string()),
-            )
-            .with_aesthetic(
-                "size".to_string(),
-                AestheticValue::standard_column("value".to_string()),
-            );
-        spec.layers.push(layer);
-
-        // Add guide for color
-        let mut color_props = HashMap::new();
-        color_props.insert(
-            "title".to_string(),
-            ParameterValue::String("Category".to_string()),
-        );
-        color_props.insert(
-            "position".to_string(),
-            ParameterValue::String("right".to_string()),
-        );
-        spec.guides.push(Guide {
-            aesthetic: "color".to_string(),
-            guide_type: Some(GuideType::Legend),
-            properties: color_props,
-        });
-
-        // Add guide for size
-        let mut size_props = HashMap::new();
-        size_props.insert(
-            "title".to_string(),
-            ParameterValue::String("Value".to_string()),
-        );
-        spec.guides.push(Guide {
-            aesthetic: "size".to_string(),
-            guide_type: Some(GuideType::Legend),
-            properties: size_props,
-        });
-
-        let df = df! {
-            "x" => &[1, 2, 3],
-            "y" => &[4, 5, 6],
-            "category" => &["A", "B", "C"],
-            "value" => &[10, 20, 30],
-        }
-        .unwrap();
-
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
-        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
-
-        assert_eq!(
-            vl_spec["layer"][0]["encoding"]["color"]["legend"]["title"],
-            "Category"
-        );
-        assert_eq!(
-            vl_spec["layer"][0]["encoding"]["color"]["legend"]["orient"],
-            "right"
-        );
-        assert_eq!(
-            vl_spec["layer"][0]["encoding"]["size"]["legend"]["title"],
-            "Value"
-        );
-    }
-
-    #[test]
-    fn test_guide_fill_applies_to_fill_channel() {
-        use crate::plot::{Guide, GuideType, ParameterValue};
-
-        let writer = VegaLiteWriter::new();
-
-        let mut spec = Plot::new();
-        let layer = Layer::new(Geom::bar())
-            .with_aesthetic(
-                "x".to_string(),
-                AestheticValue::standard_column("category".to_string()),
-            )
-            .with_aesthetic(
-                "y".to_string(),
-                AestheticValue::standard_column("value".to_string()),
-            )
-            .with_aesthetic(
-                "fill".to_string(),
-                AestheticValue::standard_column("region".to_string()),
-            );
-        spec.layers.push(layer);
-
-        // Add guide for fill
-        let mut properties = HashMap::new();
-        properties.insert(
-            "title".to_string(),
-            ParameterValue::String("Region".to_string()),
-        );
-        spec.guides.push(Guide {
-            aesthetic: "fill".to_string(),
-            guide_type: Some(GuideType::Legend),
-            properties,
-        });
-
-        let df = df! {
-            "category" => &["A", "B"],
-            "value" => &[10, 20],
-            "region" => &["US", "EU"],
-        }
-        .unwrap();
-
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
-        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
-
-        // fill maps to Vega-Lite fill channel
-        assert_eq!(vl_spec["layer"][0]["encoding"]["fill"]["field"], "region");
-        assert_eq!(
-            vl_spec["layer"][0]["encoding"]["fill"]["legend"]["title"],
-            "Region"
-        );
     }
 
     // ========================================
@@ -5024,6 +4549,215 @@ mod tests {
         assert!(
             expr.contains("? ''"),
             "NULL suppression should produce empty string"
+        );
+    }
+
+    #[test]
+    fn test_scale_renaming_temporal_uses_time_format() {
+        use crate::plot::scale::{Scale, Transform};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::line())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("date".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("val".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add scale with date transform and RENAMING
+        let mut scale = Scale::new("x");
+        scale.transform = Some(Transform::date());
+        let mut label_mapping = std::collections::HashMap::new();
+        label_mapping.insert("2024-01-01".to_string(), Some("Q1 Start".to_string()));
+        label_mapping.insert("2024-04-01".to_string(), Some("Q2 Start".to_string()));
+        scale.label_mapping = Some(label_mapping);
+        spec.scales.push(scale);
+
+        let df = df! {
+            "date" => &["2024-01-01", "2024-04-01"],
+            "val" => &[10, 20],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Check that axis.labelExpr uses timeFormat for temporal scales
+        let label_expr = &vl_spec["layer"][0]["encoding"]["x"]["axis"]["labelExpr"];
+        assert!(label_expr.is_string(), "axis.labelExpr should be a string");
+        let expr = label_expr.as_str().unwrap();
+
+        // Should use timeFormat(datum.value, '%Y-%m-%d') for date scales
+        assert!(
+            expr.contains("timeFormat(datum.value, '%Y-%m-%d')"),
+            "temporal labelExpr should use timeFormat: got {}",
+            expr
+        );
+        // Should contain the ISO date key
+        assert!(
+            expr.contains("2024-01-01"),
+            "labelExpr should contain ISO date key"
+        );
+        // Should contain the renamed label
+        assert!(
+            expr.contains("Q1 Start"),
+            "labelExpr should contain renamed label"
+        );
+    }
+
+    #[test]
+    fn test_scale_renaming_datetime_uses_time_format() {
+        use crate::plot::scale::{Scale, Transform};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("ts".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("val".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add scale with datetime transform and RENAMING
+        let mut scale = Scale::new("x");
+        scale.transform = Some(Transform::datetime());
+        let mut label_mapping = std::collections::HashMap::new();
+        label_mapping.insert(
+            "2024-01-15T10:30:00".to_string(),
+            Some("Morning Meeting".to_string()),
+        );
+        scale.label_mapping = Some(label_mapping);
+        spec.scales.push(scale);
+
+        let df = df! {
+            "ts" => &["2024-01-15T10:30:00"],
+            "val" => &[100],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Check that axis.labelExpr uses timeFormat for datetime scales
+        let label_expr = &vl_spec["layer"][0]["encoding"]["x"]["axis"]["labelExpr"];
+        let expr = label_expr.as_str().unwrap();
+
+        // Should use timeFormat with datetime format
+        assert!(
+            expr.contains("timeFormat(datum.value, '%Y-%m-%dT%H:%M:%S')"),
+            "datetime labelExpr should use timeFormat with ISO datetime format: got {}",
+            expr
+        );
+    }
+
+    #[test]
+    fn test_scale_renaming_time_uses_time_format() {
+        use crate::plot::scale::{Scale, Transform};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("time".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("val".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add scale with time transform and RENAMING
+        let mut scale = Scale::new("x");
+        scale.transform = Some(Transform::time());
+        let mut label_mapping = std::collections::HashMap::new();
+        label_mapping.insert("09:00:00".to_string(), Some("Market Open".to_string()));
+        scale.label_mapping = Some(label_mapping);
+        spec.scales.push(scale);
+
+        let df = df! {
+            "time" => &["09:00:00"],
+            "val" => &[100],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Check that axis.labelExpr uses timeFormat for time scales
+        let label_expr = &vl_spec["layer"][0]["encoding"]["x"]["axis"]["labelExpr"];
+        let expr = label_expr.as_str().unwrap();
+
+        // Should use timeFormat with time format
+        assert!(
+            expr.contains("timeFormat(datum.value, '%H:%M:%S')"),
+            "time labelExpr should use timeFormat with time format: got {}",
+            expr
+        );
+    }
+
+    #[test]
+    fn test_scale_renaming_non_temporal_uses_datum_label() {
+        use crate::plot::scale::{Scale, Transform};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add scale with non-temporal transform (log) and RENAMING
+        let mut scale = Scale::new("x");
+        scale.transform = Some(Transform::log());
+        let mut label_mapping = std::collections::HashMap::new();
+        label_mapping.insert("1".to_string(), Some("One".to_string()));
+        label_mapping.insert("10".to_string(), Some("Ten".to_string()));
+        scale.label_mapping = Some(label_mapping);
+        spec.scales.push(scale);
+
+        let df = df! {
+            "x" => &[1, 10],
+            "y" => &[1, 2],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Check that axis.labelExpr uses datum.label for non-temporal scales
+        let label_expr = &vl_spec["layer"][0]["encoding"]["x"]["axis"]["labelExpr"];
+        let expr = label_expr.as_str().unwrap();
+
+        // Should use datum.label, NOT timeFormat
+        assert!(
+            expr.contains("datum.label =="),
+            "non-temporal labelExpr should use datum.label: got {}",
+            expr
+        );
+        assert!(
+            !expr.contains("timeFormat"),
+            "non-temporal labelExpr should NOT use timeFormat: got {}",
+            expr
         );
     }
 }

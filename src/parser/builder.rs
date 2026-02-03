@@ -262,10 +262,6 @@ fn process_viz_clause(node: &Node, source: &str, spec: &mut Plot) -> Result<()> 
                     spec.labels = Some(new_labels);
                 }
             }
-            "guide_clause" => {
-                let guide = build_guide(&child, source)?;
-                spec.guides.push(guide);
-            }
             "theme_clause" => {
                 spec.theme = Some(build_theme(&child, source)?);
             }
@@ -1233,106 +1229,6 @@ fn build_labels(node: &Node, source: &str) -> Result<Labels> {
     }
 
     Ok(Labels { labels })
-}
-
-/// Build a Guide from a guide_clause node
-fn build_guide(node: &Node, source: &str) -> Result<Guide> {
-    let mut aesthetic = String::new();
-    let mut guide_type: Option<GuideType> = None;
-    let mut properties = HashMap::new();
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "GUIDE" | "SETTING" | "=>" | "," => continue, // Skip keywords
-            "aesthetic_name" => {
-                aesthetic = get_node_text(&child, source);
-            }
-            "guide_property" => {
-                // Parse guide property
-                let mut prop_cursor = child.walk();
-                for prop_child in child.children(&mut prop_cursor) {
-                    if prop_child.kind() == "guide_type" {
-                        // This is a type property: type = legend
-                        let type_text = get_node_text(&prop_child, source);
-                        guide_type = Some(parse_guide_type(&type_text)?);
-                    } else if prop_child.kind() == "guide_property_name" {
-                        // Regular property: name = value
-                        let prop_name = get_node_text(&prop_child, source);
-
-                        // Find the value (next sibling after '=>')
-                        let mut found_to = false;
-                        let mut value_cursor = child.walk();
-                        for value_child in child.children(&mut value_cursor) {
-                            if value_child.kind() == "=>" {
-                                found_to = true;
-                                continue;
-                            }
-                            if found_to {
-                                let prop_value = parse_guide_property_value(&value_child, source)?;
-                                properties.insert(prop_name.clone(), prop_value);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    if aesthetic.is_empty() {
-        return Err(GgsqlError::ParseError(
-            "Guide clause missing aesthetic name".to_string(),
-        ));
-    }
-
-    Ok(Guide {
-        aesthetic,
-        guide_type,
-        properties,
-    })
-}
-
-/// Parse guide type from text
-fn parse_guide_type(text: &str) -> Result<GuideType> {
-    match text.to_lowercase().as_str() {
-        "legend" => Ok(GuideType::Legend),
-        "colorbar" => Ok(GuideType::ColorBar),
-        "axis" => Ok(GuideType::Axis),
-        "none" => Ok(GuideType::None),
-        _ => Err(GgsqlError::ParseError(format!(
-            "Unknown guide type: {}",
-            text
-        ))),
-    }
-}
-
-/// Parse guide property value
-fn parse_guide_property_value(node: &Node, source: &str) -> Result<ParameterValue> {
-    match node.kind() {
-        "string" => {
-            let text = get_node_text(node, source);
-            let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-            Ok(ParameterValue::String(unquoted.to_string()))
-        }
-        "number" => {
-            let text = get_node_text(node, source);
-            let num = text.parse::<f64>().map_err(|e| {
-                GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
-            })?;
-            Ok(ParameterValue::Number(num))
-        }
-        "boolean" => {
-            let text = get_node_text(node, source);
-            let bool_val = text == "true";
-            Ok(ParameterValue::Boolean(bool_val))
-        }
-        _ => Err(GgsqlError::ParseError(format!(
-            "Unexpected guide property value type: {}",
-            node.kind()
-        ))),
-    }
 }
 
 /// Build a Theme from a theme_clause node

@@ -15,7 +15,6 @@
 //! ├─ facet: Option<Facet>           (optional, from FACET clause)
 //! ├─ coord: Option<Coord>           (optional, from COORD clause)
 //! ├─ labels: Option<Labels>         (optional, merged from LABEL clauses)
-//! ├─ guides: Vec<Guide>             (0+ GuideNode, one per GUIDE clause)
 //! └─ theme: Option<Theme>           (optional, from THEME clause)
 //! ```
 
@@ -37,8 +36,8 @@ pub use super::layer::geom::{
 // Re-export Layer from the layer module
 pub use super::layer::Layer;
 
-// Re-export Scale and Guide types from the scale module
-pub use super::scale::{Guide, GuideType, Scale, ScaleType};
+// Re-export Scale types from the scale module
+pub use super::scale::{Scale, ScaleType};
 
 // Re-export Coord types from the coord module
 pub use super::coord::{Coord, CoordType};
@@ -63,8 +62,6 @@ pub struct Plot {
     pub coord: Option<Coord>,
     /// Text labels (merged from all LABEL clauses)
     pub labels: Option<Labels>,
-    /// Guide configurations (one per GUIDE clause)
-    pub guides: Vec<Guide>,
     /// Theme styling (from THEME clause)
     pub theme: Option<Theme>,
 }
@@ -96,7 +93,6 @@ impl Plot {
             facet: None,
             coord: None,
             labels: None,
-            guides: Vec::new(),
             theme: None,
         }
     }
@@ -111,7 +107,6 @@ impl Plot {
             facet: None,
             coord: None,
             labels: None,
-            guides: Vec::new(),
             theme: None,
         }
     }
@@ -131,13 +126,6 @@ impl Plot {
         self.scales
             .iter()
             .find(|scale| scale.aesthetic == aesthetic)
-    }
-
-    /// Find a guide for a specific aesthetic
-    pub fn find_guide(&self, aesthetic: &str) -> Option<&Guide> {
-        self.guides
-            .iter()
-            .find(|guide| guide.aesthetic == aesthetic)
     }
 
     /// Compute aesthetic labels for axes and legends.

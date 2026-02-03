@@ -170,7 +170,7 @@ DRAW line MAPPING month AS x, total AS y
 
 - Uses `tree-sitter-ggsql` grammar (507 lines, simplified approach)
 - Parses **full query** (SQL + VISUALISE) into concrete syntax tree (CST)
-- Grammar supports: PLOT/TABLE/MAP types, DRAW/SCALE/FACET/COORD/LABEL/GUIDE/THEME clauses
+- Grammar supports: PLOT/TABLE/MAP types, DRAW/SCALE/FACET/COORD/LABEL/THEME clauses
 - British and American spellings: `VISUALISE` / `VISUALIZE`
 - **SQL portion parsing**: Basic SQL structure (SELECT, WITH, CREATE, INSERT, subqueries)
 - **Recursive subquery support**: Fully recursive grammar for complex SQL
@@ -215,7 +215,6 @@ pub struct Plot {
     pub facet: Option<Facet>,          // FACET clause
     pub coord: Option<Coord>,          // COORD clause
     pub labels: Option<Labels>,        // LABEL clause
-    pub guides: Vec<Guide>,            // GUIDE clauses
     pub theme: Option<Theme>,          // THEME clause
 }
 
@@ -322,19 +321,6 @@ pub struct Labels {
     pub labels: HashMap<String, String>,  // label type → text
 }
 
-pub struct Guide {
-    pub aesthetic: String,
-    pub guide_type: Option<GuideType>,
-    pub properties: HashMap<String, ParameterValue>,
-}
-
-pub enum GuideType {
-    Legend,
-    ColorBar,
-    Axis,
-    None,
-}
-
 pub struct Theme {
     pub style: Option<String>,
     pub properties: HashMap<String, ParameterValue>,
@@ -348,7 +334,6 @@ pub struct Theme {
 - `Plot::new()` - Create a new empty Plot
 - `Plot::with_global_mapping(mapping)` - Create Plot with a global mapping
 - `Plot::find_scale(aesthetic)` - Look up scale specification for an aesthetic
-- `Plot::find_guide(aesthetic)` - Find a guide specification for an aesthetic
 - `Plot::has_layers()` - Check if Plot has any layers
 - `Plot::layer_count()` - Get the number of layers
 
@@ -877,7 +862,6 @@ Where `<global_mapping>` can be:
 | `FACET`        | ❌ No      | Small multiples    | `FACET WRAP region`                  |
 | `COORD`        | ❌ No      | Coordinate system  | `COORD cartesian SETTING xlim => [0,100]` |
 | `LABEL`        | ❌ No      | Text labels        | `LABEL title => 'My Chart', x => 'Date'`   |
-| `GUIDE`        | ✅ Yes     | Legend/axis config | `GUIDE color SETTING position => 'right'` |
 | `THEME`        | ❌ No      | Visual styling     | `THEME minimal`                      |
 
 ### DRAW Clause (Layers)

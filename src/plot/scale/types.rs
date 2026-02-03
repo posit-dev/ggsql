@@ -88,22 +88,3 @@ pub enum OutputRange {
     Palette(String),
 }
 
-/// Guide configuration (from GUIDE clause)
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Guide {
-    /// The aesthetic this guide applies to
-    pub aesthetic: String,
-    /// Guide type
-    pub guide_type: Option<GuideType>,
-    /// Guide properties
-    pub properties: HashMap<String, ParameterValue>,
-}
-
-/// Guide types
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum GuideType {
-    Legend,
-    ColorBar,
-    Axis,
-    None,
-}
