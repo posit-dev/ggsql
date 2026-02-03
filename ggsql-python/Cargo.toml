@@ -12,7 +12,7 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = { version = "0.26", features = ["extension-module"] }
 polars = { workspace = true, features = ["ipc"] }
-ggsql = { path = "../src", default-features = false, features = ["vegalite"] }
+ggsql = { path = "../src", default-features = false, features = ["duckdb", "vegalite"] }
 
 [features]
 default = []

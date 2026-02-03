@@ -5,9 +5,8 @@
 
 use anyhow::Result;
 use ggsql::{
-    execute::prepare_data,
-    parser,
     reader::{DuckDBReader, Reader},
+    validate,
     writer::{VegaLiteWriter, Writer},
 };
 use polars::frame::DataFrame;
@@ -54,13 +53,13 @@ impl QueryExecutor {
     pub fn execute(&self, code: &str) -> Result<ExecutionResult> {
         tracing::debug!("Executing query: {} chars", code.len());
 
-        // 1. Split query to check if there's a visualization
-        let (_sql_part, viz_part) = parser::split_query(code)?;
+        // 1. Validate to check if there's a visualization
+        let validated = validate(code)?;
 
         // 2. Check if there's a visualization
-        if viz_part.is_empty() {
+        if !validated.has_visual() {
             // Pure SQL query - execute directly and return DataFrame
-            let df = self.reader.execute(code)?;
+            let df = self.reader.execute_sql(code)?;
             tracing::info!(
                 "Pure SQL executed: {} rows, {} cols",
                 df.height(),
@@ -69,17 +68,21 @@ impl QueryExecutor {
             return Ok(ExecutionResult::DataFrame(df));
         }
 
-        // 3. Prepare data using shared execution logic (handles layer sources)
-        let prepared = prepare_data(code, &self.reader)?;
+        // 3. Execute ggsql query using reader
+        let spec = self.reader.execute(code)?;
 
-        tracing::info!("Data sources prepared: {} sources", prepared.data.len());
+        tracing::info!(
+            "Query executed: {} rows, {} layers",
+            spec.metadata().rows,
+            spec.metadata().layer_count
+        );
 
-        // 4. Generate Vega-Lite spec (use first spec if multiple)
-        let vega_json = self.writer.write(&prepared.specs[0], &prepared.data)?;
+        // 4. Render to output format
+        let vega_json = self.writer.render(&spec)?;
 
         tracing::debug!("Generated Vega-Lite spec: {} chars", vega_json.len());
 
-        // 6. Return result
+        // 5. Return result
         Ok(ExecutionResult::Visualization { spec: vega_json })
     }
 }

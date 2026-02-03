@@ -32,6 +32,7 @@ polars.workspace = true
 
 # Readers
 duckdb = { workspace = true, optional = true }
+arrow = { workspace = true, optional = true }
 postgres = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }
@@ -69,7 +70,7 @@ proptest.workspace = true
 
 [features]
 default = ["duckdb", "sqlite", "vegalite"]
-duckdb = ["dep:duckdb"]
+duckdb = ["dep:duckdb", "dep:arrow"]
 postgres = ["dep:postgres"]
 sqlite = ["dep:rusqlite"]
 vegalite = []

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import json
 from typing import Any, Union
 
@@ -8,9 +7,26 @@ import altair
 import narwhals as nw
 from narwhals.typing import IntoFrame
 
-from ggsql._ggsql import split_query, render as _render
+from ggsql._ggsql import (
+    DuckDBReader,
+    VegaLiteWriter,
+    Validated,
+    Spec,
+    validate,
+    execute,
+)
 
-__all__ = ["split_query", "render_altair"]
+__all__ = [
+    # Classes
+    "DuckDBReader",
+    "VegaLiteWriter",
+    "Validated",
+    "Spec",
+    # Functions
+    "validate",
+    "execute",
+    "render_altair",
+]
 __version__ = "0.1.0"
 
 # Type alias for any Altair chart type
@@ -56,13 +72,19 @@ def render_altair(
     if not isinstance(df, nw.DataFrame):
         raise TypeError("df must be a narwhals DataFrame or compatible type")
 
-    # Convert to polars and serialize to IPC bytes
     pl_df = df.to_polars()
-    buffer = io.BytesIO()
-    pl_df.write_ipc(buffer)
-    ipc_bytes = buffer.getvalue()
 
-    vegalite_json = _render(ipc_bytes, viz, writer="vegalite")
+    # Create temporary reader and register data
+    reader = DuckDBReader("duckdb://memory")
+    reader.register("__data__", pl_df)
+
+    # Build full query: SELECT * FROM __data__ + VISUALISE clause
+    query = f"SELECT * FROM __data__ {viz}"
+
+    # Execute and render
+    spec = reader.execute(query)
+    writer = VegaLiteWriter()
+    vegalite_json = writer.render(spec)
 
     # Parse to determine the correct Altair class
     spec = json.loads(vegalite_json)

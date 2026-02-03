@@ -31,10 +31,8 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use ggsql::{parser, GgsqlError, VERSION};
+use ggsql::{parser, validate, GgsqlError, VERSION};
 
-#[cfg(feature = "duckdb")]
-use ggsql::execute::prepare_data_with_executor;
 #[cfg(feature = "duckdb")]
 use ggsql::reader::{DuckDBReader, Reader};
 
@@ -442,61 +440,38 @@ async fn query_handler(
 
     #[cfg(feature = "duckdb")]
     if request.reader.starts_with("duckdb://") {
-        // Create query executor that handles shared state vs new reader
-        let execute_query = |sql: &str| -> Result<ggsql::DataFrame, GgsqlError> {
-            if request.reader == "duckdb://memory" && state.reader.is_some() {
-                let reader_mutex = state.reader.as_ref().unwrap();
-                let reader = reader_mutex.lock().map_err(|e| {
-                    GgsqlError::InternalError(format!("Failed to lock reader: {}", e))
-                })?;
-                reader.execute(sql)
-            } else {
-                let reader = DuckDBReader::from_connection_string(&request.reader)?;
-                reader.execute(sql)
-            }
-        };
-
-        // Prepare data using shared execution logic
-        let prepared = prepare_data_with_executor(&request.query, execute_query)?;
-
-        // Get metadata from available data
-        let (rows, columns) = if let Some(df) = prepared.data.get("__global__") {
-            let (r, _) = df.shape();
-            let cols: Vec<String> = df
-                .get_column_names()
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
-            (r, cols)
+        // Use shared reader or create new one
+        let spec = if request.reader == "duckdb://memory" && state.reader.is_some() {
+            let reader_mutex = state.reader.as_ref().unwrap();
+            let reader = reader_mutex
+                .lock()
+                .map_err(|e| GgsqlError::InternalError(format!("Failed to lock reader: {}", e)))?;
+            reader.execute(&request.query)?
         } else {
-            // Use first available data for metadata
-            let df = prepared.data.values().next().unwrap();
-            let (r, _) = df.shape();
-            let cols: Vec<String> = df
-                .get_column_names()
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
-            (r, cols)
+            let reader = DuckDBReader::from_connection_string(&request.reader)?;
+            reader.execute(&request.query)?
         };
 
-        let first_spec = &prepared.specs[0];
+        // Get metadata
+        let metadata = spec.metadata();
 
         // Generate visualization output using writer
         #[cfg(feature = "vegalite")]
         if request.writer == "vegalite" {
             let writer = VegaLiteWriter::new();
-            let json_output = writer.write(first_spec, &prepared.data)?;
+            let json_output = writer.render(&spec)?;
             let spec_value: serde_json::Value = serde_json::from_str(&json_output)
                 .map_err(|e| GgsqlError::WriterError(format!("Failed to parse JSON: {}", e)))?;
+
+            let plot = spec.plot();
 
             let result = QueryResult {
                 spec: spec_value,
                 metadata: QueryMetadata {
-                    rows,
-                    columns,
-                    global_mappings: format!("{:?}", first_spec.global_mappings),
-                    layers: first_spec.layers.len(),
+                    rows: metadata.rows,
+                    columns: metadata.columns.clone(),
+                    global_mappings: format!("{:?}", plot.global_mappings),
+                    layers: plot.layers.len(),
                 },
             };
 
@@ -525,13 +500,14 @@ async fn query_handler(
 }
 
 /// POST /api/v1/parse - Parse a ggsql query
+#[cfg(feature = "duckdb")]
 async fn parse_handler(
     Json(request): Json<ParseRequest>,
 ) -> Result<Json<ApiSuccess<ParseResult>>, ApiErrorResponse> {
     info!("Parsing query: {} chars", request.query.len());
 
-    // Split query
-    let (sql_part, viz_part) = parser::split_query(&request.query)?;
+    // Validate query to get sql/viz portions
+    let validated = validate(&request.query)?;
 
     // Parse ggsql portion
     let specs = parser::parse_query(&request.query)?;
@@ -543,8 +519,39 @@ async fn parse_handler(
         .collect();
 
     let result = ParseResult {
-        sql_portion: sql_part,
-        viz_portion: viz_part,
+        sql_portion: validated.sql().to_string(),
+        viz_portion: validated.visual().to_string(),
+        specs: specs_json,
+    };
+
+    Ok(Json(ApiSuccess {
+        status: "success".to_string(),
+        data: result,
+    }))
+}
+
+/// POST /api/v1/parse - Parse a ggsql query
+#[cfg(not(feature = "duckdb"))]
+async fn parse_handler(
+    Json(request): Json<ParseRequest>,
+) -> Result<Json<ApiSuccess<ParseResult>>, ApiErrorResponse> {
+    info!("Parsing query: {} chars", request.query.len());
+
+    // Validate query to get sql/viz portions
+    let validated = validate(&request.query)?;
+
+    // Parse ggsql portion
+    let specs = parser::parse_query(&request.query)?;
+
+    // Convert specs to JSON
+    let specs_json: Vec<serde_json::Value> = specs
+        .iter()
+        .map(|spec| serde_json::to_value(spec).unwrap_or(serde_json::Value::Null))
+        .collect();
+
+    let result = ParseResult {
+        sql_portion: validated.sql().to_string(),
+        viz_portion: validated.visual().to_string(),
         specs: specs_json,
     };
 

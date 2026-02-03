@@ -999,6 +999,8 @@ impl VegaLiteWriter {
 }
 
 impl Writer for VegaLiteWriter {
+    type Output = String;
+
     fn write(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<String> {
         // Validate spec before processing
         self.validate(spec)?;
