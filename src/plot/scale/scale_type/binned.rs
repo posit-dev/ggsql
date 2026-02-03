@@ -225,7 +225,7 @@ impl ScaleTypeTrait for Binned {
             }
         }
 
-        // Phase 2: Size to bin count (with interpolation for colors)
+        // Phase 2: Size to bin count (with interpolation for colors and numeric aesthetics)
         if let Some(OutputRange::Array(ref arr)) = scale.output_range.clone() {
             if matches!(aesthetic, "fill" | "stroke") && arr.len() >= 2 {
                 // Interpolate colors to exact bin_count
@@ -240,8 +240,28 @@ impl ScaleTypeTrait for Binned {
                 scale.output_range = Some(OutputRange::Array(
                     interpolated.into_iter().map(ArrayElement::String).collect(),
                 ));
+            } else if matches!(aesthetic, "size" | "linewidth" | "opacity") && arr.len() >= 2 {
+                // Interpolate numeric values to exact bin_count
+                // Extract min and max from the range
+                let nums: Vec<f64> = arr.iter().filter_map(|e| e.to_f64()).collect();
+                if nums.len() >= 2 {
+                    let min_val = nums[0];
+                    let max_val = nums[nums.len() - 1];
+                    // Create evenly spaced values from min to max
+                    let interpolated: Vec<ArrayElement> = (0..bin_count)
+                        .map(|i| {
+                            let t = if bin_count > 1 {
+                                i as f64 / (bin_count - 1) as f64
+                            } else {
+                                0.5
+                            };
+                            ArrayElement::Number(min_val + t * (max_val - min_val))
+                        })
+                        .collect();
+                    scale.output_range = Some(OutputRange::Array(interpolated));
+                }
             } else {
-                // Non-color: truncate/error like discrete
+                // Non-interpolatable aesthetics (shape, linetype): truncate/error like discrete
                 if arr.len() < bin_count {
                     return Err(format!(
                         "Output range has {} values but {} bins needed",
@@ -958,5 +978,135 @@ mod tests {
             "SQL should format break values as ISO datetime with CAST. Got: {}",
             sql
         );
+    }
+
+    // ==========================================================================
+    // Output Range Interpolation Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_resolve_output_range_size_interpolation() {
+        use super::ScaleTypeTrait;
+        use crate::plot::scale::OutputRange;
+
+        let binned = Binned;
+        let mut scale = Scale::new("size");
+
+        // Set up 5 bins (4 breaks)
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(25.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(75.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+
+        // Default size range is [1, 6]
+        scale.output_range = Some(OutputRange::Array(vec![
+            ArrayElement::Number(1.0),
+            ArrayElement::Number(6.0),
+        ]));
+
+        // Resolve output range
+        binned.resolve_output_range(&mut scale, "size").unwrap();
+
+        // Should have 4 evenly spaced values from 1 to 6
+        if let Some(OutputRange::Array(arr)) = &scale.output_range {
+            assert_eq!(arr.len(), 4, "Should have 4 size values for 4 bins");
+            // Values should be: 1.0, 2.666..., 4.333..., 6.0
+            let nums: Vec<f64> = arr.iter().filter_map(|e| e.to_f64()).collect();
+            assert!((nums[0] - 1.0).abs() < 0.001, "First value should be 1.0");
+            assert!((nums[3] - 6.0).abs() < 0.001, "Last value should be 6.0");
+            // Check evenly spaced
+            let step = (nums[1] - nums[0]).abs();
+            assert!(
+                ((nums[2] - nums[1]).abs() - step).abs() < 0.001,
+                "Values should be evenly spaced"
+            );
+        } else {
+            panic!("Output range should be an Array");
+        }
+    }
+
+    #[test]
+    fn test_resolve_output_range_linewidth_interpolation() {
+        use super::ScaleTypeTrait;
+        use crate::plot::scale::OutputRange;
+
+        let binned = Binned;
+        let mut scale = Scale::new("linewidth");
+
+        // Set up 3 bins (2 breaks)
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+
+        // Linewidth range [1, 6]
+        scale.output_range = Some(OutputRange::Array(vec![
+            ArrayElement::Number(1.0),
+            ArrayElement::Number(6.0),
+        ]));
+
+        // Resolve output range
+        binned.resolve_output_range(&mut scale, "linewidth").unwrap();
+
+        // Should have 2 evenly spaced values: 1.0 and 6.0
+        if let Some(OutputRange::Array(arr)) = &scale.output_range {
+            assert_eq!(arr.len(), 2, "Should have 2 linewidth values for 2 bins");
+            let nums: Vec<f64> = arr.iter().filter_map(|e| e.to_f64()).collect();
+            assert!((nums[0] - 1.0).abs() < 0.001, "First value should be 1.0");
+            assert!((nums[1] - 6.0).abs() < 0.001, "Last value should be 6.0");
+        } else {
+            panic!("Output range should be an Array");
+        }
+    }
+
+    #[test]
+    fn test_resolve_output_range_opacity_interpolation() {
+        use super::ScaleTypeTrait;
+        use crate::plot::scale::OutputRange;
+
+        let binned = Binned;
+        let mut scale = Scale::new("opacity");
+
+        // Set up 5 bins
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(20.0),
+                ArrayElement::Number(40.0),
+                ArrayElement::Number(60.0),
+                ArrayElement::Number(80.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+
+        // Opacity range [0.1, 1.0]
+        scale.output_range = Some(OutputRange::Array(vec![
+            ArrayElement::Number(0.1),
+            ArrayElement::Number(1.0),
+        ]));
+
+        // Resolve output range
+        binned.resolve_output_range(&mut scale, "opacity").unwrap();
+
+        // Should have 5 evenly spaced values from 0.1 to 1.0
+        if let Some(OutputRange::Array(arr)) = &scale.output_range {
+            assert_eq!(arr.len(), 5, "Should have 5 opacity values for 5 bins");
+            let nums: Vec<f64> = arr.iter().filter_map(|e| e.to_f64()).collect();
+            assert!((nums[0] - 0.1).abs() < 0.001, "First value should be 0.1");
+            assert!((nums[4] - 1.0).abs() < 0.001, "Last value should be 1.0");
+        } else {
+            panic!("Output range should be an Array");
+        }
     }
 }
