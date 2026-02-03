@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use polars::prelude::{ChunkAgg, Column, DataType};
 
-use super::{ScaleTypeKind, ScaleTypeTrait, TransformKind};
+use super::{ScaleTypeKind, ScaleTypeTrait, TransformKind, OOB_SQUISH};
 use crate::plot::{ArrayElement, ParameterValue};
 
 /// Binned scale type - for binned/bucketed data
@@ -337,6 +337,13 @@ impl ScaleTypeTrait for Binned {
             _ => true, // default to left-closed
         };
 
+        // Get oob property: "censor" (default) or "squish"
+        // With "squish", terminal bins extend to infinity
+        let oob_squish = match scale.properties.get("oob") {
+            Some(ParameterValue::String(s)) => s == OOB_SQUISH,
+            _ => false,
+        };
+
         // Determine if break values need temporal formatting
         // Column is already cast to correct type, but break literals may need formatting
         let transform = scale.transform.as_ref();
@@ -372,6 +379,7 @@ impl ScaleTypeTrait for Binned {
                                 column_name,
                                 &break_values,
                                 closed_left,
+                                oob_squish,
                             ));
                         }
                     };
@@ -406,12 +414,22 @@ impl ScaleTypeTrait for Binned {
                 )
             };
 
-            // Build the condition based on closed side
+            // Build the condition based on closed side and oob mode
             // closed="left": [lower, upper) except last bin which is [lower, upper]
             // closed="right": (lower, upper] except first bin which is [lower, upper]
+            // With oob="squish": first bin extends to -∞, last bin extends to +∞
             let condition = if closed_left {
-                if is_last {
-                    // Last bin: [lower, upper] (inclusive on both ends)
+                if oob_squish && is_first && is_last {
+                    // Single bin with squish: capture everything
+                    "TRUE".to_string()
+                } else if oob_squish && is_first {
+                    // First bin with squish: no lower bound, extends to -∞
+                    format!("{} < {}", column_name, upper_expr)
+                } else if oob_squish && is_last {
+                    // Last bin with squish: no upper bound, extends to +∞
+                    format!("{} >= {}", column_name, lower_expr)
+                } else if is_last {
+                    // Last bin (no squish): [lower, upper] (inclusive on both ends)
                     format!(
                         "{} >= {} AND {} <= {}",
                         column_name, lower_expr, column_name, upper_expr
@@ -425,8 +443,17 @@ impl ScaleTypeTrait for Binned {
                 }
             } else {
                 // closed="right"
-                if is_first {
-                    // First bin: [lower, upper] (inclusive on both ends)
+                if oob_squish && is_first && is_last {
+                    // Single bin with squish: capture everything
+                    "TRUE".to_string()
+                } else if oob_squish && is_first {
+                    // First bin with squish: no lower bound, extends to -∞
+                    format!("{} <= {}", column_name, upper_expr)
+                } else if oob_squish && is_last {
+                    // Last bin with squish: no upper bound, extends to +∞
+                    format!("{} > {}", column_name, lower_expr)
+                } else if is_first {
+                    // First bin (no squish): [lower, upper] (inclusive on both ends)
                     format!(
                         "{} >= {} AND {} <= {}",
                         column_name, lower_expr, column_name, upper_expr
@@ -453,6 +480,7 @@ fn build_case_expression_numeric(
     column_name: &str,
     break_values: &[f64],
     closed_left: bool,
+    oob_squish: bool,
 ) -> String {
     let num_bins = break_values.len() - 1;
     let mut cases = Vec::with_capacity(num_bins);
@@ -466,7 +494,16 @@ fn build_case_expression_numeric(
         let is_last = i == num_bins - 1;
 
         let condition = if closed_left {
-            if is_last {
+            if oob_squish && is_first && is_last {
+                // Single bin with squish: capture everything
+                "TRUE".to_string()
+            } else if oob_squish && is_first {
+                // First bin with squish: no lower bound, extends to -∞
+                format!("{} < {}", column_name, upper)
+            } else if oob_squish && is_last {
+                // Last bin with squish: no upper bound, extends to +∞
+                format!("{} >= {}", column_name, lower)
+            } else if is_last {
                 format!(
                     "{} >= {} AND {} <= {}",
                     column_name, lower, column_name, upper
@@ -477,6 +514,15 @@ fn build_case_expression_numeric(
                     column_name, lower, column_name, upper
                 )
             }
+        } else if oob_squish && is_first && is_last {
+            // Single bin with squish: capture everything
+            "TRUE".to_string()
+        } else if oob_squish && is_first {
+            // First bin with squish: no lower bound, extends to -∞
+            format!("{} <= {}", column_name, upper)
+        } else if oob_squish && is_last {
+            // Last bin with squish: no upper bound, extends to +∞
+            format!("{} > {}", column_name, lower)
         } else if is_first {
             format!(
                 "{} >= {} AND {} <= {}",
@@ -1108,5 +1154,260 @@ mod tests {
         } else {
             panic!("Output range should be an Array");
         }
+    }
+
+    // ==========================================================================
+    // OOB Squish Tests
+    // ==========================================================================
+    //
+    // When oob='squish', terminal bins extend to infinity:
+    // - First bin captures all values below the second break
+    // - Last bin captures all values at or above the last break
+    // - Terminal break labels are removed from axis/legend
+
+    #[test]
+    fn test_pre_stat_transform_sql_oob_squish_closed_left() {
+        // With oob='squish' and closed='left':
+        // - First bin: x < upper (extends to -∞)
+        // - Middle bins: lower <= x < upper
+        // - Last bin: x >= lower (extends to +∞)
+        let binned = Binned;
+        let mut scale = Scale::new("x");
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(10.0),
+                ArrayElement::Number(20.0),
+                ArrayElement::Number(30.0),
+            ]),
+        );
+        scale.properties.insert(
+            "oob".to_string(),
+            ParameterValue::String("squish".to_string()),
+        );
+
+        let sql = binned
+            .pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names())
+            .unwrap();
+
+        // First bin: only upper bound check (extends to -∞)
+        assert!(
+            sql.contains("WHEN value < 10 THEN 5"),
+            "First bin should extend to -∞. Got: {}",
+            sql
+        );
+        // Middle bin: both bounds
+        assert!(
+            sql.contains("WHEN value >= 10 AND value < 20 THEN 15"),
+            "Middle bin should have both bounds. Got: {}",
+            sql
+        );
+        // Last bin: only lower bound check (extends to +∞)
+        assert!(
+            sql.contains("WHEN value >= 20 THEN 25"),
+            "Last bin should extend to +∞. Got: {}",
+            sql
+        );
+        // Should NOT have ELSE NULL since all values are captured
+        assert!(
+            sql.contains("ELSE NULL"),
+            "Should still have ELSE NULL as fallback. Got: {}",
+            sql
+        );
+    }
+
+    #[test]
+    fn test_pre_stat_transform_sql_oob_squish_closed_right() {
+        // With oob='squish' and closed='right':
+        // - First bin: x <= upper (extends to -∞)
+        // - Middle bins: lower < x <= upper
+        // - Last bin: x > lower (extends to +∞)
+        let binned = Binned;
+        let mut scale = Scale::new("x");
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(10.0),
+                ArrayElement::Number(20.0),
+                ArrayElement::Number(30.0),
+            ]),
+        );
+        scale.properties.insert(
+            "oob".to_string(),
+            ParameterValue::String("squish".to_string()),
+        );
+        scale.properties.insert(
+            "closed".to_string(),
+            ParameterValue::String("right".to_string()),
+        );
+
+        let sql = binned
+            .pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names())
+            .unwrap();
+
+        // First bin: only upper bound check (extends to -∞)
+        assert!(
+            sql.contains("WHEN value <= 10 THEN 5"),
+            "First bin should extend to -∞. Got: {}",
+            sql
+        );
+        // Middle bin: both bounds
+        assert!(
+            sql.contains("WHEN value > 10 AND value <= 20 THEN 15"),
+            "Middle bin should have both bounds. Got: {}",
+            sql
+        );
+        // Last bin: only lower bound check (extends to +∞)
+        assert!(
+            sql.contains("WHEN value > 20 THEN 25"),
+            "Last bin should extend to +∞. Got: {}",
+            sql
+        );
+    }
+
+    #[test]
+    fn test_pre_stat_transform_sql_oob_squish_two_bins() {
+        // With oob='squish' and only 2 bins (3 breaks):
+        // - First bin extends to -∞
+        // - Last bin extends to +∞
+        let binned = Binned;
+        let mut scale = Scale::new("x");
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+        scale.properties.insert(
+            "oob".to_string(),
+            ParameterValue::String("squish".to_string()),
+        );
+
+        let sql = binned
+            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
+            .unwrap();
+
+        // First bin: extends to -∞
+        assert!(
+            sql.contains("WHEN x < 50 THEN 25"),
+            "First bin should extend to -∞. Got: {}",
+            sql
+        );
+        // Last bin: extends to +∞
+        assert!(
+            sql.contains("WHEN x >= 50 THEN 75"),
+            "Last bin should extend to +∞. Got: {}",
+            sql
+        );
+    }
+
+    #[test]
+    fn test_pre_stat_transform_sql_oob_squish_single_bin() {
+        // With oob='squish' and only 1 bin (2 breaks):
+        // Entire range should be TRUE (captures everything)
+        let binned = Binned;
+        let mut scale = Scale::new("x");
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+        scale.properties.insert(
+            "oob".to_string(),
+            ParameterValue::String("squish".to_string()),
+        );
+
+        let sql = binned
+            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
+            .unwrap();
+
+        // Single bin with squish should capture everything
+        assert!(
+            sql.contains("WHEN TRUE THEN 50"),
+            "Single bin with squish should capture all values. Got: {}",
+            sql
+        );
+    }
+
+    #[test]
+    fn test_pre_stat_transform_sql_oob_censor_default() {
+        // Without oob='squish' (default censor), bins should have bounds
+        let binned = Binned;
+        let mut scale = Scale::new("x");
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(10.0),
+                ArrayElement::Number(20.0),
+            ]),
+        );
+        // No oob property - defaults to censor
+
+        let sql = binned
+            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
+            .unwrap();
+
+        // First bin should have lower bound
+        assert!(
+            sql.contains("x >= 0 AND x < 10"),
+            "First bin should have lower bound with censor. Got: {}",
+            sql
+        );
+        // Last bin should have upper bound
+        assert!(
+            sql.contains("x >= 10 AND x <= 20"),
+            "Last bin should have upper bound with censor. Got: {}",
+            sql
+        );
+    }
+
+    #[test]
+    fn test_build_case_expression_numeric_oob_squish() {
+        // Test the helper function directly
+        let sql = build_case_expression_numeric("col", &[0.0, 10.0, 20.0, 30.0], true, true);
+
+        // First bin extends to -∞
+        assert!(
+            sql.contains("WHEN col < 10 THEN 5"),
+            "First bin should extend to -∞. Got: {}",
+            sql
+        );
+        // Middle bin has both bounds
+        assert!(
+            sql.contains("WHEN col >= 10 AND col < 20 THEN 15"),
+            "Middle bin should have both bounds. Got: {}",
+            sql
+        );
+        // Last bin extends to +∞
+        assert!(
+            sql.contains("WHEN col >= 20 THEN 25"),
+            "Last bin should extend to +∞. Got: {}",
+            sql
+        );
+    }
+
+    #[test]
+    fn test_build_case_expression_numeric_oob_censor() {
+        // Test the helper function with oob_squish=false
+        let sql = build_case_expression_numeric("col", &[0.0, 10.0, 20.0], true, false);
+
+        // All bins should have bounds
+        assert!(
+            sql.contains("col >= 0 AND col < 10"),
+            "First bin should have lower bound. Got: {}",
+            sql
+        );
+        assert!(
+            sql.contains("col >= 10 AND col <= 20"),
+            "Last bin should have upper bound. Got: {}",
+            sql
+        );
     }
 }

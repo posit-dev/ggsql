@@ -729,7 +729,21 @@ impl VegaLiteWriter {
                     // For binned scales, we still need to set axis.values manually because
                     // Vega-Lite's automatic tick placement with bin:"binned" only works for equal-width bins
                     if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
-                        let values: Vec<Value> = breaks.iter().map(|e| e.to_json()).collect();
+                        // Filter out values that have label_mapping = None (suppressed labels)
+                        // This respects decisions made during scale resolution
+                        let values: Vec<Value> = breaks
+                            .iter()
+                            .filter(|e| {
+                                if let Some(ref label_mapping) = scale.label_mapping {
+                                    // Keep value only if it's not mapped to None
+                                    let key = e.to_key_string();
+                                    !matches!(label_mapping.get(&key), Some(None))
+                                } else {
+                                    true // No label_mapping, keep all values
+                                }
+                            })
+                            .map(|e| e.to_json())
+                            .collect();
 
                         // Positional aesthetics use axis.values, others use legend.values
                         if matches!(
@@ -4625,6 +4639,187 @@ mod tests {
         assert_eq!(axis_values[0], 0.0);
         assert_eq!(axis_values[1], 50.0);
         assert_eq!(axis_values[2], 100.0);
+    }
+
+    #[test]
+    fn test_binned_scale_oob_squish_removes_terminal_labels() {
+        // When oob='squish' for binned scales, terminal break labels should be removed
+        // since those bins extend to infinity
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::bar())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("temp".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("count".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add a binned scale with breaks and oob='squish'
+        // When resolved, label_mapping will have terminal breaks mapped to None
+        let mut scale = Scale::new("x");
+        scale.scale_type = Some(crate::plot::ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(10.0),
+                ArrayElement::Number(20.0),
+                ArrayElement::Number(30.0),
+            ]),
+        );
+        scale.properties.insert(
+            "oob".to_string(),
+            ParameterValue::String("squish".to_string()),
+        );
+        // Simulate what resolution does: terminal breaks are suppressed via label_mapping
+        let mut label_mapping = std::collections::HashMap::new();
+        label_mapping.insert("0".to_string(), None); // First break suppressed
+        label_mapping.insert("10".to_string(), Some("10".to_string()));
+        label_mapping.insert("20".to_string(), Some("20".to_string()));
+        label_mapping.insert("30".to_string(), None); // Last break suppressed
+        scale.label_mapping = Some(label_mapping);
+        spec.scales.push(scale);
+
+        let df = df! {
+            "temp" => &[5.0, 15.0, 25.0],
+            "count" => &[10, 20, 30],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // With oob='squish', terminal breaks (0 and 30) should be removed
+        // Only internal breaks (10, 20) should remain
+        let axis_values = &vl_spec["layer"][0]["encoding"]["x"]["axis"]["values"];
+        assert!(
+            axis_values.is_array(),
+            "Binned scale should set axis.values"
+        );
+        let values = axis_values.as_array().unwrap();
+        assert_eq!(
+            values.len(),
+            2,
+            "Should have 2 values (terminal labels removed)"
+        );
+        assert_eq!(values[0], 10.0, "First value should be 10 (second break)");
+        assert_eq!(values[1], 20.0, "Second value should be 20 (third break)");
+    }
+
+    #[test]
+    fn test_binned_scale_oob_censor_keeps_all_labels() {
+        // When oob='censor' (default) for binned scales, all break labels should be kept
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::bar())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("temp".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("count".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add a binned scale with breaks and oob='censor'
+        let mut scale = Scale::new("x");
+        scale.scale_type = Some(crate::plot::ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(10.0),
+                ArrayElement::Number(20.0),
+                ArrayElement::Number(30.0),
+            ]),
+        );
+        scale.properties.insert(
+            "oob".to_string(),
+            ParameterValue::String("censor".to_string()),
+        );
+        spec.scales.push(scale);
+
+        let df = df! {
+            "temp" => &[5.0, 15.0, 25.0],
+            "count" => &[10, 20, 30],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // With oob='censor', all breaks should be kept
+        let axis_values = &vl_spec["layer"][0]["encoding"]["x"]["axis"]["values"];
+        assert!(
+            axis_values.is_array(),
+            "Binned scale should set axis.values"
+        );
+        let values = axis_values.as_array().unwrap();
+        assert_eq!(values.len(), 4, "Should have all 4 values");
+        assert_eq!(values[0], 0.0);
+        assert_eq!(values[1], 10.0);
+        assert_eq!(values[2], 20.0);
+        assert_eq!(values[3], 30.0);
+    }
+
+    #[test]
+    fn test_binned_scale_oob_squish_two_breaks_not_removed() {
+        // When oob='squish' but only 2 breaks (1 bin), don't remove labels
+        // since that would leave 0 labels
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::bar())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("temp".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("count".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add a binned scale with only 2 breaks
+        let mut scale = Scale::new("x");
+        scale.scale_type = Some(crate::plot::ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+        scale.properties.insert(
+            "oob".to_string(),
+            ParameterValue::String("squish".to_string()),
+        );
+        spec.scales.push(scale);
+
+        let df = df! {
+            "temp" => &[50.0],
+            "count" => &[10],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // With only 2 breaks, both should be kept (values.len() <= 2 check)
+        let axis_values = &vl_spec["layer"][0]["encoding"]["x"]["axis"]["values"];
+        assert!(
+            axis_values.is_array(),
+            "Binned scale should set axis.values"
+        );
+        let values = axis_values.as_array().unwrap();
+        assert_eq!(values.len(), 2, "Should keep both values when only 2 breaks");
     }
 
     // ========================================

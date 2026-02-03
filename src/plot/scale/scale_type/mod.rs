@@ -218,11 +218,13 @@ fn merge_with_context(
 }
 
 /// Compute unique values from multiple columns, sorted.
+/// NULL values are included at the end of the result.
 fn compute_unique_values_multi(columns: &[&Column]) -> Vec<ArrayElement> {
     use polars::prelude::IntoSeries;
     use std::collections::BTreeSet;
 
     let mut unique_strings: BTreeSet<String> = BTreeSet::new();
+    let mut has_null = false;
 
     for column in columns {
         let series = column.as_materialized_series();
@@ -230,15 +232,24 @@ fn compute_unique_values_multi(columns: &[&Column]) -> Vec<ArrayElement> {
         if let Ok(unique) = series.unique() {
             let unique_series = unique.into_series();
             if let Ok(str_series) = unique_series.str() {
-                for s in str_series.into_iter().flatten() {
-                    unique_strings.insert(s.to_string());
+                for opt_s in str_series.into_iter() {
+                    match opt_s {
+                        Some(s) => {
+                            unique_strings.insert(s.to_string());
+                        }
+                        None => {
+                            has_null = true;
+                        }
+                    }
                 }
             } else {
                 // Non-string: convert to string representation
                 for i in 0..unique_series.len() {
                     if let Ok(val) = unique_series.get(i) {
                         let s = format!("{}", val);
-                        if s != "null" {
+                        if s == "null" {
+                            has_null = true;
+                        } else {
                             unique_strings.insert(s);
                         }
                     }
@@ -247,10 +258,17 @@ fn compute_unique_values_multi(columns: &[&Column]) -> Vec<ArrayElement> {
         }
     }
 
-    unique_strings
+    let mut result: Vec<ArrayElement> = unique_strings
         .into_iter()
         .map(ArrayElement::String)
-        .collect()
+        .collect();
+
+    // Append NULL at the end if present
+    if has_null {
+        result.push(ArrayElement::Null);
+    }
+
+    result
 }
 
 /// Enum of all scale types for pattern matching and serialization
@@ -809,6 +827,26 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             let generated_labels =
                 crate::format::apply_label_template(&values, template, &scale.label_mapping);
             scale.label_mapping = Some(generated_labels);
+        }
+
+        // 6b. For binned scales with oob='squish', suppress terminal break labels
+        // since those bins extend to infinity (-∞ to first internal break, last internal break to +∞)
+        if self.scale_type_kind() == ScaleTypeKind::Binned {
+            if let Some(ParameterValue::String(oob)) = scale.properties.get("oob") {
+                if oob == OOB_SQUISH {
+                    if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
+                        if breaks.len() > 2 {
+                            // Suppress first and last break labels
+                            let first_key = breaks[0].to_key_string();
+                            let last_key = breaks[breaks.len() - 1].to_key_string();
+
+                            let label_mapping = scale.label_mapping.get_or_insert_with(HashMap::new);
+                            label_mapping.insert(first_key, None);
+                            label_mapping.insert(last_key, None);
+                        }
+                    }
+                }
+            }
         }
 
         // 7. Resolve output range (TO clause)
