@@ -42,11 +42,13 @@ mod asinh;
 mod bool;
 mod date;
 mod datetime;
+mod exp;
 mod identity;
 mod integer;
 mod log;
 mod pseudo_log;
 mod sqrt;
+mod square;
 mod string;
 mod time;
 
@@ -54,11 +56,13 @@ pub use self::asinh::Asinh;
 pub use self::bool::Bool;
 pub use self::date::Date;
 pub use self::datetime::DateTime;
+pub use self::exp::Exp;
 pub use self::identity::Identity;
 pub use self::integer::Integer;
 pub use self::log::Log;
 pub use self::pseudo_log::PseudoLog;
 pub use self::sqrt::Sqrt;
+pub use self::square::Square;
 pub use self::string::String as StringTransform;
 pub use self::time::Time;
 
@@ -76,6 +80,14 @@ pub enum TransformKind {
     Log,
     /// Square root
     Sqrt,
+    /// Square (x²) - inverse of sqrt
+    Square,
+    /// Base-10 exponential (10^x) - inverse of log10
+    Exp10,
+    /// Base-2 exponential (2^x) - inverse of log2
+    Exp2,
+    /// Natural exponential (e^x) - inverse of ln
+    Exp,
     /// Inverse hyperbolic sine
     Asinh,
     /// Symmetric log
@@ -103,6 +115,10 @@ impl TransformKind {
             TransformKind::Log2 => "log2",
             TransformKind::Log => "ln",
             TransformKind::Sqrt => "sqrt",
+            TransformKind::Square => "square",
+            TransformKind::Exp10 => "exp10",
+            TransformKind::Exp2 => "exp2",
+            TransformKind::Exp => "exp",
             TransformKind::Asinh => "asinh",
             TransformKind::PseudoLog => "pseudo_log",
             TransformKind::Date => "date",
@@ -260,6 +276,26 @@ impl Transform {
         Self(Arc::new(Sqrt))
     }
 
+    /// Create a Square transform (x²) - inverse of sqrt
+    pub fn square() -> Self {
+        Self(Arc::new(Square))
+    }
+
+    /// Create an Exp10 transform (10^x) - inverse of log10
+    pub fn exp10() -> Self {
+        Self(Arc::new(Exp::base10()))
+    }
+
+    /// Create an Exp2 transform (2^x) - inverse of log2
+    pub fn exp2() -> Self {
+        Self(Arc::new(Exp::base2()))
+    }
+
+    /// Create an Exp transform (e^x) - inverse of ln
+    pub fn exp() -> Self {
+        Self(Arc::new(Exp::natural()))
+    }
+
     /// Create an Asinh transform (inverse hyperbolic sine)
     pub fn asinh() -> Self {
         Self(Arc::new(Asinh))
@@ -331,6 +367,10 @@ impl Transform {
             "log2" => Some(Self::log2()),
             "ln" => Some(Self::ln()),
             "sqrt" => Some(Self::sqrt()),
+            "square" | "pow2" => Some(Self::square()),
+            "exp10" => Some(Self::exp10()),
+            "exp2" => Some(Self::exp2()),
+            "exp" => Some(Self::exp()),
             "asinh" => Some(Self::asinh()),
             "pseudo_log" | "pseudo_log10" => Some(Self::pseudo_log()),
             "pseudo_log2" => Some(Self::pseudo_log2()),
@@ -353,6 +393,10 @@ impl Transform {
             TransformKind::Log2 => Self::log2(),
             TransformKind::Log => Self::ln(),
             TransformKind::Sqrt => Self::sqrt(),
+            TransformKind::Square => Self::square(),
+            TransformKind::Exp10 => Self::exp10(),
+            TransformKind::Exp2 => Self::exp2(),
+            TransformKind::Exp => Self::exp(),
             TransformKind::Asinh => Self::asinh(),
             TransformKind::PseudoLog => Self::pseudo_log(),
             TransformKind::Date => Self::date(),
@@ -552,6 +596,11 @@ pub const ALL_TRANSFORM_NAMES: &[&str] = &[
     "log2",
     "ln",
     "sqrt",
+    "square",
+    "pow2", // alias for square
+    "exp10",
+    "exp2",
+    "exp",
     "asinh",
     "pseudo_log",
     "pseudo_log10", // alias for pseudo_log
@@ -815,5 +864,205 @@ mod tests {
         use crate::plot::ArrayElementType;
         // Integer transform targets Number (integers are numeric)
         assert_eq!(Transform::integer().target_type(), ArrayElementType::Number);
+    }
+
+    // ==================== Square Transform Tests ====================
+
+    #[test]
+    fn test_transform_square_creation() {
+        let square = Transform::square();
+        assert_eq!(square.transform_kind(), TransformKind::Square);
+        assert_eq!(square.name(), "square");
+    }
+
+    #[test]
+    fn test_transform_square_transform() {
+        let sq = Transform::square();
+        assert!((sq.transform(3.0) - 9.0).abs() < 1e-10);
+        assert!((sq.transform(-3.0) - 9.0).abs() < 1e-10);
+        assert!((sq.transform(0.0) - 0.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_transform_square_inverse() {
+        let sq = Transform::square();
+        assert!((sq.inverse(9.0) - 3.0).abs() < 1e-10);
+        assert!((sq.inverse(4.0) - 2.0).abs() < 1e-10);
+        assert!((sq.inverse(0.0) - 0.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_transform_from_name_square_aliases() {
+        // Both "square" and "pow2" should produce a Square transform
+        assert_eq!(
+            Transform::from_name("square").unwrap().transform_kind(),
+            TransformKind::Square
+        );
+        assert_eq!(
+            Transform::from_name("pow2").unwrap().transform_kind(),
+            TransformKind::Square
+        );
+    }
+
+    #[test]
+    fn test_transform_from_kind_square() {
+        let square = Transform::from_kind(TransformKind::Square);
+        assert_eq!(square.transform_kind(), TransformKind::Square);
+    }
+
+    #[test]
+    fn test_transform_kind_display_square() {
+        assert_eq!(format!("{}", TransformKind::Square), "square");
+    }
+
+    #[test]
+    fn test_transform_square_is_inverse_of_sqrt() {
+        let sqrt = Transform::sqrt();
+        let square = Transform::square();
+        // sqrt(square(x)) = x for non-negative x
+        for &val in &[0.0, 1.0, 2.0, 5.0, 10.0] {
+            let result = sqrt.transform(square.transform(val));
+            assert!((result - val).abs() < 1e-10, "sqrt(square({})) != {}", val, val);
+        }
+    }
+
+    // ==================== Exp Transform Tests ====================
+
+    #[test]
+    fn test_transform_exp10_creation() {
+        let exp10 = Transform::exp10();
+        assert_eq!(exp10.transform_kind(), TransformKind::Exp10);
+        assert_eq!(exp10.name(), "exp10");
+    }
+
+    #[test]
+    fn test_transform_exp10_transform() {
+        let exp10 = Transform::exp10();
+        assert!((exp10.transform(0.0) - 1.0).abs() < 1e-10);
+        assert!((exp10.transform(1.0) - 10.0).abs() < 1e-10);
+        assert!((exp10.transform(2.0) - 100.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_transform_exp10_inverse() {
+        let exp10 = Transform::exp10();
+        assert!((exp10.inverse(1.0) - 0.0).abs() < 1e-10);
+        assert!((exp10.inverse(10.0) - 1.0).abs() < 1e-10);
+        assert!((exp10.inverse(100.0) - 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_transform_exp10_is_inverse_of_log10() {
+        let log10 = Transform::log();
+        let exp10 = Transform::exp10();
+        // log10(exp10(x)) = x
+        for &val in &[-1.0, 0.0, 1.0, 2.0, 3.0] {
+            let result = log10.transform(exp10.transform(val));
+            if val == 0.0 {
+                assert!((result - val).abs() < 1e-10, "log10(exp10({})) != {}", val, val);
+            } else {
+                assert!((result - val).abs() / val.abs() < 1e-10, "log10(exp10({})) != {}", val, val);
+            }
+        }
+    }
+
+    #[test]
+    fn test_transform_exp2_creation() {
+        let exp2 = Transform::exp2();
+        assert_eq!(exp2.transform_kind(), TransformKind::Exp2);
+        assert_eq!(exp2.name(), "exp2");
+    }
+
+    #[test]
+    fn test_transform_exp2_transform() {
+        let exp2 = Transform::exp2();
+        assert!((exp2.transform(0.0) - 1.0).abs() < 1e-10);
+        assert!((exp2.transform(1.0) - 2.0).abs() < 1e-10);
+        assert!((exp2.transform(3.0) - 8.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_transform_exp2_is_inverse_of_log2() {
+        let log2 = Transform::log2();
+        let exp2 = Transform::exp2();
+        // log2(exp2(x)) = x
+        for &val in &[-1.0, 0.0, 1.0, 2.0, 3.0] {
+            let result = log2.transform(exp2.transform(val));
+            if val == 0.0 {
+                assert!((result - val).abs() < 1e-10, "log2(exp2({})) != {}", val, val);
+            } else {
+                assert!((result - val).abs() / val.abs() < 1e-10, "log2(exp2({})) != {}", val, val);
+            }
+        }
+    }
+
+    #[test]
+    fn test_transform_exp_creation() {
+        let exp = Transform::exp();
+        assert_eq!(exp.transform_kind(), TransformKind::Exp);
+        assert_eq!(exp.name(), "exp");
+    }
+
+    #[test]
+    fn test_transform_exp_transform() {
+        use std::f64::consts::E;
+        let exp = Transform::exp();
+        assert!((exp.transform(0.0) - 1.0).abs() < 1e-10);
+        assert!((exp.transform(1.0) - E).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_transform_exp_is_inverse_of_ln() {
+        let ln = Transform::ln();
+        let exp = Transform::exp();
+        // ln(exp(x)) = x
+        for &val in &[-1.0, 0.0, 1.0, 2.0] {
+            let result = ln.transform(exp.transform(val));
+            if val == 0.0 {
+                assert!((result - val).abs() < 1e-10, "ln(exp({})) != {}", val, val);
+            } else {
+                assert!((result - val).abs() / val.abs() < 1e-10, "ln(exp({})) != {}", val, val);
+            }
+        }
+    }
+
+    #[test]
+    fn test_transform_from_name_exp_variants() {
+        assert_eq!(
+            Transform::from_name("exp10").unwrap().transform_kind(),
+            TransformKind::Exp10
+        );
+        assert_eq!(
+            Transform::from_name("exp2").unwrap().transform_kind(),
+            TransformKind::Exp2
+        );
+        assert_eq!(
+            Transform::from_name("exp").unwrap().transform_kind(),
+            TransformKind::Exp
+        );
+    }
+
+    #[test]
+    fn test_transform_from_kind_exp_variants() {
+        assert_eq!(Transform::from_kind(TransformKind::Exp10).transform_kind(), TransformKind::Exp10);
+        assert_eq!(Transform::from_kind(TransformKind::Exp2).transform_kind(), TransformKind::Exp2);
+        assert_eq!(Transform::from_kind(TransformKind::Exp).transform_kind(), TransformKind::Exp);
+    }
+
+    #[test]
+    fn test_transform_kind_display_exp_variants() {
+        assert_eq!(format!("{}", TransformKind::Exp10), "exp10");
+        assert_eq!(format!("{}", TransformKind::Exp2), "exp2");
+        assert_eq!(format!("{}", TransformKind::Exp), "exp");
+    }
+
+    #[test]
+    fn test_transform_square_exp_target_type() {
+        use crate::plot::ArrayElementType;
+        // All inverse transforms target Number
+        assert_eq!(Transform::square().target_type(), ArrayElementType::Number);
+        assert_eq!(Transform::exp10().target_type(), ArrayElementType::Number);
+        assert_eq!(Transform::exp2().target_type(), ArrayElementType::Number);
+        assert_eq!(Transform::exp().target_type(), ArrayElementType::Number);
     }
 }

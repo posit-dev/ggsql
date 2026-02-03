@@ -2292,6 +2292,10 @@ fn resolve_scale_types_and_transforms(
                     | TransformKind::Log2
                     | TransformKind::Log
                     | TransformKind::Sqrt
+                    | TransformKind::Square
+                    | TransformKind::Exp10
+                    | TransformKind::Exp2
+                    | TransformKind::Exp
                     | TransformKind::Asinh
                     | TransformKind::PseudoLog
                     // Integer transform uses Continuous scale

@@ -659,6 +659,18 @@ impl VegaLiteWriter {
                             TransformKind::Sqrt => {
                                 scale_obj.insert("type".to_string(), json!("sqrt"));
                             }
+                            TransformKind::Square => {
+                                scale_obj.insert("type".to_string(), json!("pow"));
+                                scale_obj.insert("exponent".to_string(), json!(2));
+                            }
+                            TransformKind::Exp10 | TransformKind::Exp2 | TransformKind::Exp => {
+                                // Vega-Lite doesn't have native exp scales
+                                // Using linear scale; data is already transformed in data space
+                                eprintln!(
+                                    "Warning: {} transform has no native Vega-Lite equivalent, using linear scale",
+                                    transform.name()
+                                );
+                            }
                             TransformKind::Asinh | TransformKind::PseudoLog => {
                                 scale_obj.insert("type".to_string(), json!("symlog"));
                             }

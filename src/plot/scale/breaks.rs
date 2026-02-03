@@ -447,6 +447,42 @@ pub fn sqrt_breaks(min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
         .collect()
 }
 
+/// Calculate "pretty" breaks for exponential scales.
+///
+/// Mirrors the log 1-2-5 pattern: for base 10, breaks at 0, log10(2), log10(5), 1, ...
+/// This produces output values at 1, 2, 5, 10, 20, 50, 100... when exponentiated.
+///
+/// For exponential transforms, the input space (exponents) is linear, so we want
+/// breaks at values that will produce "nice" output values when exponentiated.
+pub fn exp_pretty_breaks(min: f64, max: f64, n: usize, base: f64) -> Vec<f64> {
+    if n == 0 || min >= max {
+        return vec![];
+    }
+
+    // The 1-2-5 multipliers in log space
+    // For base 10: log10(1)=0, log10(2)≈0.301, log10(5)≈0.699
+    let multipliers: [f64; 3] = [1.0, 2.0, 5.0];
+    let log_mults: Vec<f64> = multipliers.iter().map(|&m| m.log(base)).collect();
+
+    let floor_min = min.floor();
+    let ceil_max = max.ceil();
+
+    let mut breaks = Vec::new();
+    let mut exp = floor_min;
+    while exp <= ceil_max {
+        for &log_mult in &log_mults {
+            let val = exp + log_mult;
+            if val >= min && val <= max {
+                breaks.push(val);
+            }
+        }
+        exp += 1.0;
+    }
+
+    // Thin to approximately n breaks if we have too many
+    thin_breaks(breaks, n)
+}
+
 /// Calculate breaks for symlog scales (handles zero and negatives).
 ///
 /// Symmetric log scale that can handle the full range of values including

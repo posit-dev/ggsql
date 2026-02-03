@@ -27,6 +27,10 @@ impl ScaleTypeTrait for Continuous {
             TransformKind::Log2,
             TransformKind::Log,
             TransformKind::Sqrt,
+            TransformKind::Square,
+            TransformKind::Exp10,
+            TransformKind::Exp2,
+            TransformKind::Exp,
             TransformKind::Asinh,
             TransformKind::PseudoLog,
             // Integer transform for integer casting

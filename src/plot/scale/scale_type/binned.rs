@@ -27,6 +27,10 @@ impl ScaleTypeTrait for Binned {
             TransformKind::Log2,
             TransformKind::Log,
             TransformKind::Sqrt,
+            TransformKind::Square,
+            TransformKind::Exp10,
+            TransformKind::Exp2,
+            TransformKind::Exp,
             TransformKind::Asinh,
             TransformKind::PseudoLog,
             // Temporal transforms for date/datetime/time data
