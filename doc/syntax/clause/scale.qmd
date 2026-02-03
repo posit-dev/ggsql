@@ -9,7 +9,7 @@ The `SCALE` clause takes a number of subclauses, all of them optional:
 
 ```ggsql
 SCALE <type> <aesthetic> FROM <input-range> TO <output-range> VIA <transform>
-    SETTING <parameter/aesthetic> => <value>, ...
+    SETTING <parameter> => <value>, ...
     RENAMING <break-value> => <string>, ...
 ```
 
@@ -48,7 +48,7 @@ Apart from the direct renaming described above it is also possible to provide a 
 * `{:UPPER}` will make the value upper-case, e.g. `* => '{:UPPER} species'` will become "ADELIE species" for the "adelie" break.
 * `{:lower}` works much like `{:UPPER}` but changes the value to lower-case instead.
 * `{:time ...}` will format a date/datetime/time value according to the format defined afterwards. The formatting follows strftime format using the Rust chrono library. You can see an overview of the supported syntax at the [chrono docs](https://docs.rs/chrono/latest/chrono/format/strftime/index.html). The basic usage is `* => '{:time %B %Y}` which would format a break at 2025-07-04 as "July 2025".
-* `{:num ...} will format a numeric according to the format defined afterwards. The format follows the printf format using the Rust sprintf library. The syntax is `%[flags][width][.precision]type` with the following meaning:
+* `{:num ...}` will format a numeric according to the format defined afterwards. The format follows the printf format using the Rust sprintf library. The syntax is `%[flags][width][.precision]type` with the following meaning:
   - `flags`: One or more modifiers:
     * `-`: left-justify
     * `+`: Force sign for positive numbers
