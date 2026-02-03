@@ -120,7 +120,11 @@ mod tests {
         let breaks = t.calculate_breaks(0.0, 100.0, 5, false);
         // linear_breaks now extends one step before and after
         // Negative values in sqrt space get clipped
-        assert!(breaks.len() >= 5, "Should have at least 5 breaks, got {}", breaks.len());
+        assert!(
+            breaks.len() >= 5,
+            "Should have at least 5 breaks, got {}",
+            breaks.len()
+        );
         // First break should be >= 0 (sqrt clips negatives)
         assert!(breaks.first().unwrap() >= &0.0);
         // Last break should be >= 100

@@ -922,7 +922,12 @@ mod tests {
         // sqrt(square(x)) = x for non-negative x
         for &val in &[0.0, 1.0, 2.0, 5.0, 10.0] {
             let result = sqrt.transform(square.transform(val));
-            assert!((result - val).abs() < 1e-10, "sqrt(square({})) != {}", val, val);
+            assert!(
+                (result - val).abs() < 1e-10,
+                "sqrt(square({})) != {}",
+                val,
+                val
+            );
         }
     }
 
@@ -959,9 +964,19 @@ mod tests {
         for &val in &[-1.0, 0.0, 1.0, 2.0, 3.0] {
             let result = log10.transform(exp10.transform(val));
             if val == 0.0 {
-                assert!((result - val).abs() < 1e-10, "log10(exp10({})) != {}", val, val);
+                assert!(
+                    (result - val).abs() < 1e-10,
+                    "log10(exp10({})) != {}",
+                    val,
+                    val
+                );
             } else {
-                assert!((result - val).abs() / val.abs() < 1e-10, "log10(exp10({})) != {}", val, val);
+                assert!(
+                    (result - val).abs() / val.abs() < 1e-10,
+                    "log10(exp10({})) != {}",
+                    val,
+                    val
+                );
             }
         }
     }
@@ -989,9 +1004,19 @@ mod tests {
         for &val in &[-1.0, 0.0, 1.0, 2.0, 3.0] {
             let result = log2.transform(exp2.transform(val));
             if val == 0.0 {
-                assert!((result - val).abs() < 1e-10, "log2(exp2({})) != {}", val, val);
+                assert!(
+                    (result - val).abs() < 1e-10,
+                    "log2(exp2({})) != {}",
+                    val,
+                    val
+                );
             } else {
-                assert!((result - val).abs() / val.abs() < 1e-10, "log2(exp2({})) != {}", val, val);
+                assert!(
+                    (result - val).abs() / val.abs() < 1e-10,
+                    "log2(exp2({})) != {}",
+                    val,
+                    val
+                );
             }
         }
     }
@@ -1021,7 +1046,12 @@ mod tests {
             if val == 0.0 {
                 assert!((result - val).abs() < 1e-10, "ln(exp({})) != {}", val, val);
             } else {
-                assert!((result - val).abs() / val.abs() < 1e-10, "ln(exp({})) != {}", val, val);
+                assert!(
+                    (result - val).abs() / val.abs() < 1e-10,
+                    "ln(exp({})) != {}",
+                    val,
+                    val
+                );
             }
         }
     }
@@ -1044,9 +1074,18 @@ mod tests {
 
     #[test]
     fn test_transform_from_kind_exp_variants() {
-        assert_eq!(Transform::from_kind(TransformKind::Exp10).transform_kind(), TransformKind::Exp10);
-        assert_eq!(Transform::from_kind(TransformKind::Exp2).transform_kind(), TransformKind::Exp2);
-        assert_eq!(Transform::from_kind(TransformKind::Exp).transform_kind(), TransformKind::Exp);
+        assert_eq!(
+            Transform::from_kind(TransformKind::Exp10).transform_kind(),
+            TransformKind::Exp10
+        );
+        assert_eq!(
+            Transform::from_kind(TransformKind::Exp2).transform_kind(),
+            TransformKind::Exp2
+        );
+        assert_eq!(
+            Transform::from_kind(TransformKind::Exp).transform_kind(),
+            TransformKind::Exp
+        );
     }
 
     #[test]

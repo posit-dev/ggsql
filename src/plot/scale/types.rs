@@ -94,4 +94,3 @@ pub enum OutputRange {
     /// Named palette identifier: TO viridis
     Palette(String),
 }
-

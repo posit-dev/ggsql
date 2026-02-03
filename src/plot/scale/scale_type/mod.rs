@@ -405,7 +405,11 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     ///
     /// The column_dtype parameter enables automatic temporal transform inference when
     /// a Date, DateTime, or Time column is mapped to an aesthetic.
-    fn default_transform(&self, _aesthetic: &str, column_dtype: Option<&DataType>) -> TransformKind {
+    fn default_transform(
+        &self,
+        _aesthetic: &str,
+        column_dtype: Option<&DataType>,
+    ) -> TransformKind {
         // First check column data type for temporal transforms
         if let Some(dtype) = column_dtype {
             match dtype {
@@ -682,37 +686,35 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
                     if let Some(interval) = TemporalInterval::create_from_str(interval_str) {
                         if let Some(ref range) = scale.input_range {
-                            let breaks: Vec<ArrayElement> =
-                                match resolved_transform.transform_kind() {
-                                    TransformKind::Date => {
-                                        let min = range[0].to_f64().unwrap_or(0.0) as i32;
-                                        let max =
-                                            range[range.len() - 1].to_f64().unwrap_or(0.0) as i32;
-                                        temporal_breaks_date(min, max, interval)
-                                            .into_iter()
-                                            .map(ArrayElement::String)
-                                            .collect()
-                                    }
-                                    TransformKind::DateTime => {
-                                        let min = range[0].to_f64().unwrap_or(0.0) as i64;
-                                        let max =
-                                            range[range.len() - 1].to_f64().unwrap_or(0.0) as i64;
-                                        temporal_breaks_datetime(min, max, interval)
-                                            .into_iter()
-                                            .map(ArrayElement::String)
-                                            .collect()
-                                    }
-                                    TransformKind::Time => {
-                                        let min = range[0].to_f64().unwrap_or(0.0) as i64;
-                                        let max =
-                                            range[range.len() - 1].to_f64().unwrap_or(0.0) as i64;
-                                        temporal_breaks_time(min, max, interval)
-                                            .into_iter()
-                                            .map(ArrayElement::String)
-                                            .collect()
-                                    }
-                                    _ => vec![], // Non-temporal transforms don't support interval strings
-                                };
+                            let breaks: Vec<ArrayElement> = match resolved_transform
+                                .transform_kind()
+                            {
+                                TransformKind::Date => {
+                                    let min = range[0].to_f64().unwrap_or(0.0) as i32;
+                                    let max = range[range.len() - 1].to_f64().unwrap_or(0.0) as i32;
+                                    temporal_breaks_date(min, max, interval)
+                                        .into_iter()
+                                        .map(ArrayElement::String)
+                                        .collect()
+                                }
+                                TransformKind::DateTime => {
+                                    let min = range[0].to_f64().unwrap_or(0.0) as i64;
+                                    let max = range[range.len() - 1].to_f64().unwrap_or(0.0) as i64;
+                                    temporal_breaks_datetime(min, max, interval)
+                                        .into_iter()
+                                        .map(ArrayElement::String)
+                                        .collect()
+                                }
+                                TransformKind::Time => {
+                                    let min = range[0].to_f64().unwrap_or(0.0) as i64;
+                                    let max = range[range.len() - 1].to_f64().unwrap_or(0.0) as i64;
+                                    temporal_breaks_time(min, max, interval)
+                                        .into_iter()
+                                        .map(ArrayElement::String)
+                                        .collect()
+                                }
+                                _ => vec![], // Non-temporal transforms don't support interval strings
+                            };
 
                             if !breaks.is_empty() {
                                 // Convert string breaks to appropriate temporal ArrayElement types
@@ -1316,8 +1318,16 @@ pub(crate) fn expand_numeric_range_selective(
         .unwrap_or(false);
 
     // Only expand values that were inferred (originally null)
-    let expanded_min = if min_is_explicit { min } else { min - expansion };
-    let expanded_max = if max_is_explicit { max } else { max + expansion };
+    let expanded_min = if min_is_explicit {
+        min
+    } else {
+        min - expansion
+    };
+    let expanded_max = if max_is_explicit {
+        max
+    } else {
+        max + expansion
+    };
 
     vec![
         ArrayElement::Number(expanded_min),
@@ -1451,12 +1461,8 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
     if let Some(range) = base_range {
         let is_continuous = range.iter().all(|e| matches!(e, ArrayElement::Number(_)));
         if is_continuous {
-            let expanded = expand_numeric_range_selective(
-                &range,
-                mult,
-                add,
-                original_user_range.as_deref(),
-            );
+            let expanded =
+                expand_numeric_range_selective(&range, mult, add, original_user_range.as_deref());
             scale.input_range = Some(clip_to_transform_domain(&expanded, &resolved_transform));
         } else {
             // Discrete ranges don't get expanded
@@ -3065,7 +3071,11 @@ mod tests {
         let breaks = breaks.unwrap();
         // linear_breaks now extends one step before and after
         // Negative values in sqrt space get clipped, so we get more than 5 breaks
-        assert!(breaks.len() >= 5, "Should have at least 5 breaks, got {}", breaks.len());
+        assert!(
+            breaks.len() >= 5,
+            "Should have at least 5 breaks, got {}",
+            breaks.len()
+        );
     }
 
     #[test]
@@ -3147,9 +3157,10 @@ mod tests {
             ArrayElement::Date(19738), // 2024-01-15
             ArrayElement::Date(19889), // 2024-06-15
         ]);
-        scale
-            .properties
-            .insert("breaks".to_string(), ParameterValue::String("2 months".to_string()));
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::String("2 months".to_string()),
+        );
 
         let context = ScaleDataContext::new();
         ScaleType::continuous()
@@ -3188,9 +3199,10 @@ mod tests {
             ArrayElement::DateTime(jan1_2024_us),
             ArrayElement::DateTime(apr1_2024_us),
         ]);
-        scale
-            .properties
-            .insert("breaks".to_string(), ParameterValue::String("month".to_string()));
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::String("month".to_string()),
+        );
 
         let context = ScaleDataContext::new();
         ScaleType::continuous()
@@ -3221,13 +3233,11 @@ mod tests {
         let mut scale = Scale::new("x");
         scale.scale_type = Some(ScaleType::continuous());
         scale.transform = Some(Transform::date());
-        scale.input_range = Some(vec![
-            ArrayElement::Date(19738),
-            ArrayElement::Date(19889),
-        ]);
-        scale
-            .properties
-            .insert("breaks".to_string(), ParameterValue::String("invalid_interval".to_string()));
+        scale.input_range = Some(vec![ArrayElement::Date(19738), ArrayElement::Date(19889)]);
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::String("invalid_interval".to_string()),
+        );
 
         let context = ScaleDataContext::new();
         // Should not error, just leave breaks as-is
@@ -3252,13 +3262,11 @@ mod tests {
         let mut scale = Scale::new("x");
         scale.scale_type = Some(ScaleType::continuous());
         scale.transform = Some(Transform::identity()); // Not temporal
-        scale.input_range = Some(vec![
-            ArrayElement::Number(0.0),
-            ArrayElement::Number(100.0),
-        ]);
-        scale
-            .properties
-            .insert("breaks".to_string(), ParameterValue::String("2 months".to_string()));
+        scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::String("2 months".to_string()),
+        );
 
         let context = ScaleDataContext::new();
         ScaleType::continuous()

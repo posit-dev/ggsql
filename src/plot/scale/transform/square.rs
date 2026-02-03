@@ -164,11 +164,21 @@ mod tests {
         let breaks = t.calculate_breaks(0.0, 10.0, 5, false);
         // linear_breaks now extends one step before and after
         // Square transform allows negative domain values, so first break can be negative
-        assert!(breaks.len() >= 5, "Should have at least 5 breaks, got {}", breaks.len());
+        assert!(
+            breaks.len() >= 5,
+            "Should have at least 5 breaks, got {}",
+            breaks.len()
+        );
         // First break should be < 0 (extended before 0)
-        assert!(breaks.first().unwrap() < &0.0, "First break should be before 0");
+        assert!(
+            breaks.first().unwrap() < &0.0,
+            "First break should be before 0"
+        );
         // Last break should be > 10 (extended after 10)
-        assert!(breaks.last().unwrap() > &10.0, "Last break should be after 10");
+        assert!(
+            breaks.last().unwrap() > &10.0,
+            "Last break should be after 10"
+        );
     }
 
     #[test]

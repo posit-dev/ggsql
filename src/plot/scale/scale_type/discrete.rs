@@ -635,7 +635,8 @@ mod tests {
         scale.explicit_input_range = true;
 
         let type_names = super::SqlTypeNames::default();
-        let sql = discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &type_names);
+        let sql =
+            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &type_names);
 
         assert!(sql.is_some());
         let sql = sql.unwrap();
@@ -659,7 +660,8 @@ mod tests {
         scale.explicit_input_range = false;
 
         let type_names = super::SqlTypeNames::default();
-        let sql = discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &type_names);
+        let sql =
+            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &type_names);
 
         // Should return None (no OOB handling for inferred ranges)
         assert!(sql.is_none());
@@ -718,7 +720,8 @@ mod tests {
         scale.explicit_input_range = true;
 
         let type_names = super::SqlTypeNames::default();
-        let sql = discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &type_names);
+        let sql =
+            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &type_names);
 
         // Should return None for empty range
         assert!(sql.is_none());

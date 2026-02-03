@@ -42,7 +42,11 @@ impl ScaleTypeTrait for Continuous {
         ]
     }
 
-    fn default_transform(&self, _aesthetic: &str, column_dtype: Option<&DataType>) -> TransformKind {
+    fn default_transform(
+        &self,
+        _aesthetic: &str,
+        column_dtype: Option<&DataType>,
+    ) -> TransformKind {
         // First check column data type for temporal transforms
         if let Some(dtype) = column_dtype {
             match dtype {
@@ -262,17 +266,19 @@ mod tests {
     fn test_pre_stat_transform_sql_censor() {
         let continuous = Continuous;
         let mut scale = Scale::new("y");
-        scale.input_range = Some(vec![
-            ArrayElement::Number(0.0),
-            ArrayElement::Number(100.0),
-        ]);
+        scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
         scale.properties.insert(
             "oob".to_string(),
             ParameterValue::String("censor".to_string()),
         );
 
-        let sql = continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names());
+        let sql = continuous.pre_stat_transform_sql(
+            "value",
+            &DataType::Float64,
+            &scale,
+            &test_type_names(),
+        );
 
         assert!(sql.is_some());
         let sql = sql.unwrap();
@@ -287,17 +293,19 @@ mod tests {
     fn test_pre_stat_transform_sql_squish() {
         let continuous = Continuous;
         let mut scale = Scale::new("y");
-        scale.input_range = Some(vec![
-            ArrayElement::Number(0.0),
-            ArrayElement::Number(100.0),
-        ]);
+        scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
         scale.properties.insert(
             "oob".to_string(),
             ParameterValue::String("squish".to_string()),
         );
 
-        let sql = continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names());
+        let sql = continuous.pre_stat_transform_sql(
+            "value",
+            &DataType::Float64,
+            &scale,
+            &test_type_names(),
+        );
 
         assert!(sql.is_some());
         let sql = sql.unwrap();
@@ -310,17 +318,19 @@ mod tests {
     fn test_pre_stat_transform_sql_keep() {
         let continuous = Continuous;
         let mut scale = Scale::new("x"); // positional aesthetic defaults to keep
-        scale.input_range = Some(vec![
-            ArrayElement::Number(0.0),
-            ArrayElement::Number(100.0),
-        ]);
+        scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
         scale.properties.insert(
             "oob".to_string(),
             ParameterValue::String("keep".to_string()),
         );
 
-        let sql = continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names());
+        let sql = continuous.pre_stat_transform_sql(
+            "value",
+            &DataType::Float64,
+            &scale,
+            &test_type_names(),
+        );
 
         // Should return None for keep (no transformation)
         assert!(sql.is_none());
@@ -330,14 +340,16 @@ mod tests {
     fn test_pre_stat_transform_sql_no_explicit_range() {
         let continuous = Continuous;
         let mut scale = Scale::new("y");
-        scale.input_range = Some(vec![
-            ArrayElement::Number(0.0),
-            ArrayElement::Number(100.0),
-        ]);
+        scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         // explicit_input_range = false (inferred from data)
         scale.explicit_input_range = false;
 
-        let sql = continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names());
+        let sql = continuous.pre_stat_transform_sql(
+            "value",
+            &DataType::Float64,
+            &scale,
+            &test_type_names(),
+        );
 
         // Should return None (no OOB handling for inferred ranges)
         assert!(sql.is_none());
@@ -347,14 +359,16 @@ mod tests {
     fn test_pre_stat_transform_sql_default_oob_for_positional() {
         let continuous = Continuous;
         let mut scale = Scale::new("x"); // positional aesthetic
-        scale.input_range = Some(vec![
-            ArrayElement::Number(0.0),
-            ArrayElement::Number(100.0),
-        ]);
+        scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
         // No oob property - should use default (keep for positional)
 
-        let sql = continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names());
+        let sql = continuous.pre_stat_transform_sql(
+            "value",
+            &DataType::Float64,
+            &scale,
+            &test_type_names(),
+        );
 
         // Should return None since default for positional is "keep"
         assert!(sql.is_none());
@@ -364,14 +378,16 @@ mod tests {
     fn test_pre_stat_transform_sql_default_oob_for_non_positional() {
         let continuous = Continuous;
         let mut scale = Scale::new("color"); // non-positional aesthetic
-        scale.input_range = Some(vec![
-            ArrayElement::Number(0.0),
-            ArrayElement::Number(100.0),
-        ]);
+        scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
         // No oob property - should use default (censor for non-positional)
 
-        let sql = continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names());
+        let sql = continuous.pre_stat_transform_sql(
+            "value",
+            &DataType::Float64,
+            &scale,
+            &test_type_names(),
+        );
 
         // Should generate censor SQL since default for non-positional is "censor"
         assert!(sql.is_some());

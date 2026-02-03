@@ -939,7 +939,9 @@ fn add_discrete_columns_to_partition_by(
                 let is_discrete = if let Some(scale) = scale_map.get(primary_aesthetic) {
                     if let Some(ref scale_type) = scale.scale_type {
                         match scale_type.scale_type_kind() {
-                            ScaleTypeKind::Discrete | ScaleTypeKind::Binned | ScaleTypeKind::Ordinal => true,
+                            ScaleTypeKind::Discrete
+                            | ScaleTypeKind::Binned
+                            | ScaleTypeKind::Ordinal => true,
                             ScaleTypeKind::Continuous => false,
                             ScaleTypeKind::Identity => discrete_columns.contains(col),
                         }
@@ -3038,9 +3040,10 @@ fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -> Re
     for scale in &spec.scales {
         // Only filter if explicit input range AND NULL is not in the range
         let should_filter_nulls = scale.explicit_input_range
-            && scale.input_range.as_ref().is_some_and(|range| {
-                !range.iter().any(|elem| matches!(elem, ArrayElement::Null))
-            });
+            && scale
+                .input_range
+                .as_ref()
+                .is_some_and(|range| !range.iter().any(|elem| matches!(elem, ArrayElement::Null)));
 
         if !should_filter_nulls {
             continue;
@@ -3170,9 +3173,8 @@ fn filter_null_rows(df: &DataFrame, col_name: &str) -> Result<DataFrame> {
     })?;
 
     let mask = col.is_not_null();
-    df.filter(&mask).map_err(|e| {
-        GgsqlError::InternalError(format!("Failed to filter NULL rows: {}", e))
-    })
+    df.filter(&mask)
+        .map_err(|e| GgsqlError::InternalError(format!("Failed to filter NULL rows: {}", e)))
 }
 
 /// Apply oob transformation to a single discrete/categorical column in a DataFrame.
@@ -6052,18 +6054,9 @@ mod tests {
         let series = cat_col.as_materialized_series();
 
         // First 3 values should be A, B, C
-        assert_eq!(
-            series.get(0).unwrap().to_string().trim_matches('"'),
-            "A"
-        );
-        assert_eq!(
-            series.get(1).unwrap().to_string().trim_matches('"'),
-            "B"
-        );
-        assert_eq!(
-            series.get(2).unwrap().to_string().trim_matches('"'),
-            "C"
-        );
+        assert_eq!(series.get(0).unwrap().to_string().trim_matches('"'), "A");
+        assert_eq!(series.get(1).unwrap().to_string().trim_matches('"'), "B");
+        assert_eq!(series.get(2).unwrap().to_string().trim_matches('"'), "C");
 
         // D and E (rows 3 and 4) should be null
         assert!(series.get(3).unwrap().is_null());
@@ -6228,7 +6221,12 @@ mod tests {
 
         // Should have 2 rows (A and B), NOT 3 (with NULL)
         let df = result.data.get(&naming::layer_key(0)).unwrap();
-        assert_eq!(df.height(), 2, "Expected 2 rows (A and B), but got {} - NULL row should be filtered", df.height());
+        assert_eq!(
+            df.height(),
+            2,
+            "Expected 2 rows (A and B), but got {} - NULL row should be filtered",
+            df.height()
+        );
 
         // Verify only A and B are present
         let cat_col = df.column("category").unwrap();
@@ -6328,22 +6326,13 @@ mod tests {
         // label column unchanged
         let label_col = result.column("label").unwrap();
         let series = label_col.as_materialized_series();
-        assert_eq!(
-            series.get(0).unwrap().to_string().trim_matches('"'),
-            "one"
-        );
-        assert_eq!(
-            series.get(1).unwrap().to_string().trim_matches('"'),
-            "two"
-        );
+        assert_eq!(series.get(0).unwrap().to_string().trim_matches('"'), "one");
+        assert_eq!(series.get(1).unwrap().to_string().trim_matches('"'), "two");
         assert_eq!(
             series.get(2).unwrap().to_string().trim_matches('"'),
             "three"
         );
-        assert_eq!(
-            series.get(3).unwrap().to_string().trim_matches('"'),
-            "four"
-        );
+        assert_eq!(series.get(3).unwrap().to_string().trim_matches('"'), "four");
 
         // category column: A, B preserved, C, D set to null
         let cat_col = result.column("category").unwrap();

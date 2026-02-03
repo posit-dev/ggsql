@@ -38,7 +38,11 @@ impl ScaleTypeTrait for Ordinal {
         ]
     }
 
-    fn default_transform(&self, _aesthetic: &str, column_dtype: Option<&DataType>) -> TransformKind {
+    fn default_transform(
+        &self,
+        _aesthetic: &str,
+        column_dtype: Option<&DataType>,
+    ) -> TransformKind {
         // Infer from column type, defaulting to String
         match column_dtype {
             Some(DataType::Boolean) => TransformKind::Bool,
@@ -524,11 +528,7 @@ mod tests {
         ordinal.resolve_output_range(&mut scale, "shape").unwrap();
 
         if let Some(OutputRange::Array(arr)) = &scale.output_range {
-            assert_eq!(
-                arr.len(),
-                2,
-                "Should truncate to 2 shapes for 2 categories"
-            );
+            assert_eq!(arr.len(), 2, "Should truncate to 2 shapes for 2 categories");
         } else {
             panic!("Output range should be an Array");
         }

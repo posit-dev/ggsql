@@ -1620,8 +1620,14 @@ mod tests {
         // Verify that the extended breaks cover the original range
         let breaks = linear_breaks(10.0, 90.0, 5);
         // step = 20, so: -10, 10, 30, 50, 70, 90, 110
-        assert!(breaks.first().unwrap() < &10.0, "First break should be before min");
-        assert!(breaks.last().unwrap() > &90.0, "Last break should be after max");
+        assert!(
+            breaks.first().unwrap() < &10.0,
+            "First break should be before min"
+        );
+        assert!(
+            breaks.last().unwrap() > &90.0,
+            "Last break should be after max"
+        );
         // The range 10..90 should be fully covered
         assert!(breaks.iter().any(|&b| b <= 10.0));
         assert!(breaks.iter().any(|&b| b >= 90.0));
@@ -1846,7 +1852,11 @@ mod tests {
         // linear_breaks now extends one step before and after
         // Squared back: ~6.25 (step before 0 gets clipped), 0, 6.25, 25, 56.25, 100, ~156.25
         // But negative values in sqrt space get clipped
-        assert!(breaks.len() >= 5, "Should have at least 5 breaks, got {}", breaks.len());
+        assert!(
+            breaks.len() >= 5,
+            "Should have at least 5 breaks, got {}",
+            breaks.len()
+        );
         // First break should be >= 0 (sqrt clips negatives)
         assert!(breaks.first().unwrap() >= &0.0);
         // Last break should be >= 100

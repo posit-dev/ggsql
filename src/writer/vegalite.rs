@@ -57,7 +57,10 @@ use std::collections::HashMap;
 /// - This is necessary because `datum.label` contains Vega-Lite's formatted label (e.g., "Jan 1, 2024")
 ///   but our label_mapping keys are ISO format strings (e.g., "2024-01-01")
 /// - Example: `"timeFormat(datum.value, '%Y-%m-%d') == '2024-01-01' ? 'Q1 Start' : datum.label"`
-fn build_label_expr(mappings: &HashMap<String, Option<String>>, time_format: Option<&str>) -> String {
+fn build_label_expr(
+    mappings: &HashMap<String, Option<String>>,
+    time_format: Option<&str>,
+) -> String {
     if mappings.is_empty() {
         return "datum.label".to_string();
     }
@@ -75,7 +78,10 @@ fn build_label_expr(mappings: &HashMap<String, Option<String>>, time_format: Opt
             match to {
                 Some(label) => {
                     let to_escaped = label.replace('\'', "\\'");
-                    format!("{} == '{}' ? '{}'", comparison_expr, from_escaped, to_escaped)
+                    format!(
+                        "{} == '{}' ? '{}'",
+                        comparison_expr, from_escaped, to_escaped
+                    )
                 }
                 None => {
                     // NULL suppresses the label (empty string)
@@ -712,10 +718,13 @@ impl VegaLiteWriter {
                                                 .get_mut("legend")
                                                 .and_then(|v| v.as_object_mut());
                                             if let Some(legend_map) = legend {
-                                                legend_map
-                                                    .insert("values".to_string(), json!(reversed_domain));
+                                                legend_map.insert(
+                                                    "values".to_string(),
+                                                    json!(reversed_domain),
+                                                );
                                             } else {
-                                                encoding["legend"] = json!({"values": reversed_domain});
+                                                encoding["legend"] =
+                                                    json!({"values": reversed_domain});
                                             }
                                         }
                                     }
@@ -780,14 +789,16 @@ impl VegaLiteWriter {
                             // because datum.label contains Vega-Lite's formatted label (e.g., "Jan 1, 2024")
                             // but our label_mapping keys are ISO format strings (e.g., "2024-01-01")
                             use crate::plot::scale::TransformKind;
-                            let time_format = scale.transform.as_ref().and_then(|t| {
-                                match t.transform_kind() {
-                                    TransformKind::Date => Some("%Y-%m-%d"),
-                                    TransformKind::DateTime => Some("%Y-%m-%dT%H:%M:%S"),
-                                    TransformKind::Time => Some("%H:%M:%S"),
-                                    _ => None,
-                                }
-                            });
+                            let time_format =
+                                scale
+                                    .transform
+                                    .as_ref()
+                                    .and_then(|t| match t.transform_kind() {
+                                        TransformKind::Date => Some("%Y-%m-%d"),
+                                        TransformKind::DateTime => Some("%Y-%m-%dT%H:%M:%S"),
+                                        TransformKind::Time => Some("%H:%M:%S"),
+                                        _ => None,
+                                    });
                             let label_expr = build_label_expr(label_mapping, time_format);
 
                             if matches!(
@@ -831,7 +842,9 @@ impl VegaLiteWriter {
                 // (scheme-based scales automatically get gradient legends from Vega-Lite)
                 if needs_gradient_legend {
                     // Merge gradient type into existing legend object (preserves values, etc.)
-                    if let Some(legend_obj) = encoding.get_mut("legend").and_then(|v| v.as_object_mut()) {
+                    if let Some(legend_obj) =
+                        encoding.get_mut("legend").and_then(|v| v.as_object_mut())
+                    {
                         legend_obj.insert("type".to_string(), json!("gradient"));
                     } else if !encoding.get("legend").is_some_and(|v| v.is_null()) {
                         // No legend object yet, create one with gradient type
@@ -1656,7 +1669,9 @@ impl Writer for VegaLiteWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::{ArrayElement, Labels, Layer, LiteralValue, OutputRange, ParameterValue, Scale};
+    use crate::plot::{
+        ArrayElement, Labels, Layer, LiteralValue, OutputRange, ParameterValue, Scale,
+    };
     use std::collections::HashMap;
 
     /// Helper to wrap a DataFrame in a data map for testing
@@ -2034,7 +2049,10 @@ mod tests {
             let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
             let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
-            assert_eq!(vl_spec["layer"][0]["mark"]["type"].as_str().unwrap(), "text");
+            assert_eq!(
+                vl_spec["layer"][0]["mark"]["type"].as_str().unwrap(),
+                "text"
+            );
             assert_eq!(vl_spec["layer"][0]["mark"]["clip"], true);
         }
     }
@@ -4792,10 +4810,7 @@ mod tests {
         scale.scale_type = Some(crate::plot::ScaleType::binned());
         scale.properties.insert(
             "breaks".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::Number(0.0),
-                ArrayElement::Number(100.0),
-            ]),
+            ParameterValue::Array(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]),
         );
         scale.properties.insert(
             "oob".to_string(),
@@ -4819,7 +4834,11 @@ mod tests {
             "Binned scale should set axis.values"
         );
         let values = axis_values.as_array().unwrap();
-        assert_eq!(values.len(), 2, "Should keep both values when only 2 breaks");
+        assert_eq!(
+            values.len(),
+            2,
+            "Should keep both values when only 2 breaks"
+        );
     }
 
     // ========================================
@@ -5445,10 +5464,7 @@ mod tests {
             scale_obj["type"], "log",
             "Log transform on size should pass through as log scale"
         );
-        assert_eq!(
-            scale_obj["base"], 10,
-            "Log transform should have base 10"
-        );
+        assert_eq!(scale_obj["base"], 10, "Log transform should have base 10");
     }
 
     #[test]

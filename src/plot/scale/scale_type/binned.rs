@@ -43,7 +43,11 @@ impl ScaleTypeTrait for Binned {
         ]
     }
 
-    fn default_transform(&self, _aesthetic: &str, column_dtype: Option<&DataType>) -> TransformKind {
+    fn default_transform(
+        &self,
+        _aesthetic: &str,
+        column_dtype: Option<&DataType>,
+    ) -> TransformKind {
         // First check column data type for temporal transforms
         if let Some(dtype) = column_dtype {
             match dtype {
@@ -393,8 +397,9 @@ impl ScaleTypeTrait for Binned {
                                 .map(|elem| resolved_transform.parse_value(elem))
                                 .collect();
                             // Filter to input range
-                            let filtered =
-                                super::super::super::breaks::filter_breaks_to_range(&converted, range);
+                            let filtered = super::super::super::breaks::filter_breaks_to_range(
+                                &converted, range,
+                            );
                             scale
                                 .properties
                                 .insert("breaks".to_string(), ParameterValue::Array(filtered));
@@ -1355,7 +1360,9 @@ mod tests {
         ]));
 
         // Resolve output range
-        binned.resolve_output_range(&mut scale, "linewidth").unwrap();
+        binned
+            .resolve_output_range(&mut scale, "linewidth")
+            .unwrap();
 
         // Should have 2 evenly spaced values: 1.0 and 6.0
         if let Some(OutputRange::Array(arr)) = &scale.output_range {
@@ -1566,10 +1573,7 @@ mod tests {
         let mut scale = Scale::new("x");
         scale.properties.insert(
             "breaks".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::Number(0.0),
-                ArrayElement::Number(100.0),
-            ]),
+            ParameterValue::Array(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]),
         );
         scale.properties.insert(
             "oob".to_string(),
