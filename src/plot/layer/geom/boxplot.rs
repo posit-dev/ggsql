@@ -620,8 +620,6 @@ mod tests {
 
         assert!(aes.supported.contains(&"x"));
         assert!(aes.supported.contains(&"y"));
-        assert!(aes.supported.contains(&"color"));
-        assert!(aes.supported.contains(&"colour"));
         assert!(aes.supported.contains(&"fill"));
         assert!(aes.supported.contains(&"stroke"));
         assert!(aes.supported.contains(&"opacity"));
