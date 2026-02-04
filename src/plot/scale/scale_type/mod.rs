@@ -515,6 +515,16 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                     oob
                 ));
             }
+
+            // Binned scales support "censor" and "squish", but not "keep"
+            // Values outside bins have no bin to map to, but can be squished to nearest bin edge
+            if kind == ScaleTypeKind::Binned && oob == OOB_KEEP {
+                return Err(format!(
+                    "{} scale does not support oob='keep'. Use 'censor' to exclude values \
+                     outside bins, or 'squish' to clamp them to the nearest bin edge.",
+                    self.name()
+                ));
+            }
         }
 
         Ok(resolved)
@@ -2334,6 +2344,36 @@ mod tests {
         match resolved.get("expand") {
             Some(ParameterValue::Number(n)) => assert!((n - 0.2).abs() < 1e-10),
             _ => panic!("Expected Number"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_properties_binned_rejects_keep_oob() {
+        let mut props = HashMap::new();
+        props.insert("oob".to_string(), ParameterValue::String("keep".to_string()));
+
+        let result = ScaleType::binned().resolve_properties("x", &props);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("does not support oob='keep'"));
+    }
+
+    #[test]
+    fn test_resolve_properties_binned_allows_squish_oob() {
+        let mut props = HashMap::new();
+        props.insert("oob".to_string(), ParameterValue::String("squish".to_string()));
+
+        let result = ScaleType::binned().resolve_properties("x", &props);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_resolve_properties_binned_default_oob_is_censor() {
+        let props = HashMap::new();
+        let resolved = ScaleType::binned().resolve_properties("x", &props).unwrap();
+        match resolved.get("oob") {
+            Some(ParameterValue::String(s)) => assert_eq!(s, "censor"),
+            _ => panic!("Expected oob to be 'censor'"),
         }
     }
 
