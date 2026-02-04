@@ -30,6 +30,7 @@ csscolorparser = "0.8.1"
 
 # Data processing
 polars = { version = "0.52", features = ["lazy", "sql", "ipc"] }
+polars-ops = { version = "0.52", features = ["pivot"] }
 
 # Readers
 duckdb = { version = "1.4", features = ["bundled", "vtab-arrow"] }

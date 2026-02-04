@@ -20,6 +20,7 @@ There are many different layers to choose from when visualising your data. Some 
 - [`path`](layer/path.qmd) is like `line` above but does not sort the data but plot it according to its own order
 - [`bar`](layer/bar.qmd) creates a bar chart, optionally calculating y from the number of records in each bar
 - [`histogram`](layer/histogram.qmd) bins the data along the x axis and produces a bar for each bin showing the number of records in it
+- [`boxplot`](layer/boxplot.qmd) displays continuous variables as 5-number summaries
 
 ## Scales
 

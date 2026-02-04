@@ -576,7 +576,7 @@ mod integration_tests {
         assert_eq!(vl_spec["layer"].as_array().unwrap().len(), 2);
 
         // Verify the color aesthetic is mapped to layer-indexed synthetic columns
-        let layer0_color = &vl_spec["layer"][0]["encoding"]["linetype"];
+        let layer0_color = &vl_spec["layer"][0]["encoding"]["strokeDash"];
         let layer1_color = &vl_spec["layer"][1]["encoding"]["shape"];
 
         // Constants should be field-mapped to layer-indexed columns

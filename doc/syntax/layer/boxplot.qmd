@@ -1,0 +1,84 @@
+---
+title: "Boxplot"
+---
+> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+
+Boxplots display a summary of a continuous distribution. In the style of Tukey, it displays the median, two hinges and two whiskers as well as outlying points.
+
+## Aesthetics
+The following aesthetics are recognised by the boxplot layer.
+
+### Required
+* `x`: Position on the x-axis
+* `y`: Position on the y-axis
+
+### Optional
+* `stroke`: The colour of the box contours, whiskers, median line and outliers.
+* `fill`: The colour of the box interior.
+* `colour`: Shorthand for setting `stroke` and `fill` simultaneously. Note that the median line will have bad visibility if `stroke` and `fill` are the same.
+* `opacity`: The opacity of the box interior.
+* `linewidth` The width of the box outline, whiskers, median line and outlier stroke.
+* `linetype` The linetype of the box outline, whiskers, median line and outlier stroke.
+* `size` The absolute size of outlier points.
+* `shape` The shape of outlier points.
+
+## Settings
+* `outliers`: Whether to display outliers as points. Defaults to `true`.
+* `coef`: A number indicating the length of the whiskers as a multiple of the interquartile range (IQR). Defaults to `1.5`.
+* `width`: Relative width of the boxes. Defaults to `0.9`.
+
+## Data transformation
+Per group, data will be divided into 4 quartiles and summary statistics will be derived from their extremes.
+Because number of observations per quartile may differ by one, the result of this approach may slightly differ from a pure quantile-based approach.
+The central line represents the median.
+The boxes are displayed from the 25th up to the 75th percentiles.
+The whiskers are calculated from the 25th/75th percentiles +/- the IQR times `coef`, but no more extreme than the data extrema.
+Observations are considered outliers when they are more extreme than the whiskers.
+
+### Calculated statistics
+
+* `type`: A string representing the type of metric (`upper`,`lower`,`q1`,`q3`,`median`,`outlier`).
+* `value`: The value corresponding to the metric.
+
+### Default remapping
+
+* `value AS y`: By default the values are displayed along the y-axis.
+
+### Examples
+
+A basic boxplot showing the bill length per species.
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW boxplot
+  MAPPING species AS x, bill_len AS y
+```
+
+Additional groups will dodge the boxplots.
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW boxplot
+  MAPPING 
+    species AS x, 
+    bill_len AS y,
+    island AS stroke
+```
+
+Narrow boxes by shrinking the `width` parameter.
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW boxplot
+  MAPPING species AS x, bill_len AS y
+  SETTING width => 0.2
+```
+
+Consider more observations as outliers by setting a smaller `coef`:
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW boxplot
+  MAPPING species AS x, bill_len AS y
+  SETTING coef => 0.1
+```
