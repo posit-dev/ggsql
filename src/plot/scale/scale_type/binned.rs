@@ -75,9 +75,8 @@ impl ScaleTypeTrait for Binned {
             "expand" if super::is_positional_aesthetic(aesthetic) => {
                 Some(ParameterValue::Number(super::DEFAULT_EXPAND_MULT))
             }
-            "oob" => Some(ParameterValue::String(
-                super::default_oob(aesthetic).to_string(),
-            )),
+            // Binned scales default to "censor" - "keep" is not valid for binned
+            "oob" => Some(ParameterValue::String(super::OOB_CENSOR.to_string())),
             "reverse" => Some(ParameterValue::Boolean(false)),
             "breaks" => Some(ParameterValue::Number(
                 super::super::breaks::DEFAULT_BREAK_COUNT as f64,
@@ -465,8 +464,13 @@ impl ScaleTypeTrait for Binned {
                     .insert("breaks".to_string(), ParameterValue::Array(breaks));
 
                 // Update input_range if we computed a new one
+                // Convert to proper type using transform (e.g., Number → Date for temporal)
                 if let Some(range) = new_input_range {
-                    scale.input_range = Some(range);
+                    let converted: Vec<ArrayElement> = range
+                        .iter()
+                        .map(|elem| resolved_transform.parse_value(elem))
+                        .collect();
+                    scale.input_range = Some(converted);
                 }
             }
         }

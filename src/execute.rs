@@ -271,50 +271,28 @@ fn extract_series_value(
             .and_then(|ca| ca.get(row))
             .map(|s| ArrayElement::String(s.to_string())),
         DataType::Date => {
-            // Convert Date (days since epoch) to ISO string
+            // Return numeric days since epoch (for range computation)
             series
                 .date()
                 .ok()
                 .and_then(|ca| ca.physical().get(row))
-                .map(|days| {
-                    let date = chrono::NaiveDate::from_num_days_from_ce_opt(
-                        days + 719_163, // Epoch adjustment (1970-01-01 is day 719163 from CE)
-                    );
-                    ArrayElement::String(
-                        date.map(|d| d.format("%Y-%m-%d").to_string())
-                            .unwrap_or_else(|| format!("{}", days)),
-                    )
-                })
+                .map(|days| ArrayElement::Number(days as f64))
         }
         DataType::Datetime(_, _) => {
-            // Convert Datetime (microseconds since epoch) to ISO string
+            // Return numeric microseconds since epoch (for range computation)
             series
                 .datetime()
                 .ok()
                 .and_then(|ca| ca.physical().get(row))
-                .map(|us| {
-                    let secs = us / 1_000_000;
-                    let nsecs = ((us % 1_000_000) * 1000) as u32;
-                    let dt = chrono::DateTime::from_timestamp(secs, nsecs);
-                    ArrayElement::String(
-                        dt.map(|d| d.format("%Y-%m-%dT%H:%M:%S").to_string())
-                            .unwrap_or_else(|| format!("{}", us)),
-                    )
-                })
+                .map(|us| ArrayElement::Number(us as f64))
         }
         DataType::Time => {
-            // Convert Time (nanoseconds since midnight) to string
+            // Return numeric nanoseconds since midnight (for range computation)
             series
                 .time()
                 .ok()
                 .and_then(|ca| ca.physical().get(row))
-                .map(|ns| {
-                    let secs = (ns / 1_000_000_000) as u32;
-                    let h = secs / 3600;
-                    let m = (secs % 3600) / 60;
-                    let s = secs % 60;
-                    ArrayElement::String(format!("{:02}:{:02}:{:02}", h, m, s))
-                })
+                .map(|ns| ArrayElement::Number(ns as f64))
         }
         _ => None,
     }
@@ -1118,6 +1096,48 @@ fn transform_global_sql(sql: &str, materialized_ctes: &HashSet<String>) -> Optio
 // Pre-Stat Transform
 // =============================================================================
 
+/// Check if a layer needs pre-stat transformation based on its mapped aesthetics and scales.
+///
+/// Returns true if any mapped aesthetic has a scale that would generate pre-stat SQL
+/// (e.g., binned scales with resolved breaks).
+fn needs_pre_stat_transform(
+    layer: &Layer,
+    schema: &Schema,
+    scales: &[crate::plot::Scale],
+    type_names: &SqlTypeNames,
+) -> bool {
+    use polars::prelude::DataType;
+
+    for (aesthetic, value) in &layer.mappings.aesthetics {
+        let col_name = if let Some(col) = value.column_name() {
+            col.to_string()
+        } else if value.is_literal() {
+            naming::const_column(aesthetic)
+        } else {
+            continue;
+        };
+
+        let col_dtype = schema
+            .iter()
+            .find(|c| c.name == col_name)
+            .map(|c| c.dtype.clone())
+            .unwrap_or(DataType::String);
+
+        if let Some(scale) = scales.iter().find(|s| s.aesthetic == *aesthetic) {
+            if let Some(ref scale_type) = scale.scale_type {
+                if scale_type
+                    .pre_stat_transform_sql(&col_name, &col_dtype, scale, type_names)
+                    .is_some()
+                {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
 /// Apply pre-stat transformations for scales that require data modification before stats.
 ///
 /// Handles multiple scale types:
@@ -1292,8 +1312,18 @@ where
                     )));
                 }
                 true
+            } else if needs_pre_stat_transform(layer, schema, scales, type_names) {
+                // Layer has binned scales that need data transformation
+                if !has_global {
+                    return Err(GgsqlError::ValidationError(format!(
+                        "Layer {} requires data transformation for binned scale but no data source.",
+                        layer_idx + 1
+                    )));
+                }
+                true
             } else {
-                // No source, no filter, no stat transform - use __global__ data directly
+                // No source, no filter, no stat transform, no pre-stat transform
+                // - use __global__ data directly
                 // (constants are already in global table with layer-indexed names)
                 false
             }
@@ -6427,15 +6457,9 @@ mod tests {
         assert_eq!(col.name, "date_col");
         // Date is now continuous (not discrete)
         assert!(!col.is_discrete);
-        // Date min/max as ISO strings
-        assert_eq!(
-            col.min,
-            Some(ArrayElement::String("2024-01-15".to_string()))
-        );
-        assert_eq!(
-            col.max,
-            Some(ArrayElement::String("2024-03-01".to_string()))
-        );
+        // Date min/max as numeric days since epoch (for range computation)
+        assert_eq!(col.min, Some(ArrayElement::Number(19737.0))); // 2024-01-15
+        assert_eq!(col.max, Some(ArrayElement::Number(19783.0))); // 2024-03-01
     }
 
     #[cfg(feature = "duckdb")]
@@ -6498,18 +6522,12 @@ mod tests {
         assert_eq!(col_bool.min, Some(ArrayElement::Boolean(false)));
         assert_eq!(col_bool.max, Some(ArrayElement::Boolean(true)));
 
-        // Date column (continuous)
+        // Date column (continuous) - stored as numeric days since epoch
         let col_date = &schema[3];
         assert_eq!(col_date.name, "date_col");
         assert!(!col_date.is_discrete);
-        assert_eq!(
-            col_date.min,
-            Some(ArrayElement::String("2024-01-01".to_string()))
-        );
-        assert_eq!(
-            col_date.max,
-            Some(ArrayElement::String("2024-12-31".to_string()))
-        );
+        assert_eq!(col_date.min, Some(ArrayElement::Number(19723.0))); // 2024-01-01
+        assert_eq!(col_date.max, Some(ArrayElement::Number(20088.0))); // 2024-12-31
     }
 
     #[cfg(feature = "duckdb")]
