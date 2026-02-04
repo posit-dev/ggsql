@@ -531,6 +531,23 @@ fn transform_global_sql(sql: &str, materialized_ctes: &HashSet<String>) -> Optio
     }
 }
 
+/// Result of building a layer query
+///
+/// Contains information about the queries executed for a layer,
+/// distinguishing between base filter queries and stat transform queries.
+#[derive(Debug, Default)]
+pub struct LayerQueryResult {
+    /// The final query to execute (if any)
+    /// None means layer uses global data directly
+    pub query: Option<String>,
+    /// The base query before stat transform (filter/source only)
+    /// None if layer uses global data directly without filter
+    pub layer_sql: Option<String>,
+    /// The stat transform query (if a stat transform was applied)
+    /// None if no stat transform was needed
+    pub stat_sql: Option<String>,
+}
+
 /// Build a layer query handling all source types
 ///
 /// Handles:
@@ -544,12 +561,12 @@ fn transform_global_sql(sql: &str, materialized_ctes: &HashSet<String>) -> Optio
 /// (e.g., histogram binning, bar counting).
 ///
 /// Returns:
-/// - `Ok(Some(query))` - execute this query and store result
-/// - `Ok(None)` - layer uses `__global__` directly (no source, no filter, no constants, no stat transform)
+/// - `Ok(LayerQueryResult)` with information about queries executed
 /// - `Err(...)` - validation error (e.g., filter without global data)
 ///
 /// Note: This function takes `&mut Layer` because stat transforms may add new aesthetic mappings
 /// (e.g., mapping y to `__ggsql_stat__count` for histogram or bar count).
+#[allow(clippy::too_many_arguments)]
 fn build_layer_query<F>(
     layer: &mut Layer,
     schema: &Schema,
@@ -559,7 +576,7 @@ fn build_layer_query<F>(
     facet: Option<&Facet>,
     constants: &[(String, LiteralValue)],
     execute_query: &F,
-) -> Result<Option<String>>
+) -> Result<LayerQueryResult>
 where
     F: Fn(&str) -> Result<DataFrame>,
 {
@@ -603,7 +620,7 @@ where
                 naming::global_table()
             } else {
                 // No source, no filter, no constants, no stat transform - use __global__ data directly
-                return Ok(None);
+                return Ok(LayerQueryResult::default());
             }
         }
     };
@@ -634,6 +651,9 @@ where
     if let Some(f) = filter {
         query = format!("{} WHERE {}", query, f);
     }
+
+    // Save the base query (with filter) before stat transform
+    let base_query = query.clone();
 
     // Apply statistical transformation (after filter, uses combined group_by)
     // Returns StatResult::Identity for no transformation, StatResult::Transformed for transformed query
@@ -692,11 +712,15 @@ where
             }
 
             // Use the transformed query
-            let mut final_query = transformed_query;
+            let mut final_query = transformed_query.clone();
             if let Some(o) = order_by {
                 final_query = format!("{} ORDER BY {}", final_query, o);
             }
-            Ok(Some(final_query))
+            Ok(LayerQueryResult {
+                query: Some(final_query),
+                layer_sql: Some(base_query),
+                stat_sql: Some(transformed_query),
+            })
         }
         StatResult::Identity => {
             // Identity - no stat transformation
@@ -707,14 +731,18 @@ where
                 && order_by.is_none()
                 && constants.is_empty()
             {
-                Ok(None)
+                Ok(LayerQueryResult::default())
             } else {
                 // Layer has filter, order_by, or constants - still need the query
                 let mut final_query = query;
                 if let Some(o) = order_by {
                     final_query = format!("{} ORDER BY {}", final_query, o);
                 }
-                Ok(Some(final_query))
+                Ok(LayerQueryResult {
+                    query: Some(final_query.clone()),
+                    layer_sql: Some(final_query),
+                    stat_sql: None,
+                })
             }
         }
     }
@@ -860,8 +888,16 @@ fn split_color_aesthetic(layers: &mut Vec<Layer>) {
 pub struct PreparedData {
     /// Data map with global and layer-specific DataFrames
     pub data: HashMap<String, DataFrame>,
-    /// Parsed and resolved visualization specifications
-    pub specs: Vec<Plot>,
+    /// Parsed and resolved visualization specification
+    pub spec: Plot,
+    /// The main SQL query that was executed
+    pub sql: String,
+    /// The raw VISUALISE portion text
+    pub visual: String,
+    /// Per-layer filter/source queries (None = uses global data directly)
+    pub layer_sql: Vec<Option<String>>,
+    /// Per-layer stat transform queries (None = no stat transform)
+    pub stat_sql: Vec<Option<String>>,
 }
 
 /// Build data map from a query using a custom query executor function
@@ -885,6 +921,13 @@ where
     if specs.is_empty() {
         return Err(GgsqlError::ValidationError(
             "No visualization specifications found".to_string(),
+        ));
+    }
+
+    // TODO: Support multiple VISUALISE statements in future
+    if specs.len() > 1 {
+        return Err(GgsqlError::ValidationError(
+            "Multiple VISUALISE statements are not yet supported. Please use a single VISUALISE statement.".to_string(),
         ));
     }
 
@@ -1054,6 +1097,10 @@ where
     // - Layer with no source, no filter, no order_by → returns None (use global directly, constants already injected)
     let facet = specs[0].facet.clone();
 
+    // Track layer and stat queries for introspection
+    let mut layer_sql_vec: Vec<Option<String>> = Vec::new();
+    let mut stat_sql_vec: Vec<Option<String>> = Vec::new();
+
     for (idx, layer) in specs[0].layers.iter_mut().enumerate() {
         // For layers using global data without filter, constants are already in global data
         // (injected with layer-indexed names). For other layers, extract constants for injection.
@@ -1064,7 +1111,7 @@ where
         };
 
         // Get mutable reference to layer for stat transform to update aesthetics
-        if let Some(layer_query) = build_layer_query(
+        let query_result = build_layer_query(
             layer,
             &layer_schemas[idx],
             &materialized_ctes,
@@ -1073,7 +1120,14 @@ where
             facet.as_ref(),
             &constants,
             &execute_query,
-        )? {
+        )?;
+
+        // Store query information for introspection
+        layer_sql_vec.push(query_result.layer_sql);
+        stat_sql_vec.push(query_result.stat_sql);
+
+        // Execute the query if one was generated
+        if let Some(layer_query) = query_result.query {
             let df = execute_query(&layer_query).map_err(|e| {
                 GgsqlError::ReaderError(format!(
                     "Failed to fetch data for layer {}: {}",
@@ -1105,20 +1159,24 @@ where
         ));
     }
 
-    // Post-process specs: replace literals with column references and compute labels
-    for spec in &mut specs {
-        // Replace literal aesthetic values with column references to synthetic constant columns
-        replace_literals_with_columns(spec);
-        // Compute aesthetic labels (uses first non-constant column, respects user-specified labels)
-        spec.compute_aesthetic_labels();
-        // Divide 'color' over 'stroke' and 'fill'. This needs to happens after
-        // literals have associated columns.
-        split_color_aesthetic(&mut spec.layers);
-    }
+    let mut spec = specs.into_iter().next().unwrap();
+
+    // Post-process spec: replace literals with column references and compute labels
+    // Replace literal aesthetic values with column references to synthetic constant columns
+    replace_literals_with_columns(&mut spec);
+    // Compute aesthetic labels (uses first non-constant column, respects user-specified labels)
+    spec.compute_aesthetic_labels();
+    // Divide 'color' over 'stroke' and 'fill'. This needs to happens after
+    // literals have associated columns.
+    split_color_aesthetic(&mut spec.layers);
 
     Ok(PreparedData {
         data: data_map,
-        specs,
+        spec,
+        sql: sql_part,
+        visual: viz_part,
+        layer_sql: layer_sql_vec,
+        stat_sql: stat_sql_vec,
     })
 }
 
@@ -1127,7 +1185,7 @@ where
 /// Convenience wrapper around `prepare_data_with_executor` for direct DuckDB reader usage.
 #[cfg(feature = "duckdb")]
 pub fn prepare_data(query: &str, reader: &DuckDBReader) -> Result<PreparedData> {
-    prepare_data_with_executor(query, |sql| reader.execute(sql))
+    prepare_data_with_executor(query, |sql| reader.execute_sql(sql))
 }
 
 #[cfg(test)]
@@ -1146,7 +1204,7 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
 
         assert!(result.data.contains_key(naming::GLOBAL_DATA_KEY));
-        assert_eq!(result.specs.len(), 1);
+        assert_eq!(result.spec.layers.len(), 1);
     }
 
     #[cfg(feature = "duckdb")]
@@ -1373,7 +1431,8 @@ mod tests {
         );
 
         // Should use temp table name with session UUID
-        let query = result.unwrap().unwrap();
+        let query_result = result.unwrap();
+        let query = query_result.query.unwrap();
         assert!(query.starts_with("SELECT * FROM __ggsql_cte_sales_"));
         assert!(query.ends_with("__"));
         assert!(query.contains(naming::session_id()));
@@ -1401,7 +1460,8 @@ mod tests {
         );
 
         // Should use temp table name with session UUID and filter
-        let query = result.unwrap().unwrap();
+        let query_result = result.unwrap();
+        let query = query_result.query.unwrap();
         assert!(query.contains("__ggsql_cte_sales_"));
         assert!(query.ends_with(" WHERE year = 2024"));
         assert!(query.contains(naming::session_id()));
@@ -1427,8 +1487,9 @@ mod tests {
         );
 
         // Should use table name directly
+        let query_result = result.unwrap();
         assert_eq!(
-            result.unwrap(),
+            query_result.query,
             Some("SELECT * FROM some_table".to_string())
         );
     }
@@ -1453,8 +1514,9 @@ mod tests {
             &mock_execute,
         );
 
+        let query_result = result.unwrap();
         assert_eq!(
-            result.unwrap(),
+            query_result.query,
             Some("SELECT * FROM some_table WHERE value > 100".to_string())
         );
     }
@@ -1479,8 +1541,9 @@ mod tests {
         );
 
         // File paths should be wrapped in single quotes
+        let query_result = result.unwrap();
         assert_eq!(
-            result.unwrap(),
+            query_result.query,
             Some("SELECT * FROM 'data/sales.csv'".to_string())
         );
     }
@@ -1505,8 +1568,9 @@ mod tests {
             &mock_execute,
         );
 
+        let query_result = result.unwrap();
         assert_eq!(
-            result.unwrap(),
+            query_result.query,
             Some("SELECT * FROM 'data.parquet' WHERE x > 10".to_string())
         );
     }
@@ -1531,7 +1595,8 @@ mod tests {
         );
 
         // Should query global table with session UUID and filter
-        let query = result.unwrap().unwrap();
+        let query_result = result.unwrap();
+        let query = query_result.query.unwrap();
         assert!(query.starts_with("SELECT * FROM __ggsql_global_"));
         assert!(query.ends_with("__ WHERE category = 'A'"));
         assert!(query.contains(naming::session_id()));
@@ -1555,8 +1620,11 @@ mod tests {
             &mock_execute,
         );
 
-        // Should return None - layer uses __global__ directly
-        assert_eq!(result.unwrap(), None);
+        // Should return empty result - layer uses __global__ directly
+        let query_result = result.unwrap();
+        assert!(query_result.query.is_none());
+        assert!(query_result.layer_sql.is_none());
+        assert!(query_result.stat_sql.is_none());
     }
 
     #[test]
@@ -1605,8 +1673,9 @@ mod tests {
             &mock_execute,
         );
 
+        let query_result = result.unwrap();
         assert_eq!(
-            result.unwrap(),
+            query_result.query,
             Some("SELECT * FROM some_table ORDER BY date ASC".to_string())
         );
     }
@@ -1632,8 +1701,9 @@ mod tests {
             &mock_execute,
         );
 
+        let query_result = result.unwrap();
         assert_eq!(
-            result.unwrap(),
+            query_result.query,
             Some(
                 "SELECT * FROM some_table WHERE year = 2024 ORDER BY date DESC, value ASC"
                     .to_string()
@@ -1661,7 +1731,8 @@ mod tests {
         );
 
         // Should query global table with session UUID and order_by
-        let query = result.unwrap().unwrap();
+        let query_result = result.unwrap();
+        let query = query_result.query.unwrap();
         assert!(query.starts_with("SELECT * FROM __ggsql_global_"));
         assert!(query.ends_with("__ ORDER BY x ASC"));
         assert!(query.contains(naming::session_id()));
@@ -1697,7 +1768,8 @@ mod tests {
         );
 
         // Should inject constants as columns
-        let query = result.unwrap().unwrap();
+        let query_result = result.unwrap();
+        let query = query_result.query.unwrap();
         assert!(query.contains("SELECT *"));
         assert!(query.contains("'value' AS __ggsql_const_color__"));
         assert!(query.contains("'value2' AS __ggsql_const_size__"));
@@ -1727,7 +1799,8 @@ mod tests {
             &mock_execute,
         );
 
-        let query = result.unwrap().unwrap();
+        let query_result = result.unwrap();
+        let query = query_result.query.unwrap();
         assert!(query.contains("FROM __ggsql_global_"));
         assert!(query.contains(naming::session_id()));
         assert!(query.contains("'value' AS __ggsql_const_fill__"));
@@ -2259,8 +2332,8 @@ mod tests {
         assert_eq!(global_df.height(), 3);
 
         // Verify spec has x and y aesthetics merged into layer
-        assert_eq!(result.specs.len(), 1);
-        let layer = &result.specs[0].layers[0];
+        assert_eq!(result.spec.layers.len(), 1);
+        let layer = &result.spec.layers[0];
         assert!(
             layer.mappings.contains_key("x"),
             "Layer should have x from global mapping"
@@ -2721,7 +2794,7 @@ mod tests {
 
         let result = prepare_data(query, &reader).unwrap();
 
-        let aes = &result.specs[0].layers[0].mappings.aesthetics;
+        let aes = &result.spec.layers[0].mappings.aesthetics;
 
         assert!(aes.contains_key("stroke"));
         assert!(aes.contains_key("fill"));
@@ -2739,7 +2812,7 @@ mod tests {
         "#;
 
         let result = prepare_data(query, &reader).unwrap();
-        let aes = &result.specs[0].layers[0].mappings.aesthetics;
+        let aes = &result.spec.layers[0].mappings.aesthetics;
 
         let stroke = aes.get("stroke").unwrap();
         assert_eq!(stroke.column_name().unwrap(), "island");
@@ -2754,7 +2827,7 @@ mod tests {
         "#;
 
         let result = prepare_data(query, &reader).unwrap();
-        let aes = &result.specs[0].layers[0].mappings.aesthetics;
+        let aes = &result.spec.layers[0].mappings.aesthetics;
 
         let stroke = aes.get("stroke").unwrap();
         assert_eq!(stroke.column_name().unwrap(), "__ggsql_const_color_0__");

@@ -27,10 +27,10 @@ ggsql splits queries at the `VISUALISE` boundary:
 
 ## Core Components
 
+- [`api`] - Validation API (validate, Validated)
 - [`parser`] - Query parsing and AST generation
-- [`engine`] - Core execution engine
-- [`readers`] - Data source abstraction layer
-- [`writers`] - Output format abstraction layer
+- [`reader`] - Data source abstraction layer
+- [`writer`] - Output format abstraction layer
 */
 
 pub mod naming;
@@ -46,14 +46,18 @@ pub mod writer;
 #[cfg(feature = "duckdb")]
 pub mod execute;
 
+pub mod validate;
+
 // Re-export key types for convenience
 pub use plot::{
     AestheticValue, DataSource, Facet, Geom, Layer, Mappings, Plot, Scale, SqlExpression,
 };
 
-// Future modules - not yet implemented
-// #[cfg(feature = "engine")]
-// pub mod engine;
+// Re-export validation types and functions
+pub use validate::{validate, Location, Validated, ValidationError, ValidationWarning};
+
+// Re-export reader types
+pub use reader::{Metadata, Spec};
 
 // DataFrame abstraction (wraps Polars)
 pub use polars::prelude::DataFrame;
@@ -113,7 +117,7 @@ mod integration_tests {
             FROM generate_series(0, 4) as t(n)
         "#;
 
-        let df = reader.execute(sql).unwrap();
+        let df = reader.execute_sql(sql).unwrap();
 
         // Verify DataFrame has temporal type (DuckDB returns Datetime for DATE + INTERVAL)
         assert_eq!(df.get_column_names(), vec!["date", "revenue"]);
@@ -173,7 +177,7 @@ mod integration_tests {
             FROM generate_series(0, 3) as t(n)
         "#;
 
-        let df = reader.execute(sql).unwrap();
+        let df = reader.execute_sql(sql).unwrap();
 
         // Verify DataFrame has Datetime type
         let timestamp_col = df.column("timestamp").unwrap();
@@ -221,7 +225,7 @@ mod integration_tests {
 
         // Real SQL that users would write
         let sql = "SELECT 1 as int_col, 2.5 as float_col, true as bool_col";
-        let df = reader.execute(sql).unwrap();
+        let df = reader.execute_sql(sql).unwrap();
 
         // Verify types are preserved
         // DuckDB treats numeric literals as DECIMAL, which we convert to Float64
@@ -276,7 +280,7 @@ mod integration_tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         let sql = "SELECT * FROM (VALUES (1, 2.5, 'a'), (2, NULL, 'b'), (NULL, 3.5, NULL)) AS t(int_col, float_col, str_col)";
-        let df = reader.execute(sql).unwrap();
+        let df = reader.execute_sql(sql).unwrap();
 
         // Verify types
         assert!(matches!(
@@ -326,7 +330,7 @@ mod integration_tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         let sql = "SELECT * FROM (VALUES ('A', 10), ('B', 20), ('A', 15), ('C', 30)) AS t(category, value)";
-        let df = reader.execute(sql).unwrap();
+        let df = reader.execute_sql(sql).unwrap();
 
         let mut spec = Plot::new();
         let layer = Layer::new(Geom::bar())
@@ -372,7 +376,7 @@ mod integration_tests {
             GROUP BY day
         "#;
 
-        let df = reader.execute(sql).unwrap();
+        let df = reader.execute_sql(sql).unwrap();
 
         // Verify temporal type is preserved through aggregation
         // DATE_TRUNC returns Date type (not Datetime)
@@ -410,7 +414,7 @@ mod integration_tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         let sql = "SELECT 0.1 as small, 123.456 as medium, 999999.999999 as large";
-        let df = reader.execute(sql).unwrap();
+        let df = reader.execute_sql(sql).unwrap();
 
         // All should be Float64
         assert!(matches!(
@@ -462,7 +466,7 @@ mod integration_tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         let sql = "SELECT CAST(1 AS TINYINT) as tiny, CAST(1000 AS SMALLINT) as small, CAST(1000000 AS INTEGER) as int, CAST(1000000000000 AS BIGINT) as big";
-        let df = reader.execute(sql).unwrap();
+        let df = reader.execute_sql(sql).unwrap();
 
         // Verify types
         assert!(matches!(
@@ -530,7 +534,7 @@ mod integration_tests {
 
         // Prepare data - this parses, injects constants into global data, and replaces literals with columns
         let prepared =
-            execute::prepare_data_with_executor(query, |sql| reader.execute(sql)).unwrap();
+            execute::prepare_data_with_executor(query, |sql| reader.execute_sql(sql)).unwrap();
 
         // Verify constants were injected into global data (not layer-specific data)
         // Both layers share __global__ data for faceting compatibility
@@ -547,7 +551,7 @@ mod integration_tests {
             !prepared.data.contains_key(&naming::layer_key(1)),
             "Layer 1 should use global data, not layer-specific data"
         );
-        assert_eq!(prepared.specs.len(), 1);
+        assert_eq!(prepared.spec.layers.len(), 2);
 
         // Verify global data contains layer-indexed constant columns
         let global_df = prepared.data.get(naming::GLOBAL_DATA_KEY).unwrap();
@@ -565,7 +569,7 @@ mod integration_tests {
 
         // Generate Vega-Lite
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let json_str = writer.write(&prepared.spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Verify we have two layers
@@ -638,7 +642,7 @@ mod integration_tests {
         "#;
 
         let prepared =
-            execute::prepare_data_with_executor(query, |sql| reader.execute(sql)).unwrap();
+            execute::prepare_data_with_executor(query, |sql| reader.execute_sql(sql)).unwrap();
 
         // All layers should use global data for faceting to work
         assert!(
@@ -685,7 +689,7 @@ mod integration_tests {
 
         // Generate Vega-Lite and verify faceting structure
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let json_str = writer.write(&prepared.spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Should have facet structure (row and column)
@@ -726,7 +730,7 @@ mod integration_tests {
         "#;
 
         let prepared =
-            execute::prepare_data_with_executor(query, |sql| reader.execute(sql)).unwrap();
+            execute::prepare_data_with_executor(query, |sql| reader.execute_sql(sql)).unwrap();
 
         // Should have global data with the constant injected
         assert!(
@@ -750,7 +754,7 @@ mod integration_tests {
 
         // Generate Vega-Lite and verify it works
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let json_str = writer.write(&prepared.spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Both layers should have color field-mapped to their indexed constant columns

@@ -5,7 +5,13 @@
 use crate::reader::data::init_builtin_data;
 use crate::reader::{connection::ConnectionInfo, Reader};
 use crate::{DataFrame, GgsqlError, Result};
+use arrow::ipc::reader::FileReader;
+use duckdb::vtab::arrow::{arrow_recordbatch_to_query_params, ArrowVTab};
 use duckdb::{params, Connection};
+use polars::io::SerWriter;
+use polars::prelude::*;
+use std::collections::HashSet;
+use std::io::Cursor;
 
 /// DuckDB database reader
 ///
@@ -19,14 +25,15 @@ use duckdb::{params, Connection};
 ///
 /// // In-memory database
 /// let reader = DuckDBReader::from_connection_string("duckdb://memory")?;
-/// let df = reader.execute("SELECT 1 as x, 2 as y")?;
+/// let df = reader.execute_sql("SELECT 1 as x, 2 as y")?;
 ///
 /// // File-based database
 /// let reader = DuckDBReader::from_connection_string("duckdb://data.db")?;
-/// let df = reader.execute("SELECT * FROM sales")?;
+/// let df = reader.execute_sql("SELECT * FROM sales")?;
 /// ```
 pub struct DuckDBReader {
     conn: Connection,
+    registered_tables: HashSet<String>,
 }
 
 impl DuckDBReader {
@@ -64,7 +71,16 @@ impl DuckDBReader {
             }
         };
 
-        Ok(Self { conn })
+        // Register Arrow virtual table function for DataFrame registration
+        conn.register_table_function::<ArrowVTab>("arrow")
+            .map_err(|e| {
+                GgsqlError::ReaderError(format!("Failed to register arrow function: {}", e))
+            })?;
+
+        Ok(Self {
+            conn,
+            registered_tables: HashSet::new(),
+        })
     }
 
     /// Get a reference to the underlying DuckDB connection
@@ -73,6 +89,81 @@ impl DuckDBReader {
     pub fn connection(&self) -> &Connection {
         &self.conn
     }
+
+    /// Check if a table exists in the database
+    fn table_exists(&self, name: &str) -> Result<bool> {
+        let sql = "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?";
+        let count: i64 = self
+            .conn
+            .query_row(sql, [name], |row| row.get(0))
+            .unwrap_or(0);
+        Ok(count > 0)
+    }
+}
+
+/// Validate a table name
+fn validate_table_name(name: &str) -> Result<()> {
+    if name.is_empty() {
+        return Err(GgsqlError::ReaderError("Table name cannot be empty".into()));
+    }
+
+    // Reject characters that could break double-quoted identifiers or cause issues
+    let forbidden = ['"', '\0', '\n', '\r'];
+    for ch in forbidden {
+        if name.contains(ch) {
+            return Err(GgsqlError::ReaderError(format!(
+                "Table name '{}' contains invalid character '{}'",
+                name,
+                ch.escape_default()
+            )));
+        }
+    }
+
+    // Reasonable length limit
+    if name.len() > 128 {
+        return Err(GgsqlError::ReaderError(format!(
+            "Table name '{}' exceeds maximum length of 128 characters",
+            name
+        )));
+    }
+
+    Ok(())
+}
+
+/// Convert a Polars DataFrame to DuckDB Arrow query parameters via IPC serialization
+fn dataframe_to_arrow_params(df: DataFrame) -> Result<[usize; 2]> {
+    // Serialize DataFrame to IPC format
+    let mut buffer = Vec::new();
+    {
+        let mut writer = IpcWriter::new(&mut buffer);
+        writer.finish(&mut df.clone()).map_err(|e| {
+            GgsqlError::ReaderError(format!("Failed to serialize DataFrame: {}", e))
+        })?;
+    }
+
+    // Read IPC into arrow crate's RecordBatch
+    let cursor = Cursor::new(buffer);
+    let reader = FileReader::try_new(cursor, None)
+        .map_err(|e| GgsqlError::ReaderError(format!("Failed to read IPC: {}", e)))?;
+
+    // Collect all batches and concatenate if needed
+    let batches: Vec<_> = reader.filter_map(|r| r.ok()).collect();
+
+    if batches.is_empty() {
+        return Err(GgsqlError::ReaderError(
+            "DataFrame produced no Arrow batches".into(),
+        ));
+    }
+
+    // For single batch, use directly; for multiple, concatenate
+    let rb = if batches.len() == 1 {
+        batches.into_iter().next().unwrap()
+    } else {
+        arrow::compute::concat_batches(&batches[0].schema(), &batches)
+            .map_err(|e| GgsqlError::ReaderError(format!("Failed to concat batches: {}", e)))?
+    };
+
+    Ok(arrow_recordbatch_to_query_params(rb))
 }
 
 /// Helper struct for building typed columns from rows
@@ -294,7 +385,7 @@ impl ColumnBuilder {
 }
 
 impl Reader for DuckDBReader {
-    fn execute(&self, sql: &str) -> Result<DataFrame> {
+    fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
         use polars::prelude::*;
 
         // Check if this is a DDL statement (CREATE, DROP, INSERT, UPDATE, DELETE, ALTER)
@@ -413,29 +504,59 @@ impl Reader for DuckDBReader {
         Ok(df)
     }
 
-    fn validate_columns(&self, sql: &str, columns: &[String]) -> Result<()> {
-        // Execute the query to get the schema
-        let df = self.execute(sql)?;
+    fn register(&mut self, name: &str, df: DataFrame) -> Result<()> {
+        // Validate table name
+        validate_table_name(name)?;
 
-        // Get column names from the DataFrame
-        let schema_columns: Vec<String> = df
-            .get_column_names()
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-
-        // Check if all required columns exist
-        for col in columns {
-            if !schema_columns.contains(col) {
-                return Err(GgsqlError::ValidationError(format!(
-                    "Column '{}' not found in query result. Available columns: {}",
-                    col,
-                    schema_columns.join(", ")
-                )));
-            }
+        // Check for duplicates
+        if self.table_exists(name)? {
+            return Err(GgsqlError::ReaderError(format!(
+                "Table '{}' already exists",
+                name
+            )));
         }
 
+        // Convert DataFrame to Arrow query params
+        let params = dataframe_to_arrow_params(df)?;
+
+        // Create temp table from Arrow data
+        let sql = format!(
+            "CREATE TEMP TABLE \"{}\" AS SELECT * FROM arrow(?, ?)",
+            name
+        );
+        self.conn.execute(&sql, params).map_err(|e| {
+            GgsqlError::ReaderError(format!("Failed to register table '{}': {}", name, e))
+        })?;
+
+        // Track the table so we can unregister it later
+        self.registered_tables.insert(name.to_string());
+
         Ok(())
+    }
+
+    fn unregister(&mut self, name: &str) -> Result<()> {
+        // Only allow unregistering tables we created via register()
+        if !self.registered_tables.contains(name) {
+            return Err(GgsqlError::ReaderError(format!(
+                "Table '{}' was not registered via this reader",
+                name
+            )));
+        }
+
+        // Drop the temp table
+        let sql = format!("DROP TABLE IF EXISTS \"{}\"", name);
+        self.conn.execute(&sql, []).map_err(|e| {
+            GgsqlError::ReaderError(format!("Failed to unregister table '{}': {}", name, e))
+        })?;
+
+        // Remove from tracking
+        self.registered_tables.remove(name);
+
+        Ok(())
+    }
+
+    fn supports_register(&self) -> bool {
+        true
     }
 }
 
@@ -452,7 +573,7 @@ mod tests {
     #[test]
     fn test_simple_query() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let df = reader.execute("SELECT 1 as x, 2 as y").unwrap();
+        let df = reader.execute_sql("SELECT 1 as x, 2 as y").unwrap();
 
         assert_eq!(df.shape(), (1, 2));
         assert_eq!(df.get_column_names(), vec!["x", "y"]);
@@ -475,38 +596,16 @@ mod tests {
             .unwrap();
 
         // Query data
-        let df = reader.execute("SELECT * FROM test").unwrap();
+        let df = reader.execute_sql("SELECT * FROM test").unwrap();
 
         assert_eq!(df.shape(), (2, 2));
         assert_eq!(df.get_column_names(), vec!["x", "y"]);
     }
 
     #[test]
-    fn test_validate_columns_success() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let sql = "SELECT 1 as x, 2 as y";
-
-        let result = reader.validate_columns(sql, &["x".to_string(), "y".to_string()]);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_validate_columns_missing() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let sql = "SELECT 1 as x, 2 as y";
-
-        let result = reader.validate_columns(sql, &["z".to_string()]);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Column 'z' not found"));
-    }
-
-    #[test]
     fn test_invalid_sql() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let result = reader.execute("INVALID SQL SYNTAX");
+        let result = reader.execute_sql("INVALID SQL SYNTAX");
         assert!(result.is_err());
     }
 
@@ -528,10 +627,160 @@ mod tests {
             .unwrap();
 
         let df = reader
-            .execute("SELECT region, SUM(revenue) as total FROM sales GROUP BY region")
+            .execute_sql("SELECT region, SUM(revenue) as total FROM sales GROUP BY region")
             .unwrap();
 
         assert_eq!(df.shape(), (2, 2));
         assert_eq!(df.get_column_names(), vec!["region", "total"]);
+    }
+
+    #[test]
+    fn test_register_and_query() {
+        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create a DataFrame
+        let df = DataFrame::new(vec![
+            Column::new("x".into(), vec![1i32, 2, 3]),
+            Column::new("y".into(), vec![10i32, 20, 30]),
+        ])
+        .unwrap();
+
+        // Register the DataFrame
+        reader.register("my_table", df).unwrap();
+
+        // Query the registered table
+        let result = reader
+            .execute_sql("SELECT * FROM my_table ORDER BY x")
+            .unwrap();
+        assert_eq!(result.shape(), (3, 2));
+        assert_eq!(result.get_column_names(), vec!["x", "y"]);
+    }
+
+    #[test]
+    fn test_register_duplicate_name_errors() {
+        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let df1 = DataFrame::new(vec![Column::new("a".into(), vec![1i32])]).unwrap();
+        let df2 = DataFrame::new(vec![Column::new("b".into(), vec![2i32])]).unwrap();
+
+        // First registration should succeed
+        reader.register("dup_table", df1).unwrap();
+
+        // Second registration with same name should fail
+        let result = reader.register("dup_table", df2);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("already exists"));
+    }
+
+    #[test]
+    fn test_register_invalid_table_names() {
+        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let df = DataFrame::new(vec![Column::new("a".into(), vec![1i32])]).unwrap();
+
+        // Empty name
+        let result = reader.register("", df.clone());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("cannot be empty"));
+
+        // Name with double quote
+        let result = reader.register("bad\"name", df.clone());
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid character"));
+
+        // Name with null byte
+        let result = reader.register("bad\0name", df.clone());
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid character"));
+
+        // Name too long
+        let long_name = "a".repeat(200);
+        let result = reader.register(&long_name, df);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("exceeds maximum length"));
+    }
+
+    #[test]
+    fn test_supports_register() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        assert!(reader.supports_register());
+    }
+
+    #[test]
+    fn test_register_empty_dataframe() {
+        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create an empty DataFrame with schema
+        let df = DataFrame::new(vec![
+            Column::new("x".into(), Vec::<i32>::new()),
+            Column::new("y".into(), Vec::<String>::new()),
+        ])
+        .unwrap();
+
+        reader.register("empty_table", df).unwrap();
+
+        // Query should return empty result with correct schema
+        let result = reader.execute_sql("SELECT * FROM empty_table").unwrap();
+        assert_eq!(result.shape(), (0, 2));
+        assert_eq!(result.get_column_names(), vec!["x", "y"]);
+    }
+
+    #[test]
+    fn test_unregister() {
+        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let df = DataFrame::new(vec![Column::new("x".into(), vec![1i32, 2, 3])]).unwrap();
+
+        reader.register("test_data", df).unwrap();
+
+        // Should be queryable
+        let result = reader.execute_sql("SELECT * FROM test_data").unwrap();
+        assert_eq!(result.height(), 3);
+
+        // Unregister
+        reader.unregister("test_data").unwrap();
+
+        // Should no longer exist
+        let result = reader.execute_sql("SELECT * FROM test_data");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_unregister_not_registered() {
+        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create a table directly (not via register)
+        reader
+            .connection()
+            .execute("CREATE TABLE user_table (x INT)", params![])
+            .unwrap();
+
+        // Should fail - we didn't register this via register()
+        let result = reader.unregister("user_table");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("was not registered via this reader"));
+    }
+
+    #[test]
+    fn test_reregister_after_unregister() {
+        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let df = DataFrame::new(vec![Column::new("x".into(), vec![1i32, 2, 3])]).unwrap();
+
+        reader.register("data", df.clone()).unwrap();
+        reader.unregister("data").unwrap();
+
+        // Should be able to register again
+        reader.register("data", df).unwrap();
+        let result = reader.execute_sql("SELECT * FROM data").unwrap();
+        assert_eq!(result.height(), 3);
     }
 }

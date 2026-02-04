@@ -30,6 +30,7 @@ THEME minimal
 - ✅ REST API server (`ggsql-rest`) with CORS support
 - ✅ Jupyter kernel (`ggsql-jupyter`) with inline Vega-Lite visualizations
 - ✅ VS Code extension (`ggsql-vscode`) with syntax highlighting and Positron IDE integration
+- ✅ Python bindings (`ggsql-python`) with Altair chart output
 
 **Planned:**
 
@@ -93,7 +94,9 @@ ggsql/
 │
 ├── ggsql-jupyter/                   # Jupyter kernel
 │
-└── ggsql-vscode/                    # VS Code extension
+├── ggsql-vscode/                    # VS Code extension
+│
+└── ggsql-python/                    # Python bindings
 ```
 
 ## Development Workflow
@@ -296,6 +299,41 @@ When running in Positron IDE, the extension provides additional features:
 
 - **Language runtime registration** for executing ggsql queries directly within Positron
 - **Plot pane integration** - visualizations are automatically routed to Positron's Plots pane
+
+## Python Bindings
+
+The `ggsql-python` package provides Python bindings for using ggsql with DataFrames.
+
+### Installation
+
+```bash
+cd ggsql-python
+pip install maturin
+maturin develop
+```
+
+### Usage
+
+```python
+import ggsql
+import polars as pl
+
+# Simple usage with render_altair
+df = pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
+chart = ggsql.render_altair(df, "VISUALISE x, y DRAW point")
+chart.display()
+
+# Two-stage API for full control
+reader = ggsql.DuckDBReader("duckdb://memory")
+reader.register("data", df)
+
+spec = reader.execute("SELECT * FROM data VISUALISE x, y DRAW point")
+
+writer = ggsql.VegaLiteWriter()
+json_output = writer.render(spec)
+```
+
+See the [ggsql-python README](ggsql-python/README.md) for complete API documentation.
 
 ## CLI
 
