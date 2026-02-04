@@ -194,27 +194,46 @@ impl ScaleTypeTrait for Ordinal {
         }
 
         // Phase 1: Ensure we have an Array (convert Palette or fill default)
-        match &scale.output_range {
-            None => {
-                if let Some(default_range) = self.default_output_range(aesthetic, scale)? {
-                    scale.output_range = Some(OutputRange::Array(default_range));
+        // For linetype, use sequential ink-density palette as default (None or "sequential")
+        let use_sequential_linetype = aesthetic == "linetype"
+            && match &scale.output_range {
+                None => true,
+                Some(OutputRange::Palette(name)) => name.eq_ignore_ascii_case("sequential"),
+                _ => false,
+            };
+
+        if use_sequential_linetype {
+            // Generate sequential ink-density palette sized to category count
+            let sequential = palettes::generate_linetype_sequential(count);
+            scale.output_range = Some(OutputRange::Array(
+                sequential
+                    .into_iter()
+                    .map(ArrayElement::String)
+                    .collect(),
+            ));
+        } else {
+            match &scale.output_range {
+                None => {
+                    if let Some(default_range) = self.default_output_range(aesthetic, scale)? {
+                        scale.output_range = Some(OutputRange::Array(default_range));
+                    }
                 }
-            }
-            Some(OutputRange::Palette(name)) => {
-                let palette = match aesthetic {
-                    "shape" => palettes::get_shape_palette(name),
-                    "linetype" => palettes::get_linetype_palette(name),
-                    _ => palettes::get_color_palette(name),
-                };
-                if let Some(palette) = palette {
-                    let arr: Vec<_> = palette
-                        .iter()
-                        .map(|s| ArrayElement::String(s.to_string()))
-                        .collect();
-                    scale.output_range = Some(OutputRange::Array(arr));
+                Some(OutputRange::Palette(name)) => {
+                    let palette = match aesthetic {
+                        "shape" => palettes::get_shape_palette(name),
+                        "linetype" => palettes::get_linetype_palette(name),
+                        _ => palettes::get_color_palette(name),
+                    };
+                    if let Some(palette) = palette {
+                        let arr: Vec<_> = palette
+                            .iter()
+                            .map(|s| ArrayElement::String(s.to_string()))
+                            .collect();
+                        scale.output_range = Some(OutputRange::Array(arr));
+                    }
                 }
+                Some(OutputRange::Array(_)) => {}
             }
-            Some(OutputRange::Array(_)) => {}
         }
 
         // Phase 2: Interpolate to category count (like Binned, but using input_range.len())

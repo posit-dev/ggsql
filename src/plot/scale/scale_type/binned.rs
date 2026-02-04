@@ -204,31 +204,50 @@ impl ScaleTypeTrait for Binned {
         };
 
         // Phase 1: Ensure we have an Array (convert Palette or fill default)
-        match &scale.output_range {
-            None => {
-                // No output range - fill from default
-                if let Some(default_range) = self.default_output_range(aesthetic, scale)? {
-                    scale.output_range = Some(OutputRange::Array(default_range));
+        // For linetype, use sequential ink-density palette as default (None or "sequential")
+        let use_sequential_linetype = aesthetic == "linetype"
+            && match &scale.output_range {
+                None => true,
+                Some(OutputRange::Palette(name)) => name.eq_ignore_ascii_case("sequential"),
+                _ => false,
+            };
+
+        if use_sequential_linetype {
+            // Generate sequential ink-density palette sized to bin_count
+            let sequential = palettes::generate_linetype_sequential(bin_count);
+            scale.output_range = Some(OutputRange::Array(
+                sequential
+                    .into_iter()
+                    .map(ArrayElement::String)
+                    .collect(),
+            ));
+        } else {
+            match &scale.output_range {
+                None => {
+                    // No output range - fill from default
+                    if let Some(default_range) = self.default_output_range(aesthetic, scale)? {
+                        scale.output_range = Some(OutputRange::Array(default_range));
+                    }
                 }
-            }
-            Some(OutputRange::Palette(name)) => {
-                // Named palette - convert to Array
-                let palette = match aesthetic {
-                    "shape" => palettes::get_shape_palette(name),
-                    "linetype" => palettes::get_linetype_palette(name),
-                    _ => palettes::get_color_palette(name),
-                };
-                if let Some(palette) = palette {
-                    let arr: Vec<_> = palette
-                        .iter()
-                        .map(|s| ArrayElement::String(s.to_string()))
-                        .collect();
-                    scale.output_range = Some(OutputRange::Array(arr));
+                Some(OutputRange::Palette(name)) => {
+                    // Named palette - convert to Array
+                    let palette = match aesthetic {
+                        "shape" => palettes::get_shape_palette(name),
+                        "linetype" => palettes::get_linetype_palette(name),
+                        _ => palettes::get_color_palette(name),
+                    };
+                    if let Some(palette) = palette {
+                        let arr: Vec<_> = palette
+                            .iter()
+                            .map(|s| ArrayElement::String(s.to_string()))
+                            .collect();
+                        scale.output_range = Some(OutputRange::Array(arr));
+                    }
+                    // If palette not found, leave as Palette for Vega-Lite to handle
                 }
-                // If palette not found, leave as Palette for Vega-Lite to handle
-            }
-            Some(OutputRange::Array(_)) => {
-                // Already an array, nothing to do
+                Some(OutputRange::Array(_)) => {
+                    // Already an array, nothing to do
+                }
             }
         }
 
@@ -1411,6 +1430,94 @@ mod tests {
             let nums: Vec<f64> = arr.iter().filter_map(|e| e.to_f64()).collect();
             assert!((nums[0] - 0.1).abs() < 0.001, "First value should be 0.1");
             assert!((nums[4] - 1.0).abs() < 0.001, "Last value should be 1.0");
+        } else {
+            panic!("Output range should be an Array");
+        }
+    }
+
+    #[test]
+    fn test_resolve_output_range_linetype_sequential_default() {
+        use super::ScaleTypeTrait;
+        use crate::plot::scale::OutputRange;
+
+        let binned = Binned;
+        let mut scale = Scale::new("linetype");
+
+        // Set up 4 bins (5 breaks)
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(25.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(75.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+
+        // No output range specified - should use sequential ink palette
+        scale.output_range = None;
+
+        binned
+            .resolve_output_range(&mut scale, "linetype")
+            .unwrap();
+
+        // Should have 4 linetypes with increasing ink density
+        if let Some(OutputRange::Array(arr)) = &scale.output_range {
+            assert_eq!(arr.len(), 4, "Should have 4 linetype values for 4 bins");
+
+            // Verify all are strings (linetype patterns)
+            let linetypes: Vec<&str> = arr
+                .iter()
+                .filter_map(|e| match e {
+                    ArrayElement::String(s) => Some(s.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(linetypes.len(), 4, "All values should be strings");
+
+            // Last should be solid (highest ink)
+            assert_eq!(linetypes[3], "solid", "Last linetype should be solid");
+
+            // First should be sparse (hex pattern like "1f")
+            assert!(
+                linetypes[0] != "solid",
+                "First linetype should not be solid"
+            );
+        } else {
+            panic!("Output range should be an Array");
+        }
+    }
+
+    #[test]
+    fn test_resolve_output_range_linetype_sequential_explicit() {
+        use super::ScaleTypeTrait;
+        use crate::plot::scale::OutputRange;
+
+        let binned = Binned;
+        let mut scale = Scale::new("linetype");
+
+        // Set up 3 bins
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(100.0),
+                ArrayElement::Number(150.0),
+            ]),
+        );
+
+        // Explicitly request sequential palette
+        scale.output_range = Some(OutputRange::Palette("sequential".to_string()));
+
+        binned
+            .resolve_output_range(&mut scale, "linetype")
+            .unwrap();
+
+        // Should have 3 linetypes
+        if let Some(OutputRange::Array(arr)) = &scale.output_range {
+            assert_eq!(arr.len(), 3, "Should have 3 linetype values for 3 bins");
         } else {
             panic!("Output range should be an Array");
         }

@@ -2068,6 +2068,80 @@ pub fn get_linetype_palette(name: &str) -> Option<&'static [&'static str]> {
     }
 }
 
+/// Generate linetypes with evenly-spaced ink densities.
+///
+/// Creates `count` linetypes ranging from sparse (low ink) to solid (100% ink).
+/// Each linetype is represented as a hex string pattern (e.g., "1f" for ~6% ink,
+/// "88" for 50% ink) or "solid" for 100% ink.
+///
+/// Hex patterns use digits 1-9 and a-f (values 1-15) for on/off lengths.
+/// With a cycle of 16 units, ink densities range from 6.25% to 93.75%,
+/// plus solid for 100%.
+///
+/// # Examples
+///
+/// ```
+/// use ggsql::plot::scale::palettes::generate_linetype_sequential;
+///
+/// // Generate 3 linetypes
+/// let types = generate_linetype_sequential(3);
+/// assert_eq!(types, vec!["1f", "88", "solid"]); // 6.25%, 50%, 100%
+///
+/// // Generate 5 linetypes with evenly spaced densities
+/// let types = generate_linetype_sequential(5);
+/// assert_eq!(types.len(), 5);
+/// assert_eq!(types[4], "solid"); // Last is always solid
+/// ```
+///
+/// # Arguments
+///
+/// * `count` - Number of linetypes to generate (minimum 1)
+///
+/// # Returns
+///
+/// Vector of linetype strings, ordered from least to most ink.
+pub fn generate_linetype_sequential(count: usize) -> Vec<String> {
+    /// Minimum ink density: 1/16 ≈ 6.25%
+    const MIN_INK_RATIO: f64 = 1.0 / 16.0;
+    /// Maximum ink density for non-solid: 15/16 ≈ 93.75%
+    const MAX_INK_RATIO: f64 = 15.0 / 16.0;
+
+    if count == 0 {
+        return vec![];
+    }
+    if count == 1 {
+        return vec!["solid".to_string()];
+    }
+
+    let mut result = Vec::with_capacity(count);
+
+    // Generate evenly spaced ink percentages from MIN_INK_RATIO to 100%
+    // The last one is always solid (100%)
+    for i in 0..count {
+        let t = i as f64 / (count - 1) as f64;
+
+        if i == count - 1 {
+            // Last one is always solid (100% ink)
+            result.push("solid".to_string());
+        } else {
+            // Interpolate between MIN_INK_RATIO and MAX_INK_RATIO
+            let ink_pct = MIN_INK_RATIO + t * (MAX_INK_RATIO - MIN_INK_RATIO);
+
+            // Create hex pattern with cycle of 16 units
+            // on / 16 = ink_pct, so on = ink_pct * 16
+            let on = (ink_pct * 16.0).round() as u32;
+            let on = on.clamp(1, 15);
+            let off = 16 - on;
+            let off = off.clamp(1, 15);
+
+            // Format as two hex digits (1-9, a-f)
+            result.push(format!("{:x}{:x}", on, off));
+        }
+    }
+
+    result
+}
+
 /// Expand a palette to an array of ArrayElements, sized to match input_range length.
 /// Returns an error if count exceeds the palette size.
 pub fn expand_palette(
@@ -2167,6 +2241,67 @@ mod tests {
 
         // Unknown palette
         assert!(get_linetype_palette("unknown_lt").is_none());
+    }
+
+    #[test]
+    fn test_generate_linetype_sequential() {
+        // Empty
+        assert_eq!(generate_linetype_sequential(0), Vec::<String>::new());
+
+        // Single = solid
+        assert_eq!(generate_linetype_sequential(1), vec!["solid"]);
+
+        // Two = min ink + solid
+        let two = generate_linetype_sequential(2);
+        assert_eq!(two.len(), 2);
+        assert_eq!(two[0], "1f"); // 1/16 ≈ 6.25% ink
+        assert_eq!(two[1], "solid");
+
+        // Three = min, mid, solid
+        let three = generate_linetype_sequential(3);
+        assert_eq!(three.len(), 3);
+        assert_eq!(three[0], "1f"); // ~6.25% ink
+        assert_eq!(three[1], "88"); // 50% ink
+        assert_eq!(three[2], "solid");
+
+        // Five linetypes
+        let five = generate_linetype_sequential(5);
+        assert_eq!(five.len(), 5);
+        assert_eq!(five[4], "solid"); // Last is always solid
+
+        // Verify ink density increases (on value should increase)
+        // Parse first hex digit (on length) from each pattern
+        for i in 0..4 {
+            let on_i = u32::from_str_radix(&five[i][0..1], 16).unwrap();
+            let on_next = if five[i + 1] == "solid" {
+                16 // solid = 100% ink
+            } else {
+                u32::from_str_radix(&five[i + 1][0..1], 16).unwrap()
+            };
+            assert!(
+                on_next >= on_i,
+                "Ink density should increase: {} vs {}",
+                five[i],
+                five[i + 1]
+            );
+        }
+    }
+
+    #[test]
+    fn test_generate_linetype_sequential_valid_hex() {
+        // Verify all generated patterns are valid hex linetypes
+        use crate::plot::scale::linetype_to_stroke_dash;
+
+        for count in 2..=10 {
+            let linetypes = generate_linetype_sequential(count);
+            for lt in &linetypes {
+                assert!(
+                    linetype_to_stroke_dash(lt).is_some(),
+                    "Generated linetype '{}' should be valid",
+                    lt
+                );
+            }
+        }
     }
 
     #[test]

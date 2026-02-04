@@ -207,23 +207,20 @@ pub fn pretty_breaks_simple(min: f64, max: f64, n: usize) -> Vec<f64> {
 
 /// Calculate simple linear breaks (evenly spaced).
 ///
-/// Generates n+2 breaks: one before min, n within [min,max], and one after max.
-/// This ensures binned scales have proper terminal bins. Continuous scales
-/// prune these extra breaks via `filter_breaks_to_range`.
+/// Generates exactly n evenly-spaced breaks from min to max.
+/// Use this when `pretty => false` for exact data coverage.
 pub fn linear_breaks(min: f64, max: f64, n: usize) -> Vec<f64> {
     if n == 0 {
         return vec![];
     }
     if n == 1 {
-        // Single break at center, with one before and one after
-        let center = (min + max) / 2.0;
-        let half = (max - min) / 2.0;
-        return vec![min - half, center, max + half];
+        // Single break at midpoint
+        return vec![(min + max) / 2.0];
     }
 
     let step = (max - min) / (n - 1) as f64;
-    // Generate n+2 breaks: one before min, n within, one after max
-    (-1..=(n as i32)).map(|i| min + step * i as f64).collect()
+    // Generate exactly n breaks from min to max
+    (0..n).map(|i| min + step * i as f64).collect()
 }
 
 /// Calculate breaks for integer scales with even spacing.
@@ -1587,26 +1584,24 @@ mod tests {
 
     #[test]
     fn test_linear_breaks_basic() {
-        // linear_breaks now extends one step before min and one step after max
-        // for binned scales. Continuous scales filter these out.
+        // linear_breaks returns exactly n evenly-spaced breaks from min to max
         let breaks = linear_breaks(0.0, 100.0, 5);
-        // step = 25, so we get: -25, 0, 25, 50, 75, 100, 125
-        assert_eq!(breaks, vec![-25.0, 0.0, 25.0, 50.0, 75.0, 100.0, 125.0]);
+        // step = 25, so we get: 0, 25, 50, 75, 100
+        assert_eq!(breaks, vec![0.0, 25.0, 50.0, 75.0, 100.0]);
     }
 
     #[test]
     fn test_linear_breaks_single() {
-        // Single break at center, with one before and one after
+        // Single break at midpoint
         let breaks = linear_breaks(0.0, 100.0, 1);
-        // center = 50, half = 50, so we get: -50, 50, 150
-        assert_eq!(breaks, vec![-50.0, 50.0, 150.0]);
+        assert_eq!(breaks, vec![50.0]);
     }
 
     #[test]
     fn test_linear_breaks_two() {
-        // step = 100, so we get: -100, 0, 100, 200
+        // Two breaks at min and max
         let breaks = linear_breaks(0.0, 100.0, 2);
-        assert_eq!(breaks, vec![-100.0, 0.0, 100.0, 200.0]);
+        assert_eq!(breaks, vec![0.0, 100.0]);
     }
 
     #[test]
@@ -1616,21 +1611,21 @@ mod tests {
     }
 
     #[test]
-    fn test_linear_breaks_extension_ensures_coverage() {
-        // Verify that the extended breaks cover the original range
+    fn test_linear_breaks_exact_coverage() {
+        // Verify that breaks exactly cover min to max (no extension)
         let breaks = linear_breaks(10.0, 90.0, 5);
-        // step = 20, so: -10, 10, 30, 50, 70, 90, 110
-        assert!(
-            breaks.first().unwrap() < &10.0,
-            "First break should be before min"
+        // step = 20, so: 10, 30, 50, 70, 90
+        assert_eq!(
+            breaks.first().unwrap(),
+            &10.0,
+            "First break should be exactly min"
         );
-        assert!(
-            breaks.last().unwrap() > &90.0,
-            "Last break should be after max"
+        assert_eq!(
+            breaks.last().unwrap(),
+            &90.0,
+            "Last break should be exactly max"
         );
-        // The range 10..90 should be fully covered
-        assert!(breaks.iter().any(|&b| b <= 10.0));
-        assert!(breaks.iter().any(|&b| b >= 90.0));
+        assert_eq!(breaks.len(), 5);
     }
 
     // =========================================================================
@@ -1971,9 +1966,9 @@ mod tests {
     #[test]
     fn test_calculate_breaks_dispatches_identity_linear() {
         let breaks = calculate_breaks(0.0, 100.0, 5, None, false);
-        // Should use linear_breaks, which extends one step before and after
-        // step = 25, so: -25, 0, 25, 50, 75, 100, 125
-        assert_eq!(breaks, vec![-25.0, 0.0, 25.0, 50.0, 75.0, 100.0, 125.0]);
+        // Should use linear_breaks for exact coverage
+        // step = 25, so: 0, 25, 50, 75, 100
+        assert_eq!(breaks, vec![0.0, 25.0, 50.0, 75.0, 100.0]);
     }
 
     #[test]

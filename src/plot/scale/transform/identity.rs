@@ -117,9 +117,9 @@ mod tests {
     fn test_identity_breaks_linear() {
         let t = Identity;
         let breaks = t.calculate_breaks(0.0, 100.0, 5, false);
-        // linear_breaks now extends one step before and after
-        // step = 25, so: -25, 0, 25, 50, 75, 100, 125
-        assert_eq!(breaks, vec![-25.0, 0.0, 25.0, 50.0, 75.0, 100.0, 125.0]);
+        // linear_breaks gives exact coverage from min to max
+        // step = 25, so: 0, 25, 50, 75, 100
+        assert_eq!(breaks, vec![0.0, 25.0, 50.0, 75.0, 100.0]);
     }
 
     #[test]
