@@ -74,7 +74,7 @@
 ; Identifiers (column references)
 (column_reference) @variable
 
-; Scale type identifiers (CONTINUOUS, DISCRETE, BINNED, DATE, DATETIME)
+; Scale type identifiers (CONTINUOUS, DISCRETE, BINNED, ORDINAL, IDENTITY)
 (scale_type_identifier) @type.builtin
 
 ; Property names

@@ -668,7 +668,8 @@ module.exports = grammar({
       caseInsensitive('CONTINUOUS'),  // continuous numeric data
       caseInsensitive('DISCRETE'),    // categorical/discrete data
       caseInsensitive('BINNED'),      // binned/bucketed data
-      caseInsensitive('ORDINAL')      // ordered categorical data with interpolated output
+      caseInsensitive('ORDINAL'),     // ordered categorical data with interpolated output
+      caseInsensitive('IDENTITY')     // pass-through scale (data already in output format)
     ),
 
     // FROM clause - input range specification

@@ -710,7 +710,7 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
     })
 }
 
-/// Parse scale type identifier (CONTINUOUS, DISCRETE, BINNED, ORDINAL)
+/// Parse scale type identifier (CONTINUOUS, DISCRETE, BINNED, ORDINAL, IDENTITY)
 ///
 /// Note: DATE and DATETIME are no longer scale types - temporal handling is done
 /// via transforms that are automatically inferred from column data types.
@@ -720,8 +720,9 @@ fn parse_scale_type_identifier(text: &str) -> Result<ScaleType> {
         "discrete" => Ok(ScaleType::discrete()),
         "binned" => Ok(ScaleType::binned()),
         "ordinal" => Ok(ScaleType::ordinal()),
+        "identity" => Ok(ScaleType::identity()),
         _ => Err(GgsqlError::ParseError(format!(
-            "Unknown scale type: '{}'. Valid types: continuous, discrete, binned, ordinal",
+            "Unknown scale type: '{}'. Valid types: continuous, discrete, binned, ordinal, identity",
             text
         ))),
     }

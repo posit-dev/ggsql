@@ -304,7 +304,7 @@
       "patterns": [
         {
           "name": "keyword.control.scale-modifier.ggsql",
-          "match": "\\b(?i:CONTINUOUS|DISCRETE|BINNED|ORDINAL)\\b"
+          "match": "\\b(?i:CONTINUOUS|DISCRETE|BINNED|ORDINAL|IDENTITY)\\b"
         },
         {
           "name": "keyword.other.ggsql",
