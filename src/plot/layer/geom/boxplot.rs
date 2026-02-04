@@ -37,7 +37,7 @@ impl GeomTrait for Boxplot {
             ],
             required: &["x", "y"],
             // Internal aesthetics produced by stat transform
-            hidden: &["ymin", "ymax", "y", "q1", "q3"],
+            hidden: &["type", "y"],
         }
     }
 
@@ -60,10 +60,6 @@ impl GeomTrait for Boxplot {
                 default: DefaultParamValue::Number(1.5),
             },
             DefaultParam {
-                name: "orientation",
-                default: super::DefaultParamValue::Null,
-            },
-            DefaultParam {
                 name: "width",
                 default: DefaultParamValue::Number(0.9),
             },
@@ -77,13 +73,13 @@ impl GeomTrait for Boxplot {
     fn apply_stat_transform(
         &self,
         query: &str,
-        schema: &crate::plot::Schema,
+        _schema: &crate::plot::Schema,
         aesthetics: &Mappings,
         group_by: &[String],
         parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
     ) -> Result<StatResult> {
-        stat_boxplot(query, schema, aesthetics, group_by, parameters)
+        stat_boxplot(query, aesthetics, group_by, parameters)
     }
 }
 
@@ -95,11 +91,17 @@ impl std::fmt::Display for Boxplot {
 
 fn stat_boxplot(
     query: &str,
-    schema: &crate::plot::Schema,
     aesthetics: &Mappings,
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
 ) -> Result<StatResult> {
+    let y = get_column_name(aesthetics, "y").ok_or_else(|| {
+        GgsqlError::ValidationError("Boxplot requires 'y' aesthetic mapping".to_string())
+    })?;
+    let x = get_column_name(aesthetics, "x").ok_or_else(|| {
+        GgsqlError::ValidationError("Boxplot requires 'x' aesthetic mapping".to_string())
+    })?;
+
     // Fetch coef parameter
     let coef = match parameters.get("coef") {
         Some(ParameterValue::Number(num)) => num,
@@ -120,8 +122,8 @@ fn stat_boxplot(
         }
     };
 
-    // Determine horizontal or vertical boxplot
-    let (value_col, group_col) = set_boxplot_orientation(aesthetics, schema, parameters)?;
+    // Fix boxplots to be vertical, when we later have orientation this may change
+    let (value_col, group_col) = (y, x);
 
     // The `groups` vector is never empty, it contains at least the opposite axis as column
     // This absolves us from every having to guard against empty groups
@@ -304,77 +306,10 @@ fn boxplot_sql_append_outliers(
     )
 }
 
-// Tries to figure out wether we should have horizontal or vertical boxplots.
-// If the data is ambiguous, because x *and* y are both discrete or both continuous,
-//  we fallback to vertical boxplots.
-fn set_boxplot_orientation(
-    aesthetics: &Mappings,
-    schema: &crate::plot::Schema,
-    parameters: &HashMap<String, ParameterValue>,
-) -> Result<(String, String)> {
-    let y = get_column_name(aesthetics, "y").ok_or_else(|| {
-        GgsqlError::ValidationError("Boxplot requires 'y' aesthetic mapping".to_string())
-    })?;
-    let x = get_column_name(aesthetics, "x").ok_or_else(|| {
-        GgsqlError::ValidationError("Boxplot requires 'x' aesthetic mapping".to_string())
-    })?;
-
-    let mut orientation = parameters.get("orientation").cloned();
-
-    if orientation.is_none() {
-        let mut seen_x = false;
-        let mut seen_y = false;
-        let mut is_discrete_x = false;
-        let mut is_discrete_y = false;
-
-        for column in schema {
-            if column.name == x {
-                seen_x = true;
-                is_discrete_x = column.is_discrete
-            }
-            if column.name == y {
-                seen_y = true;
-                is_discrete_y = column.is_discrete
-            }
-        }
-        if !seen_x {
-            return Err(GgsqlError::InternalError(format!(
-                "Missing column info for 'x' ({})",
-                x
-            )));
-        }
-        if !seen_y {
-            return Err(GgsqlError::InternalError(format!(
-                "Missing column info for 'y' ({})",
-                y
-            )));
-        }
-
-        if is_discrete_x && !is_discrete_y {
-            orientation = Some(ParameterValue::String("x".to_string()));
-        } else if !is_discrete_x && is_discrete_y {
-            orientation = Some(ParameterValue::String("y".to_string()));
-        } else {
-            // We cannot reliably infer the orientation from the data types,
-            // and fall back to x-orientation.
-            orientation = Some(ParameterValue::String("x".to_string()));
-        }
-    }
-
-    match orientation {
-        Some(ParameterValue::String(s)) if s == "x" => Ok((y, x)),
-        Some(ParameterValue::String(s)) if s == "y" => Ok((x, y)),
-        _ => Err(GgsqlError::InternalError(format!(
-            "The boxplot 'orientation' parameter must be 'x' or 'y', not {:?}",
-            orientation
-        ))),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::{AestheticValue, ColumnInfo};
+    use crate::plot::AestheticValue;
 
     // ==================== Helper Functions ====================
 
@@ -389,19 +324,6 @@ mod tests {
             AestheticValue::standard_column("value".to_string()),
         );
         aesthetics
-    }
-
-    fn create_basic_schema() -> Vec<ColumnInfo> {
-        vec![
-            ColumnInfo {
-                name: "category".to_string(),
-                is_discrete: true,
-            },
-            ColumnInfo {
-                name: "value".to_string(),
-                is_discrete: false,
-            },
-        ]
     }
 
     // ==================== SQL Generation Tests (Compact) ====================
@@ -607,283 +529,11 @@ mod tests {
         assert!(outlier_section.contains("raw.year = summary.year"));
     }
 
-    // ==================== Orientation Detection Tests ====================
-
-    #[test]
-    fn test_orientation_discrete_x_continuous_y() {
-        let aesthetics = create_basic_aesthetics();
-        let schema = create_basic_schema();
-        let parameters = HashMap::new();
-
-        let (value_col, group_col) =
-            set_boxplot_orientation(&aesthetics, &schema, &parameters).unwrap();
-
-        // x-orientation: discrete x, continuous y → group by x, compute stats on y
-        assert_eq!(value_col, "value");
-        assert_eq!(group_col, "category");
-    }
-
-    #[test]
-    fn test_orientation_continuous_x_discrete_y() {
-        let mut aesthetics = Mappings::new();
-        aesthetics.insert(
-            "x".to_string(),
-            AestheticValue::standard_column("value".to_string()),
-        );
-        aesthetics.insert(
-            "y".to_string(),
-            AestheticValue::standard_column("category".to_string()),
-        );
-
-        let schema = vec![
-            ColumnInfo {
-                name: "value".to_string(),
-                is_discrete: false,
-            },
-            ColumnInfo {
-                name: "category".to_string(),
-                is_discrete: true,
-            },
-        ];
-
-        let parameters = HashMap::new();
-
-        let (value_col, group_col) =
-            set_boxplot_orientation(&aesthetics, &schema, &parameters).unwrap();
-
-        // y-orientation: continuous x, discrete y → group by y, compute stats on x
-        assert_eq!(value_col, "value");
-        assert_eq!(group_col, "category");
-    }
-
-    #[test]
-    fn test_orientation_explicit_x() {
-        let mut aesthetics = Mappings::new();
-        aesthetics.insert(
-            "x".to_string(),
-            AestheticValue::standard_column("cat".to_string()),
-        );
-        aesthetics.insert(
-            "y".to_string(),
-            AestheticValue::standard_column("val".to_string()),
-        );
-
-        let schema = vec![
-            ColumnInfo {
-                name: "cat".to_string(),
-                is_discrete: true,
-            },
-            ColumnInfo {
-                name: "val".to_string(),
-                is_discrete: true, // Both discrete!
-            },
-        ];
-
-        let mut parameters = HashMap::new();
-        parameters.insert(
-            "orientation".to_string(),
-            ParameterValue::String("x".to_string()),
-        );
-
-        let (value_col, group_col) =
-            set_boxplot_orientation(&aesthetics, &schema, &parameters).unwrap();
-
-        assert_eq!(value_col, "val");
-        assert_eq!(group_col, "cat");
-    }
-
-    #[test]
-    fn test_orientation_explicit_y() {
-        let mut aesthetics = Mappings::new();
-        aesthetics.insert(
-            "x".to_string(),
-            AestheticValue::standard_column("val".to_string()),
-        );
-        aesthetics.insert(
-            "y".to_string(),
-            AestheticValue::standard_column("cat".to_string()),
-        );
-
-        let schema = vec![
-            ColumnInfo {
-                name: "val".to_string(),
-                is_discrete: false,
-            },
-            ColumnInfo {
-                name: "cat".to_string(),
-                is_discrete: false, // Both continuous!
-            },
-        ];
-
-        let mut parameters = HashMap::new();
-        parameters.insert(
-            "orientation".to_string(),
-            ParameterValue::String("y".to_string()),
-        );
-
-        let (value_col, group_col) =
-            set_boxplot_orientation(&aesthetics, &schema, &parameters).unwrap();
-
-        assert_eq!(value_col, "val");
-        assert_eq!(group_col, "cat");
-    }
-
-    #[test]
-    fn test_orientation_ambiguous_defaults_to_x() {
-        let mut aesthetics = Mappings::new();
-        aesthetics.insert(
-            "x".to_string(),
-            AestheticValue::standard_column("a".to_string()),
-        );
-        aesthetics.insert(
-            "y".to_string(),
-            AestheticValue::standard_column("b".to_string()),
-        );
-
-        let schema = vec![
-            ColumnInfo {
-                name: "a".to_string(),
-                is_discrete: true,
-            },
-            ColumnInfo {
-                name: "b".to_string(),
-                is_discrete: true, // Both discrete
-            },
-        ];
-
-        let parameters = HashMap::new();
-
-        let (value_col, group_col) =
-            set_boxplot_orientation(&aesthetics, &schema, &parameters).unwrap();
-
-        // Should default to x-orientation
-        assert_eq!(value_col, "b");
-        assert_eq!(group_col, "a");
-    }
-
-    #[test]
-    fn test_orientation_missing_x_aesthetic() {
-        let mut aesthetics = Mappings::new();
-        aesthetics.insert(
-            "y".to_string(),
-            AestheticValue::standard_column("val".to_string()),
-        );
-
-        let schema = vec![ColumnInfo {
-            name: "val".to_string(),
-            is_discrete: false,
-        }];
-
-        let parameters = HashMap::new();
-
-        let result = set_boxplot_orientation(&aesthetics, &schema, &parameters);
-
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("'x' aesthetic"));
-    }
-
-    #[test]
-    fn test_orientation_missing_y_aesthetic() {
-        let mut aesthetics = Mappings::new();
-        aesthetics.insert(
-            "x".to_string(),
-            AestheticValue::standard_column("val".to_string()),
-        );
-
-        let schema = vec![ColumnInfo {
-            name: "val".to_string(),
-            is_discrete: false,
-        }];
-
-        let parameters = HashMap::new();
-
-        let result = set_boxplot_orientation(&aesthetics, &schema, &parameters);
-
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("'y' aesthetic"));
-    }
-
-    #[test]
-    fn test_orientation_invalid_orientation_param() {
-        let mut aesthetics = Mappings::new();
-        aesthetics.insert(
-            "x".to_string(),
-            AestheticValue::standard_column("a".to_string()),
-        );
-        aesthetics.insert(
-            "y".to_string(),
-            AestheticValue::standard_column("b".to_string()),
-        );
-
-        let schema = vec![
-            ColumnInfo {
-                name: "a".to_string(),
-                is_discrete: false,
-            },
-            ColumnInfo {
-                name: "b".to_string(),
-                is_discrete: false,
-            },
-        ];
-
-        let mut parameters = HashMap::new();
-        parameters.insert(
-            "orientation".to_string(),
-            ParameterValue::String("z".to_string()),
-        );
-
-        let result = set_boxplot_orientation(&aesthetics, &schema, &parameters);
-
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("'x' or 'y'"));
-    }
-
-    #[test]
-    fn test_orientation_missing_schema_info_for_x() {
-        let aesthetics = create_basic_aesthetics();
-        // Schema only has 'value', missing 'category'
-        let schema = vec![ColumnInfo {
-            name: "value".to_string(),
-            is_discrete: false,
-        }];
-
-        let parameters = HashMap::new();
-
-        let result = set_boxplot_orientation(&aesthetics, &schema, &parameters);
-
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Missing column info for 'x'"));
-    }
-
-    #[test]
-    fn test_orientation_missing_schema_info_for_y() {
-        let aesthetics = create_basic_aesthetics();
-        // Schema only has 'category', missing 'value'
-        let schema = vec![ColumnInfo {
-            name: "category".to_string(),
-            is_discrete: true,
-        }];
-
-        let parameters = HashMap::new();
-
-        let result = set_boxplot_orientation(&aesthetics, &schema, &parameters);
-
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Missing column info for 'y'"));
-    }
-
     // ==================== Parameter Validation Tests ====================
 
     #[test]
     fn test_stat_boxplot_invalid_coef_type() {
         let aesthetics = create_basic_aesthetics();
-        let schema = create_basic_schema();
         let groups = vec![];
 
         let mut parameters = HashMap::new();
@@ -893,13 +543,7 @@ mod tests {
         );
         parameters.insert("outliers".to_string(), ParameterValue::Boolean(true));
 
-        let result = stat_boxplot(
-            "SELECT * FROM data",
-            &schema,
-            &aesthetics,
-            &groups,
-            &parameters,
-        );
+        let result = stat_boxplot("SELECT * FROM data", &aesthetics, &groups, &parameters);
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("coef"));
@@ -908,20 +552,13 @@ mod tests {
     #[test]
     fn test_stat_boxplot_missing_coef() {
         let aesthetics = create_basic_aesthetics();
-        let schema = create_basic_schema();
         let groups = vec![];
 
         let mut parameters = HashMap::new();
         parameters.insert("outliers".to_string(), ParameterValue::Boolean(true));
         // Missing coef
 
-        let result = stat_boxplot(
-            "SELECT * FROM data",
-            &schema,
-            &aesthetics,
-            &groups,
-            &parameters,
-        );
+        let result = stat_boxplot("SELECT * FROM data", &aesthetics, &groups, &parameters);
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("coef"));
@@ -930,7 +567,6 @@ mod tests {
     #[test]
     fn test_stat_boxplot_invalid_outliers_type() {
         let aesthetics = create_basic_aesthetics();
-        let schema = create_basic_schema();
         let groups = vec![];
 
         let mut parameters = HashMap::new();
@@ -940,13 +576,7 @@ mod tests {
             ParameterValue::String("yes".to_string()),
         );
 
-        let result = stat_boxplot(
-            "SELECT * FROM data",
-            &schema,
-            &aesthetics,
-            &groups,
-            &parameters,
-        );
+        let result = stat_boxplot("SELECT * FROM data", &aesthetics, &groups, &parameters);
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("outliers"));
@@ -955,20 +585,13 @@ mod tests {
     #[test]
     fn test_stat_boxplot_missing_outliers() {
         let aesthetics = create_basic_aesthetics();
-        let schema = create_basic_schema();
         let groups = vec![];
 
         let mut parameters = HashMap::new();
         parameters.insert("coef".to_string(), ParameterValue::Number(1.5));
         // Missing outliers
 
-        let result = stat_boxplot(
-            "SELECT * FROM data",
-            &schema,
-            &aesthetics,
-            &groups,
-            &parameters,
-        );
+        let result = stat_boxplot("SELECT * FROM data", &aesthetics, &groups, &parameters);
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("outliers"));
@@ -1007,23 +630,11 @@ mod tests {
     }
 
     #[test]
-    fn test_boxplot_aesthetics_hidden() {
-        let boxplot = Boxplot;
-        let aes = boxplot.aesthetics();
-
-        assert!(aes.hidden.contains(&"ymin"));
-        assert!(aes.hidden.contains(&"ymax"));
-        assert!(aes.hidden.contains(&"y"));
-        assert!(aes.hidden.contains(&"q1"));
-        assert!(aes.hidden.contains(&"q3"));
-    }
-
-    #[test]
     fn test_boxplot_default_params() {
         let boxplot = Boxplot;
         let params = boxplot.default_params();
 
-        assert_eq!(params.len(), 4);
+        assert_eq!(params.len(), 3);
 
         // Find and verify outliers param
         let outliers_param = params.iter().find(|p| p.name == "outliers").unwrap();
@@ -1043,10 +654,6 @@ mod tests {
         assert!(
             matches!(width_param.default, DefaultParamValue::Number(v) if (v - 0.9).abs() < f64::EPSILON)
         );
-
-        // Find and verify orientation param
-        let orientation_param = params.iter().find(|p| p.name == "orientation").unwrap();
-        assert!(matches!(orientation_param.default, DefaultParamValue::Null));
     }
 
     #[test]
