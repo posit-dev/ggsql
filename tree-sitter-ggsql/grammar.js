@@ -276,12 +276,25 @@ module.exports = grammar({
       field('value', $.positional_arg)
     ),
 
-    positional_arg: $ => choice(
-      $.identifier,
+    // Positional argument: supports complex expressions including:
+    // - Simple values: identifier, number, string, *
+    // - Qualified names: table.column
+    // - Nested function calls: ROUND(AVG(x), 2)
+    // - Arithmetic expressions: quantity * price
+    // - Type casts: value::type
+    positional_arg: $ => prec.left(choice(
+      // Simple values
+      $.qualified_name,  // Handles both simple identifiers and table.column
       $.number,
       $.string,
-      '*'
-    ),
+      '*',
+      // Nested function call
+      $.function_call,
+      // Arithmetic/comparison expression (binary operators)
+      seq($.positional_arg, choice('+', '-', '*', '/', '%', '||', '::', '<', '>', '<=', '>=', '=', '!=', '<>'), $.positional_arg),
+      // Parenthesized expression
+      seq('(', $.positional_arg, ')')
+    )),
 
     // Namespaced identifier: matches "namespace:name" pattern
     // Examples: ggsql:penguins, ggsql:airquality

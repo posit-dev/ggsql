@@ -3134,4 +3134,104 @@ mod tests {
         assert!(ok);
         eprintln!("{:?}", palette);
     }
+
+    // ========================================
+    // Parser Limitation Tests (from ggsql-parser-limitations.md)
+    // Tests to verify and fix reported parsing issues
+    // ========================================
+
+    #[test]
+    fn test_table_alias_prefixes_in_select() {
+        // Issue 1: Table alias prefixes in SELECT clause
+        // Query like `SELECT p.product_name FROM products p` should parse
+        let query = r#"
+            SELECT p.product_name, SUM(s.quantity) as total
+            FROM sales s JOIN products p ON s.product_id = p.product_id
+            GROUP BY p.product_name
+            VISUALISE
+            DRAW bar MAPPING product_name AS x, total AS y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_cross_table_arithmetic() {
+        // Issue 2: Cross-table arithmetic expressions
+        // `quantity * price` across joined tables should work
+        let query = r#"
+            WITH t AS (
+                SELECT region, SUM(quantity * price) as revenue
+                FROM sales JOIN products ON sales.product_id = products.product_id
+                GROUP BY region
+            )
+            VISUALISE FROM t
+            DRAW bar MAPPING region AS x, revenue AS y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_nested_function_calls() {
+        // Issue 3: Nested function calls
+        // `ROUND(AVG(price), 2)` should parse
+        let query = r#"
+            SELECT category, ROUND(AVG(price), 2) as avg_price
+            FROM products
+            GROUP BY category
+            VISUALISE
+            DRAW bar MAPPING category AS x, avg_price AS y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_full_table_name_qualifiers() {
+        // Issue 4: Full table name qualifiers
+        // `products.product_name` (full table name, not alias) should work
+        let query = r#"
+            SELECT products.product_name, SUM(sales.quantity) as total
+            FROM sales
+            JOIN products ON sales.product_id = products.product_id
+            GROUP BY products.product_name
+            VISUALISE
+            DRAW bar MAPPING product_name AS x, total AS y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_simple_cross_table_multiplication() {
+        // Simplified version of cross-table arithmetic
+        let query = r#"
+            SELECT a.x * b.y as result
+            FROM a JOIN b ON a.id = b.id
+            VISUALISE
+            DRAW point MAPPING result AS x
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_deeply_nested_functions() {
+        // Multiple levels of nesting
+        let query = r#"
+            SELECT COALESCE(NULLIF(TRIM(name), ''), 'Unknown') as clean_name
+            FROM data
+            VISUALISE
+            DRAW bar MAPPING clean_name AS x
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok(), "Parse failed: {:?}", result);
+    }
 }

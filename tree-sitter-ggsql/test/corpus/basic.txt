@@ -1123,8 +1123,9 @@ DRAW line MAPPING x AS x, total AS y
             (function_args
               (function_arg
                 (positional_arg
-                  (identifier
-                    (bare_identifier)))))
+                  (qualified_name
+                    (identifier
+                      (bare_identifier))))))
             (window_specification
               (window_order_clause
                 (order_item
