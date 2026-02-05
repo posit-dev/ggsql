@@ -1,6 +1,5 @@
 ---
 title: Examples
-keep-ipynb: true # TODO: Why does render on save fail without this?
 ---
 
 This document demonstrates various ggsql features with runnable examples using CSV files.
@@ -365,7 +364,7 @@ VISUALISE date AS x, value AS y
 DRAW line 
     SETTING  color => 'blue'
 DRAW point 
-    SETTING size => 30, color => 'red'
+    SETTING size => 6, color => 'red'
 SCALE x VIA date
 LABEL 
     title => 'Time Series with Points', 
@@ -420,13 +419,13 @@ DRAW line
     SETTING color => 'steelblue'
 DRAW point 
     MAPPING total_revenue AS y
-    SETTING size => 30, color => 'darkblue'
+    SETTING size => 6, color => 'darkblue'
 DRAW line 
     MAPPING total_quantity_scaled AS y
     SETTING color => 'coral'
 DRAW point 
     MAPPING total_quantity_scaled AS y
-    SETTING size => 30, color => 'orangered'
+    SETTING size => 6, color => 'orangered'
 SCALE x VIA date
 FACET region BY category
 LABEL 
@@ -526,7 +525,7 @@ DRAW line
     MAPPING value AS y, category AS color
 DRAW point 
     MAPPING 120 AS y 
-    SETTING size => 20, color => 'blue'
+    SETTING size => 3, color => 'blue'
 SCALE x VIA date
 LABEL 
     title => 'Metrics with Threshold Line', 
@@ -541,9 +540,9 @@ Numbers work as constants too:
 SELECT x, y FROM 'data.csv'
 VISUALISE x, y
 DRAW point 
-    SETTING color => 'blue', size => 100
+    SETTING color => 'blue', size => 10
 DRAW point 
-    SETTING color => 'red', size => 50 
+    SETTING color => 'red', size => 5 
     FILTER y > 50
 LABEL 
     title => 'Scatter Plot with Constant Sizes'
@@ -559,7 +558,7 @@ VISUALISE date AS x, value AS y
 DRAW line 
     SETTING color => 'blue'
 DRAW point 
-    SETTING color => 'red', size => 30 
+    SETTING color => 'red', size => 6
     FILTER value < 130
 SCALE x VIA date
 LABEL 
@@ -590,7 +589,7 @@ DRAW path
     ORDER BY date
 DRAW point 
     MAPPING date AS x, value AS y FROM unordered_data 
-    SETTING size => 40, color => 'red'
+    SETTING size => 6, color => 'red'
 SCALE x VIA date
 LABEL 
     title => 'Line Chart with ORDER BY', 
@@ -611,7 +610,7 @@ DRAW path
     ORDER BY value
 DRAW point 
     MAPPING date AS x, value AS y, category AS color 
-    SETTING size => 20 
+    SETTING size => 3
     FILTER category != 'Support' 
 SCALE x VIA date
 LABEL 
@@ -701,7 +700,7 @@ DRAW line
     MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals
 DRAW point 
     MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals 
-    SETTING size => 30
+    SETTING size => 6
 DRAW line 
     MAPPING month AS x, value AS y, 'Target' AS color FROM targets
 SCALE x VIA date
@@ -769,22 +768,6 @@ LABEL
     title => 'Revenue by Category (Filtered Layers)', 
     x => 'Month', 
     y => 'Revenue ($)'
-```
-
-### Multiple File Sources
-
-Layers can also reference different CSV files directly:
-
-```{ggsql}
-VISUALISE
-DRAW line 
-    MAPPING date AS x, value AS y, 'Time Series' AS color FROM 'timeseries.csv'
-DRAW point 
-    MAPPING x AS x, y AS y, 'Scatter' AS color FROM 'data.csv'
-LABEL 
-    title => 'Data from Multiple Files', 
-    x => 'X', 
-    y => 'Y'
 ```
 
 ## Advanced Examples
