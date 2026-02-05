@@ -21,10 +21,10 @@ The following aesthetics are recognised by the polygon layer.
 * `linewidth` The width of the contour lines.
 
 ## Settings
-The point layer has no additional settings
+The polygon layer has no additional settings
 
 ## Data transformation
-The point layer does not transform its data but passes it through unchanged
+The polygon layer does not transform its data but passes it through unchanged
 
 ## Examples
 
