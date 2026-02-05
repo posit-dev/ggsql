@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.8.27">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Area – ggsql</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<link href="../../assets/icon.svg" rel="icon" type="image/svg+xml">
+<script src="../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../../site_libs/quarto-html/axe/axe-check.js" type="module"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-8caf6eaa0938078aad3b4e3e78d03e50.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-dark-391dc9eaa9d5ee7385b50e8209b8eefe.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-8caf6eaa0938078aad3b4e3e78d03e50.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap-906e5279b320c7a9927b2e3c4c1d4614.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-dark-c615a8e522208a0492fce157e4bfc72e.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-906e5279b320c7a9927b2e3c4c1d4614.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+<script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
+
+
+<meta property="og:title" content="Area – ggsql">
+<meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
+<meta property="og:image" content="https://ggsql.org/syntax/layer/assets/logo.png">
+<meta property="og:site_name" content="ggsql">
+<meta property="og:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
+handle is made up of the classic database silo icon and is coloured in a
+gradient teal.
+">
+<meta name="twitter:title" content="Area – ggsql">
+<meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
+<meta name="twitter:image" content="https://ggsql.org/syntax/layer/assets/logo.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
+handle is made up of the classic database silo icon and is coloured in a
+gradient teal.
+">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a href="../../index.html" class="navbar-brand navbar-brand-logo">
+    <img src="../../assets/icon.svg" alt="" class="navbar-logo light-content">
+    <img src="../../assets/icon.svg" alt="" class="navbar-logo dark-content">
+    </a>
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">ggsql</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../installation.html"> 
+<span class="menu-text">Installing ggsql</span></a>
+  </li>  
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-syntax" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Syntax</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-syntax">    
+        <li>
+    <a class="dropdown-item" href="../../syntax/index.html">
+ <span class="dropdown-text">Overview</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/visualise.html">
+ <span class="dropdown-text"><code>VISUALISE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/draw.html">
+ <span class="dropdown-text"><code>DRAW</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/scale.html">
+ <span class="dropdown-text"><code>SCALE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/facet.html">
+ <span class="dropdown-text"><code>FACET</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/project.html">
+ <span class="dropdown-text"><code>PROJECT</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/label.html">
+ <span class="dropdown-text"><code>LABEL</code></span></a>
+  </li>  
+    </ul>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../../examples.html"> 
+<span class="menu-text">Examples</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+    <div class="dropdown">
+      <a href="" title="" id="quarto-navigation-tool-dropdown-0" class="quarto-navigation-tool dropdown-toggle px-1" data-bs-toggle="dropdown" aria-expanded="false" role="link" aria-label=""><i class="bi bi-github"></i></a>
+      <ul class="dropdown-menu" aria-labelledby="quarto-navigation-tool-dropdown-0">
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/ggsql-dev/ggsql">
+            Source Code
+            </a>
+          </li>
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/ggsql-dev/ggsql/issues">
+            Report a Bug
+            </a>
+          </li>
+      </ul>
+    </div>
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Area</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+  <div id="quarto-announcement" data-announcement-id="a3e2a40f560b81649f1436c0b08f2025" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
+<p>ggsql is still in early development and all functionality is subject to change</p>
+</div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="pt-lg-2 mt-2 text-left sidebar-header sidebar-header-stacked">
+      <a href="../../index.html" class="sidebar-logo-link">
+      <img src="../../assets/logo.png" alt="" class="sidebar-logo light-content py-0 d-lg-inline d-none">
+      <img src="../../assets/logo.png" alt="" class="sidebar-logo dark-content py-0 d-lg-inline d-none">
+      </a>
+      </div>
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Overview</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Main clauses</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/clause/visualise.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>VISUALISE</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/clause/draw.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>DRAW</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/clause/scale.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>SCALE</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/clause/facet.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>FACET</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/clause/project.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>PROJECT</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/clause/label.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>LABEL</code></span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">Layers</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/layer/area.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Area</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/layer/bar.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Bar</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/layer/boxplot.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Boxplot</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/layer/histogram.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Histogram</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/layer/line.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Line</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/layer/path.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Path</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/layer/point.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Point</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/layer/ribbon.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Ribbon</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#aesthetics" id="toc-aesthetics" class="nav-link active" data-scroll-target="#aesthetics">Aesthetics</a>
+  <ul class="collapse">
+  <li><a href="#required" id="toc-required" class="nav-link" data-scroll-target="#required">Required</a></li>
+  <li><a href="#optional" id="toc-optional" class="nav-link" data-scroll-target="#optional">Optional</a></li>
+  </ul></li>
+  <li><a href="#settings" id="toc-settings" class="nav-link" data-scroll-target="#settings">Settings</a></li>
+  <li><a href="#data-transformation" id="toc-data-transformation" class="nav-link" data-scroll-target="#data-transformation">Data transformation</a></li>
+  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Area</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">Area</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<blockquote class="blockquote">
+<p>Layers are declared with the <a href="../../syntax/clause/draw.html"><code>DRAW</code> clause</a>. Read the documentation for this clause for a thorough description of how to use it.</p>
+</blockquote>
+<p>The area layer is used to display absolute amounts over a sorted x-axis. It can be seen as a <a href="../../syntax/layer/ribbon.html">ribbon layer</a> where the <code>ymin</code> is anchored at zero.</p>
+<section id="aesthetics" class="level2">
+<h2 class="anchored" data-anchor-id="aesthetics">Aesthetics</h2>
+<p>The following aesthetics are recognised by the area layer.</p>
+<section id="required" class="level3">
+<h3 class="anchored" data-anchor-id="required">Required</h3>
+<ul>
+<li><code>x</code>: Position along the x-axis.</li>
+<li><code>y</code>: Position along the y-axis.</li>
+</ul>
+</section>
+<section id="optional" class="level3">
+<h3 class="anchored" data-anchor-id="optional">Optional</h3>
+<ul>
+<li><code>stroke</code>: The colour of the contour lines.</li>
+<li><code>fill</code>: The colour of the inner area.</li>
+<li><code>colour</code>: Shorthand for setting <code>stroke</code> and <code>fill</code> simultaneously.</li>
+<li><code>opacity</code>: The opacity of the colours.</li>
+<li><code>linewidth</code>: The width of the contour lines.</li>
+</ul>
+</section>
+</section>
+<section id="settings" class="level2">
+<h2 class="anchored" data-anchor-id="settings">Settings</h2>
+<ul>
+<li><code>stacking</code>: Determines how multiple groups are displayed. One of the following:
+<ul>
+<li><code>'off'</code>: The groups <code>y</code>-values are displayed as-is (default).</li>
+<li><code>'on'</code>: The <code>y</code>-values are stacked per <code>x</code> position, accumulating over groups.</li>
+<li><code>'fill'</code>: Like <code>'on'</code> but displayed as a fraction of the total per <code>x</code> position.</li>
+</ul></li>
+</ul>
+</section>
+<section id="data-transformation" class="level2">
+<h2 class="anchored" data-anchor-id="data-transformation">Data transformation</h2>
+<p>The area layer does not transform its data but passes it through unchanged.</p>
+</section>
+<section id="examples" class="level2">
+<h2 class="anchored" data-anchor-id="examples">Examples</h2>
+<p>Create a typical area chart</p>
+<div id="cf156a06" class="cell" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">area</span> </span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> Date AS <span class="at">x</span>, Wind AS <span class="at">y</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="1">
+<div id="vis-1770279693399"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","datasets":{"__ggsql_global__":[{"Date":"1973-05-01","Day":1,"Month":5,"Ozone":41,"Solar.R":190,"Temp":67,"Wind":7.4},{"Date":"1973-05-02","Day":2,"Month":5,"Ozone":36,"Solar.R":118,"Temp":72,"Wind":8.0},{"Date":"1973-05-03","Day":3,"Month":5,"Ozone":12,"Solar.R":149,"Temp":74,"Wind":12.6},{"Date":"1973-05-04","Day":4,"Month":5,"Ozone":18,"Solar.R":313,"Temp":62,"Wind":11.5},{"Date":"1973-05-05","Day":5,"Month":5,"Ozone":null,"Solar.R":null,"Temp":56,"Wind":14.3},{"Date":"1973-05-06","Day":6,"Month":5,"Ozone":28,"Solar.R":null,"Temp":66,"Wind":14.9},{"Date":"1973-05-07","Day":7,"Month":5,"Ozone":23,"Solar.R":299,"Temp":65,"Wind":8.6},{"Date":"1973-05-08","Day":8,"Month":5,"Ozone":19,"Solar.R":99,"Temp":59,"Wind":13.8},{"Date":"1973-05-09","Day":9,"Month":5,"Ozone":8,"Solar.R":19,"Temp":61,"Wind":20.1},{"Date":"1973-05-10","Day":10,"Month":5,"Ozone":null,"Solar.R":194,"Temp":69,"Wind":8.6},{"Date":"1973-05-11","Day":11,"Month":5,"Ozone":7,"Solar.R":null,"Temp":74,"Wind":6.9},{"Date":"1973-05-12","Day":12,"Month":5,"Ozone":16,"Solar.R":256,"Temp":69,"Wind":9.7},{"Date":"1973-05-13","Day":13,"Month":5,"Ozone":11,"Solar.R":290,"Temp":66,"Wind":9.2},{"Date":"1973-05-14","Day":14,"Month":5,"Ozone":14,"Solar.R":274,"Temp":68,"Wind":10.9},{"Date":"1973-05-15","Day":15,"Month":5,"Ozone":18,"Solar.R":65,"Temp":58,"Wind":13.2},{"Date":"1973-05-16","Day":16,"Month":5,"Ozone":14,"Solar.R":334,"Temp":64,"Wind":11.5},{"Date":"1973-05-17","Day":17,"Month":5,"Ozone":34,"Solar.R":307,"Temp":66,"Wind":12.0},{"Date":"1973-05-18","Day":18,"Month":5,"Ozone":6,"Solar.R":78,"Temp":57,"Wind":18.4},{"Date":"1973-05-19","Day":19,"Month":5,"Ozone":30,"Solar.R":322,"Temp":68,"Wind":11.5},{"Date":"1973-05-20","Day":20,"Month":5,"Ozone":11,"Solar.R":44,"Temp":62,"Wind":9.7},{"Date":"1973-05-21","Day":21,"Month":5,"Ozone":1,"Solar.R":8,"Temp":59,"Wind":9.7},{"Date":"1973-05-22","Day":22,"Month":5,"Ozone":11,"Solar.R":320,"Temp":73,"Wind":16.6},{"Date":"1973-05-23","Day":23,"Month":5,"Ozone":4,"Solar.R":25,"Temp":61,"Wind":9.7},{"Date":"1973-05-24","Day":24,"Month":5,"Ozone":32,"Solar.R":92,"Temp":61,"Wind":12.0},{"Date":"1973-05-25","Day":25,"Month":5,"Ozone":null,"Solar.R":66,"Temp":57,"Wind":16.6},{"Date":"1973-05-26","Day":26,"Month":5,"Ozone":null,"Solar.R":266,"Temp":58,"Wind":14.9},{"Date":"1973-05-27","Day":27,"Month":5,"Ozone":null,"Solar.R":null,"Temp":57,"Wind":8.0},{"Date":"1973-05-28","Day":28,"Month":5,"Ozone":23,"Solar.R":13,"Temp":67,"Wind":12.0},{"Date":"1973-05-29","Day":29,"Month":5,"Ozone":45,"Solar.R":252,"Temp":81,"Wind":14.9},{"Date":"1973-05-30","Day":30,"Month":5,"Ozone":115,"Solar.R":223,"Temp":79,"Wind":5.7},{"Date":"1973-05-31","Day":31,"Month":5,"Ozone":37,"Solar.R":279,"Temp":76,"Wind":7.4},{"Date":"1973-06-01","Day":1,"Month":6,"Ozone":null,"Solar.R":286,"Temp":78,"Wind":8.6},{"Date":"1973-06-02","Day":2,"Month":6,"Ozone":null,"Solar.R":287,"Temp":74,"Wind":9.7},{"Date":"1973-06-03","Day":3,"Month":6,"Ozone":null,"Solar.R":242,"Temp":67,"Wind":16.1},{"Date":"1973-06-04","Day":4,"Month":6,"Ozone":null,"Solar.R":186,"Temp":84,"Wind":9.2},{"Date":"1973-06-05","Day":5,"Month":6,"Ozone":null,"Solar.R":220,"Temp":85,"Wind":8.6},{"Date":"1973-06-06","Day":6,"Month":6,"Ozone":null,"Solar.R":264,"Temp":79,"Wind":14.3},{"Date":"1973-06-07","Day":7,"Month":6,"Ozone":29,"Solar.R":127,"Temp":82,"Wind":9.7},{"Date":"1973-06-08","Day":8,"Month":6,"Ozone":null,"Solar.R":273,"Temp":87,"Wind":6.9},{"Date":"1973-06-09","Day":9,"Month":6,"Ozone":71,"Solar.R":291,"Temp":90,"Wind":13.8},{"Date":"1973-06-10","Day":10,"Month":6,"Ozone":39,"Solar.R":323,"Temp":87,"Wind":11.5},{"Date":"1973-06-11","Day":11,"Month":6,"Ozone":null,"Solar.R":259,"Temp":93,"Wind":10.9},{"Date":"1973-06-12","Day":12,"Month":6,"Ozone":null,"Solar.R":250,"Temp":92,"Wind":9.2},{"Date":"1973-06-13","Day":13,"Month":6,"Ozone":23,"Solar.R":148,"Temp":82,"Wind":8.0},{"Date":"1973-06-14","Day":14,"Month":6,"Ozone":null,"Solar.R":332,"Temp":80,"Wind":13.8},{"Date":"1973-06-15","Day":15,"Month":6,"Ozone":null,"Solar.R":322,"Temp":79,"Wind":11.5},{"Date":"1973-06-16","Day":16,"Month":6,"Ozone":21,"Solar.R":191,"Temp":77,"Wind":14.9},{"Date":"1973-06-17","Day":17,"Month":6,"Ozone":37,"Solar.R":284,"Temp":72,"Wind":20.7},{"Date":"1973-06-18","Day":18,"Month":6,"Ozone":20,"Solar.R":37,"Temp":65,"Wind":9.2},{"Date":"1973-06-19","Day":19,"Month":6,"Ozone":12,"Solar.R":120,"Temp":73,"Wind":11.5},{"Date":"1973-06-20","Day":20,"Month":6,"Ozone":13,"Solar.R":137,"Temp":76,"Wind":10.3},{"Date":"1973-06-21","Day":21,"Month":6,"Ozone":null,"Solar.R":150,"Temp":77,"Wind":6.3},{"Date":"1973-06-22","Day":22,"Month":6,"Ozone":null,"Solar.R":59,"Temp":76,"Wind":1.7},{"Date":"1973-06-23","Day":23,"Month":6,"Ozone":null,"Solar.R":91,"Temp":76,"Wind":4.6},{"Date":"1973-06-24","Day":24,"Month":6,"Ozone":null,"Solar.R":250,"Temp":76,"Wind":6.3},{"Date":"1973-06-25","Day":25,"Month":6,"Ozone":null,"Solar.R":135,"Temp":75,"Wind":8.0},{"Date":"1973-06-26","Day":26,"Month":6,"Ozone":null,"Solar.R":127,"Temp":78,"Wind":8.0},{"Date":"1973-06-27","Day":27,"Month":6,"Ozone":null,"Solar.R":47,"Temp":73,"Wind":10.3},{"Date":"1973-06-28","Day":28,"Month":6,"Ozone":null,"Solar.R":98,"Temp":80,"Wind":11.5},{"Date":"1973-06-29","Day":29,"Month":6,"Ozone":null,"Solar.R":31,"Temp":77,"Wind":14.9},{"Date":"1973-06-30","Day":30,"Month":6,"Ozone":null,"Solar.R":138,"Temp":83,"Wind":8.0},{"Date":"1973-07-01","Day":1,"Month":7,"Ozone":135,"Solar.R":269,"Temp":84,"Wind":4.1},{"Date":"1973-07-02","Day":2,"Month":7,"Ozone":49,"Solar.R":248,"Temp":85,"Wind":9.2},{"Date":"1973-07-03","Day":3,"Month":7,"Ozone":32,"Solar.R":236,"Temp":81,"Wind":9.2},{"Date":"1973-07-04","Day":4,"Month":7,"Ozone":null,"Solar.R":101,"Temp":84,"Wind":10.9},{"Date":"1973-07-05","Day":5,"Month":7,"Ozone":64,"Solar.R":175,"Temp":83,"Wind":4.6},{"Date":"1973-07-06","Day":6,"Month":7,"Ozone":40,"Solar.R":314,"Temp":83,"Wind":10.9},{"Date":"1973-07-07","Day":7,"Month":7,"Ozone":77,"Solar.R":276,"Temp":88,"Wind":5.1},{"Date":"1973-07-08","Day":8,"Month":7,"Ozone":97,"Solar.R":267,"Temp":92,"Wind":6.3},{"Date":"1973-07-09","Day":9,"Month":7,"Ozone":97,"Solar.R":272,"Temp":92,"Wind":5.7},{"Date":"1973-07-10","Day":10,"Month":7,"Ozone":85,"Solar.R":175,"Temp":89,"Wind":7.4},{"Date":"1973-07-11","Day":11,"Month":7,"Ozone":null,"Solar.R":139,"Temp":82,"Wind":8.6},{"Date":"1973-07-12","Day":12,"Month":7,"Ozone":10,"Solar.R":264,"Temp":73,"Wind":14.3},{"Date":"1973-07-13","Day":13,"Month":7,"Ozone":27,"Solar.R":175,"Temp":81,"Wind":14.9},{"Date":"1973-07-14","Day":14,"Month":7,"Ozone":null,"Solar.R":291,"Temp":91,"Wind":14.9},{"Date":"1973-07-15","Day":15,"Month":7,"Ozone":7,"Solar.R":48,"Temp":80,"Wind":14.3},{"Date":"1973-07-16","Day":16,"Month":7,"Ozone":48,"Solar.R":260,"Temp":81,"Wind":6.9},{"Date":"1973-07-17","Day":17,"Month":7,"Ozone":35,"Solar.R":274,"Temp":82,"Wind":10.3},{"Date":"1973-07-18","Day":18,"Month":7,"Ozone":61,"Solar.R":285,"Temp":84,"Wind":6.3},{"Date":"1973-07-19","Day":19,"Month":7,"Ozone":79,"Solar.R":187,"Temp":87,"Wind":5.1},{"Date":"1973-07-20","Day":20,"Month":7,"Ozone":63,"Solar.R":220,"Temp":85,"Wind":11.5},{"Date":"1973-07-21","Day":21,"Month":7,"Ozone":16,"Solar.R":7,"Temp":74,"Wind":6.9},{"Date":"1973-07-22","Day":22,"Month":7,"Ozone":null,"Solar.R":258,"Temp":81,"Wind":9.7},{"Date":"1973-07-23","Day":23,"Month":7,"Ozone":null,"Solar.R":295,"Temp":82,"Wind":11.5},{"Date":"1973-07-24","Day":24,"Month":7,"Ozone":80,"Solar.R":294,"Temp":86,"Wind":8.6},{"Date":"1973-07-25","Day":25,"Month":7,"Ozone":108,"Solar.R":223,"Temp":85,"Wind":8.0},{"Date":"1973-07-26","Day":26,"Month":7,"Ozone":20,"Solar.R":81,"Temp":82,"Wind":8.6},{"Date":"1973-07-27","Day":27,"Month":7,"Ozone":52,"Solar.R":82,"Temp":86,"Wind":12.0},{"Date":"1973-07-28","Day":28,"Month":7,"Ozone":82,"Solar.R":213,"Temp":88,"Wind":7.4},{"Date":"1973-07-29","Day":29,"Month":7,"Ozone":50,"Solar.R":275,"Temp":86,"Wind":7.4},{"Date":"1973-07-30","Day":30,"Month":7,"Ozone":64,"Solar.R":253,"Temp":83,"Wind":7.4},{"Date":"1973-07-31","Day":31,"Month":7,"Ozone":59,"Solar.R":254,"Temp":81,"Wind":9.2},{"Date":"1973-08-01","Day":1,"Month":8,"Ozone":39,"Solar.R":83,"Temp":81,"Wind":6.9},{"Date":"1973-08-02","Day":2,"Month":8,"Ozone":9,"Solar.R":24,"Temp":81,"Wind":13.8},{"Date":"1973-08-03","Day":3,"Month":8,"Ozone":16,"Solar.R":77,"Temp":82,"Wind":7.4},{"Date":"1973-08-04","Day":4,"Month":8,"Ozone":78,"Solar.R":null,"Temp":86,"Wind":6.9},{"Date":"1973-08-05","Day":5,"Month":8,"Ozone":35,"Solar.R":null,"Temp":85,"Wind":7.4},{"Date":"1973-08-06","Day":6,"Month":8,"Ozone":66,"Solar.R":null,"Temp":87,"Wind":4.6},{"Date":"1973-08-07","Day":7,"Month":8,"Ozone":122,"Solar.R":255,"Temp":89,"Wind":4.0},{"Date":"1973-08-08","Day":8,"Month":8,"Ozone":89,"Solar.R":229,"Temp":90,"Wind":10.3},{"Date":"1973-08-09","Day":9,"Month":8,"Ozone":110,"Solar.R":207,"Temp":90,"Wind":8.0},{"Date":"1973-08-10","Day":10,"Month":8,"Ozone":null,"Solar.R":222,"Temp":92,"Wind":8.6},{"Date":"1973-08-11","Day":11,"Month":8,"Ozone":null,"Solar.R":137,"Temp":86,"Wind":11.5},{"Date":"1973-08-12","Day":12,"Month":8,"Ozone":44,"Solar.R":192,"Temp":86,"Wind":11.5},{"Date":"1973-08-13","Day":13,"Month":8,"Ozone":28,"Solar.R":273,"Temp":82,"Wind":11.5},{"Date":"1973-08-14","Day":14,"Month":8,"Ozone":65,"Solar.R":157,"Temp":80,"Wind":9.7},{"Date":"1973-08-15","Day":15,"Month":8,"Ozone":null,"Solar.R":64,"Temp":79,"Wind":11.5},{"Date":"1973-08-16","Day":16,"Month":8,"Ozone":22,"Solar.R":71,"Temp":77,"Wind":10.3},{"Date":"1973-08-17","Day":17,"Month":8,"Ozone":59,"Solar.R":51,"Temp":79,"Wind":6.3},{"Date":"1973-08-18","Day":18,"Month":8,"Ozone":23,"Solar.R":115,"Temp":76,"Wind":7.4},{"Date":"1973-08-19","Day":19,"Month":8,"Ozone":31,"Solar.R":244,"Temp":78,"Wind":10.9},{"Date":"1973-08-20","Day":20,"Month":8,"Ozone":44,"Solar.R":190,"Temp":78,"Wind":10.3},{"Date":"1973-08-21","Day":21,"Month":8,"Ozone":21,"Solar.R":259,"Temp":77,"Wind":15.5},{"Date":"1973-08-22","Day":22,"Month":8,"Ozone":9,"Solar.R":36,"Temp":72,"Wind":14.3},{"Date":"1973-08-23","Day":23,"Month":8,"Ozone":null,"Solar.R":255,"Temp":75,"Wind":12.6},{"Date":"1973-08-24","Day":24,"Month":8,"Ozone":45,"Solar.R":212,"Temp":79,"Wind":9.7},{"Date":"1973-08-25","Day":25,"Month":8,"Ozone":168,"Solar.R":238,"Temp":81,"Wind":3.4},{"Date":"1973-08-26","Day":26,"Month":8,"Ozone":73,"Solar.R":215,"Temp":86,"Wind":8.0},{"Date":"1973-08-27","Day":27,"Month":8,"Ozone":null,"Solar.R":153,"Temp":88,"Wind":5.7},{"Date":"1973-08-28","Day":28,"Month":8,"Ozone":76,"Solar.R":203,"Temp":97,"Wind":9.7},{"Date":"1973-08-29","Day":29,"Month":8,"Ozone":118,"Solar.R":225,"Temp":94,"Wind":2.3},{"Date":"1973-08-30","Day":30,"Month":8,"Ozone":84,"Solar.R":237,"Temp":96,"Wind":6.3},{"Date":"1973-08-31","Day":31,"Month":8,"Ozone":85,"Solar.R":188,"Temp":94,"Wind":6.3},{"Date":"1973-09-01","Day":1,"Month":9,"Ozone":96,"Solar.R":167,"Temp":91,"Wind":6.9},{"Date":"1973-09-02","Day":2,"Month":9,"Ozone":78,"Solar.R":197,"Temp":92,"Wind":5.1},{"Date":"1973-09-03","Day":3,"Month":9,"Ozone":73,"Solar.R":183,"Temp":93,"Wind":2.8},{"Date":"1973-09-04","Day":4,"Month":9,"Ozone":91,"Solar.R":189,"Temp":93,"Wind":4.6},{"Date":"1973-09-05","Day":5,"Month":9,"Ozone":47,"Solar.R":95,"Temp":87,"Wind":7.4},{"Date":"1973-09-06","Day":6,"Month":9,"Ozone":32,"Solar.R":92,"Temp":84,"Wind":15.5},{"Date":"1973-09-07","Day":7,"Month":9,"Ozone":20,"Solar.R":252,"Temp":80,"Wind":10.9},{"Date":"1973-09-08","Day":8,"Month":9,"Ozone":23,"Solar.R":220,"Temp":78,"Wind":10.3},{"Date":"1973-09-09","Day":9,"Month":9,"Ozone":21,"Solar.R":230,"Temp":75,"Wind":10.9},{"Date":"1973-09-10","Day":10,"Month":9,"Ozone":24,"Solar.R":259,"Temp":73,"Wind":9.7},{"Date":"1973-09-11","Day":11,"Month":9,"Ozone":44,"Solar.R":236,"Temp":81,"Wind":14.9},{"Date":"1973-09-12","Day":12,"Month":9,"Ozone":21,"Solar.R":259,"Temp":76,"Wind":15.5},{"Date":"1973-09-13","Day":13,"Month":9,"Ozone":28,"Solar.R":238,"Temp":77,"Wind":6.3},{"Date":"1973-09-14","Day":14,"Month":9,"Ozone":9,"Solar.R":24,"Temp":71,"Wind":10.9},{"Date":"1973-09-15","Day":15,"Month":9,"Ozone":13,"Solar.R":112,"Temp":71,"Wind":11.5},{"Date":"1973-09-16","Day":16,"Month":9,"Ozone":46,"Solar.R":237,"Temp":78,"Wind":6.9},{"Date":"1973-09-17","Day":17,"Month":9,"Ozone":18,"Solar.R":224,"Temp":67,"Wind":13.8},{"Date":"1973-09-18","Day":18,"Month":9,"Ozone":13,"Solar.R":27,"Temp":76,"Wind":10.3},{"Date":"1973-09-19","Day":19,"Month":9,"Ozone":24,"Solar.R":238,"Temp":68,"Wind":10.3},{"Date":"1973-09-20","Day":20,"Month":9,"Ozone":16,"Solar.R":201,"Temp":82,"Wind":8.0},{"Date":"1973-09-21","Day":21,"Month":9,"Ozone":13,"Solar.R":238,"Temp":64,"Wind":12.6},{"Date":"1973-09-22","Day":22,"Month":9,"Ozone":23,"Solar.R":14,"Temp":71,"Wind":9.2},{"Date":"1973-09-23","Day":23,"Month":9,"Ozone":36,"Solar.R":139,"Temp":81,"Wind":10.3},{"Date":"1973-09-24","Day":24,"Month":9,"Ozone":7,"Solar.R":49,"Temp":69,"Wind":10.3},{"Date":"1973-09-25","Day":25,"Month":9,"Ozone":14,"Solar.R":20,"Temp":63,"Wind":16.6},{"Date":"1973-09-26","Day":26,"Month":9,"Ozone":30,"Solar.R":193,"Temp":70,"Wind":6.9},{"Date":"1973-09-27","Day":27,"Month":9,"Ozone":null,"Solar.R":145,"Temp":77,"Wind":13.2},{"Date":"1973-09-28","Day":28,"Month":9,"Ozone":14,"Solar.R":191,"Temp":75,"Wind":14.3},{"Date":"1973-09-29","Day":29,"Month":9,"Ozone":18,"Solar.R":131,"Temp":76,"Wind":8.0},{"Date":"1973-09-30","Day":30,"Month":9,"Ozone":20,"Solar.R":223,"Temp":68,"Wind":11.5}]},"height":"container","layer":[{"data":{"name":"__ggsql_global__"},"encoding":{"x":{"field":"Date","scale":{"zero":false},"title":"Date","type":"temporal"},"y":{"field":"Wind","scale":{"zero":false},"stack":null,"title":"Wind","type":"quantitative"}},"mark":"area"}],"width":"container"};
+    const visId = 'vis-1770279693399';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>We can reshape the data to ‘long format’ from our wide format.</p>
+<div id="1c69e1fc" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> long_airquality <span class="kw">AS</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>UNPIVOT(</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>  Value FOR Series <span class="kw">IN</span> (<span class="kw">Temp</span>, Wind)</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>) <span class="kw">AS</span> u;</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<tbody>
+</tbody>
+</table>
+</div>
+</div>
+<p>Which means we can display multiple series at once, by mapping the identifier to an aesthetic.</p>
+<div id="e6b9a2a3" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> <span class="at">x</span>, Value <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> long_airquality</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">area</span> <span class="kw">MAPPING</span> Series AS <span class="at">colour</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<div id="vis-1770279693412"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","datasets":{"__ggsql_global__":[{"Date":"1973-05-01","Day":1,"Month":5,"Ozone":41,"Series":"Temp","Solar.R":190,"Value":67.0},{"Date":"1973-05-01","Day":1,"Month":5,"Ozone":41,"Series":"Wind","Solar.R":190,"Value":7.4},{"Date":"1973-05-02","Day":2,"Month":5,"Ozone":36,"Series":"Temp","Solar.R":118,"Value":72.0},{"Date":"1973-05-02","Day":2,"Month":5,"Ozone":36,"Series":"Wind","Solar.R":118,"Value":8.0},{"Date":"1973-05-03","Day":3,"Month":5,"Ozone":12,"Series":"Temp","Solar.R":149,"Value":74.0},{"Date":"1973-05-03","Day":3,"Month":5,"Ozone":12,"Series":"Wind","Solar.R":149,"Value":12.6},{"Date":"1973-05-04","Day":4,"Month":5,"Ozone":18,"Series":"Temp","Solar.R":313,"Value":62.0},{"Date":"1973-05-04","Day":4,"Month":5,"Ozone":18,"Series":"Wind","Solar.R":313,"Value":11.5},{"Date":"1973-05-05","Day":5,"Month":5,"Ozone":null,"Series":"Temp","Solar.R":null,"Value":56.0},{"Date":"1973-05-05","Day":5,"Month":5,"Ozone":null,"Series":"Wind","Solar.R":null,"Value":14.3},{"Date":"1973-05-06","Day":6,"Month":5,"Ozone":28,"Series":"Temp","Solar.R":null,"Value":66.0},{"Date":"1973-05-06","Day":6,"Month":5,"Ozone":28,"Series":"Wind","Solar.R":null,"Value":14.9},{"Date":"1973-05-07","Day":7,"Month":5,"Ozone":23,"Series":"Temp","Solar.R":299,"Value":65.0},{"Date":"1973-05-07","Day":7,"Month":5,"Ozone":23,"Series":"Wind","Solar.R":299,"Value":8.6},{"Date":"1973-05-08","Day":8,"Month":5,"Ozone":19,"Series":"Temp","Solar.R":99,"Value":59.0},{"Date":"1973-05-08","Day":8,"Month":5,"Ozone":19,"Series":"Wind","Solar.R":99,"Value":13.8},{"Date":"1973-05-09","Day":9,"Month":5,"Ozone":8,"Series":"Temp","Solar.R":19,"Value":61.0},{"Date":"1973-05-09","Day":9,"Month":5,"Ozone":8,"Series":"Wind","Solar.R":19,"Value":20.1},{"Date":"1973-05-10","Day":10,"Month":5,"Ozone":null,"Series":"Temp","Solar.R":194,"Value":69.0},{"Date":"1973-05-10","Day":10,"Month":5,"Ozone":null,"Series":"Wind","Solar.R":194,"Value":8.6},{"Date":"1973-05-11","Day":11,"Month":5,"Ozone":7,"Series":"Temp","Solar.R":null,"Value":74.0},{"Date":"1973-05-11","Day":11,"Month":5,"Ozone":7,"Series":"Wind","Solar.R":null,"Value":6.9},{"Date":"1973-05-12","Day":12,"Month":5,"Ozone":16,"Series":"Temp","Solar.R":256,"Value":69.0},{"Date":"1973-05-12","Day":12,"Month":5,"Ozone":16,"Series":"Wind","Solar.R":256,"Value":9.7},{"Date":"1973-05-13","Day":13,"Month":5,"Ozone":11,"Series":"Temp","Solar.R":290,"Value":66.0},{"Date":"1973-05-13","Day":13,"Month":5,"Ozone":11,"Series":"Wind","Solar.R":290,"Value":9.2},{"Date":"1973-05-14","Day":14,"Month":5,"Ozone":14,"Series":"Temp","Solar.R":274,"Value":68.0},{"Date":"1973-05-14","Day":14,"Month":5,"Ozone":14,"Series":"Wind","Solar.R":274,"Value":10.9},{"Date":"1973-05-15","Day":15,"Month":5,"Ozone":18,"Series":"Temp","Solar.R":65,"Value":58.0},{"Date":"1973-05-15","Day":15,"Month":5,"Ozone":18,"Series":"Wind","Solar.R":65,"Value":13.2},{"Date":"1973-05-16","Day":16,"Month":5,"Ozone":14,"Series":"Temp","Solar.R":334,"Value":64.0},{"Date":"1973-05-16","Day":16,"Month":5,"Ozone":14,"Series":"Wind","Solar.R":334,"Value":11.5},{"Date":"1973-05-17","Day":17,"Month":5,"Ozone":34,"Series":"Temp","Solar.R":307,"Value":66.0},{"Date":"1973-05-17","Day":17,"Month":5,"Ozone":34,"Series":"Wind","Solar.R":307,"Value":12.0},{"Date":"1973-05-18","Day":18,"Month":5,"Ozone":6,"Series":"Temp","Solar.R":78,"Value":57.0},{"Date":"1973-05-18","Day":18,"Month":5,"Ozone":6,"Series":"Wind","Solar.R":78,"Value":18.4},{"Date":"1973-05-19","Day":19,"Month":5,"Ozone":30,"Series":"Temp","Solar.R":322,"Value":68.0},{"Date":"1973-05-19","Day":19,"Month":5,"Ozone":30,"Series":"Wind","Solar.R":322,"Value":11.5},{"Date":"1973-05-20","Day":20,"Month":5,"Ozone":11,"Series":"Temp","Solar.R":44,"Value":62.0},{"Date":"1973-05-20","Day":20,"Month":5,"Ozone":11,"Series":"Wind","Solar.R":44,"Value":9.7},{"Date":"1973-05-21","Day":21,"Month":5,"Ozone":1,"Series":"Temp","Solar.R":8,"Value":59.0},{"Date":"1973-05-21","Day":21,"Month":5,"Ozone":1,"Series":"Wind","Solar.R":8,"Value":9.7},{"Date":"1973-05-22","Day":22,"Month":5,"Ozone":11,"Series":"Temp","Solar.R":320,"Value":73.0},{"Date":"1973-05-22","Day":22,"Month":5,"Ozone":11,"Series":"Wind","Solar.R":320,"Value":16.6},{"Date":"1973-05-23","Day":23,"Month":5,"Ozone":4,"Series":"Temp","Solar.R":25,"Value":61.0},{"Date":"1973-05-23","Day":23,"Month":5,"Ozone":4,"Series":"Wind","Solar.R":25,"Value":9.7},{"Date":"1973-05-24","Day":24,"Month":5,"Ozone":32,"Series":"Temp","Solar.R":92,"Value":61.0},{"Date":"1973-05-24","Day":24,"Month":5,"Ozone":32,"Series":"Wind","Solar.R":92,"Value":12.0},{"Date":"1973-05-25","Day":25,"Month":5,"Ozone":null,"Series":"Temp","Solar.R":66,"Value":57.0},{"Date":"1973-05-25","Day":25,"Month":5,"Ozone":null,"Series":"Wind","Solar.R":66,"Value":16.6},{"Date":"1973-05-26","Day":26,"Month":5,"Ozone":null,"Series":"Temp","Solar.R":266,"Value":58.0},{"Date":"1973-05-26","Day":26,"Month":5,"Ozone":null,"Series":"Wind","Solar.R":266,"Value":14.9},{"Date":"1973-05-27","Day":27,"Month":5,"Ozone":null,"Series":"Temp","Solar.R":null,"Value":57.0},{"Date":"1973-05-27","Day":27,"Month":5,"Ozone":null,"Series":"Wind","Solar.R":null,"Value":8.0},{"Date":"1973-05-28","Day":28,"Month":5,"Ozone":23,"Series":"Temp","Solar.R":13,"Value":67.0},{"Date":"1973-05-28","Day":28,"Month":5,"Ozone":23,"Series":"Wind","Solar.R":13,"Value":12.0},{"Date":"1973-05-29","Day":29,"Month":5,"Ozone":45,"Series":"Temp","Solar.R":252,"Value":81.0},{"Date":"1973-05-29","Day":29,"Month":5,"Ozone":45,"Series":"Wind","Solar.R":252,"Value":14.9},{"Date":"1973-05-30","Day":30,"Month":5,"Ozone":115,"Series":"Temp","Solar.R":223,"Value":79.0},{"Date":"1973-05-30","Day":30,"Month":5,"Ozone":115,"Series":"Wind","Solar.R":223,"Value":5.7},{"Date":"1973-05-31","Day":31,"Month":5,"Ozone":37,"Series":"Temp","Solar.R":279,"Value":76.0},{"Date":"1973-05-31","Day":31,"Month":5,"Ozone":37,"Series":"Wind","Solar.R":279,"Value":7.4},{"Date":"1973-06-01","Day":1,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":286,"Value":78.0},{"Date":"1973-06-01","Day":1,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":286,"Value":8.6},{"Date":"1973-06-02","Day":2,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":287,"Value":74.0},{"Date":"1973-06-02","Day":2,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":287,"Value":9.7},{"Date":"1973-06-03","Day":3,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":242,"Value":67.0},{"Date":"1973-06-03","Day":3,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":242,"Value":16.1},{"Date":"1973-06-04","Day":4,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":186,"Value":84.0},{"Date":"1973-06-04","Day":4,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":186,"Value":9.2},{"Date":"1973-06-05","Day":5,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":220,"Value":85.0},{"Date":"1973-06-05","Day":5,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":220,"Value":8.6},{"Date":"1973-06-06","Day":6,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":264,"Value":79.0},{"Date":"1973-06-06","Day":6,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":264,"Value":14.3},{"Date":"1973-06-07","Day":7,"Month":6,"Ozone":29,"Series":"Temp","Solar.R":127,"Value":82.0},{"Date":"1973-06-07","Day":7,"Month":6,"Ozone":29,"Series":"Wind","Solar.R":127,"Value":9.7},{"Date":"1973-06-08","Day":8,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":273,"Value":87.0},{"Date":"1973-06-08","Day":8,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":273,"Value":6.9},{"Date":"1973-06-09","Day":9,"Month":6,"Ozone":71,"Series":"Temp","Solar.R":291,"Value":90.0},{"Date":"1973-06-09","Day":9,"Month":6,"Ozone":71,"Series":"Wind","Solar.R":291,"Value":13.8},{"Date":"1973-06-10","Day":10,"Month":6,"Ozone":39,"Series":"Temp","Solar.R":323,"Value":87.0},{"Date":"1973-06-10","Day":10,"Month":6,"Ozone":39,"Series":"Wind","Solar.R":323,"Value":11.5},{"Date":"1973-06-11","Day":11,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":259,"Value":93.0},{"Date":"1973-06-11","Day":11,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":259,"Value":10.9},{"Date":"1973-06-12","Day":12,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":250,"Value":92.0},{"Date":"1973-06-12","Day":12,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":250,"Value":9.2},{"Date":"1973-06-13","Day":13,"Month":6,"Ozone":23,"Series":"Temp","Solar.R":148,"Value":82.0},{"Date":"1973-06-13","Day":13,"Month":6,"Ozone":23,"Series":"Wind","Solar.R":148,"Value":8.0},{"Date":"1973-06-14","Day":14,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":332,"Value":80.0},{"Date":"1973-06-14","Day":14,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":332,"Value":13.8},{"Date":"1973-06-15","Day":15,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":322,"Value":79.0},{"Date":"1973-06-15","Day":15,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":322,"Value":11.5},{"Date":"1973-06-16","Day":16,"Month":6,"Ozone":21,"Series":"Temp","Solar.R":191,"Value":77.0},{"Date":"1973-06-16","Day":16,"Month":6,"Ozone":21,"Series":"Wind","Solar.R":191,"Value":14.9},{"Date":"1973-06-17","Day":17,"Month":6,"Ozone":37,"Series":"Temp","Solar.R":284,"Value":72.0},{"Date":"1973-06-17","Day":17,"Month":6,"Ozone":37,"Series":"Wind","Solar.R":284,"Value":20.7},{"Date":"1973-06-18","Day":18,"Month":6,"Ozone":20,"Series":"Temp","Solar.R":37,"Value":65.0},{"Date":"1973-06-18","Day":18,"Month":6,"Ozone":20,"Series":"Wind","Solar.R":37,"Value":9.2},{"Date":"1973-06-19","Day":19,"Month":6,"Ozone":12,"Series":"Temp","Solar.R":120,"Value":73.0},{"Date":"1973-06-19","Day":19,"Month":6,"Ozone":12,"Series":"Wind","Solar.R":120,"Value":11.5},{"Date":"1973-06-20","Day":20,"Month":6,"Ozone":13,"Series":"Temp","Solar.R":137,"Value":76.0},{"Date":"1973-06-20","Day":20,"Month":6,"Ozone":13,"Series":"Wind","Solar.R":137,"Value":10.3},{"Date":"1973-06-21","Day":21,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":150,"Value":77.0},{"Date":"1973-06-21","Day":21,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":150,"Value":6.3},{"Date":"1973-06-22","Day":22,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":59,"Value":76.0},{"Date":"1973-06-22","Day":22,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":59,"Value":1.7},{"Date":"1973-06-23","Day":23,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":91,"Value":76.0},{"Date":"1973-06-23","Day":23,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":91,"Value":4.6},{"Date":"1973-06-24","Day":24,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":250,"Value":76.0},{"Date":"1973-06-24","Day":24,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":250,"Value":6.3},{"Date":"1973-06-25","Day":25,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":135,"Value":75.0},{"Date":"1973-06-25","Day":25,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":135,"Value":8.0},{"Date":"1973-06-26","Day":26,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":127,"Value":78.0},{"Date":"1973-06-26","Day":26,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":127,"Value":8.0},{"Date":"1973-06-27","Day":27,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":47,"Value":73.0},{"Date":"1973-06-27","Day":27,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":47,"Value":10.3},{"Date":"1973-06-28","Day":28,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":98,"Value":80.0},{"Date":"1973-06-28","Day":28,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":98,"Value":11.5},{"Date":"1973-06-29","Day":29,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":31,"Value":77.0},{"Date":"1973-06-29","Day":29,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":31,"Value":14.9},{"Date":"1973-06-30","Day":30,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":138,"Value":83.0},{"Date":"1973-06-30","Day":30,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":138,"Value":8.0},{"Date":"1973-07-01","Day":1,"Month":7,"Ozone":135,"Series":"Temp","Solar.R":269,"Value":84.0},{"Date":"1973-07-01","Day":1,"Month":7,"Ozone":135,"Series":"Wind","Solar.R":269,"Value":4.1},{"Date":"1973-07-02","Day":2,"Month":7,"Ozone":49,"Series":"Temp","Solar.R":248,"Value":85.0},{"Date":"1973-07-02","Day":2,"Month":7,"Ozone":49,"Series":"Wind","Solar.R":248,"Value":9.2},{"Date":"1973-07-03","Day":3,"Month":7,"Ozone":32,"Series":"Temp","Solar.R":236,"Value":81.0},{"Date":"1973-07-03","Day":3,"Month":7,"Ozone":32,"Series":"Wind","Solar.R":236,"Value":9.2},{"Date":"1973-07-04","Day":4,"Month":7,"Ozone":null,"Series":"Temp","Solar.R":101,"Value":84.0},{"Date":"1973-07-04","Day":4,"Month":7,"Ozone":null,"Series":"Wind","Solar.R":101,"Value":10.9},{"Date":"1973-07-05","Day":5,"Month":7,"Ozone":64,"Series":"Temp","Solar.R":175,"Value":83.0},{"Date":"1973-07-05","Day":5,"Month":7,"Ozone":64,"Series":"Wind","Solar.R":175,"Value":4.6},{"Date":"1973-07-06","Day":6,"Month":7,"Ozone":40,"Series":"Temp","Solar.R":314,"Value":83.0},{"Date":"1973-07-06","Day":6,"Month":7,"Ozone":40,"Series":"Wind","Solar.R":314,"Value":10.9},{"Date":"1973-07-07","Day":7,"Month":7,"Ozone":77,"Series":"Temp","Solar.R":276,"Value":88.0},{"Date":"1973-07-07","Day":7,"Month":7,"Ozone":77,"Series":"Wind","Solar.R":276,"Value":5.1},{"Date":"1973-07-08","Day":8,"Month":7,"Ozone":97,"Series":"Temp","Solar.R":267,"Value":92.0},{"Date":"1973-07-08","Day":8,"Month":7,"Ozone":97,"Series":"Wind","Solar.R":267,"Value":6.3},{"Date":"1973-07-09","Day":9,"Month":7,"Ozone":97,"Series":"Temp","Solar.R":272,"Value":92.0},{"Date":"1973-07-09","Day":9,"Month":7,"Ozone":97,"Series":"Wind","Solar.R":272,"Value":5.7},{"Date":"1973-07-10","Day":10,"Month":7,"Ozone":85,"Series":"Temp","Solar.R":175,"Value":89.0},{"Date":"1973-07-10","Day":10,"Month":7,"Ozone":85,"Series":"Wind","Solar.R":175,"Value":7.4},{"Date":"1973-07-11","Day":11,"Month":7,"Ozone":null,"Series":"Temp","Solar.R":139,"Value":82.0},{"Date":"1973-07-11","Day":11,"Month":7,"Ozone":null,"Series":"Wind","Solar.R":139,"Value":8.6},{"Date":"1973-07-12","Day":12,"Month":7,"Ozone":10,"Series":"Temp","Solar.R":264,"Value":73.0},{"Date":"1973-07-12","Day":12,"Month":7,"Ozone":10,"Series":"Wind","Solar.R":264,"Value":14.3},{"Date":"1973-07-13","Day":13,"Month":7,"Ozone":27,"Series":"Temp","Solar.R":175,"Value":81.0},{"Date":"1973-07-13","Day":13,"Month":7,"Ozone":27,"Series":"Wind","Solar.R":175,"Value":14.9},{"Date":"1973-07-14","Day":14,"Month":7,"Ozone":null,"Series":"Temp","Solar.R":291,"Value":91.0},{"Date":"1973-07-14","Day":14,"Month":7,"Ozone":null,"Series":"Wind","Solar.R":291,"Value":14.9},{"Date":"1973-07-15","Day":15,"Month":7,"Ozone":7,"Series":"Temp","Solar.R":48,"Value":80.0},{"Date":"1973-07-15","Day":15,"Month":7,"Ozone":7,"Series":"Wind","Solar.R":48,"Value":14.3},{"Date":"1973-07-16","Day":16,"Month":7,"Ozone":48,"Series":"Temp","Solar.R":260,"Value":81.0},{"Date":"1973-07-16","Day":16,"Month":7,"Ozone":48,"Series":"Wind","Solar.R":260,"Value":6.9},{"Date":"1973-07-17","Day":17,"Month":7,"Ozone":35,"Series":"Temp","Solar.R":274,"Value":82.0},{"Date":"1973-07-17","Day":17,"Month":7,"Ozone":35,"Series":"Wind","Solar.R":274,"Value":10.3},{"Date":"1973-07-18","Day":18,"Month":7,"Ozone":61,"Series":"Temp","Solar.R":285,"Value":84.0},{"Date":"1973-07-18","Day":18,"Month":7,"Ozone":61,"Series":"Wind","Solar.R":285,"Value":6.3},{"Date":"1973-07-19","Day":19,"Month":7,"Ozone":79,"Series":"Temp","Solar.R":187,"Value":87.0},{"Date":"1973-07-19","Day":19,"Month":7,"Ozone":79,"Series":"Wind","Solar.R":187,"Value":5.1},{"Date":"1973-07-20","Day":20,"Month":7,"Ozone":63,"Series":"Temp","Solar.R":220,"Value":85.0},{"Date":"1973-07-20","Day":20,"Month":7,"Ozone":63,"Series":"Wind","Solar.R":220,"Value":11.5},{"Date":"1973-07-21","Day":21,"Month":7,"Ozone":16,"Series":"Temp","Solar.R":7,"Value":74.0},{"Date":"1973-07-21","Day":21,"Month":7,"Ozone":16,"Series":"Wind","Solar.R":7,"Value":6.9},{"Date":"1973-07-22","Day":22,"Month":7,"Ozone":null,"Series":"Temp","Solar.R":258,"Value":81.0},{"Date":"1973-07-22","Day":22,"Month":7,"Ozone":null,"Series":"Wind","Solar.R":258,"Value":9.7},{"Date":"1973-07-23","Day":23,"Month":7,"Ozone":null,"Series":"Temp","Solar.R":295,"Value":82.0},{"Date":"1973-07-23","Day":23,"Month":7,"Ozone":null,"Series":"Wind","Solar.R":295,"Value":11.5},{"Date":"1973-07-24","Day":24,"Month":7,"Ozone":80,"Series":"Temp","Solar.R":294,"Value":86.0},{"Date":"1973-07-24","Day":24,"Month":7,"Ozone":80,"Series":"Wind","Solar.R":294,"Value":8.6},{"Date":"1973-07-25","Day":25,"Month":7,"Ozone":108,"Series":"Temp","Solar.R":223,"Value":85.0},{"Date":"1973-07-25","Day":25,"Month":7,"Ozone":108,"Series":"Wind","Solar.R":223,"Value":8.0},{"Date":"1973-07-26","Day":26,"Month":7,"Ozone":20,"Series":"Temp","Solar.R":81,"Value":82.0},{"Date":"1973-07-26","Day":26,"Month":7,"Ozone":20,"Series":"Wind","Solar.R":81,"Value":8.6},{"Date":"1973-07-27","Day":27,"Month":7,"Ozone":52,"Series":"Temp","Solar.R":82,"Value":86.0},{"Date":"1973-07-27","Day":27,"Month":7,"Ozone":52,"Series":"Wind","Solar.R":82,"Value":12.0},{"Date":"1973-07-28","Day":28,"Month":7,"Ozone":82,"Series":"Temp","Solar.R":213,"Value":88.0},{"Date":"1973-07-28","Day":28,"Month":7,"Ozone":82,"Series":"Wind","Solar.R":213,"Value":7.4},{"Date":"1973-07-29","Day":29,"Month":7,"Ozone":50,"Series":"Temp","Solar.R":275,"Value":86.0},{"Date":"1973-07-29","Day":29,"Month":7,"Ozone":50,"Series":"Wind","Solar.R":275,"Value":7.4},{"Date":"1973-07-30","Day":30,"Month":7,"Ozone":64,"Series":"Temp","Solar.R":253,"Value":83.0},{"Date":"1973-07-30","Day":30,"Month":7,"Ozone":64,"Series":"Wind","Solar.R":253,"Value":7.4},{"Date":"1973-07-31","Day":31,"Month":7,"Ozone":59,"Series":"Temp","Solar.R":254,"Value":81.0},{"Date":"1973-07-31","Day":31,"Month":7,"Ozone":59,"Series":"Wind","Solar.R":254,"Value":9.2},{"Date":"1973-08-01","Day":1,"Month":8,"Ozone":39,"Series":"Temp","Solar.R":83,"Value":81.0},{"Date":"1973-08-01","Day":1,"Month":8,"Ozone":39,"Series":"Wind","Solar.R":83,"Value":6.9},{"Date":"1973-08-02","Day":2,"Month":8,"Ozone":9,"Series":"Temp","Solar.R":24,"Value":81.0},{"Date":"1973-08-02","Day":2,"Month":8,"Ozone":9,"Series":"Wind","Solar.R":24,"Value":13.8},{"Date":"1973-08-03","Day":3,"Month":8,"Ozone":16,"Series":"Temp","Solar.R":77,"Value":82.0},{"Date":"1973-08-03","Day":3,"Month":8,"Ozone":16,"Series":"Wind","Solar.R":77,"Value":7.4},{"Date":"1973-08-04","Day":4,"Month":8,"Ozone":78,"Series":"Temp","Solar.R":null,"Value":86.0},{"Date":"1973-08-04","Day":4,"Month":8,"Ozone":78,"Series":"Wind","Solar.R":null,"Value":6.9},{"Date":"1973-08-05","Day":5,"Month":8,"Ozone":35,"Series":"Temp","Solar.R":null,"Value":85.0},{"Date":"1973-08-05","Day":5,"Month":8,"Ozone":35,"Series":"Wind","Solar.R":null,"Value":7.4},{"Date":"1973-08-06","Day":6,"Month":8,"Ozone":66,"Series":"Temp","Solar.R":null,"Value":87.0},{"Date":"1973-08-06","Day":6,"Month":8,"Ozone":66,"Series":"Wind","Solar.R":null,"Value":4.6},{"Date":"1973-08-07","Day":7,"Month":8,"Ozone":122,"Series":"Temp","Solar.R":255,"Value":89.0},{"Date":"1973-08-07","Day":7,"Month":8,"Ozone":122,"Series":"Wind","Solar.R":255,"Value":4.0},{"Date":"1973-08-08","Day":8,"Month":8,"Ozone":89,"Series":"Temp","Solar.R":229,"Value":90.0},{"Date":"1973-08-08","Day":8,"Month":8,"Ozone":89,"Series":"Wind","Solar.R":229,"Value":10.3},{"Date":"1973-08-09","Day":9,"Month":8,"Ozone":110,"Series":"Temp","Solar.R":207,"Value":90.0},{"Date":"1973-08-09","Day":9,"Month":8,"Ozone":110,"Series":"Wind","Solar.R":207,"Value":8.0},{"Date":"1973-08-10","Day":10,"Month":8,"Ozone":null,"Series":"Temp","Solar.R":222,"Value":92.0},{"Date":"1973-08-10","Day":10,"Month":8,"Ozone":null,"Series":"Wind","Solar.R":222,"Value":8.6},{"Date":"1973-08-11","Day":11,"Month":8,"Ozone":null,"Series":"Temp","Solar.R":137,"Value":86.0},{"Date":"1973-08-11","Day":11,"Month":8,"Ozone":null,"Series":"Wind","Solar.R":137,"Value":11.5},{"Date":"1973-08-12","Day":12,"Month":8,"Ozone":44,"Series":"Temp","Solar.R":192,"Value":86.0},{"Date":"1973-08-12","Day":12,"Month":8,"Ozone":44,"Series":"Wind","Solar.R":192,"Value":11.5},{"Date":"1973-08-13","Day":13,"Month":8,"Ozone":28,"Series":"Temp","Solar.R":273,"Value":82.0},{"Date":"1973-08-13","Day":13,"Month":8,"Ozone":28,"Series":"Wind","Solar.R":273,"Value":11.5},{"Date":"1973-08-14","Day":14,"Month":8,"Ozone":65,"Series":"Temp","Solar.R":157,"Value":80.0},{"Date":"1973-08-14","Day":14,"Month":8,"Ozone":65,"Series":"Wind","Solar.R":157,"Value":9.7},{"Date":"1973-08-15","Day":15,"Month":8,"Ozone":null,"Series":"Temp","Solar.R":64,"Value":79.0},{"Date":"1973-08-15","Day":15,"Month":8,"Ozone":null,"Series":"Wind","Solar.R":64,"Value":11.5},{"Date":"1973-08-16","Day":16,"Month":8,"Ozone":22,"Series":"Temp","Solar.R":71,"Value":77.0},{"Date":"1973-08-16","Day":16,"Month":8,"Ozone":22,"Series":"Wind","Solar.R":71,"Value":10.3},{"Date":"1973-08-17","Day":17,"Month":8,"Ozone":59,"Series":"Temp","Solar.R":51,"Value":79.0},{"Date":"1973-08-17","Day":17,"Month":8,"Ozone":59,"Series":"Wind","Solar.R":51,"Value":6.3},{"Date":"1973-08-18","Day":18,"Month":8,"Ozone":23,"Series":"Temp","Solar.R":115,"Value":76.0},{"Date":"1973-08-18","Day":18,"Month":8,"Ozone":23,"Series":"Wind","Solar.R":115,"Value":7.4},{"Date":"1973-08-19","Day":19,"Month":8,"Ozone":31,"Series":"Temp","Solar.R":244,"Value":78.0},{"Date":"1973-08-19","Day":19,"Month":8,"Ozone":31,"Series":"Wind","Solar.R":244,"Value":10.9},{"Date":"1973-08-20","Day":20,"Month":8,"Ozone":44,"Series":"Temp","Solar.R":190,"Value":78.0},{"Date":"1973-08-20","Day":20,"Month":8,"Ozone":44,"Series":"Wind","Solar.R":190,"Value":10.3},{"Date":"1973-08-21","Day":21,"Month":8,"Ozone":21,"Series":"Temp","Solar.R":259,"Value":77.0},{"Date":"1973-08-21","Day":21,"Month":8,"Ozone":21,"Series":"Wind","Solar.R":259,"Value":15.5},{"Date":"1973-08-22","Day":22,"Month":8,"Ozone":9,"Series":"Temp","Solar.R":36,"Value":72.0},{"Date":"1973-08-22","Day":22,"Month":8,"Ozone":9,"Series":"Wind","Solar.R":36,"Value":14.3},{"Date":"1973-08-23","Day":23,"Month":8,"Ozone":null,"Series":"Temp","Solar.R":255,"Value":75.0},{"Date":"1973-08-23","Day":23,"Month":8,"Ozone":null,"Series":"Wind","Solar.R":255,"Value":12.6},{"Date":"1973-08-24","Day":24,"Month":8,"Ozone":45,"Series":"Temp","Solar.R":212,"Value":79.0},{"Date":"1973-08-24","Day":24,"Month":8,"Ozone":45,"Series":"Wind","Solar.R":212,"Value":9.7},{"Date":"1973-08-25","Day":25,"Month":8,"Ozone":168,"Series":"Temp","Solar.R":238,"Value":81.0},{"Date":"1973-08-25","Day":25,"Month":8,"Ozone":168,"Series":"Wind","Solar.R":238,"Value":3.4},{"Date":"1973-08-26","Day":26,"Month":8,"Ozone":73,"Series":"Temp","Solar.R":215,"Value":86.0},{"Date":"1973-08-26","Day":26,"Month":8,"Ozone":73,"Series":"Wind","Solar.R":215,"Value":8.0},{"Date":"1973-08-27","Day":27,"Month":8,"Ozone":null,"Series":"Temp","Solar.R":153,"Value":88.0},{"Date":"1973-08-27","Day":27,"Month":8,"Ozone":null,"Series":"Wind","Solar.R":153,"Value":5.7},{"Date":"1973-08-28","Day":28,"Month":8,"Ozone":76,"Series":"Temp","Solar.R":203,"Value":97.0},{"Date":"1973-08-28","Day":28,"Month":8,"Ozone":76,"Series":"Wind","Solar.R":203,"Value":9.7},{"Date":"1973-08-29","Day":29,"Month":8,"Ozone":118,"Series":"Temp","Solar.R":225,"Value":94.0},{"Date":"1973-08-29","Day":29,"Month":8,"Ozone":118,"Series":"Wind","Solar.R":225,"Value":2.3},{"Date":"1973-08-30","Day":30,"Month":8,"Ozone":84,"Series":"Temp","Solar.R":237,"Value":96.0},{"Date":"1973-08-30","Day":30,"Month":8,"Ozone":84,"Series":"Wind","Solar.R":237,"Value":6.3},{"Date":"1973-08-31","Day":31,"Month":8,"Ozone":85,"Series":"Temp","Solar.R":188,"Value":94.0},{"Date":"1973-08-31","Day":31,"Month":8,"Ozone":85,"Series":"Wind","Solar.R":188,"Value":6.3},{"Date":"1973-09-01","Day":1,"Month":9,"Ozone":96,"Series":"Temp","Solar.R":167,"Value":91.0},{"Date":"1973-09-01","Day":1,"Month":9,"Ozone":96,"Series":"Wind","Solar.R":167,"Value":6.9},{"Date":"1973-09-02","Day":2,"Month":9,"Ozone":78,"Series":"Temp","Solar.R":197,"Value":92.0},{"Date":"1973-09-02","Day":2,"Month":9,"Ozone":78,"Series":"Wind","Solar.R":197,"Value":5.1},{"Date":"1973-09-03","Day":3,"Month":9,"Ozone":73,"Series":"Temp","Solar.R":183,"Value":93.0},{"Date":"1973-09-03","Day":3,"Month":9,"Ozone":73,"Series":"Wind","Solar.R":183,"Value":2.8},{"Date":"1973-09-04","Day":4,"Month":9,"Ozone":91,"Series":"Temp","Solar.R":189,"Value":93.0},{"Date":"1973-09-04","Day":4,"Month":9,"Ozone":91,"Series":"Wind","Solar.R":189,"Value":4.6},{"Date":"1973-09-05","Day":5,"Month":9,"Ozone":47,"Series":"Temp","Solar.R":95,"Value":87.0},{"Date":"1973-09-05","Day":5,"Month":9,"Ozone":47,"Series":"Wind","Solar.R":95,"Value":7.4},{"Date":"1973-09-06","Day":6,"Month":9,"Ozone":32,"Series":"Temp","Solar.R":92,"Value":84.0},{"Date":"1973-09-06","Day":6,"Month":9,"Ozone":32,"Series":"Wind","Solar.R":92,"Value":15.5},{"Date":"1973-09-07","Day":7,"Month":9,"Ozone":20,"Series":"Temp","Solar.R":252,"Value":80.0},{"Date":"1973-09-07","Day":7,"Month":9,"Ozone":20,"Series":"Wind","Solar.R":252,"Value":10.9},{"Date":"1973-09-08","Day":8,"Month":9,"Ozone":23,"Series":"Temp","Solar.R":220,"Value":78.0},{"Date":"1973-09-08","Day":8,"Month":9,"Ozone":23,"Series":"Wind","Solar.R":220,"Value":10.3},{"Date":"1973-09-09","Day":9,"Month":9,"Ozone":21,"Series":"Temp","Solar.R":230,"Value":75.0},{"Date":"1973-09-09","Day":9,"Month":9,"Ozone":21,"Series":"Wind","Solar.R":230,"Value":10.9},{"Date":"1973-09-10","Day":10,"Month":9,"Ozone":24,"Series":"Temp","Solar.R":259,"Value":73.0},{"Date":"1973-09-10","Day":10,"Month":9,"Ozone":24,"Series":"Wind","Solar.R":259,"Value":9.7},{"Date":"1973-09-11","Day":11,"Month":9,"Ozone":44,"Series":"Temp","Solar.R":236,"Value":81.0},{"Date":"1973-09-11","Day":11,"Month":9,"Ozone":44,"Series":"Wind","Solar.R":236,"Value":14.9},{"Date":"1973-09-12","Day":12,"Month":9,"Ozone":21,"Series":"Temp","Solar.R":259,"Value":76.0},{"Date":"1973-09-12","Day":12,"Month":9,"Ozone":21,"Series":"Wind","Solar.R":259,"Value":15.5},{"Date":"1973-09-13","Day":13,"Month":9,"Ozone":28,"Series":"Temp","Solar.R":238,"Value":77.0},{"Date":"1973-09-13","Day":13,"Month":9,"Ozone":28,"Series":"Wind","Solar.R":238,"Value":6.3},{"Date":"1973-09-14","Day":14,"Month":9,"Ozone":9,"Series":"Temp","Solar.R":24,"Value":71.0},{"Date":"1973-09-14","Day":14,"Month":9,"Ozone":9,"Series":"Wind","Solar.R":24,"Value":10.9},{"Date":"1973-09-15","Day":15,"Month":9,"Ozone":13,"Series":"Temp","Solar.R":112,"Value":71.0},{"Date":"1973-09-15","Day":15,"Month":9,"Ozone":13,"Series":"Wind","Solar.R":112,"Value":11.5},{"Date":"1973-09-16","Day":16,"Month":9,"Ozone":46,"Series":"Temp","Solar.R":237,"Value":78.0},{"Date":"1973-09-16","Day":16,"Month":9,"Ozone":46,"Series":"Wind","Solar.R":237,"Value":6.9},{"Date":"1973-09-17","Day":17,"Month":9,"Ozone":18,"Series":"Temp","Solar.R":224,"Value":67.0},{"Date":"1973-09-17","Day":17,"Month":9,"Ozone":18,"Series":"Wind","Solar.R":224,"Value":13.8},{"Date":"1973-09-18","Day":18,"Month":9,"Ozone":13,"Series":"Temp","Solar.R":27,"Value":76.0},{"Date":"1973-09-18","Day":18,"Month":9,"Ozone":13,"Series":"Wind","Solar.R":27,"Value":10.3},{"Date":"1973-09-19","Day":19,"Month":9,"Ozone":24,"Series":"Temp","Solar.R":238,"Value":68.0},{"Date":"1973-09-19","Day":19,"Month":9,"Ozone":24,"Series":"Wind","Solar.R":238,"Value":10.3},{"Date":"1973-09-20","Day":20,"Month":9,"Ozone":16,"Series":"Temp","Solar.R":201,"Value":82.0},{"Date":"1973-09-20","Day":20,"Month":9,"Ozone":16,"Series":"Wind","Solar.R":201,"Value":8.0},{"Date":"1973-09-21","Day":21,"Month":9,"Ozone":13,"Series":"Temp","Solar.R":238,"Value":64.0},{"Date":"1973-09-21","Day":21,"Month":9,"Ozone":13,"Series":"Wind","Solar.R":238,"Value":12.6},{"Date":"1973-09-22","Day":22,"Month":9,"Ozone":23,"Series":"Temp","Solar.R":14,"Value":71.0},{"Date":"1973-09-22","Day":22,"Month":9,"Ozone":23,"Series":"Wind","Solar.R":14,"Value":9.2},{"Date":"1973-09-23","Day":23,"Month":9,"Ozone":36,"Series":"Temp","Solar.R":139,"Value":81.0},{"Date":"1973-09-23","Day":23,"Month":9,"Ozone":36,"Series":"Wind","Solar.R":139,"Value":10.3},{"Date":"1973-09-24","Day":24,"Month":9,"Ozone":7,"Series":"Temp","Solar.R":49,"Value":69.0},{"Date":"1973-09-24","Day":24,"Month":9,"Ozone":7,"Series":"Wind","Solar.R":49,"Value":10.3},{"Date":"1973-09-25","Day":25,"Month":9,"Ozone":14,"Series":"Temp","Solar.R":20,"Value":63.0},{"Date":"1973-09-25","Day":25,"Month":9,"Ozone":14,"Series":"Wind","Solar.R":20,"Value":16.6},{"Date":"1973-09-26","Day":26,"Month":9,"Ozone":30,"Series":"Temp","Solar.R":193,"Value":70.0},{"Date":"1973-09-26","Day":26,"Month":9,"Ozone":30,"Series":"Wind","Solar.R":193,"Value":6.9},{"Date":"1973-09-27","Day":27,"Month":9,"Ozone":null,"Series":"Temp","Solar.R":145,"Value":77.0},{"Date":"1973-09-27","Day":27,"Month":9,"Ozone":null,"Series":"Wind","Solar.R":145,"Value":13.2},{"Date":"1973-09-28","Day":28,"Month":9,"Ozone":14,"Series":"Temp","Solar.R":191,"Value":75.0},{"Date":"1973-09-28","Day":28,"Month":9,"Ozone":14,"Series":"Wind","Solar.R":191,"Value":14.3},{"Date":"1973-09-29","Day":29,"Month":9,"Ozone":18,"Series":"Temp","Solar.R":131,"Value":76.0},{"Date":"1973-09-29","Day":29,"Month":9,"Ozone":18,"Series":"Wind","Solar.R":131,"Value":8.0},{"Date":"1973-09-30","Day":30,"Month":9,"Ozone":20,"Series":"Temp","Solar.R":223,"Value":68.0},{"Date":"1973-09-30","Day":30,"Month":9,"Ozone":20,"Series":"Wind","Solar.R":223,"Value":11.5}]},"height":"container","layer":[{"data":{"name":"__ggsql_global__"},"encoding":{"color":{"field":"Series","type":"nominal"},"detail":{"field":"Series","type":"nominal"},"stroke":{"field":"Series","type":"nominal"},"x":{"field":"Date","scale":{"zero":false},"title":"Date","type":"temporal"},"y":{"field":"Value","scale":{"zero":false},"stack":null,"title":"Value","type":"quantitative"}},"mark":"area"}],"width":"container"};
+    const visId = 'vis-1770279693412';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>We can stack the series by using <code>stacking =&gt; 'on'</code>. The line serves as a reference for ‘unstacked’ data.</p>
+<div id="af3661d1" class="cell" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> <span class="at">x</span>, Value <span class="kw">AS</span> <span class="at">y</span>, Series <span class="kw">AS</span> <span class="at">colour</span> <span class="kw">FROM</span> long_airquality</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">area</span> <span class="kw">SETTING</span> stacking <span class="op">=&gt;</span> <span class="st">'on'</span>, <span class="at">opacity</span> <span class="op">=&gt;</span> <span class="dv">0.5</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">line</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<div id="vis-1770279693420"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","datasets":{"__ggsql_global__":[{"Date":"1973-05-01","Day":1,"Month":5,"Ozone":41,"Series":"Temp","Solar.R":190,"Value":67.0},{"Date":"1973-05-01","Day":1,"Month":5,"Ozone":41,"Series":"Wind","Solar.R":190,"Value":7.4},{"Date":"1973-05-02","Day":2,"Month":5,"Ozone":36,"Series":"Temp","Solar.R":118,"Value":72.0},{"Date":"1973-05-02","Day":2,"Month":5,"Ozone":36,"Series":"Wind","Solar.R":118,"Value":8.0},{"Date":"1973-05-03","Day":3,"Month":5,"Ozone":12,"Series":"Temp","Solar.R":149,"Value":74.0},{"Date":"1973-05-03","Day":3,"Month":5,"Ozone":12,"Series":"Wind","Solar.R":149,"Value":12.6},{"Date":"1973-05-04","Day":4,"Month":5,"Ozone":18,"Series":"Temp","Solar.R":313,"Value":62.0},{"Date":"1973-05-04","Day":4,"Month":5,"Ozone":18,"Series":"Wind","Solar.R":313,"Value":11.5},{"Date":"1973-05-05","Day":5,"Month":5,"Ozone":null,"Series":"Temp","Solar.R":null,"Value":56.0},{"Date":"1973-05-05","Day":5,"Month":5,"Ozone":null,"Series":"Wind","Solar.R":null,"Value":14.3},{"Date":"1973-05-06","Day":6,"Month":5,"Ozone":28,"Series":"Temp","Solar.R":null,"Value":66.0},{"Date":"1973-05-06","Day":6,"Month":5,"Ozone":28,"Series":"Wind","Solar.R":null,"Value":14.9},{"Date":"1973-05-07","Day":7,"Month":5,"Ozone":23,"Series":"Temp","Solar.R":299,"Value":65.0},{"Date":"1973-05-07","Day":7,"Month":5,"Ozone":23,"Series":"Wind","Solar.R":299,"Value":8.6},{"Date":"1973-05-08","Day":8,"Month":5,"Ozone":19,"Series":"Temp","Solar.R":99,"Value":59.0},{"Date":"1973-05-08","Day":8,"Month":5,"Ozone":19,"Series":"Wind","Solar.R":99,"Value":13.8},{"Date":"1973-05-09","Day":9,"Month":5,"Ozone":8,"Series":"Temp","Solar.R":19,"Value":61.0},{"Date":"1973-05-09","Day":9,"Month":5,"Ozone":8,"Series":"Wind","Solar.R":19,"Value":20.1},{"Date":"1973-05-10","Day":10,"Month":5,"Ozone":null,"Series":"Temp","Solar.R":194,"Value":69.0},{"Date":"1973-05-10","Day":10,"Month":5,"Ozone":null,"Series":"Wind","Solar.R":194,"Value":8.6},{"Date":"1973-05-11","Day":11,"Month":5,"Ozone":7,"Series":"Temp","Solar.R":null,"Value":74.0},{"Date":"1973-05-11","Day":11,"Month":5,"Ozone":7,"Series":"Wind","Solar.R":null,"Value":6.9},{"Date":"1973-05-12","Day":12,"Month":5,"Ozone":16,"Series":"Temp","Solar.R":256,"Value":69.0},{"Date":"1973-05-12","Day":12,"Month":5,"Ozone":16,"Series":"Wind","Solar.R":256,"Value":9.7},{"Date":"1973-05-13","Day":13,"Month":5,"Ozone":11,"Series":"Temp","Solar.R":290,"Value":66.0},{"Date":"1973-05-13","Day":13,"Month":5,"Ozone":11,"Series":"Wind","Solar.R":290,"Value":9.2},{"Date":"1973-05-14","Day":14,"Month":5,"Ozone":14,"Series":"Temp","Solar.R":274,"Value":68.0},{"Date":"1973-05-14","Day":14,"Month":5,"Ozone":14,"Series":"Wind","Solar.R":274,"Value":10.9},{"Date":"1973-05-15","Day":15,"Month":5,"Ozone":18,"Series":"Temp","Solar.R":65,"Value":58.0},{"Date":"1973-05-15","Day":15,"Month":5,"Ozone":18,"Series":"Wind","Solar.R":65,"Value":13.2},{"Date":"1973-05-16","Day":16,"Month":5,"Ozone":14,"Series":"Temp","Solar.R":334,"Value":64.0},{"Date":"1973-05-16","Day":16,"Month":5,"Ozone":14,"Series":"Wind","Solar.R":334,"Value":11.5},{"Date":"1973-05-17","Day":17,"Month":5,"Ozone":34,"Series":"Temp","Solar.R":307,"Value":66.0},{"Date":"1973-05-17","Day":17,"Month":5,"Ozone":34,"Series":"Wind","Solar.R":307,"Value":12.0},{"Date":"1973-05-18","Day":18,"Month":5,"Ozone":6,"Series":"Temp","Solar.R":78,"Value":57.0},{"Date":"1973-05-18","Day":18,"Month":5,"Ozone":6,"Series":"Wind","Solar.R":78,"Value":18.4},{"Date":"1973-05-19","Day":19,"Month":5,"Ozone":30,"Series":"Temp","Solar.R":322,"Value":68.0},{"Date":"1973-05-19","Day":19,"Month":5,"Ozone":30,"Series":"Wind","Solar.R":322,"Value":11.5},{"Date":"1973-05-20","Day":20,"Month":5,"Ozone":11,"Series":"Temp","Solar.R":44,"Value":62.0},{"Date":"1973-05-20","Day":20,"Month":5,"Ozone":11,"Series":"Wind","Solar.R":44,"Value":9.7},{"Date":"1973-05-21","Day":21,"Month":5,"Ozone":1,"Series":"Temp","Solar.R":8,"Value":59.0},{"Date":"1973-05-21","Day":21,"Month":5,"Ozone":1,"Series":"Wind","Solar.R":8,"Value":9.7},{"Date":"1973-05-22","Day":22,"Month":5,"Ozone":11,"Series":"Temp","Solar.R":320,"Value":73.0},{"Date":"1973-05-22","Day":22,"Month":5,"Ozone":11,"Series":"Wind","Solar.R":320,"Value":16.6},{"Date":"1973-05-23","Day":23,"Month":5,"Ozone":4,"Series":"Temp","Solar.R":25,"Value":61.0},{"Date":"1973-05-23","Day":23,"Month":5,"Ozone":4,"Series":"Wind","Solar.R":25,"Value":9.7},{"Date":"1973-05-24","Day":24,"Month":5,"Ozone":32,"Series":"Temp","Solar.R":92,"Value":61.0},{"Date":"1973-05-24","Day":24,"Month":5,"Ozone":32,"Series":"Wind","Solar.R":92,"Value":12.0},{"Date":"1973-05-25","Day":25,"Month":5,"Ozone":null,"Series":"Temp","Solar.R":66,"Value":57.0},{"Date":"1973-05-25","Day":25,"Month":5,"Ozone":null,"Series":"Wind","Solar.R":66,"Value":16.6},{"Date":"1973-05-26","Day":26,"Month":5,"Ozone":null,"Series":"Temp","Solar.R":266,"Value":58.0},{"Date":"1973-05-26","Day":26,"Month":5,"Ozone":null,"Series":"Wind","Solar.R":266,"Value":14.9},{"Date":"1973-05-27","Day":27,"Month":5,"Ozone":null,"Series":"Temp","Solar.R":null,"Value":57.0},{"Date":"1973-05-27","Day":27,"Month":5,"Ozone":null,"Series":"Wind","Solar.R":null,"Value":8.0},{"Date":"1973-05-28","Day":28,"Month":5,"Ozone":23,"Series":"Temp","Solar.R":13,"Value":67.0},{"Date":"1973-05-28","Day":28,"Month":5,"Ozone":23,"Series":"Wind","Solar.R":13,"Value":12.0},{"Date":"1973-05-29","Day":29,"Month":5,"Ozone":45,"Series":"Temp","Solar.R":252,"Value":81.0},{"Date":"1973-05-29","Day":29,"Month":5,"Ozone":45,"Series":"Wind","Solar.R":252,"Value":14.9},{"Date":"1973-05-30","Day":30,"Month":5,"Ozone":115,"Series":"Temp","Solar.R":223,"Value":79.0},{"Date":"1973-05-30","Day":30,"Month":5,"Ozone":115,"Series":"Wind","Solar.R":223,"Value":5.7},{"Date":"1973-05-31","Day":31,"Month":5,"Ozone":37,"Series":"Temp","Solar.R":279,"Value":76.0},{"Date":"1973-05-31","Day":31,"Month":5,"Ozone":37,"Series":"Wind","Solar.R":279,"Value":7.4},{"Date":"1973-06-01","Day":1,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":286,"Value":78.0},{"Date":"1973-06-01","Day":1,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":286,"Value":8.6},{"Date":"1973-06-02","Day":2,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":287,"Value":74.0},{"Date":"1973-06-02","Day":2,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":287,"Value":9.7},{"Date":"1973-06-03","Day":3,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":242,"Value":67.0},{"Date":"1973-06-03","Day":3,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":242,"Value":16.1},{"Date":"1973-06-04","Day":4,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":186,"Value":84.0},{"Date":"1973-06-04","Day":4,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":186,"Value":9.2},{"Date":"1973-06-05","Day":5,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":220,"Value":85.0},{"Date":"1973-06-05","Day":5,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":220,"Value":8.6},{"Date":"1973-06-06","Day":6,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":264,"Value":79.0},{"Date":"1973-06-06","Day":6,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":264,"Value":14.3},{"Date":"1973-06-07","Day":7,"Month":6,"Ozone":29,"Series":"Temp","Solar.R":127,"Value":82.0},{"Date":"1973-06-07","Day":7,"Month":6,"Ozone":29,"Series":"Wind","Solar.R":127,"Value":9.7},{"Date":"1973-06-08","Day":8,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":273,"Value":87.0},{"Date":"1973-06-08","Day":8,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":273,"Value":6.9},{"Date":"1973-06-09","Day":9,"Month":6,"Ozone":71,"Series":"Temp","Solar.R":291,"Value":90.0},{"Date":"1973-06-09","Day":9,"Month":6,"Ozone":71,"Series":"Wind","Solar.R":291,"Value":13.8},{"Date":"1973-06-10","Day":10,"Month":6,"Ozone":39,"Series":"Temp","Solar.R":323,"Value":87.0},{"Date":"1973-06-10","Day":10,"Month":6,"Ozone":39,"Series":"Wind","Solar.R":323,"Value":11.5},{"Date":"1973-06-11","Day":11,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":259,"Value":93.0},{"Date":"1973-06-11","Day":11,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":259,"Value":10.9},{"Date":"1973-06-12","Day":12,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":250,"Value":92.0},{"Date":"1973-06-12","Day":12,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":250,"Value":9.2},{"Date":"1973-06-13","Day":13,"Month":6,"Ozone":23,"Series":"Temp","Solar.R":148,"Value":82.0},{"Date":"1973-06-13","Day":13,"Month":6,"Ozone":23,"Series":"Wind","Solar.R":148,"Value":8.0},{"Date":"1973-06-14","Day":14,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":332,"Value":80.0},{"Date":"1973-06-14","Day":14,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":332,"Value":13.8},{"Date":"1973-06-15","Day":15,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":322,"Value":79.0},{"Date":"1973-06-15","Day":15,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":322,"Value":11.5},{"Date":"1973-06-16","Day":16,"Month":6,"Ozone":21,"Series":"Temp","Solar.R":191,"Value":77.0},{"Date":"1973-06-16","Day":16,"Month":6,"Ozone":21,"Series":"Wind","Solar.R":191,"Value":14.9},{"Date":"1973-06-17","Day":17,"Month":6,"Ozone":37,"Series":"Temp","Solar.R":284,"Value":72.0},{"Date":"1973-06-17","Day":17,"Month":6,"Ozone":37,"Series":"Wind","Solar.R":284,"Value":20.7},{"Date":"1973-06-18","Day":18,"Month":6,"Ozone":20,"Series":"Temp","Solar.R":37,"Value":65.0},{"Date":"1973-06-18","Day":18,"Month":6,"Ozone":20,"Series":"Wind","Solar.R":37,"Value":9.2},{"Date":"1973-06-19","Day":19,"Month":6,"Ozone":12,"Series":"Temp","Solar.R":120,"Value":73.0},{"Date":"1973-06-19","Day":19,"Month":6,"Ozone":12,"Series":"Wind","Solar.R":120,"Value":11.5},{"Date":"1973-06-20","Day":20,"Month":6,"Ozone":13,"Series":"Temp","Solar.R":137,"Value":76.0},{"Date":"1973-06-20","Day":20,"Month":6,"Ozone":13,"Series":"Wind","Solar.R":137,"Value":10.3},{"Date":"1973-06-21","Day":21,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":150,"Value":77.0},{"Date":"1973-06-21","Day":21,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":150,"Value":6.3},{"Date":"1973-06-22","Day":22,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":59,"Value":76.0},{"Date":"1973-06-22","Day":22,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":59,"Value":1.7},{"Date":"1973-06-23","Day":23,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":91,"Value":76.0},{"Date":"1973-06-23","Day":23,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":91,"Value":4.6},{"Date":"1973-06-24","Day":24,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":250,"Value":76.0},{"Date":"1973-06-24","Day":24,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":250,"Value":6.3},{"Date":"1973-06-25","Day":25,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":135,"Value":75.0},{"Date":"1973-06-25","Day":25,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":135,"Value":8.0},{"Date":"1973-06-26","Day":26,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":127,"Value":78.0},{"Date":"1973-06-26","Day":26,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":127,"Value":8.0},{"Date":"1973-06-27","Day":27,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":47,"Value":73.0},{"Date":"1973-06-27","Day":27,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":47,"Value":10.3},{"Date":"1973-06-28","Day":28,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":98,"Value":80.0},{"Date":"1973-06-28","Day":28,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":98,"Value":11.5},{"Date":"1973-06-29","Day":29,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":31,"Value":77.0},{"Date":"1973-06-29","Day":29,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":31,"Value":14.9},{"Date":"1973-06-30","Day":30,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":138,"Value":83.0},{"Date":"1973-06-30","Day":30,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":138,"Value":8.0},{"Date":"1973-07-01","Day":1,"Month":7,"Ozone":135,"Series":"Temp","Solar.R":269,"Value":84.0},{"Date":"1973-07-01","Day":1,"Month":7,"Ozone":135,"Series":"Wind","Solar.R":269,"Value":4.1},{"Date":"1973-07-02","Day":2,"Month":7,"Ozone":49,"Series":"Temp","Solar.R":248,"Value":85.0},{"Date":"1973-07-02","Day":2,"Month":7,"Ozone":49,"Series":"Wind","Solar.R":248,"Value":9.2},{"Date":"1973-07-03","Day":3,"Month":7,"Ozone":32,"Series":"Temp","Solar.R":236,"Value":81.0},{"Date":"1973-07-03","Day":3,"Month":7,"Ozone":32,"Series":"Wind","Solar.R":236,"Value":9.2},{"Date":"1973-07-04","Day":4,"Month":7,"Ozone":null,"Series":"Temp","Solar.R":101,"Value":84.0},{"Date":"1973-07-04","Day":4,"Month":7,"Ozone":null,"Series":"Wind","Solar.R":101,"Value":10.9},{"Date":"1973-07-05","Day":5,"Month":7,"Ozone":64,"Series":"Temp","Solar.R":175,"Value":83.0},{"Date":"1973-07-05","Day":5,"Month":7,"Ozone":64,"Series":"Wind","Solar.R":175,"Value":4.6},{"Date":"1973-07-06","Day":6,"Month":7,"Ozone":40,"Series":"Temp","Solar.R":314,"Value":83.0},{"Date":"1973-07-06","Day":6,"Month":7,"Ozone":40,"Series":"Wind","Solar.R":314,"Value":10.9},{"Date":"1973-07-07","Day":7,"Month":7,"Ozone":77,"Series":"Temp","Solar.R":276,"Value":88.0},{"Date":"1973-07-07","Day":7,"Month":7,"Ozone":77,"Series":"Wind","Solar.R":276,"Value":5.1},{"Date":"1973-07-08","Day":8,"Month":7,"Ozone":97,"Series":"Temp","Solar.R":267,"Value":92.0},{"Date":"1973-07-08","Day":8,"Month":7,"Ozone":97,"Series":"Wind","Solar.R":267,"Value":6.3},{"Date":"1973-07-09","Day":9,"Month":7,"Ozone":97,"Series":"Temp","Solar.R":272,"Value":92.0},{"Date":"1973-07-09","Day":9,"Month":7,"Ozone":97,"Series":"Wind","Solar.R":272,"Value":5.7},{"Date":"1973-07-10","Day":10,"Month":7,"Ozone":85,"Series":"Temp","Solar.R":175,"Value":89.0},{"Date":"1973-07-10","Day":10,"Month":7,"Ozone":85,"Series":"Wind","Solar.R":175,"Value":7.4},{"Date":"1973-07-11","Day":11,"Month":7,"Ozone":null,"Series":"Temp","Solar.R":139,"Value":82.0},{"Date":"1973-07-11","Day":11,"Month":7,"Ozone":null,"Series":"Wind","Solar.R":139,"Value":8.6},{"Date":"1973-07-12","Day":12,"Month":7,"Ozone":10,"Series":"Temp","Solar.R":264,"Value":73.0},{"Date":"1973-07-12","Day":12,"Month":7,"Ozone":10,"Series":"Wind","Solar.R":264,"Value":14.3},{"Date":"1973-07-13","Day":13,"Month":7,"Ozone":27,"Series":"Temp","Solar.R":175,"Value":81.0},{"Date":"1973-07-13","Day":13,"Month":7,"Ozone":27,"Series":"Wind","Solar.R":175,"Value":14.9},{"Date":"1973-07-14","Day":14,"Month":7,"Ozone":null,"Series":"Temp","Solar.R":291,"Value":91.0},{"Date":"1973-07-14","Day":14,"Month":7,"Ozone":null,"Series":"Wind","Solar.R":291,"Value":14.9},{"Date":"1973-07-15","Day":15,"Month":7,"Ozone":7,"Series":"Temp","Solar.R":48,"Value":80.0},{"Date":"1973-07-15","Day":15,"Month":7,"Ozone":7,"Series":"Wind","Solar.R":48,"Value":14.3},{"Date":"1973-07-16","Day":16,"Month":7,"Ozone":48,"Series":"Temp","Solar.R":260,"Value":81.0},{"Date":"1973-07-16","Day":16,"Month":7,"Ozone":48,"Series":"Wind","Solar.R":260,"Value":6.9},{"Date":"1973-07-17","Day":17,"Month":7,"Ozone":35,"Series":"Temp","Solar.R":274,"Value":82.0},{"Date":"1973-07-17","Day":17,"Month":7,"Ozone":35,"Series":"Wind","Solar.R":274,"Value":10.3},{"Date":"1973-07-18","Day":18,"Month":7,"Ozone":61,"Series":"Temp","Solar.R":285,"Value":84.0},{"Date":"1973-07-18","Day":18,"Month":7,"Ozone":61,"Series":"Wind","Solar.R":285,"Value":6.3},{"Date":"1973-07-19","Day":19,"Month":7,"Ozone":79,"Series":"Temp","Solar.R":187,"Value":87.0},{"Date":"1973-07-19","Day":19,"Month":7,"Ozone":79,"Series":"Wind","Solar.R":187,"Value":5.1},{"Date":"1973-07-20","Day":20,"Month":7,"Ozone":63,"Series":"Temp","Solar.R":220,"Value":85.0},{"Date":"1973-07-20","Day":20,"Month":7,"Ozone":63,"Series":"Wind","Solar.R":220,"Value":11.5},{"Date":"1973-07-21","Day":21,"Month":7,"Ozone":16,"Series":"Temp","Solar.R":7,"Value":74.0},{"Date":"1973-07-21","Day":21,"Month":7,"Ozone":16,"Series":"Wind","Solar.R":7,"Value":6.9},{"Date":"1973-07-22","Day":22,"Month":7,"Ozone":null,"Series":"Temp","Solar.R":258,"Value":81.0},{"Date":"1973-07-22","Day":22,"Month":7,"Ozone":null,"Series":"Wind","Solar.R":258,"Value":9.7},{"Date":"1973-07-23","Day":23,"Month":7,"Ozone":null,"Series":"Temp","Solar.R":295,"Value":82.0},{"Date":"1973-07-23","Day":23,"Month":7,"Ozone":null,"Series":"Wind","Solar.R":295,"Value":11.5},{"Date":"1973-07-24","Day":24,"Month":7,"Ozone":80,"Series":"Temp","Solar.R":294,"Value":86.0},{"Date":"1973-07-24","Day":24,"Month":7,"Ozone":80,"Series":"Wind","Solar.R":294,"Value":8.6},{"Date":"1973-07-25","Day":25,"Month":7,"Ozone":108,"Series":"Temp","Solar.R":223,"Value":85.0},{"Date":"1973-07-25","Day":25,"Month":7,"Ozone":108,"Series":"Wind","Solar.R":223,"Value":8.0},{"Date":"1973-07-26","Day":26,"Month":7,"Ozone":20,"Series":"Temp","Solar.R":81,"Value":82.0},{"Date":"1973-07-26","Day":26,"Month":7,"Ozone":20,"Series":"Wind","Solar.R":81,"Value":8.6},{"Date":"1973-07-27","Day":27,"Month":7,"Ozone":52,"Series":"Temp","Solar.R":82,"Value":86.0},{"Date":"1973-07-27","Day":27,"Month":7,"Ozone":52,"Series":"Wind","Solar.R":82,"Value":12.0},{"Date":"1973-07-28","Day":28,"Month":7,"Ozone":82,"Series":"Temp","Solar.R":213,"Value":88.0},{"Date":"1973-07-28","Day":28,"Month":7,"Ozone":82,"Series":"Wind","Solar.R":213,"Value":7.4},{"Date":"1973-07-29","Day":29,"Month":7,"Ozone":50,"Series":"Temp","Solar.R":275,"Value":86.0},{"Date":"1973-07-29","Day":29,"Month":7,"Ozone":50,"Series":"Wind","Solar.R":275,"Value":7.4},{"Date":"1973-07-30","Day":30,"Month":7,"Ozone":64,"Series":"Temp","Solar.R":253,"Value":83.0},{"Date":"1973-07-30","Day":30,"Month":7,"Ozone":64,"Series":"Wind","Solar.R":253,"Value":7.4},{"Date":"1973-07-31","Day":31,"Month":7,"Ozone":59,"Series":"Temp","Solar.R":254,"Value":81.0},{"Date":"1973-07-31","Day":31,"Month":7,"Ozone":59,"Series":"Wind","Solar.R":254,"Value":9.2},{"Date":"1973-08-01","Day":1,"Month":8,"Ozone":39,"Series":"Temp","Solar.R":83,"Value":81.0},{"Date":"1973-08-01","Day":1,"Month":8,"Ozone":39,"Series":"Wind","Solar.R":83,"Value":6.9},{"Date":"1973-08-02","Day":2,"Month":8,"Ozone":9,"Series":"Temp","Solar.R":24,"Value":81.0},{"Date":"1973-08-02","Day":2,"Month":8,"Ozone":9,"Series":"Wind","Solar.R":24,"Value":13.8},{"Date":"1973-08-03","Day":3,"Month":8,"Ozone":16,"Series":"Temp","Solar.R":77,"Value":82.0},{"Date":"1973-08-03","Day":3,"Month":8,"Ozone":16,"Series":"Wind","Solar.R":77,"Value":7.4},{"Date":"1973-08-04","Day":4,"Month":8,"Ozone":78,"Series":"Temp","Solar.R":null,"Value":86.0},{"Date":"1973-08-04","Day":4,"Month":8,"Ozone":78,"Series":"Wind","Solar.R":null,"Value":6.9},{"Date":"1973-08-05","Day":5,"Month":8,"Ozone":35,"Series":"Temp","Solar.R":null,"Value":85.0},{"Date":"1973-08-05","Day":5,"Month":8,"Ozone":35,"Series":"Wind","Solar.R":null,"Value":7.4},{"Date":"1973-08-06","Day":6,"Month":8,"Ozone":66,"Series":"Temp","Solar.R":null,"Value":87.0},{"Date":"1973-08-06","Day":6,"Month":8,"Ozone":66,"Series":"Wind","Solar.R":null,"Value":4.6},{"Date":"1973-08-07","Day":7,"Month":8,"Ozone":122,"Series":"Temp","Solar.R":255,"Value":89.0},{"Date":"1973-08-07","Day":7,"Month":8,"Ozone":122,"Series":"Wind","Solar.R":255,"Value":4.0},{"Date":"1973-08-08","Day":8,"Month":8,"Ozone":89,"Series":"Temp","Solar.R":229,"Value":90.0},{"Date":"1973-08-08","Day":8,"Month":8,"Ozone":89,"Series":"Wind","Solar.R":229,"Value":10.3},{"Date":"1973-08-09","Day":9,"Month":8,"Ozone":110,"Series":"Temp","Solar.R":207,"Value":90.0},{"Date":"1973-08-09","Day":9,"Month":8,"Ozone":110,"Series":"Wind","Solar.R":207,"Value":8.0},{"Date":"1973-08-10","Day":10,"Month":8,"Ozone":null,"Series":"Temp","Solar.R":222,"Value":92.0},{"Date":"1973-08-10","Day":10,"Month":8,"Ozone":null,"Series":"Wind","Solar.R":222,"Value":8.6},{"Date":"1973-08-11","Day":11,"Month":8,"Ozone":null,"Series":"Temp","Solar.R":137,"Value":86.0},{"Date":"1973-08-11","Day":11,"Month":8,"Ozone":null,"Series":"Wind","Solar.R":137,"Value":11.5},{"Date":"1973-08-12","Day":12,"Month":8,"Ozone":44,"Series":"Temp","Solar.R":192,"Value":86.0},{"Date":"1973-08-12","Day":12,"Month":8,"Ozone":44,"Series":"Wind","Solar.R":192,"Value":11.5},{"Date":"1973-08-13","Day":13,"Month":8,"Ozone":28,"Series":"Temp","Solar.R":273,"Value":82.0},{"Date":"1973-08-13","Day":13,"Month":8,"Ozone":28,"Series":"Wind","Solar.R":273,"Value":11.5},{"Date":"1973-08-14","Day":14,"Month":8,"Ozone":65,"Series":"Temp","Solar.R":157,"Value":80.0},{"Date":"1973-08-14","Day":14,"Month":8,"Ozone":65,"Series":"Wind","Solar.R":157,"Value":9.7},{"Date":"1973-08-15","Day":15,"Month":8,"Ozone":null,"Series":"Temp","Solar.R":64,"Value":79.0},{"Date":"1973-08-15","Day":15,"Month":8,"Ozone":null,"Series":"Wind","Solar.R":64,"Value":11.5},{"Date":"1973-08-16","Day":16,"Month":8,"Ozone":22,"Series":"Temp","Solar.R":71,"Value":77.0},{"Date":"1973-08-16","Day":16,"Month":8,"Ozone":22,"Series":"Wind","Solar.R":71,"Value":10.3},{"Date":"1973-08-17","Day":17,"Month":8,"Ozone":59,"Series":"Temp","Solar.R":51,"Value":79.0},{"Date":"1973-08-17","Day":17,"Month":8,"Ozone":59,"Series":"Wind","Solar.R":51,"Value":6.3},{"Date":"1973-08-18","Day":18,"Month":8,"Ozone":23,"Series":"Temp","Solar.R":115,"Value":76.0},{"Date":"1973-08-18","Day":18,"Month":8,"Ozone":23,"Series":"Wind","Solar.R":115,"Value":7.4},{"Date":"1973-08-19","Day":19,"Month":8,"Ozone":31,"Series":"Temp","Solar.R":244,"Value":78.0},{"Date":"1973-08-19","Day":19,"Month":8,"Ozone":31,"Series":"Wind","Solar.R":244,"Value":10.9},{"Date":"1973-08-20","Day":20,"Month":8,"Ozone":44,"Series":"Temp","Solar.R":190,"Value":78.0},{"Date":"1973-08-20","Day":20,"Month":8,"Ozone":44,"Series":"Wind","Solar.R":190,"Value":10.3},{"Date":"1973-08-21","Day":21,"Month":8,"Ozone":21,"Series":"Temp","Solar.R":259,"Value":77.0},{"Date":"1973-08-21","Day":21,"Month":8,"Ozone":21,"Series":"Wind","Solar.R":259,"Value":15.5},{"Date":"1973-08-22","Day":22,"Month":8,"Ozone":9,"Series":"Temp","Solar.R":36,"Value":72.0},{"Date":"1973-08-22","Day":22,"Month":8,"Ozone":9,"Series":"Wind","Solar.R":36,"Value":14.3},{"Date":"1973-08-23","Day":23,"Month":8,"Ozone":null,"Series":"Temp","Solar.R":255,"Value":75.0},{"Date":"1973-08-23","Day":23,"Month":8,"Ozone":null,"Series":"Wind","Solar.R":255,"Value":12.6},{"Date":"1973-08-24","Day":24,"Month":8,"Ozone":45,"Series":"Temp","Solar.R":212,"Value":79.0},{"Date":"1973-08-24","Day":24,"Month":8,"Ozone":45,"Series":"Wind","Solar.R":212,"Value":9.7},{"Date":"1973-08-25","Day":25,"Month":8,"Ozone":168,"Series":"Temp","Solar.R":238,"Value":81.0},{"Date":"1973-08-25","Day":25,"Month":8,"Ozone":168,"Series":"Wind","Solar.R":238,"Value":3.4},{"Date":"1973-08-26","Day":26,"Month":8,"Ozone":73,"Series":"Temp","Solar.R":215,"Value":86.0},{"Date":"1973-08-26","Day":26,"Month":8,"Ozone":73,"Series":"Wind","Solar.R":215,"Value":8.0},{"Date":"1973-08-27","Day":27,"Month":8,"Ozone":null,"Series":"Temp","Solar.R":153,"Value":88.0},{"Date":"1973-08-27","Day":27,"Month":8,"Ozone":null,"Series":"Wind","Solar.R":153,"Value":5.7},{"Date":"1973-08-28","Day":28,"Month":8,"Ozone":76,"Series":"Temp","Solar.R":203,"Value":97.0},{"Date":"1973-08-28","Day":28,"Month":8,"Ozone":76,"Series":"Wind","Solar.R":203,"Value":9.7},{"Date":"1973-08-29","Day":29,"Month":8,"Ozone":118,"Series":"Temp","Solar.R":225,"Value":94.0},{"Date":"1973-08-29","Day":29,"Month":8,"Ozone":118,"Series":"Wind","Solar.R":225,"Value":2.3},{"Date":"1973-08-30","Day":30,"Month":8,"Ozone":84,"Series":"Temp","Solar.R":237,"Value":96.0},{"Date":"1973-08-30","Day":30,"Month":8,"Ozone":84,"Series":"Wind","Solar.R":237,"Value":6.3},{"Date":"1973-08-31","Day":31,"Month":8,"Ozone":85,"Series":"Temp","Solar.R":188,"Value":94.0},{"Date":"1973-08-31","Day":31,"Month":8,"Ozone":85,"Series":"Wind","Solar.R":188,"Value":6.3},{"Date":"1973-09-01","Day":1,"Month":9,"Ozone":96,"Series":"Temp","Solar.R":167,"Value":91.0},{"Date":"1973-09-01","Day":1,"Month":9,"Ozone":96,"Series":"Wind","Solar.R":167,"Value":6.9},{"Date":"1973-09-02","Day":2,"Month":9,"Ozone":78,"Series":"Temp","Solar.R":197,"Value":92.0},{"Date":"1973-09-02","Day":2,"Month":9,"Ozone":78,"Series":"Wind","Solar.R":197,"Value":5.1},{"Date":"1973-09-03","Day":3,"Month":9,"Ozone":73,"Series":"Temp","Solar.R":183,"Value":93.0},{"Date":"1973-09-03","Day":3,"Month":9,"Ozone":73,"Series":"Wind","Solar.R":183,"Value":2.8},{"Date":"1973-09-04","Day":4,"Month":9,"Ozone":91,"Series":"Temp","Solar.R":189,"Value":93.0},{"Date":"1973-09-04","Day":4,"Month":9,"Ozone":91,"Series":"Wind","Solar.R":189,"Value":4.6},{"Date":"1973-09-05","Day":5,"Month":9,"Ozone":47,"Series":"Temp","Solar.R":95,"Value":87.0},{"Date":"1973-09-05","Day":5,"Month":9,"Ozone":47,"Series":"Wind","Solar.R":95,"Value":7.4},{"Date":"1973-09-06","Day":6,"Month":9,"Ozone":32,"Series":"Temp","Solar.R":92,"Value":84.0},{"Date":"1973-09-06","Day":6,"Month":9,"Ozone":32,"Series":"Wind","Solar.R":92,"Value":15.5},{"Date":"1973-09-07","Day":7,"Month":9,"Ozone":20,"Series":"Temp","Solar.R":252,"Value":80.0},{"Date":"1973-09-07","Day":7,"Month":9,"Ozone":20,"Series":"Wind","Solar.R":252,"Value":10.9},{"Date":"1973-09-08","Day":8,"Month":9,"Ozone":23,"Series":"Temp","Solar.R":220,"Value":78.0},{"Date":"1973-09-08","Day":8,"Month":9,"Ozone":23,"Series":"Wind","Solar.R":220,"Value":10.3},{"Date":"1973-09-09","Day":9,"Month":9,"Ozone":21,"Series":"Temp","Solar.R":230,"Value":75.0},{"Date":"1973-09-09","Day":9,"Month":9,"Ozone":21,"Series":"Wind","Solar.R":230,"Value":10.9},{"Date":"1973-09-10","Day":10,"Month":9,"Ozone":24,"Series":"Temp","Solar.R":259,"Value":73.0},{"Date":"1973-09-10","Day":10,"Month":9,"Ozone":24,"Series":"Wind","Solar.R":259,"Value":9.7},{"Date":"1973-09-11","Day":11,"Month":9,"Ozone":44,"Series":"Temp","Solar.R":236,"Value":81.0},{"Date":"1973-09-11","Day":11,"Month":9,"Ozone":44,"Series":"Wind","Solar.R":236,"Value":14.9},{"Date":"1973-09-12","Day":12,"Month":9,"Ozone":21,"Series":"Temp","Solar.R":259,"Value":76.0},{"Date":"1973-09-12","Day":12,"Month":9,"Ozone":21,"Series":"Wind","Solar.R":259,"Value":15.5},{"Date":"1973-09-13","Day":13,"Month":9,"Ozone":28,"Series":"Temp","Solar.R":238,"Value":77.0},{"Date":"1973-09-13","Day":13,"Month":9,"Ozone":28,"Series":"Wind","Solar.R":238,"Value":6.3},{"Date":"1973-09-14","Day":14,"Month":9,"Ozone":9,"Series":"Temp","Solar.R":24,"Value":71.0},{"Date":"1973-09-14","Day":14,"Month":9,"Ozone":9,"Series":"Wind","Solar.R":24,"Value":10.9},{"Date":"1973-09-15","Day":15,"Month":9,"Ozone":13,"Series":"Temp","Solar.R":112,"Value":71.0},{"Date":"1973-09-15","Day":15,"Month":9,"Ozone":13,"Series":"Wind","Solar.R":112,"Value":11.5},{"Date":"1973-09-16","Day":16,"Month":9,"Ozone":46,"Series":"Temp","Solar.R":237,"Value":78.0},{"Date":"1973-09-16","Day":16,"Month":9,"Ozone":46,"Series":"Wind","Solar.R":237,"Value":6.9},{"Date":"1973-09-17","Day":17,"Month":9,"Ozone":18,"Series":"Temp","Solar.R":224,"Value":67.0},{"Date":"1973-09-17","Day":17,"Month":9,"Ozone":18,"Series":"Wind","Solar.R":224,"Value":13.8},{"Date":"1973-09-18","Day":18,"Month":9,"Ozone":13,"Series":"Temp","Solar.R":27,"Value":76.0},{"Date":"1973-09-18","Day":18,"Month":9,"Ozone":13,"Series":"Wind","Solar.R":27,"Value":10.3},{"Date":"1973-09-19","Day":19,"Month":9,"Ozone":24,"Series":"Temp","Solar.R":238,"Value":68.0},{"Date":"1973-09-19","Day":19,"Month":9,"Ozone":24,"Series":"Wind","Solar.R":238,"Value":10.3},{"Date":"1973-09-20","Day":20,"Month":9,"Ozone":16,"Series":"Temp","Solar.R":201,"Value":82.0},{"Date":"1973-09-20","Day":20,"Month":9,"Ozone":16,"Series":"Wind","Solar.R":201,"Value":8.0},{"Date":"1973-09-21","Day":21,"Month":9,"Ozone":13,"Series":"Temp","Solar.R":238,"Value":64.0},{"Date":"1973-09-21","Day":21,"Month":9,"Ozone":13,"Series":"Wind","Solar.R":238,"Value":12.6},{"Date":"1973-09-22","Day":22,"Month":9,"Ozone":23,"Series":"Temp","Solar.R":14,"Value":71.0},{"Date":"1973-09-22","Day":22,"Month":9,"Ozone":23,"Series":"Wind","Solar.R":14,"Value":9.2},{"Date":"1973-09-23","Day":23,"Month":9,"Ozone":36,"Series":"Temp","Solar.R":139,"Value":81.0},{"Date":"1973-09-23","Day":23,"Month":9,"Ozone":36,"Series":"Wind","Solar.R":139,"Value":10.3},{"Date":"1973-09-24","Day":24,"Month":9,"Ozone":7,"Series":"Temp","Solar.R":49,"Value":69.0},{"Date":"1973-09-24","Day":24,"Month":9,"Ozone":7,"Series":"Wind","Solar.R":49,"Value":10.3},{"Date":"1973-09-25","Day":25,"Month":9,"Ozone":14,"Series":"Temp","Solar.R":20,"Value":63.0},{"Date":"1973-09-25","Day":25,"Month":9,"Ozone":14,"Series":"Wind","Solar.R":20,"Value":16.6},{"Date":"1973-09-26","Day":26,"Month":9,"Ozone":30,"Series":"Temp","Solar.R":193,"Value":70.0},{"Date":"1973-09-26","Day":26,"Month":9,"Ozone":30,"Series":"Wind","Solar.R":193,"Value":6.9},{"Date":"1973-09-27","Day":27,"Month":9,"Ozone":null,"Series":"Temp","Solar.R":145,"Value":77.0},{"Date":"1973-09-27","Day":27,"Month":9,"Ozone":null,"Series":"Wind","Solar.R":145,"Value":13.2},{"Date":"1973-09-28","Day":28,"Month":9,"Ozone":14,"Series":"Temp","Solar.R":191,"Value":75.0},{"Date":"1973-09-28","Day":28,"Month":9,"Ozone":14,"Series":"Wind","Solar.R":191,"Value":14.3},{"Date":"1973-09-29","Day":29,"Month":9,"Ozone":18,"Series":"Temp","Solar.R":131,"Value":76.0},{"Date":"1973-09-29","Day":29,"Month":9,"Ozone":18,"Series":"Wind","Solar.R":131,"Value":8.0},{"Date":"1973-09-30","Day":30,"Month":9,"Ozone":20,"Series":"Temp","Solar.R":223,"Value":68.0},{"Date":"1973-09-30","Day":30,"Month":9,"Ozone":20,"Series":"Wind","Solar.R":223,"Value":11.5}]},"height":"container","layer":[{"data":{"name":"__ggsql_global__"},"encoding":{"opacity":{"value":0.5},"x":{"field":"Date","scale":{"zero":false},"title":"Date","type":"temporal"},"y":{"field":"Value","scale":{"zero":false},"stack":"zero","title":"Value","type":"quantitative"}},"mark":"area"},{"data":{"name":"__ggsql_global__"},"encoding":{"color":{"field":"Series","title":"Series","type":"nominal"},"detail":{"field":"Series","type":"nominal"},"stroke":{"field":"Series","type":"nominal"},"x":{"field":"Date","scale":{"zero":false},"title":"Date","type":"temporal"},"y":{"field":"Value","scale":{"zero":false},"title":"Value","type":"quantitative"}},"mark":"line"}],"width":"container"};
+    const visId = 'vis-1770279693420';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>When <code>stacking =&gt; 'fill'</code> we’re plotting stacked proportions. These only make sense if every series is measured in the same absolute unit. (Wind and temperature have different units and the temperature is not absolute.)</p>
+<div id="f04f8877" class="cell" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> <span class="at">x</span>, Value <span class="kw">AS</span> <span class="at">y</span>, Series <span class="kw">AS</span> <span class="at">colour</span> <span class="kw">FROM</span> long_airquality</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">area</span> <span class="kw">SETTING</span> stacking <span class="op">=&gt;</span> <span class="st">'fill'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<div id="vis-1770279693427"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","datasets":{"__ggsql_global__":[{"Date":"1973-05-01","Day":1,"Month":5,"Ozone":41,"Series":"Temp","Solar.R":190,"Value":67.0},{"Date":"1973-05-01","Day":1,"Month":5,"Ozone":41,"Series":"Wind","Solar.R":190,"Value":7.4},{"Date":"1973-05-02","Day":2,"Month":5,"Ozone":36,"Series":"Temp","Solar.R":118,"Value":72.0},{"Date":"1973-05-02","Day":2,"Month":5,"Ozone":36,"Series":"Wind","Solar.R":118,"Value":8.0},{"Date":"1973-05-03","Day":3,"Month":5,"Ozone":12,"Series":"Temp","Solar.R":149,"Value":74.0},{"Date":"1973-05-03","Day":3,"Month":5,"Ozone":12,"Series":"Wind","Solar.R":149,"Value":12.6},{"Date":"1973-05-04","Day":4,"Month":5,"Ozone":18,"Series":"Temp","Solar.R":313,"Value":62.0},{"Date":"1973-05-04","Day":4,"Month":5,"Ozone":18,"Series":"Wind","Solar.R":313,"Value":11.5},{"Date":"1973-05-05","Day":5,"Month":5,"Ozone":null,"Series":"Temp","Solar.R":null,"Value":56.0},{"Date":"1973-05-05","Day":5,"Month":5,"Ozone":null,"Series":"Wind","Solar.R":null,"Value":14.3},{"Date":"1973-05-06","Day":6,"Month":5,"Ozone":28,"Series":"Temp","Solar.R":null,"Value":66.0},{"Date":"1973-05-06","Day":6,"Month":5,"Ozone":28,"Series":"Wind","Solar.R":null,"Value":14.9},{"Date":"1973-05-07","Day":7,"Month":5,"Ozone":23,"Series":"Temp","Solar.R":299,"Value":65.0},{"Date":"1973-05-07","Day":7,"Month":5,"Ozone":23,"Series":"Wind","Solar.R":299,"Value":8.6},{"Date":"1973-05-08","Day":8,"Month":5,"Ozone":19,"Series":"Temp","Solar.R":99,"Value":59.0},{"Date":"1973-05-08","Day":8,"Month":5,"Ozone":19,"Series":"Wind","Solar.R":99,"Value":13.8},{"Date":"1973-05-09","Day":9,"Month":5,"Ozone":8,"Series":"Temp","Solar.R":19,"Value":61.0},{"Date":"1973-05-09","Day":9,"Month":5,"Ozone":8,"Series":"Wind","Solar.R":19,"Value":20.1},{"Date":"1973-05-10","Day":10,"Month":5,"Ozone":null,"Series":"Temp","Solar.R":194,"Value":69.0},{"Date":"1973-05-10","Day":10,"Month":5,"Ozone":null,"Series":"Wind","Solar.R":194,"Value":8.6},{"Date":"1973-05-11","Day":11,"Month":5,"Ozone":7,"Series":"Temp","Solar.R":null,"Value":74.0},{"Date":"1973-05-11","Day":11,"Month":5,"Ozone":7,"Series":"Wind","Solar.R":null,"Value":6.9},{"Date":"1973-05-12","Day":12,"Month":5,"Ozone":16,"Series":"Temp","Solar.R":256,"Value":69.0},{"Date":"1973-05-12","Day":12,"Month":5,"Ozone":16,"Series":"Wind","Solar.R":256,"Value":9.7},{"Date":"1973-05-13","Day":13,"Month":5,"Ozone":11,"Series":"Temp","Solar.R":290,"Value":66.0},{"Date":"1973-05-13","Day":13,"Month":5,"Ozone":11,"Series":"Wind","Solar.R":290,"Value":9.2},{"Date":"1973-05-14","Day":14,"Month":5,"Ozone":14,"Series":"Temp","Solar.R":274,"Value":68.0},{"Date":"1973-05-14","Day":14,"Month":5,"Ozone":14,"Series":"Wind","Solar.R":274,"Value":10.9},{"Date":"1973-05-15","Day":15,"Month":5,"Ozone":18,"Series":"Temp","Solar.R":65,"Value":58.0},{"Date":"1973-05-15","Day":15,"Month":5,"Ozone":18,"Series":"Wind","Solar.R":65,"Value":13.2},{"Date":"1973-05-16","Day":16,"Month":5,"Ozone":14,"Series":"Temp","Solar.R":334,"Value":64.0},{"Date":"1973-05-16","Day":16,"Month":5,"Ozone":14,"Series":"Wind","Solar.R":334,"Value":11.5},{"Date":"1973-05-17","Day":17,"Month":5,"Ozone":34,"Series":"Temp","Solar.R":307,"Value":66.0},{"Date":"1973-05-17","Day":17,"Month":5,"Ozone":34,"Series":"Wind","Solar.R":307,"Value":12.0},{"Date":"1973-05-18","Day":18,"Month":5,"Ozone":6,"Series":"Temp","Solar.R":78,"Value":57.0},{"Date":"1973-05-18","Day":18,"Month":5,"Ozone":6,"Series":"Wind","Solar.R":78,"Value":18.4},{"Date":"1973-05-19","Day":19,"Month":5,"Ozone":30,"Series":"Temp","Solar.R":322,"Value":68.0},{"Date":"1973-05-19","Day":19,"Month":5,"Ozone":30,"Series":"Wind","Solar.R":322,"Value":11.5},{"Date":"1973-05-20","Day":20,"Month":5,"Ozone":11,"Series":"Temp","Solar.R":44,"Value":62.0},{"Date":"1973-05-20","Day":20,"Month":5,"Ozone":11,"Series":"Wind","Solar.R":44,"Value":9.7},{"Date":"1973-05-21","Day":21,"Month":5,"Ozone":1,"Series":"Temp","Solar.R":8,"Value":59.0},{"Date":"1973-05-21","Day":21,"Month":5,"Ozone":1,"Series":"Wind","Solar.R":8,"Value":9.7},{"Date":"1973-05-22","Day":22,"Month":5,"Ozone":11,"Series":"Temp","Solar.R":320,"Value":73.0},{"Date":"1973-05-22","Day":22,"Month":5,"Ozone":11,"Series":"Wind","Solar.R":320,"Value":16.6},{"Date":"1973-05-23","Day":23,"Month":5,"Ozone":4,"Series":"Temp","Solar.R":25,"Value":61.0},{"Date":"1973-05-23","Day":23,"Month":5,"Ozone":4,"Series":"Wind","Solar.R":25,"Value":9.7},{"Date":"1973-05-24","Day":24,"Month":5,"Ozone":32,"Series":"Temp","Solar.R":92,"Value":61.0},{"Date":"1973-05-24","Day":24,"Month":5,"Ozone":32,"Series":"Wind","Solar.R":92,"Value":12.0},{"Date":"1973-05-25","Day":25,"Month":5,"Ozone":null,"Series":"Temp","Solar.R":66,"Value":57.0},{"Date":"1973-05-25","Day":25,"Month":5,"Ozone":null,"Series":"Wind","Solar.R":66,"Value":16.6},{"Date":"1973-05-26","Day":26,"Month":5,"Ozone":null,"Series":"Temp","Solar.R":266,"Value":58.0},{"Date":"1973-05-26","Day":26,"Month":5,"Ozone":null,"Series":"Wind","Solar.R":266,"Value":14.9},{"Date":"1973-05-27","Day":27,"Month":5,"Ozone":null,"Series":"Temp","Solar.R":null,"Value":57.0},{"Date":"1973-05-27","Day":27,"Month":5,"Ozone":null,"Series":"Wind","Solar.R":null,"Value":8.0},{"Date":"1973-05-28","Day":28,"Month":5,"Ozone":23,"Series":"Temp","Solar.R":13,"Value":67.0},{"Date":"1973-05-28","Day":28,"Month":5,"Ozone":23,"Series":"Wind","Solar.R":13,"Value":12.0},{"Date":"1973-05-29","Day":29,"Month":5,"Ozone":45,"Series":"Temp","Solar.R":252,"Value":81.0},{"Date":"1973-05-29","Day":29,"Month":5,"Ozone":45,"Series":"Wind","Solar.R":252,"Value":14.9},{"Date":"1973-05-30","Day":30,"Month":5,"Ozone":115,"Series":"Temp","Solar.R":223,"Value":79.0},{"Date":"1973-05-30","Day":30,"Month":5,"Ozone":115,"Series":"Wind","Solar.R":223,"Value":5.7},{"Date":"1973-05-31","Day":31,"Month":5,"Ozone":37,"Series":"Temp","Solar.R":279,"Value":76.0},{"Date":"1973-05-31","Day":31,"Month":5,"Ozone":37,"Series":"Wind","Solar.R":279,"Value":7.4},{"Date":"1973-06-01","Day":1,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":286,"Value":78.0},{"Date":"1973-06-01","Day":1,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":286,"Value":8.6},{"Date":"1973-06-02","Day":2,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":287,"Value":74.0},{"Date":"1973-06-02","Day":2,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":287,"Value":9.7},{"Date":"1973-06-03","Day":3,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":242,"Value":67.0},{"Date":"1973-06-03","Day":3,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":242,"Value":16.1},{"Date":"1973-06-04","Day":4,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":186,"Value":84.0},{"Date":"1973-06-04","Day":4,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":186,"Value":9.2},{"Date":"1973-06-05","Day":5,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":220,"Value":85.0},{"Date":"1973-06-05","Day":5,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":220,"Value":8.6},{"Date":"1973-06-06","Day":6,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":264,"Value":79.0},{"Date":"1973-06-06","Day":6,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":264,"Value":14.3},{"Date":"1973-06-07","Day":7,"Month":6,"Ozone":29,"Series":"Temp","Solar.R":127,"Value":82.0},{"Date":"1973-06-07","Day":7,"Month":6,"Ozone":29,"Series":"Wind","Solar.R":127,"Value":9.7},{"Date":"1973-06-08","Day":8,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":273,"Value":87.0},{"Date":"1973-06-08","Day":8,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":273,"Value":6.9},{"Date":"1973-06-09","Day":9,"Month":6,"Ozone":71,"Series":"Temp","Solar.R":291,"Value":90.0},{"Date":"1973-06-09","Day":9,"Month":6,"Ozone":71,"Series":"Wind","Solar.R":291,"Value":13.8},{"Date":"1973-06-10","Day":10,"Month":6,"Ozone":39,"Series":"Temp","Solar.R":323,"Value":87.0},{"Date":"1973-06-10","Day":10,"Month":6,"Ozone":39,"Series":"Wind","Solar.R":323,"Value":11.5},{"Date":"1973-06-11","Day":11,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":259,"Value":93.0},{"Date":"1973-06-11","Day":11,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":259,"Value":10.9},{"Date":"1973-06-12","Day":12,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":250,"Value":92.0},{"Date":"1973-06-12","Day":12,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":250,"Value":9.2},{"Date":"1973-06-13","Day":13,"Month":6,"Ozone":23,"Series":"Temp","Solar.R":148,"Value":82.0},{"Date":"1973-06-13","Day":13,"Month":6,"Ozone":23,"Series":"Wind","Solar.R":148,"Value":8.0},{"Date":"1973-06-14","Day":14,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":332,"Value":80.0},{"Date":"1973-06-14","Day":14,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":332,"Value":13.8},{"Date":"1973-06-15","Day":15,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":322,"Value":79.0},{"Date":"1973-06-15","Day":15,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":322,"Value":11.5},{"Date":"1973-06-16","Day":16,"Month":6,"Ozone":21,"Series":"Temp","Solar.R":191,"Value":77.0},{"Date":"1973-06-16","Day":16,"Month":6,"Ozone":21,"Series":"Wind","Solar.R":191,"Value":14.9},{"Date":"1973-06-17","Day":17,"Month":6,"Ozone":37,"Series":"Temp","Solar.R":284,"Value":72.0},{"Date":"1973-06-17","Day":17,"Month":6,"Ozone":37,"Series":"Wind","Solar.R":284,"Value":20.7},{"Date":"1973-06-18","Day":18,"Month":6,"Ozone":20,"Series":"Temp","Solar.R":37,"Value":65.0},{"Date":"1973-06-18","Day":18,"Month":6,"Ozone":20,"Series":"Wind","Solar.R":37,"Value":9.2},{"Date":"1973-06-19","Day":19,"Month":6,"Ozone":12,"Series":"Temp","Solar.R":120,"Value":73.0},{"Date":"1973-06-19","Day":19,"Month":6,"Ozone":12,"Series":"Wind","Solar.R":120,"Value":11.5},{"Date":"1973-06-20","Day":20,"Month":6,"Ozone":13,"Series":"Temp","Solar.R":137,"Value":76.0},{"Date":"1973-06-20","Day":20,"Month":6,"Ozone":13,"Series":"Wind","Solar.R":137,"Value":10.3},{"Date":"1973-06-21","Day":21,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":150,"Value":77.0},{"Date":"1973-06-21","Day":21,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":150,"Value":6.3},{"Date":"1973-06-22","Day":22,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":59,"Value":76.0},{"Date":"1973-06-22","Day":22,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":59,"Value":1.7},{"Date":"1973-06-23","Day":23,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":91,"Value":76.0},{"Date":"1973-06-23","Day":23,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":91,"Value":4.6},{"Date":"1973-06-24","Day":24,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":250,"Value":76.0},{"Date":"1973-06-24","Day":24,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":250,"Value":6.3},{"Date":"1973-06-25","Day":25,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":135,"Value":75.0},{"Date":"1973-06-25","Day":25,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":135,"Value":8.0},{"Date":"1973-06-26","Day":26,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":127,"Value":78.0},{"Date":"1973-06-26","Day":26,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":127,"Value":8.0},{"Date":"1973-06-27","Day":27,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":47,"Value":73.0},{"Date":"1973-06-27","Day":27,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":47,"Value":10.3},{"Date":"1973-06-28","Day":28,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":98,"Value":80.0},{"Date":"1973-06-28","Day":28,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":98,"Value":11.5},{"Date":"1973-06-29","Day":29,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":31,"Value":77.0},{"Date":"1973-06-29","Day":29,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":31,"Value":14.9},{"Date":"1973-06-30","Day":30,"Month":6,"Ozone":null,"Series":"Temp","Solar.R":138,"Value":83.0},{"Date":"1973-06-30","Day":30,"Month":6,"Ozone":null,"Series":"Wind","Solar.R":138,"Value":8.0},{"Date":"1973-07-01","Day":1,"Month":7,"Ozone":135,"Series":"Temp","Solar.R":269,"Value":84.0},{"Date":"1973-07-01","Day":1,"Month":7,"Ozone":135,"Series":"Wind","Solar.R":269,"Value":4.1},{"Date":"1973-07-02","Day":2,"Month":7,"Ozone":49,"Series":"Temp","Solar.R":248,"Value":85.0},{"Date":"1973-07-02","Day":2,"Month":7,"Ozone":49,"Series":"Wind","Solar.R":248,"Value":9.2},{"Date":"1973-07-03","Day":3,"Month":7,"Ozone":32,"Series":"Temp","Solar.R":236,"Value":81.0},{"Date":"1973-07-03","Day":3,"Month":7,"Ozone":32,"Series":"Wind","Solar.R":236,"Value":9.2},{"Date":"1973-07-04","Day":4,"Month":7,"Ozone":null,"Series":"Temp","Solar.R":101,"Value":84.0},{"Date":"1973-07-04","Day":4,"Month":7,"Ozone":null,"Series":"Wind","Solar.R":101,"Value":10.9},{"Date":"1973-07-05","Day":5,"Month":7,"Ozone":64,"Series":"Temp","Solar.R":175,"Value":83.0},{"Date":"1973-07-05","Day":5,"Month":7,"Ozone":64,"Series":"Wind","Solar.R":175,"Value":4.6},{"Date":"1973-07-06","Day":6,"Month":7,"Ozone":40,"Series":"Temp","Solar.R":314,"Value":83.0},{"Date":"1973-07-06","Day":6,"Month":7,"Ozone":40,"Series":"Wind","Solar.R":314,"Value":10.9},{"Date":"1973-07-07","Day":7,"Month":7,"Ozone":77,"Series":"Temp","Solar.R":276,"Value":88.0},{"Date":"1973-07-07","Day":7,"Month":7,"Ozone":77,"Series":"Wind","Solar.R":276,"Value":5.1},{"Date":"1973-07-08","Day":8,"Month":7,"Ozone":97,"Series":"Temp","Solar.R":267,"Value":92.0},{"Date":"1973-07-08","Day":8,"Month":7,"Ozone":97,"Series":"Wind","Solar.R":267,"Value":6.3},{"Date":"1973-07-09","Day":9,"Month":7,"Ozone":97,"Series":"Temp","Solar.R":272,"Value":92.0},{"Date":"1973-07-09","Day":9,"Month":7,"Ozone":97,"Series":"Wind","Solar.R":272,"Value":5.7},{"Date":"1973-07-10","Day":10,"Month":7,"Ozone":85,"Series":"Temp","Solar.R":175,"Value":89.0},{"Date":"1973-07-10","Day":10,"Month":7,"Ozone":85,"Series":"Wind","Solar.R":175,"Value":7.4},{"Date":"1973-07-11","Day":11,"Month":7,"Ozone":null,"Series":"Temp","Solar.R":139,"Value":82.0},{"Date":"1973-07-11","Day":11,"Month":7,"Ozone":null,"Series":"Wind","Solar.R":139,"Value":8.6},{"Date":"1973-07-12","Day":12,"Month":7,"Ozone":10,"Series":"Temp","Solar.R":264,"Value":73.0},{"Date":"1973-07-12","Day":12,"Month":7,"Ozone":10,"Series":"Wind","Solar.R":264,"Value":14.3},{"Date":"1973-07-13","Day":13,"Month":7,"Ozone":27,"Series":"Temp","Solar.R":175,"Value":81.0},{"Date":"1973-07-13","Day":13,"Month":7,"Ozone":27,"Series":"Wind","Solar.R":175,"Value":14.9},{"Date":"1973-07-14","Day":14,"Month":7,"Ozone":null,"Series":"Temp","Solar.R":291,"Value":91.0},{"Date":"1973-07-14","Day":14,"Month":7,"Ozone":null,"Series":"Wind","Solar.R":291,"Value":14.9},{"Date":"1973-07-15","Day":15,"Month":7,"Ozone":7,"Series":"Temp","Solar.R":48,"Value":80.0},{"Date":"1973-07-15","Day":15,"Month":7,"Ozone":7,"Series":"Wind","Solar.R":48,"Value":14.3},{"Date":"1973-07-16","Day":16,"Month":7,"Ozone":48,"Series":"Temp","Solar.R":260,"Value":81.0},{"Date":"1973-07-16","Day":16,"Month":7,"Ozone":48,"Series":"Wind","Solar.R":260,"Value":6.9},{"Date":"1973-07-17","Day":17,"Month":7,"Ozone":35,"Series":"Temp","Solar.R":274,"Value":82.0},{"Date":"1973-07-17","Day":17,"Month":7,"Ozone":35,"Series":"Wind","Solar.R":274,"Value":10.3},{"Date":"1973-07-18","Day":18,"Month":7,"Ozone":61,"Series":"Temp","Solar.R":285,"Value":84.0},{"Date":"1973-07-18","Day":18,"Month":7,"Ozone":61,"Series":"Wind","Solar.R":285,"Value":6.3},{"Date":"1973-07-19","Day":19,"Month":7,"Ozone":79,"Series":"Temp","Solar.R":187,"Value":87.0},{"Date":"1973-07-19","Day":19,"Month":7,"Ozone":79,"Series":"Wind","Solar.R":187,"Value":5.1},{"Date":"1973-07-20","Day":20,"Month":7,"Ozone":63,"Series":"Temp","Solar.R":220,"Value":85.0},{"Date":"1973-07-20","Day":20,"Month":7,"Ozone":63,"Series":"Wind","Solar.R":220,"Value":11.5},{"Date":"1973-07-21","Day":21,"Month":7,"Ozone":16,"Series":"Temp","Solar.R":7,"Value":74.0},{"Date":"1973-07-21","Day":21,"Month":7,"Ozone":16,"Series":"Wind","Solar.R":7,"Value":6.9},{"Date":"1973-07-22","Day":22,"Month":7,"Ozone":null,"Series":"Temp","Solar.R":258,"Value":81.0},{"Date":"1973-07-22","Day":22,"Month":7,"Ozone":null,"Series":"Wind","Solar.R":258,"Value":9.7},{"Date":"1973-07-23","Day":23,"Month":7,"Ozone":null,"Series":"Temp","Solar.R":295,"Value":82.0},{"Date":"1973-07-23","Day":23,"Month":7,"Ozone":null,"Series":"Wind","Solar.R":295,"Value":11.5},{"Date":"1973-07-24","Day":24,"Month":7,"Ozone":80,"Series":"Temp","Solar.R":294,"Value":86.0},{"Date":"1973-07-24","Day":24,"Month":7,"Ozone":80,"Series":"Wind","Solar.R":294,"Value":8.6},{"Date":"1973-07-25","Day":25,"Month":7,"Ozone":108,"Series":"Temp","Solar.R":223,"Value":85.0},{"Date":"1973-07-25","Day":25,"Month":7,"Ozone":108,"Series":"Wind","Solar.R":223,"Value":8.0},{"Date":"1973-07-26","Day":26,"Month":7,"Ozone":20,"Series":"Temp","Solar.R":81,"Value":82.0},{"Date":"1973-07-26","Day":26,"Month":7,"Ozone":20,"Series":"Wind","Solar.R":81,"Value":8.6},{"Date":"1973-07-27","Day":27,"Month":7,"Ozone":52,"Series":"Temp","Solar.R":82,"Value":86.0},{"Date":"1973-07-27","Day":27,"Month":7,"Ozone":52,"Series":"Wind","Solar.R":82,"Value":12.0},{"Date":"1973-07-28","Day":28,"Month":7,"Ozone":82,"Series":"Temp","Solar.R":213,"Value":88.0},{"Date":"1973-07-28","Day":28,"Month":7,"Ozone":82,"Series":"Wind","Solar.R":213,"Value":7.4},{"Date":"1973-07-29","Day":29,"Month":7,"Ozone":50,"Series":"Temp","Solar.R":275,"Value":86.0},{"Date":"1973-07-29","Day":29,"Month":7,"Ozone":50,"Series":"Wind","Solar.R":275,"Value":7.4},{"Date":"1973-07-30","Day":30,"Month":7,"Ozone":64,"Series":"Temp","Solar.R":253,"Value":83.0},{"Date":"1973-07-30","Day":30,"Month":7,"Ozone":64,"Series":"Wind","Solar.R":253,"Value":7.4},{"Date":"1973-07-31","Day":31,"Month":7,"Ozone":59,"Series":"Temp","Solar.R":254,"Value":81.0},{"Date":"1973-07-31","Day":31,"Month":7,"Ozone":59,"Series":"Wind","Solar.R":254,"Value":9.2},{"Date":"1973-08-01","Day":1,"Month":8,"Ozone":39,"Series":"Temp","Solar.R":83,"Value":81.0},{"Date":"1973-08-01","Day":1,"Month":8,"Ozone":39,"Series":"Wind","Solar.R":83,"Value":6.9},{"Date":"1973-08-02","Day":2,"Month":8,"Ozone":9,"Series":"Temp","Solar.R":24,"Value":81.0},{"Date":"1973-08-02","Day":2,"Month":8,"Ozone":9,"Series":"Wind","Solar.R":24,"Value":13.8},{"Date":"1973-08-03","Day":3,"Month":8,"Ozone":16,"Series":"Temp","Solar.R":77,"Value":82.0},{"Date":"1973-08-03","Day":3,"Month":8,"Ozone":16,"Series":"Wind","Solar.R":77,"Value":7.4},{"Date":"1973-08-04","Day":4,"Month":8,"Ozone":78,"Series":"Temp","Solar.R":null,"Value":86.0},{"Date":"1973-08-04","Day":4,"Month":8,"Ozone":78,"Series":"Wind","Solar.R":null,"Value":6.9},{"Date":"1973-08-05","Day":5,"Month":8,"Ozone":35,"Series":"Temp","Solar.R":null,"Value":85.0},{"Date":"1973-08-05","Day":5,"Month":8,"Ozone":35,"Series":"Wind","Solar.R":null,"Value":7.4},{"Date":"1973-08-06","Day":6,"Month":8,"Ozone":66,"Series":"Temp","Solar.R":null,"Value":87.0},{"Date":"1973-08-06","Day":6,"Month":8,"Ozone":66,"Series":"Wind","Solar.R":null,"Value":4.6},{"Date":"1973-08-07","Day":7,"Month":8,"Ozone":122,"Series":"Temp","Solar.R":255,"Value":89.0},{"Date":"1973-08-07","Day":7,"Month":8,"Ozone":122,"Series":"Wind","Solar.R":255,"Value":4.0},{"Date":"1973-08-08","Day":8,"Month":8,"Ozone":89,"Series":"Temp","Solar.R":229,"Value":90.0},{"Date":"1973-08-08","Day":8,"Month":8,"Ozone":89,"Series":"Wind","Solar.R":229,"Value":10.3},{"Date":"1973-08-09","Day":9,"Month":8,"Ozone":110,"Series":"Temp","Solar.R":207,"Value":90.0},{"Date":"1973-08-09","Day":9,"Month":8,"Ozone":110,"Series":"Wind","Solar.R":207,"Value":8.0},{"Date":"1973-08-10","Day":10,"Month":8,"Ozone":null,"Series":"Temp","Solar.R":222,"Value":92.0},{"Date":"1973-08-10","Day":10,"Month":8,"Ozone":null,"Series":"Wind","Solar.R":222,"Value":8.6},{"Date":"1973-08-11","Day":11,"Month":8,"Ozone":null,"Series":"Temp","Solar.R":137,"Value":86.0},{"Date":"1973-08-11","Day":11,"Month":8,"Ozone":null,"Series":"Wind","Solar.R":137,"Value":11.5},{"Date":"1973-08-12","Day":12,"Month":8,"Ozone":44,"Series":"Temp","Solar.R":192,"Value":86.0},{"Date":"1973-08-12","Day":12,"Month":8,"Ozone":44,"Series":"Wind","Solar.R":192,"Value":11.5},{"Date":"1973-08-13","Day":13,"Month":8,"Ozone":28,"Series":"Temp","Solar.R":273,"Value":82.0},{"Date":"1973-08-13","Day":13,"Month":8,"Ozone":28,"Series":"Wind","Solar.R":273,"Value":11.5},{"Date":"1973-08-14","Day":14,"Month":8,"Ozone":65,"Series":"Temp","Solar.R":157,"Value":80.0},{"Date":"1973-08-14","Day":14,"Month":8,"Ozone":65,"Series":"Wind","Solar.R":157,"Value":9.7},{"Date":"1973-08-15","Day":15,"Month":8,"Ozone":null,"Series":"Temp","Solar.R":64,"Value":79.0},{"Date":"1973-08-15","Day":15,"Month":8,"Ozone":null,"Series":"Wind","Solar.R":64,"Value":11.5},{"Date":"1973-08-16","Day":16,"Month":8,"Ozone":22,"Series":"Temp","Solar.R":71,"Value":77.0},{"Date":"1973-08-16","Day":16,"Month":8,"Ozone":22,"Series":"Wind","Solar.R":71,"Value":10.3},{"Date":"1973-08-17","Day":17,"Month":8,"Ozone":59,"Series":"Temp","Solar.R":51,"Value":79.0},{"Date":"1973-08-17","Day":17,"Month":8,"Ozone":59,"Series":"Wind","Solar.R":51,"Value":6.3},{"Date":"1973-08-18","Day":18,"Month":8,"Ozone":23,"Series":"Temp","Solar.R":115,"Value":76.0},{"Date":"1973-08-18","Day":18,"Month":8,"Ozone":23,"Series":"Wind","Solar.R":115,"Value":7.4},{"Date":"1973-08-19","Day":19,"Month":8,"Ozone":31,"Series":"Temp","Solar.R":244,"Value":78.0},{"Date":"1973-08-19","Day":19,"Month":8,"Ozone":31,"Series":"Wind","Solar.R":244,"Value":10.9},{"Date":"1973-08-20","Day":20,"Month":8,"Ozone":44,"Series":"Temp","Solar.R":190,"Value":78.0},{"Date":"1973-08-20","Day":20,"Month":8,"Ozone":44,"Series":"Wind","Solar.R":190,"Value":10.3},{"Date":"1973-08-21","Day":21,"Month":8,"Ozone":21,"Series":"Temp","Solar.R":259,"Value":77.0},{"Date":"1973-08-21","Day":21,"Month":8,"Ozone":21,"Series":"Wind","Solar.R":259,"Value":15.5},{"Date":"1973-08-22","Day":22,"Month":8,"Ozone":9,"Series":"Temp","Solar.R":36,"Value":72.0},{"Date":"1973-08-22","Day":22,"Month":8,"Ozone":9,"Series":"Wind","Solar.R":36,"Value":14.3},{"Date":"1973-08-23","Day":23,"Month":8,"Ozone":null,"Series":"Temp","Solar.R":255,"Value":75.0},{"Date":"1973-08-23","Day":23,"Month":8,"Ozone":null,"Series":"Wind","Solar.R":255,"Value":12.6},{"Date":"1973-08-24","Day":24,"Month":8,"Ozone":45,"Series":"Temp","Solar.R":212,"Value":79.0},{"Date":"1973-08-24","Day":24,"Month":8,"Ozone":45,"Series":"Wind","Solar.R":212,"Value":9.7},{"Date":"1973-08-25","Day":25,"Month":8,"Ozone":168,"Series":"Temp","Solar.R":238,"Value":81.0},{"Date":"1973-08-25","Day":25,"Month":8,"Ozone":168,"Series":"Wind","Solar.R":238,"Value":3.4},{"Date":"1973-08-26","Day":26,"Month":8,"Ozone":73,"Series":"Temp","Solar.R":215,"Value":86.0},{"Date":"1973-08-26","Day":26,"Month":8,"Ozone":73,"Series":"Wind","Solar.R":215,"Value":8.0},{"Date":"1973-08-27","Day":27,"Month":8,"Ozone":null,"Series":"Temp","Solar.R":153,"Value":88.0},{"Date":"1973-08-27","Day":27,"Month":8,"Ozone":null,"Series":"Wind","Solar.R":153,"Value":5.7},{"Date":"1973-08-28","Day":28,"Month":8,"Ozone":76,"Series":"Temp","Solar.R":203,"Value":97.0},{"Date":"1973-08-28","Day":28,"Month":8,"Ozone":76,"Series":"Wind","Solar.R":203,"Value":9.7},{"Date":"1973-08-29","Day":29,"Month":8,"Ozone":118,"Series":"Temp","Solar.R":225,"Value":94.0},{"Date":"1973-08-29","Day":29,"Month":8,"Ozone":118,"Series":"Wind","Solar.R":225,"Value":2.3},{"Date":"1973-08-30","Day":30,"Month":8,"Ozone":84,"Series":"Temp","Solar.R":237,"Value":96.0},{"Date":"1973-08-30","Day":30,"Month":8,"Ozone":84,"Series":"Wind","Solar.R":237,"Value":6.3},{"Date":"1973-08-31","Day":31,"Month":8,"Ozone":85,"Series":"Temp","Solar.R":188,"Value":94.0},{"Date":"1973-08-31","Day":31,"Month":8,"Ozone":85,"Series":"Wind","Solar.R":188,"Value":6.3},{"Date":"1973-09-01","Day":1,"Month":9,"Ozone":96,"Series":"Temp","Solar.R":167,"Value":91.0},{"Date":"1973-09-01","Day":1,"Month":9,"Ozone":96,"Series":"Wind","Solar.R":167,"Value":6.9},{"Date":"1973-09-02","Day":2,"Month":9,"Ozone":78,"Series":"Temp","Solar.R":197,"Value":92.0},{"Date":"1973-09-02","Day":2,"Month":9,"Ozone":78,"Series":"Wind","Solar.R":197,"Value":5.1},{"Date":"1973-09-03","Day":3,"Month":9,"Ozone":73,"Series":"Temp","Solar.R":183,"Value":93.0},{"Date":"1973-09-03","Day":3,"Month":9,"Ozone":73,"Series":"Wind","Solar.R":183,"Value":2.8},{"Date":"1973-09-04","Day":4,"Month":9,"Ozone":91,"Series":"Temp","Solar.R":189,"Value":93.0},{"Date":"1973-09-04","Day":4,"Month":9,"Ozone":91,"Series":"Wind","Solar.R":189,"Value":4.6},{"Date":"1973-09-05","Day":5,"Month":9,"Ozone":47,"Series":"Temp","Solar.R":95,"Value":87.0},{"Date":"1973-09-05","Day":5,"Month":9,"Ozone":47,"Series":"Wind","Solar.R":95,"Value":7.4},{"Date":"1973-09-06","Day":6,"Month":9,"Ozone":32,"Series":"Temp","Solar.R":92,"Value":84.0},{"Date":"1973-09-06","Day":6,"Month":9,"Ozone":32,"Series":"Wind","Solar.R":92,"Value":15.5},{"Date":"1973-09-07","Day":7,"Month":9,"Ozone":20,"Series":"Temp","Solar.R":252,"Value":80.0},{"Date":"1973-09-07","Day":7,"Month":9,"Ozone":20,"Series":"Wind","Solar.R":252,"Value":10.9},{"Date":"1973-09-08","Day":8,"Month":9,"Ozone":23,"Series":"Temp","Solar.R":220,"Value":78.0},{"Date":"1973-09-08","Day":8,"Month":9,"Ozone":23,"Series":"Wind","Solar.R":220,"Value":10.3},{"Date":"1973-09-09","Day":9,"Month":9,"Ozone":21,"Series":"Temp","Solar.R":230,"Value":75.0},{"Date":"1973-09-09","Day":9,"Month":9,"Ozone":21,"Series":"Wind","Solar.R":230,"Value":10.9},{"Date":"1973-09-10","Day":10,"Month":9,"Ozone":24,"Series":"Temp","Solar.R":259,"Value":73.0},{"Date":"1973-09-10","Day":10,"Month":9,"Ozone":24,"Series":"Wind","Solar.R":259,"Value":9.7},{"Date":"1973-09-11","Day":11,"Month":9,"Ozone":44,"Series":"Temp","Solar.R":236,"Value":81.0},{"Date":"1973-09-11","Day":11,"Month":9,"Ozone":44,"Series":"Wind","Solar.R":236,"Value":14.9},{"Date":"1973-09-12","Day":12,"Month":9,"Ozone":21,"Series":"Temp","Solar.R":259,"Value":76.0},{"Date":"1973-09-12","Day":12,"Month":9,"Ozone":21,"Series":"Wind","Solar.R":259,"Value":15.5},{"Date":"1973-09-13","Day":13,"Month":9,"Ozone":28,"Series":"Temp","Solar.R":238,"Value":77.0},{"Date":"1973-09-13","Day":13,"Month":9,"Ozone":28,"Series":"Wind","Solar.R":238,"Value":6.3},{"Date":"1973-09-14","Day":14,"Month":9,"Ozone":9,"Series":"Temp","Solar.R":24,"Value":71.0},{"Date":"1973-09-14","Day":14,"Month":9,"Ozone":9,"Series":"Wind","Solar.R":24,"Value":10.9},{"Date":"1973-09-15","Day":15,"Month":9,"Ozone":13,"Series":"Temp","Solar.R":112,"Value":71.0},{"Date":"1973-09-15","Day":15,"Month":9,"Ozone":13,"Series":"Wind","Solar.R":112,"Value":11.5},{"Date":"1973-09-16","Day":16,"Month":9,"Ozone":46,"Series":"Temp","Solar.R":237,"Value":78.0},{"Date":"1973-09-16","Day":16,"Month":9,"Ozone":46,"Series":"Wind","Solar.R":237,"Value":6.9},{"Date":"1973-09-17","Day":17,"Month":9,"Ozone":18,"Series":"Temp","Solar.R":224,"Value":67.0},{"Date":"1973-09-17","Day":17,"Month":9,"Ozone":18,"Series":"Wind","Solar.R":224,"Value":13.8},{"Date":"1973-09-18","Day":18,"Month":9,"Ozone":13,"Series":"Temp","Solar.R":27,"Value":76.0},{"Date":"1973-09-18","Day":18,"Month":9,"Ozone":13,"Series":"Wind","Solar.R":27,"Value":10.3},{"Date":"1973-09-19","Day":19,"Month":9,"Ozone":24,"Series":"Temp","Solar.R":238,"Value":68.0},{"Date":"1973-09-19","Day":19,"Month":9,"Ozone":24,"Series":"Wind","Solar.R":238,"Value":10.3},{"Date":"1973-09-20","Day":20,"Month":9,"Ozone":16,"Series":"Temp","Solar.R":201,"Value":82.0},{"Date":"1973-09-20","Day":20,"Month":9,"Ozone":16,"Series":"Wind","Solar.R":201,"Value":8.0},{"Date":"1973-09-21","Day":21,"Month":9,"Ozone":13,"Series":"Temp","Solar.R":238,"Value":64.0},{"Date":"1973-09-21","Day":21,"Month":9,"Ozone":13,"Series":"Wind","Solar.R":238,"Value":12.6},{"Date":"1973-09-22","Day":22,"Month":9,"Ozone":23,"Series":"Temp","Solar.R":14,"Value":71.0},{"Date":"1973-09-22","Day":22,"Month":9,"Ozone":23,"Series":"Wind","Solar.R":14,"Value":9.2},{"Date":"1973-09-23","Day":23,"Month":9,"Ozone":36,"Series":"Temp","Solar.R":139,"Value":81.0},{"Date":"1973-09-23","Day":23,"Month":9,"Ozone":36,"Series":"Wind","Solar.R":139,"Value":10.3},{"Date":"1973-09-24","Day":24,"Month":9,"Ozone":7,"Series":"Temp","Solar.R":49,"Value":69.0},{"Date":"1973-09-24","Day":24,"Month":9,"Ozone":7,"Series":"Wind","Solar.R":49,"Value":10.3},{"Date":"1973-09-25","Day":25,"Month":9,"Ozone":14,"Series":"Temp","Solar.R":20,"Value":63.0},{"Date":"1973-09-25","Day":25,"Month":9,"Ozone":14,"Series":"Wind","Solar.R":20,"Value":16.6},{"Date":"1973-09-26","Day":26,"Month":9,"Ozone":30,"Series":"Temp","Solar.R":193,"Value":70.0},{"Date":"1973-09-26","Day":26,"Month":9,"Ozone":30,"Series":"Wind","Solar.R":193,"Value":6.9},{"Date":"1973-09-27","Day":27,"Month":9,"Ozone":null,"Series":"Temp","Solar.R":145,"Value":77.0},{"Date":"1973-09-27","Day":27,"Month":9,"Ozone":null,"Series":"Wind","Solar.R":145,"Value":13.2},{"Date":"1973-09-28","Day":28,"Month":9,"Ozone":14,"Series":"Temp","Solar.R":191,"Value":75.0},{"Date":"1973-09-28","Day":28,"Month":9,"Ozone":14,"Series":"Wind","Solar.R":191,"Value":14.3},{"Date":"1973-09-29","Day":29,"Month":9,"Ozone":18,"Series":"Temp","Solar.R":131,"Value":76.0},{"Date":"1973-09-29","Day":29,"Month":9,"Ozone":18,"Series":"Wind","Solar.R":131,"Value":8.0},{"Date":"1973-09-30","Day":30,"Month":9,"Ozone":20,"Series":"Temp","Solar.R":223,"Value":68.0},{"Date":"1973-09-30","Day":30,"Month":9,"Ozone":20,"Series":"Wind","Solar.R":223,"Value":11.5}]},"height":"container","layer":[{"data":{"name":"__ggsql_global__"},"encoding":{"x":{"field":"Date","scale":{"zero":false},"title":"Date","type":"temporal"},"y":{"field":"Value","scale":{"zero":false},"stack":"normalize","title":"Value","type":"quantitative"}},"mark":"area"}],"width":"container"};
+    const visId = 'vis-1770279693427';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/ggsql\.org");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

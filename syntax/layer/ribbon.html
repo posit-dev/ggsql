@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Create small multiples with FACET – ggsql</title>
+<title>Ribbon – ggsql</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -20,10 +20,45 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
-<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
 <script src="../../site_libs/quarto-nav/headroom.min.js"></script>
 <script src="../../site_libs/clipboard/clipboard.min.js"></script>
 <script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
@@ -73,18 +108,23 @@ ul.task-list li input[type="checkbox"] {
     "search-label": "Search"
   }
 }</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
 <script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
 
 
-<meta property="og:title" content="Create small multiples with FACET – ggsql">
-<meta property="og:image" content="https://ggsql.org/syntax/clause/assets/logo.png">
+<meta property="og:title" content="Ribbon – ggsql">
+<meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
+<meta property="og:image" content="https://ggsql.org/syntax/layer/assets/logo.png">
 <meta property="og:site_name" content="ggsql">
 <meta property="og:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
 handle is made up of the classic database silo icon and is coloured in a
 gradient teal.
 ">
-<meta name="twitter:title" content="Create small multiples with FACET – ggsql">
-<meta name="twitter:image" content="https://ggsql.org/syntax/clause/assets/logo.png">
+<meta name="twitter:title" content="Ribbon – ggsql">
+<meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
+<meta name="twitter:image" content="https://ggsql.org/syntax/layer/assets/logo.png">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
 handle is made up of the classic database silo icon and is coloured in a
@@ -187,7 +227,7 @@ gradient teal.
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/clause/visualise.html">Main clauses</a></li><li class="breadcrumb-item"><a href="../../syntax/clause/facet.html"><code>FACET</code></a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/ribbon.html">Ribbon</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -251,7 +291,7 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../../syntax/clause/facet.html" class="sidebar-item-text sidebar-link active">
+  <a href="../../syntax/clause/facet.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text"><code>FACET</code></span></a>
   </div>
 </li>
@@ -322,7 +362,7 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/ribbon.html" class="sidebar-item-text sidebar-link">
+  <a href="../../syntax/layer/ribbon.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">Ribbon</span></a>
   </div>
 </li>
@@ -333,15 +373,28 @@ gradient teal.
 </nav>
 <div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
-    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar zindex-bottom">
-        
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#aesthetics" id="toc-aesthetics" class="nav-link active" data-scroll-target="#aesthetics">Aesthetics</a>
+  <ul class="collapse">
+  <li><a href="#required" id="toc-required" class="nav-link" data-scroll-target="#required">Required</a></li>
+  <li><a href="#optional" id="toc-optional" class="nav-link" data-scroll-target="#optional">Optional</a></li>
+  </ul></li>
+  <li><a href="#settings" id="toc-settings" class="nav-link" data-scroll-target="#settings">Settings</a></li>
+  <li><a href="#data-transformation" id="toc-data-transformation" class="nav-link" data-scroll-target="#data-transformation">Data transformation</a></li>
+  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
     </div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/clause/visualise.html">Main clauses</a></li><li class="breadcrumb-item"><a href="../../syntax/clause/facet.html"><code>FACET</code></a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/ribbon.html">Ribbon</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">Create small multiples with <code>FACET</code></h1>
+<h1 class="title">Ribbon</h1>
 </div>
 
 
@@ -358,8 +411,213 @@ gradient teal.
 </header>
 
 
+<blockquote class="blockquote">
+<p>Layers are declared with the <a href="../../syntax/clause/draw.html"><code>DRAW</code> clause</a>. Read the documentation for this clause for a thorough description of how to use it.</p>
+</blockquote>
+<p>The ribbon layer is used to display extrema over a sorted x-axis. It can be seen as an <a href="../../syntax/layer/area.html">area chart</a> that is unanchored from zero.</p>
+<section id="aesthetics" class="level2">
+<h2 class="anchored" data-anchor-id="aesthetics">Aesthetics</h2>
+<p>The following aesthetics are recognised by the ribbon layer.</p>
+<section id="required" class="level3">
+<h3 class="anchored" data-anchor-id="required">Required</h3>
+<ul>
+<li><code>x</code>: Position along the x-axis</li>
+<li><code>ymin</code>: Lower position along the y-axis.</li>
+<li><code>ymax</code>: Upper position along the y-axis.</li>
+</ul>
+</section>
+<section id="optional" class="level3">
+<h3 class="anchored" data-anchor-id="optional">Optional</h3>
+<ul>
+<li><code>stroke</code>: The colour of the contour lines.</li>
+<li><code>fill</code>: The colour of the inner area.</li>
+<li><code>colour</code>: Shorthand for setting <code>stroke</code> and <code>fill</code> simultaneously.</li>
+<li><code>opacity</code>: The opacity of the colours.</li>
+<li><code>linewidth</code>: The width of the contour lines.</li>
+</ul>
+</section>
+</section>
+<section id="settings" class="level2">
+<h2 class="anchored" data-anchor-id="settings">Settings</h2>
+<p>The ribbon layer has no additional settings.</p>
+</section>
+<section id="data-transformation" class="level2">
+<h2 class="anchored" data-anchor-id="data-transformation">Data transformation</h2>
+<p>The ribbon layer does not transform its data but passes it through unchanged.</p>
+</section>
+<section id="examples" class="level2">
+<h2 class="anchored" data-anchor-id="examples">Examples</h2>
+<p>A ribbon plot with arbitrary values as minima/maxima</p>
+<div id="9cdfaed6" class="cell" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">ribbon</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> Date AS <span class="at">x</span>, Wind AS <span class="at">ymin</span>, Temp AS <span class="at">ymax</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="1">
+<div id="vis-1770279688172"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","datasets":{"__ggsql_global__":[{"Date":"1973-05-01","Day":1,"Month":5,"Ozone":41,"Solar.R":190,"Temp":67,"Wind":7.4},{"Date":"1973-05-02","Day":2,"Month":5,"Ozone":36,"Solar.R":118,"Temp":72,"Wind":8.0},{"Date":"1973-05-03","Day":3,"Month":5,"Ozone":12,"Solar.R":149,"Temp":74,"Wind":12.6},{"Date":"1973-05-04","Day":4,"Month":5,"Ozone":18,"Solar.R":313,"Temp":62,"Wind":11.5},{"Date":"1973-05-05","Day":5,"Month":5,"Ozone":null,"Solar.R":null,"Temp":56,"Wind":14.3},{"Date":"1973-05-06","Day":6,"Month":5,"Ozone":28,"Solar.R":null,"Temp":66,"Wind":14.9},{"Date":"1973-05-07","Day":7,"Month":5,"Ozone":23,"Solar.R":299,"Temp":65,"Wind":8.6},{"Date":"1973-05-08","Day":8,"Month":5,"Ozone":19,"Solar.R":99,"Temp":59,"Wind":13.8},{"Date":"1973-05-09","Day":9,"Month":5,"Ozone":8,"Solar.R":19,"Temp":61,"Wind":20.1},{"Date":"1973-05-10","Day":10,"Month":5,"Ozone":null,"Solar.R":194,"Temp":69,"Wind":8.6},{"Date":"1973-05-11","Day":11,"Month":5,"Ozone":7,"Solar.R":null,"Temp":74,"Wind":6.9},{"Date":"1973-05-12","Day":12,"Month":5,"Ozone":16,"Solar.R":256,"Temp":69,"Wind":9.7},{"Date":"1973-05-13","Day":13,"Month":5,"Ozone":11,"Solar.R":290,"Temp":66,"Wind":9.2},{"Date":"1973-05-14","Day":14,"Month":5,"Ozone":14,"Solar.R":274,"Temp":68,"Wind":10.9},{"Date":"1973-05-15","Day":15,"Month":5,"Ozone":18,"Solar.R":65,"Temp":58,"Wind":13.2},{"Date":"1973-05-16","Day":16,"Month":5,"Ozone":14,"Solar.R":334,"Temp":64,"Wind":11.5},{"Date":"1973-05-17","Day":17,"Month":5,"Ozone":34,"Solar.R":307,"Temp":66,"Wind":12.0},{"Date":"1973-05-18","Day":18,"Month":5,"Ozone":6,"Solar.R":78,"Temp":57,"Wind":18.4},{"Date":"1973-05-19","Day":19,"Month":5,"Ozone":30,"Solar.R":322,"Temp":68,"Wind":11.5},{"Date":"1973-05-20","Day":20,"Month":5,"Ozone":11,"Solar.R":44,"Temp":62,"Wind":9.7},{"Date":"1973-05-21","Day":21,"Month":5,"Ozone":1,"Solar.R":8,"Temp":59,"Wind":9.7},{"Date":"1973-05-22","Day":22,"Month":5,"Ozone":11,"Solar.R":320,"Temp":73,"Wind":16.6},{"Date":"1973-05-23","Day":23,"Month":5,"Ozone":4,"Solar.R":25,"Temp":61,"Wind":9.7},{"Date":"1973-05-24","Day":24,"Month":5,"Ozone":32,"Solar.R":92,"Temp":61,"Wind":12.0},{"Date":"1973-05-25","Day":25,"Month":5,"Ozone":null,"Solar.R":66,"Temp":57,"Wind":16.6},{"Date":"1973-05-26","Day":26,"Month":5,"Ozone":null,"Solar.R":266,"Temp":58,"Wind":14.9},{"Date":"1973-05-27","Day":27,"Month":5,"Ozone":null,"Solar.R":null,"Temp":57,"Wind":8.0},{"Date":"1973-05-28","Day":28,"Month":5,"Ozone":23,"Solar.R":13,"Temp":67,"Wind":12.0},{"Date":"1973-05-29","Day":29,"Month":5,"Ozone":45,"Solar.R":252,"Temp":81,"Wind":14.9},{"Date":"1973-05-30","Day":30,"Month":5,"Ozone":115,"Solar.R":223,"Temp":79,"Wind":5.7},{"Date":"1973-05-31","Day":31,"Month":5,"Ozone":37,"Solar.R":279,"Temp":76,"Wind":7.4},{"Date":"1973-06-01","Day":1,"Month":6,"Ozone":null,"Solar.R":286,"Temp":78,"Wind":8.6},{"Date":"1973-06-02","Day":2,"Month":6,"Ozone":null,"Solar.R":287,"Temp":74,"Wind":9.7},{"Date":"1973-06-03","Day":3,"Month":6,"Ozone":null,"Solar.R":242,"Temp":67,"Wind":16.1},{"Date":"1973-06-04","Day":4,"Month":6,"Ozone":null,"Solar.R":186,"Temp":84,"Wind":9.2},{"Date":"1973-06-05","Day":5,"Month":6,"Ozone":null,"Solar.R":220,"Temp":85,"Wind":8.6},{"Date":"1973-06-06","Day":6,"Month":6,"Ozone":null,"Solar.R":264,"Temp":79,"Wind":14.3},{"Date":"1973-06-07","Day":7,"Month":6,"Ozone":29,"Solar.R":127,"Temp":82,"Wind":9.7},{"Date":"1973-06-08","Day":8,"Month":6,"Ozone":null,"Solar.R":273,"Temp":87,"Wind":6.9},{"Date":"1973-06-09","Day":9,"Month":6,"Ozone":71,"Solar.R":291,"Temp":90,"Wind":13.8},{"Date":"1973-06-10","Day":10,"Month":6,"Ozone":39,"Solar.R":323,"Temp":87,"Wind":11.5},{"Date":"1973-06-11","Day":11,"Month":6,"Ozone":null,"Solar.R":259,"Temp":93,"Wind":10.9},{"Date":"1973-06-12","Day":12,"Month":6,"Ozone":null,"Solar.R":250,"Temp":92,"Wind":9.2},{"Date":"1973-06-13","Day":13,"Month":6,"Ozone":23,"Solar.R":148,"Temp":82,"Wind":8.0},{"Date":"1973-06-14","Day":14,"Month":6,"Ozone":null,"Solar.R":332,"Temp":80,"Wind":13.8},{"Date":"1973-06-15","Day":15,"Month":6,"Ozone":null,"Solar.R":322,"Temp":79,"Wind":11.5},{"Date":"1973-06-16","Day":16,"Month":6,"Ozone":21,"Solar.R":191,"Temp":77,"Wind":14.9},{"Date":"1973-06-17","Day":17,"Month":6,"Ozone":37,"Solar.R":284,"Temp":72,"Wind":20.7},{"Date":"1973-06-18","Day":18,"Month":6,"Ozone":20,"Solar.R":37,"Temp":65,"Wind":9.2},{"Date":"1973-06-19","Day":19,"Month":6,"Ozone":12,"Solar.R":120,"Temp":73,"Wind":11.5},{"Date":"1973-06-20","Day":20,"Month":6,"Ozone":13,"Solar.R":137,"Temp":76,"Wind":10.3},{"Date":"1973-06-21","Day":21,"Month":6,"Ozone":null,"Solar.R":150,"Temp":77,"Wind":6.3},{"Date":"1973-06-22","Day":22,"Month":6,"Ozone":null,"Solar.R":59,"Temp":76,"Wind":1.7},{"Date":"1973-06-23","Day":23,"Month":6,"Ozone":null,"Solar.R":91,"Temp":76,"Wind":4.6},{"Date":"1973-06-24","Day":24,"Month":6,"Ozone":null,"Solar.R":250,"Temp":76,"Wind":6.3},{"Date":"1973-06-25","Day":25,"Month":6,"Ozone":null,"Solar.R":135,"Temp":75,"Wind":8.0},{"Date":"1973-06-26","Day":26,"Month":6,"Ozone":null,"Solar.R":127,"Temp":78,"Wind":8.0},{"Date":"1973-06-27","Day":27,"Month":6,"Ozone":null,"Solar.R":47,"Temp":73,"Wind":10.3},{"Date":"1973-06-28","Day":28,"Month":6,"Ozone":null,"Solar.R":98,"Temp":80,"Wind":11.5},{"Date":"1973-06-29","Day":29,"Month":6,"Ozone":null,"Solar.R":31,"Temp":77,"Wind":14.9},{"Date":"1973-06-30","Day":30,"Month":6,"Ozone":null,"Solar.R":138,"Temp":83,"Wind":8.0},{"Date":"1973-07-01","Day":1,"Month":7,"Ozone":135,"Solar.R":269,"Temp":84,"Wind":4.1},{"Date":"1973-07-02","Day":2,"Month":7,"Ozone":49,"Solar.R":248,"Temp":85,"Wind":9.2},{"Date":"1973-07-03","Day":3,"Month":7,"Ozone":32,"Solar.R":236,"Temp":81,"Wind":9.2},{"Date":"1973-07-04","Day":4,"Month":7,"Ozone":null,"Solar.R":101,"Temp":84,"Wind":10.9},{"Date":"1973-07-05","Day":5,"Month":7,"Ozone":64,"Solar.R":175,"Temp":83,"Wind":4.6},{"Date":"1973-07-06","Day":6,"Month":7,"Ozone":40,"Solar.R":314,"Temp":83,"Wind":10.9},{"Date":"1973-07-07","Day":7,"Month":7,"Ozone":77,"Solar.R":276,"Temp":88,"Wind":5.1},{"Date":"1973-07-08","Day":8,"Month":7,"Ozone":97,"Solar.R":267,"Temp":92,"Wind":6.3},{"Date":"1973-07-09","Day":9,"Month":7,"Ozone":97,"Solar.R":272,"Temp":92,"Wind":5.7},{"Date":"1973-07-10","Day":10,"Month":7,"Ozone":85,"Solar.R":175,"Temp":89,"Wind":7.4},{"Date":"1973-07-11","Day":11,"Month":7,"Ozone":null,"Solar.R":139,"Temp":82,"Wind":8.6},{"Date":"1973-07-12","Day":12,"Month":7,"Ozone":10,"Solar.R":264,"Temp":73,"Wind":14.3},{"Date":"1973-07-13","Day":13,"Month":7,"Ozone":27,"Solar.R":175,"Temp":81,"Wind":14.9},{"Date":"1973-07-14","Day":14,"Month":7,"Ozone":null,"Solar.R":291,"Temp":91,"Wind":14.9},{"Date":"1973-07-15","Day":15,"Month":7,"Ozone":7,"Solar.R":48,"Temp":80,"Wind":14.3},{"Date":"1973-07-16","Day":16,"Month":7,"Ozone":48,"Solar.R":260,"Temp":81,"Wind":6.9},{"Date":"1973-07-17","Day":17,"Month":7,"Ozone":35,"Solar.R":274,"Temp":82,"Wind":10.3},{"Date":"1973-07-18","Day":18,"Month":7,"Ozone":61,"Solar.R":285,"Temp":84,"Wind":6.3},{"Date":"1973-07-19","Day":19,"Month":7,"Ozone":79,"Solar.R":187,"Temp":87,"Wind":5.1},{"Date":"1973-07-20","Day":20,"Month":7,"Ozone":63,"Solar.R":220,"Temp":85,"Wind":11.5},{"Date":"1973-07-21","Day":21,"Month":7,"Ozone":16,"Solar.R":7,"Temp":74,"Wind":6.9},{"Date":"1973-07-22","Day":22,"Month":7,"Ozone":null,"Solar.R":258,"Temp":81,"Wind":9.7},{"Date":"1973-07-23","Day":23,"Month":7,"Ozone":null,"Solar.R":295,"Temp":82,"Wind":11.5},{"Date":"1973-07-24","Day":24,"Month":7,"Ozone":80,"Solar.R":294,"Temp":86,"Wind":8.6},{"Date":"1973-07-25","Day":25,"Month":7,"Ozone":108,"Solar.R":223,"Temp":85,"Wind":8.0},{"Date":"1973-07-26","Day":26,"Month":7,"Ozone":20,"Solar.R":81,"Temp":82,"Wind":8.6},{"Date":"1973-07-27","Day":27,"Month":7,"Ozone":52,"Solar.R":82,"Temp":86,"Wind":12.0},{"Date":"1973-07-28","Day":28,"Month":7,"Ozone":82,"Solar.R":213,"Temp":88,"Wind":7.4},{"Date":"1973-07-29","Day":29,"Month":7,"Ozone":50,"Solar.R":275,"Temp":86,"Wind":7.4},{"Date":"1973-07-30","Day":30,"Month":7,"Ozone":64,"Solar.R":253,"Temp":83,"Wind":7.4},{"Date":"1973-07-31","Day":31,"Month":7,"Ozone":59,"Solar.R":254,"Temp":81,"Wind":9.2},{"Date":"1973-08-01","Day":1,"Month":8,"Ozone":39,"Solar.R":83,"Temp":81,"Wind":6.9},{"Date":"1973-08-02","Day":2,"Month":8,"Ozone":9,"Solar.R":24,"Temp":81,"Wind":13.8},{"Date":"1973-08-03","Day":3,"Month":8,"Ozone":16,"Solar.R":77,"Temp":82,"Wind":7.4},{"Date":"1973-08-04","Day":4,"Month":8,"Ozone":78,"Solar.R":null,"Temp":86,"Wind":6.9},{"Date":"1973-08-05","Day":5,"Month":8,"Ozone":35,"Solar.R":null,"Temp":85,"Wind":7.4},{"Date":"1973-08-06","Day":6,"Month":8,"Ozone":66,"Solar.R":null,"Temp":87,"Wind":4.6},{"Date":"1973-08-07","Day":7,"Month":8,"Ozone":122,"Solar.R":255,"Temp":89,"Wind":4.0},{"Date":"1973-08-08","Day":8,"Month":8,"Ozone":89,"Solar.R":229,"Temp":90,"Wind":10.3},{"Date":"1973-08-09","Day":9,"Month":8,"Ozone":110,"Solar.R":207,"Temp":90,"Wind":8.0},{"Date":"1973-08-10","Day":10,"Month":8,"Ozone":null,"Solar.R":222,"Temp":92,"Wind":8.6},{"Date":"1973-08-11","Day":11,"Month":8,"Ozone":null,"Solar.R":137,"Temp":86,"Wind":11.5},{"Date":"1973-08-12","Day":12,"Month":8,"Ozone":44,"Solar.R":192,"Temp":86,"Wind":11.5},{"Date":"1973-08-13","Day":13,"Month":8,"Ozone":28,"Solar.R":273,"Temp":82,"Wind":11.5},{"Date":"1973-08-14","Day":14,"Month":8,"Ozone":65,"Solar.R":157,"Temp":80,"Wind":9.7},{"Date":"1973-08-15","Day":15,"Month":8,"Ozone":null,"Solar.R":64,"Temp":79,"Wind":11.5},{"Date":"1973-08-16","Day":16,"Month":8,"Ozone":22,"Solar.R":71,"Temp":77,"Wind":10.3},{"Date":"1973-08-17","Day":17,"Month":8,"Ozone":59,"Solar.R":51,"Temp":79,"Wind":6.3},{"Date":"1973-08-18","Day":18,"Month":8,"Ozone":23,"Solar.R":115,"Temp":76,"Wind":7.4},{"Date":"1973-08-19","Day":19,"Month":8,"Ozone":31,"Solar.R":244,"Temp":78,"Wind":10.9},{"Date":"1973-08-20","Day":20,"Month":8,"Ozone":44,"Solar.R":190,"Temp":78,"Wind":10.3},{"Date":"1973-08-21","Day":21,"Month":8,"Ozone":21,"Solar.R":259,"Temp":77,"Wind":15.5},{"Date":"1973-08-22","Day":22,"Month":8,"Ozone":9,"Solar.R":36,"Temp":72,"Wind":14.3},{"Date":"1973-08-23","Day":23,"Month":8,"Ozone":null,"Solar.R":255,"Temp":75,"Wind":12.6},{"Date":"1973-08-24","Day":24,"Month":8,"Ozone":45,"Solar.R":212,"Temp":79,"Wind":9.7},{"Date":"1973-08-25","Day":25,"Month":8,"Ozone":168,"Solar.R":238,"Temp":81,"Wind":3.4},{"Date":"1973-08-26","Day":26,"Month":8,"Ozone":73,"Solar.R":215,"Temp":86,"Wind":8.0},{"Date":"1973-08-27","Day":27,"Month":8,"Ozone":null,"Solar.R":153,"Temp":88,"Wind":5.7},{"Date":"1973-08-28","Day":28,"Month":8,"Ozone":76,"Solar.R":203,"Temp":97,"Wind":9.7},{"Date":"1973-08-29","Day":29,"Month":8,"Ozone":118,"Solar.R":225,"Temp":94,"Wind":2.3},{"Date":"1973-08-30","Day":30,"Month":8,"Ozone":84,"Solar.R":237,"Temp":96,"Wind":6.3},{"Date":"1973-08-31","Day":31,"Month":8,"Ozone":85,"Solar.R":188,"Temp":94,"Wind":6.3},{"Date":"1973-09-01","Day":1,"Month":9,"Ozone":96,"Solar.R":167,"Temp":91,"Wind":6.9},{"Date":"1973-09-02","Day":2,"Month":9,"Ozone":78,"Solar.R":197,"Temp":92,"Wind":5.1},{"Date":"1973-09-03","Day":3,"Month":9,"Ozone":73,"Solar.R":183,"Temp":93,"Wind":2.8},{"Date":"1973-09-04","Day":4,"Month":9,"Ozone":91,"Solar.R":189,"Temp":93,"Wind":4.6},{"Date":"1973-09-05","Day":5,"Month":9,"Ozone":47,"Solar.R":95,"Temp":87,"Wind":7.4},{"Date":"1973-09-06","Day":6,"Month":9,"Ozone":32,"Solar.R":92,"Temp":84,"Wind":15.5},{"Date":"1973-09-07","Day":7,"Month":9,"Ozone":20,"Solar.R":252,"Temp":80,"Wind":10.9},{"Date":"1973-09-08","Day":8,"Month":9,"Ozone":23,"Solar.R":220,"Temp":78,"Wind":10.3},{"Date":"1973-09-09","Day":9,"Month":9,"Ozone":21,"Solar.R":230,"Temp":75,"Wind":10.9},{"Date":"1973-09-10","Day":10,"Month":9,"Ozone":24,"Solar.R":259,"Temp":73,"Wind":9.7},{"Date":"1973-09-11","Day":11,"Month":9,"Ozone":44,"Solar.R":236,"Temp":81,"Wind":14.9},{"Date":"1973-09-12","Day":12,"Month":9,"Ozone":21,"Solar.R":259,"Temp":76,"Wind":15.5},{"Date":"1973-09-13","Day":13,"Month":9,"Ozone":28,"Solar.R":238,"Temp":77,"Wind":6.3},{"Date":"1973-09-14","Day":14,"Month":9,"Ozone":9,"Solar.R":24,"Temp":71,"Wind":10.9},{"Date":"1973-09-15","Day":15,"Month":9,"Ozone":13,"Solar.R":112,"Temp":71,"Wind":11.5},{"Date":"1973-09-16","Day":16,"Month":9,"Ozone":46,"Solar.R":237,"Temp":78,"Wind":6.9},{"Date":"1973-09-17","Day":17,"Month":9,"Ozone":18,"Solar.R":224,"Temp":67,"Wind":13.8},{"Date":"1973-09-18","Day":18,"Month":9,"Ozone":13,"Solar.R":27,"Temp":76,"Wind":10.3},{"Date":"1973-09-19","Day":19,"Month":9,"Ozone":24,"Solar.R":238,"Temp":68,"Wind":10.3},{"Date":"1973-09-20","Day":20,"Month":9,"Ozone":16,"Solar.R":201,"Temp":82,"Wind":8.0},{"Date":"1973-09-21","Day":21,"Month":9,"Ozone":13,"Solar.R":238,"Temp":64,"Wind":12.6},{"Date":"1973-09-22","Day":22,"Month":9,"Ozone":23,"Solar.R":14,"Temp":71,"Wind":9.2},{"Date":"1973-09-23","Day":23,"Month":9,"Ozone":36,"Solar.R":139,"Temp":81,"Wind":10.3},{"Date":"1973-09-24","Day":24,"Month":9,"Ozone":7,"Solar.R":49,"Temp":69,"Wind":10.3},{"Date":"1973-09-25","Day":25,"Month":9,"Ozone":14,"Solar.R":20,"Temp":63,"Wind":16.6},{"Date":"1973-09-26","Day":26,"Month":9,"Ozone":30,"Solar.R":193,"Temp":70,"Wind":6.9},{"Date":"1973-09-27","Day":27,"Month":9,"Ozone":null,"Solar.R":145,"Temp":77,"Wind":13.2},{"Date":"1973-09-28","Day":28,"Month":9,"Ozone":14,"Solar.R":191,"Temp":75,"Wind":14.3},{"Date":"1973-09-29","Day":29,"Month":9,"Ozone":18,"Solar.R":131,"Temp":76,"Wind":8.0},{"Date":"1973-09-30","Day":30,"Month":9,"Ozone":20,"Solar.R":223,"Temp":68,"Wind":11.5}]},"height":"container","layer":[{"data":{"name":"__ggsql_global__"},"encoding":{"x":{"field":"Date","scale":{"zero":false},"title":"Date","type":"temporal"},"y":{"field":"Temp","type":"quantitative"},"y2":{"field":"Wind","title":"Wind","type":"quantitative"}},"mark":"area"}],"width":"container"};
+    const visId = 'vis-1770279688172';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>Ribbon plots are great for showing the range of some aggregation.</p>
+<div id="887b4f89" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="op">//</span> Weekly aggregation of temperature</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> </span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  WEEKOFYEAR(Date) <span class="kw">AS</span> Week, </span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">MAX</span>(<span class="kw">Temp</span>) <span class="kw">AS</span> MaxTemp, </span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>  MEAN(<span class="kw">Temp</span>) <span class="kw">AS</span> MeanTemp,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">MIN</span>(<span class="kw">Temp</span>) <span class="kw">AS</span> MinTemp </span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="kw">GROUP</span> <span class="kw">BY</span> WEEKOFYEAR(Date)</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Week <span class="kw">AS</span> <span class="at">x</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">ribbon</span> </span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> MinTemp AS <span class="at">ymin</span>, MaxTemp AS <span class="at">ymax</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">opacity</span> <span class="op">=&gt;</span> <span class="dv">0.5</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">line</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> MeanTemp AS <span class="at">y</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<div id="vis-1770279688180"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","datasets":{"__ggsql_global__":[{"MaxTemp":74,"MeanTemp":66.16666666666667,"MinTemp":56,"Week":18},{"MaxTemp":74,"MeanTemp":66.14285714285714,"MinTemp":59,"Week":19},{"MaxTemp":68,"MeanTemp":63.285714285714285,"MinTemp":57,"Week":20},{"MaxTemp":73,"MeanTemp":60.857142857142854,"MinTemp":57,"Week":21},{"MaxTemp":81,"MeanTemp":74.57142857142857,"MinTemp":67,"Week":22},{"MaxTemp":90,"MeanTemp":84.85714285714286,"MinTemp":79,"Week":23},{"MaxTemp":93,"MeanTemp":82.14285714285714,"MinTemp":72,"Week":24},{"MaxTemp":77,"MeanTemp":74.14285714285714,"MinTemp":65,"Week":25},{"MaxTemp":84,"MeanTemp":78.57142857142857,"MinTemp":73,"Week":26},{"MaxTemp":92,"MeanTemp":85.14285714285714,"MinTemp":81,"Week":27},{"MaxTemp":92,"MeanTemp":84.0,"MinTemp":73,"Week":28},{"MaxTemp":87,"MeanTemp":82.0,"MinTemp":74,"Week":29},{"MaxTemp":88,"MeanTemp":85.0,"MinTemp":82,"Week":30},{"MaxTemp":86,"MeanTemp":82.71428571428571,"MinTemp":81,"Week":31},{"MaxTemp":92,"MeanTemp":88.57142857142857,"MinTemp":86,"Week":32},{"MaxTemp":82,"MeanTemp":78.71428571428571,"MinTemp":76,"Week":33},{"MaxTemp":86,"MeanTemp":78.28571428571429,"MinTemp":72,"Week":34},{"MaxTemp":97,"MeanTemp":93.14285714285714,"MinTemp":88,"Week":35},{"MaxTemp":93,"MeanTemp":84.28571428571429,"MinTemp":75,"Week":36},{"MaxTemp":81,"MeanTemp":75.28571428571429,"MinTemp":71,"Week":37},{"MaxTemp":82,"MeanTemp":72.71428571428571,"MinTemp":64,"Week":38},{"MaxTemp":77,"MeanTemp":71.14285714285714,"MinTemp":63,"Week":39}]},"height":"container","layer":[{"data":{"name":"__ggsql_global__"},"encoding":{"opacity":{"value":0.5},"x":{"field":"Week","scale":{"zero":false},"title":"Week","type":"quantitative"},"y":{"field":"MaxTemp","title":"MaxTemp","type":"quantitative"},"y2":{"field":"MinTemp","type":"quantitative"}},"mark":"area"},{"data":{"name":"__ggsql_global__"},"encoding":{"x":{"field":"Week","scale":{"zero":false},"title":"Week","type":"quantitative"},"y":{"field":"MeanTemp","scale":{"zero":false},"title":"MaxTemp","type":"quantitative"}},"mark":"line"}],"width":"container"};
+    const visId = 'vis-1770279688180';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
 
 
+</section>
 
 </main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
@@ -767,4 +1025,4 @@ gradient teal.
 
 
 
-<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

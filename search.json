@@ -223,61 +223,6 @@
     ]
   },
   {
-    "objectID": "syntax/index.html",
-    "href": "syntax/index.html",
-    "title": "Syntax",
-    "section": "",
-    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends",
-    "crumbs": [
-      "Home",
-      "Overview"
-    ]
-  },
-  {
-    "objectID": "syntax/index.html#main-clauses",
-    "href": "syntax/index.html#main-clauses",
-    "title": "Syntax",
-    "section": "",
-    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends",
-    "crumbs": [
-      "Home",
-      "Overview"
-    ]
-  },
-  {
-    "objectID": "syntax/index.html#layers",
-    "href": "syntax/index.html#layers",
-    "title": "Syntax",
-    "section": "Layers",
-    "text": "Layers\nThere are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the DRAW clause\n\npoint is used to create a scatterplot layer\nline is used to produce lineplots with the data sorted along the x axis\npath is like line above but does not sort the data but plot it according to its own order\nbar creates a bar chart, optionally calculating y from the number of records in each bar\nhistogram bins the data along the x axis and produces a bar for each bin showing the number of records in it\nboxplot displays continuous variables as 5-number summaries",
-    "crumbs": [
-      "Home",
-      "Overview"
-    ]
-  },
-  {
-    "objectID": "syntax/index.html#scales",
-    "href": "syntax/index.html#scales",
-    "title": "Syntax",
-    "section": "Scales",
-    "text": "Scales",
-    "crumbs": [
-      "Home",
-      "Overview"
-    ]
-  },
-  {
-    "objectID": "syntax/index.html#coordinate-systems",
-    "href": "syntax/index.html#coordinate-systems",
-    "title": "Syntax",
-    "section": "Coordinate systems",
-    "text": "Coordinate systems",
-    "crumbs": [
-      "Home",
-      "Overview"
-    ]
-  },
-  {
     "objectID": "syntax/layer/boxplot.html",
     "href": "syntax/layer/boxplot.html",
     "title": "Boxplot",
@@ -323,6 +268,181 @@
       "Home",
       "Layers",
       "Boxplot"
+    ]
+  },
+  {
+    "objectID": "syntax/index.html",
+    "href": "syntax/index.html",
+    "title": "Syntax",
+    "section": "",
+    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends",
+    "crumbs": [
+      "Home",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/index.html#main-clauses",
+    "href": "syntax/index.html#main-clauses",
+    "title": "Syntax",
+    "section": "",
+    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends",
+    "crumbs": [
+      "Home",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/index.html#layers",
+    "href": "syntax/index.html#layers",
+    "title": "Syntax",
+    "section": "Layers",
+    "text": "Layers\nThere are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the DRAW clause\n\npoint is used to create a scatterplot layer\nline is used to produce lineplots with the data sorted along the x axis\npath is like line above but does not sort the data but plot it according to its own order\narea is used to display series as an area chart.\nribbon is used to display series extrema.\nbar creates a bar chart, optionally calculating y from the number of records in each bar\nhistogram bins the data along the x axis and produces a bar for each bin showing the number of records in it\nboxplot displays continuous variables as 5-number summaries",
+    "crumbs": [
+      "Home",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/index.html#scales",
+    "href": "syntax/index.html#scales",
+    "title": "Syntax",
+    "section": "Scales",
+    "text": "Scales",
+    "crumbs": [
+      "Home",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/index.html#coordinate-systems",
+    "href": "syntax/index.html#coordinate-systems",
+    "title": "Syntax",
+    "section": "Coordinate systems",
+    "text": "Coordinate systems",
+    "crumbs": [
+      "Home",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/ribbon.html",
+    "href": "syntax/layer/ribbon.html",
+    "title": "Ribbon",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe ribbon layer is used to display extrema over a sorted x-axis. It can be seen as an area chart that is unanchored from zero.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Ribbon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/ribbon.html#aesthetics",
+    "href": "syntax/layer/ribbon.html#aesthetics",
+    "title": "Ribbon",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the ribbon layer.\n\nRequired\n\nx: Position along the x-axis\nymin: Lower position along the y-axis.\nymax: Upper position along the y-axis.\n\n\n\nOptional\n\nstroke: The colour of the contour lines.\nfill: The colour of the inner area.\ncolour: Shorthand for setting stroke and fill simultaneously.\nopacity: The opacity of the colours.\nlinewidth: The width of the contour lines.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Ribbon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/ribbon.html#settings",
+    "href": "syntax/layer/ribbon.html#settings",
+    "title": "Ribbon",
+    "section": "Settings",
+    "text": "Settings\nThe ribbon layer has no additional settings.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Ribbon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/ribbon.html#data-transformation",
+    "href": "syntax/layer/ribbon.html#data-transformation",
+    "title": "Ribbon",
+    "section": "Data transformation",
+    "text": "Data transformation\nThe ribbon layer does not transform its data but passes it through unchanged.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Ribbon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/ribbon.html#examples",
+    "href": "syntax/layer/ribbon.html#examples",
+    "title": "Ribbon",
+    "section": "Examples",
+    "text": "Examples\nA ribbon plot with arbitrary values as minima/maxima\n\nVISUALISE FROM ggsql:airquality\n  DRAW ribbon\n    MAPPING Date AS x, Wind AS ymin, Temp AS ymax\n\n\n\n\n\nRibbon plots are great for showing the range of some aggregation.\n\n// Weekly aggregation of temperature\nSELECT \n  WEEKOFYEAR(Date) AS Week, \n  MAX(Temp) AS MaxTemp, \n  MEAN(Temp) AS MeanTemp,\n  MIN(Temp) AS MinTemp \nFROM ggsql:airquality\nGROUP BY WEEKOFYEAR(Date)\n\nVISUALISE Week AS x\n  DRAW ribbon \n    MAPPING MinTemp AS ymin, MaxTemp AS ymax\n    SETTING opacity =&gt; 0.5\n  DRAW line\n    MAPPING MeanTemp AS y",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Ribbon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/area.html",
+    "href": "syntax/layer/area.html",
+    "title": "Area",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe area layer is used to display absolute amounts over a sorted x-axis. It can be seen as a ribbon layer where the ymin is anchored at zero.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Area"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/area.html#aesthetics",
+    "href": "syntax/layer/area.html#aesthetics",
+    "title": "Area",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the area layer.\n\nRequired\n\nx: Position along the x-axis.\ny: Position along the y-axis.\n\n\n\nOptional\n\nstroke: The colour of the contour lines.\nfill: The colour of the inner area.\ncolour: Shorthand for setting stroke and fill simultaneously.\nopacity: The opacity of the colours.\nlinewidth: The width of the contour lines.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Area"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/area.html#settings",
+    "href": "syntax/layer/area.html#settings",
+    "title": "Area",
+    "section": "Settings",
+    "text": "Settings\n\nstacking: Determines how multiple groups are displayed. One of the following:\n\n'off': The groups y-values are displayed as-is (default).\n'on': The y-values are stacked per x position, accumulating over groups.\n'fill': Like 'on' but displayed as a fraction of the total per x position.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Area"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/area.html#data-transformation",
+    "href": "syntax/layer/area.html#data-transformation",
+    "title": "Area",
+    "section": "Data transformation",
+    "text": "Data transformation\nThe area layer does not transform its data but passes it through unchanged.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Area"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/area.html#examples",
+    "href": "syntax/layer/area.html#examples",
+    "title": "Area",
+    "section": "Examples",
+    "text": "Examples\nCreate a typical area chart\n\nVISUALISE FROM ggsql:airquality\nDRAW area \n  MAPPING Date AS x, Wind AS y\n\n\n\n\n\nWe can reshape the data to ‘long format’ from our wide format.\n\nCREATE TABLE long_airquality AS\nSELECT * FROM ggsql:airquality\nUNPIVOT(\n  Value FOR Series IN (Temp, Wind)\n) AS u;\n\n\n\n\n\n\n\nWhich means we can display multiple series at once, by mapping the identifier to an aesthetic.\n\nVISUALISE Date AS x, Value AS y FROM long_airquality\n  DRAW area MAPPING Series AS colour\n\n\n\n\n\nWe can stack the series by using stacking =&gt; 'on'. The line serves as a reference for ‘unstacked’ data.\n\nVISUALISE Date AS x, Value AS y, Series AS colour FROM long_airquality\n  DRAW area SETTING stacking =&gt; 'on', opacity =&gt; 0.5\n  DRAW line\n\n\n\n\n\nWhen stacking =&gt; 'fill' we’re plotting stacked proportions. These only make sense if every series is measured in the same absolute unit. (Wind and temperature have different units and the temperature is not absolute.)\n\nVISUALISE Date AS x, Value AS y, Series AS colour FROM long_airquality\n  DRAW area SETTING stacking =&gt; 'fill'",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Area"
     ]
   },
   {
