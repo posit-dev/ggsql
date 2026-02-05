@@ -25,8 +25,8 @@ impl ScaleTypeTrait for Ordinal {
         "ordinal"
     }
 
-    fn is_discrete(&self) -> bool {
-        true // Discrete input (categorical data)
+    fn uses_discrete_input_range(&self) -> bool {
+        true // Collects unique values like Discrete
     }
 
     fn allowed_transforms(&self) -> &'static [TransformKind] {
@@ -43,9 +43,24 @@ impl ScaleTypeTrait for Ordinal {
         _aesthetic: &str,
         column_dtype: Option<&DataType>,
     ) -> TransformKind {
-        // Infer from column type, defaulting to String
+        // Infer from column type
         match column_dtype {
             Some(DataType::Boolean) => TransformKind::Bool,
+            Some(DataType::String) | Some(DataType::Categorical(_, _)) => TransformKind::String,
+            // Numeric types use Identity to preserve numeric sorting
+            Some(
+                DataType::Int8
+                | DataType::Int16
+                | DataType::Int32
+                | DataType::Int64
+                | DataType::UInt8
+                | DataType::UInt16
+                | DataType::UInt32
+                | DataType::UInt64
+                | DataType::Float32
+                | DataType::Float64,
+            ) => TransformKind::Identity,
+            // Default to String for unknown types
             _ => TransformKind::String,
         }
     }
@@ -101,10 +116,23 @@ impl ScaleTypeTrait for Ordinal {
     }
 
     fn allows_data_type(&self, dtype: &DataType) -> bool {
-        // Same as Discrete - categorical types
+        // Ordinal scales accept categorical types plus numeric types
+        // Numeric types are useful for ordered categories like Month (1-12), rank values, etc.
         matches!(
             dtype,
-            DataType::String | DataType::Categorical(_, _) | DataType::Boolean
+            DataType::String
+                | DataType::Categorical(_, _)
+                | DataType::Boolean
+                | DataType::Int8
+                | DataType::Int16
+                | DataType::Int32
+                | DataType::Int64
+                | DataType::UInt8
+                | DataType::UInt16
+                | DataType::UInt32
+                | DataType::UInt64
+                | DataType::Float32
+                | DataType::Float64
         )
     }
 
@@ -339,78 +367,30 @@ impl ScaleTypeTrait for Ordinal {
     }
 }
 
-/// Compute unique values from columns (same logic as discrete.rs)
+/// Compute unique values from columns.
+///
+/// Preserves native types and sorts accordingly:
+/// - Boolean columns → `ArrayElement::Boolean` values in logical order `[false, true]`
+/// - Integer/Float columns → `ArrayElement::Number` values sorted numerically
+/// - Date columns → `ArrayElement::Date` values sorted chronologically
+/// - DateTime columns → `ArrayElement::DateTime` values sorted chronologically
+/// - Time columns → `ArrayElement::Time` values sorted chronologically
+/// - String/Categorical columns → `ArrayElement::String` values sorted alphabetically
+///
+/// Unlike discrete scales, ordinal scales do NOT include null values in the input range
+/// (ordinal is for ordered data where null doesn't have a meaningful position).
 fn compute_unique_values(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
     if column_refs.is_empty() {
         return None;
     }
 
-    // Check if all columns are boolean
-    let all_boolean = column_refs.iter().all(|c| c.dtype() == &DataType::Boolean);
+    // Don't include nulls for ordinal scales
+    let result = super::compute_unique_values_native(column_refs, false);
 
-    if all_boolean {
-        // For boolean columns, return ArrayElement::Boolean values
-        // Order: [false, true] for consistency (logical order)
-        let mut has_false = false;
-        let mut has_true = false;
-
-        for column in column_refs {
-            if let Ok(ca) = column.as_materialized_series().bool() {
-                for val in ca.into_iter().flatten() {
-                    if val {
-                        has_true = true;
-                    } else {
-                        has_false = true;
-                    }
-                }
-            }
-        }
-
-        let mut result = Vec::new();
-        if has_false {
-            result.push(ArrayElement::Boolean(false));
-        }
-        if has_true {
-            result.push(ArrayElement::Boolean(true));
-        }
-
-        if result.is_empty() {
-            None
-        } else {
-            Some(result)
-        }
+    if result.is_empty() {
+        None
     } else {
-        // String-based logic for other types (categorical, string)
-        let mut unique_values: Vec<String> = Vec::new();
-
-        for column in column_refs {
-            let series = column.as_materialized_series();
-            if let Ok(unique) = series.unique() {
-                for i in 0..unique.len() {
-                    if let Ok(val) = unique.get(i) {
-                        let s = val.to_string();
-                        if s != "null" {
-                            let clean = s.trim_matches('"').to_string();
-                            if !unique_values.contains(&clean) {
-                                unique_values.push(clean);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if unique_values.is_empty() {
-            None
-        } else {
-            unique_values.sort();
-            Some(
-                unique_values
-                    .into_iter()
-                    .map(ArrayElement::String)
-                    .collect(),
-            )
-        }
+        Some(result)
     }
 }
 
@@ -433,9 +413,9 @@ mod tests {
     }
 
     #[test]
-    fn test_ordinal_is_discrete() {
+    fn test_ordinal_uses_discrete_input_range() {
         let ordinal = Ordinal;
-        assert!(ordinal.is_discrete());
+        assert!(ordinal.uses_discrete_input_range());
     }
 
     #[test]
@@ -611,5 +591,84 @@ mod tests {
         } else {
             panic!("Output range should be an Array");
         }
+    }
+
+    #[test]
+    fn test_ordinal_allows_numeric_data_types() {
+        use super::super::ScaleTypeTrait;
+        use polars::prelude::DataType;
+
+        let ordinal = Ordinal;
+
+        // Ordinal should allow numeric types (e.g., Month 1-12)
+        assert!(ordinal.allows_data_type(&DataType::Int8));
+        assert!(ordinal.allows_data_type(&DataType::Int16));
+        assert!(ordinal.allows_data_type(&DataType::Int32));
+        assert!(ordinal.allows_data_type(&DataType::Int64));
+        assert!(ordinal.allows_data_type(&DataType::UInt8));
+        assert!(ordinal.allows_data_type(&DataType::UInt16));
+        assert!(ordinal.allows_data_type(&DataType::UInt32));
+        assert!(ordinal.allows_data_type(&DataType::UInt64));
+        assert!(ordinal.allows_data_type(&DataType::Float32));
+        assert!(ordinal.allows_data_type(&DataType::Float64));
+
+        // Also allows categorical types
+        assert!(ordinal.allows_data_type(&DataType::String));
+        assert!(ordinal.allows_data_type(&DataType::Boolean));
+    }
+
+    #[test]
+    fn test_ordinal_default_transform_numeric() {
+        use super::super::ScaleTypeTrait;
+        use crate::plot::scale::TransformKind;
+        use polars::prelude::DataType;
+
+        let ordinal = Ordinal;
+
+        // Numeric types should use Identity transform (to preserve numeric sorting)
+        assert_eq!(
+            ordinal.default_transform("color", Some(&DataType::Int32)),
+            TransformKind::Identity
+        );
+        assert_eq!(
+            ordinal.default_transform("color", Some(&DataType::Int64)),
+            TransformKind::Identity
+        );
+        assert_eq!(
+            ordinal.default_transform("color", Some(&DataType::Float64)),
+            TransformKind::Identity
+        );
+
+        // String/Boolean use their respective transforms
+        assert_eq!(
+            ordinal.default_transform("color", Some(&DataType::String)),
+            TransformKind::String
+        );
+        assert_eq!(
+            ordinal.default_transform("color", Some(&DataType::Boolean)),
+            TransformKind::Bool
+        );
+    }
+
+    #[test]
+    fn test_ordinal_numeric_input_range_sorted_numerically() {
+        use polars::prelude::*;
+
+        // Create a numeric column with values that would sort incorrectly as strings
+        // String sort: ["1", "10", "2", "20"] vs numeric sort: [1, 2, 10, 20]
+        let series = Series::new("month".into(), vec![10, 1, 20, 2]);
+        let column = series.into_column();
+        let columns = vec![&column];
+
+        let result = compute_unique_values(&columns);
+        assert!(result.is_some());
+        let values = result.unwrap();
+
+        // Should be sorted numerically: 1, 2, 10, 20
+        assert_eq!(values.len(), 4);
+        assert_eq!(values[0], ArrayElement::Number(1.0));
+        assert_eq!(values[1], ArrayElement::Number(2.0));
+        assert_eq!(values[2], ArrayElement::Number(10.0));
+        assert_eq!(values[3], ArrayElement::Number(20.0));
     }
 }

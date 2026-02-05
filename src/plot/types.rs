@@ -646,6 +646,21 @@ impl ArrayElement {
             ArrayElement::Time(t) => serde_json::Value::String(time_to_iso_string(*t)),
         }
     }
+
+    /// Convert Date (days since epoch) to ISO string "YYYY-MM-DD"
+    pub fn date_to_iso(days: i32) -> String {
+        date_to_iso_string(days)
+    }
+
+    /// Convert DateTime (microseconds since epoch) to ISO string
+    pub fn datetime_to_iso(micros: i64) -> String {
+        datetime_to_iso_string(micros)
+    }
+
+    /// Convert Time (nanoseconds since midnight) to ISO string "HH:MM:SS"
+    pub fn time_to_iso(nanos: i64) -> String {
+        time_to_iso_string(nanos)
+    }
 }
 
 impl ParameterValue {

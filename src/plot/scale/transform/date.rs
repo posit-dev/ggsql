@@ -40,22 +40,66 @@ impl DateInterval {
         }
     }
 
-    /// Select appropriate interval based on span in days and desired break count
-    fn select(span_days: f64, n: usize) -> Self {
-        let target_interval = span_days / n as f64;
+    /// Calculate expected number of breaks for this interval over the given span
+    fn expected_breaks(&self, span_days: f64) -> f64 {
+        span_days / self.days()
+    }
 
-        // Choose interval that gives roughly the right number of breaks
-        if target_interval >= 365.0 {
-            DateInterval::Year
-        } else if target_interval >= 90.0 {
-            DateInterval::Quarter
-        } else if target_interval >= 28.0 {
-            DateInterval::Month
-        } else if target_interval >= 5.0 {
-            DateInterval::Week
-        } else {
-            DateInterval::Day
+    /// Select appropriate interval and step based on span in days and desired break count.
+    /// Uses tolerance-based search: tries each interval from largest to smallest,
+    /// stops when within ~20% of requested n, then calculates a nice step multiplier.
+    fn select(span_days: f64, n: usize) -> (Self, usize) {
+        let n_f64 = n as f64;
+        let tolerance = 0.2; // 20% tolerance
+        let min_breaks = n_f64 * (1.0 - tolerance);
+        let max_breaks = n_f64 * (1.0 + tolerance);
+
+        // Intervals from largest to smallest
+        let intervals = [
+            DateInterval::Year,
+            DateInterval::Quarter,
+            DateInterval::Month,
+            DateInterval::Week,
+            DateInterval::Day,
+        ];
+
+        for &interval in &intervals {
+            let expected = interval.expected_breaks(span_days);
+
+            // Skip if this interval produces too few breaks
+            if expected < 1.0 {
+                continue;
+            }
+
+            // If within tolerance, use step=1
+            if expected >= min_breaks && expected <= max_breaks {
+                return (interval, 1);
+            }
+
+            // If too many breaks, calculate a nice step
+            if expected > max_breaks {
+                let raw_step = expected / n_f64;
+                let nice = match interval {
+                    DateInterval::Year => nice_step(raw_step) as usize,
+                    DateInterval::Quarter => nice_quarter_step(raw_step),
+                    DateInterval::Month => nice_month_step(raw_step),
+                    DateInterval::Week => nice_week_step(raw_step),
+                    DateInterval::Day => nice_step(raw_step) as usize,
+                };
+                let step = nice.max(1);
+
+                // Verify the stepped interval is reasonable
+                let stepped_breaks = expected / step as f64;
+                if stepped_breaks >= 1.0 {
+                    return (interval, step);
+                }
+            }
         }
+
+        // Fallback: use Day with step calculation
+        let expected = DateInterval::Day.expected_breaks(span_days);
+        let step = (nice_step(expected / n_f64) as usize).max(1);
+        (DateInterval::Day, step)
     }
 }
 
@@ -94,10 +138,10 @@ impl TransformTrait for Date {
         }
 
         let span = max - min;
-        let interval = DateInterval::select(span, n);
+        let (interval, step) = DateInterval::select(span, n);
 
         if pretty {
-            calculate_pretty_date_breaks(min, max, n, interval)
+            calculate_pretty_date_breaks(min, max, interval, step)
         } else {
             // For non-pretty, use integer breaks since dates are whole days
             integer_breaks(min, max, n, false)
@@ -137,7 +181,7 @@ impl TransformTrait for Date {
 }
 
 /// Calculate pretty date breaks aligned to interval boundaries
-fn calculate_pretty_date_breaks(min: f64, max: f64, n: usize, interval: DateInterval) -> Vec<f64> {
+fn calculate_pretty_date_breaks(min: f64, max: f64, interval: DateInterval, step: usize) -> Vec<f64> {
     let unix_epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
 
     // Convert min/max to dates
@@ -152,13 +196,8 @@ fn calculate_pretty_date_breaks(min: f64, max: f64, n: usize, interval: DateInte
             let start_year = min_date.year();
             let end_year = max_date.year();
 
-            // Calculate year step to get roughly n breaks
-            let year_span = (end_year - start_year + 1) as usize;
-            let step = (year_span / n).max(1);
-
-            // Align to nice year boundaries (1, 2, 5, 10, etc.)
-            let step = nice_step(step as f64) as i32;
-
+            // Use the step from interval selection
+            let step = step as i32;
             let aligned_start = (start_year / step) * step;
 
             let mut year = aligned_start;
@@ -180,8 +219,11 @@ fn calculate_pretty_date_breaks(min: f64, max: f64, n: usize, interval: DateInte
             let end_year = max_date.year();
             let end_quarter = (max_date.month() - 1) / 3;
 
+            // Align to step boundary
+            let aligned_start_quarter = (start_quarter / step as u32) * step as u32;
+
             let mut year = start_year;
-            let mut quarter = start_quarter;
+            let mut quarter = aligned_start_quarter;
 
             while year < end_year || (year == end_year && quarter <= end_quarter) {
                 let month = quarter * 3 + 1;
@@ -191,10 +233,12 @@ fn calculate_pretty_date_breaks(min: f64, max: f64, n: usize, interval: DateInte
                         breaks.push(days);
                     }
                 }
-                quarter += 1;
+                quarter += step as u32;
                 if quarter > 3 {
-                    quarter = 0;
-                    year += 1;
+                    // Calculate how many years to advance and remaining quarters
+                    let years_advance = quarter / 4;
+                    quarter %= 4;
+                    year += years_advance as i32;
                 }
             }
         }
@@ -206,20 +250,7 @@ fn calculate_pretty_date_breaks(min: f64, max: f64, n: usize, interval: DateInte
             let end_year = max_date.year();
             let end_month = max_date.month();
 
-            // Calculate total months and step
-            let total_months =
-                (end_year - start_year) * 12 + (end_month as i32 - start_month as i32 + 1);
-            let step = ((total_months as usize) / n).max(1);
-
-            // Align step to nice values (1, 2, 3, 6, 12)
-            let step = match step {
-                1 => 1,
-                2 => 2,
-                3..=4 => 3,
-                5..=8 => 6,
-                _ => 12,
-            };
-
+            // Use the step from interval selection
             let mut year = start_year;
             let mut month = ((start_month - 1) / step as u32) * step as u32 + 1;
 
@@ -245,6 +276,7 @@ fn calculate_pretty_date_breaks(min: f64, max: f64, n: usize, interval: DateInte
             let first_monday = start_days - weekday;
 
             let end_days = max.ceil() as i64;
+            let step_days = (step * 7) as i64; // step weeks in days
 
             let mut day = first_monday;
             while day <= end_days {
@@ -252,14 +284,12 @@ fn calculate_pretty_date_breaks(min: f64, max: f64, n: usize, interval: DateInte
                 if days >= min && days <= max {
                     breaks.push(days);
                 }
-                day += 7;
+                day += step_days;
             }
         }
         DateInterval::Day => {
-            // Calculate step size for days
-            let span = max - min;
-            let step = (span / n as f64).max(1.0);
-            let step = nice_step(step) as i64;
+            // Use the step from interval selection
+            let step = step as i64;
 
             let start_day = (min / step as f64).floor() as i64 * step;
             let end_day = max.ceil() as i64;
@@ -306,6 +336,43 @@ fn nice_step(step: f64) -> f64 {
     };
 
     nice * magnitude
+}
+
+/// Nice step values for weeks (1, 2, 4)
+fn nice_week_step(step: f64) -> usize {
+    if step <= 1.5 {
+        1
+    } else if step <= 3.0 {
+        2
+    } else {
+        4
+    }
+}
+
+/// Nice step values for quarters (1, 2, 4)
+fn nice_quarter_step(step: f64) -> usize {
+    if step <= 1.5 {
+        1
+    } else if step <= 3.0 {
+        2
+    } else {
+        4
+    }
+}
+
+/// Nice step values for months (1, 2, 3, 6, 12)
+fn nice_month_step(step: f64) -> usize {
+    if step <= 1.0 {
+        1
+    } else if step <= 2.0 {
+        2
+    } else if step <= 4.0 {
+        3
+    } else if step <= 8.0 {
+        6
+    } else {
+        12
+    }
 }
 
 impl std::fmt::Display for Date {
@@ -421,17 +488,59 @@ mod tests {
 
     #[test]
     fn test_date_interval_selection() {
-        // Large span -> year
-        assert_eq!(DateInterval::select(3650.0, 5), DateInterval::Year);
+        // Large span (10 years, n=5) -> year with step
+        let (interval, step) = DateInterval::select(3650.0, 5);
+        assert_eq!(interval, DateInterval::Year);
+        assert!(step >= 1);
 
-        // Medium span -> month
-        assert_eq!(DateInterval::select(180.0, 6), DateInterval::Month);
+        // Medium span (6 months, n=6) -> month
+        let (interval, step) = DateInterval::select(180.0, 6);
+        assert_eq!(interval, DateInterval::Month);
+        assert!(step >= 1);
 
-        // Small span -> week
-        assert_eq!(DateInterval::select(28.0, 4), DateInterval::Week);
+        // Small span (4 weeks, n=4) -> week
+        let (interval, step) = DateInterval::select(28.0, 4);
+        assert_eq!(interval, DateInterval::Week);
+        assert!(step >= 1);
 
-        // Very small span -> day
-        assert_eq!(DateInterval::select(7.0, 7), DateInterval::Day);
+        // Very small span (7 days, n=7) -> day
+        let (interval, step) = DateInterval::select(7.0, 7);
+        assert_eq!(interval, DateInterval::Day);
+        assert!(step >= 1);
+    }
+
+    #[test]
+    fn test_date_interval_selection_airquality() {
+        // airquality data: ~150 days, n=7
+        // Previously: selected Week, generated ~22 breaks
+        // Now: should select Month (150/30 ≈ 5 breaks, within 20% of 7)
+        let (interval, step) = DateInterval::select(150.0, 7);
+        // Month gives ~5 breaks (within tolerance of 7), or
+        // Week with step would give ~5 breaks
+        let expected_breaks = interval.expected_breaks(150.0) / step as f64;
+        assert!(
+            expected_breaks >= 3.0 && expected_breaks <= 10.0,
+            "Expected 3-10 breaks for 150 days, n=7, got {} ({:?} with step {})",
+            expected_breaks,
+            interval,
+            step
+        );
+    }
+
+    #[test]
+    fn test_date_breaks_airquality_count() {
+        let t = Date;
+        // ~150 days (May-September), n=7
+        let min = 0.0;
+        let max = 150.0;
+        let breaks = t.calculate_breaks(min, max, 7, true);
+
+        // Should have roughly 5-10 breaks, not 22
+        assert!(
+            breaks.len() >= 3 && breaks.len() <= 12,
+            "Expected 3-12 breaks for 150 days, n=7, got {}",
+            breaks.len()
+        );
     }
 
     #[test]

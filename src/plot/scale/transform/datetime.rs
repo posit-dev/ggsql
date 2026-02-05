@@ -48,23 +48,83 @@ impl DateTimeInterval {
         }
     }
 
-    /// Select appropriate interval based on span and desired break count
-    fn select(span_micros: f64, n: usize) -> Self {
-        let target_interval = span_micros / n as f64;
+    /// Calculate expected number of breaks for this interval over the given span
+    fn expected_breaks(&self, span_micros: f64) -> f64 {
+        span_micros / self.micros()
+    }
 
-        if target_interval >= 365.0 * MICROS_PER_DAY {
-            DateTimeInterval::Year
-        } else if target_interval >= 28.0 * MICROS_PER_DAY {
-            DateTimeInterval::Month
-        } else if target_interval >= MICROS_PER_DAY {
-            DateTimeInterval::Day
-        } else if target_interval >= MICROS_PER_HOUR {
-            DateTimeInterval::Hour
-        } else if target_interval >= MICROS_PER_MINUTE {
-            DateTimeInterval::Minute
-        } else {
-            DateTimeInterval::Second
+    /// Select appropriate interval and step based on span and desired break count.
+    /// Uses tolerance-based search: tries each interval from largest to smallest,
+    /// stops when within ~20% of requested n, then calculates a nice step multiplier.
+    fn select(span_micros: f64, n: usize) -> (Self, usize) {
+        let n_f64 = n as f64;
+        let tolerance = 0.2; // 20% tolerance
+        let min_breaks = n_f64 * (1.0 - tolerance);
+        let max_breaks = n_f64 * (1.0 + tolerance);
+
+        // Intervals from largest to smallest
+        let intervals = [
+            DateTimeInterval::Year,
+            DateTimeInterval::Month,
+            DateTimeInterval::Day,
+            DateTimeInterval::Hour,
+            DateTimeInterval::Minute,
+            DateTimeInterval::Second,
+        ];
+
+        for &interval in &intervals {
+            let expected = interval.expected_breaks(span_micros);
+
+            // Skip if this interval produces too few breaks
+            if expected < 1.0 {
+                continue;
+            }
+
+            // If within tolerance, use step=1
+            if expected >= min_breaks && expected <= max_breaks {
+                return (interval, 1);
+            }
+
+            // If too many breaks, calculate a nice step
+            if expected > max_breaks {
+                let raw_step = expected / n_f64;
+                let nice = match interval {
+                    DateTimeInterval::Year => nice_step(raw_step) as usize,
+                    DateTimeInterval::Month => nice_month_step(raw_step),
+                    DateTimeInterval::Day => nice_step(raw_step) as usize,
+                    DateTimeInterval::Hour => nice_hour_step(raw_step) as usize,
+                    DateTimeInterval::Minute => nice_minute_step(raw_step) as usize,
+                    DateTimeInterval::Second => nice_step(raw_step) as usize,
+                };
+                let step = nice.max(1);
+
+                // Verify the stepped interval is reasonable
+                let stepped_breaks = expected / step as f64;
+                if stepped_breaks >= 1.0 {
+                    return (interval, step);
+                }
+            }
         }
+
+        // Fallback: use Second with step calculation
+        let expected = DateTimeInterval::Second.expected_breaks(span_micros);
+        let step = (nice_step(expected / n_f64) as usize).max(1);
+        (DateTimeInterval::Second, step)
+    }
+}
+
+/// Nice step values for months (1, 2, 3, 6, 12)
+fn nice_month_step(step: f64) -> usize {
+    if step <= 1.0 {
+        1
+    } else if step <= 2.0 {
+        2
+    } else if step <= 4.0 {
+        3
+    } else if step <= 8.0 {
+        6
+    } else {
+        12
     }
 }
 
@@ -103,10 +163,10 @@ impl TransformTrait for DateTime {
         }
 
         let span = max - min;
-        let interval = DateTimeInterval::select(span, n);
+        let (interval, step) = DateTimeInterval::select(span, n);
 
         if pretty {
-            calculate_pretty_datetime_breaks(min, max, n, interval)
+            calculate_pretty_datetime_breaks(min, max, interval, step)
         } else {
             calculate_linear_datetime_breaks(min, max, n)
         }
@@ -147,8 +207,8 @@ impl TransformTrait for DateTime {
 fn calculate_pretty_datetime_breaks(
     min: f64,
     max: f64,
-    n: usize,
     interval: DateTimeInterval,
+    step: usize,
 ) -> Vec<f64> {
     let mut breaks = Vec::new();
 
@@ -160,9 +220,7 @@ fn calculate_pretty_datetime_breaks(
             let start_year = min_dt.year();
             let end_year = max_dt.year();
 
-            let year_span = (end_year - start_year + 1) as usize;
-            let step = nice_step(year_span as f64 / n as f64) as i32;
-
+            let step = step as i32;
             let aligned_start = (start_year / step) * step;
 
             let mut year = aligned_start;
@@ -185,17 +243,6 @@ fn calculate_pretty_datetime_breaks(
             let end_year = max_dt.year();
             let end_month = max_dt.month();
 
-            let total_months =
-                (end_year - start_year) * 12 + (end_month as i32 - start_month as i32 + 1);
-            let step = ((total_months as usize) / n).max(1);
-            let step = match step {
-                1 => 1,
-                2 => 2,
-                3..=4 => 3,
-                5..=8 => 6,
-                _ => 12,
-            };
-
             let mut year = start_year;
             let mut month = ((start_month - 1) / step as u32) * step as u32 + 1;
 
@@ -214,12 +261,9 @@ fn calculate_pretty_datetime_breaks(
             }
         }
         DateTimeInterval::Day => {
-            let span = max - min;
-            let days = span / MICROS_PER_DAY;
-            let step_days = nice_step(days / n as f64) as i64;
+            let step_micros = (step as i64) * MICROS_PER_DAY as i64;
 
             let start_micros = (min / MICROS_PER_DAY).floor() as i64 * MICROS_PER_DAY as i64;
-            let step_micros = step_days * MICROS_PER_DAY as i64;
 
             let mut micros = start_micros;
             while (micros as f64) <= max {
@@ -231,12 +275,9 @@ fn calculate_pretty_datetime_breaks(
             }
         }
         DateTimeInterval::Hour => {
-            let span = max - min;
-            let hours = span / MICROS_PER_HOUR;
-            let step_hours = nice_hour_step(hours / n as f64) as i64;
+            let step_micros = (step as i64) * MICROS_PER_HOUR as i64;
 
             let start_micros = (min / MICROS_PER_HOUR).floor() as i64 * MICROS_PER_HOUR as i64;
-            let step_micros = step_hours * MICROS_PER_HOUR as i64;
 
             let mut micros = start_micros;
             while (micros as f64) <= max {
@@ -248,12 +289,9 @@ fn calculate_pretty_datetime_breaks(
             }
         }
         DateTimeInterval::Minute => {
-            let span = max - min;
-            let minutes = span / MICROS_PER_MINUTE;
-            let step_minutes = nice_minute_step(minutes / n as f64) as i64;
+            let step_micros = (step as i64) * MICROS_PER_MINUTE as i64;
 
             let start_micros = (min / MICROS_PER_MINUTE).floor() as i64 * MICROS_PER_MINUTE as i64;
-            let step_micros = step_minutes * MICROS_PER_MINUTE as i64;
 
             let mut micros = start_micros;
             while (micros as f64) <= max {
@@ -265,12 +303,9 @@ fn calculate_pretty_datetime_breaks(
             }
         }
         DateTimeInterval::Second => {
-            let span = max - min;
-            let seconds = span / MICROS_PER_SECOND;
-            let step_seconds = nice_step(seconds / n as f64);
+            let step_micros = (step as i64) * MICROS_PER_SECOND as i64;
 
             let start_micros = (min / MICROS_PER_SECOND).floor() as i64 * MICROS_PER_SECOND as i64;
-            let step_micros = (step_seconds * MICROS_PER_SECOND) as i64;
 
             let mut micros = start_micros;
             while (micros as f64) <= max {
@@ -460,29 +495,25 @@ mod tests {
 
     #[test]
     fn test_datetime_interval_selection() {
-        // Large span -> year
-        assert_eq!(
-            DateTimeInterval::select(365.0 * MICROS_PER_DAY * 5.0, 5),
-            DateTimeInterval::Year
-        );
+        // Large span (5 years, n=5) -> year with step
+        let (interval, step) = DateTimeInterval::select(365.0 * MICROS_PER_DAY * 5.0, 5);
+        assert_eq!(interval, DateTimeInterval::Year);
+        assert!(step >= 1);
 
-        // Day span -> day
-        assert_eq!(
-            DateTimeInterval::select(30.0 * MICROS_PER_DAY, 5),
-            DateTimeInterval::Day
-        );
+        // Day span (30 days, n=5) -> day with step
+        let (interval, step) = DateTimeInterval::select(30.0 * MICROS_PER_DAY, 5);
+        assert_eq!(interval, DateTimeInterval::Day);
+        assert!(step >= 1);
 
-        // Hour span -> hour
-        assert_eq!(
-            DateTimeInterval::select(24.0 * MICROS_PER_HOUR, 8),
-            DateTimeInterval::Hour
-        );
+        // Hour span (24 hours, n=8) -> hour with step
+        let (interval, step) = DateTimeInterval::select(24.0 * MICROS_PER_HOUR, 8);
+        assert_eq!(interval, DateTimeInterval::Hour);
+        assert!(step >= 1);
 
-        // Minute span -> minute
-        assert_eq!(
-            DateTimeInterval::select(60.0 * MICROS_PER_MINUTE, 6),
-            DateTimeInterval::Minute
-        );
+        // Minute span (60 minutes, n=6) -> minute with step
+        let (interval, step) = DateTimeInterval::select(60.0 * MICROS_PER_MINUTE, 6);
+        assert_eq!(interval, DateTimeInterval::Minute);
+        assert!(step >= 1);
     }
 
     #[test]

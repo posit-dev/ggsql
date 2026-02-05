@@ -2319,11 +2319,28 @@ fn resolve_scale_types_and_transforms(
                     collect_dtypes_for_aesthetic(&spec.layers, &scale.aesthetic, layer_type_info);
                 if !all_dtypes.is_empty() {
                     if let Ok(common_dtype) = coerce_dtypes(&all_dtypes) {
-                        let transform_kind = scale
-                            .scale_type
-                            .as_ref()
-                            .unwrap()
-                            .default_transform(&scale.aesthetic, Some(&common_dtype));
+                        let scale_type = scale.scale_type.as_ref().unwrap();
+                        // For Discrete/Ordinal scales, check input range first for transform inference
+                        // This allows SCALE DISCRETE x FROM [true, false] to infer Bool transform
+                        // even when the column is String
+                        let transform_kind = if matches!(
+                            scale_type.scale_type_kind(),
+                            crate::plot::scale::ScaleTypeKind::Discrete
+                                | crate::plot::scale::ScaleTypeKind::Ordinal
+                        ) {
+                            if let Some(ref input_range) = scale.input_range {
+                                use crate::plot::scale::infer_transform_from_input_range;
+                                if let Some(kind) = infer_transform_from_input_range(input_range) {
+                                    kind
+                                } else {
+                                    scale_type.default_transform(&scale.aesthetic, Some(&common_dtype))
+                                }
+                            } else {
+                                scale_type.default_transform(&scale.aesthetic, Some(&common_dtype))
+                            }
+                        } else {
+                            scale_type.default_transform(&scale.aesthetic, Some(&common_dtype))
+                        };
                         scale.transform = Some(Transform::from_kind(transform_kind));
                     }
                 }
@@ -2956,11 +2973,8 @@ fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>) ->
         // Clone scale_type (cheap Arc clone) to avoid borrow conflict with mutations
         let scale_type = spec.scales[idx].scale_type.clone();
         if let Some(st) = scale_type {
-            // Determine if this is a discrete scale (for unique values vs min/max range)
-            // Note: is_discrete() returns true for Continuous/Binned (supports breaks)
-            // and false for Discrete/Identity (doesn't support breaks)
-            // So we invert it: discrete range when is_discrete() returns false
-            let use_discrete_range = !st.is_discrete();
+            // Determine if this scale uses discrete input range (unique values vs min/max)
+            let use_discrete_range = st.uses_discrete_input_range();
 
             // Build context from actual data columns
             let context = ScaleDataContext::from_columns(&column_refs, use_discrete_range);
@@ -7301,6 +7315,63 @@ mod tests {
                 elem
             );
         }
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_ordinal_numeric_column_resolves_unique_values() {
+        // Test that ordinal scale with numeric column resolves unique values, not min/max
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            VISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality
+            DRAW point
+                MAPPING Month AS color
+            SCALE ORDINAL color TO lapaz
+        "#;
+
+        let result = prepare_data(query, &reader).unwrap();
+
+        // Find the fill scale (color gets split to fill/stroke)
+        let fill_scale = result.specs[0]
+            .scales
+            .iter()
+            .find(|s| s.aesthetic == "fill")
+            .expect("Should have fill scale");
+
+        // Verify it's ORDINAL
+        assert!(
+            matches!(
+                fill_scale.scale_type.as_ref().map(|st| st.scale_type_kind()),
+                Some(crate::plot::scale::ScaleTypeKind::Ordinal)
+            ),
+            "Should be ORDINAL scale type, got {:?}",
+            fill_scale.scale_type
+        );
+
+        // Verify uses_discrete_input_range returns true
+        assert!(
+            fill_scale
+                .scale_type
+                .as_ref()
+                .map(|st| st.uses_discrete_input_range())
+                .unwrap_or(false),
+            "Ordinal.uses_discrete_input_range() should return true"
+        );
+
+        // Verify input_range has unique month values, not just min/max
+        let input_range = fill_scale
+            .input_range
+            .as_ref()
+            .expect("Should have input_range");
+
+        // The airquality dataset has months 5-9, so should have 5 unique values
+        assert!(
+            input_range.len() > 2,
+            "Ordinal should have unique values, not just min/max. Got {} values: {:?}",
+            input_range.len(),
+            input_range
+        );
     }
 
     #[cfg(feature = "duckdb")]

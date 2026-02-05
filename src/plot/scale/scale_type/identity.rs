@@ -20,8 +20,8 @@ impl ScaleTypeTrait for Identity {
         "identity"
     }
 
-    fn is_discrete(&self) -> bool {
-        false
+    fn uses_discrete_input_range(&self) -> bool {
+        true
     }
 
     fn allows_data_type(&self, _dtype: &DataType) -> bool {

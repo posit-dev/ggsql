@@ -220,51 +220,231 @@ fn merge_with_context(
 /// Compute unique values from multiple columns, sorted.
 /// NULL values are included at the end of the result.
 fn compute_unique_values_multi(columns: &[&Column]) -> Vec<ArrayElement> {
-    use polars::prelude::IntoSeries;
-    use std::collections::BTreeSet;
+    compute_unique_values_native(columns, true)
+}
 
-    let mut unique_strings: BTreeSet<String> = BTreeSet::new();
+/// Compute unique sorted values from columns, preserving native types.
+///
+/// For each column type:
+/// - Boolean columns → `ArrayElement::Boolean` values in logical order `[false, true]`
+/// - Integer/Float columns → `ArrayElement::Number` values sorted numerically
+/// - Date columns → `ArrayElement::Date` values sorted chronologically
+/// - DateTime columns → `ArrayElement::DateTime` values sorted chronologically
+/// - Time columns → `ArrayElement::Time` values sorted chronologically
+/// - String/Categorical columns → `ArrayElement::String` values sorted alphabetically
+///
+/// If `include_null` is true, `ArrayElement::Null` is appended at the end if any null
+/// values exist in the data.
+pub fn compute_unique_values_native(columns: &[&Column], include_null: bool) -> Vec<ArrayElement> {
+    if columns.is_empty() {
+        return Vec::new();
+    }
+
+    // Use first column's dtype to determine handling
+    let dtype = columns[0].dtype();
+
+    match dtype {
+        DataType::Boolean => compute_unique_bool(columns, include_null),
+        DataType::Int8
+        | DataType::Int16
+        | DataType::Int32
+        | DataType::Int64
+        | DataType::UInt8
+        | DataType::UInt16
+        | DataType::UInt32
+        | DataType::UInt64
+        | DataType::Float32
+        | DataType::Float64 => compute_unique_numeric(columns, include_null),
+        DataType::Date => compute_unique_date(columns, include_null),
+        DataType::Datetime(_, _) => compute_unique_datetime(columns, include_null),
+        DataType::Time => compute_unique_time(columns, include_null),
+        _ => compute_unique_string(columns, include_null), // String/Categorical/fallback
+    }
+}
+
+/// Compute unique boolean values from columns.
+fn compute_unique_bool(columns: &[&Column], include_null: bool) -> Vec<ArrayElement> {
+    let mut has_false = false;
+    let mut has_true = false;
     let mut has_null = false;
 
     for column in columns {
-        let series = column.as_materialized_series();
-        // Try to get unique values as strings
-        if let Ok(unique) = series.unique() {
-            let unique_series = unique.into_series();
-            if let Ok(str_series) = unique_series.str() {
-                for opt_s in str_series.into_iter() {
-                    match opt_s {
-                        Some(s) => {
-                            unique_strings.insert(s.to_string());
-                        }
-                        None => {
-                            has_null = true;
-                        }
-                    }
+        if let Ok(ca) = column.as_materialized_series().bool() {
+            for val in ca.into_iter() {
+                match val {
+                    Some(true) => has_true = true,
+                    Some(false) => has_false = true,
+                    None => has_null = true,
                 }
-            } else {
-                // Non-string: convert to string representation
-                for i in 0..unique_series.len() {
-                    if let Ok(val) = unique_series.get(i) {
-                        let s = format!("{}", val);
-                        if s == "null" {
-                            has_null = true;
-                        } else {
-                            unique_strings.insert(s);
+            }
+        }
+    }
+
+    let mut result = Vec::new();
+    if has_false {
+        result.push(ArrayElement::Boolean(false));
+    }
+    if has_true {
+        result.push(ArrayElement::Boolean(true));
+    }
+    if include_null && has_null {
+        result.push(ArrayElement::Null);
+    }
+
+    result
+}
+
+/// Compute unique numeric values from columns, sorted numerically.
+fn compute_unique_numeric(columns: &[&Column], include_null: bool) -> Vec<ArrayElement> {
+    let mut values: Vec<f64> = Vec::new();
+    let mut has_null = false;
+
+    for column in columns {
+        if let Ok(series) = column.as_materialized_series().cast(&DataType::Float64) {
+            if let Ok(ca) = series.f64() {
+                for val in ca.into_iter() {
+                    match val {
+                        Some(v) if v.is_finite() && !values.contains(&v) => {
+                            values.push(v);
                         }
+                        None => has_null = true,
+                        _ => {} // Skip NaN/Inf or duplicates
                     }
                 }
             }
         }
     }
 
-    let mut result: Vec<ArrayElement> = unique_strings
-        .into_iter()
-        .map(ArrayElement::String)
-        .collect();
+    // Sort numerically
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-    // Append NULL at the end if present
-    if has_null {
+    let mut result: Vec<ArrayElement> = values.into_iter().map(ArrayElement::Number).collect();
+
+    if include_null && has_null {
+        result.push(ArrayElement::Null);
+    }
+
+    result
+}
+
+/// Compute unique date values from columns, sorted chronologically.
+fn compute_unique_date(columns: &[&Column], include_null: bool) -> Vec<ArrayElement> {
+    use std::collections::BTreeSet;
+
+    let mut values: BTreeSet<i32> = BTreeSet::new();
+    let mut has_null = false;
+
+    for column in columns {
+        if let Ok(ca) = column.as_materialized_series().date() {
+            // Access the underlying physical Int32 chunked array
+            for val in ca.phys.into_iter() {
+                match val {
+                    Some(days) => {
+                        values.insert(days);
+                    }
+                    None => has_null = true,
+                }
+            }
+        }
+    }
+
+    let mut result: Vec<ArrayElement> = values.into_iter().map(ArrayElement::Date).collect();
+
+    if include_null && has_null {
+        result.push(ArrayElement::Null);
+    }
+
+    result
+}
+
+/// Compute unique datetime values from columns, sorted chronologically.
+fn compute_unique_datetime(columns: &[&Column], include_null: bool) -> Vec<ArrayElement> {
+    use std::collections::BTreeSet;
+
+    let mut values: BTreeSet<i64> = BTreeSet::new();
+    let mut has_null = false;
+
+    for column in columns {
+        if let Ok(ca) = column.as_materialized_series().datetime() {
+            // Access the underlying physical Int64 chunked array
+            for val in ca.phys.into_iter() {
+                match val {
+                    Some(micros) => {
+                        values.insert(micros);
+                    }
+                    None => has_null = true,
+                }
+            }
+        }
+    }
+
+    let mut result: Vec<ArrayElement> = values.into_iter().map(ArrayElement::DateTime).collect();
+
+    if include_null && has_null {
+        result.push(ArrayElement::Null);
+    }
+
+    result
+}
+
+/// Compute unique time values from columns, sorted.
+fn compute_unique_time(columns: &[&Column], include_null: bool) -> Vec<ArrayElement> {
+    use std::collections::BTreeSet;
+
+    let mut values: BTreeSet<i64> = BTreeSet::new();
+    let mut has_null = false;
+
+    for column in columns {
+        if let Ok(ca) = column.as_materialized_series().time() {
+            // Access the underlying physical Int64 chunked array
+            for val in ca.phys.into_iter() {
+                match val {
+                    Some(nanos) => {
+                        values.insert(nanos);
+                    }
+                    None => has_null = true,
+                }
+            }
+        }
+    }
+
+    let mut result: Vec<ArrayElement> = values.into_iter().map(ArrayElement::Time).collect();
+
+    if include_null && has_null {
+        result.push(ArrayElement::Null);
+    }
+
+    result
+}
+
+/// Compute unique string values from columns, sorted alphabetically.
+fn compute_unique_string(columns: &[&Column], include_null: bool) -> Vec<ArrayElement> {
+    use std::collections::BTreeSet;
+
+    let mut values: BTreeSet<String> = BTreeSet::new();
+    let mut has_null = false;
+
+    for column in columns {
+        let series = column.as_materialized_series();
+        if let Ok(unique) = series.unique() {
+            for i in 0..unique.len() {
+                if let Ok(val) = unique.get(i) {
+                    if val.is_null() {
+                        has_null = true;
+                    } else {
+                        let s = val.to_string();
+                        // Remove surrounding quotes from string representation
+                        let clean = s.trim_matches('"').to_string();
+                        values.insert(clean);
+                    }
+                }
+            }
+        }
+    }
+
+    let mut result: Vec<ArrayElement> = values.into_iter().map(ArrayElement::String).collect();
+
+    if include_null && has_null {
         result.push(ArrayElement::Null);
     }
 
@@ -311,10 +491,15 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Canonical name for parsing and display
     fn name(&self) -> &'static str;
 
-    /// Returns whether this scale type represents discrete/categorical data.
-    /// Defaults to `true`. Overridden to return `false` for `Discrete` and `Identity`.
-    fn is_discrete(&self) -> bool {
-        true
+    /// Returns whether this scale type uses discrete input range (unique values).
+    ///
+    /// When `true`, input range is computed as unique sorted values from data.
+    /// When `false`, input range is computed as [min, max] from data.
+    ///
+    /// Defaults to `false` (continuous min/max range).
+    /// Overridden to return `true` for Discrete, Identity, and Ordinal.
+    fn uses_discrete_input_range(&self) -> bool {
+        false
     }
 
     /// Returns whether this scale type accepts the given data type
@@ -966,9 +1151,9 @@ impl ScaleType {
         self.0.name()
     }
 
-    /// Check if this scale type represents discrete/categorical data
-    pub fn is_discrete(&self) -> bool {
-        self.0.is_discrete()
+    /// Check if this scale type uses discrete input range (unique values vs min/max)
+    pub fn uses_discrete_input_range(&self) -> bool {
+        self.0.uses_discrete_input_range()
     }
 
     /// Check if this scale type accepts the given data type
@@ -1450,42 +1635,53 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
     let original_user_range = scale.input_range.clone();
 
     // Step 1: Determine the base range (before expansion)
-    let base_range: Option<Vec<ArrayElement>> = if let Some(ref user_range) = scale.input_range {
-        if input_range_has_nulls(user_range) {
-            // User provided partial range with Nulls - merge with context (not expanded yet)
-            if let Some(ref range) = context.range {
-                let context_values = match range {
-                    InputRange::Continuous(r) => r.clone(),
-                    InputRange::Discrete(r) => r.clone(),
-                };
-                Some(merge_with_context(user_range, &context_values))
+    // Also track whether this is a discrete range (unique values) vs continuous (min/max)
+    let (base_range, is_discrete_range): (Option<Vec<ArrayElement>>, bool) =
+        if let Some(ref user_range) = scale.input_range {
+            if input_range_has_nulls(user_range) {
+                // User provided partial range with Nulls - merge with context (not expanded yet)
+                if let Some(ref range) = context.range {
+                    let (context_values, is_discrete) = match range {
+                        InputRange::Continuous(r) => (r.clone(), false),
+                        InputRange::Discrete(r) => (r.clone(), true),
+                    };
+                    (Some(merge_with_context(user_range, &context_values)), is_discrete)
+                } else {
+                    // No context range, keep user range as-is (Nulls will remain)
+                    (Some(user_range.clone()), false)
+                }
             } else {
-                // No context range, keep user range as-is (Nulls will remain)
-                Some(user_range.clone())
+                // User provided complete range - use as-is for now
+                // Treat as continuous since user explicitly provided it
+                (Some(user_range.clone()), false)
             }
         } else {
-            // User provided complete range - use as-is for now
-            Some(user_range.clone())
-        }
-    } else {
-        context.range.as_ref().map(|range| match range {
-            InputRange::Continuous(r) => r.clone(),
-            InputRange::Discrete(r) => r.clone(),
-        })
-    };
+            match &context.range {
+                Some(InputRange::Continuous(r)) => (Some(r.clone()), false),
+                Some(InputRange::Discrete(r)) => (Some(r.clone()), true),
+                None => (None, false),
+            }
+        };
 
-    // Step 2: Apply expansion to the final merged range (if continuous/numeric)
-    // Only expand values that were originally null in the user range.
+    // Step 2: Apply expansion to the final merged range
+    // Expansion should ONLY happen when ALL conditions are met:
+    // 1. Scale uses continuous input range (not discrete/ordinal scales)
+    // 2. Aesthetic is positional (x, y, xmin, xmax, etc.)
+    // 3. Input range was at least partially deduced (not fully explicit)
+    //
     // Then clip to the transform's valid domain to prevent invalid values
     // (e.g., expansion producing negative values for log scales)
     if let Some(range) = base_range {
-        let is_continuous = range.iter().all(|e| matches!(e, ArrayElement::Number(_)));
-        if is_continuous {
+        let is_positional = is_positional_aesthetic(aesthetic);
+        let is_deduced = !scale.explicit_input_range
+            || input_range_has_nulls(original_user_range.as_deref().unwrap_or(&[]));
+
+        if !is_discrete_range && is_positional && is_deduced {
             let expanded =
                 expand_numeric_range_selective(&range, mult, add, original_user_range.as_deref());
             scale.input_range = Some(clip_to_transform_domain(&expanded, &resolved_transform));
         } else {
-            // Discrete ranges don't get expanded
+            // No expansion for discrete scales, non-positional aesthetics, or fully explicit ranges
             scale.input_range = Some(range);
         }
     }
@@ -1788,14 +1984,15 @@ mod tests {
     }
 
     #[test]
-    fn test_scale_type_is_discrete() {
-        // Default is true for most scale types (not truly discrete, but inverted for legacy reasons)
-        assert!(ScaleType::continuous().is_discrete());
-        assert!(ScaleType::binned().is_discrete());
+    fn test_scale_type_uses_discrete_input_range() {
+        // Continuous and Binned use min/max range (return false)
+        assert!(!ScaleType::continuous().uses_discrete_input_range());
+        assert!(!ScaleType::binned().uses_discrete_input_range());
 
-        // Discrete and Identity return false
-        assert!(!ScaleType::discrete().is_discrete());
-        assert!(!ScaleType::identity().is_discrete());
+        // Discrete, Identity, and Ordinal use unique values (return true)
+        assert!(ScaleType::discrete().uses_discrete_input_range());
+        assert!(ScaleType::identity().uses_discrete_input_range());
+        assert!(ScaleType::ordinal().uses_discrete_input_range());
     }
 
     #[test]

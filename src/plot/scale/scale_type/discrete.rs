@@ -21,8 +21,8 @@ impl ScaleTypeTrait for Discrete {
         "discrete"
     }
 
-    fn is_discrete(&self) -> bool {
-        false
+    fn uses_discrete_input_range(&self) -> bool {
+        true
     }
 
     fn allowed_properties(&self, _aesthetic: &str) -> &'static [&'static str] {
@@ -280,91 +280,26 @@ impl ScaleTypeTrait for Discrete {
 
 /// Compute discrete input range as unique sorted values from Columns.
 ///
-/// For boolean columns, returns `ArrayElement::Boolean` values in logical order `[false, true]`,
-/// with `ArrayElement::Null` appended if null values exist in the data.
-/// For other column types, returns `ArrayElement::String` values sorted alphabetically,
-/// with `ArrayElement::Null` appended if null values exist in the data.
+/// Preserves native types and sorts accordingly:
+/// - Boolean columns → `ArrayElement::Boolean` values in logical order `[false, true]`
+/// - Integer/Float columns → `ArrayElement::Number` values sorted numerically
+/// - Date columns → `ArrayElement::Date` values sorted chronologically
+/// - DateTime columns → `ArrayElement::DateTime` values sorted chronologically
+/// - Time columns → `ArrayElement::Time` values sorted chronologically
+/// - String/Categorical columns → `ArrayElement::String` values sorted alphabetically
+///
+/// `ArrayElement::Null` is appended at the end if null values exist in the data.
 fn compute_unique_values(column_refs: &[&Column]) -> Option<Vec<ArrayElement>> {
     if column_refs.is_empty() {
         return None;
     }
 
-    // Check if all columns are boolean
-    let all_boolean = column_refs.iter().all(|c| c.dtype() == &DataType::Boolean);
+    let result = super::compute_unique_values_native(column_refs, true);
 
-    if all_boolean {
-        // For boolean columns, return ArrayElement::Boolean values
-        // Order: [false, true, null] for consistency (logical order, null at end)
-        let mut has_false = false;
-        let mut has_true = false;
-        let mut has_null = false;
-
-        for column in column_refs {
-            if let Ok(ca) = column.as_materialized_series().bool() {
-                for val in ca.into_iter() {
-                    match val {
-                        Some(true) => has_true = true,
-                        Some(false) => has_false = true,
-                        None => has_null = true,
-                    }
-                }
-            }
-        }
-
-        let mut result = Vec::new();
-        if has_false {
-            result.push(ArrayElement::Boolean(false));
-        }
-        if has_true {
-            result.push(ArrayElement::Boolean(true));
-        }
-        if has_null {
-            result.push(ArrayElement::Null);
-        }
-
-        if result.is_empty() {
-            None
-        } else {
-            Some(result)
-        }
+    if result.is_empty() {
+        None
     } else {
-        // String-based logic for other types (categorical, string)
-        let mut unique_values: Vec<String> = Vec::new();
-        let mut has_null = false;
-
-        for column in column_refs {
-            let series = column.as_materialized_series();
-            if let Ok(unique) = series.unique() {
-                for i in 0..unique.len() {
-                    if let Ok(val) = unique.get(i) {
-                        if val.is_null() {
-                            has_null = true;
-                        } else {
-                            let s = val.to_string();
-                            let clean = s.trim_matches('"').to_string();
-                            if !unique_values.contains(&clean) {
-                                unique_values.push(clean);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if unique_values.is_empty() && !has_null {
-            None
-        } else {
-            unique_values.sort();
-            let mut result: Vec<ArrayElement> = unique_values
-                .into_iter()
-                .map(ArrayElement::String)
-                .collect();
-            // Null at end of inferred range
-            if has_null {
-                result.push(ArrayElement::Null);
-            }
-            Some(result)
-        }
+        Some(result)
     }
 }
 
@@ -616,6 +551,50 @@ mod tests {
         assert_eq!(values[0], ArrayElement::String("A".to_string()));
         assert_eq!(values[1], ArrayElement::String("B".to_string()));
         assert_eq!(values[2], ArrayElement::String("C".to_string()));
+    }
+
+    #[test]
+    fn test_compute_unique_values_numeric_sorted_numerically() {
+        use polars::prelude::*;
+
+        // Create a column with numbers that would sort incorrectly as strings
+        // String sort: ["1", "10", "2", "20"] vs numeric sort: [1, 2, 10, 20]
+        let series = Series::new("rank".into(), vec![20, 1, 10, 2]);
+        let column = series.into_column();
+        let columns = vec![&column];
+
+        let result = compute_unique_values(&columns);
+        assert!(result.is_some());
+        let values = result.unwrap();
+
+        // Should be sorted numerically: 1, 2, 10, 20
+        assert_eq!(values.len(), 4);
+        assert_eq!(values[0], ArrayElement::Number(1.0));
+        assert_eq!(values[1], ArrayElement::Number(2.0));
+        assert_eq!(values[2], ArrayElement::Number(10.0));
+        assert_eq!(values[3], ArrayElement::Number(20.0));
+    }
+
+    #[test]
+    fn test_compute_unique_values_date_sorted_chronologically() {
+        use polars::prelude::*;
+
+        // Create a date column with dates that would sort incorrectly as strings
+        // 2024-01-01 (day 19723), 2024-02-01 (day 19754), 2024-12-01 (day 19959)
+        let series = Series::new("date".into(), &[19959i32, 19723, 19754]);
+        let date_series = series.cast(&DataType::Date).unwrap();
+        let column = date_series.into_column();
+        let columns = vec![&column];
+
+        let result = compute_unique_values(&columns);
+        assert!(result.is_some());
+        let values = result.unwrap();
+
+        // Should be sorted chronologically
+        assert_eq!(values.len(), 3);
+        assert_eq!(values[0], ArrayElement::Date(19723)); // 2024-01-01
+        assert_eq!(values[1], ArrayElement::Date(19754)); // 2024-02-01
+        assert_eq!(values[2], ArrayElement::Date(19959)); // 2024-12-01
     }
 
     // =========================================================================

@@ -53,6 +53,18 @@ impl TransformTrait for String {
         // Convert numeric values to strings
         ArrayElement::String(value.to_string())
     }
+
+    fn parse_value(&self, elem: &ArrayElement) -> ArrayElement {
+        match elem {
+            ArrayElement::String(_) => elem.clone(),
+            ArrayElement::Number(n) => ArrayElement::String(n.to_string()),
+            ArrayElement::Boolean(b) => ArrayElement::String(b.to_string()),
+            ArrayElement::Date(d) => ArrayElement::String(ArrayElement::date_to_iso(*d)),
+            ArrayElement::DateTime(dt) => ArrayElement::String(ArrayElement::datetime_to_iso(*dt)),
+            ArrayElement::Time(t) => ArrayElement::String(ArrayElement::time_to_iso(*t)),
+            ArrayElement::Null => ArrayElement::Null,
+        }
+    }
 }
 
 impl std::fmt::Display for String {
@@ -116,5 +128,46 @@ mod tests {
         assert!(t
             .calculate_minor_breaks(&[0.0, 50.0, 100.0], 1, None)
             .is_empty());
+    }
+
+    #[test]
+    fn test_string_parse_value_string() {
+        use super::TransformTrait;
+        let t = String;
+        // String stays as string
+        let input = ArrayElement::String("hello".to_owned());
+        assert_eq!(t.parse_value(&input), ArrayElement::String("hello".to_owned()));
+    }
+
+    #[test]
+    fn test_string_parse_value_number() {
+        use super::TransformTrait;
+        let t = String;
+        // Number converts to string
+        let input = ArrayElement::Number(42.0);
+        assert_eq!(t.parse_value(&input), ArrayElement::String("42".to_owned()));
+    }
+
+    #[test]
+    fn test_string_parse_value_boolean() {
+        use super::TransformTrait;
+        let t = String;
+        // Boolean converts to string
+        assert_eq!(
+            t.parse_value(&ArrayElement::Boolean(true)),
+            ArrayElement::String("true".to_owned())
+        );
+        assert_eq!(
+            t.parse_value(&ArrayElement::Boolean(false)),
+            ArrayElement::String("false".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_string_parse_value_null() {
+        use super::TransformTrait;
+        let t = String;
+        // Null stays null
+        assert_eq!(t.parse_value(&ArrayElement::Null), ArrayElement::Null);
     }
 }
