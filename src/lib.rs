@@ -773,7 +773,7 @@ mod integration_tests {
             .data_key
             .as_ref()
             .expect("Layer 0 should have data_key");
-        let layer1_key = prepared.specs[0].layers[1]
+        let _layer1_key = prepared.specs[0].layers[1]
             .data_key
             .as_ref()
             .expect("Layer 1 should have data_key");

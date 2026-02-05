@@ -144,8 +144,16 @@ mod tests {
     fn test_all_bases_domain() {
         for (t, _, name) in get_transforms() {
             let (min, max) = t.allowed_domain();
-            assert!(min.is_infinite() && min < 0.0, "{}: domain min should be -∞", name);
-            assert!(max.is_infinite() && max > 0.0, "{}: domain max should be +∞", name);
+            assert!(
+                min.is_infinite() && min < 0.0,
+                "{}: domain min should be -∞",
+                name
+            );
+            assert!(
+                max.is_infinite() && max > 0.0,
+                "{}: domain max should be +∞",
+                name
+            );
         }
     }
 
@@ -153,13 +161,37 @@ mod tests {
     fn test_all_bases_is_value_in_domain() {
         for (t, _, name) in get_transforms() {
             // Valid values (all finite)
-            assert!(t.is_value_in_domain(0.0), "{}: 0.0 should be in domain", name);
-            assert!(t.is_value_in_domain(1.0), "{}: 1.0 should be in domain", name);
-            assert!(t.is_value_in_domain(-1.0), "{}: -1.0 should be in domain", name);
-            assert!(t.is_value_in_domain(100.0), "{}: 100.0 should be in domain", name);
+            assert!(
+                t.is_value_in_domain(0.0),
+                "{}: 0.0 should be in domain",
+                name
+            );
+            assert!(
+                t.is_value_in_domain(1.0),
+                "{}: 1.0 should be in domain",
+                name
+            );
+            assert!(
+                t.is_value_in_domain(-1.0),
+                "{}: -1.0 should be in domain",
+                name
+            );
+            assert!(
+                t.is_value_in_domain(100.0),
+                "{}: 100.0 should be in domain",
+                name
+            );
             // Invalid values
-            assert!(!t.is_value_in_domain(f64::INFINITY), "{}: infinity should not be in domain", name);
-            assert!(!t.is_value_in_domain(f64::NAN), "{}: NaN should not be in domain", name);
+            assert!(
+                !t.is_value_in_domain(f64::INFINITY),
+                "{}: infinity should not be in domain",
+                name
+            );
+            assert!(
+                !t.is_value_in_domain(f64::NAN),
+                "{}: NaN should not be in domain",
+                name
+            );
         }
     }
 
@@ -168,9 +200,15 @@ mod tests {
         // Test cases: (transform, input, expected_transform)
         let test_cases = vec![
             // Exp10: 10^0=1, 10^1=10, 10^2=100, 10^-1=0.1
-            (Exp::base10(), vec![(0.0, 1.0), (1.0, 10.0), (2.0, 100.0), (-1.0, 0.1)]),
+            (
+                Exp::base10(),
+                vec![(0.0, 1.0), (1.0, 10.0), (2.0, 100.0), (-1.0, 0.1)],
+            ),
             // Exp2: 2^0=1, 2^1=2, 2^2=4, 2^-1=0.5
-            (Exp::base2(), vec![(0.0, 1.0), (1.0, 2.0), (2.0, 4.0), (-1.0, 0.5)]),
+            (
+                Exp::base2(),
+                vec![(0.0, 1.0), (1.0, 2.0), (2.0, 4.0), (-1.0, 0.5)],
+            ),
             // Natural: e^0=1, e^1=e, e^2=e²
             (Exp::natural(), vec![(0.0, 1.0), (1.0, E), (2.0, E * E)]),
         ];
@@ -180,13 +218,19 @@ mod tests {
                 assert!(
                     (t.transform(input) - expected).abs() < 1e-10,
                     "{}: transform({}) should be {}, got {}",
-                    t.name(), input, expected, t.transform(input)
+                    t.name(),
+                    input,
+                    expected,
+                    t.transform(input)
                 );
                 // Test inverse too
                 assert!(
                     (t.inverse(expected) - input).abs() < 1e-9,
                     "{}: inverse({}) should be {}, got {}",
-                    t.name(), expected, input, t.inverse(expected)
+                    t.name(),
+                    expected,
+                    input,
+                    t.inverse(expected)
                 );
             }
         }
@@ -200,12 +244,18 @@ mod tests {
                 let transformed = t.transform(val);
                 let back = t.inverse(transformed);
                 if val == 0.0 {
-                    assert!((back - val).abs() < 1e-10, "{}: Roundtrip failed for {}", name, val);
+                    assert!(
+                        (back - val).abs() < 1e-10,
+                        "{}: Roundtrip failed for {}",
+                        name,
+                        val
+                    );
                 } else {
                     assert!(
                         (back - val).abs() / val.abs() < 1e-10,
                         "{}: Roundtrip failed for {}",
-                        name, val
+                        name,
+                        val
                     );
                 }
             }
@@ -215,7 +265,12 @@ mod tests {
     #[test]
     fn test_all_bases_kind_and_name() {
         for (t, expected_kind, expected_name) in get_transforms() {
-            assert_eq!(t.transform_kind(), expected_kind, "Kind mismatch for {}", expected_name);
+            assert_eq!(
+                t.transform_kind(),
+                expected_kind,
+                "Kind mismatch for {}",
+                expected_name
+            );
             assert_eq!(t.name(), expected_name);
         }
     }
@@ -236,7 +291,9 @@ mod tests {
                 assert!(
                     (exp.transform(val) - log.inverse(val)).abs() < 1e-10,
                     "{}::transform != {}::inverse for {}",
-                    exp.name(), log.name(), val
+                    exp.name(),
+                    log.name(),
+                    val
                 );
             }
         }
@@ -275,7 +332,12 @@ mod tests {
         let invalid_bases = [(0.0, "zero"), (1.0, "one"), (-2.0, "negative")];
         for (base, desc) in invalid_bases {
             let result = std::panic::catch_unwind(|| Exp::new(base));
-            assert!(result.is_err(), "Exp::new({}) should panic for {} base", base, desc);
+            assert!(
+                result.is_err(),
+                "Exp::new({}) should panic for {} base",
+                base,
+                desc
+            );
         }
     }
 

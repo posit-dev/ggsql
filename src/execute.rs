@@ -1329,11 +1329,8 @@ fn apply_pre_stat_transform(
                 {
                     transformed_columns.insert(aes_col_name.clone());
                     transform_exprs.push((aes_col_name, sql));
-                } else {
                 }
-            } else {
             }
-        } else {
         }
     }
 
@@ -1631,10 +1628,7 @@ where
 fn add_default_ymin_for_bar_histogram(layer: &mut Layer) {
     use crate::plot::layer::geom::GeomType;
 
-    if matches!(
-        layer.geom.geom_type(),
-        GeomType::Bar | GeomType::Histogram
-    ) {
+    if matches!(layer.geom.geom_type(), GeomType::Bar | GeomType::Histogram) {
         // Only add if layer has y but no ymin
         if layer.mappings.aesthetics.contains_key("y")
             && !layer.mappings.aesthetics.contains_key("ymin")
@@ -2423,7 +2417,8 @@ fn resolve_scale_types_and_transforms(
                                 if let Some(kind) = infer_transform_from_input_range(input_range) {
                                     kind
                                 } else {
-                                    scale_type.default_transform(&scale.aesthetic, Some(&common_dtype))
+                                    scale_type
+                                        .default_transform(&scale.aesthetic, Some(&common_dtype))
                                 }
                             } else {
                                 scale_type.default_transform(&scale.aesthetic, Some(&common_dtype))
@@ -3204,7 +3199,7 @@ fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -> Re
 
         // Determine if this is a numeric or discrete range
         let is_numeric_range = is_numeric_element(&input_range[0])
-            && input_range.get(1).map_or(false, is_numeric_element);
+            && input_range.get(1).is_some_and(is_numeric_element);
 
         // Apply transformation to each (data_key, column_name) pair
         for (data_key, col_name) in column_sources {
@@ -3735,16 +3730,11 @@ mod tests {
         ];
 
         for (sql, cte_names_vec, expected_contains, exact_match) in test_cases {
-            let cte_names: HashSet<String> =
-                cte_names_vec.iter().map(|s| s.to_string()).collect();
+            let cte_names: HashSet<String> = cte_names_vec.iter().map(|s| s.to_string()).collect();
             let result = transform_cte_references(sql, &cte_names);
 
             if let Some(expected) = exact_match {
-                assert_eq!(
-                    result, expected,
-                    "SQL '{}' should remain unchanged",
-                    sql
-                );
+                assert_eq!(result, expected, "SQL '{}' should remain unchanged", sql);
             } else {
                 for expected in &expected_contains {
                     assert!(
@@ -6850,20 +6840,49 @@ mod tests {
         // Aesthetics that SHOULD get default scale (type inferred from data)
         let should_get_scale = [
             // Position aesthetics
-            "x", "y", "xmin", "xmax", "ymin", "ymax", "xend", "yend", "x2", "y2",
+            "x",
+            "y",
+            "xmin",
+            "xmax",
+            "ymin",
+            "ymax",
+            "xend",
+            "yend",
+            "x2",
+            "y2",
             // Color aesthetics (color/colour/col are split to fill/stroke)
-            "fill", "stroke",
+            "fill",
+            "stroke",
             // Size, opacity, shape, linetype
-            "size", "linewidth", "opacity", "shape", "linetype",
+            "size",
+            "linewidth",
+            "opacity",
+            "shape",
+            "linetype",
         ];
         for aes in should_get_scale {
-            assert!(gets_default_scale(aes), "'{}' should get default scale", aes);
+            assert!(
+                gets_default_scale(aes),
+                "'{}' should get default scale",
+                aes
+            );
         }
 
         // Aesthetics that should NOT get default scale (use Identity)
-        let should_not_get_scale = ["text", "label", "group", "detail", "tooltip", "unknown_aesthetic"];
+        let should_not_get_scale = [
+            "text",
+            "label",
+            "group",
+            "detail",
+            "tooltip",
+            "unknown_aesthetic",
+        ];
         for aes in should_not_get_scale {
-            assert!(!gets_default_scale(aes), "'{}' should NOT get default scale", aes);
+            assert!(
+                !gets_default_scale(aes),
+                "'{}' should NOT get default scale",
+                aes
+            );
         }
     }
 
@@ -7359,23 +7378,35 @@ mod tests {
                 properties: HashMap::new(),
                 resolved: false,
                 label_mapping: None,
-                label_template: None,
+                label_template: "{}".to_string(),
             }
         }
 
         // Test cases: (scale_type, input_range, transform, expected_target_type, description)
-        let test_cases: Vec<(ScaleType, Option<Vec<ArrayElement>>, Option<Transform>, Option<ArrayElementType>, &str)> = vec![
+        let test_cases: Vec<(
+            ScaleType,
+            Option<Vec<ArrayElement>>,
+            Option<Transform>,
+            Option<ArrayElementType>,
+            &str,
+        )> = vec![
             // Discrete scales infer type from input_range
             (
                 ScaleType::discrete(),
-                Some(vec![ArrayElement::Boolean(true), ArrayElement::Boolean(false)]),
+                Some(vec![
+                    ArrayElement::Boolean(true),
+                    ArrayElement::Boolean(false),
+                ]),
                 None,
                 Some(ArrayElementType::Boolean),
                 "Discrete with boolean range → Boolean",
             ),
             (
                 ScaleType::discrete(),
-                Some(vec![ArrayElement::String("A".to_string()), ArrayElement::String("B".to_string())]),
+                Some(vec![
+                    ArrayElement::String("A".to_string()),
+                    ArrayElement::String("B".to_string()),
+                ]),
                 None,
                 Some(ArrayElementType::String),
                 "Discrete with string range → String",
@@ -7570,7 +7601,10 @@ mod tests {
         // Verify it's ORDINAL
         assert!(
             matches!(
-                fill_scale.scale_type.as_ref().map(|st| st.scale_type_kind()),
+                fill_scale
+                    .scale_type
+                    .as_ref()
+                    .map(|st| st.scale_type_kind()),
                 Some(crate::plot::scale::ScaleTypeKind::Ordinal)
             ),
             "Should be ORDINAL scale type, got {:?}",

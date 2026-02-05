@@ -181,7 +181,12 @@ impl TransformTrait for Date {
 }
 
 /// Calculate pretty date breaks aligned to interval boundaries
-fn calculate_pretty_date_breaks(min: f64, max: f64, interval: DateInterval, step: usize) -> Vec<f64> {
+fn calculate_pretty_date_breaks(
+    min: f64,
+    max: f64,
+    interval: DateInterval,
+    step: usize,
+) -> Vec<f64> {
     let unix_epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
 
     // Convert min/max to dates
@@ -519,7 +524,7 @@ mod tests {
         // Week with step would give ~5 breaks
         let expected_breaks = interval.expected_breaks(150.0) / step as f64;
         assert!(
-            expected_breaks >= 3.0 && expected_breaks <= 10.0,
+            (3.0..=10.0).contains(&expected_breaks),
             "Expected 3-10 breaks for 150 days, n=7, got {} ({:?} with step {})",
             expected_breaks,
             interval,

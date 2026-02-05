@@ -158,14 +158,42 @@ mod tests {
     fn test_all_bases_is_value_in_domain() {
         for (t, _, name) in get_transforms() {
             // Valid values
-            assert!(t.is_value_in_domain(1.0), "{}: 1.0 should be in domain", name);
-            assert!(t.is_value_in_domain(0.0001), "{}: 0.0001 should be in domain", name);
-            assert!(t.is_value_in_domain(1000.0), "{}: 1000.0 should be in domain", name);
+            assert!(
+                t.is_value_in_domain(1.0),
+                "{}: 1.0 should be in domain",
+                name
+            );
+            assert!(
+                t.is_value_in_domain(0.0001),
+                "{}: 0.0001 should be in domain",
+                name
+            );
+            assert!(
+                t.is_value_in_domain(1000.0),
+                "{}: 1000.0 should be in domain",
+                name
+            );
             // Invalid values
-            assert!(!t.is_value_in_domain(0.0), "{}: 0.0 should not be in domain", name);
-            assert!(!t.is_value_in_domain(-1.0), "{}: -1.0 should not be in domain", name);
-            assert!(!t.is_value_in_domain(f64::INFINITY), "{}: infinity should not be in domain", name);
-            assert!(!t.is_value_in_domain(f64::NAN), "{}: NaN should not be in domain", name);
+            assert!(
+                !t.is_value_in_domain(0.0),
+                "{}: 0.0 should not be in domain",
+                name
+            );
+            assert!(
+                !t.is_value_in_domain(-1.0),
+                "{}: -1.0 should not be in domain",
+                name
+            );
+            assert!(
+                !t.is_value_in_domain(f64::INFINITY),
+                "{}: infinity should not be in domain",
+                name
+            );
+            assert!(
+                !t.is_value_in_domain(f64::NAN),
+                "{}: NaN should not be in domain",
+                name
+            );
         }
     }
 
@@ -174,9 +202,15 @@ mod tests {
         // Test cases: (transform, input, expected_transform, inverse_test_val, expected_inverse)
         let test_cases = vec![
             // Log10: log10(1)=0, log10(10)=1, log10(100)=2, log10(0.1)=-1
-            (Log::base10(), vec![(1.0, 0.0), (10.0, 1.0), (100.0, 2.0), (0.1, -1.0)]),
+            (
+                Log::base10(),
+                vec![(1.0, 0.0), (10.0, 1.0), (100.0, 2.0), (0.1, -1.0)],
+            ),
             // Log2: log2(1)=0, log2(2)=1, log2(4)=2, log2(0.5)=-1
-            (Log::base2(), vec![(1.0, 0.0), (2.0, 1.0), (4.0, 2.0), (0.5, -1.0)]),
+            (
+                Log::base2(),
+                vec![(1.0, 0.0), (2.0, 1.0), (4.0, 2.0), (0.5, -1.0)],
+            ),
             // Natural: ln(1)=0, ln(e)=1, ln(e²)=2
             (Log::natural(), vec![(1.0, 0.0), (E, 1.0), (E * E, 2.0)]),
         ];
@@ -186,13 +220,19 @@ mod tests {
                 assert!(
                     (t.transform(input) - expected).abs() < 1e-10,
                     "{}: transform({}) should be {}, got {}",
-                    t.name(), input, expected, t.transform(input)
+                    t.name(),
+                    input,
+                    expected,
+                    t.transform(input)
                 );
                 // Test inverse too
                 assert!(
                     (t.inverse(expected) - input).abs() < 1e-9,
                     "{}: inverse({}) should be {}, got {}",
-                    t.name(), expected, input, t.inverse(expected)
+                    t.name(),
+                    expected,
+                    input,
+                    t.inverse(expected)
                 );
             }
         }
@@ -208,7 +248,8 @@ mod tests {
                 assert!(
                     (back - val).abs() / val < 1e-10,
                     "{}: Roundtrip failed for {}",
-                    name, val
+                    name,
+                    val
                 );
             }
         }
@@ -217,7 +258,12 @@ mod tests {
     #[test]
     fn test_all_bases_kind_and_name() {
         for (t, expected_kind, expected_name) in get_transforms() {
-            assert_eq!(t.transform_kind(), expected_kind, "Kind mismatch for {}", expected_name);
+            assert_eq!(
+                t.transform_kind(),
+                expected_kind,
+                "Kind mismatch for {}",
+                expected_name
+            );
             assert_eq!(t.name(), expected_name);
         }
     }
@@ -241,7 +287,10 @@ mod tests {
         // Natural log - just verify non-empty
         let tn = Log::natural();
         let breaksn = tn.calculate_breaks(1.0, 100.0, 10, false);
-        assert!(!breaksn.is_empty(), "natural log breaks should not be empty");
+        assert!(
+            !breaksn.is_empty(),
+            "natural log breaks should not be empty"
+        );
     }
 
     #[test]
@@ -277,7 +326,12 @@ mod tests {
         let invalid_bases = [(0.0, "zero"), (1.0, "one"), (-2.0, "negative")];
         for (base, desc) in invalid_bases {
             let result = std::panic::catch_unwind(|| Log::new(base));
-            assert!(result.is_err(), "Log::new({}) should panic for {} base", base, desc);
+            assert!(
+                result.is_err(),
+                "Log::new({}) should panic for {} base",
+                base,
+                desc
+            );
         }
     }
 
@@ -288,17 +342,24 @@ mod tests {
         // Test minor breaks work for all bases
         let test_cases = vec![
             (Log::base10(), vec![1.0, 10.0, 100.0], 8, 16), // 8 per decade × 2 decades
-            (Log::base2(), vec![1.0, 2.0, 4.0, 8.0], 1, 3),  // 1 per interval × 3 intervals
+            (Log::base2(), vec![1.0, 2.0, 4.0, 8.0], 1, 3), // 1 per interval × 3 intervals
         ];
 
         for (t, majors, n, expected_len) in test_cases {
             let minors = t.calculate_minor_breaks(&majors, n, None);
             assert_eq!(
-                minors.len(), expected_len,
+                minors.len(),
+                expected_len,
                 "{}: expected {} minor breaks, got {}",
-                t.name(), expected_len, minors.len()
+                t.name(),
+                expected_len,
+                minors.len()
             );
-            assert!(minors.iter().all(|&x| x > 0.0), "{}: all minor breaks should be positive", t.name());
+            assert!(
+                minors.iter().all(|&x| x > 0.0),
+                "{}: all minor breaks should be positive",
+                t.name()
+            );
         }
     }
 
@@ -325,7 +386,12 @@ mod tests {
     fn test_default_minor_break_count() {
         // All log transforms should have the same default
         for (t, _, name) in get_transforms() {
-            assert_eq!(t.default_minor_break_count(), 8, "{} should have default minor count of 8", name);
+            assert_eq!(
+                t.default_minor_break_count(),
+                8,
+                "{} should have default minor count of 8",
+                name
+            );
         }
     }
 }

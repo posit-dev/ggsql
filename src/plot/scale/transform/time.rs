@@ -183,7 +183,12 @@ impl TransformTrait for Time {
 }
 
 /// Calculate pretty time breaks aligned to interval boundaries
-fn calculate_pretty_time_breaks(min: f64, max: f64, interval: TimeInterval, step: usize) -> Vec<f64> {
+fn calculate_pretty_time_breaks(
+    min: f64,
+    max: f64,
+    interval: TimeInterval,
+    step: usize,
+) -> Vec<f64> {
     let mut breaks = Vec::new();
 
     match interval {

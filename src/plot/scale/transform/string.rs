@@ -136,7 +136,10 @@ mod tests {
         let t = String;
         // String stays as string
         let input = ArrayElement::String("hello".to_owned());
-        assert_eq!(t.parse_value(&input), ArrayElement::String("hello".to_owned()));
+        assert_eq!(
+            t.parse_value(&input),
+            ArrayElement::String("hello".to_owned())
+        );
     }
 
     #[test]

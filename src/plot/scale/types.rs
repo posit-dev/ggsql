@@ -9,6 +9,11 @@ use super::super::types::{ArrayElement, ParameterValue};
 use super::scale_type::ScaleType;
 use super::transform::Transform;
 
+/// Default label template - passes through values unchanged
+fn default_label_template() -> String {
+    "{}".to_string()
+}
+
 /// Scale configuration (from SCALE clause)
 ///
 /// New syntax: `SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]`
@@ -59,11 +64,12 @@ pub struct Scale {
     /// Example: `RENAMING 'A' => 'Alpha', 'internal' => NULL`
     #[serde(default)]
     pub label_mapping: Option<HashMap<String, Option<String>>>,
-    /// Template for generating labels from break values (RENAMING * => '...')
-    /// The `{}` placeholder is replaced with each break value at resolution time.
-    /// Example: Some("{} units") -> {"0": "0 units", "25": "25 units", ...}
-    #[serde(default)]
-    pub label_template: Option<String>,
+    /// Template for generating labels from scale values (e.g., "{} units")
+    /// Default is "{}" which passes through the value unchanged.
+    /// The `{}` placeholder is replaced with each value at resolution time.
+    /// Example: "{} units" -> {"0": "0 units", "25": "25 units", ...}
+    #[serde(default = "default_label_template")]
+    pub label_template: String,
 }
 
 impl Scale {
@@ -80,7 +86,7 @@ impl Scale {
             properties: HashMap::new(),
             resolved: false,
             label_mapping: None,
-            label_template: None,
+            label_template: "{}".to_string(),
         }
     }
 }

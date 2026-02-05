@@ -625,7 +625,7 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
     let mut explicit_transform = false;
     let mut properties = HashMap::new();
     let mut label_mapping: Option<HashMap<String, Option<String>>> = None;
-    let mut label_template: Option<String> = None;
+    let mut label_template = "{}".to_string();
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -784,13 +784,13 @@ fn parse_scale_via_clause(node: &Node, source: &str) -> Result<Option<Transform>
 ///
 /// Returns a tuple of:
 /// - HashMap where: Key = original value, Value = Some(label) or None for suppressed labels
-/// - Optional template string for wildcard mappings (* => '...')
+/// - Template string for wildcard mappings (* => '...'), defaults to "{}"
 fn parse_scale_renaming_clause(
     node: &Node,
     source: &str,
-) -> Result<(HashMap<String, Option<String>>, Option<String>)> {
+) -> Result<(HashMap<String, Option<String>>, String)> {
     let mut mappings = HashMap::new();
-    let mut template: Option<String> = None;
+    let mut template = "{}".to_string();
     let mut cursor = node.walk();
 
     for child in node.children(&mut cursor) {
@@ -832,7 +832,7 @@ fn parse_scale_renaming_clause(
             if is_wildcard {
                 // Wildcard: * => 'template'
                 if let Some(Some(tmpl)) = to_value {
-                    template = Some(tmpl);
+                    template = tmpl;
                 }
             } else if let (Some(from), Some(to)) = (from_value, to_value) {
                 // Explicit mapping: 'A' => 'Alpha'
@@ -3441,7 +3441,7 @@ mod tests {
 
         // Check label_template was parsed
         assert!(scales[0].label_mapping.is_none()); // No explicit mappings
-        assert_eq!(scales[0].label_template, Some("{} units".to_string()));
+        assert_eq!(scales[0].label_template, "{} units");
     }
 
     #[test]
@@ -3461,7 +3461,7 @@ mod tests {
         assert_eq!(label_mapping.get("A"), Some(&Some("Alpha".to_string())));
 
         // Check template was also parsed
-        assert_eq!(scales[0].label_template, Some("Category {}".to_string()));
+        assert_eq!(scales[0].label_template, "Category {}");
     }
 
     #[test]
@@ -3476,7 +3476,7 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
         let scales = &specs[0].scales;
 
-        assert_eq!(scales[0].label_template, Some("{:UPPER}".to_string()));
+        assert_eq!(scales[0].label_template, "{:UPPER}");
     }
 
     #[test]
@@ -3491,7 +3491,7 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
         let scales = &specs[0].scales;
 
-        assert_eq!(scales[0].label_template, Some("{:time %b %Y}".to_string()));
+        assert_eq!(scales[0].label_template, "{:time %b %Y}");
     }
 
     // ========================================

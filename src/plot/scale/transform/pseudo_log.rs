@@ -161,8 +161,16 @@ mod tests {
     fn test_all_bases_domain() {
         for (t, name) in get_transforms() {
             let (min, max) = t.allowed_domain();
-            assert!(min.is_infinite() && min.is_sign_negative(), "{}: domain min should be -∞", name);
-            assert!(max.is_infinite() && max.is_sign_positive(), "{}: domain max should be +∞", name);
+            assert!(
+                min.is_infinite() && min.is_sign_negative(),
+                "{}: domain min should be -∞",
+                name
+            );
+            assert!(
+                max.is_infinite() && max.is_sign_positive(),
+                "{}: domain max should be +∞",
+                name
+            );
         }
     }
 
@@ -170,12 +178,32 @@ mod tests {
     fn test_all_bases_is_value_in_domain() {
         for (t, name) in get_transforms() {
             // Valid values (all finite)
-            assert!(t.is_value_in_domain(0.0), "{}: 0.0 should be in domain", name);
-            assert!(t.is_value_in_domain(1000.0), "{}: 1000.0 should be in domain", name);
-            assert!(t.is_value_in_domain(-1000.0), "{}: -1000.0 should be in domain", name);
+            assert!(
+                t.is_value_in_domain(0.0),
+                "{}: 0.0 should be in domain",
+                name
+            );
+            assert!(
+                t.is_value_in_domain(1000.0),
+                "{}: 1000.0 should be in domain",
+                name
+            );
+            assert!(
+                t.is_value_in_domain(-1000.0),
+                "{}: -1000.0 should be in domain",
+                name
+            );
             // Invalid values
-            assert!(!t.is_value_in_domain(f64::INFINITY), "{}: infinity should not be in domain", name);
-            assert!(!t.is_value_in_domain(f64::NAN), "{}: NaN should not be in domain", name);
+            assert!(
+                !t.is_value_in_domain(f64::INFINITY),
+                "{}: infinity should not be in domain",
+                name
+            );
+            assert!(
+                !t.is_value_in_domain(f64::NAN),
+                "{}: NaN should not be in domain",
+                name
+            );
         }
     }
 
@@ -196,7 +224,12 @@ mod tests {
                 assert!(
                     (pos + neg).abs() < 1e-10,
                     "{}: Not symmetric for {} (f({})={}, f({})={})",
-                    name, val, val, pos, -val, neg
+                    name,
+                    val,
+                    val,
+                    pos,
+                    -val,
+                    neg
                 );
             }
         }
@@ -210,12 +243,19 @@ mod tests {
                 let transformed = t.transform(val);
                 let back = t.inverse(transformed);
                 if val == 0.0 {
-                    assert!((back - val).abs() < 1e-10, "{}: Roundtrip failed for {}", name, val);
+                    assert!(
+                        (back - val).abs() < 1e-10,
+                        "{}: Roundtrip failed for {}",
+                        name,
+                        val
+                    );
                 } else {
                     assert!(
                         (back - val).abs() / val.abs() < 1e-10,
                         "{}: Roundtrip failed for {} (got {})",
-                        name, val, back
+                        name,
+                        val,
+                        back
                     );
                 }
             }
@@ -225,7 +265,11 @@ mod tests {
     #[test]
     fn test_all_bases_kind_and_name() {
         for (t, expected_name) in get_transforms() {
-            assert_eq!(t.transform_kind(), TransformKind::PseudoLog, "Kind should be PseudoLog");
+            assert_eq!(
+                t.transform_kind(),
+                TransformKind::PseudoLog,
+                "Kind should be PseudoLog"
+            );
             assert_eq!(t.name(), expected_name);
         }
     }
@@ -247,7 +291,11 @@ mod tests {
                 assert!(
                     error < tolerance,
                     "{}: For x={}, pseudo={}, log={}, error={}",
-                    t.name(), x, pseudo, actual_log, error
+                    t.name(),
+                    x,
+                    pseudo,
+                    actual_log,
+                    error
                 );
             }
         }
@@ -295,7 +343,12 @@ mod tests {
         let invalid_bases = [(0.0, "zero"), (1.0, "one"), (-2.0, "negative")];
         for (base, desc) in invalid_bases {
             let result = std::panic::catch_unwind(|| PseudoLog::new(base));
-            assert!(result.is_err(), "PseudoLog::new({}) should panic for {} base", base, desc);
+            assert!(
+                result.is_err(),
+                "PseudoLog::new({}) should panic for {} base",
+                base,
+                desc
+            );
         }
     }
 
@@ -324,7 +377,12 @@ mod tests {
     #[test]
     fn test_default_minor_break_count() {
         for (t, name) in get_transforms() {
-            assert_eq!(t.default_minor_break_count(), 8, "{} should have default minor count of 8", name);
+            assert_eq!(
+                t.default_minor_break_count(),
+                8,
+                "{} should have default minor count of 8",
+                name
+            );
         }
     }
 }
