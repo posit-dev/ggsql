@@ -33,6 +33,9 @@ ggsql splits queries at the `VISUALISE` boundary:
 - [`writers`] - Output format abstraction layer
 */
 
+// Allow complex types in test code (e.g., test case tuples with many elements)
+#![cfg_attr(test, allow(clippy::type_complexity))]
+
 pub mod format;
 pub mod naming;
 pub mod parser;

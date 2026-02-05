@@ -60,11 +60,6 @@ impl Log {
     fn is_base2(&self) -> bool {
         (self.base - 2.0).abs() < 1e-10
     }
-
-    /// Check if this is a natural log (within floating point tolerance)
-    fn is_natural(&self) -> bool {
-        (self.base - std::f64::consts::E).abs() < 1e-10
-    }
 }
 
 impl TransformTrait for Log {
