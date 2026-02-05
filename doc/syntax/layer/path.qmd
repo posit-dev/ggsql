@@ -4,7 +4,7 @@ title: "Path"
 
 > Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
-The path layer is used to create lineplots, but contrary to the [line layer](line.qmd) the data will not be connected along the x-axis. Instead records are connected in the order they appear in the data. Because of this the ordering is quite important and you may want to use the [`ORDER BY`](../clause/draw.qmd#order-by) clause to ensure data comes out of the back-end in the desired order. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers [`PARTITION BY`](../clause/draw.qmd#partition-by).
+The path layer is used to create lineplots, but contrary to the [line layer](line.qmd) the data will not be connected along the x-axis. Instead records are connected in the order they appear in the data. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers [`PARTITION BY`](../clause/draw.qmd#partition-by).
 
 ## Aesthetics
 The following aesthetics are recognised by the path layer.
@@ -27,4 +27,53 @@ The line layer does not transform its data but passes it through unchanged
 
 ## Examples
 
-TBD
+```{ggsql}
+#| code-fold: true
+#| code-summary: "Create example data"
+CREATE TABLE df AS
+SELECT * FROM (VALUES
+  (1.0, 1.0, 'A'),
+  (2.0, 1.0, 'A'),
+  (1.0, 3.0, 'A'),
+  (3.0, 1.0, 'B'),
+  (2.0, 3.0, 'B'),
+  (3.0, 3.0, 'B'),
+) AS t(x, y, id)
+```
+
+Simple example path.
+
+```{ggsql}
+VISUALISE x, y FROM df
+  DRAW path
+```
+
+Contrary to `line` drawings, `path` is not forced to follow the order along the axis.
+
+```{ggsql}
+VISUALISE x, y FROM df
+  DRAW path MAPPING 'Path' AS colour
+  DRAW line MAPPING 'Line' AS colour
+```
+
+Groups of individual paths can be declared via `PARTITION BY`.
+
+```{ggsql}
+VISUALISE x, y FROM df
+  DRAW path PARTITION BY id
+```
+
+Invoking a group through discrete aesthetics works as well.
+
+```{ggsql}
+VISUALISE x, y FROM df
+  DRAW path MAPPING id AS colour
+```
+
+Compared to polygons, paths don't close their shapes and fill their interiors.
+
+```{ggsql}
+VISUALISE x, y FROM df
+  DRAW polygon MAPPING 'Polygon' AS stroke
+  DRAW path MAPPING 'Path' AS stroke
+```

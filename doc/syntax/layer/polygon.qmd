@@ -1,0 +1,64 @@
+---
+title: "Polygon"
+---
+
+> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+
+Polygons can be used to draw arbitrary closed shapes based on an ordered sequence of x,y-coordinates. They are similar to [paths](path.qmd), but close the shapes and fill the interior.
+
+## Aesthetics
+The following aesthetics are recognised by the polygon layer.
+
+### Required
+* `x` Position along the x-axis.
+* `y` Position along the y-axis.
+
+### Optional
+* `stroke` The colour of the contour lines.
+* `fill` The colour of the inner area.
+* `colour` Shorthand for setting `stroke` and `fill` simultaneously.
+* `opacity` The opacity of colours.
+* `linewidth` The width of the contour lines.
+
+## Settings
+The point layer has no additional settings
+
+## Data transformation
+The point layer does not transform its data but passes it through unchanged
+
+## Examples
+
+```{ggsql}
+#| code-fold: true
+#| code-summary: "Create example data"
+CREATE TABLE df AS
+SELECT * FROM (VALUES
+  (1.0, 1.0, 'A'),
+  (1.0, 3.0, 'A'),
+  (2.0, 1.0, 'A'),
+  (2.0, 3.0, 'B'),
+  (3.0, 1.0, 'B'),
+  (3.0, 3.0, 'B'),
+) AS t(x, y, id)
+```
+
+Simple example polygon.
+
+```{ggsql}
+VISUALISE x, y FROM df
+  DRAW polygon
+```
+
+Groups of individual polygons can be declared via `PARTITION BY`.
+
+```{ggsql}
+VISUALISE x, y FROM df
+  DRAW polygon PARTITION BY id
+```
+
+Invoking a group through discrete aesthetics works as well.
+
+```{ggsql}
+VISUALISE x, y FROM df
+  DRAW polygon MAPPING id AS colour
+```
