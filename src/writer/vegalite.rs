@@ -207,6 +207,7 @@ impl VegaLiteWriter {
             GeomType::Area => "area",
             GeomType::Tile => "rect",
             GeomType::Ribbon => "area",
+            GeomType::Polygon => "line",
             GeomType::Histogram => "bar",
             GeomType::Density => "area",
             GeomType::Boxplot => "boxplot",
@@ -1174,6 +1175,9 @@ impl Writer for VegaLiteWriter {
                 }
                 GeomType::Ribbon => render_ribbon(&mut encoding),
                 GeomType::Area => render_area(&mut encoding, layer)?,
+                GeomType::Polygon => {
+                    layer_spec = render_polygon(layer_spec, &mut encoding);
+                }
                 _ => {}
             }
 
@@ -1308,6 +1312,20 @@ impl Writer for VegaLiteWriter {
 
         Ok(())
     }
+}
+
+fn render_polygon(mut spec: Value, encoding: &mut Map<String, Value>) -> Value {
+    // We need to undo `map_aesthetic_name()` and translate 'color' back to 'fill'.
+    if let Some(color) = encoding.remove("color") {
+        encoding.insert("fill".to_string(), color);
+    }
+    spec["mark"] = json!({
+        "type": "line",
+        "interpolate": "linear-closed", // This closes the path
+        "fill": "#888888", // default values
+        "stroke": "#888888"
+    });
+    spec
 }
 
 fn render_ribbon(encoding: &mut Map<String, Value>) {
