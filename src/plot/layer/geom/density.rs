@@ -114,7 +114,7 @@ fn stat_density(
 
     let (min, max) = compute_range_sql(&x, query, execute)?;
     let bw_cte = density_sql_bandwidth(query, group_by, &x, parameters);
-    let grid_cte = build_grid_cte(group_by, &query, min, max, 512);
+    let grid_cte = build_grid_cte(group_by, query, min, max, 512);
     let density_query = compute_density(&x, query, group_by, &bw_cte, &grid_cte);
 
     Ok(StatResult::Transformed {
@@ -315,64 +315,69 @@ fn compute_density(
     );
 
     // Build bandwidth join condition
-    let bandwidth_join = if group_by.is_empty() {
-        "INNER JOIN bandwidth ON true".to_string()
+    let bandwidth_conditions = if group_by.is_empty() {
+        "true".to_string()
     } else {
-        let join_conds: Vec<String> = group_by
+        group_by
             .iter()
             .map(|g| format!("data.{col} = bandwidth.{col}", col = g))
-            .collect();
-        format!("INNER JOIN bandwidth ON {}", join_conds.join(" AND "))
+            .collect::<Vec<String>>()
+            .join(" AND ")
     };
 
-    // Build all group-related SQL fragments
-    let grid_groups: Vec<String> = group_by.iter().map(|g| format!("grid.{}", g)).collect();
-    let grid_group_select = with_trailing_comma(&grid_groups.join(", "));
-
     // Build WHERE clause to match grid to data groups
-    let where_clause = if group_by.is_empty() {
+    let matching_groups = if group_by.is_empty() {
         String::new()
     } else {
         let grid_data_conds: Vec<String> = group_by
             .iter()
             .map(|g| format!("grid.{col} = data.{col}", col = g))
             .collect();
-        format!(" WHERE {}", grid_data_conds.join(" AND "))
+        format!("WHERE {}", grid_data_conds.join(" AND "))
     };
 
     let join_logic = format!(
-        "{bandwidth_join}
-        CROSS JOIN grid{where_clause}
-        GROUP BY grid.x{grid_group_by}
+        "FROM data
+        INNER JOIN bandwidth ON {bandwidth_conditions}
+        CROSS JOIN grid {matching_groups}",
+        bandwidth_conditions = bandwidth_conditions,
+        matching_groups = matching_groups,
+    );
+
+    // Build group-related SQL fragments
+    let grid_groups: Vec<String> = group_by.iter().map(|g| format!("grid.{}", g)).collect();
+    let aggregation = format!(
+        "GROUP BY grid.x{grid_group_by}
         ORDER BY grid.x{grid_group_by}",
-        bandwidth_join = bandwidth_join,
-        where_clause = where_clause,
         grid_group_by = with_leading_comma(&grid_groups.join(", "))
+    );
+
+    // Uses Gaussian kernel: K(u) = (1/sqrt(2*pi)) * exp(-0.5 * u^2)
+    // Note: normalization constant is moved outside AVG for performance
+    let kernel = format!(
+        "AVG(EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * {norm} / ANY_VALUE(bandwidth.bw)",
+        norm = GAUSSIAN_NORM
     );
 
     // Generate the density computation query
 
-    // Uses Gaussian kernel: K(u) = (1/sqrt(2*pi)) * exp(-0.5 * u^2)
-    // Note: normalization constant is moved outside AVG for performance
     format!(
         "{bandwidth_cte},
         {data_cte},
         {grid_cte}
         SELECT
           grid.x AS {x_column},
-          {grid_group_select}
-          AVG(
-            EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))
-          ) * {gaussian_norm} / ANY_VALUE(bandwidth.bw) AS {density_column}
-        FROM data
-        {join_logic}",
+          {grid_groups}
+          {kernel} AS {density_column}
+        {join_logic}
+        {aggregation}",
         bandwidth_cte = bandwidth_cte,
         data_cte = data_cte,
         grid_cte = grid_cte,
         x_column = naming::stat_column("x"),
         density_column = naming::stat_column("density"),
-        grid_group_select = grid_group_select,
-        gaussian_norm = GAUSSIAN_NORM
+        aggregation = aggregation,
+        grid_groups = with_trailing_comma(&grid_groups.join(", "))
     )
 }
 
