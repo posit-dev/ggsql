@@ -1,6 +1,5 @@
 ---
 title: Examples
-keep-ipynb: true # TODO: Why does render on save fail without this?
 ---
 
 This document demonstrates various ggsql features with runnable examples using CSV files.
@@ -171,7 +170,7 @@ SELECT sale_date, revenue FROM 'sales.csv'
 WHERE category = 'Electronics'
 VISUALISE sale_date AS x, revenue AS y
 DRAW line
-SCALE x SETTING type => 'date'
+SCALE x VIA date
 LABEL 
     title => 'Electronics Revenue Over Time', 
     x => 'Date', 
@@ -365,8 +364,8 @@ VISUALISE date AS x, value AS y
 DRAW line 
     SETTING  color => 'blue'
 DRAW point 
-    SETTING size => 30, color => 'red'
-SCALE x SETTING type => 'date'
+    SETTING size => 6, color => 'red'
+SCALE x VIA date
 LABEL 
     title => 'Time Series with Points', 
     x => 'Date', 
@@ -379,7 +378,7 @@ LABEL
 SELECT date, value, category FROM 'metrics.csv'
 VISUALISE date AS x, value AS y, category AS color
 DRAW line
-SCALE x SETTING type => 'date'
+SCALE x VIA date
 LABEL 
     title => 'Metrics by Category', 
     x => 'Date', 
@@ -395,7 +394,7 @@ SELECT sale_date, revenue, region FROM 'sales.csv'
 WHERE category = 'Electronics'
 VISUALISE sale_date AS x, revenue AS y
 DRAW line
-SCALE x SETTING type => 'date'
+SCALE x VIA date
 FACET WRAP region
 LABEL 
     title => 'Electronics Sales by Region', 
@@ -420,14 +419,14 @@ DRAW line
     SETTING color => 'steelblue'
 DRAW point 
     MAPPING total_revenue AS y
-    SETTING size => 30, color => 'darkblue'
+    SETTING size => 6, color => 'darkblue'
 DRAW line 
     MAPPING total_quantity_scaled AS y
     SETTING color => 'coral'
 DRAW point 
     MAPPING total_quantity_scaled AS y
-    SETTING size => 30, color => 'orangered'
-SCALE x SETTING type => 'date'
+    SETTING size => 6, color => 'orangered'
+SCALE x VIA date
 FACET region BY category
 LABEL 
     title => 'Monthly Revenue and Quantity by Region and Category', 
@@ -508,7 +507,7 @@ DRAW line
 DRAW line 
     MAPPING 'Furniture' AS color FROM monthly 
     FILTER category = 'Furniture'
-SCALE x SETTING type => 'date'
+SCALE x VIA date
 LABEL 
     title => 'Revenue by Category (Constant Colors)', 
     x => 'Month', 
@@ -526,8 +525,8 @@ DRAW line
     MAPPING value AS y, category AS color
 DRAW point 
     MAPPING 120 AS y 
-    SETTING size => 20, color => 'blue'
-SCALE x SETTING type => 'date'
+    SETTING size => 3, color => 'blue'
+SCALE x VIA date
 LABEL 
     title => 'Metrics with Threshold Line', 
     x => 'Date'
@@ -541,9 +540,9 @@ Numbers work as constants too:
 SELECT x, y FROM 'data.csv'
 VISUALISE x, y
 DRAW point 
-    SETTING color => 'blue', size => 100
+    SETTING color => 'blue', size => 10
 DRAW point 
-    SETTING color => 'red', size => 50 
+    SETTING color => 'red', size => 5 
     FILTER y > 50
 LABEL 
     title => 'Scatter Plot with Constant Sizes'
@@ -559,9 +558,9 @@ VISUALISE date AS x, value AS y
 DRAW line 
     SETTING color => 'blue'
 DRAW point 
-    SETTING color => 'red', size => 30 
+    SETTING color => 'red', size => 6
     FILTER value < 130
-SCALE x SETTING type => 'date'
+SCALE x VIA date
 LABEL 
     title => 'Time Series with Points', 
     x => 'Date', 
@@ -590,8 +589,8 @@ DRAW path
     ORDER BY date
 DRAW point 
     MAPPING date AS x, value AS y FROM unordered_data 
-    SETTING size => 40, color => 'red'
-SCALE x SETTING type => 'date'
+    SETTING size => 6, color => 'red'
+SCALE x VIA date
 LABEL 
     title => 'Line Chart with ORDER BY', 
     x => 'Date', 
@@ -611,9 +610,9 @@ DRAW path
     ORDER BY value
 DRAW point 
     MAPPING date AS x, value AS y, category AS color 
-    SETTING size => 20 
+    SETTING size => 3
     FILTER category != 'Support' 
-SCALE x SETTING type => 'date'
+SCALE x VIA date
 LABEL 
     title => 'Sales and Marketing Metrics (Ordered)', 
     x => 'Date', 
@@ -635,7 +634,7 @@ WITH monthly_sales AS (
 VISUALISE month AS x, total_revenue AS y FROM monthly_sales
 DRAW line
 DRAW point
-SCALE x SETTING type => 'date'
+SCALE x VIA date
 LABEL 
     title => 'Monthly Revenue Trends', 
     x => 'Month', 
@@ -701,10 +700,10 @@ DRAW line
     MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals
 DRAW point 
     MAPPING month AS x, value AS y, 'Actual' AS color FROM actuals 
-    SETTING size => 30
+    SETTING size => 6
 DRAW line 
     MAPPING month AS x, value AS y, 'Target' AS color FROM targets
-SCALE x SETTING type => 'date'
+SCALE x VIA date
 LABEL 
     title => 'Revenue: Actual vs Target', 
     x => 'Month', 
@@ -735,7 +734,7 @@ monthly_electronics AS (
 VISUALISE month AS x, total AS y, region AS color FROM monthly_electronics
 DRAW line
 DRAW point
-SCALE x SETTING type => 'date'
+SCALE x VIA date
 LABEL 
     title => 'Electronics Revenue by Region (CTE Chain)', 
     x => 'Month', 
@@ -764,27 +763,11 @@ DRAW line
 DRAW line 
     MAPPING month AS x, revenue AS y, 'Clothing' AS color FROM all_sales 
     FILTER category = 'Clothing'
-SCALE x SETTING type => 'date'
+SCALE x VIA date
 LABEL 
     title => 'Revenue by Category (Filtered Layers)', 
     x => 'Month', 
     y => 'Revenue ($)'
-```
-
-### Multiple File Sources
-
-Layers can also reference different CSV files directly:
-
-```{ggsql}
-VISUALISE
-DRAW line 
-    MAPPING date AS x, value AS y, 'Time Series' AS color FROM 'timeseries.csv'
-DRAW point 
-    MAPPING x AS x, y AS y, 'Scatter' AS color FROM 'data.csv'
-LABEL 
-    title => 'Data from Multiple Files', 
-    x => 'X', 
-    y => 'Y'
 ```
 
 ## Advanced Examples
@@ -803,7 +786,7 @@ ORDER BY sale_date
 VISUALISE sale_date AS x, total_quantity AS y, region AS color
 DRAW line
 DRAW point
-SCALE x SETTING type => 'date'
+SCALE x VIA date
 FACET WRAP region
 LABEL 
     title => 'Sales Trends by Region', 

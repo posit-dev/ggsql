@@ -1,0 +1,19 @@
+---
+title: Identity
+---
+
+> Scales are declared with the [`SCALE` clause](../../clause/scale.qmd). Read the documentation for this clause for a thorough description of its syntax.
+
+The identity scale is a special scale that allows the input to flow through unchanged. You can use this if your data already contains values in a format understood by the aesthetic, e.g. a column of color values mapped to fill. It doesn't take any additional settings.
+
+Since the identity scale doesn't do any translation of data it doesn't create a legend.
+
+### Examples
+
+#### Use data values directly for size
+
+```{ggsql}
+VISUALISE bill_len AS x, bill_dep AS y, flipper_len AS size FROM ggsql:penguins
+DRAW point
+SCALE IDENTITY size
+```

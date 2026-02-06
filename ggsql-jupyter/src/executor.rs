@@ -6,7 +6,7 @@
 use anyhow::Result;
 use ggsql::{
     reader::{DuckDBReader, Reader},
-    validate,
+    validate::validate,
     writer::{VegaLiteWriter, Writer},
 };
 use polars::frame::DataFrame;

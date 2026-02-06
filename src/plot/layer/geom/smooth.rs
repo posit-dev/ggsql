@@ -14,7 +14,7 @@ impl GeomTrait for Smooth {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &["x", "y", "color", "colour", "stroke", "linetype", "opacity"],
+            supported: &["x", "y", "stroke", "linetype", "opacity"],
             required: &["x", "y"],
             hidden: &[],
         }

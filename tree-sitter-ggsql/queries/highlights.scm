@@ -74,10 +74,11 @@
 ; Identifiers (column references)
 (column_reference) @variable
 
+; Scale type identifiers (CONTINUOUS, DISCRETE, BINNED, ORDINAL, IDENTITY)
+(scale_type_identifier) @type.builtin
+
 ; Property names
-(scale_property_name) @property
 (coord_property_name) @property
-(guide_property_name) @property
 (theme_property_name) @property
 (label_type) @property
 

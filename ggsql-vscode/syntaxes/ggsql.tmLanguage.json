@@ -12,7 +12,6 @@
     { "include": "#facet-clause" },
     { "include": "#coord-clause" },
     { "include": "#label-clause" },
-    { "include": "#guide-clause" },
     { "include": "#theme-clause" },
     { "include": "#sql-keywords" },
     { "include": "#visualise-clause" },
@@ -218,7 +217,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|GUIDE|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         { "include": "#comments" },
         { "include": "#strings" },
@@ -266,7 +265,7 @@
         },
         {
           "name": "keyword.other.ggsql",
-          "match": "\\b(?i:MAPPING|REMAPPING|SETTING|FILTER|FROM|ORDER|BY|PARTITION)\\b"
+          "match": "\\b(?i:MAPPING|REMAPPING|SETTING|FILTER|FROM|ORDER|BY|PARTITION|RENAMING)\\b"
         },
         {
           "name": "punctuation.separator.comma.ggsql",
@@ -287,7 +286,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|GUIDE|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "name": "support.type.geom.ggsql",
@@ -301,8 +300,16 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|GUIDE|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
+        {
+          "name": "keyword.control.scale-modifier.ggsql",
+          "match": "\\b(?i:CONTINUOUS|DISCRETE|BINNED|ORDINAL|IDENTITY)\\b"
+        },
+        {
+          "name": "keyword.other.ggsql",
+          "match": "\\b(?i:TO|VIA)\\b"
+        },
         {
           "name": "constant.language.scale-type.ggsql",
           "match": "\\b(linear|log|log10|log2|sqrt|reverse|categorical|ordinal|date|datetime|time|viridis|plasma|magma|inferno|cividis|diverging|sequential|identity|manual)\\b"
@@ -319,7 +326,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|GUIDE|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "name": "keyword.other.ggsql",
@@ -341,7 +348,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|GUIDE|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "name": "support.type.coord.ggsql",
@@ -359,29 +366,11 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|GUIDE|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "name": "support.type.property.ggsql",
           "match": "\\b(title|subtitle|x|y|caption|tag|color|colour|fill|size|shape|linetype)\\b"
-        },
-        { "include": "#common-clause-patterns" }
-      ]
-    },
-    "guide-clause": {
-      "begin": "(?i)\\b(GUIDE)\\b",
-      "beginCaptures": {
-        "1": { "name": "keyword.other.ggsql" }
-      },
-      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|GUIDE|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
-      "patterns": [
-        {
-          "name": "constant.language.guide-type.ggsql",
-          "match": "\\b(legend|colorbar|axis|none)\\b"
-        },
-        {
-          "name": "support.type.property.ggsql",
-          "match": "\\b(position|direction|nrow|ncol|title|title_position|label_position|text_angle|text_size|reverse|order)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]
@@ -391,7 +380,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|GUIDE|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "name": "support.type.theme.ggsql",

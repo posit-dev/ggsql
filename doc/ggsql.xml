@@ -94,7 +94,6 @@
       <item>COORD</item>
       <item>FACET</item>
       <item>LABEL</item>
-      <item>GUIDE</item>
       <item>THEME</item>
       <item>VISUALISE</item>
       <item>VISUALIZE</item>
@@ -109,6 +108,17 @@
       <item>WRAP</item>
       <item>ORDER</item>
       <item>PARTITION</item>
+      <item>TO</item>
+      <item>VIA</item>
+    </list>
+
+    <!-- Scale Type Modifiers (before aesthetic name in SCALE) -->
+    <list name="scale_modifiers">
+      <item>CONTINUOUS</item>
+      <item>DISCRETE</item>
+      <item>BINNED</item>
+      <item>ORDINAL</item>
+      <item>IDENTITY</item>
     </list>
 
     <!-- Geom Types (only in DRAW context) -->
@@ -212,14 +222,6 @@
       <item>void</item>
     </list>
 
-    <!-- Guide Types (only in GUIDE context) -->
-    <list name="guide_types">
-      <item>legend</item>
-      <item>colorbar</item>
-      <item>axis</item>
-      <item>none</item>
-    </list>
-
     <!-- Facet Scales (only in FACET context) -->
     <list name="facet_scales">
       <item>fixed</item>
@@ -257,21 +259,6 @@
       <item>subtitle</item>
       <item>caption</item>
       <item>tag</item>
-    </list>
-
-    <!-- Guide Properties -->
-    <list name="guide_properties">
-      <item>position</item>
-      <item>direction</item>
-      <item>nrow</item>
-      <item>ncol</item>
-      <item>title</item>
-      <item>title_position</item>
-      <item>label_position</item>
-      <item>text_angle</item>
-      <item>text_size</item>
-      <item>reverse</item>
-      <item>order</item>
     </list>
 
     <!-- Theme Properties -->
@@ -429,7 +416,6 @@
         <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
 
         <!-- Fat arrow operator -->
@@ -477,7 +463,6 @@
         <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
@@ -518,7 +503,6 @@
         <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
@@ -526,6 +510,9 @@
         <WordDetect attribute="Keyword" context="#stay" String="FROM" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
+
+        <!-- Scale type modifiers (CONTINUOUS, DISCRETE, BINNED) -->
+        <keyword attribute="Keyword" context="#stay" String="scale_modifiers"/>
 
         <!-- Scale types - only highlighted here -->
         <keyword attribute="Data Type" context="#stay" String="scale_types"/>
@@ -562,7 +549,6 @@
         <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
@@ -606,7 +592,6 @@
         <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
@@ -650,7 +635,6 @@
         <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
@@ -664,50 +648,6 @@
 
         <!-- Aesthetics (for legend labels) -->
         <keyword attribute="Attribute" context="#stay" String="aesthetics"/>
-
-        <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
-        <AnyChar attribute="Operator" context="#stay" String="=!&lt;&gt;+-*/%"/>
-        <DetectChar char="(" attribute="Symbol" context="#stay"/>
-        <DetectChar char=")" attribute="Symbol" context="#stay"/>
-        <DetectChar char="[" attribute="Symbol" context="#stay"/>
-        <DetectChar char="]" attribute="Symbol" context="#stay"/>
-        <DetectChar char="," attribute="Symbol" context="#stay"/>
-      </context>
-
-      <!-- GUIDE clause context -->
-      <context name="GuideClause" attribute="Normal Text" lineEndContext="#stay">
-        <Detect2Chars char="-" char1="-" attribute="Comment" context="Comment"/>
-        <Detect2Chars char="/" char1="*" attribute="Comment" context="CommentMulti" beginRegion="comment"/>
-        <DetectChar char="'" attribute="String" context="StringSingle"/>
-        <DetectChar char="&quot;" attribute="String" context="StringDouble"/>
-        <RegExpr attribute="Number" context="#stay" String="-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?"/>
-
-        <!-- Exit to other clause contexts -->
-        <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="#stay" String="FROM" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
-
-        <!-- Guide types - only highlighted here -->
-        <keyword attribute="Data Type" context="#stay" String="guide_types"/>
-
-        <!-- Guide properties -->
-        <keyword attribute="Attribute" context="#stay" String="guide_properties"/>
-
-        <!-- Aesthetics -->
-        <keyword attribute="Attribute" context="#stay" String="aesthetics"/>
-
-        <!-- Sub-keywords -->
-        <keyword attribute="Keyword" context="#stay" String="viz_subkeywords"/>
 
         <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
         <AnyChar attribute="Operator" context="#stay" String="=!&lt;&gt;+-*/%"/>
@@ -732,7 +672,6 @@
         <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
@@ -773,7 +712,6 @@
         <WordDetect attribute="Keyword" context="CoordClause" String="COORD" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="GuideClause" String="GUIDE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
         <WordDetect attribute="Keyword" context="VisualiseClause" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="VisualiseClause" String="VISUALIZE" insensitive="true"/>

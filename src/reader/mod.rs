@@ -34,7 +34,7 @@
 use std::collections::HashMap;
 
 use crate::execute::prepare_data_with_executor;
-use crate::plot::Plot;
+use crate::plot::{Plot, SqlTypeNames};
 use crate::validate::{validate, ValidationWarning};
 use crate::{DataFrame, GgsqlError, Result};
 
@@ -214,18 +214,105 @@ pub trait Reader {
         let validated = validate(query)?;
         let warnings: Vec<ValidationWarning> = validated.warnings().to_vec();
 
-        // Prepare data (this also validates, but we want the warnings from above)
-        let prepared_data = prepare_data_with_executor(query, |sql| self.execute_sql(sql))?;
+        // Prepare data with type names for this reader
+        let prepared_data =
+            prepare_data_with_executor(query, |sql| self.execute_sql(sql), &self.sql_type_names())?;
+
+        // Get the first (and typically only) spec
+        let plot = prepared_data.specs.into_iter().next().ok_or_else(|| {
+            GgsqlError::ValidationError("No visualization spec found".to_string())
+        })?;
+
+        // For now, layer_sql and stat_sql are not tracked in PreparedData
+        // (they were part of main's version but not HEAD's)
+        let layer_sql = vec![None; plot.layers.len()];
+        let stat_sql = vec![None; plot.layers.len()];
 
         Ok(Spec::new(
-            prepared_data.spec,
+            plot,
             prepared_data.data,
             prepared_data.sql,
             prepared_data.visual,
-            prepared_data.layer_sql,
-            prepared_data.stat_sql,
+            layer_sql,
+            stat_sql,
             warnings,
         ))
+    }
+
+    // =========================================================================
+    // SQL Type Names for Casting
+    // =========================================================================
+
+    /// SQL type name for numeric columns (e.g., "DOUBLE", "FLOAT", "NUMERIC")
+    ///
+    /// Used for casting string columns to numbers for binning.
+    /// Returns None if the database doesn't support this cast.
+    fn number_type_name(&self) -> Option<&str> {
+        Some("DOUBLE")
+    }
+
+    /// SQL type name for DATE columns (e.g., "DATE", "date")
+    ///
+    /// Used for casting string columns to dates for temporal binning.
+    /// Returns None if the database doesn't support native date types.
+    fn date_type_name(&self) -> Option<&str> {
+        Some("DATE")
+    }
+
+    /// SQL type name for DATETIME/TIMESTAMP columns
+    ///
+    /// Used for casting string columns to timestamps for temporal binning.
+    /// Returns None if the database doesn't support this type.
+    fn datetime_type_name(&self) -> Option<&str> {
+        Some("TIMESTAMP")
+    }
+
+    /// SQL type name for TIME columns
+    ///
+    /// Used for casting string columns to time values for temporal binning.
+    /// Returns None if the database doesn't support this type.
+    fn time_type_name(&self) -> Option<&str> {
+        Some("TIME")
+    }
+
+    /// SQL type name for VARCHAR/TEXT columns
+    ///
+    /// Used for casting columns to string type.
+    /// Returns None if the database doesn't support this cast.
+    fn string_type_name(&self) -> Option<&str> {
+        Some("VARCHAR")
+    }
+
+    /// SQL type name for BOOLEAN columns
+    ///
+    /// Used for casting columns to boolean type.
+    /// Returns None if the database doesn't support this cast.
+    fn boolean_type_name(&self) -> Option<&str> {
+        Some("BOOLEAN")
+    }
+
+    /// SQL type name for INTEGER columns (e.g., "BIGINT", "INTEGER")
+    ///
+    /// Used for casting columns to integer type.
+    /// Returns None if the database doesn't support this cast.
+    fn integer_type_name(&self) -> Option<&str> {
+        Some("BIGINT")
+    }
+
+    /// Get SQL type names for this reader.
+    ///
+    /// Returns a SqlTypeNames struct populated from the individual type name methods.
+    /// This is useful for passing to functions that need all type names at once.
+    fn sql_type_names(&self) -> SqlTypeNames {
+        SqlTypeNames {
+            number: self.number_type_name().map(String::from),
+            integer: self.integer_type_name().map(String::from),
+            date: self.date_type_name().map(String::from),
+            datetime: self.datetime_type_name().map(String::from),
+            time: self.time_type_name().map(String::from),
+            string: self.string_type_name().map(String::from),
+            boolean: self.boolean_type_name().map(String::from),
+        }
     }
 }
 

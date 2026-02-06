@@ -111,16 +111,16 @@ SCALE y SETTING type => 'log10'
 SELECT date, temperature, station FROM weather
 VISUALISE date AS x, temperature AS y, station AS color
 DRAW line
-SCALE color SETTING palette => 'viridis'
+SCALE color TO viridis
 ```
 
-### Custom Domain
+### Custom input range
 
 ```sql
 SELECT category, value FROM data
 VISUALISE category AS x, value AS y, category AS fill
 DRAW bar
-SCALE fill SETTING domain => ['A', 'B', 'C', 'D']
+SCALE DISCRETE fill FROM ['A', 'B', 'C', 'D']
 ```
 
 ---
@@ -470,7 +470,7 @@ WHERE timestamp >= NOW() - INTERVAL '7 days'
 VISUALISE timestamp AS x, temperature AS y, station AS color, station AS linetype
 DRAW line
 SCALE x SETTING type => 'datetime'
-SCALE color SETTING palette => 'viridis'
+SCALE color TO viridis
 LABEL title => 'Temperature Trends',
       x => 'Time',
       y => 'Temperature (°C)'
@@ -496,7 +496,7 @@ LABEL title => 'Top 10 Products by Revenue',
 THEME classic
 ```
 
-### Distribution with Custom Domain
+### Distribution with Custom range
 
 ```sql
 SELECT
@@ -508,7 +508,7 @@ WHERE category IN ('A', 'B', 'C')
 VISUALISE date AS x, value AS y, category AS color, value AS size
 DRAW point
 SCALE x SETTING type => 'date'
-SCALE color SETTING domain => ['A', 'B', 'C']
+SCALE DISCRETE color FROM ['A', 'B', 'C']
 SCALE size SETTING limits => [0, 100]
 COORD cartesian SETTING ylim => [0, 150]
 LABEL title => 'Measurement Distribution',
@@ -528,7 +528,7 @@ FROM data_points
 VISUALISE x, y, category AS color
 DRAW point SETTING size => 5
 DRAW text MAPPING label AS label
-SCALE color SETTING palette => 'viridis'
+SCALE color TO viridis
 COORD cartesian SETTING xlim => [0, 100], ylim => [0, 100]
 LABEL title => 'Annotated Scatter Plot',
       x => 'X Axis',
@@ -545,7 +545,7 @@ GROUP BY cyl
 ORDER BY cyl
 VISUALISE cyl AS x, vehicle_count AS y
 DRAW bar
-SCALE x SETTING domain => [4, 6, 8]
+SCALE DISCRETE x FROM [4, 6, 8]
 LABEL title => 'Distribution of Vehicles by Number of Cylinders',
       x => 'Number of Cylinders',
       y => 'Number of Vehicles'
@@ -640,7 +640,7 @@ Draw Line
 
 8. **Labels**: Always provide meaningful titles and axis labels for clarity.
 
-9. **Domain Specification**: Use either SCALE or COORD for domain/limit specification, but not both for the same aesthetic.
+9. **Range Specification**: Use either SCALE or COORD for range/limit specification, but not both for the same aesthetic.
 
 ---
 

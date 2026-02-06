@@ -57,6 +57,9 @@ pyo3 = "0.26"
 # Testing
 proptest = "1.4"
 
+# Color interpolation
+palette = "0.7"
+
 # Utilities
 regex = "1.10"
 chrono = "0.4"

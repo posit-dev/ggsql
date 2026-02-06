@@ -13,9 +13,7 @@ impl GeomTrait for Point {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &[
-                "x", "y", "color", "colour", "fill", "stroke", "size", "shape", "opacity",
-            ],
+            supported: &["x", "y", "fill", "stroke", "size", "shape", "opacity"],
             required: &["x", "y"],
             hidden: &[],
         }

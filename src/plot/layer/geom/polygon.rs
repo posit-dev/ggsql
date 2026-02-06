@@ -13,7 +13,7 @@ impl GeomTrait for Polygon {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &["x", "y", "color", "colour", "fill", "stroke", "opacity"],
+            supported: &["x", "y", "fill", "stroke", "opacity"],
             required: &["x", "y"],
             hidden: &[],
         }

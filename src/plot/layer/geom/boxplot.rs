@@ -6,7 +6,8 @@ use super::{GeomAesthetics, GeomTrait, GeomType};
 use crate::{
     naming,
     plot::{
-        geom::types::get_column_name, DefaultParam, DefaultParamValue, ParameterValue, StatResult,
+        geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
+        ParameterValue, StatResult,
     },
     DataFrame, GgsqlError, Mappings, Result,
 };
@@ -35,7 +36,7 @@ impl GeomTrait for Boxplot {
             ],
             required: &["x", "y"],
             // Internal aesthetics produced by stat transform
-            hidden: &["type", "y"],
+            hidden: &["type", "y", "y2"],
         }
     }
 
@@ -64,8 +65,12 @@ impl GeomTrait for Boxplot {
         ]
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, &'static str)] {
-        &[("value", "y")]
+    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
+        &[
+            ("y", DefaultAestheticValue::Column("value")),
+            ("y2", DefaultAestheticValue::Column("value2")),
+            ("type", DefaultAestheticValue::Column("type")),
+        ]
     }
 
     fn apply_stat_transform(
@@ -142,7 +147,11 @@ fn stat_boxplot(
 
     Ok(StatResult::Transformed {
         query: stats_query,
-        stat_columns: vec!["type".to_string(), "value".to_string()],
+        stat_columns: vec![
+            "type".to_string(),
+            "value".to_string(),
+            "value2".to_string(),
+        ],
         dummy_columns: vec![],
         consumed_aesthetics: vec!["y".to_string()],
     })
@@ -257,26 +266,42 @@ fn boxplot_sql_append_outliers(
     draw_outliers: &bool,
 ) -> String {
     let value_name = naming::stat_column("value");
+    let value2_name = naming::stat_column("value2");
     let type_name = naming::stat_column("type");
 
-    if !*draw_outliers {
-        // Just reshape summary to long format
-        let sql = format!(
-            "SELECT {groups}, type AS {type_name}, value AS {value_name}
-            FROM ({summary})
-            UNPIVOT(value FOR type IN (min, max, median, q1, q3, upper, lower))",
-            groups = groups.join(", "),
-            value_name = value_name,
+    let groups_str = groups.join(", ");
+
+    // Helper to build visual-element rows from summary table
+    // Each row type maps to one visual element with y and y2 where needed
+    let build_summary_select = |table: &str| {
+        format!(
+            "SELECT {groups}, 'lower_whisker' AS {type_name}, q1 AS {value_name}, lower AS {value2_name} FROM {table}
+            UNION ALL
+            SELECT {groups}, 'upper_whisker' AS {type_name}, q3 AS {value_name}, upper AS {value2_name} FROM {table}
+            UNION ALL
+            SELECT {groups}, 'box' AS {type_name}, q1 AS {value_name}, q3 AS {value2_name} FROM {table}
+            UNION ALL
+            SELECT {groups}, 'median' AS {type_name}, median AS {value_name}, NULL AS {value2_name} FROM {table}",
+            groups = groups_str,
             type_name = type_name,
-            summary = from
-        );
-        return sql;
+            value_name = value_name,
+            value2_name = value2_name,
+            table = table
+        )
+    };
+
+    if !*draw_outliers {
+        // Build from subquery when no CTEs needed
+        return build_summary_select(&format!("({})", from));
     }
 
-    // Grab query for outliers. Outcome is long format data.
+    // Grab query for outliers
     let outliers = boxplot_sql_filter_outliers(groups, value, raw_query);
 
-    // Reshape summary to long format and combine with outliers in single table
+    // Build summary select using CTE reference
+    let summary_select = build_summary_select("summary");
+
+    // Combine summary visual-elements with outliers
     format!(
         "WITH
         summary AS (
@@ -285,22 +310,20 @@ fn boxplot_sql_append_outliers(
         outliers AS (
           {outliers}
         )
-        (
-          SELECT {groups}, type AS {type_name}, value AS {value_name}
-          FROM summary
-          UNPIVOT(value FOR type IN (min, max, median, q1, q3, upper, lower))
-        )
+        {summary_select}
         UNION ALL
         (
-          SELECT {groups}, type AS {type_name}, value AS {value_name}
+          SELECT {groups}, type AS {type_name}, value AS {value_name}, NULL AS {value2_name}
           FROM outliers
         )
         ",
         summary = from,
         outliers = outliers,
+        summary_select = summary_select,
         type_name = type_name,
         value_name = value_name,
-        groups = groups.join(", ")
+        value2_name = value2_name,
+        groups = groups_str
     )
 }
 
@@ -473,16 +496,22 @@ mod tests {
         let raw = "raw_query";
         let result = boxplot_sql_append_outliers(summary, &groups, "value", raw, &true);
 
-        // Check key components
+        // Check key components for visual-element rows format
         assert!(result.contains("WITH"));
         assert!(result.contains("summary AS ("));
         assert!(result.contains("summary_query"));
         assert!(result.contains("outliers AS ("));
         assert!(result.contains("UNION ALL"));
-        assert!(
-            result.contains("UNPIVOT(value FOR type IN (min, max, median, q1, q3, upper, lower))")
-        );
+
+        // Should contain visual element type names
+        assert!(result.contains("'lower_whisker'"));
+        assert!(result.contains("'upper_whisker'"));
+        assert!(result.contains("'box'"));
+        assert!(result.contains("'median'"));
+
+        // Check column names
         assert!(result.contains(&format!("AS {}", naming::stat_column("value"))));
+        assert!(result.contains(&format!("AS {}", naming::stat_column("value2"))));
         assert!(result.contains(&format!("AS {}", naming::stat_column("type"))));
     }
 
@@ -496,12 +525,17 @@ mod tests {
         // Should NOT include WITH or outliers CTE
         assert!(!result.contains("WITH"));
         assert!(!result.contains("outliers AS"));
-        assert!(!result.contains("UNION ALL"));
 
-        // Should just UNPIVOT summary
-        assert!(result.contains("UNPIVOT"));
-        assert!(result.contains("(sum_query)"));
+        // Should contain visual element type names via UNION ALL
+        assert!(result.contains("UNION ALL"));
+        assert!(result.contains("'lower_whisker'"));
+        assert!(result.contains("'upper_whisker'"));
+        assert!(result.contains("'box'"));
+        assert!(result.contains("'median'"));
+
+        // Check column names
         assert!(result.contains(&format!("AS {}", naming::stat_column("value"))));
+        assert!(result.contains(&format!("AS {}", naming::stat_column("value2"))));
         assert!(result.contains(&format!("AS {}", naming::stat_column("type"))));
     }
 
@@ -654,11 +688,15 @@ mod tests {
 
     #[test]
     fn test_boxplot_default_remappings() {
+        use crate::plot::types::DefaultAestheticValue;
+
         let boxplot = Boxplot;
         let remappings = boxplot.default_remappings();
 
-        assert_eq!(remappings.len(), 1);
-        assert_eq!(remappings[0], ("value", "y"));
+        assert_eq!(remappings.len(), 3);
+        assert!(remappings.contains(&("y", DefaultAestheticValue::Column("value"))));
+        assert!(remappings.contains(&("y2", DefaultAestheticValue::Column("value2"))));
+        assert!(remappings.contains(&("type", DefaultAestheticValue::Column("type"))));
     }
 
     #[test]

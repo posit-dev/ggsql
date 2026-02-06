@@ -21,22 +21,19 @@ impl Spec {
         warnings: Vec<ValidationWarning>,
     ) -> Self {
         // Compute metadata from data
-        let (rows, columns) = if let Some(df) = data.get(naming::GLOBAL_DATA_KEY) {
-            let cols: Vec<String> = df
-                .get_column_names()
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
-            (df.height(), cols)
-        } else if let Some(df) = data.values().next() {
-            let cols: Vec<String> = df
-                .get_column_names()
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
-            (df.height(), cols)
+        // Get rows from data, but columns from layer mappings (since scale-syntax renames columns)
+        let rows = data
+            .get(naming::GLOBAL_DATA_KEY)
+            .or_else(|| data.get(&naming::layer_key(0)))
+            .map(|df| df.height())
+            .unwrap_or(0);
+
+        // Get aesthetic names from mappings (these are what the user thinks of as columns)
+        // This provides backwards-compatible column names like "x", "y" instead of internal names
+        let columns: Vec<String> = if !plot.layers.is_empty() {
+            plot.layers[0].mappings.aesthetics.keys().cloned().collect()
         } else {
-            (0, Vec::new())
+            Vec::new()
         };
 
         let layer_count = plot.layers.len();
@@ -74,8 +71,15 @@ impl Spec {
     }
 
     /// Get global data (main query result).
+    ///
+    /// In the scale-syntax version, data is stored per-layer. This method
+    /// returns the first available layer data for backwards compatibility.
     pub fn data(&self) -> Option<&DataFrame> {
-        self.data.get(naming::GLOBAL_DATA_KEY)
+        // Try global key first for backwards compatibility
+        self.data
+            .get(naming::GLOBAL_DATA_KEY)
+            // Fall back to first layer data (scale-syntax approach)
+            .or_else(|| self.data.get(&naming::layer_key(0)))
     }
 
     /// Get layer-specific data (from FILTER or FROM clause).
