@@ -122,10 +122,10 @@ fn compute_range_sql(
     execute: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
 ) -> Result<(f64, f64)> {
     let query = format!(
-        "SELECT 
-          MIN({value}) AS min, 
-          MAX({value}) AS max 
-        FROM ({from}) 
+        "SELECT
+          MIN({value}) AS min,
+          MAX({value}) AS max
+        FROM ({from})
         WHERE {value} IS NOT NULL",
         value = value,
         from = from
@@ -249,7 +249,7 @@ fn density_sql_bandwidth(
 
 fn build_grid_cte(groups: &[String], from: &str, min: f64, max: f64, n_points: usize) -> String {
     let has_groups = !groups.is_empty();
-    let n_points = n_points - 1; // GENERATE_SERIES gives one point for free
+    let n_points = n_points - 1; // GENERATE_SERIES gives on point for free
     let diff = (max - min).abs();
 
     // Expand range 10%
@@ -376,4 +376,125 @@ fn compute_density(
         density_column = naming::stat_column("density"),
         grid_group_select = grid_group_select
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::reader::duckdb::DuckDBReader;
+    use crate::reader::Reader;
+
+    #[test]
+    fn test_density_sql_no_groups() {
+        let query = "SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x)";
+        let groups: Vec<String> = vec![];
+        let mut parameters = HashMap::new();
+        parameters.insert("bandwidth".to_string(), ParameterValue::Number(0.5));
+
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let sql = compute_density("x", query, &groups, (0.0, 10.0), &bw_cte);
+
+        let expected = "WITH bandwidth AS (SELECT 0.5 AS bw),
+        data AS (
+          SELECT x AS val
+          FROM (SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x))
+          WHERE x IS NOT NULL
+        ),
+        grid AS (
+          SELECT -0.5 + (seq.n * 11 / 511) AS x
+          FROM GENERATE_SERIES(0, 511) AS seq(n)
+        )
+        SELECT
+          grid.x AS __ggsql_stat_x,
+
+          AVG(
+            EXP(-0.5 * POW((grid.x - data.val) / bandwidth.bw, 2)) / (bandwidth.bw * SQRT(2 * PI()))
+          ) AS __ggsql_stat_density
+        FROM grid
+        CROSS JOIN data
+        CROSS JOIN bandwidth
+        WHERE true
+        GROUP BY grid.x
+        ORDER BY grid.x";
+
+        // Normalize whitespace for comparison
+        let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert_eq!(normalize(&sql), normalize(expected));
+
+        // Verify SQL executes and produces correct output shape
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let df = reader.execute_sql(&sql).expect("SQL should execute");
+
+        assert_eq!(df.get_column_names(), vec!["__ggsql_stat_x", "__ggsql_stat_density"]);
+        assert_eq!(df.height(), 512); // 512 grid points
+    }
+
+    #[test]
+    fn test_density_sql_with_two_groups() {
+        let query = "SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category)";
+        let groups = vec!["region".to_string(), "category".to_string()];
+        let mut parameters = HashMap::new();
+        parameters.insert("bandwidth".to_string(), ParameterValue::Number(0.5));
+
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let sql = compute_density("x", query, &groups, (0.0, 10.0), &bw_cte);
+
+        let expected = "WITH bandwidth AS (SELECT 0.5 AS bw, region, category FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category)) GROUP BY region, category),
+        data AS (
+          SELECT region, category, x AS val
+          FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category))
+          WHERE x IS NOT NULL
+        ),
+        grid AS (
+          SELECT
+            region, category,
+            -0.5 + (seq.n * 11 / 511) AS x
+          FROM GENERATE_SERIES(0, 511) AS seq(n)
+          CROSS JOIN (SELECT DISTINCT region, category FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category))) AS groups
+        )
+        SELECT
+          grid.x AS __ggsql_stat_x,
+          grid.region, grid.category,
+          AVG(
+            EXP(-0.5 * POW((grid.x - data.val) / bandwidth.bw, 2)) / (bandwidth.bw * SQRT(2 * PI()))
+          ) AS __ggsql_stat_density
+        FROM grid
+        CROSS JOIN data
+        CROSS JOIN bandwidth
+        WHERE true AND grid.region = bandwidth.region AND grid.category = bandwidth.category AND grid.region = data.region AND grid.category = data.category
+        GROUP BY grid.x, grid.region, grid.category
+        ORDER BY grid.x, grid.region, grid.category";
+
+        // Normalize whitespace for comparison
+        let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert_eq!(normalize(&sql), normalize(expected));
+
+        // Verify SQL executes and produces correct output shape
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let df = reader.execute_sql(&sql).expect("SQL should execute");
+
+        assert_eq!(
+            df.get_column_names(),
+            vec!["__ggsql_stat_x", "region", "category", "__ggsql_stat_density"]
+        );
+        assert_eq!(df.height(), 1024); // 512 grid points × 2 groups
+    }
+
+    #[test]
+    fn test_density_sql_computed_bandwidth() {
+        let query = "SELECT x FROM (VALUES (1.0), (2.0), (3.0), (4.0), (5.0)) AS t(x)";
+        let groups: Vec<String> = vec![];
+        let parameters = HashMap::new(); // No explicit bandwidth - will compute
+
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+
+        // Verify bandwidth computation executes
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let df = reader
+            .execute_sql(&format!("{}\nSELECT bw FROM bandwidth", bw_cte))
+            .expect("Bandwidth SQL should execute");
+
+        assert_eq!(df.get_column_names(), vec!["bw"]);
+        assert_eq!(df.height(), 1);
+    }
 }
