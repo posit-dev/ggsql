@@ -10,6 +10,10 @@ use crate::{
 };
 use std::collections::HashMap;
 
+/// Gaussian kernel normalization constant: 1/sqrt(2*pi)
+/// Precomputed at compile time to avoid repeated SQRT and PI() calls in SQL
+const GAUSSIAN_NORM: f64 = 0.3989422804014327; // 1.0 / (2.0 * std::f64::consts::PI).sqrt()
+
 /// Density geom - kernel density estimation
 #[derive(Debug, Clone, Copy)]
 pub struct Density;
@@ -108,9 +112,10 @@ fn stat_density(
         GgsqlError::ValidationError("Density requires 'x' aesthetic mapping".to_string())
     })?;
 
-    let range = compute_range_sql(&x, query, execute)?;
+    let (min, max) = compute_range_sql(&x, query, execute)?;
     let bw_cte = density_sql_bandwidth(query, group_by, &x, parameters);
-    let density_query = compute_density(&x, query, group_by, range, &bw_cte);
+    let grid_cte = build_grid_cte(group_by, &query, min, max, 512);
+    let density_query = compute_density(&x, query, group_by, &bw_cte, &grid_cte);
 
     Ok(StatResult::Transformed {
         query: density_query,
@@ -295,13 +300,9 @@ fn compute_density(
     value: &str,
     from: &str,
     group_by: &[String],
-    range: (f64, f64),
     bandwidth_cte: &str,
+    grid_cte: &str,
 ) -> String {
-    let (min, max) = range;
-
-    let grid_cte = build_grid_cte(group_by, from, min, max, 512);
-
     let data_cte = format!(
         "data AS (
           SELECT {groups}{value} AS val
@@ -313,46 +314,38 @@ fn compute_density(
         from = from
     );
 
-    // Helper to build join conditions between two tables
-    fn join_conditions(group_by: &[String], left_table: &str, right_table: &str) -> String {
-        if group_by.is_empty() {
-            return String::new();
-        }
-        let conds: Vec<String> = group_by
+    // Build bandwidth join condition
+    let bandwidth_join = if group_by.is_empty() {
+        "INNER JOIN bandwidth ON true".to_string()
+    } else {
+        let join_conds: Vec<String> = group_by
             .iter()
-            .map(|g| {
-                format!(
-                    "{left}.{col} = {right}.{col}",
-                    left = left_table,
-                    col = g,
-                    right = right_table
-                )
-            })
+            .map(|g| format!("data.{col} = bandwidth.{col}", col = g))
             .collect();
-        format!("AND {}", conds.join(" AND "))
-    }
+        format!("INNER JOIN bandwidth ON {}", join_conds.join(" AND "))
+    };
 
     // Build all group-related SQL fragments
     let grid_groups: Vec<String> = group_by.iter().map(|g| format!("grid.{}", g)).collect();
     let grid_group_select = with_trailing_comma(&grid_groups.join(", "));
 
-    // Build WHERE clause with group conditions
+    // Build WHERE clause to match grid to data groups
     let where_clause = if group_by.is_empty() {
         String::new()
     } else {
-        format!(
-            " {} {}",
-            join_conditions(group_by, "grid", "bandwidth"),
-            join_conditions(group_by, "grid", "data")
-        )
+        let grid_data_conds: Vec<String> = group_by
+            .iter()
+            .map(|g| format!("grid.{col} = data.{col}", col = g))
+            .collect();
+        format!(" WHERE {}", grid_data_conds.join(" AND "))
     };
 
     let join_logic = format!(
-        "CROSS JOIN data
-        CROSS JOIN bandwidth
-        WHERE true{where_clause}
+        "{bandwidth_join}
+        CROSS JOIN grid{where_clause}
         GROUP BY grid.x{grid_group_by}
         ORDER BY grid.x{grid_group_by}",
+        bandwidth_join = bandwidth_join,
         where_clause = where_clause,
         grid_group_by = with_leading_comma(&grid_groups.join(", "))
     );
@@ -360,7 +353,7 @@ fn compute_density(
     // Generate the density computation query
 
     // Uses Gaussian kernel: K(u) = (1/sqrt(2*pi)) * exp(-0.5 * u^2)
-
+    // Note: normalization constant is moved outside AVG for performance
     format!(
         "{bandwidth_cte},
         {data_cte},
@@ -369,16 +362,17 @@ fn compute_density(
           grid.x AS {x_column},
           {grid_group_select}
           AVG(
-            EXP(-0.5 * POW((grid.x - data.val) / bandwidth.bw, 2)) / (bandwidth.bw * SQRT(2 * PI()))
-          ) AS {density_column}
-        FROM grid
+            EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))
+          ) * {gaussian_norm} / ANY_VALUE(bandwidth.bw) AS {density_column}
+        FROM data
         {join_logic}",
         bandwidth_cte = bandwidth_cte,
         data_cte = data_cte,
         grid_cte = grid_cte,
         x_column = naming::stat_column("x"),
         density_column = naming::stat_column("density"),
-        grid_group_select = grid_group_select
+        grid_group_select = grid_group_select,
+        gaussian_norm = GAUSSIAN_NORM
     )
 }
 
@@ -396,7 +390,8 @@ mod tests {
         parameters.insert("bandwidth".to_string(), ParameterValue::Number(0.5));
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
-        let sql = compute_density("x", query, &groups, (0.0, 10.0), &bw_cte);
+        let grid_cte = build_grid_cte(&groups, query, 0.0, 10.0, 512);
+        let sql = compute_density("x", query, &groups, &bw_cte, &grid_cte);
 
         let expected = "WITH bandwidth AS (SELECT 0.5 AS bw),
         data AS (
@@ -412,12 +407,11 @@ mod tests {
           grid.x AS __ggsql_stat_x,
 
           AVG(
-            EXP(-0.5 * POW((grid.x - data.val) / bandwidth.bw, 2)) / (bandwidth.bw * SQRT(2 * PI()))
-          ) AS __ggsql_stat_density
-        FROM grid
-        CROSS JOIN data
-        CROSS JOIN bandwidth
-        WHERE true
+            EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))
+          ) * 0.3989422804014327 / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_density
+        FROM data
+        INNER JOIN bandwidth ON true
+        CROSS JOIN grid
         GROUP BY grid.x
         ORDER BY grid.x";
 
@@ -444,7 +438,8 @@ mod tests {
         parameters.insert("bandwidth".to_string(), ParameterValue::Number(0.5));
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
-        let sql = compute_density("x", query, &groups, (0.0, 10.0), &bw_cte);
+        let grid_cte = build_grid_cte(&groups, query, 0.0, 10.0, 512);
+        let sql = compute_density("x", query, &groups, &bw_cte, &grid_cte);
 
         let expected = "WITH bandwidth AS (SELECT 0.5 AS bw, region, category FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category)) GROUP BY region, category),
         data AS (
@@ -463,12 +458,12 @@ mod tests {
           grid.x AS __ggsql_stat_x,
           grid.region, grid.category,
           AVG(
-            EXP(-0.5 * POW((grid.x - data.val) / bandwidth.bw, 2)) / (bandwidth.bw * SQRT(2 * PI()))
-          ) AS __ggsql_stat_density
-        FROM grid
-        CROSS JOIN data
-        CROSS JOIN bandwidth
-        WHERE true AND grid.region = bandwidth.region AND grid.category = bandwidth.category AND grid.region = data.region AND grid.category = data.category
+            EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))
+          ) * 0.3989422804014327 / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_density
+        FROM data
+        INNER JOIN bandwidth ON data.region = bandwidth.region AND data.category = bandwidth.category
+        CROSS JOIN grid
+        WHERE grid.region = data.region AND grid.category = data.category
         GROUP BY grid.x, grid.region, grid.category
         ORDER BY grid.x, grid.region, grid.category";
 
@@ -508,5 +503,58 @@ mod tests {
 
         assert_eq!(df.get_column_names(), vec!["bw"]);
         assert_eq!(df.height(), 1);
+    }
+
+    #[test]
+    #[ignore] // Run with: cargo test bench_density_performance -- --ignored --nocapture
+    fn bench_density_performance() {
+        use std::time::Instant;
+
+        // Create test data with 1000 points
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE bench_data AS
+                 SELECT (random() * 100)::DOUBLE as x
+                 FROM generate_series(1, 1000)",
+            )
+            .expect("Failed to create test data");
+
+        let query = "SELECT x FROM bench_data";
+        let groups: Vec<String> = vec![];
+        let mut parameters = HashMap::new();
+        parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
+
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let grid_cte = build_grid_cte(&groups, query, 0.0, 100.0, 512);
+        let sql = compute_density("x", query, &groups, &bw_cte, &grid_cte);
+
+        // Warm-up run
+        reader.execute_sql(&sql).expect("Warm-up failed");
+
+        // Benchmark runs
+        const RUNS: usize = 10;
+        let mut times = Vec::with_capacity(RUNS);
+
+        for i in 0..RUNS {
+            let start = Instant::now();
+            reader.execute_sql(&sql).expect("Benchmark run failed");
+            let duration = start.elapsed();
+            times.push(duration);
+            println!("Run {}: {:?}", i + 1, duration);
+        }
+
+        let avg = times.iter().sum::<std::time::Duration>() / RUNS as u32;
+        let min = times.iter().min().unwrap();
+        let max = times.iter().max().unwrap();
+
+        println!("\n=== Benchmark Results (1000 data points, 512 grid points) ===");
+        println!("Average: {:?}", avg);
+        println!("Min:     {:?}", min);
+        println!("Max:     {:?}", max);
+        println!(
+            "Ops:     0 SQRT/PI()/POW() calls, {} multiplications/divisions per run (optimized)",
+            512_000
+        );
     }
 }
