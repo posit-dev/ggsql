@@ -142,7 +142,11 @@ fn stat_boxplot(
 
     Ok(StatResult::Transformed {
         query: stats_query,
-        stat_columns: vec!["type".to_string(), "value".to_string(), "value2".to_string()],
+        stat_columns: vec![
+            "type".to_string(),
+            "value".to_string(),
+            "value2".to_string(),
+        ],
         dummy_columns: vec![],
         consumed_aesthetics: vec!["y".to_string()],
     })

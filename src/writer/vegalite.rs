@@ -6654,8 +6654,14 @@ mod tests {
 
         // Verify rows have y and y2 columns (not separate stat columns)
         let first_lower_whisker = &lower_whisker_rows[0];
-        assert!(first_lower_whisker[&y_col].is_number(), "Should have y column");
-        assert!(first_lower_whisker[&y2_col].is_number(), "Should have y2 column");
+        assert!(
+            first_lower_whisker[&y_col].is_number(),
+            "Should have y column"
+        );
+        assert!(
+            first_lower_whisker[&y2_col].is_number(),
+            "Should have y2 column"
+        );
         assert!(first_lower_whisker["category"].is_string());
 
         // Verify encodings use __ggsql_aes_y__ and __ggsql_aes_y2__
