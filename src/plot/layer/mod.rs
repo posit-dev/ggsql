@@ -251,28 +251,4 @@ impl Layer {
                 .insert(target_aesthetic.clone(), new_value);
         }
     }
-
-    /// Add default ymin=0 for bar/histogram geoms to ensure y scale includes zero.
-    ///
-    /// Bars and histograms should visually start from a baseline (typically 0).
-    /// This adds an implicit `ymin=0` mapping to remappings if:
-    /// - The geom is Bar or Histogram
-    /// - The layer has a "y" mapping
-    /// - The layer doesn't already have a "ymin" mapping or remapping
-    pub fn add_default_ymin_for_bar_histogram(&mut self) {
-        use crate::plot::layer::geom::GeomType;
-
-        if matches!(self.geom.geom_type(), GeomType::Bar | GeomType::Histogram) {
-            // Only add if layer has y but no ymin
-            if self.mappings.aesthetics.contains_key("y")
-                && !self.mappings.aesthetics.contains_key("ymin")
-                && !self.remappings.aesthetics.contains_key("ymin")
-            {
-                self.remappings.insert(
-                    "ymin".to_string(),
-                    AestheticValue::Literal(LiteralValue::Number(0.0)),
-                );
-            }
-        }
-    }
 }

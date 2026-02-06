@@ -3,7 +3,10 @@
 //! This module handles building SQL queries for layers, applying pre-stat
 //! transformations, stat transforms, and post-query operations.
 
-use crate::plot::{AestheticValue, Layer, LiteralValue, Scale, Schema, SqlTypeNames, StatResult};
+use crate::plot::{
+    AestheticValue, DefaultAestheticValue, Layer, LiteralValue, Scale, Schema, SqlTypeNames,
+    StatResult,
+};
 use crate::{naming, DataFrame, Facet, GgsqlError, Result};
 use polars::prelude::DataType;
 use std::collections::{HashMap, HashSet};
@@ -394,6 +397,22 @@ where
         execute_query,
     )?;
 
+    // Apply literal default remappings from geom defaults (e.g., y2 => 0.0 for bar baseline).
+    // These apply regardless of stat transform, but only if user hasn't overridden them.
+    for (aesthetic, default_value) in layer.geom.default_remappings() {
+        // Only process literal values here (Column values are handled in Transformed branch)
+        if !matches!(default_value, DefaultAestheticValue::Column(_)) {
+            // Only add if user hasn't already specified this aesthetic in remappings or mappings
+            if !layer.remappings.aesthetics.contains_key(*aesthetic)
+                && !layer.mappings.aesthetics.contains_key(*aesthetic)
+            {
+                layer
+                    .remappings
+                    .insert(aesthetic.to_string(), default_value.to_aesthetic_value());
+            }
+        }
+    }
+
     let final_query = match stat_result {
         StatResult::Transformed {
             query: transformed_query,
@@ -401,13 +420,15 @@ where
             dummy_columns,
             consumed_aesthetics,
         } => {
-            // Build final remappings: start with geom defaults, override with user remappings
-            let mut final_remappings: HashMap<String, String> = layer
-                .geom
-                .default_remappings()
-                .iter()
-                .map(|(stat, aes)| (stat.to_string(), aes.to_string()))
-                .collect();
+            // Build stat column -> aesthetic mappings from geom defaults for renaming
+            let mut final_remappings: HashMap<String, String> = HashMap::new();
+
+            for (aesthetic, default_value) in layer.geom.default_remappings() {
+                if let DefaultAestheticValue::Column(stat_col) = default_value {
+                    // Stat column mapping: stat_col -> aesthetic (for rename)
+                    final_remappings.insert(stat_col.to_string(), aesthetic.to_string());
+                }
+            }
 
             // User REMAPPING overrides defaults
             // When user maps a stat to an aesthetic, remove any default mapping to that aesthetic
@@ -461,11 +482,6 @@ where
                 }
             }
 
-            // Add default ymin=0 for bar/histogram geoms to ensure y scale includes zero.
-            // This is added to remappings so it's handled post-query (since this is after
-            // query building). The remapping will create a constant column in the DataFrame.
-            layer.add_default_ymin_for_bar_histogram();
-
             // Wrap transformed query to rename stat columns to prefixed aesthetic names
             let stat_rename_exprs: Vec<String> = stat_columns
                 .iter()
@@ -494,11 +510,7 @@ where
                 )
             }
         }
-        StatResult::Identity => {
-            // Add default ymin=0 for bar/histogram geoms even without stat transforms
-            layer.add_default_ymin_for_bar_histogram();
-            query
-        }
+        StatResult::Identity => query,
     };
 
     // Apply ORDER BY

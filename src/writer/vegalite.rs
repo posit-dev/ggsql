@@ -608,6 +608,9 @@ impl VegaLiteWriter {
     ///
     /// The `titled_families` set tracks which aesthetic families have already received
     /// a title, ensuring only one title per family (e.g., one title for x/xmin/xmax).
+    ///
+    /// The `primary_aesthetics` set contains primary aesthetics that exist in the layer.
+    /// When a primary exists, variant aesthetics (xmin, ymin, etc.) get `title: null`.
     fn build_encoding_channel(
         &self,
         aesthetic: &str,
@@ -615,12 +618,13 @@ impl VegaLiteWriter {
         df: &DataFrame,
         spec: &Plot,
         titled_families: &mut std::collections::HashSet<String>,
+        primary_aesthetics: &std::collections::HashSet<String>,
     ) -> Result<Value> {
         match value {
             AestheticValue::Column {
                 name: col,
+                original_name,
                 is_dummy,
-                ..
             } => {
                 // Check if there's a scale specification for this aesthetic or its primary
                 // E.g., "xmin" should use the "x" scale
@@ -675,9 +679,34 @@ impl VegaLiteWriter {
                     encoding["bin"] = json!("binned");
                 }
 
-                // Apply title only once per aesthetic family
-                // (primary was already computed above for scale lookup)
-                if !titled_families.contains(primary) {
+                // Apply title handling:
+                // - Primary aesthetics (x, y, color) can set the title
+                // - Variant aesthetics (xmin, ymin, etc.) only get title if no primary exists
+                // - When a primary exists, variants get title: null to prevent axis label conflicts
+                let is_primary = aesthetic == primary;
+                let primary_exists = primary_aesthetics.contains(primary);
+
+                if is_primary && !titled_families.contains(primary) {
+                    // Primary aesthetic: set title from explicit label or original_name
+                    let explicit_label = spec
+                        .labels
+                        .as_ref()
+                        .and_then(|labels| labels.labels.get(primary));
+
+                    if let Some(label) = explicit_label {
+                        encoding["title"] = json!(label);
+                        titled_families.insert(primary.to_string());
+                    } else if let Some(orig) = original_name {
+                        // Use original column name as default title when available
+                        // (preserves readable names when columns are renamed to internal names)
+                        encoding["title"] = json!(orig);
+                        titled_families.insert(primary.to_string());
+                    }
+                } else if !is_primary && primary_exists {
+                    // Variant with primary present: suppress title to avoid axis label conflicts
+                    encoding["title"] = Value::Null;
+                } else if !is_primary && !primary_exists && !titled_families.contains(primary) {
+                    // Variant without primary: allow first variant to claim title (for explicit labels)
                     if let Some(ref labels) = spec.labels {
                         if let Some(label) = labels.labels.get(primary) {
                             encoding["title"] = json!(label);
@@ -1675,10 +1704,27 @@ impl Writer for VegaLiteWriter {
             let mut encoding = Map::new();
             let mut titled_families: std::collections::HashSet<String> =
                 std::collections::HashSet::new();
+
+            // Collect primary aesthetics that exist in the layer (for title handling)
+            // e.g., if layer has "y", then "ymin" and "ymax" should suppress their titles
+            let primary_aesthetics: std::collections::HashSet<String> = layer
+                .mappings
+                .aesthetics
+                .keys()
+                .filter(|a| GeomAesthetics::primary_aesthetic(a) == a.as_str())
+                .cloned()
+                .collect();
+
             for (aesthetic, value) in &layer.mappings.aesthetics {
                 let channel_name = self.map_aesthetic_name(aesthetic);
-                let channel_encoding =
-                    self.build_encoding_channel(aesthetic, value, df, spec, &mut titled_families)?;
+                let channel_encoding = self.build_encoding_channel(
+                    aesthetic,
+                    value,
+                    df,
+                    spec,
+                    &mut titled_families,
+                    &primary_aesthetics,
+                )?;
                 encoding.insert(channel_name, channel_encoding);
 
                 // For binned positional aesthetics (x, y), add x2/y2 channel with bin_end column
@@ -1720,12 +1766,6 @@ impl Writer for VegaLiteWriter {
             // Add detail encoding for partition_by columns (grouping)
             if let Some(detail) = self.build_detail_encoding(&layer.partition_by) {
                 encoding.insert("detail".to_string(), detail);
-            }
-
-            // Add y2 baseline when x2 is present (for histogram bars)
-            // Vega-Lite requires y2 when using x2 for bar marks
-            if encoding.contains_key("x2") && !encoding.contains_key("y2") {
-                encoding.insert("y2".to_string(), json!({"datum": 0}));
             }
 
             // Add order encoding for Path geoms (preserves data order instead of x-axis sorting)
@@ -2088,21 +2128,14 @@ fn render_boxplot(
         encoding.remove("shape");
     }
 
-    // Remove title from value encoding to prevent duplicate titles when we create y/y2 channels
-    // (Vega-Lite would otherwise combine titles from both y and y2 into a comma-separated label)
-    if let Some(enc) = summary_prototype
-        .get_mut("encoding")
-        .and_then(|e| e.get_mut(value_var1))
-        .and_then(|v| v.as_object_mut())
-    {
-        enc.remove("title");
-    }
-
     // Build encoding templates for y and y2 fields
+    // y keeps its title (from original column name or explicit label)
+    // y2 gets title: null to prevent Vega-Lite from combining both into the axis title
     let mut y_encoding = summary_prototype["encoding"][value_var1].clone();
     y_encoding["field"] = json!(value_col);
     let mut y2_encoding = summary_prototype["encoding"][value_var1].clone();
     y2_encoding["field"] = json!(value2_col);
+    y2_encoding["title"] = Value::Null; // Suppress y2 title to prevent "y, y2" axis label
 
     // Lower whiskers (rule from y to y2, where y=q1 and y2=lower)
     let mut lower_whiskers = create_layer(
@@ -6669,6 +6702,134 @@ mod tests {
         assert!(layers[1]["encoding"]["y2"].is_object());
         assert_eq!(layers[1]["encoding"]["y"]["field"], y_col);
         assert_eq!(layers[1]["encoding"]["y2"]["field"], y2_col);
+    }
+
+    #[test]
+    fn test_boxplot_y_axis_title_uses_original_column() {
+        // Verify that the y-axis title shows the original column name (e.g., "Temp")
+        // not the internal column names (__ggsql_aes_y__, __ggsql_aes_y2__)
+        use polars::prelude::*;
+
+        let writer = VegaLiteWriter::new();
+
+        let y_col = naming::aesthetic_column("y");
+        let y2_col = naming::aesthetic_column("y2");
+        let type_col = naming::aesthetic_column("type");
+
+        // Create minimal boxplot data
+        let df = df! {
+            "category" => &["A", "A", "A", "A"],
+            type_col.as_str() => &["lower_whisker", "upper_whisker", "box", "median"],
+            y_col.as_str() => &[15.0, 25.0, 15.0, 20.0],
+            y2_col.as_str() => &[Some(10.0), Some(30.0), Some(25.0), None],
+        }
+        .unwrap();
+
+        // Create layer with original_name set (simulating what happens after stat remapping)
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::boxplot())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("category".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::Column {
+                    name: y_col.clone(),
+                    original_name: Some("Temp".to_string()), // Original column before remapping
+                    is_dummy: false,
+                },
+            );
+        spec.layers.push(layer);
+
+        // Generate Vega-Lite JSON
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        let layers = vl_spec["layer"].as_array().unwrap();
+
+        // y encoding should have title "Temp" (original name)
+        let y_encoding = &layers[1]["encoding"]["y"];
+        assert_eq!(
+            y_encoding["title"], "Temp",
+            "y-axis title should be the original column name 'Temp', got {:?}",
+            y_encoding["title"]
+        );
+
+        // y2 encoding should have title: null (suppressed)
+        let y2_encoding = &layers[1]["encoding"]["y2"];
+        assert!(
+            y2_encoding["title"].is_null(),
+            "y2 title should be null to prevent duplicate axis labels, got {:?}",
+            y2_encoding["title"]
+        );
+    }
+
+    #[test]
+    fn test_bar_stat_y_title_not_overridden_by_y2() {
+        // Verify that when bar stat creates "y" (count) and "y2" (baseline 0),
+        // the y encoding gets the title "count" and y2 doesn't steal it
+        use polars::prelude::*;
+
+        let writer = VegaLiteWriter::new();
+
+        let y_col = naming::aesthetic_column("y");
+        let y2_col = naming::aesthetic_column("y2");
+
+        // Create bar chart data with stat-generated y and y2
+        let df = df! {
+            "category" => &["A", "B", "C"],
+            y_col.as_str() => &[10.0, 20.0, 30.0],
+            y2_col.as_str() => &[0.0, 0.0, 0.0],
+        }
+        .unwrap();
+
+        // Create layer with y from stat (original_name = "count") and y2
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::bar())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("category".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::Column {
+                    name: y_col.clone(),
+                    original_name: Some("count".to_string()), // From bar stat
+                    is_dummy: false,
+                },
+            )
+            .with_aesthetic(
+                "y2".to_string(),
+                AestheticValue::Column {
+                    name: y2_col.clone(),
+                    original_name: None, // Default baseline, no meaningful name
+                    is_dummy: false,
+                },
+            );
+        spec.layers.push(layer);
+
+        // Generate Vega-Lite JSON
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        let layer_spec = &vl_spec["layer"][0];
+
+        // y encoding should have title "count" (from original_name)
+        let y_encoding = &layer_spec["encoding"]["y"];
+        assert_eq!(
+            y_encoding["title"], "count",
+            "y-axis title should be 'count' (from stat), got {:?}",
+            y_encoding["title"]
+        );
+
+        // y2 encoding should have title: null (suppressed because y exists)
+        let y2_encoding = &layer_spec["encoding"]["y2"];
+        assert!(
+            y2_encoding["title"].is_null(),
+            "y2 title should be null when y exists, got {:?}",
+            y2_encoding["title"]
+        );
     }
 
     #[test]

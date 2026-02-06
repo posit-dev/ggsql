@@ -79,7 +79,7 @@ pub use tile::Tile;
 pub use violin::Violin;
 pub use vline::VLine;
 
-use crate::plot::types::{ParameterValue, Schema};
+use crate::plot::types::{DefaultAestheticValue, ParameterValue, Schema};
 
 /// Enum of all geom types for pattern matching and serialization
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -148,11 +148,14 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Returns aesthetic information (REQUIRED - each geom is different)
     fn aesthetics(&self) -> GeomAesthetics;
 
-    /// Returns default remappings for stat-computed columns to aesthetics.
+    /// Returns default remappings for stat-computed columns and literals to aesthetics.
     ///
-    /// Each tuple is (stat_column_name, aesthetic_name).
+    /// Each tuple is (aesthetic_name, value) where value can be:
+    /// - `DefaultAestheticValue::Column("stat_col")` - maps a stat column to the aesthetic
+    /// - `DefaultAestheticValue::Number(0.0)` - maps a literal value to the aesthetic
+    ///
     /// These defaults can be overridden by a REMAPPING clause.
-    fn default_remappings(&self) -> &'static [(&'static str, &'static str)] {
+    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
         &[]
     }
 
@@ -362,7 +365,7 @@ impl Geom {
     }
 
     /// Get default remappings
-    pub fn default_remappings(&self) -> &'static [(&'static str, &'static str)] {
+    pub fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
         self.0.default_remappings()
     }
 

@@ -1056,14 +1056,14 @@ mod tests {
 
     #[cfg(feature = "duckdb")]
     #[test]
-    fn test_bar_adds_ymin_zero_for_baseline() {
-        // Bar geom should add ymin=0 to ensure y scale includes zero
+    fn test_bar_adds_y2_zero_for_baseline() {
+        // Bar geom should add y2=0 to ensure bars have a baseline
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         reader
             .connection()
             .execute(
-                "CREATE TABLE bar_ymin_test AS SELECT * FROM (VALUES
+                "CREATE TABLE bar_y2_test AS SELECT * FROM (VALUES
                     ('A', 10), ('B', 20), ('C', 30)
                 ) AS t(category, value)",
                 duckdb::params![],
@@ -1071,7 +1071,7 @@ mod tests {
             .unwrap();
 
         let query = r#"
-            SELECT * FROM bar_ymin_test
+            SELECT * FROM bar_y2_test
             VISUALISE category AS x, value AS y
             DRAW bar
         "#;
@@ -1079,20 +1079,20 @@ mod tests {
         let result = prepare_data(query, &reader).unwrap();
         let layer = &result.specs[0].layers[0];
 
-        // Layer should have ymin in mappings (added by default for bar)
+        // Layer should have y2 in mappings (added by default for bar)
         assert!(
-            layer.mappings.aesthetics.contains_key("ymin"),
-            "Bar should have ymin mapping for baseline: {:?}",
+            layer.mappings.aesthetics.contains_key("y2"),
+            "Bar should have y2 mapping for baseline: {:?}",
             layer.mappings.aesthetics.keys().collect::<Vec<_>>()
         );
 
-        // The DataFrame should have the ymin column with 0 values
+        // The DataFrame should have the y2 column with 0 values
         let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
-        let ymin_col = naming::aesthetic_column("ymin");
+        let y2_col = naming::aesthetic_column("y2");
         assert!(
-            layer_df.column(&ymin_col).is_ok(),
+            layer_df.column(&y2_col).is_ok(),
             "DataFrame should have '{}' column: {:?}",
-            ymin_col,
+            y2_col,
             layer_df.get_column_names_str()
         );
     }

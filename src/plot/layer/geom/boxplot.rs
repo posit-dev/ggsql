@@ -6,7 +6,8 @@ use super::{GeomAesthetics, GeomTrait, GeomType};
 use crate::{
     naming,
     plot::{
-        geom::types::get_column_name, DefaultParam, DefaultParamValue, ParameterValue, StatResult,
+        geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
+        ParameterValue, StatResult,
     },
     DataFrame, GgsqlError, Mappings, Result,
 };
@@ -64,8 +65,12 @@ impl GeomTrait for Boxplot {
         ]
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, &'static str)] {
-        &[("value", "y"), ("value2", "y2"), ("type", "type")]
+    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
+        &[
+            ("y", DefaultAestheticValue::Column("value")),
+            ("y2", DefaultAestheticValue::Column("value2")),
+            ("type", DefaultAestheticValue::Column("type")),
+        ]
     }
 
     fn apply_stat_transform(
@@ -683,13 +688,15 @@ mod tests {
 
     #[test]
     fn test_boxplot_default_remappings() {
+        use crate::plot::types::DefaultAestheticValue;
+
         let boxplot = Boxplot;
         let remappings = boxplot.default_remappings();
 
         assert_eq!(remappings.len(), 3);
-        assert!(remappings.contains(&("value", "y")));
-        assert!(remappings.contains(&("value2", "y2")));
-        assert!(remappings.contains(&("type", "type")));
+        assert!(remappings.contains(&("y", DefaultAestheticValue::Column("value"))));
+        assert!(remappings.contains(&("y2", DefaultAestheticValue::Column("value2"))));
+        assert!(remappings.contains(&("type", DefaultAestheticValue::Column("type"))));
     }
 
     #[test]

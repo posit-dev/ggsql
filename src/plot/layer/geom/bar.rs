@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use super::types::get_column_name;
 use super::{DefaultParam, DefaultParamValue, GeomAesthetics, GeomTrait, GeomType, StatResult};
 use crate::naming;
-use crate::plot::types::ParameterValue;
+use crate::plot::types::{DefaultAestheticValue, ParameterValue};
 use crate::{DataFrame, GgsqlError, Mappings, Result};
 
 use super::types::Schema;
@@ -32,8 +32,12 @@ impl GeomTrait for Bar {
         }
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, &'static str)] {
-        &[("count", "y"), ("x", "x")]
+    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
+        &[
+            ("y", DefaultAestheticValue::Column("count")),
+            ("x", DefaultAestheticValue::Column("x")),
+            ("y2", DefaultAestheticValue::Number(0.0)),
+        ]
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {

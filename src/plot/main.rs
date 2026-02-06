@@ -24,8 +24,8 @@ use std::collections::HashMap;
 
 // Re-export input types
 pub use super::types::{
-    AestheticValue, ArrayElement, ColumnInfo, DataSource, LiteralValue, Mappings, ParameterValue,
-    Schema, SqlExpression,
+    AestheticValue, ArrayElement, ColumnInfo, DataSource, DefaultAestheticValue, LiteralValue,
+    Mappings, ParameterValue, Schema, SqlExpression,
 };
 
 // Re-export Geom and related types from the layer::geom module
@@ -132,13 +132,14 @@ impl Plot {
     ///
     /// For each aesthetic used in any layer, determines the appropriate label:
     /// - If user specified a label via LABEL clause, use that
-    /// - Otherwise, use the first non-synthetic column name mapped to that aesthetic or its family
-    /// - Aesthetic families (e.g., x, x2, xmin, xmax, xend) all contribute to the same primary label
-    /// - First aesthetic encountered in a family sets the label
+    /// - Otherwise, use the primary aesthetic's column name if mapped
+    /// - Variant aesthetics (x2, xmin, xmax, y2, ymin, ymax) only set the label if
+    ///   no primary aesthetic exists in the layer
     ///
     /// This ensures that:
     /// - Synthetic constant columns (like `__ggsql_const_color_0__`) don't appear as axis/legend titles
-    /// - Variant aesthetics like `xmin`/`xmax` can contribute to the primary aesthetic's label
+    /// - Primary aesthetics always take precedence over variants for labels
+    /// - Variant aesthetics can still contribute labels when the primary doesn't exist
     pub fn compute_aesthetic_labels(&mut self) {
         // Ensure Labels struct exists
         if self.labels.is_none() {
@@ -148,49 +149,47 @@ impl Plot {
         }
         let labels = self.labels.as_mut().unwrap();
 
-        // Process all layers and their aesthetics
-        for layer in &self.layers {
-            for (aesthetic, value) in &layer.mappings.aesthetics {
-                if let AestheticValue::Column { name, .. } = value {
-                    // Skip synthetic constant columns
-                    if naming::is_const_column(name) {
+        // Two passes: first primaries, then variants
+        // This ensures primaries always get priority regardless of HashMap iteration order
+        for primaries_only in [true, false] {
+            for layer in &self.layers {
+                for (aesthetic, value) in &layer.mappings.aesthetics {
+                    let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+                    let is_primary = aesthetic == primary;
+
+                    // First pass: only primaries; second pass: only variants
+                    if primaries_only != is_primary {
                         continue;
                     }
 
-                    // Get the primary aesthetic for this aesthetic (e.g., "xmin" -> "x")
-                    let primary = GeomAesthetics::primary_aesthetic(aesthetic);
-
-                    // Skip if label already set (user-specified or from earlier aesthetic)
+                    // Skip if label already set (user-specified or from earlier)
                     if labels.labels.contains_key(primary) {
                         continue;
                     }
 
-                    // Use label_name() to get the original column name for display
-                    // This returns original_name if available, otherwise falls back to name
-                    let label_source = value.label_name().unwrap_or(name);
-
-                    // Compute the label from the column name, stripping synthetic prefixes:
-                    // 1. Stat columns: __ggsql_stat_count -> count
-                    // 2. Aesthetic columns: __ggsql_aes_color__ -> color
-                    //    Special case: stroke/fill aesthetics should show "color" since
-                    //    that's what users typically specify (color gets split internally)
-                    let column_name = if let Some(stat_name) =
-                        naming::extract_stat_name(label_source)
-                    {
-                        stat_name.to_string()
-                    } else if let Some(aes_name) = naming::extract_aesthetic_name(label_source) {
-                        // For stroke/fill with synthetic columns, use "color" as the label
-                        // since users typically write "color" not "stroke"/"fill"
-                        if matches!(aes_name, "stroke" | "fill") {
-                            "color".to_string()
-                        } else {
-                            aes_name.to_string()
+                    if let AestheticValue::Column { name, .. } = value {
+                        // Skip synthetic constant columns
+                        if naming::is_const_column(name) {
+                            continue;
                         }
-                    } else {
-                        label_source.to_string()
-                    };
 
-                    labels.labels.insert(primary.to_string(), column_name);
+                        // Use label_name() to get the original column name for display
+                        let label_source = value.label_name().unwrap_or(name);
+
+                        // Strip synthetic prefixes from label
+                        let column_name = if let Some(stat_name) =
+                            naming::extract_stat_name(label_source)
+                        {
+                            stat_name.to_string()
+                        } else if let Some(aes_name) = naming::extract_aesthetic_name(label_source)
+                        {
+                            aes_name.to_string()
+                        } else {
+                            label_source.to_string()
+                        };
+
+                        labels.labels.insert(primary.to_string(), column_name);
+                    }
                 }
             }
         }
@@ -567,8 +566,8 @@ mod tests {
         let mut spec = Plot::new();
 
         // Simulate a layer where a literal was converted to an aesthetic column
-        // e.g., 'Ozone' AS color becomes __ggsql_aes_stroke__ column (for line geoms)
-        // The label should be "color" since that's what users typically specify
+        // e.g., 'red' AS stroke becomes __ggsql_aes_stroke__ column
+        // The label should be "stroke" (the aesthetic name extracted from the prefix)
         let layer = Layer::new(Geom::line())
             .with_aesthetic("x".to_string(), AestheticValue::standard_column("date"))
             .with_aesthetic("y".to_string(), AestheticValue::standard_column("value"))
@@ -581,11 +580,11 @@ mod tests {
         spec.compute_aesthetic_labels();
 
         let labels = spec.labels.as_ref().unwrap();
-        // The stroke label should be "color", since stroke/fill come from color splitting
+        // The stroke label should be "stroke" (extracted from __ggsql_aes_stroke__)
         assert_eq!(
             labels.labels.get("stroke"),
-            Some(&"color".to_string()),
-            "Stroke aesthetic should use 'color' label for user-friendliness"
+            Some(&"stroke".to_string()),
+            "Stroke aesthetic should use 'stroke' as label"
         );
     }
 

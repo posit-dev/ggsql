@@ -240,6 +240,35 @@ impl std::fmt::Display for AestheticValue {
     }
 }
 
+/// Static version of AestheticValue for use in default remappings.
+///
+/// Similar to how `DefaultParamValue` is the static version of `ParameterValue`,
+/// this type uses `&'static str` instead of `String` so it can be used in
+/// static arrays returned by `GeomTrait::default_remappings()`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DefaultAestheticValue {
+    /// Column reference (stat column name)
+    Column(&'static str),
+    /// Literal string value
+    String(&'static str),
+    /// Literal number value
+    Number(f64),
+    /// Literal boolean value
+    Boolean(bool),
+}
+
+impl DefaultAestheticValue {
+    /// Convert to owned AestheticValue
+    pub fn to_aesthetic_value(&self) -> AestheticValue {
+        match self {
+            Self::Column(name) => AestheticValue::standard_column(name.to_string()),
+            Self::String(s) => AestheticValue::Literal(LiteralValue::String(s.to_string())),
+            Self::Number(n) => AestheticValue::Literal(LiteralValue::Number(*n)),
+            Self::Boolean(b) => AestheticValue::Literal(LiteralValue::Boolean(*b)),
+        }
+    }
+}
+
 /// Literal values in aesthetic mappings
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LiteralValue {
