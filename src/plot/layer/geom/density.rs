@@ -410,10 +410,7 @@ mod tests {
         )
         SELECT
           grid.x AS __ggsql_stat_x,
-
-          AVG(
-            EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))
-          ) * 0.3989422804014327 / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_density
+          AVG(EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327 / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_density
         FROM data
         INNER JOIN bandwidth ON true
         CROSS JOIN grid
@@ -443,7 +440,7 @@ mod tests {
         parameters.insert("bandwidth".to_string(), ParameterValue::Number(0.5));
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
-        let grid_cte = build_grid_cte(&groups, query, 0.0, 10.0, 512);
+        let grid_cte = build_grid_cte(&groups, query, -10.0, 10.0, 512);
         let sql = compute_density("x", query, &groups, &bw_cte, &grid_cte);
 
         let expected = "WITH bandwidth AS (SELECT 0.5 AS bw, region, category FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category)) GROUP BY region, category),
@@ -455,16 +452,14 @@ mod tests {
         grid AS (
           SELECT
             region, category,
-            -0.5 + (seq.n * 11 / 511) AS x
+            -11 + (seq.n * 22 / 511) AS x
           FROM GENERATE_SERIES(0, 511) AS seq(n)
           CROSS JOIN (SELECT DISTINCT region, category FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category))) AS groups
         )
         SELECT
           grid.x AS __ggsql_stat_x,
           grid.region, grid.category,
-          AVG(
-            EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))
-          ) * 0.3989422804014327 / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_density
+          AVG(EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327 / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_density
         FROM data
         INNER JOIN bandwidth ON data.region = bandwidth.region AND data.category = bandwidth.category
         CROSS JOIN grid
@@ -490,6 +485,26 @@ mod tests {
             ]
         );
         assert_eq!(df.height(), 1024); // 512 grid points × 2 groups
+
+        // Verify density integrates to ~2 (one per group)
+        // Grid spacing: (max - min) / (n - 1) = 22 / 511 ≈ 0.0430
+        let dx = 22.0 / 511.0;
+        let density_col = df.column("__ggsql_stat_density").expect("density column exists");
+        let total: f64 = density_col
+            .f64()
+            .expect("density is f64")
+            .into_iter()
+            .filter_map(|v| v)
+            .sum();
+        let integral = total * dx;
+
+        // With wide range (-10 to 10), we capture essentially all density mass
+        // Tolerance of 1e-6 - error is dominated by floating point precision
+        assert!(
+            (integral - 2.0).abs() < 1e-6,
+            "Density should integrate to ~2 (one per group), got {}",
+            integral
+        );
     }
 
     #[test]
