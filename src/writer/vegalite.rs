@@ -41,7 +41,6 @@ use crate::{AestheticValue, DataFrame, Geom, GgsqlError, Plot, Result};
 use polars::prelude::*;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
-use std::ops::Not;
 
 /// Build a Vega-Lite labelExpr from label mappings
 ///
@@ -1559,25 +1558,22 @@ impl Writer for VegaLiteWriter {
                     ))
                 })?;
 
-                // Prepare boxplot data (outliers + summary)
-                let (outlier_values, summary_values, grouping_cols, has_outliers) =
+                // Prepare boxplot data split by type
+                let (type_datasets, grouping_cols, has_outliers) =
                     prepare_boxplot_summary(df, self, &binned_columns)?;
 
-                // Generate unique keys for outlier and summary datasets
-                let outlier_key = format!("{}_outliers", data_key);
-                let summary_key = format!("{}_summary", data_key);
-
-                // Add both to individual_datasets with their source tags
-                // (the unify_datasets function will add __ggsql_source__ field)
-                individual_datasets.insert(outlier_key.clone(), json!(outlier_values));
-                individual_datasets.insert(summary_key.clone(), json!(summary_values));
+                // Add each type's data to individual_datasets with type-specific keys
+                // Keys are like: "__ggsql_layer_0__lower_whisker", "__ggsql_layer_0__box", etc.
+                for (type_name, values) in type_datasets {
+                    let type_key = format!("{}{}", data_key, type_name);
+                    individual_datasets.insert(type_key, json!(values));
+                }
 
                 // Store info for later use during layer rendering
                 boxplot_info.insert(
                     layer_idx,
                     BoxplotPreparedInfo {
-                        outlier_key,
-                        summary_key,
+                        base_key: data_key.clone(),
                         grouping_cols,
                         has_outliers,
                     },
@@ -1645,14 +1641,16 @@ impl Writer for VegaLiteWriter {
             // Always starts with a filter to select this layer's data from unified dataset
             let mut transforms: Vec<Value> = Vec::new();
 
-            // Add source filter transform
+            // Add source filter transform (EXCEPT for boxplot - it adds its own type-specific filters)
             // Filter: {"field": "__ggsql_source__", "equal": "<data_key>"}
-            transforms.push(json!({
-                "filter": {
-                    "field": naming::SOURCE_COLUMN,
-                    "equal": data_key
-                }
-            }));
+            if layer.geom.geom_type() != GeomType::Boxplot {
+                transforms.push(json!({
+                    "filter": {
+                        "field": naming::SOURCE_COLUMN,
+                        "equal": data_key
+                    }
+                }));
+            }
 
             // Add window transform for Path geoms to preserve data order
             // (Line geom uses Vega-Lite's default x-axis sorting)
@@ -1762,8 +1760,7 @@ impl Writer for VegaLiteWriter {
                 let boxplot_layers = render_boxplot(
                     layer_spec,
                     layer,
-                    &info.outlier_key,
-                    &info.summary_key,
+                    &info.base_key,
                     &info.grouping_cols,
                     info.has_outliers,
                 )?;
@@ -1904,99 +1901,96 @@ fn render_area(encoding: &mut Map<String, Value>, layer: &Layer) -> Result<()> {
 
 /// Info about prepared boxplot data for a layer
 struct BoxplotPreparedInfo {
-    /// Key for outlier data in the unified dataset
-    outlier_key: String,
-    /// Key for summary data in the unified dataset
-    summary_key: String,
+    /// Base key for the layer (e.g., "__ggsql_layer_0__")
+    base_key: String,
     /// Grouping column names
     grouping_cols: Vec<String>,
     /// Whether there are any outliers
     has_outliers: bool,
 }
 
-/// Prepare boxplot summary data by pivoting from long to wide format.
+/// Prepare boxplot data by splitting into type-specific datasets (no pivot).
 ///
-/// Returns (outlier_data_values, summary_data_values, grouping_cols, has_outliers)
+/// Returns a HashMap of type_suffix -> data_values, plus grouping_cols and has_outliers.
+/// Type suffixes are: "lower_whisker", "upper_whisker", "box", "median", "outlier"
 fn prepare_boxplot_summary(
     data: &DataFrame,
     writer: &VegaLiteWriter,
     binned_columns: &HashMap<String, Vec<f64>>,
-) -> Result<(Vec<Value>, Vec<Value>, Vec<String>, bool)> {
-    let type_col = naming::stat_column("type");
+) -> Result<(HashMap<String, Vec<Value>>, Vec<String>, bool)> {
+    let type_col = naming::aesthetic_column("type");
     let type_col = type_col.as_str();
-    let value_col = naming::stat_column("value");
+    let value_col = naming::aesthetic_column("y");
     let value_col = value_col.as_str();
+    let value2_col = naming::aesthetic_column("y2");
+    let value2_col = value2_col.as_str();
 
-    // Find grouping columns (all columns except 'type' and 'value')
+    // Find grouping columns (all columns except type, value, value2)
     let grouping_cols: Vec<String> = data
         .get_column_names()
         .iter()
-        .filter(|&col| col.as_str() != type_col && col.as_str() != value_col)
+        .filter(|&col| {
+            col.as_str() != type_col && col.as_str() != value_col && col.as_str() != value2_col
+        })
         .map(|s| s.to_string())
         .collect();
 
-    // Separate outliers from summary data
-    let is_outlier = data
+    // Get the type column for filtering
+    let type_series = data
         .column(type_col)
         .and_then(|s| s.str())
-        .map(|s| s.equal("outlier"))
         .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
 
-    let has_outliers = is_outlier.any();
+    // Check for outliers
+    let has_outliers = type_series.equal("outlier").any();
 
-    // Convert outlier data to JSON values
-    let outlier_data = data
-        .filter(&is_outlier)
-        .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
-    let outlier_values = if binned_columns.is_empty() {
-        writer.dataframe_to_values(&outlier_data)?
-    } else {
-        writer.dataframe_to_values_with_bins(&outlier_data, binned_columns)?
-    };
+    // Split data by type into separate datasets
+    let mut type_datasets: HashMap<String, Vec<Value>> = HashMap::new();
 
-    // Filter to non-outliers and pivot to wide format
-    let summary = data
-        .filter(&is_outlier.not())
-        .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
+    for type_name in &["lower_whisker", "upper_whisker", "box", "median", "outlier"] {
+        let mask = type_series.equal(*type_name);
+        let filtered = data
+            .filter(&mask)
+            .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
 
-    // Pivot from long to wide format, giving every metric its own column
-    let grouping_cols_refs: Vec<&str> = grouping_cols.iter().map(|s| s.as_str()).collect();
-    let summary = polars_ops::frame::pivot::pivot_stable(
-        &summary,
-        [type_col],               // on: column to pivot (becomes new columns)
-        Some(grouping_cols_refs), // index: row identifiers
-        Some([value_col]),        // values: data to spread
-        false,                    // sort_columns
-        None,                     // agg_fn
-        None,                     // separator
-    )
-    .map_err(|e| GgsqlError::WriterError(format!("Pivot failed: {}", e)))?;
+        // Skip empty datasets (e.g., no outliers)
+        if filtered.height() == 0 {
+            continue;
+        }
 
-    let summary_values = if binned_columns.is_empty() {
-        writer.dataframe_to_values(&summary)?
-    } else {
-        writer.dataframe_to_values_with_bins(&summary, binned_columns)?
-    };
+        // Drop the type column since type is now encoded in the source key
+        let filtered = filtered
+            .drop(type_col)
+            .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
 
-    Ok((outlier_values, summary_values, grouping_cols, has_outliers))
+        let values = if binned_columns.is_empty() {
+            writer.dataframe_to_values(&filtered)?
+        } else {
+            writer.dataframe_to_values_with_bins(&filtered, binned_columns)?
+        };
+
+        type_datasets.insert(type_name.to_string(), values);
+    }
+
+    Ok((type_datasets, grouping_cols, has_outliers))
 }
 
 /// Render boxplot layers using filter transforms on the unified dataset.
 ///
 /// Creates 5 layers: outliers (optional), lower whiskers, upper whiskers, box, median line.
 /// All layers use filter transforms to select their data from the unified dataset.
+/// Data is in long format with type-specific source keys (e.g., "__ggsql_layer_0__lower_whisker").
 fn render_boxplot(
     prototype: Value,
     layer: &Layer,
-    outlier_source_key: &str,
-    summary_source_key: &str,
+    base_key: &str,
     grouping_cols: &[String],
     has_outliers: bool,
 ) -> Result<Vec<Value>> {
     let mut layers: Vec<Value> = Vec::new();
 
-    let type_col = naming::stat_column("type");
-    let value_col = naming::stat_column("value");
+    let value_col = naming::aesthetic_column("y");
+    let value2_col = naming::aesthetic_column("y2");
 
     let x_col = layer
         .mappings
@@ -2023,9 +2017,7 @@ fn render_boxplot(
     // Find dodge groups (grouping cols minus the axis group col)
     let dodge_groups: Vec<&str> = grouping_cols
         .iter()
-        .filter(|col| {
-            col.as_str() != group_col && col.as_str() != type_col && col.as_str() != value_col
-        })
+        .filter(|col| col.as_str() != group_col)
         .map(|s| s.as_str())
         .collect();
 
@@ -2041,7 +2033,8 @@ fn render_boxplot(
     let default_linewidth = 1.0;
 
     // Helper to create filter transform for source selection
-    let make_source_filter = |source_key: &str| -> Value {
+    let make_source_filter = |type_suffix: &str| -> Value {
+        let source_key = format!("{}{}", base_key, type_suffix);
         json!({
             "filter": {
                 "field": naming::SOURCE_COLUMN,
@@ -2050,25 +2043,32 @@ fn render_boxplot(
         })
     };
 
-    // Create outlier points layer (if there are outliers)
-    if has_outliers {
-        let mut points = prototype.clone();
-
-        // Add source filter transform
-        let existing_transforms = points
+    // Helper to create a layer with source filter and mark
+    let create_layer = |proto: &Value, type_suffix: &str, mark: Value| -> Value {
+        let mut layer_spec = proto.clone();
+        let existing_transforms = layer_spec
             .get("transform")
             .and_then(|t| t.as_array())
             .cloned()
             .unwrap_or_default();
-        let mut new_transforms = vec![make_source_filter(outlier_source_key)];
+        let mut new_transforms = vec![make_source_filter(type_suffix)];
         new_transforms.extend(existing_transforms);
-        points["transform"] = json!(new_transforms);
+        layer_spec["transform"] = json!(new_transforms);
+        layer_spec["mark"] = mark;
+        layer_spec
+    };
 
-        points["mark"] = json!({
-            "type": "point",
-            "stroke": default_stroke,
-            "strokeWidth": default_linewidth
-        });
+    // Create outlier points layer (if there are outliers)
+    if has_outliers {
+        let mut points = create_layer(
+            &prototype,
+            "outlier",
+            json!({
+                "type": "point",
+                "stroke": default_stroke,
+                "strokeWidth": default_linewidth
+            }),
+        );
         if points["encoding"].get("color").is_some() {
             points["mark"]["filled"] = json!(true);
         }
@@ -2088,32 +2088,26 @@ fn render_boxplot(
         encoding.remove("shape");
     }
 
-    // Build encodings for the 5 boxplot numbers
-    let mut summary_encoding = HashMap::new();
-    for aes in &["lower", "upper", "q1", "q3", "median"] {
-        let mut template = summary_prototype["encoding"][value_var1].clone();
-        template["field"] = json!(*aes);
-        summary_encoding.insert(*aes, template);
+    // Remove title from value encoding to prevent duplicate titles when we create y/y2 channels
+    // (Vega-Lite would otherwise combine titles from both y and y2 into a comma-separated label)
+    if let Some(enc) = summary_prototype
+        .get_mut("encoding")
+        .and_then(|e| e.get_mut(value_var1))
+        .and_then(|v| v.as_object_mut())
+    {
+        enc.remove("title");
     }
 
-    // Helper to create summary layer with filter transform
-    let create_summary_layer = |mut layer_spec: Value, mark: Value| -> Value {
-        // Add source filter transform
-        let existing_transforms = layer_spec
-            .get("transform")
-            .and_then(|t| t.as_array())
-            .cloned()
-            .unwrap_or_default();
-        let mut new_transforms = vec![make_source_filter(summary_source_key)];
-        new_transforms.extend(existing_transforms);
-        layer_spec["transform"] = json!(new_transforms);
-        layer_spec["mark"] = mark;
-        layer_spec
-    };
+    // Build encoding templates for y and y2 fields
+    let mut y_encoding = summary_prototype["encoding"][value_var1].clone();
+    y_encoding["field"] = json!(value_col);
+    let mut y2_encoding = summary_prototype["encoding"][value_var1].clone();
+    y2_encoding["field"] = json!(value2_col);
 
-    // Lower whiskers (rule from lower to q1)
-    let mut lower_whiskers = create_summary_layer(
-        summary_prototype.clone(),
+    // Lower whiskers (rule from y to y2, where y=q1 and y2=lower)
+    let mut lower_whiskers = create_layer(
+        &summary_prototype,
+        "lower_whisker",
         json!({
             "type": "rule",
             "stroke": default_stroke,
@@ -2129,17 +2123,35 @@ fn render_boxplot(
         }
     }
 
-    lower_whiskers["encoding"][value_var1] = summary_encoding["q1"].clone();
-    lower_whiskers["encoding"][value_var2] = summary_encoding["lower"].clone();
+    lower_whiskers["encoding"][value_var1] = y_encoding.clone();
+    lower_whiskers["encoding"][value_var2] = y2_encoding.clone();
 
-    // Upper whiskers (rule from q3 to upper)
-    let mut upper_whiskers = lower_whiskers.clone();
-    upper_whiskers["encoding"][value_var1] = summary_encoding["q3"].clone();
-    upper_whiskers["encoding"][value_var2] = summary_encoding["upper"].clone();
+    // Upper whiskers (rule from y to y2, where y=q3 and y2=upper)
+    let mut upper_whiskers = create_layer(
+        &summary_prototype,
+        "upper_whisker",
+        json!({
+            "type": "rule",
+            "stroke": default_stroke,
+            "size": default_linewidth
+        }),
+    );
 
-    // Box (bar from q1 to q3)
-    let mut box_part = create_summary_layer(
-        summary_prototype.clone(),
+    // Handle strokeWidth -> size for rule marks
+    if let Some(linewidth) = upper_whiskers["encoding"].get("strokeWidth").cloned() {
+        upper_whiskers["encoding"]["size"] = linewidth;
+        if let Some(Value::Object(ref mut encoding)) = upper_whiskers.get_mut("encoding") {
+            encoding.remove("strokeWidth");
+        }
+    }
+
+    upper_whiskers["encoding"][value_var1] = y_encoding.clone();
+    upper_whiskers["encoding"][value_var2] = y2_encoding.clone();
+
+    // Box (bar from y to y2, where y=q1 and y2=q3)
+    let mut box_part = create_layer(
+        &summary_prototype,
+        "box",
         json!({
             "type": "bar",
             "width": {"band": width},
@@ -2149,12 +2161,13 @@ fn render_boxplot(
             "strokeWidth": default_linewidth
         }),
     );
-    box_part["encoding"][value_var1] = summary_encoding["q1"].clone();
-    box_part["encoding"][value_var2] = summary_encoding["q3"].clone();
+    box_part["encoding"][value_var1] = y_encoding.clone();
+    box_part["encoding"][value_var2] = y2_encoding.clone();
 
-    // Median line (tick at median)
-    let mut median_line = create_summary_layer(
-        summary_prototype.clone(),
+    // Median line (tick at y, where y=median)
+    let mut median_line = create_layer(
+        &summary_prototype,
+        "median",
         json!({
             "type": "tick",
             "stroke": default_stroke,
@@ -2163,7 +2176,7 @@ fn render_boxplot(
             "strokeWidth": default_linewidth
         }),
     );
-    median_line["encoding"][value_var1] = summary_encoding["median"].clone();
+    median_line["encoding"][value_var1] = y_encoding;
 
     // Add dodging to all summary layers
     if !dodge_groups.is_empty() {
@@ -6471,12 +6484,45 @@ mod tests {
 
         let writer = VegaLiteWriter::new();
 
-        // Create boxplot data in long format (as produced by stat_boxplot)
-        // This simulates boxplot statistics for two categories with outliers
+        let y_col = naming::aesthetic_column("y");
+        let y2_col = naming::aesthetic_column("y2");
+        let type_col = naming::aesthetic_column("type");
+
+        // Create boxplot data in visual-element format (as produced by stat_boxplot after remapping)
+        // Each row represents a visual element with y (primary value) and y2 (secondary value)
+        // Types: lower_whisker (y=q1, y2=lower), upper_whisker (y=q3, y2=upper),
+        //        box (y=q1, y2=q3), median (y=median), outlier (y=value)
         let df = df! {
-            "category" => &["A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "B", "B", "B", "B", "B", "B", "B", "B", "B"],
-            naming::stat_column("type").as_str() => &["lower", "q1", "median", "q3", "upper", "min", "max", "outlier", "outlier", "outlier", "lower", "q1", "median", "q3", "upper", "min", "max", "outlier", "outlier"],
-            naming::stat_column("value").as_str() => &[10.0, 15.0, 20.0, 25.0, 30.0, 10.0, 30.0, 5.0, 35.0, 40.0, 20.0, 25.0, 30.0, 35.0, 40.0, 20.0, 40.0, 15.0, 50.0],
+            "category" => &[
+                // Category A visual elements
+                "A", "A", "A", "A",
+                // Category A outliers
+                "A", "A", "A",
+                // Category B visual elements
+                "B", "B", "B", "B",
+                // Category B outliers
+                "B", "B"
+            ],
+            type_col.as_str() => &[
+                // Category A
+                "lower_whisker", "upper_whisker", "box", "median",
+                "outlier", "outlier", "outlier",
+                // Category B
+                "lower_whisker", "upper_whisker", "box", "median",
+                "outlier", "outlier"
+            ],
+            y_col.as_str() => &[
+                // Category A: q1=15, q3=25, median=20, outliers: 5, 35, 40
+                15.0, 25.0, 15.0, 20.0, 5.0, 35.0, 40.0,
+                // Category B: q1=25, q3=35, median=30, outliers: 15, 50
+                25.0, 35.0, 25.0, 30.0, 15.0, 50.0
+            ],
+            y2_col.as_str() => &[
+                // Category A: lower=10, upper=30
+                Some(10.0), Some(30.0), Some(25.0), None, None, None, None,
+                // Category B: lower=20, upper=40
+                Some(20.0), Some(40.0), Some(35.0), None, None, None
+            ],
         }
         .unwrap();
 
@@ -6489,7 +6535,7 @@ mod tests {
             )
             .with_aesthetic(
                 "y".to_string(),
-                AestheticValue::standard_column(naming::stat_column("value")),
+                AestheticValue::standard_column(y_col.clone()),
             );
         spec.layers.push(layer);
 
@@ -6565,23 +6611,25 @@ mod tests {
             "Fifth layer should be median line"
         );
 
-        // Verify outliers filter on outlier source key, summary layers on summary source key
+        // Verify source keys use type-specific suffixes
         let outlier_source = layers[0]["transform"][0]["filter"]["equal"]
             .as_str()
             .unwrap();
-        let summary_source = layers[1]["transform"][0]["filter"]["equal"]
+        let lower_whisker_source = layers[1]["transform"][0]["filter"]["equal"]
             .as_str()
             .unwrap();
         assert!(
-            outlier_source.contains("outliers"),
-            "Outlier source should contain 'outliers'"
+            outlier_source.ends_with("outlier"),
+            "Outlier source should end with 'outlier', got: {}",
+            outlier_source
         );
         assert!(
-            summary_source.contains("summary"),
-            "Summary source should contain 'summary'"
+            lower_whisker_source.ends_with("lower_whisker"),
+            "Lower whisker source should end with 'lower_whisker', got: {}",
+            lower_whisker_source
         );
 
-        // Verify unified dataset contains both outlier and summary data with source tags
+        // Verify unified dataset contains data with type-specific source tags
         let unified_data = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
             .as_array()
             .unwrap();
@@ -6589,9 +6637,9 @@ mod tests {
             .iter()
             .filter(|row| row[naming::SOURCE_COLUMN].as_str() == Some(outlier_source))
             .collect();
-        let summary_rows: Vec<_> = unified_data
+        let lower_whisker_rows: Vec<_> = unified_data
             .iter()
-            .filter(|row| row[naming::SOURCE_COLUMN].as_str() == Some(summary_source))
+            .filter(|row| row[naming::SOURCE_COLUMN].as_str() == Some(lower_whisker_source))
             .collect();
         assert_eq!(
             outlier_rows.len(),
@@ -6599,25 +6647,22 @@ mod tests {
             "Should have 5 outlier rows (3 for A, 2 for B)"
         );
         assert_eq!(
-            summary_rows.len(),
+            lower_whisker_rows.len(),
             2,
-            "Should have 2 summary rows (one per category)"
+            "Should have 2 lower whisker rows (one per category)"
         );
 
-        // Verify summary rows have the five-number columns
-        let first_summary = &summary_rows[0];
-        assert!(first_summary["lower"].is_number());
-        assert!(first_summary["upper"].is_number());
-        assert!(first_summary["q1"].is_number());
-        assert!(first_summary["q3"].is_number());
-        assert!(first_summary["median"].is_number());
-        assert!(first_summary["category"].is_string());
+        // Verify rows have y and y2 columns (not separate stat columns)
+        let first_lower_whisker = &lower_whisker_rows[0];
+        assert!(first_lower_whisker[&y_col].is_number(), "Should have y column");
+        assert!(first_lower_whisker[&y2_col].is_number(), "Should have y2 column");
+        assert!(first_lower_whisker["category"].is_string());
 
-        // Verify encodings use y for values (vertical orientation)
+        // Verify encodings use __ggsql_aes_y__ and __ggsql_aes_y2__
         assert!(layers[1]["encoding"]["y"].is_object());
         assert!(layers[1]["encoding"]["y2"].is_object());
-        assert_eq!(layers[1]["encoding"]["y"]["field"], "q1");
-        assert_eq!(layers[1]["encoding"]["y2"]["field"], "lower");
+        assert_eq!(layers[1]["encoding"]["y"]["field"], y_col);
+        assert_eq!(layers[1]["encoding"]["y2"]["field"], y2_col);
     }
 
     #[test]
@@ -6630,13 +6675,41 @@ mod tests {
 
         let writer = VegaLiteWriter::new();
 
-        // Create horizontal boxplot data with grouping
+        let y_col = naming::aesthetic_column("y");
+        let y2_col = naming::aesthetic_column("y2");
+        let type_col = naming::aesthetic_column("type");
+
+        // Create horizontal boxplot data with grouping in visual-element format
         // Horizontal means x has the values, y has the categories
         let df = df! {
-            "category" => &["A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "A", "A"],
-            "region" => &["North", "North", "North", "North", "North", "North", "North", "South", "South", "South", "South", "South", "South", "South"],
-            naming::stat_column("type").as_str() => &["lower", "q1", "median", "q3", "upper", "min", "max", "lower", "q1", "median", "q3", "upper", "min", "max"],
-            naming::stat_column("value").as_str() => &[10.0, 15.0, 20.0, 25.0, 30.0, 10.0, 30.0, 20.0, 25.0, 30.0, 35.0, 40.0, 20.0, 40.0],
+            "category" => &[
+                // North region visual elements
+                "A", "A", "A", "A",
+                // South region visual elements
+                "A", "A", "A", "A"
+            ],
+            "region" => &[
+                "North", "North", "North", "North",
+                "South", "South", "South", "South"
+            ],
+            type_col.as_str() => &[
+                // North
+                "lower_whisker", "upper_whisker", "box", "median",
+                // South
+                "lower_whisker", "upper_whisker", "box", "median"
+            ],
+            y_col.as_str() => &[
+                // North: q1=15, q3=25, median=20
+                15.0, 25.0, 15.0, 20.0,
+                // South: q1=25, q3=35, median=30
+                25.0, 35.0, 25.0, 30.0
+            ],
+            y2_col.as_str() => &[
+                // North: lower=10, upper=30
+                Some(10.0), Some(30.0), Some(25.0), None,
+                // South: lower=20, upper=40
+                Some(20.0), Some(40.0), Some(35.0), None
+            ],
         }
         .unwrap();
 
@@ -6645,7 +6718,7 @@ mod tests {
         let layer = Layer::new(Geom::boxplot())
             .with_aesthetic(
                 "x".to_string(),
-                AestheticValue::standard_column(naming::stat_column("value")),
+                AestheticValue::standard_column(y_col.clone()),
             )
             .with_aesthetic(
                 "y".to_string(),
@@ -6693,10 +6766,11 @@ mod tests {
         }
 
         // Verify encodings use x for values (horizontal orientation)
+        // First layer is lower_whisker (rule from q1 to lower)
         assert!(layers[0]["encoding"]["x"].is_object());
         assert!(layers[0]["encoding"]["x2"].is_object());
-        assert_eq!(layers[0]["encoding"]["x"]["field"], "q1");
-        assert_eq!(layers[0]["encoding"]["x2"]["field"], "lower");
+        assert_eq!(layers[0]["encoding"]["x"]["field"], y_col);
+        assert_eq!(layers[0]["encoding"]["x2"]["field"], y2_col);
 
         // Verify yOffset is used for dodging (since we have region grouping)
         assert!(
@@ -6705,24 +6779,24 @@ mod tests {
         );
         assert_eq!(layers[0]["encoding"]["yOffset"]["field"], "region");
 
-        // Verify unified dataset contains summary data with both category and region
-        let summary_source = layers[0]["transform"][0]["filter"]["equal"]
+        // Verify unified dataset contains data for lower_whisker type
+        let lower_whisker_source = layers[0]["transform"][0]["filter"]["equal"]
             .as_str()
             .unwrap();
         let unified_data = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
             .as_array()
             .unwrap();
-        let summary_rows: Vec<_> = unified_data
+        let lower_whisker_rows: Vec<_> = unified_data
             .iter()
-            .filter(|row| row[naming::SOURCE_COLUMN].as_str() == Some(summary_source))
+            .filter(|row| row[naming::SOURCE_COLUMN].as_str() == Some(lower_whisker_source))
             .collect();
         assert_eq!(
-            summary_rows.len(),
+            lower_whisker_rows.len(),
             2,
-            "Should have summary for 2 region groups within category A"
+            "Should have 2 lower whisker rows (one per region)"
         );
 
-        let first_row = &summary_rows[0];
+        let first_row = &lower_whisker_rows[0];
         assert!(first_row["category"].is_string());
         assert!(first_row["region"].is_string());
     }
@@ -6823,11 +6897,12 @@ mod tests {
         }
 
         // Boxplot - this was the problematic case that motivated this fix
+        // Uses aesthetic column names since remappings have been applied
         {
             let df = df! {
                 "category" => &["A", "A", "A", "A", "A", "A", "A"],
-                naming::stat_column("type").as_str() => &["lower", "q1", "median", "q3", "upper", "min", "max"],
-                naming::stat_column("value").as_str() => &[10.0, 15.0, 20.0, 25.0, 30.0, 10.0, 30.0],
+                naming::aesthetic_column("type").as_str() => &["lower", "q1", "median", "q3", "upper", "min", "max"],
+                naming::aesthetic_column("y").as_str() => &[10.0, 15.0, 20.0, 25.0, 30.0, 10.0, 30.0],
             }.unwrap();
             let mut spec = Plot::new();
             spec.layers.push(
@@ -6838,7 +6913,7 @@ mod tests {
                     )
                     .with_aesthetic(
                         "y".to_string(),
-                        AestheticValue::standard_column(naming::stat_column("value")),
+                        AestheticValue::standard_column(naming::aesthetic_column("y")),
                     ),
             );
             let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
@@ -6863,11 +6938,12 @@ mod tests {
 
         let writer = VegaLiteWriter::new();
 
-        // Create boxplot data with outliers
+        // Create boxplot data with outliers (after remapping)
+        // Uses aesthetic column names since remappings have been applied
         let df = df! {
             "category" => &["A", "A", "A", "A", "A", "A", "A", "A", "A"],
-            naming::stat_column("type").as_str() => &["lower", "q1", "median", "q3", "upper", "min", "max", "outlier", "outlier"],
-            naming::stat_column("value").as_str() => &[10.0, 15.0, 20.0, 25.0, 30.0, 10.0, 30.0, 5.0, 35.0],
+            naming::aesthetic_column("type").as_str() => &["lower", "q1", "median", "q3", "upper", "min", "max", "outlier", "outlier"],
+            naming::aesthetic_column("y").as_str() => &[10.0, 15.0, 20.0, 25.0, 30.0, 10.0, 30.0, 5.0, 35.0],
         }
         .unwrap();
 
@@ -6880,7 +6956,7 @@ mod tests {
                 )
                 .with_aesthetic(
                     "y".to_string(),
-                    AestheticValue::standard_column(naming::stat_column("value")),
+                    AestheticValue::standard_column(naming::aesthetic_column("y")),
                 ),
         );
 
