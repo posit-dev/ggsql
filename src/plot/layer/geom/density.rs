@@ -49,6 +49,10 @@ impl GeomTrait for Density {
                 name: "adjust",
                 default: DefaultParamValue::Number(1.0),
             },
+            DefaultParam {
+                name: "kernel",
+                default: DefaultParamValue::String("gaussian"),
+            },
         ]
     }
 
@@ -115,7 +119,8 @@ fn stat_density(
     let (min, max) = compute_range_sql(&x, query, execute)?;
     let bw_cte = density_sql_bandwidth(query, group_by, &x, parameters);
     let grid_cte = build_grid_cte(group_by, query, min, max, 512);
-    let density_query = compute_density(&x, query, group_by, &bw_cte, &grid_cte);
+    let kernel = choose_kde_kernel(parameters)?;
+    let density_query = compute_density(&x, query, group_by, kernel, &bw_cte, &grid_cte);
 
     Ok(StatResult::Transformed {
         query: density_query,
@@ -256,6 +261,63 @@ fn density_sql_bandwidth(
     )
 }
 
+fn choose_kde_kernel(parameters: &HashMap<String, ParameterValue>) -> Result<String> {
+    let kernel = match parameters.get("kernel") {
+        Some(ParameterValue::String(krnl)) => krnl.as_str(),
+        _ => {
+            return Err(GgsqlError::ValidationError(
+                "The density's `kernel` parameter must be a string.".to_string(),
+            ))
+        }
+    };
+
+    // Shorthand
+    let u2 = "(grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw)";
+    let u_abs = "ABS(grid.x - data.val) / bandwidth.bw";
+
+    let kernel = match kernel {
+        // Gaussian: K(u) = (1/sqrt(2π)) * exp(-0.5u²)
+        "gaussian" => format!("(EXP(-0.5 * {u2})) * {norm}", u2 = u2, norm = GAUSSIAN_NORM),
+        // Epanechnikov: K(u) = 0.75 * (1 - u²) for |u| ≤ 1
+        "epanechnikov" => format!(
+            "CASE WHEN {u_abs} <= 1 THEN 0.75 * (1 - {u2}) ELSE 0 END",
+            u_abs = u_abs, u2 = u2
+        ),
+        //  Triangular: K(u) = (1 - |u|) for |u| ≤ 1
+        "triangular" => format!(
+            "CASE WHEN {u_abs} <= 1 THEN 1 - {u_abs} ELSE 0 END",
+            u_abs = u_abs
+        ),
+        // Rectangular/Uniform: K(u) = 0.5 for |u| ≤ 1
+        "rectangular" | "uniform" => {
+            format!("CASE WHEN {u_abs} <= 1 THEN 0.5 ELSE 0 END", u_abs = u_abs)
+        }
+        // Biweight = K(u) = (15/16) * (1 - u²)² for |u| ≤ 1
+        "biweight" | "quartic" => format!(
+            "CASE WHEN {u_abs} <= 1 THEN (15.0/16.0) * POW(1 - {u2}, 2) ELSE 0 END",
+            u_abs = u_abs, u2 = u2
+        ),
+        // Cosine: K(u) = (π/4) * cos(πu/2) for |u| ≤ 1
+        "cosine" => format!(
+            "CASE WHEN {u_abs} <= 1 THEN 0.7853981633974483 * COS(1.5707963267948966 * {u_abs}) ELSE 0 END",
+            u_abs = u_abs
+        ),
+        _ => {
+            return Err(GgsqlError::ValidationError(format!(
+            "The density's `kernel` parameter must be one of \"gaussian\", \"epanechnikov\", \"triangular\",
+            \"rectangular\", \"uniform\", \"biweight\", \"quartic\", \"cosine\", not {kernel}.",
+            kernel = kernel
+        )));
+        }
+    };
+    // We move dividing by bandwidth outside the average computation to avoid
+    // having to apply it to every element separately.
+    Ok(format!(
+        "AVG({kernel}) / ANY_VALUE(bandwidth.bw)",
+        kernel = kernel
+    ))
+}
+
 fn build_grid_cte(groups: &[String], from: &str, min: f64, max: f64, n_points: usize) -> String {
     let has_groups = !groups.is_empty();
     let n_points = n_points - 1; // GENERATE_SERIES gives on point for free
@@ -300,6 +362,7 @@ fn compute_density(
     value: &str,
     from: &str,
     group_by: &[String],
+    kernel: String,
     bandwidth_cte: &str,
     grid_cte: &str,
 ) -> String {
@@ -352,15 +415,7 @@ fn compute_density(
         grid_group_by = with_leading_comma(&grid_groups.join(", "))
     );
 
-    // Uses Gaussian kernel: K(u) = (1/sqrt(2*pi)) * exp(-0.5 * u^2)
-    // Note: normalization constant is moved outside AVG for performance
-    let kernel = format!(
-        "AVG(EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * {norm} / ANY_VALUE(bandwidth.bw)",
-        norm = GAUSSIAN_NORM
-    );
-
     // Generate the density computation query
-
     format!(
         "{bandwidth_cte},
         {data_cte},
@@ -393,10 +448,15 @@ mod tests {
         let groups: Vec<String> = vec![];
         let mut parameters = HashMap::new();
         parameters.insert("bandwidth".to_string(), ParameterValue::Number(0.5));
+        parameters.insert(
+            "kernel".to_string(),
+            ParameterValue::String("gaussian".to_string()),
+        );
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
         let grid_cte = build_grid_cte(&groups, query, 0.0, 10.0, 512);
-        let sql = compute_density("x", query, &groups, &bw_cte, &grid_cte);
+        let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
+        let sql = compute_density("x", query, &groups, kernel, &bw_cte, &grid_cte);
 
         let expected = "WITH bandwidth AS (SELECT 0.5 AS bw),
         data AS (
@@ -410,7 +470,7 @@ mod tests {
         )
         SELECT
           grid.x AS __ggsql_stat_x,
-          AVG(EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327 / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_density
+          AVG((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327) / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_density
         FROM data
         INNER JOIN bandwidth ON true
         CROSS JOIN grid
@@ -438,10 +498,15 @@ mod tests {
         let groups = vec!["region".to_string(), "category".to_string()];
         let mut parameters = HashMap::new();
         parameters.insert("bandwidth".to_string(), ParameterValue::Number(0.5));
+        parameters.insert(
+            "kernel".to_string(),
+            ParameterValue::String("gaussian".to_string()),
+        );
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
         let grid_cte = build_grid_cte(&groups, query, -10.0, 10.0, 512);
-        let sql = compute_density("x", query, &groups, &bw_cte, &grid_cte);
+        let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
+        let sql = compute_density("x", query, &groups, kernel, &bw_cte, &grid_cte);
 
         let expected = "WITH bandwidth AS (SELECT 0.5 AS bw, region, category FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category)) GROUP BY region, category),
         data AS (
@@ -459,7 +524,7 @@ mod tests {
         SELECT
           grid.x AS __ggsql_stat_x,
           grid.region, grid.category,
-          AVG(EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327 / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_density
+          AVG((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327) / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_density
         FROM data
         INNER JOIN bandwidth ON data.region = bandwidth.region AND data.category = bandwidth.category
         CROSS JOIN grid
@@ -489,7 +554,9 @@ mod tests {
         // Verify density integrates to ~2 (one per group)
         // Grid spacing: (max - min) / (n - 1) = 22 / 511 ≈ 0.0430
         let dx = 22.0 / 511.0;
-        let density_col = df.column("__ggsql_stat_density").expect("density column exists");
+        let density_col = df
+            .column("__ggsql_stat_density")
+            .expect("density column exists");
         let total: f64 = density_col
             .f64()
             .expect("density is f64")
@@ -525,6 +592,108 @@ mod tests {
         assert_eq!(df.height(), 1);
     }
 
+    /// Helper function to test that a kernel integrates to 1
+    fn test_kernel_integration(kernel_name: &str, tolerance: f64) {
+        let query = "SELECT x FROM (VALUES (1.0), (2.0), (3.0), (4.0), (5.0)) AS t(x)";
+        let groups: Vec<String> = vec![];
+        let mut parameters = HashMap::new();
+        parameters.insert("bandwidth".to_string(), ParameterValue::Number(1.0));
+        parameters.insert(
+            "kernel".to_string(),
+            ParameterValue::String(kernel_name.to_string()),
+        );
+
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        // Use wide range to capture essentially all density mass
+        let grid_cte = build_grid_cte(&groups, query, -5.0, 15.0, 512);
+        let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
+        let sql = compute_density("x", query, &groups, kernel, &bw_cte, &grid_cte);
+
+        // Execute query
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let df = reader.execute_sql(&sql).expect("SQL should execute");
+
+        assert_eq!(
+            df.get_column_names(),
+            vec!["__ggsql_stat_x", "__ggsql_stat_density"]
+        );
+        assert_eq!(df.height(), 512);
+
+        // Compute integral using trapezoidal rule
+        // Grid spacing: (max - min) / (n - 1)
+        let dx = 22.0 / 511.0; // (15 - (-5) expanded by 10%) / (512 - 1)
+        let density_col = df.column("__ggsql_stat_density").expect("density exists");
+        let total: f64 = density_col
+            .f64()
+            .expect("density is f64")
+            .into_iter()
+            .filter_map(|v| v)
+            .sum();
+        let integral = total * dx;
+
+        // Verify all density values are non-negative
+        let all_non_negative = density_col
+            .f64()
+            .expect("density is f64")
+            .into_iter()
+            .all(|v| v.map(|x| x >= 0.0).unwrap_or(true));
+        assert!(
+            all_non_negative,
+            "All density values should be non-negative for kernel '{}'",
+            kernel_name
+        );
+
+        // Verify integral is approximately 1
+        assert!(
+            (integral - 1.0).abs() < tolerance,
+            "Density for kernel '{}' should integrate to ~1, got {} (tolerance: {})",
+            kernel_name,
+            integral,
+            tolerance
+        );
+    }
+
+    #[test]
+    fn test_all_kernels_integrate_to_one() {
+        let kernels = vec![
+            "gaussian",
+            "epanechnikov",
+            "triangular",
+            "rectangular",
+            "uniform",
+            "biweight",
+            "quartic",
+            "cosine",
+        ];
+
+        // Use 2e-3 tolerance to account for numerical integration error
+        // Compact support kernels (rectangular, triangular) have larger truncation errors
+        // due to sharp cutoffs, especially with discrete grid approximation
+        for kernel in kernels {
+            test_kernel_integration(kernel, 2e-3);
+        }
+    }
+
+    #[test]
+    fn test_kernel_invalid() {
+        let mut parameters = HashMap::new();
+        parameters.insert(
+            "kernel".to_string(),
+            ParameterValue::String("invalid_kernel".to_string()),
+        );
+
+        let result = choose_kde_kernel(&parameters);
+
+        assert!(result.is_err());
+        match result {
+            Err(GgsqlError::ValidationError(msg)) => {
+                assert!(msg.contains("kernel"));
+                assert!(msg.contains("invalid_kernel"));
+            }
+            _ => panic!("Expected ValidationError"),
+        }
+    }
+
     #[test]
     #[ignore] // Run with: cargo test bench_density_performance -- --ignored --nocapture
     fn bench_density_performance() {
@@ -544,10 +713,15 @@ mod tests {
         let groups: Vec<String> = vec![];
         let mut parameters = HashMap::new();
         parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
+        parameters.insert(
+            "kernel".to_string(),
+            ParameterValue::String("gaussian".to_string()),
+        );
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
         let grid_cte = build_grid_cte(&groups, query, 0.0, 100.0, 512);
-        let sql = compute_density("x", query, &groups, &bw_cte, &grid_cte);
+        let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
+        let sql = compute_density("x", query, &groups, kernel, &bw_cte, &grid_cte);
 
         // Warm-up run
         reader.execute_sql(&sql).expect("Warm-up failed");
