@@ -191,11 +191,8 @@ mod tests {
                 let df = execute(&stat_query).expect("Generated SQL should execute");
 
                 // Should have columns: y, density, and species (the x grouping)
-                let col_names: Vec<&str> = df
-                    .get_column_names()
-                    .iter()
-                    .map(|s| s.as_str())
-                    .collect();
+                let col_names: Vec<&str> =
+                    df.get_column_names().iter().map(|s| s.as_str()).collect();
                 assert!(col_names.contains(&"__ggsql_stat_y"));
                 assert!(col_names.contains(&"__ggsql_stat_density"));
                 assert!(col_names.contains(&"species"));
@@ -259,11 +256,8 @@ mod tests {
                 let df = execute(&stat_query).expect("Generated SQL should execute");
 
                 // Should have columns: y, density, species (x), and island (color group)
-                let col_names: Vec<&str> = df
-                    .get_column_names()
-                    .iter()
-                    .map(|s| s.as_str())
-                    .collect();
+                let col_names: Vec<&str> =
+                    df.get_column_names().iter().map(|s| s.as_str()).collect();
                 assert!(col_names.contains(&"__ggsql_stat_y"));
                 assert!(col_names.contains(&"__ggsql_stat_density"));
                 assert!(col_names.contains(&"species"));
@@ -285,5 +279,4 @@ mod tests {
             _ => panic!("Expected Transformed result"),
         }
     }
-
 }
