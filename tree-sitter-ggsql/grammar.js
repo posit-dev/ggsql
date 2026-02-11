@@ -60,6 +60,7 @@ module.exports = grammar({
     select_body: $ => prec.left(repeat1(choice(
       $.from_clause,
       $.window_function,  // Window functions like ROW_NUMBER() OVER (...)
+      $.cast_expression,  // CAST(expr AS type), TRY_CAST(expr AS type)
       $.function_call,    // Regular function calls like COUNT(), SUM()
       $.sql_keyword,
       $.string,
@@ -175,6 +176,7 @@ module.exports = grammar({
     // Token-by-token fallback for any other subquery content
     subquery_body: $ => repeat1(choice(
       $.window_function,
+      $.cast_expression,
       $.function_call,
       $.sql_keyword,
       $.string,
@@ -184,6 +186,23 @@ module.exports = grammar({
       ',', '*', '.', '=', '<', '>', '!', '::',
       token(/[^\s;(),'\"]+/)
     )),
+
+    // CAST/TRY_CAST expression: CAST(expr AS type) or TRY_CAST(expr AS type)
+    // Higher precedence than function_call to win over treating CAST as a regular function
+    cast_expression: $ => prec(3, seq(
+      choice(caseInsensitive('CAST'), caseInsensitive('TRY_CAST')),
+      '(',
+      $.positional_arg,
+      caseInsensitive('AS'),
+      $.type_name,
+      ')'
+    )),
+
+    // Type name for CAST expressions: DATE, VARCHAR, DECIMAL(10,2), etc.
+    type_name: $ => seq(
+      $.identifier,
+      optional(seq('(', $.number, optional(seq(',', $.number)), ')'))
+    ),
 
     // Function call with parentheses (can be empty like ROW_NUMBER())
     // Used in window functions and general SQL
@@ -288,6 +307,8 @@ module.exports = grammar({
       $.number,
       $.string,
       '*',
+      // CAST/TRY_CAST expression
+      $.cast_expression,
       // Nested function call
       $.function_call,
       // Arithmetic/comparison expression (binary operators)
