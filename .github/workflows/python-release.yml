@@ -1,0 +1,169 @@
+name: Python Release
+
+on:
+  push:
+    tags:
+      - "py/v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Must match the abi3-py3XX feature in ggsql-python/Cargo.toml.
+  # abi3 wheels built against 3.10 are forward-compatible with all later
+  # Python versions, so this should be the minimum supported version.
+  PYTHON_VERSION: "3.10"
+  NODE_VERSION: "20"
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [x86_64, aarch64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --interpreter python${{ env.PYTHON_VERSION }}
+          working-directory: ggsql-python
+          manylinux: auto
+          before-script-linux: |
+            # Install Node.js for tree-sitter-cli (required by build.rs).
+            # Can't use setup-node here — Linux builds run inside a
+            # manylinux Docker container where runner-level tools aren't visible.
+            curl -fsSL https://nodejs.org/dist/v20.18.1/node-v20.18.1-linux-x64.tar.xz \
+              | tar -xJ -C /usr/local --strip-components=1
+            npm install -g tree-sitter-cli
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-${{ matrix.target }}
+          path: ggsql-python/dist
+
+  macos:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64
+            runner: macos-13
+          - target: aarch64
+            runner: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --interpreter python${{ env.PYTHON_VERSION }}
+          working-directory: ggsql-python
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos-${{ matrix.target }}
+          path: ggsql-python/dist
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: x64
+          args: --release --out dist --interpreter python${{ env.PYTHON_VERSION }}
+          working-directory: ggsql-python
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-windows-x64
+          path: ggsql-python/dist
+
+  sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+          working-directory: ggsql-python
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: ggsql-python/dist
+
+  publish:
+    needs: [linux, macos, windows, sdist]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
+
+      - name: List wheels
+        run: ls -lh dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
