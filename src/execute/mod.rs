@@ -24,12 +24,14 @@ pub use schema::TypeInfo;
 use crate::naming;
 use crate::parser;
 use crate::plot::layer::geom::GeomAesthetics;
-use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema, SqlTypeNames};
+use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
 use crate::{DataFrame, GgsqlError, Plot, Result};
 use std::collections::{HashMap, HashSet};
 
-#[cfg(feature = "duckdb")]
-use crate::reader::{DuckDBReader, Reader};
+use crate::reader::Reader;
+
+#[cfg(all(feature = "duckdb", test))]
+use crate::reader::DuckDBReader;
 
 // =============================================================================
 // Validation
@@ -477,23 +479,19 @@ pub struct PreparedData {
     pub visual: String,
 }
 
-/// Build data map from a query using a custom query executor function
+/// Build data map from a query using a Reader
 ///
-/// This is the most flexible variant that works with any query execution strategy,
-/// including shared state readers in REST API contexts.
+/// This is the main entry point for preparing visualization data from a ggsql query.
 ///
 /// # Arguments
 /// * `query` - The full ggsql query string
-/// * `execute_query` - A function that executes SQL and returns a DataFrame
-/// * `type_names` - SQL type names for the database backend
-pub fn prepare_data_with_executor<F>(
+/// * `reader` - A Reader implementation for executing SQL
+pub fn prepare_data_with_reader<R: Reader + ?Sized>(
     query: &str,
-    execute_query: F,
-    type_names: &SqlTypeNames,
-) -> Result<PreparedData>
-where
-    F: Fn(&str) -> Result<DataFrame>,
-{
+    reader: &R,
+) -> Result<PreparedData> {
+    let execute_query = |sql: &str| reader.execute_sql(sql);
+    let type_names = reader.sql_type_names();
     // Split query into SQL and viz portions
     let (sql_part, viz_part) = parser::split_query(query)?;
 
@@ -527,10 +525,6 @@ where
     // If there's a WITH clause, extract just the trailing SELECT and transform CTE references.
     // The global result is stored as a temp table so filtered layers can query it efficiently.
     // Track whether we actually create the temp table (depends on transform_global_sql succeeding)
-    //
-    // Note: Constants (literals in mappings) are no longer injected into the global table.
-    // Each layer now builds its own query via build_layer_select_list which includes
-    // literals as aesthetic-named columns (e.g., 'red' AS "color").
     let mut has_global_table = false;
     if !sql_part.trim().is_empty() {
         if let Some(transformed_sql) = cte::transform_global_sql(&sql_part, &materialized_ctes) {
@@ -611,7 +605,7 @@ where
 
     // Determine which columns need type casting
     let type_requirements =
-        casting::determine_type_requirements(&specs[0], &layer_type_info, type_names);
+        casting::determine_type_requirements(&specs[0], &layer_type_info, &type_names);
 
     // Update type info with post-cast dtypes
     // This ensures subsequent schema extraction and scale resolution see the correct types
@@ -678,7 +672,7 @@ where
             &layer_schemas[idx],
             facet.as_ref(),
             &scales,
-            type_names,
+            &type_names,
             &execute_query,
         )?;
         layer_queries.push(layer_query);
@@ -757,8 +751,6 @@ where
     }
 
     // Post-process specs: compute aesthetic labels
-    // Note: Literal to column conversion is now handled by update_mappings_for_aesthetic_columns()
-    // inside build_layer_query(), so replace_literals_with_columns() is no longer needed
     for spec in &mut specs {
         // Compute aesthetic labels (uses first non-constant column, respects user-specified labels)
         spec.compute_aesthetic_labels();
@@ -791,18 +783,6 @@ where
     })
 }
 
-/// Build data map from a query using DuckDB reader
-///
-/// Convenience wrapper around `prepare_data_with_executor` for direct DuckDB reader usage.
-#[cfg(feature = "duckdb")]
-pub fn prepare_data(query: &str, reader: &DuckDBReader) -> Result<PreparedData> {
-    prepare_data_with_executor(
-        query,
-        |sql| reader.execute_sql(sql),
-        &reader.sql_type_names(),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -813,7 +793,7 @@ mod tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let query = "SELECT 1 as x, 2 as y VISUALISE x, y DRAW point";
 
-        let result = prepare_data(query, &reader).unwrap();
+        let result = prepare_data_with_reader(query, &reader).unwrap();
 
         // With the new approach, every layer has its own data (no GLOBAL_DATA_KEY)
         assert!(result.data.contains_key(&naming::layer_key(0)));
@@ -826,7 +806,7 @@ mod tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let query = "SELECT 1 as x, 2 as y";
 
-        let result = prepare_data(query, &reader);
+        let result = prepare_data_with_reader(query, &reader);
         assert!(result.is_err());
     }
 
@@ -846,7 +826,7 @@ mod tests {
 
         let query = "VISUALISE DRAW point MAPPING a AS x, b AS y FROM test_data";
 
-        let result = prepare_data(query, &reader).unwrap();
+        let result = prepare_data_with_reader(query, &reader).unwrap();
 
         assert!(result.data.contains_key(&naming::layer_key(0)));
         assert!(!result.data.contains_key(naming::GLOBAL_DATA_KEY));
@@ -874,7 +854,7 @@ mod tests {
         // Query with filter on layer using global data
         let query = "SELECT * FROM filter_test VISUALISE DRAW point MAPPING id AS x, value AS y FILTER category = 'A'";
 
-        let result = prepare_data(query, &reader).unwrap();
+        let result = prepare_data_with_reader(query, &reader).unwrap();
 
         // Layer with filter creates its own data - global data is NOT needed in data_map
         assert!(!result.data.contains_key(naming::GLOBAL_DATA_KEY));
@@ -908,7 +888,7 @@ mod tests {
             DRAW point MAPPING date AS x, goal AS y FROM targets
         "#;
 
-        let result = prepare_data(query, &reader).unwrap();
+        let result = prepare_data_with_reader(query, &reader).unwrap();
 
         // With new approach, all layers have their own data
         assert!(result.data.contains_key(&naming::layer_key(0)));
@@ -943,7 +923,7 @@ mod tests {
             DRAW histogram MAPPING value AS x
         "#;
 
-        let result = prepare_data(query, &reader).unwrap();
+        let result = prepare_data_with_reader(query, &reader).unwrap();
 
         // Should have layer 0 data with binned results
         assert!(result.data.contains_key(&naming::layer_key(0)));
@@ -995,7 +975,7 @@ mod tests {
             DRAW bar MAPPING category AS x
         "#;
 
-        let result = prepare_data(query, &reader).unwrap();
+        let result = prepare_data_with_reader(query, &reader).unwrap();
 
         // Should have layer 0 data with counted results
         assert!(result.data.contains_key(&naming::layer_key(0)));
@@ -1047,7 +1027,7 @@ mod tests {
             DRAW bar MAPPING category AS x, value AS y
         "#;
 
-        let result = prepare_data(query, &reader).unwrap();
+        let result = prepare_data_with_reader(query, &reader).unwrap();
 
         // Layer should have original 3 rows (no stat transform when y is mapped)
         let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
@@ -1076,7 +1056,7 @@ mod tests {
             DRAW bar
         "#;
 
-        let result = prepare_data(query, &reader).unwrap();
+        let result = prepare_data_with_reader(query, &reader).unwrap();
         let layer = &result.specs[0].layers[0];
 
         // Layer should have y2 in mappings (added by default for bar)
@@ -1111,7 +1091,7 @@ mod tests {
             SCALE x FROM [0, 100]
         "#;
 
-        let result = prepare_data(query, &reader).unwrap();
+        let result = prepare_data_with_reader(query, &reader).unwrap();
         let spec = &result.specs[0];
 
         // Find the x scale
@@ -1139,7 +1119,7 @@ mod tests {
             SCALE x FROM ['A', 'B', 'C']
         "#;
 
-        let result = prepare_data(query, &reader).unwrap();
+        let result = prepare_data_with_reader(query, &reader).unwrap();
         let spec = &result.specs[0];
 
         // Find the x scale
@@ -1170,7 +1150,7 @@ mod tests {
             DRAW point
         "#;
 
-        let result = prepare_data(query, &reader).unwrap();
+        let result = prepare_data_with_reader(query, &reader).unwrap();
 
         // Both layers should have data_keys
         let layer0_key = result.specs[0].layers[0]

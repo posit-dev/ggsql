@@ -146,7 +146,7 @@ fn test_builtin_data_is_available() {
     // Test penguins builtin dataset with a DRAW clause
     let query =
         "SELECT * FROM ggsql:penguins VISUALISE DRAW point MAPPING bill_len AS x, bill_dep AS y";
-    let result = crate::execute::prepare_data(query, &reader).unwrap();
+    let result = crate::execute::prepare_data_with_reader(query, &reader).unwrap();
     let dataframe = result.data.get(&naming::layer_key(0)).unwrap();
     // Check that the aesthetic columns are present (other columns preserved via SELECT *)
     assert!(dataframe.column("__ggsql_aes_x__").is_ok());
@@ -154,7 +154,7 @@ fn test_builtin_data_is_available() {
 
     // Test airquality builtin dataset with VISUALISE FROM
     let query = "VISUALISE FROM ggsql:airquality DRAW point MAPPING Temp AS x, Ozone AS y";
-    let result = crate::execute::prepare_data(query, &reader).unwrap();
+    let result = crate::execute::prepare_data_with_reader(query, &reader).unwrap();
     let dataframe = result.data.get(&naming::layer_key(0)).unwrap();
     // Check that the aesthetic columns are present
     assert!(dataframe.column("__ggsql_aes_x__").is_ok());

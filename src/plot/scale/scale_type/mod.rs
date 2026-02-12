@@ -981,6 +981,21 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         Ok(())
     }
 
+    /// Validate that this scale type supports the given data type.
+    ///
+    /// Called when a user explicitly specifies a scale type (e.g., `SCALE DISCRETE x`)
+    /// to validate that the scale type is compatible with the data being mapped.
+    ///
+    /// Returns Ok(()) if compatible, Err with a descriptive message if not.
+    /// The error message should be actionable and suggest alternative scale types.
+    ///
+    /// Default implementation accepts all types (identity scales, etc.).
+    /// Continuous/Binned scales override to reject non-numeric types.
+    /// Discrete/Ordinal scales override to reject numeric types.
+    fn validate_dtype(&self, _dtype: &DataType) -> Result<(), String> {
+        Ok(()) // Default: accept all types
+    }
+
     /// Pre-stat SQL transformation hook.
     ///
     /// Called inside build_layer_query to generate SQL that transforms data
@@ -1250,6 +1265,13 @@ impl ScaleType {
         aesthetic: &str,
     ) -> Result<(), String> {
         self.0.resolve_output_range(scale, aesthetic)
+    }
+
+    /// Validate that this scale type supports the given data type.
+    ///
+    /// Returns Ok(()) if compatible, Err with a descriptive message if not.
+    pub fn validate_dtype(&self, dtype: &DataType) -> Result<(), String> {
+        self.0.validate_dtype(dtype)
     }
 }
 
@@ -1631,6 +1653,7 @@ pub(crate) fn clip_to_transform_domain(
 ///
 /// Contains values needed by both the default resolve() implementation
 /// and any scale type overrides (like Binned).
+#[derive(Debug)]
 pub(crate) struct ResolveCommonResult {
     /// Resolved transform
     pub transform: Transform,
@@ -1655,6 +1678,23 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
 ) -> Result<ResolveCommonResult, String> {
     // 1. Resolve properties (fills in defaults, validates)
     scale.properties = scale_type.resolve_properties(aesthetic, &scale.properties)?;
+
+    // 1b. Validate input range length for continuous/binned scales
+    // These scales require exactly 2 values [min, max] when explicitly specified
+    if scale.explicit_input_range {
+        if let Some(ref range) = scale.input_range {
+            let kind = scale_type.scale_type_kind();
+            if (kind == ScaleTypeKind::Continuous || kind == ScaleTypeKind::Binned)
+                && range.len() != 2
+            {
+                return Err(format!(
+                    "{} scale input range (FROM clause) must have exactly 2 values [min, max], got {}",
+                    scale_type.name(),
+                    range.len()
+                ));
+            }
+        }
+    }
 
     // 2. Resolve transform from user input, input range (FROM clause), and context dtype
     // Priority: user transform > input range inference > column dtype inference > aesthetic default
@@ -3507,5 +3547,126 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("2 values"));
         // Note: grammar-aware "5 are needed"
+    }
+
+    // =========================================================================
+    // Input Range Length Validation Tests
+    // =========================================================================
+
+    #[test]
+    fn test_continuous_scale_rejects_wrong_input_range_length() {
+        let scale_type = ScaleType::continuous();
+        let context = ScaleDataContext::default();
+
+        // Test with 1 value
+        let mut scale = super::super::Scale::new("x");
+        scale.input_range = Some(vec![ArrayElement::Number(0.0)]);
+        scale.explicit_input_range = true;
+        let result = resolve_common_steps(&*scale_type.0, &mut scale, &context, "x");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("exactly 2 values"));
+
+        // Test with 3 values
+        let mut scale = super::super::Scale::new("x");
+        scale.input_range = Some(vec![
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(50.0),
+            ArrayElement::Number(100.0),
+        ]);
+        scale.explicit_input_range = true;
+        let result = resolve_common_steps(&*scale_type.0, &mut scale, &context, "x");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("exactly 2 values"));
+        assert!(err.contains("got 3"));
+    }
+
+    #[test]
+    fn test_binned_scale_rejects_wrong_input_range_length() {
+        let scale_type = ScaleType::binned();
+        let context = ScaleDataContext::default();
+
+        // Test with 1 value
+        let mut scale = super::super::Scale::new("x");
+        scale.input_range = Some(vec![ArrayElement::Number(0.0)]);
+        scale.explicit_input_range = true;
+        let result = resolve_common_steps(&*scale_type.0, &mut scale, &context, "x");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("exactly 2 values"));
+
+        // Test with 3 values
+        let mut scale = super::super::Scale::new("x");
+        scale.input_range = Some(vec![
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(50.0),
+            ArrayElement::Number(100.0),
+        ]);
+        scale.explicit_input_range = true;
+        let result = resolve_common_steps(&*scale_type.0, &mut scale, &context, "x");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("exactly 2 values"));
+        assert!(err.contains("got 3"));
+    }
+
+    #[test]
+    fn test_continuous_scale_accepts_two_element_input_range() {
+        let scale_type = ScaleType::continuous();
+        let context = ScaleDataContext::default();
+
+        let mut scale = super::super::Scale::new("x");
+        scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
+        scale.explicit_input_range = true;
+        let result = resolve_common_steps(&*scale_type.0, &mut scale, &context, "x");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_binned_scale_accepts_two_element_input_range() {
+        let scale_type = ScaleType::binned();
+        let context = ScaleDataContext::default();
+
+        let mut scale = super::super::Scale::new("x");
+        scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
+        scale.explicit_input_range = true;
+        let result = resolve_common_steps(&*scale_type.0, &mut scale, &context, "x");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_discrete_scale_allows_any_input_range_length() {
+        let scale_type = ScaleType::discrete();
+        let context = ScaleDataContext::default();
+
+        // Test with 1 value
+        let mut scale = super::super::Scale::new("color");
+        scale.input_range = Some(vec![ArrayElement::String("A".to_string())]);
+        scale.explicit_input_range = true;
+        let result = resolve_common_steps(&*scale_type.0, &mut scale, &context, "color");
+        assert!(result.is_ok());
+
+        // Test with 3 values
+        let mut scale = super::super::Scale::new("color");
+        scale.input_range = Some(vec![
+            ArrayElement::String("A".to_string()),
+            ArrayElement::String("B".to_string()),
+            ArrayElement::String("C".to_string()),
+        ]);
+        scale.explicit_input_range = true;
+        let result = resolve_common_steps(&*scale_type.0, &mut scale, &context, "color");
+        assert!(result.is_ok());
+
+        // Test with 5 values
+        let mut scale = super::super::Scale::new("color");
+        scale.input_range = Some(vec![
+            ArrayElement::String("A".to_string()),
+            ArrayElement::String("B".to_string()),
+            ArrayElement::String("C".to_string()),
+            ArrayElement::String("D".to_string()),
+            ArrayElement::String("E".to_string()),
+        ]);
+        scale.explicit_input_range = true;
+        let result = resolve_common_steps(&*scale_type.0, &mut scale, &context, "color");
+        assert!(result.is_ok());
     }
 }

@@ -33,7 +33,7 @@
 
 use std::collections::HashMap;
 
-use crate::execute::prepare_data_with_executor;
+use crate::execute::prepare_data_with_reader;
 use crate::plot::{Plot, SqlTypeNames};
 use crate::validate::{validate, ValidationWarning};
 use crate::{DataFrame, GgsqlError, Result};
@@ -215,8 +215,7 @@ pub trait Reader {
         let warnings: Vec<ValidationWarning> = validated.warnings().to_vec();
 
         // Prepare data with type names for this reader
-        let prepared_data =
-            prepare_data_with_executor(query, |sql| self.execute_sql(sql), &self.sql_type_names())?;
+        let prepared_data = prepare_data_with_reader(query, self)?;
 
         // Get the first (and typically only) spec
         let plot = prepared_data.specs.into_iter().next().ok_or_else(|| {
@@ -331,7 +330,7 @@ mod tests {
 
         assert_eq!(spec.plot().layers.len(), 1);
         assert_eq!(spec.metadata().layer_count, 1);
-        assert!(spec.data().is_some());
+        assert!(spec.layer_data(0).is_some());
 
         let writer = VegaLiteWriter::new();
         let result = writer.render(&spec).unwrap();
@@ -369,8 +368,8 @@ mod tests {
         let spec = reader.execute(query).unwrap();
 
         assert_eq!(spec.plot().layers.len(), 1);
-        assert!(spec.data().is_some());
-        let df = spec.data().unwrap();
+        assert!(spec.layer_data(0).is_some());
+        let df = spec.layer_data(0).unwrap();
         assert_eq!(df.height(), 2);
     }
 

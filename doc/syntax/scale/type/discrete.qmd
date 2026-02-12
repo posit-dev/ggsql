@@ -7,7 +7,7 @@ title: Discrete
 The discrete scale type maps various categorical data types into a discrete output domain. The two categorical data types in ggsql are strings and booleans with strings being the most common. However, you can force a numeric data type into being discrete by explicitly using a discrete scale (e.g. `SCALE DISCRETE x`)
 
 ## Input range
-The input range for discrete scales consists of all the unique values that the scale understand. Their ordering in the input range will determine their ordering in the display, either in the legend or the axis. Values in the data that do not exist in the input range will be set to `null`.
+The input range for discrete scales consists of all the unique values that the scale understands. Their ordering in the input range will determine their ordering in the display, either in the legend or the axis. Values in the data that do not exist in the input range will be set to `null`.
 
 ### Examples
 
@@ -48,7 +48,7 @@ All aesthetics has a default output range so it is never required to provide one
 * `linetype`: The `default` palette
 * `shape`: The `shapes` palette
 
-The remaining aesthetics doesn't have a meaningful discrete output domain and doesn't work with discrete scales. Consider using an [ordinal scale](ordinal.qmd) for these if necessary.
+The remaining aesthetics don’t have a meaningful discrete output domain and don’t work with discrete scales. Consider using an [ordinal scale](ordinal.qmd) for these if necessary.
 
 ### Examples
 

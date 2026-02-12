@@ -18,6 +18,37 @@ impl ScaleTypeTrait for Continuous {
         "continuous"
     }
 
+    fn validate_dtype(&self, dtype: &DataType) -> Result<(), String> {
+        match dtype {
+            // Accept all numeric types
+            DataType::Int8
+            | DataType::Int16
+            | DataType::Int32
+            | DataType::Int64
+            | DataType::UInt8
+            | DataType::UInt16
+            | DataType::UInt32
+            | DataType::UInt64
+            | DataType::Float32
+            | DataType::Float64 => Ok(()),
+            // Accept temporal types
+            DataType::Date | DataType::Datetime(_, _) | DataType::Time => Ok(()),
+            // Reject discrete types
+            DataType::String => Err("Continuous scale cannot be used with String data. \
+                 Use DISCRETE scale type instead, or ensure the column contains numeric or temporal data.".to_string()),
+            DataType::Boolean => Err("Continuous scale cannot be used with Boolean data. \
+                 Use DISCRETE scale type instead, or ensure the column contains numeric or temporal data.".to_string()),
+            DataType::Categorical(_, _) => Err("Continuous scale cannot be used with Categorical data. \
+                 Use DISCRETE scale type instead, or ensure the column contains numeric or temporal data.".to_string()),
+            // Other types - provide generic message
+            other => Err(format!(
+                "Continuous scale cannot be used with {:?} data. \
+                 Continuous scales require numeric (Int, Float) or temporal (Date, DateTime, Time) data.",
+                other
+            )),
+        }
+    }
+
     fn allowed_transforms(&self) -> &'static [TransformKind] {
         &[
             TransformKind::Identity,
@@ -319,5 +350,63 @@ mod tests {
         let sql = sql.unwrap();
         assert!(sql.contains("CASE WHEN"));
         assert!(sql.contains("ELSE NULL"));
+    }
+
+    // =========================================================================
+    // Dtype Validation Tests
+    // =========================================================================
+
+    #[test]
+    fn test_validate_dtype_accepts_numeric() {
+        use super::ScaleTypeTrait;
+
+        let continuous = Continuous;
+        assert!(continuous.validate_dtype(&DataType::Int8).is_ok());
+        assert!(continuous.validate_dtype(&DataType::Int16).is_ok());
+        assert!(continuous.validate_dtype(&DataType::Int32).is_ok());
+        assert!(continuous.validate_dtype(&DataType::Int64).is_ok());
+        assert!(continuous.validate_dtype(&DataType::UInt8).is_ok());
+        assert!(continuous.validate_dtype(&DataType::UInt16).is_ok());
+        assert!(continuous.validate_dtype(&DataType::UInt32).is_ok());
+        assert!(continuous.validate_dtype(&DataType::UInt64).is_ok());
+        assert!(continuous.validate_dtype(&DataType::Float32).is_ok());
+        assert!(continuous.validate_dtype(&DataType::Float64).is_ok());
+    }
+
+    #[test]
+    fn test_validate_dtype_accepts_temporal() {
+        use super::ScaleTypeTrait;
+        use polars::prelude::TimeUnit;
+
+        let continuous = Continuous;
+        assert!(continuous.validate_dtype(&DataType::Date).is_ok());
+        assert!(continuous
+            .validate_dtype(&DataType::Datetime(TimeUnit::Microseconds, None))
+            .is_ok());
+        assert!(continuous.validate_dtype(&DataType::Time).is_ok());
+    }
+
+    #[test]
+    fn test_validate_dtype_rejects_string() {
+        use super::ScaleTypeTrait;
+
+        let continuous = Continuous;
+        let result = continuous.validate_dtype(&DataType::String);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("String"));
+        assert!(err.contains("DISCRETE"));
+    }
+
+    #[test]
+    fn test_validate_dtype_rejects_boolean() {
+        use super::ScaleTypeTrait;
+
+        let continuous = Continuous;
+        let result = continuous.validate_dtype(&DataType::Boolean);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Boolean"));
+        assert!(err.contains("DISCRETE"));
     }
 }

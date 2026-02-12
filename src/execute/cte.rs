@@ -117,7 +117,7 @@ pub fn transform_cte_references(sql: &str, cte_names: &HashSet<String>) -> Strin
     for cte_name in cte_names {
         let temp_table_name = naming::cte_table(cte_name);
 
-        // Replace table references: FROM cte_name, JOIN cte_name
+        // Replace table references: FROM cte_name, JOIN cte_name, cte_name.column
         // Use word boundary matching to avoid replacing substrings
         // Pattern: (FROM|JOIN)\s+<cte_name>(\s|,|)|$)
         let patterns = [
@@ -130,6 +130,14 @@ pub fn transform_cte_references(sql: &str, cte_names: &HashSet<String>) -> Strin
             (
                 format!(r"(?i)(\bJOIN\s+){}(\s|,|\)|$)", regex::escape(cte_name)),
                 format!("${{1}}{}${{2}}", temp_table_name),
+            ),
+            // Qualified column references: cte_name.column (case insensitive)
+            (
+                format!(
+                    r"(?i)\b{}(\.[a-zA-Z_][a-zA-Z0-9_]*)",
+                    regex::escape(cte_name)
+                ),
+                format!("{}${{1}}", temp_table_name),
             ),
         ];
 
@@ -365,11 +373,23 @@ mod tests {
                 vec!["FROM __ggsql_cte_sales_", "__ WHERE year = 2024"],
                 None,
             ),
-            // Multiple CTE references
+            // Multiple CTE references with qualified columns
             (
-                "SELECT * FROM sales JOIN targets ON sales.date = targets.date",
+                "SELECT sales.date, targets.revenue FROM sales JOIN targets ON sales.id = targets.id",
                 vec!["sales", "targets"],
-                vec!["FROM __ggsql_cte_sales_", "JOIN __ggsql_cte_targets_"],
+                vec![
+                    "FROM __ggsql_cte_sales_",
+                    "JOIN __ggsql_cte_targets_",
+                    "__ggsql_cte_sales_",  // qualified reference sales.date
+                    "__ggsql_cte_targets_", // qualified reference targets.revenue
+                ],
+                None,
+            ),
+            // Qualified column references only (no FROM/JOIN transformation needed)
+            (
+                "WHERE sales.date > '2024-01-01' AND sales.revenue > 100",
+                vec!["sales"],
+                vec!["__ggsql_cte_sales_"],
                 None,
             ),
             // No matching CTE (unchanged)
@@ -385,6 +405,13 @@ mod tests {
                 vec![],
                 vec![],
                 Some("SELECT * FROM sales"),
+            ),
+            // No false positives on substrings (wholesale should not match 'sales')
+            (
+                "SELECT wholesale.date FROM wholesale",
+                vec!["sales"],
+                vec![],
+                Some("SELECT wholesale.date FROM wholesale"),
             ),
         ];
 

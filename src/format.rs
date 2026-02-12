@@ -143,9 +143,6 @@ fn format_number_with_spec(value: &str, fmt: &str) -> String {
     value.to_string()
 }
 
-// Note: format_number is now in ArrayElement::to_key_string() in types.rs
-// We use ArrayElement::to_key_string() directly for consistency
-
 /// Apply a label template to an array of break values.
 ///
 /// Each break value is formatted using the template string.

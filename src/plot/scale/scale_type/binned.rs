@@ -75,6 +75,37 @@ impl ScaleTypeTrait for Binned {
         "binned"
     }
 
+    fn validate_dtype(&self, dtype: &DataType) -> Result<(), String> {
+        match dtype {
+            // Accept all numeric types
+            DataType::Int8
+            | DataType::Int16
+            | DataType::Int32
+            | DataType::Int64
+            | DataType::UInt8
+            | DataType::UInt16
+            | DataType::UInt32
+            | DataType::UInt64
+            | DataType::Float32
+            | DataType::Float64 => Ok(()),
+            // Accept temporal types
+            DataType::Date | DataType::Datetime(_, _) | DataType::Time => Ok(()),
+            // Reject discrete types
+            DataType::String => Err("Binned scale cannot be used with String data. \
+                 Use DISCRETE scale type instead, or ensure the column contains numeric or temporal data.".to_string()),
+            DataType::Boolean => Err("Binned scale cannot be used with Boolean data. \
+                 Use DISCRETE scale type instead, or ensure the column contains numeric or temporal data.".to_string()),
+            DataType::Categorical(_, _) => Err("Binned scale cannot be used with Categorical data. \
+                 Use DISCRETE scale type instead, or ensure the column contains numeric or temporal data.".to_string()),
+            // Other types - provide generic message
+            other => Err(format!(
+                "Binned scale cannot be used with {:?} data. \
+                 Binned scales require numeric (Int, Float) or temporal (Date, DateTime, Time) data.",
+                other
+            )),
+        }
+    }
+
     fn allowed_transforms(&self) -> &'static [TransformKind] {
         &[
             TransformKind::Identity,
@@ -1832,5 +1863,57 @@ mod tests {
                 ArrayElement::Date(expected_last)
             );
         }
+    }
+
+    // =========================================================================
+    // Dtype Validation Tests
+    // =========================================================================
+
+    #[test]
+    fn test_validate_dtype_accepts_numeric() {
+        use super::ScaleTypeTrait;
+        use polars::prelude::DataType;
+
+        let binned = Binned;
+        assert!(binned.validate_dtype(&DataType::Int64).is_ok());
+        assert!(binned.validate_dtype(&DataType::Float64).is_ok());
+    }
+
+    #[test]
+    fn test_validate_dtype_accepts_temporal() {
+        use super::ScaleTypeTrait;
+        use polars::prelude::{DataType, TimeUnit};
+
+        let binned = Binned;
+        assert!(binned.validate_dtype(&DataType::Date).is_ok());
+        assert!(binned
+            .validate_dtype(&DataType::Datetime(TimeUnit::Microseconds, None))
+            .is_ok());
+    }
+
+    #[test]
+    fn test_validate_dtype_rejects_string() {
+        use super::ScaleTypeTrait;
+        use polars::prelude::DataType;
+
+        let binned = Binned;
+        let result = binned.validate_dtype(&DataType::String);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("String"));
+        assert!(err.contains("DISCRETE"));
+    }
+
+    #[test]
+    fn test_validate_dtype_rejects_boolean() {
+        use super::ScaleTypeTrait;
+        use polars::prelude::DataType;
+
+        let binned = Binned;
+        let result = binned.validate_dtype(&DataType::Boolean);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Boolean"));
+        assert!(err.contains("DISCRETE"));
     }
 }

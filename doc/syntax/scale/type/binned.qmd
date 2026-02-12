@@ -38,7 +38,7 @@ SCALE BINNED x FROM [2700, 6300]
 ## Output range
 The output range can either be given as an array of values or a named palette. For interpretable aesthetics (`color`, `opacity`, `size`, and `linewidth`) the value for each bin will be interpolated from the output range based on the central value of the bin. For linetype there is a special sequential palette which is used by default. It will construct linetype patterns that gradually increase in ink-density for the number of bins needed (up to 15 bins). For shape the values will be selected directly from the output range. If there are fewer values than there are bins an error is emitted.
 
-All aesthetics has a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:
+All aesthetics have a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:
 
 * `x`/`y`: Ignored (values used directly)
 * `stroke`/`fill`: The `navia` palette

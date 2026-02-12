@@ -675,8 +675,6 @@ module.exports = grammar({
     ),
 
     // Scale types - describe the nature of the data
-    // Note: DATE/DATETIME are no longer scale types - temporal handling is done
-    // via transforms that are automatically inferred from column data types
     scale_type_identifier: $ => choice(
       caseInsensitive('CONTINUOUS'),  // continuous numeric data
       caseInsensitive('DISCRETE'),    // categorical/discrete data
@@ -700,9 +698,8 @@ module.exports = grammar({
       )
     ),
 
-    // VIA clause - transformation method (reserved for future use)
+    // VIA clause - transformation method
     scale_via_clause: $ => seq(
-      caseInsensitive('VIA'),
       $.identifier
     ),
 

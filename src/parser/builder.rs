@@ -614,7 +614,7 @@ fn parse_literal_value(node: &Node, source: &str) -> Result<AestheticValue> {
 }
 
 /// Build a Scale from a scale_clause node
-/// New syntax: SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]
+/// SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]
 fn build_scale(node: &Node, source: &str) -> Result<Scale> {
     let mut aesthetic = String::new();
     let mut scale_type: Option<ScaleType> = None;
@@ -711,9 +711,6 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
 }
 
 /// Parse scale type identifier (CONTINUOUS, DISCRETE, BINNED, ORDINAL, IDENTITY)
-///
-/// Note: DATE and DATETIME are no longer scale types - temporal handling is done
-/// via transforms that are automatically inferred from column data types.
 fn parse_scale_type_identifier(text: &str) -> Result<ScaleType> {
     match text.to_lowercase().as_str() {
         "continuous" => Ok(ScaleType::continuous()),

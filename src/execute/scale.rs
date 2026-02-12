@@ -257,14 +257,22 @@ pub fn resolve_scale_types_and_transforms(
     for scale in &mut spec.scales {
         // Skip scales that already have explicit types (user specified)
         if scale.scale_type.is_some() {
-            // Still need to resolve transform if not set
-            if scale.transform.is_none() && !scale.explicit_transform {
-                // Collect all dtypes and coerce to common type (same as inference branch)
-                let all_dtypes =
-                    collect_dtypes_for_aesthetic(&spec.layers, &scale.aesthetic, layer_type_info);
-                if !all_dtypes.is_empty() {
-                    if let Ok(common_dtype) = coerce_dtypes(&all_dtypes) {
-                        let scale_type = scale.scale_type.as_ref().unwrap();
+            // Collect all dtypes for validation and transform inference
+            let all_dtypes =
+                collect_dtypes_for_aesthetic(&spec.layers, &scale.aesthetic, layer_type_info);
+
+            // Validate that explicit scale type is compatible with data type
+            if !all_dtypes.is_empty() {
+                if let Ok(common_dtype) = coerce_dtypes(&all_dtypes) {
+                    let scale_type = scale.scale_type.as_ref().unwrap();
+
+                    // Validate dtype compatibility
+                    scale_type.validate_dtype(&common_dtype).map_err(|e| {
+                        GgsqlError::ValidationError(format!("Scale '{}': {}", scale.aesthetic, e))
+                    })?;
+
+                    // Resolve transform if not set
+                    if scale.transform.is_none() && !scale.explicit_transform {
                         // For Discrete/Ordinal scales, check input range first for transform inference
                         // This allows SCALE DISCRETE x FROM [true, false] to infer Bool transform
                         // even when the column is String
@@ -869,7 +877,7 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
             continue;
         }
 
-        // NEW: Infer target type and coerce columns if needed
+        // Infer target type and coerce columns if needed
         // This enables e.g. SCALE DISCRETE color FROM [true, false] to coerce string "true"/"false" to boolean
         if let Some(target_type) = infer_scale_target_type(&spec.scales[idx]) {
             coerce_aesthetic_columns(&spec.layers, data_map, &aesthetic, target_type)?;

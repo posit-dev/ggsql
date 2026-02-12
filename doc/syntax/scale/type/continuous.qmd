@@ -32,9 +32,9 @@ SCALE x FROM [0, null]
 ```
 
 ## Output range
-The output range can either be given as an array of values or a named palette. For continuous scales the only palettes of relevance are [those for color](../palette/color_cont.qmd). Values will, after transformation be mapped onto the range by interpolating between the provided values. For colors the interpolation will happen in oklab space. Colors can be specified either as hex values, CSS color name or a valid CSS color function (e.g. `hsl(300, 76%, 72%)`)
+The output range can either be given as an array of values or a named palette. For continuous scales the only palettes of relevance are [those for color](../palette/color_cont.qmd). Values will, after transformation, be mapped onto the range by interpolating between the provided values. For colors the interpolation will happen in oklab space. Colors can be specified either as hex values, CSS color name or a valid CSS color function (e.g. `hsl(300, 76%, 72%)`)
 
-All aesthetics has a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:
+All aesthetics have a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:
 
 * `x`/`y`: Ignored (values used directly)
 * `stroke`/`fill`: The `navia` palette

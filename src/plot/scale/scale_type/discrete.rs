@@ -19,6 +19,38 @@ impl ScaleTypeTrait for Discrete {
         "discrete"
     }
 
+    fn validate_dtype(&self, dtype: &DataType) -> Result<(), String> {
+        match dtype {
+            // Accept discrete types
+            DataType::String | DataType::Boolean | DataType::Categorical(_, _) => Ok(()),
+            // Reject numeric types
+            DataType::Int8
+            | DataType::Int16
+            | DataType::Int32
+            | DataType::Int64
+            | DataType::UInt8
+            | DataType::UInt16
+            | DataType::UInt32
+            | DataType::UInt64
+            | DataType::Float32
+            | DataType::Float64 => Err("Discrete scale cannot be used with numeric data. \
+                 Use CONTINUOUS or BINNED scale type instead, or ensure the column contains categorical data.".to_string()),
+            // Reject temporal types
+            DataType::Date => Err("Discrete scale cannot be used with Date data. \
+                 Use CONTINUOUS scale type instead (dates are treated as continuous temporal data).".to_string()),
+            DataType::Datetime(_, _) => Err("Discrete scale cannot be used with DateTime data. \
+                 Use CONTINUOUS scale type instead (datetimes are treated as continuous temporal data).".to_string()),
+            DataType::Time => Err("Discrete scale cannot be used with Time data. \
+                 Use CONTINUOUS scale type instead (times are treated as continuous temporal data).".to_string()),
+            // Other types - provide generic message
+            other => Err(format!(
+                "Discrete scale cannot be used with {:?} data. \
+                 Discrete scales require categorical data (String, Boolean, or Categorical).",
+                other
+            )),
+        }
+    }
+
     fn uses_discrete_input_range(&self) -> bool {
         true
     }
@@ -537,5 +569,59 @@ mod tests {
 
         // Should return None for empty range
         assert!(sql.is_none());
+    }
+
+    // =========================================================================
+    // Dtype Validation Tests
+    // =========================================================================
+
+    #[test]
+    fn test_validate_dtype_accepts_string() {
+        use super::ScaleTypeTrait;
+
+        let discrete = Discrete;
+        assert!(discrete.validate_dtype(&DataType::String).is_ok());
+    }
+
+    #[test]
+    fn test_validate_dtype_accepts_boolean() {
+        use super::ScaleTypeTrait;
+
+        let discrete = Discrete;
+        assert!(discrete.validate_dtype(&DataType::Boolean).is_ok());
+    }
+
+    #[test]
+    fn test_validate_dtype_rejects_numeric() {
+        use super::ScaleTypeTrait;
+
+        let discrete = Discrete;
+        let result = discrete.validate_dtype(&DataType::Int64);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("numeric"));
+        assert!(err.contains("CONTINUOUS") || err.contains("BINNED"));
+
+        let result = discrete.validate_dtype(&DataType::Float64);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_dtype_rejects_temporal() {
+        use super::ScaleTypeTrait;
+        use polars::prelude::TimeUnit;
+
+        let discrete = Discrete;
+        let result = discrete.validate_dtype(&DataType::Date);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Date"));
+        assert!(err.contains("CONTINUOUS"));
+
+        let result = discrete.validate_dtype(&DataType::Datetime(TimeUnit::Microseconds, None));
+        assert!(result.is_err());
+
+        let result = discrete.validate_dtype(&DataType::Time);
+        assert!(result.is_err());
     }
 }

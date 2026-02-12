@@ -113,8 +113,7 @@ impl TransformTrait for Date {
     }
 
     fn allowed_domain(&self) -> (f64, f64) {
-        // Roughly ~4000 BC to ~4000 AD in days since epoch
-        (-2_000_000.0, 2_000_000.0)
+        (f64::NEG_INFINITY, f64::INFINITY)
     }
 
     fn transform(&self, value: f64) -> f64 {

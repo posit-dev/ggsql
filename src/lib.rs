@@ -535,12 +535,7 @@ mod integration_tests {
         "#;
 
         // Prepare data - this parses and processes the query
-        let prepared = execute::prepare_data_with_executor(
-            query,
-            |sql| reader.execute_sql(sql),
-            &reader.sql_type_names(),
-        )
-        .unwrap();
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
 
         // Each layer has its own data (different constants = different queries)
         assert_eq!(prepared.specs.len(), 1);
@@ -665,12 +660,7 @@ mod integration_tests {
             FACET region BY category
         "#;
 
-        let prepared = execute::prepare_data_with_executor(
-            query,
-            |sql| reader.execute_sql(sql),
-            &reader.sql_type_names(),
-        )
-        .unwrap();
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
 
         // With aesthetic-named columns, each layer gets its own data
         // Each layer should have its data with prefixed aesthetic-named columns
@@ -766,12 +756,7 @@ mod integration_tests {
             DRAW point SETTING size => 50
         "#;
 
-        let prepared = execute::prepare_data_with_executor(
-            query,
-            |sql| reader.execute_sql(sql),
-            &reader.sql_type_names(),
-        )
-        .unwrap();
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
 
         // Each layer should have a data_key
         let layer0_key = prepared.specs[0].layers[0]

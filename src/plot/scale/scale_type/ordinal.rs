@@ -23,6 +23,38 @@ impl ScaleTypeTrait for Ordinal {
         "ordinal"
     }
 
+    fn validate_dtype(&self, dtype: &DataType) -> Result<(), String> {
+        match dtype {
+            // Accept discrete types
+            DataType::String | DataType::Boolean | DataType::Categorical(_, _) => Ok(()),
+            // Reject numeric types
+            DataType::Int8
+            | DataType::Int16
+            | DataType::Int32
+            | DataType::Int64
+            | DataType::UInt8
+            | DataType::UInt16
+            | DataType::UInt32
+            | DataType::UInt64
+            | DataType::Float32
+            | DataType::Float64 => Err("Ordinal scale cannot be used with numeric data. \
+                 Use CONTINUOUS or BINNED scale type instead, or ensure the column contains categorical data.".to_string()),
+            // Reject temporal types
+            DataType::Date => Err("Ordinal scale cannot be used with Date data. \
+                 Use CONTINUOUS scale type instead (dates are treated as continuous temporal data).".to_string()),
+            DataType::Datetime(_, _) => Err("Ordinal scale cannot be used with DateTime data. \
+                 Use CONTINUOUS scale type instead (datetimes are treated as continuous temporal data).".to_string()),
+            DataType::Time => Err("Ordinal scale cannot be used with Time data. \
+                 Use CONTINUOUS scale type instead (times are treated as continuous temporal data).".to_string()),
+            // Other types - provide generic message
+            other => Err(format!(
+                "Ordinal scale cannot be used with {:?} data. \
+                 Ordinal scales require categorical data (String, Boolean, or Categorical).",
+                other
+            )),
+        }
+    }
+
     fn uses_discrete_input_range(&self) -> bool {
         true // Collects unique values like Discrete
     }
@@ -498,5 +530,56 @@ mod tests {
             ordinal.default_transform("color", Some(&DataType::Boolean)),
             TransformKind::Bool
         );
+    }
+
+    // =========================================================================
+    // Dtype Validation Tests
+    // =========================================================================
+
+    #[test]
+    fn test_validate_dtype_accepts_string() {
+        use super::super::ScaleTypeTrait;
+        use polars::prelude::DataType;
+
+        let ordinal = Ordinal;
+        assert!(ordinal.validate_dtype(&DataType::String).is_ok());
+    }
+
+    #[test]
+    fn test_validate_dtype_accepts_boolean() {
+        use super::super::ScaleTypeTrait;
+        use polars::prelude::DataType;
+
+        let ordinal = Ordinal;
+        assert!(ordinal.validate_dtype(&DataType::Boolean).is_ok());
+    }
+
+    #[test]
+    fn test_validate_dtype_rejects_numeric() {
+        use super::super::ScaleTypeTrait;
+        use polars::prelude::DataType;
+
+        let ordinal = Ordinal;
+        let result = ordinal.validate_dtype(&DataType::Int64);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("numeric"));
+        assert!(err.contains("CONTINUOUS") || err.contains("BINNED"));
+
+        let result = ordinal.validate_dtype(&DataType::Float64);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_dtype_rejects_temporal() {
+        use super::super::ScaleTypeTrait;
+        use polars::prelude::DataType;
+
+        let ordinal = Ordinal;
+        let result = ordinal.validate_dtype(&DataType::Date);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Date"));
+        assert!(err.contains("CONTINUOUS"));
     }
 }

@@ -70,18 +70,6 @@ impl Spec {
         self.plot.layers.len()
     }
 
-    /// Get global data (main query result).
-    ///
-    /// In the scale-syntax version, data is stored per-layer. This method
-    /// returns the first available layer data for backwards compatibility.
-    pub fn data(&self) -> Option<&DataFrame> {
-        // Try global key first for backwards compatibility
-        self.data
-            .get(naming::GLOBAL_DATA_KEY)
-            // Fall back to first layer data (scale-syntax approach)
-            .or_else(|| self.data.get(&naming::layer_key(0)))
-    }
-
     /// Get layer-specific data (from FILTER or FROM clause).
     pub fn layer_data(&self, layer_index: usize) -> Option<&DataFrame> {
         self.data.get(&naming::layer_key(layer_index))
@@ -93,7 +81,7 @@ impl Spec {
     }
 
     /// Get internal data map (all DataFrames by key).
-    pub fn data_map(&self) -> &HashMap<String, DataFrame> {
+    pub fn data(&self) -> &HashMap<String, DataFrame> {
         &self.data
     }
 

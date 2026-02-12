@@ -13,13 +13,12 @@ SCALE <type> <aesthetic> FROM <input-range> TO <output-range> VIA <transform>
     RENAMING <break-value> => <string>, ...
 ```
 
-While `FROM`, `TO`, and `VIA` are separate subclauses they will often appear on the same line as `SCALE` if space permits.
-
 The `type` defines the class of scale to use. It can be one of four different types:
 
 * `CONTINUOUS` to interpret and treat data as continuous
 * `DISCRETE` to interpret and treat data as discrete or categorical
 * `BINNED` to bin continuous data into discrete bins
+* `ORDINAL` to interpret discrete data as ordered
 * `IDENTITY` to let data pass through unscaled
 
 Read more about each type at their dedicated documentation. You do not have to specify the type as it is deduced from the transform, input range, or data if left blank.
