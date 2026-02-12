@@ -256,7 +256,7 @@ pub fn resolve_scale_types_and_transforms(
 
     for scale in &mut spec.scales {
         // Skip scales that already have explicit types (user specified)
-        if scale.scale_type.is_some() {
+        if let Some(scale_type) = &scale.scale_type {
             // Collect all dtypes for validation and transform inference
             let all_dtypes =
                 collect_dtypes_for_aesthetic(&spec.layers, &scale.aesthetic, layer_type_info);
@@ -264,8 +264,6 @@ pub fn resolve_scale_types_and_transforms(
             // Validate that explicit scale type is compatible with data type
             if !all_dtypes.is_empty() {
                 if let Ok(common_dtype) = coerce_dtypes(&all_dtypes) {
-                    let scale_type = scale.scale_type.as_ref().unwrap();
-
                     // Validate dtype compatibility
                     scale_type.validate_dtype(&common_dtype).map_err(|e| {
                         GgsqlError::ValidationError(format!("Scale '{}': {}", scale.aesthetic, e))

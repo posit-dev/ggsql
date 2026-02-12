@@ -1953,6 +1953,7 @@ struct BoxplotPreparedInfo {
 ///
 /// Returns a HashMap of type_suffix -> data_values, plus grouping_cols and has_outliers.
 /// Type suffixes are: "lower_whisker", "upper_whisker", "box", "median", "outlier"
+#[allow(clippy::type_complexity)]
 fn prepare_boxplot_summary(
     data: &DataFrame,
     writer: &VegaLiteWriter,
