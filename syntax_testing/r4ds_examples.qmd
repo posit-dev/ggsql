@@ -1,0 +1,2335 @@
+---
+title: "ggplot2 Examples from R for Data Science"
+engine: jupyter
+keep-ipynb: true
+---
+
+# Introduction
+
+This document contains a curated collection of ggplot2 examples extracted from the
+[R for Data Science (2e)](https://r4ds.hadley.nz/) book by Hadley Wickham, Mine Çetinkaya-Rundel,
+and Garrett Grolemund.
+
+All code blocks have been expanded to be self-contained and semantic duplicates have been removed.
+
+```{r}
+library(tidyverse)
+library(ggrepel)
+library(patchwork)
+library(nycflights13)
+library(ggthemes)
+library(babynames)
+```
+
+## EDA.qmd
+
+```{r}
+# Source: EDA.qmd (line 80)
+#| fig-alt: |
+#|   A histogram of carats of diamonds, with the x-axis ranging from 0 to 4.5 
+#|   and the y-axis ranging from 0 to 30000. The distribution is right skewed 
+#|   with very few diamonds in the bin centered at 0, almost 30000 diamonds in 
+#|   the bin centered at 0.5, approximately 15000 diamonds in the bin centered 
+#|   at 1, and much fewer, approximately 5000 diamonds in the bin centered at 
+#|   1.5. Beyond this, there's a trailing tail.
+ggplot(diamonds, aes(x = carat)) +
+  geom_histogram(binwidth = 0.5)
+```
+
+```{r}
+# Source: EDA.qmd (line 115)
+#| fig-alt: |
+#|   A histogram of carats of diamonds, with the x-axis ranging from 0 to 3 and 
+#|   the y-axis ranging from 0 to roughly 2500. The binwidth is quite narrow 
+#|   (0.01), resulting in a very large number of skinny bars. The distribution 
+#|   is right skewed, with many peaks followed by bars in decreasing heights, 
+#|   until a sharp increase at the next peak.
+smaller <- diamonds |> 
+  filter(carat < 3)
+
+ggplot(smaller, aes(x = carat)) +
+  geom_histogram(binwidth = 0.01)
+```
+
+```{r}
+# Source: EDA.qmd (line 170)
+#| fig-alt: |
+#|   A histogram of lengths of diamonds. The x-axis ranges from 0 to 60 and the 
+#|   y-axis ranges from 0 to 50. There is a peak around 5, and the data 
+#|   appear to be completely clustered around the peak. Other than those data, 
+#|   there is one bin at 0 with a height of about 8, one a little over 30 with 
+#|   a height of 1 and another one a little below 60 with a height of 1.
+ggplot(diamonds, aes(x = y)) + 
+  geom_histogram(binwidth = 0.5) +
+  coord_cartesian(ylim = c(0, 50))
+```
+
+```{r}
+# Source: EDA.qmd (line 261)
+#| dev: "png"
+#| fig-alt: |
+#|   A scatterplot of widths vs. lengths of diamonds. There is a strong, 
+#|   linear association between the two variables. All but one of the diamonds 
+#|   has length greater than 3. The one outlier has a length of 0 and a width 
+#|   of about 6.5. 
+diamonds2 <- diamonds |>
+  mutate(y = if_else(y < 3 | y > 20, NA, y))
+
+ggplot(diamonds2, aes(x = x, y = y)) + 
+  geom_point()
+```
+
+```{ggsql}
+SELECT x, y FROM "data/diamonds.parquet"
+WHERE y > 3 && y < 20
+VISUALISE AS PLOT
+WITH point USING x = x, y = y
+```
+
+```{r}
+# Source: EDA.qmd (line 274)
+#| eval: false
+diamonds2 <- diamonds |>
+  mutate(y = if_else(y < 3 | y > 20, NA, y))
+
+ggplot(diamonds2, aes(x = x, y = y)) + 
+  geom_point(na.rm = TRUE)
+```
+
+```{r}
+# Source: EDA.qmd (line 287)
+#| fig-alt: |
+#|   A frequency polygon of scheduled departure times of flights. Two lines 
+#|   represent flights that are cancelled and not cancelled. The x-axis ranges 
+#|   from 0 to 25 minutes and the y-axis ranges from 0 to 10000. The number of 
+#|   flights not cancelled are much higher than those cancelled.
+nycflights13::flights |> 
+  mutate(
+    cancelled = is.na(dep_time),
+    sched_hour = sched_dep_time %/% 100,
+    sched_min = sched_dep_time %% 100,
+    sched_dep_time = sched_hour + (sched_min / 60)
+  ) |> 
+  ggplot(aes(x = sched_dep_time)) + 
+  geom_freqpoly(aes(color = cancelled), binwidth = 1/4)
+```
+
+```{r}
+# Source: EDA.qmd (line 329)
+#| fig-alt: |
+#|   A frequency polygon of prices of diamonds where each cut of carat (Fair, 
+#|   Good, Very Good, Premium, and Ideal) is represented with a different color 
+#|   line. The x-axis ranges from 0 to 30000 and the y-axis ranges from 0 to 
+#|   5000. The lines overlap a great deal, suggesting similar frequency 
+#|   distributions of prices of diamonds. One notable feature is that 
+#|   Ideal diamonds have the highest peak around 1500.
+ggplot(diamonds, aes(x = price)) + 
+  geom_freqpoly(aes(color = cut), binwidth = 500, linewidth = 0.75)
+```
+
+```{r}
+# Source: EDA.qmd (line 349)
+#| fig-alt: |
+#|   A frequency polygon of densities of prices of diamonds where each cut of 
+#|   carat (Fair, Good, Very Good, Premium, and Ideal) is represented with a 
+#|   different color line. The x-axis ranges from 0 to 20000. The lines overlap 
+#|   a great deal, suggesting similar density distributions of prices of 
+#|   diamonds. One notable feature is that all but Fair diamonds have high peaks 
+#|   around a price of 1500 and Fair diamonds have a higher mean than others.
+ggplot(diamonds, aes(x = price, y = after_stat(density))) + 
+  geom_freqpoly(aes(color = cut), binwidth = 500, linewidth = 0.75)
+```
+
+```{r}
+# Source: EDA.qmd (line 369)
+#| fig-alt: |
+#|   Side-by-side boxplots of prices of diamonds by cut. The distribution of 
+#|   prices is right skewed for each cut (Fair, Good, Very Good, Premium, and 
+#|   Ideal). The medians are close to each other, with the median for Ideal 
+#|   diamonds lowest and that for Fair highest.
+ggplot(diamonds, aes(x = cut, y = price)) +
+  geom_boxplot()
+```
+
+```{r}
+# Source: EDA.qmd (line 390)
+#| fig-alt: |
+#|   Side-by-side boxplots of highway mileages of cars by class. Classes are 
+#|   on the x-axis (2seaters, compact, midsize, minivan, pickup, subcompact, 
+#|   and suv).
+ggplot(mpg, aes(x = class, y = hwy)) +
+  geom_boxplot()
+```
+
+```{r}
+# Source: EDA.qmd (line 401)
+#| fig-alt: |
+#|   Side-by-side boxplots of highway mileages of cars by class. Classes are 
+#|   on the x-axis and ordered by increasing median highway mileage (pickup, 
+#|   suv, minivan, 2seater, subcompact, compact, and midsize).
+ggplot(mpg, aes(x = fct_reorder(class, hwy, median), y = hwy)) +
+  geom_boxplot()
+```
+
+```{r}
+# Source: EDA.qmd (line 451)
+#| fig-alt: |
+#|   A scatterplot of color vs. cut of diamonds. There is one point for each
+#|   combination of levels of cut (Fair, Good, Very Good, Premium, and Ideal) 
+#|   and color (D, E, F, G, G, I, and J). The sizes of the points represent 
+#|   the number of observations for that combination. The legend indicates 
+#|   that these sizes range between 1000 and 4000.
+ggplot(diamonds, aes(x = cut, y = color)) +
+  geom_count()
+```
+
+```{r}
+# Source: EDA.qmd (line 474)
+#| fig-alt: |
+#|   A tile plot of cut vs. color of diamonds. Each tile represents a 
+#|   cut/color combination and tiles are colored according to the number of 
+#|   observations in each tile. There are more Ideal diamonds than other cuts, 
+#|   with the highest number being Ideal diamonds with color G. Fair diamonds 
+#|   and diamonds with color I are the lowest in frequency.
+diamonds |> 
+  count(color, cut) |>  
+  ggplot(aes(x = color, y = cut)) +
+  geom_tile(aes(fill = n))
+```
+
+```{r}
+# Source: EDA.qmd (line 508)
+#| dev: "png"
+#| fig-alt: |
+#|   A scatterplot of price vs. carat. The relationship is positive, somewhat 
+#|   strong, and exponential.
+smaller <- diamonds |>
+  filter(carat < 3)
+
+ggplot(smaller, aes(x = carat, y = price)) +
+  geom_point()
+```
+
+```{r}
+# Source: EDA.qmd (line 522)
+#| dev: "png"
+#| fig-alt: |
+#|   A scatterplot of price vs. carat. The relationship is positive, somewhat 
+#|   strong, and exponential. The points are transparent, showing clusters where 
+#|   the number of points is higher than other areas, The most obvious clusters 
+#|   are for diamonds with 1, 1.5, and 2 carats.
+smaller <- diamonds |>
+  filter(carat < 3)
+
+ggplot(smaller, aes(x = carat, y = price)) + 
+  geom_point(alpha = 1 / 100)
+```
+
+```{r}
+# Source: EDA.qmd (line 543)
+#| layout-ncol: 2
+#| fig-width: 3
+#| fig-alt: |
+#|   Plot 1: A binned density plot of price vs. carat. Plot 2: A hexagonal bin 
+#|   plot of price vs. carat. Both plots show that the highest density of 
+#|   diamonds have low carats and low prices.
+smaller <- diamonds |>
+  filter(carat < 3)
+
+ggplot(smaller, aes(x = carat, y = price)) +
+  geom_bin2d()
+
+# install.packages("hexbin")
+ggplot(smaller, aes(x = carat, y = price)) +
+  geom_hex()
+```
+
+```{r}
+# Source: EDA.qmd (line 562)
+#| fig-alt: |
+#|   Side-by-side box plots of price by carat. Each box plot represents diamonds 
+#|   that are 0.1 carats apart in weight. The box plots show that as carat 
+#|   increases the median price increases as well. Additionally, diamonds with 
+#|   1.5 carats or lower have right skewed price distributions, 1.5 to 2 have 
+#|   roughly symmetric price distributions, and diamonds that weigh more have 
+#|   left skewed distributions. Cheaper, smaller diamonds have outliers on the 
+#|   higher end, more expensive, bigger diamonds have outliers on the lower end.
+smaller <- diamonds |>
+  filter(carat < 3)
+
+ggplot(smaller, aes(x = carat, y = price)) + 
+  geom_boxplot(aes(group = cut_width(carat, 0.1)))
+```
+
+```{r}
+# Source: EDA.qmd (line 643)
+#| message: false
+#| dev: "png"
+#| fig-alt: |
+#|   A scatterplot of residuals vs. carat of diamonds. The x-axis ranges from 0 
+#|   to 5, the y-axis ranges from 0 to almost 4. Much of the data are clustered 
+#|   around low values of carat and residuals. There is a clear, curved pattern 
+#|   showing decrease in residuals as carat increases.
+library(tidymodels)
+
+diamonds <- diamonds |>
+  mutate(
+    log_price = log(price),
+    log_carat = log(carat)
+  )
+
+diamonds_fit <- linear_reg() |>
+  fit(log_price ~ log_carat, data = diamonds)
+
+diamonds_aug <- augment(diamonds_fit, new_data = diamonds) |>
+  mutate(.resid = exp(.resid))
+
+ggplot(diamonds_aug, aes(x = carat, y = .resid)) + 
+  geom_point()
+```
+
+```{r}
+# Source: EDA.qmd (line 671)
+#| fig-alt: |
+#|   Side-by-side box plots of residuals by cut. The x-axis displays the various 
+#|   cuts (Fair to Ideal), the y-axis ranges from 0 to almost 5. The medians are 
+#|   quite similar, between roughly 0.75 to 1.25. Each of the distributions of 
+#|   residuals is right skewed, with many outliers on the higher end.
+library(tidymodels)
+
+diamonds <- diamonds |>
+  mutate(
+    log_price = log(price),
+    log_carat = log(carat)
+  )
+
+diamonds_fit <- linear_reg() |>
+  fit(log_price ~ log_carat, data = diamonds)
+
+diamonds_aug <- augment(diamonds_fit, new_data = diamonds) |>
+  mutate(.resid = exp(.resid))
+
+ggplot(diamonds_aug, aes(x = cut, y = .resid)) + 
+  geom_boxplot()
+```
+
+
+## communication.qmd
+
+```{r}
+# Source: communication.qmd (line 46)
+#| message: false
+#| fig-alt: |
+#|   Scatterplot of highway fuel efficiency versus engine size of cars, where 
+#|   points are colored according to the car class. A smooth curve following 
+#|   the trajectory of the relationship between highway fuel efficiency versus 
+#|   engine size of cars is overlaid. The x-axis is labelled "Engine 
+#|   displacement (L)" and the y-axis is labelled "Highway fuel economy (mpg)". 
+#|   The legend is labelled "Car type". The plot is titled "Fuel efficiency 
+#|   generally decreases with engine size". The subtitle is "Two seaters 
+#|   (sports cars) are an exception because of their light weight" and the 
+#|   caption is "Data from fueleconomy.gov".
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point(aes(color = class)) +
+  geom_smooth(se = FALSE) +
+  labs(
+    x = "Engine displacement (L)",
+    y = "Highway fuel economy (mpg)",
+    color = "Car type",
+    title = "Fuel efficiency generally decreases with engine size",
+    subtitle = "Two seaters (sports cars) are an exception because of their light weight",
+    caption = "Data from fueleconomy.gov"
+  )
+```
+
+```{r}
+# Source: communication.qmd (line 81)
+#| fig-asp: 1
+#| out-width: "50%"
+#| fig-width: 3
+#| fig-alt: |
+#|   Scatterplot with math text on the x and y axis labels. X-axis label 
+#|   says x_i, y-axis label says sum of x_i  squared, for i from 1 to n.
+df <- tibble(
+  x = 1:10,
+  y = cumsum(x^2)
+)
+
+ggplot(df, aes(x, y)) +
+  geom_point() +
+  labs(
+    x = quote(x[i]),
+    y = quote(sum(x[i] ^ 2, i == 1, n))
+  )
+```
+
+```{r}
+# Source: communication.qmd (line 158)
+#| fig-alt: |
+#|   Scatterplot of highway mileage versus engine size where points are colored 
+#|   by drive type. Smooth curves for each drive type are overlaid. 
+#|   Text labels identify the curves as front-wheel, rear-wheel, and 4-wheel.
+label_info <- mpg |>
+  group_by(drv) |>
+  arrange(desc(displ)) |>
+  slice_head(n = 1) |>
+  mutate(
+    drive_type = case_when(
+      drv == "f" ~ "front-wheel drive",
+      drv == "r" ~ "rear-wheel drive",
+      drv == "4" ~ "4-wheel drive"
+    )
+  ) |>
+  select(displ, hwy, drv, drive_type)
+
+ggplot(mpg, aes(x = displ, y = hwy, color = drv)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(se = FALSE) +
+  geom_text(
+    data = label_info, 
+    aes(x = displ, y = hwy, label = drive_type),
+    fontface = "bold", size = 5, hjust = "right", vjust = "bottom"
+  ) +
+  theme(legend.position = "none")
+```
+
+```{r}
+# Source: communication.qmd (line 180)
+#| fig-alt: |
+#|   Scatterplot of highway mileage versus engine size where points are colored 
+#|   by drive type. Smooth curves for each drive type are overlaid. 
+#|   Text labels identify the curves as front-wheel, rear-wheel, and 4-wheel.
+#|   The labels are box with white background 
+#|   and positioned to not overlap.
+label_info <- mpg |>
+  group_by(drv) |>
+  arrange(desc(displ)) |>
+  slice_head(n = 1) |>
+  mutate(
+    drive_type = case_when(
+      drv == "f" ~ "front-wheel drive",
+      drv == "r" ~ "rear-wheel drive",
+      drv == "4" ~ "4-wheel drive"
+    )
+  ) |>
+  select(displ, hwy, drv, drive_type)
+
+ggplot(mpg, aes(x = displ, y = hwy, color = drv)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(se = FALSE) +
+  geom_label_repel(
+    data = label_info, 
+    aes(x = displ, y = hwy, label = drive_type),
+    fontface = "bold", size = 5, nudge_y = 2
+  ) +
+  theme(legend.position = "none")
+```
+
+```{r}
+# Source: communication.qmd (line 201)
+#| fig-alt: |
+#|   Scatterplot of highway fuel efficiency versus engine size of cars. Points 
+#|   where highway mileage is above 40 as well as above 20 with engine size 
+#|   above 5 are red, with a hollow red circle, and labelled with model name 
+#|   of the car.
+potential_outliers <- mpg |>
+  filter(hwy > 40 | (hwy > 20 & displ > 5))
+  
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point() +
+  geom_text_repel(data = potential_outliers, aes(label = model)) +
+  geom_point(data = potential_outliers, color = "red") +
+  geom_point(
+    data = potential_outliers,
+    color = "red", size = 3, shape = "circle open"
+  )
+```
+
+```{r}
+# Source: communication.qmd (line 250)
+#| fig-alt: |
+#|   Scatterplot of highway fuel efficiency versus engine size of cars. A red 
+#|   arrow pointing down follows the trend of the points and the annotation 
+#|   placed next to the arrow reads "Larger engine sizes tend to have lower 
+#|   fuel economy". The arrow and the annotation text is red.
+trend_text <- "Larger engine sizes tend to have lower fuel economy." |>
+  str_wrap(width = 30)
+
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point() +
+  annotate(
+    geom = "label", x = 3.5, y = 38,
+    label = trend_text,
+    hjust = "left", color = "red"
+  ) +
+  annotate(
+    geom = "segment",
+    x = 3, y = 35, xend = 5, yend = 25, color = "red",
+    arrow = arrow(type = "closed")
+  )
+```
+
+```{r}
+# Source: communication.qmd (line 301)
+#| label: default-scales
+#| fig-show: hide
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point(aes(color = class))
+```
+
+```{r}
+# Source: communication.qmd (line 310)
+#| fig-show: hide
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point(aes(color = class)) +
+  scale_x_continuous() +
+  scale_y_continuous() +
+  scale_color_discrete()
+```
+
+```{r}
+# Source: communication.qmd (line 343)
+#| fig-alt: |
+#|   Scatterplot of highway fuel efficiency versus engine size of cars,
+#|   colored by drive. The y-axis has breaks starting at 15 and ending at 40, 
+#|   increasing by 5.
+ggplot(mpg, aes(x = displ, y = hwy, color = drv)) +
+  geom_point() +
+  scale_y_continuous(breaks = seq(15, 40, by = 5)) 
+```
+
+```{r}
+# Source: communication.qmd (line 358)
+#| fig-alt: |
+#|   Scatterplot of highway fuel efficiency versus engine size of cars, colored 
+#|   by drive. The x and y-axes do not have any labels at the axis ticks. 
+#|   The legend has custom labels: 4-wheel, front, rear.
+ggplot(mpg, aes(x = displ, y = hwy, color = drv)) +
+  geom_point() +
+  scale_x_continuous(labels = NULL) +
+  scale_y_continuous(labels = NULL) +
+  scale_color_discrete(labels = c("4" = "4-wheel", "f" = "front", "r" = "rear"))
+```
+
+```{r}
+# Source: communication.qmd (line 375)
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-alt: |
+#|   Two side-by-side box plots of price versus cut of diamonds. The outliers 
+#|   are transparent. On both plots the x-axis labels are formatted as dollars.
+#|   The x-axis labels on the left plot start at $0 and go to $15,000, increasing 
+#|   by $5,000. The x-axis labels on the right plot start at $1K and go to 
+#|   $19K, increasing by $6K. 
+# Left
+ggplot(diamonds, aes(x = price, y = cut)) +
+  geom_boxplot(alpha = 0.05) +
+  scale_x_continuous(labels = label_dollar())
+
+# Right
+ggplot(diamonds, aes(x = price, y = cut)) +
+  geom_boxplot(alpha = 0.05) +
+  scale_x_continuous(
+    labels = label_dollar(scale = 1/1000, suffix = "K"), 
+    breaks = seq(1000, 19000, by = 6000)
+  )
+```
+
+```{r}
+# Source: communication.qmd (line 400)
+#| fig-alt: |
+#|   Segmented bar plots of cut, filled with levels of clarity. The y-axis 
+#|   labels start at 0% and go to 100%, increasing by 25%. The y-axis label 
+#|   name is "Percentage".
+ggplot(diamonds, aes(x = cut, fill = clarity)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(name = "Percentage", labels = label_percent())
+```
+
+```{r}
+# Source: communication.qmd (line 413)
+#| fig-alt: |
+#|   Line plot of id number of presidents versus the year they started their 
+#|   presidency. Start year is marked with a point and a segment that starts 
+#|   there and ends at the end of the presidency. The x-axis labels are 
+#|   formatted as two digit years starting with an apostrophe, e.g., '53.
+presidential |>
+  mutate(id = 33 + row_number()) |>
+  ggplot(aes(x = start, y = id)) +
+  geom_point() +
+  geom_segment(aes(xend = end, yend = id)) +
+  scale_x_date(name = NULL, breaks = presidential$start, date_labels = "'%y")
+```
+
+```{r}
+# Source: communication.qmd (line 443)
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-alt: |
+#|   Four scatterplots of highway fuel efficiency versus engine size of cars 
+#|   where points are colored based on class of car. Clockwise, the legend 
+#|   is placed on the right, left, bottom, and top of the plot.
+base <- ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point(aes(color = class))
+
+base + theme(legend.position = "right") # the default
+base + theme(legend.position = "left")
+base + 
+  theme(legend.position = "top") +
+  guides(color = guide_legend(nrow = 3))
+base + 
+  theme(legend.position = "bottom") +
+  guides(color = guide_legend(nrow = 3))
+```
+
+```{r}
+# Source: communication.qmd (line 470)
+#| fig-alt: |
+#|   Scatterplot of highway fuel efficiency versus engine size of cars 
+#|   where points are colored based on class of car. Overlaid on the plot is a 
+#|   smooth curve. The legend is in the bottom and classes are listed 
+#|   horizontally in two rows. The points in the legend are larger than the points 
+#|   in the plot.
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point(aes(color = class)) +
+  geom_smooth(se = FALSE) +
+  theme(legend.position = "bottom") +
+  guides(color = guide_legend(nrow = 2, override.aes = list(size = 4)))
+```
+
+```{r}
+# Source: communication.qmd (line 495)
+#| fig-align: default
+#| layout-ncol: 2
+#| fig-width: 3
+#| fig-alt: |
+#|   Two plots of price versus carat of diamonds. Data binned and the color of 
+#|   the rectangles representing each bin based on the number of points that 
+#|   fall into that bin. In the plot on the right, price and carat values 
+#|   are logged and the axis labels shows the logged values.
+# Left
+ggplot(diamonds, aes(x = carat, y = price)) +
+  geom_bin2d()
+
+# Right
+ggplot(diamonds, aes(x = log10(carat), y = log10(price))) +
+  geom_bin2d()
+```
+
+```{r}
+# Source: communication.qmd (line 517)
+#| fig-alt: |
+#|   Plot of price versus carat of diamonds. Data binned and the color of 
+#|   the rectangles representing each bin based on the number of points that 
+#|   fall into that bin. The axis labels are on the original data scale.
+ggplot(diamonds, aes(x = carat, y = price)) +
+  geom_bin2d() + 
+  scale_x_log10() + 
+  scale_y_log10()
+```
+
+```{r}
+# Source: communication.qmd (line 535)
+#| fig-align: default
+#| layout-ncol: 2
+#| fig-width: 3
+#| fig-alt: |
+#|   Two scatterplots of highway mileage versus engine size where points are 
+#|   colored by drive type. The plot on the left uses the default 
+#|   ggplot2 color palette and the plot on the right uses a different color 
+#|   palette.
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point(aes(color = drv))
+
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point(aes(color = drv)) +
+  scale_color_brewer(palette = "Set1")
+```
+
+```{r}
+# Source: communication.qmd (line 556)
+#| fig-alt: |
+#|   Scatterplot of highway mileage versus engine size where both color 
+#|   and shape of points are based on drive type. The color palette is not 
+#|   the default ggplot2 palette.
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point(aes(color = drv, shape = drv)) +
+  scale_color_brewer(palette = "Set1")
+```
+
+```{r}
+# Source: communication.qmd (line 589)
+#| fig-alt: |
+#|   Line plot of id number of presidents versus the year they started their 
+#|   presidency. Start year is marked with a point and a segment that starts 
+#|   there and ends at the end of the presidency. Democratic presidents are 
+#|   represented in blue and Republicans in red.
+presidential |>
+  mutate(id = 33 + row_number()) |>
+  ggplot(aes(x = start, y = id, color = party)) +
+  geom_point() +
+  geom_segment(aes(xend = end, yend = id)) +
+  scale_color_manual(values = c(Republican = "#E81B23", Democratic = "#00AEF3"))
+```
+
+```{r}
+# Source: communication.qmd (line 612)
+#| fig-align: default
+#| layout-ncol: 2
+#| fig-width: 3
+#| fig-asp: 0.75
+#| fig-alt: |
+#|   Three hex plots where the color of the hexes show the number of observations 
+#|   that fall into that hex bin. The first plot uses the default, continuous 
+#|   ggplot2 scale. The second plot uses the viridis, continuous scale, and the 
+#|   third plot uses the viridis, binned scale.
+df <- tibble(
+  x = rnorm(10000),
+  y = rnorm(10000)
+)
+
+ggplot(df, aes(x, y)) +
+  geom_hex() +
+  coord_fixed() +
+  labs(title = "Default, continuous", x = NULL, y = NULL)
+
+ggplot(df, aes(x, y)) +
+  geom_hex() +
+  coord_fixed() +
+  scale_fill_viridis_c() +
+  labs(title = "Viridis, continuous", x = NULL, y = NULL)
+
+ggplot(df, aes(x, y)) +
+  geom_hex() +
+  coord_fixed() +
+  scale_fill_viridis_b() +
+  labs(title = "Viridis, binned", x = NULL, y = NULL)
+```
+
+```{r}
+# Source: communication.qmd (line 660)
+#| layout-ncol: 2
+#| fig-width: 4
+#| message: false
+#| fig-alt: |
+#|   On the left, scatterplot of highway mileage vs. displacement 
+#|   where points are colored by drive type. 
+#|   The smooth curve overlaid shows a decreasing, and then 
+#|   increasing trend, like a hockey stick. On the right, same variables 
+#|   are plotted with displacement ranging only from 5 to 6 and highway 
+#|   mileage ranging only from 10 to 25. The smooth curve overlaid shows a 
+#|   trend that's slightly increasing first and then decreasing. 
+# Left
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point(aes(color = drv)) +
+  geom_smooth()
+
+# Right
+mpg |>
+  filter(displ >= 5 & displ <= 6 & hwy >= 10 & hwy <= 25) |>
+  ggplot(aes(x = displ, y = hwy)) +
+  geom_point(aes(color = drv)) +
+  geom_smooth()
+```
+
+```{r}
+# Source: communication.qmd (line 689)
+#| layout-ncol: 2
+#| fig-width: 4
+#| message: false
+#| warning: false
+#| fig-alt: |
+#|   On the left, scatterplot of highway mileage vs. displacement, with 
+#|   displacement ranging from 5 to 6 and highway mileage ranging from 
+#|   10 to 25. The smooth curve overlaid shows a trend that's slightly 
+#|   increasing first and then decreasing. On the right, same variables 
+#|   are plotted with the same limits, however the smooth curve overlaid
+#|   shows a relatively flat trend with a slight increase at the end.
+# Left
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point(aes(color = drv)) +
+  geom_smooth() +
+  scale_x_continuous(limits = c(5, 6)) +
+  scale_y_continuous(limits = c(10, 25))
+
+# Right
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point(aes(color = drv)) +
+  geom_smooth() +
+  coord_cartesian(xlim = c(5, 6), ylim = c(10, 25))
+```
+
+```{r}
+# Source: communication.qmd (line 718)
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-alt: |
+#|   On the left, a scatterplot of highway mileage vs. displacement of SUVs.
+#|   On the right, a scatterplot of the same variables for compact cars.
+#|   Points are colored by drive type for both plots. Among SUVs more of 
+#|   the cars are 4-wheel drive and the others are rear-wheel drive, while 
+#|   among compact cars more of the cars are front-wheel drive and the others 
+#|   are 4-wheel drive. SUV plot shows a clear negative relationship 
+#|   between higway mileage and displacement while in the compact cars plot 
+#|   the relationship is much flatter.
+suv <- mpg |> filter(class == "suv")
+compact <- mpg |> filter(class == "compact")
+
+# Left
+ggplot(suv, aes(x = displ, y = hwy, color = drv)) +
+  geom_point()
+
+# Right
+ggplot(compact, aes(x = displ, y = hwy, color = drv)) +
+  geom_point()
+```
+
+```{r}
+# Source: communication.qmd (line 744)
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-alt: |
+#|   On the left, a scatterplot of highway mileage vs. displacement of SUVs.
+#|   On the right, a scatterplot of the same variables for compact cars.
+#|   Points are colored by drive type for both plots. Both plots are plotted 
+#|   on the same scale for highway mileage, displacement, and drive type, 
+#|   resulting in the legend showing all three types (front, rear, and 4-wheel 
+#|   drive) for both plots even though there are no front-wheel drive SUVs and 
+#|   no rear-wheel drive compact cars. Since the x and y scales are the same, 
+#|   and go well beyond minimum or maximum highway mileage and displacement, 
+#|   the points do not take up the entire plotting area.
+suv <- mpg |> filter(class == "suv")
+compact <- mpg |> filter(class == "compact")
+
+x_scale <- scale_x_continuous(limits = range(mpg$displ))
+y_scale <- scale_y_continuous(limits = range(mpg$hwy))
+col_scale <- scale_color_discrete(limits = unique(mpg$drv))
+
+# Left
+ggplot(suv, aes(x = displ, y = hwy, color = drv)) +
+  geom_point() +
+  x_scale +
+  y_scale +
+  col_scale
+
+# Right
+ggplot(compact, aes(x = displ, y = hwy, color = drv)) +
+  geom_point() +
+  x_scale +
+  y_scale +
+  col_scale
+```
+
+```{r}
+# Source: communication.qmd (line 819)
+#| message: false
+#| fig-alt: |
+#|   Scatterplot of highway mileage vs. displacement of cars, colored by class 
+#|   of car. The plot background is white, with gray grid lines.
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_point(aes(color = class)) +
+  geom_smooth(se = FALSE) +
+  theme_bw()
+```
+
+```{r}
+# Source: communication.qmd (line 868)
+#| fig-alt: |
+#|   Scatterplot of highway fuel efficiency versus engine size of cars, colored 
+#|   by drive. The plot is titled 'Larger engine sizes tend to have lower fuel 
+#|   economy' with the caption pointing to the source of the data, fueleconomy.gov.
+#|   The caption and title are left justified, the legend is inside of the plot
+#|   with a black border.
+ggplot(mpg, aes(x = displ, y = hwy, color = drv)) +
+  geom_point() +
+  labs(
+    title = "Larger engine sizes tend to have lower fuel economy",
+    caption = "Source: https://fueleconomy.gov."
+  ) +
+  theme(
+    legend.position = c(0.6, 0.7),
+    legend.direction = "horizontal",
+    legend.box.background = element_rect(color = "black"),
+    plot.title = element_text(face = "bold"),
+    plot.title.position = "plot",
+    plot.caption.position = "plot",
+    plot.caption = element_text(hjust = 0)
+  )
+```
+
+```{r}
+# Source: communication.qmd (line 911)
+#| fig-width: 6
+#| fig-asp: 0.5
+#| fig-alt: |
+#|   Two plots (a scatterplot of highway mileage versus engine size and a 
+#|   side-by-side boxplots of highway mileage versus drive train) placed next 
+#|   to each other.
+p1 <- ggplot(mpg, aes(x = displ, y = hwy)) + 
+  geom_point() + 
+  labs(title = "Plot 1")
+p2 <- ggplot(mpg, aes(x = drv, y = hwy)) + 
+  geom_boxplot() + 
+  labs(title = "Plot 2")
+p1 + p2
+```
+
+```{r}
+# Source: communication.qmd (line 933)
+#| fig-width: 6
+#| fig-asp: 0.8
+#| fig-alt: |
+#|   Three plots laid out such that first and third plot are next to each other 
+#|   and the second plot stretched beneath them. The first plot is a 
+#|   scatterplot of highway mileage versus engine size, the third plot is a 
+#|   scatterplot of highway mileage versus city mileage, and the second plot is 
+#|   side-by-side boxplots of highway mileage versus drive train). 
+p3 <- ggplot(mpg, aes(x = cty, y = hwy)) + 
+  geom_point() + 
+  labs(title = "Plot 3")
+(p1 | p3) / p2
+```
+
+```{r}
+# Source: communication.qmd (line 957)
+#| fig-width: 8
+#| fig-asp: 1
+#| fig-alt: |
+#|   Five plots laid out such that first two plots are next to each other. Plots 
+#|   three and four are underneath them. And the fifth plot stretches under them. 
+#|   The patchworked plot is titled "City and highway mileage for cars with 
+#|   different drive trains" and captioned "Source: https://fueleconomy.gov". 
+#|   The first two plots are side-by-side box plots. Plots 3 and 4 are density 
+#|   plots. And the fifth plot is a faceted scatterplot. Each of these plots show 
+#|   geoms colored by drive train, but the patchworked plot has only one legend 
+#|   that applies to all of them, above the plots and beneath the title.
+p1 <- ggplot(mpg, aes(x = drv, y = cty, color = drv)) + 
+  geom_boxplot(show.legend = FALSE) + 
+  labs(title = "Plot 1")
+
+p2 <- ggplot(mpg, aes(x = drv, y = hwy, color = drv)) + 
+  geom_boxplot(show.legend = FALSE) + 
+  labs(title = "Plot 2")
+
+p3 <- ggplot(mpg, aes(x = cty, color = drv, fill = drv)) + 
+  geom_density(alpha = 0.5) + 
+  labs(title = "Plot 3")
+
+p4 <- ggplot(mpg, aes(x = hwy, color = drv, fill = drv)) + 
+  geom_density(alpha = 0.5) + 
+  labs(title = "Plot 4")
+
+p5 <- ggplot(mpg, aes(x = cty, y = hwy, color = drv)) + 
+  geom_point(show.legend = FALSE) + 
+  facet_wrap(~drv) +
+  labs(title = "Plot 5")
+
+(guide_area() / (p1 + p2) / (p3 + p4) / p5) +
+  plot_annotation(
+    title = "City and highway mileage for cars with different drive trains",
+    caption = "Source: https://fueleconomy.gov."
+  ) +
+  plot_layout(
+    guides = "collect",
+    heights = c(1, 3, 2, 4)
+    ) &
+  theme(legend.position = "top")
+```
+
+
+## data-tidy.qmd
+
+```{r}
+# Source: data-tidy.qmd (line 89)
+#| fig-width: 5
+#| fig-alt: |
+#|   This figure shows the number of cases in 1999 and 2000 for 
+#|   Afghanistan, Brazil, and China, with year on the x-axis and number 
+#|   of cases on the y-axis. Each point on the plot represents the number 
+#|   of cases in a given country in a given year. The points for each
+#|   country are differentiated from others by color and shape and connected
+#|   with a line, resulting in three, non-parallel, non-intersecting lines.
+#|   The numbers of cases in China are highest for both 1999 and 2000, with
+#|   values above 200,000 for both years. The number of cases in Brazil is
+#|   approximately 40,000 in 1999 and approximately 75,000 in 2000. The
+#|   numbers of cases in Afghanistan are lowest for both 1999 and 2000, with
+#|   values that appear to be very close to 0 on this scale.
+# Compute rate per 10,000
+table1 |>
+  mutate(rate = cases / population * 10000)
+
+# Compute total cases per year
+table1 |> 
+  group_by(year) |> 
+  summarize(total_cases = sum(cases))
+
+# Visualize changes over time
+ggplot(table1, aes(x = year, y = cases)) +
+  geom_line(aes(group = country), color = "grey50") +
+  geom_point(aes(color = country, shape = country)) +
+  scale_x_continuous(breaks = c(1999, 2000)) # x-axis breaks at 1999 and 2000
+```
+
+```{r}
+# Source: data-tidy.qmd (line 232)
+#| label: fig-billboard-ranks
+#| fig-cap: |
+#|   A line plot showing how the rank of a song changes over time.
+#| fig-alt: |
+#|   A line plot with week on the x-axis and rank on the y-axis, where
+#|   each line represents a song. Most songs appear to start at a high rank,
+#|   rapidly accelerate to a low rank, and then decay again. There are
+#|   surprisingly few tracks in the region when week is >20 and rank is
+#|   >50.
+billboard_longer <- billboard |>
+  pivot_longer(
+    cols = starts_with("wk"),
+    names_to = "week",
+    values_to = "rank",
+    values_drop_na = TRUE
+  ) |>
+  mutate(
+    week = parse_number(week)
+  )
+
+billboard_longer |> 
+  ggplot(aes(x = week, y = rank, group = track)) + 
+  geom_line(alpha = 0.25) + 
+  scale_y_reverse()
+```
+
+
+## data-transform.qmd
+
+```{r}
+# Source: data-transform.qmd (line 408)
+#| eval: false
+#| echo: false
+# For data checking, not used in results shown in book
+flights <- flights |> mutate(
+  dep_time = hour * 60 + minute,
+  arr_time = (arr_time %/% 100) * 60 + (arr_time %% 100),
+  airtime2 = arr_time - dep_time,
+  dep_sched = dep_time + dep_delay
+)
+
+ggplot(flights, aes(x = dep_sched)) + geom_histogram(binwidth = 60)
+ggplot(flights, aes(x = dep_sched %% 60)) + geom_histogram(binwidth = 1)
+ggplot(flights, aes(x = air_time - airtime2)) + geom_histogram()
+```
+
+```{r}
+# Source: data-transform.qmd (line 832)
+#| warning: false
+#| fig-alt: |
+#|   A scatterplot of the number of batting performances vs. batting opportunities 
+#|   overlaid with a smoothed line. Average performance increases sharply
+#|   from 0.2 at when n is ~100 to 0.25 when n is ~1000. Average performance
+#|   continues to increase linearly at a much shallower slope, reaching
+#|   0.3 when n is ~12,000.
+batters <- Lahman::Batting |>
+  group_by(playerID) |>
+  summarize(
+    performance = sum(H, na.rm = TRUE) / sum(AB, na.rm = TRUE),
+    n = sum(AB, na.rm = TRUE)
+  )
+
+batters |> 
+  filter(n > 100) |> 
+  ggplot(aes(x = n, y = performance)) +
+  geom_point(alpha = 1 / 10) + 
+  geom_smooth(se = FALSE)
+```
+
+
+## data-visualize.qmd
+
+```{r}
+# Source: data-visualize.qmd (line 125)
+#| echo: false
+#| warning: false
+#| fig-alt: |
+#|   A scatterplot of body mass vs. flipper length of penguins, with a
+#|   best fit line of the relationship between these two variables 
+#|   overlaid. The plot displays a positive, fairly linear, and relatively 
+#|   strong relationship between these two variables. Species (Adelie, 
+#|   Chinstrap, and Gentoo) are represented with different colors and 
+#|   shapes. The relationship between body mass and flipper length is 
+#|   roughly the same for these three species, and Gentoo penguins are 
+#|   larger than penguins from the other two species.
+ggplot(penguins, aes(x = flipper_length_mm, y = body_mass_g)) +
+  geom_point(aes(color = species, shape = species)) +
+  geom_smooth(method = "lm") +
+  labs(
+    title = "Body mass and flipper length",
+    subtitle = "Dimensions for Adelie, Chinstrap, and Gentoo Penguins",
+    x = "Flipper length (mm)",
+    y = "Body mass (g)",
+    color = "Species",
+    shape = "Species"
+  ) +
+  scale_color_colorblind()
+```
+
+```{r}
+# Source: data-visualize.qmd (line 159)
+#| fig-alt: |
+#|   A blank, gray plot area.
+ggplot(data = penguins)
+```
+
+```{r}
+# Source: data-visualize.qmd (line 173)
+#| fig-alt: |
+#|   The plot shows flipper length on the x-axis, with values that range from 
+#|   170 to 230, and body mass on the y-axis, with values that range from 3000 
+#|   to 6000.
+ggplot(
+  data = penguins,
+  mapping = aes(x = flipper_length_mm, y = body_mass_g)
+)
+```
+
+```{r}
+# Source: data-visualize.qmd (line 197)
+#| fig-alt: |
+#|   A scatterplot of body mass vs. flipper length of penguins. The plot 
+#|   displays a positive, linear, and relatively strong relationship between 
+#|   these two variables.
+ggplot(
+  data = penguins,
+  mapping = aes(x = flipper_length_mm, y = body_mass_g)
+) +
+  geom_point()
+```
+
+```{r}
+# Source: data-visualize.qmd (line 234)
+#| warning: false
+#| fig-alt: |
+#|   A scatterplot of body mass vs. flipper length of penguins. The plot 
+#|   displays a positive, fairly linear, and relatively strong relationship 
+#|   between these two variables. Species (Adelie, Chinstrap, and Gentoo) 
+#|   are represented with different colors.
+ggplot(
+  data = penguins,
+  mapping = aes(x = flipper_length_mm, y = body_mass_g, color = species)
+) +
+  geom_point()
+```
+
+```{r}
+# Source: data-visualize.qmd (line 257)
+#| warning: false
+#| fig-alt: |
+#|   A scatterplot of body mass vs. flipper length of penguins. Overlaid 
+#|   on the scatterplot are three smooth curves displaying the 
+#|   relationship between these variables for each species (Adelie, 
+#|   Chinstrap, and Gentoo). Different penguin species are plotted in 
+#|   different colors for the points and the smooth curves.
+ggplot(
+  data = penguins,
+  mapping = aes(x = flipper_length_mm, y = body_mass_g, color = species)
+) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+
+```{r}
+# Source: data-visualize.qmd (line 279)
+#| warning: false
+#| fig-alt: |
+#|   A scatterplot of body mass vs. flipper length of penguins. Overlaid 
+#|   on the scatterplot is a single line of best fit displaying the 
+#|   relationship between these variables for each species (Adelie, 
+#|   Chinstrap, and Gentoo). Different penguin species are plotted in 
+#|   different colors for the points only.
+ggplot(
+  data = penguins,
+  mapping = aes(x = flipper_length_mm, y = body_mass_g)
+) +
+  geom_point(mapping = aes(color = species)) +
+  geom_smooth(method = "lm")
+```
+
+```{r}
+# Source: data-visualize.qmd (line 302)
+#| warning: false
+#| fig-alt: |
+#|   A scatterplot of body mass vs. flipper length of penguins. Overlaid 
+#|   on the scatterplot is a single line of best fit displaying the 
+#|   relationship between these variables for each species (Adelie, 
+#|   Chinstrap, and Gentoo). Different penguin species are plotted in 
+#|   different colors and shapes for the points only.
+ggplot(
+  data = penguins,
+  mapping = aes(x = flipper_length_mm, y = body_mass_g)
+) +
+  geom_point(mapping = aes(color = species, shape = species)) +
+  geom_smooth(method = "lm")
+```
+
+```{r}
+# Source: data-visualize.qmd (line 484)
+#| fig-alt: |
+#|   A bar chart of frequencies of species of penguins: Adelie 
+#|   (approximately 150), Chinstrap (approximately 90), Gentoo 
+#|   (approximately 125).
+ggplot(penguins, aes(x = species)) +
+  geom_bar()
+```
+
+```{r}
+# Source: data-visualize.qmd (line 515)
+#| warning: false
+#| fig-alt: |
+#|   A histogram of body masses of penguins. The distribution is unimodal 
+#|   and right skewed, ranging between approximately 2500 to 6500 grams.
+ggplot(penguins, aes(x = body_mass_g)) +
+  geom_histogram(binwidth = 200)
+```
+
+```{r}
+# Source: data-visualize.qmd (line 533)
+#| warning: false
+#| layout-ncol: 2
+#| fig-width: 3
+#| fig-alt: |
+#|   Two histograms of body masses of penguins, one with binwidth of 20 
+#|   (left) and one with binwidth of 2000 (right). The histogram with binwidth 
+#|   of 20 shows lots of ups and downs in the heights of the bins, creating a 
+#|   jagged outline. The histogram  with binwidth of 2000 shows only three bins.
+ggplot(penguins, aes(x = body_mass_g)) +
+  geom_histogram(binwidth = 20)
+ggplot(penguins, aes(x = body_mass_g)) +
+  geom_histogram(binwidth = 2000)
+```
+
+```{r}
+# Source: data-visualize.qmd (line 556)
+#| fig-alt: |
+#|   A density plot of body masses of penguins. The distribution is unimodal 
+#|   and right skewed, ranging between approximately 2500 to 6500 grams.
+ggplot(penguins, aes(x = body_mass_g)) +
+  geom_density()
+```
+
+```{r}
+# Source: data-visualize.qmd (line 621)
+#| warning: false
+#| fig-alt: |
+#|   Side-by-side box plots of distributions of body masses of Adelie, 
+#|   Chinstrap, and Gentoo penguins. The distribution of Adelie and 
+#|   Chinstrap penguins' body masses appear to be symmetric with 
+#|   medians around 3750 grams. The median body mass of Gentoo penguins 
+#|   is much higher, around 5000 grams, and the distribution of the 
+#|   body masses of these penguins appears to be somewhat right skewed.
+ggplot(penguins, aes(x = species, y = body_mass_g)) +
+  geom_boxplot()
+```
+
+```{r}
+# Source: data-visualize.qmd (line 636)
+#| warning: false
+#| fig-alt: |
+#|   A density plot of body masses of penguins by species of penguins. Each 
+#|   species (Adelie, Chinstrap, and Gentoo) is represented with different 
+#|   colored outlines for the density curves.
+ggplot(penguins, aes(x = body_mass_g, color = species)) +
+  geom_density(linewidth = 0.75)
+```
+
+```{r}
+# Source: data-visualize.qmd (line 652)
+#| warning: false
+#| fig-alt: |
+#|   A density plot of body masses of penguins by species of penguins. Each 
+#|   species (Adelie, Chinstrap, and Gentoo) is represented in different 
+#|   colored outlines for the density curves. The density curves are also 
+#|   filled with the same colors, with some transparency added.
+ggplot(penguins, aes(x = body_mass_g, color = species, fill = species)) +
+  geom_density(alpha = 0.5)
+```
+
+```{r}
+# Source: data-visualize.qmd (line 677)
+#| fig-alt: |
+#|   Bar plots of penguin species by island (Biscoe, Dream, and Torgersen)
+ggplot(penguins, aes(x = island, fill = species)) +
+  geom_bar()
+```
+
+```{r}
+# Source: data-visualize.qmd (line 699)
+#| fig-alt: |
+#|   Bar plots of penguin species by island (Biscoe, Dream, and Torgersen)
+#|   the bars are scaled to the same height, making it a relative frequencies 
+#|   plot. The y-axis is labeled "proportion".
+ggplot(penguins, aes(x = island, fill = species)) +
+  geom_bar(position = "fill") +
+  labs(y = "proportion")
+```
+
+```{r}
+# Source: data-visualize.qmd (line 729)
+#| warning: false
+#| fig-alt: |
+#|   A scatterplot of body mass vs. flipper length of penguins. The plot 
+#|   displays a positive, linear, relatively strong relationship between 
+#|   these two variables. The points are colored based on the species of the 
+#|   penguins and the shapes of the points represent islands (round points are 
+#|   Biscoe island, triangles are Dream island, and squared are Torgersen 
+#|   island). The plot is very busy and it's difficult to distinguish the shapes
+#|   of the points.
+ggplot(penguins, aes(x = flipper_length_mm, y = body_mass_g)) +
+  geom_point(aes(color = species, shape = island))
+```
+
+```{r}
+# Source: data-visualize.qmd (line 752)
+#| warning: false
+#| fig-width: 8
+#| fig-asp: 0.33
+#| fig-alt: |
+#|   A scatterplot of body mass vs. flipper length of penguins. The shapes and 
+#|   colors of points represent species. Penguins from each island are on a 
+#|   separate facet. Within each facet, the relationship between body mass and 
+#|   flipper length is positive, linear, relatively strong. 
+ggplot(penguins, aes(x = flipper_length_mm, y = body_mass_g)) +
+  geom_point(aes(color = species, shape = species)) +
+  facet_wrap(~island)
+```
+
+```{r}
+# Source: data-visualize.qmd (line 821)
+#| fig-show: hide
+#| warning: false
+ggplot(penguins, aes(x = flipper_length_mm, y = body_mass_g)) +
+  geom_point()
+ggsave(filename = "penguin-plot.png")
+```
+
+## datetimes.qmd
+
+```{r}
+# Source: datetimes.qmd (line 225)
+#| fig.alt: >
+#|   A frequency polyon with departure time (Jan-Dec 2013) on the x-axis
+#|   and number of flights on the y-axis (0-1000). The frequency polygon
+#|   is binned by day so you see a time series of flights by day. The
+#|   pattern is dominated by a weekly pattern; there are fewer flights 
+#|   on weekends. The are few days that stand out as having a surprisingly
+#|   few flights in early February, early July, late November, and late
+#|   December.
+make_datetime_100 <- function(year, month, day, time) {
+  make_datetime(year, month, day, time %/% 100, time %% 100)
+}
+
+flights_dt <- flights |>
+  filter(!is.na(dep_time), !is.na(arr_time)) |>
+  mutate(
+    dep_time = make_datetime_100(year, month, day, dep_time),
+    arr_time = make_datetime_100(year, month, day, arr_time),
+    sched_dep_time = make_datetime_100(year, month, day, sched_dep_time),
+    sched_arr_time = make_datetime_100(year, month, day, sched_arr_time)
+  ) |>
+  select(origin, dest, ends_with("delay"), ends_with("time"))
+
+flights_dt |> 
+  ggplot(aes(x = dep_time)) + 
+  geom_freqpoly(binwidth = 86400) # 86400 seconds = 1 day
+```
+
+```{r}
+# Source: datetimes.qmd (line 241)
+#| fig.alt: >
+#|   A frequency polygon with departure time (6am - midnight Jan 1) on the
+#|   x-axis, number of flights on the y-axis (0-17), binned into 10 minute
+#|   increments. It's hard to see much pattern because of high variability,
+#|   but most bins have 8-12 flights, and there are markedly fewer flights 
+#|   before 6am and after 8pm.
+make_datetime_100 <- function(year, month, day, time) {
+  make_datetime(year, month, day, time %/% 100, time %% 100)
+}
+
+flights_dt <- flights |>
+  filter(!is.na(dep_time), !is.na(arr_time)) |>
+  mutate(
+    dep_time = make_datetime_100(year, month, day, dep_time),
+    arr_time = make_datetime_100(year, month, day, arr_time),
+    sched_dep_time = make_datetime_100(year, month, day, sched_dep_time),
+    sched_arr_time = make_datetime_100(year, month, day, sched_arr_time)
+  ) |>
+  select(origin, dest, ends_with("delay"), ends_with("time"))
+
+flights_dt |> 
+  filter(dep_time < ymd(20130102)) |> 
+  ggplot(aes(x = dep_time)) + 
+  geom_freqpoly(binwidth = 600) # 600 s = 10 minutes
+```
+
+```{r}
+# Source: datetimes.qmd (line 332)
+#| fig-alt: |
+#|   A bar chart with days of the week on the x-axis and number of 
+#|   flights on the y-axis. Monday-Friday have roughly the same number of
+#|   flights, ~48,0000, decreasingly slightly over the course of the week.
+#|   Sunday is a little lower (~45,000), and Saturday is much lower 
+#|   (~38,000).
+make_datetime_100 <- function(year, month, day, time) {
+  make_datetime(year, month, day, time %/% 100, time %% 100)
+}
+
+flights_dt <- flights |>
+  filter(!is.na(dep_time), !is.na(arr_time)) |>
+  mutate(
+    dep_time = make_datetime_100(year, month, day, dep_time),
+    arr_time = make_datetime_100(year, month, day, arr_time),
+    sched_dep_time = make_datetime_100(year, month, day, sched_dep_time),
+    sched_arr_time = make_datetime_100(year, month, day, sched_arr_time)
+  ) |>
+  select(origin, dest, ends_with("delay"), ends_with("time"))
+
+flights_dt |> 
+  mutate(wday = wday(dep_time, label = TRUE)) |> 
+  ggplot(aes(x = wday)) +
+  geom_bar()
+```
+
+```{r}
+# Source: datetimes.qmd (line 348)
+#| fig-alt: | 
+#|   A line chart with minute of actual departure (0-60) on the x-axis and
+#|   average delay (4-20) on the y-axis. Average delay starts at (0, 12),
+#|   steadily increases to (18, 20), then sharply drops, hitting at minimum
+#|   at ~23 minute past the hour and 9 minutes of delay. It then increases
+#|   again to (17, 35), and sharply decreases to (55, 4). It finishes off
+#|   with an increase to (60, 9).
+make_datetime_100 <- function(year, month, day, time) {
+  make_datetime(year, month, day, time %/% 100, time %% 100)
+}
+
+flights_dt <- flights |>
+  filter(!is.na(dep_time), !is.na(arr_time)) |>
+  mutate(
+    dep_time = make_datetime_100(year, month, day, dep_time),
+    arr_time = make_datetime_100(year, month, day, arr_time),
+    sched_dep_time = make_datetime_100(year, month, day, sched_dep_time),
+    sched_arr_time = make_datetime_100(year, month, day, sched_arr_time)
+  ) |>
+  select(origin, dest, ends_with("delay"), ends_with("time"))
+
+flights_dt |> 
+  mutate(minute = minute(dep_time)) |> 
+  group_by(minute) |> 
+  summarize(
+    avg_delay = mean(dep_delay, na.rm = TRUE),
+    n = n()
+  ) |> 
+  ggplot(aes(x = minute, y = avg_delay)) +
+  geom_line()
+```
+
+```{r}
+# Source: datetimes.qmd (line 369)
+#| fig-alt: | 
+#|   A line chart with minute of scheduled departure (0-60) on the x-axis
+#|   and average delay (4-16). There is relatively little pattern, just a
+#|   small suggestion that the average delay decreases from maybe 10 minutes
+#|   to 8 minutes over the course of the hour.
+make_datetime_100 <- function(year, month, day, time) {
+  make_datetime(year, month, day, time %/% 100, time %% 100)
+}
+
+flights_dt <- flights |>
+  filter(!is.na(dep_time), !is.na(arr_time)) |>
+  mutate(
+    dep_time = make_datetime_100(year, month, day, dep_time),
+    arr_time = make_datetime_100(year, month, day, arr_time),
+    sched_dep_time = make_datetime_100(year, month, day, sched_dep_time),
+    sched_arr_time = make_datetime_100(year, month, day, sched_arr_time)
+  ) |>
+  select(origin, dest, ends_with("delay"), ends_with("time"))
+sched_dep <- flights_dt |>
+  mutate(minute = minute(sched_dep_time)) |>
+  group_by(minute) |>
+  summarize(
+    avg_delay = mean(arr_delay, na.rm = TRUE),
+    n = n()
+  )
+
+sched_dep <- flights_dt |> 
+  mutate(minute = minute(sched_dep_time)) |> 
+  group_by(minute) |> 
+  summarize(
+    avg_delay = mean(arr_delay, na.rm = TRUE),
+    n = n()
+  )
+
+ggplot(sched_dep, aes(x = minute, y = avg_delay)) +
+  geom_line()
+```
+
+```{r}
+# Source: datetimes.qmd (line 391)
+#| label: fig-human-rounding
+#| fig-cap: |
+#|   A frequency polygon showing the number of flights scheduled to 
+#|   depart each hour. You can see a strong preference for round numbers
+#|   like 0 and 30 and generally for numbers that are a multiple of five.
+#| fig-alt: |
+#|   A line plot with departure minute (0-60) on the x-axis and number of
+#|   flights (0-60000) on the y-axis. Most flights are scheduled to depart
+#|   on either the hour (~60,000) or the half hour (~35,000). Otherwise,
+#|   all most all flights are scheduled to depart on multiples of five, 
+#|   with a few extra at 15, 45, and 55 minutes.
+#| echo: false
+make_datetime_100 <- function(year, month, day, time) {
+  make_datetime(year, month, day, time %/% 100, time %% 100)
+}
+
+flights_dt <- flights |>
+  filter(!is.na(dep_time), !is.na(arr_time)) |>
+  mutate(
+    dep_time = make_datetime_100(year, month, day, dep_time),
+    arr_time = make_datetime_100(year, month, day, arr_time),
+    sched_dep_time = make_datetime_100(year, month, day, sched_dep_time),
+    sched_arr_time = make_datetime_100(year, month, day, sched_arr_time)
+  ) |>
+  select(origin, dest, ends_with("delay"), ends_with("time"))
+sched_dep <- flights_dt |>
+  mutate(minute = minute(sched_dep_time)) |>
+  group_by(minute) |>
+  summarize(
+    avg_delay = mean(arr_delay, na.rm = TRUE),
+    n = n()
+  )
+
+ggplot(sched_dep, aes(x = minute, y = n)) +
+  geom_line()
+```
+
+```{r}
+# Source: datetimes.qmd (line 414)
+#| fig-alt: |
+#|   A line plot with week (Jan-Dec 2013) on the x-axis and number of
+#|   flights (2,000-7,000) on the y-axis. The pattern is fairly flat from
+#|   February to November with around 7,000 flights per week. There are
+#|   far fewer flights on the first (approximately 4,500 flights) and last
+#|   weeks of the year (approximately 2,500 flights).
+make_datetime_100 <- function(year, month, day, time) {
+  make_datetime(year, month, day, time %/% 100, time %% 100)
+}
+
+flights_dt <- flights |>
+  filter(!is.na(dep_time), !is.na(arr_time)) |>
+  mutate(
+    dep_time = make_datetime_100(year, month, day, dep_time),
+    arr_time = make_datetime_100(year, month, day, arr_time),
+    sched_dep_time = make_datetime_100(year, month, day, sched_dep_time),
+    sched_arr_time = make_datetime_100(year, month, day, sched_arr_time)
+  ) |>
+  select(origin, dest, ends_with("delay"), ends_with("time"))
+
+flights_dt |> 
+  count(week = floor_date(dep_time, "week")) |> 
+  ggplot(aes(x = week, y = n)) +
+  geom_line() + 
+  geom_point()
+```
+
+```{r}
+# Source: datetimes.qmd (line 430)
+#| fig-alt: |
+#|   A line plot with depature time on the x-axis. This is units of seconds
+#|   since midnight so it's hard to interpret.
+make_datetime_100 <- function(year, month, day, time) {
+  make_datetime(year, month, day, time %/% 100, time %% 100)
+}
+
+flights_dt <- flights |>
+  filter(!is.na(dep_time), !is.na(arr_time)) |>
+  mutate(
+    dep_time = make_datetime_100(year, month, day, dep_time),
+    arr_time = make_datetime_100(year, month, day, arr_time),
+    sched_dep_time = make_datetime_100(year, month, day, sched_dep_time),
+    sched_arr_time = make_datetime_100(year, month, day, sched_arr_time)
+  ) |>
+  select(origin, dest, ends_with("delay"), ends_with("time"))
+
+flights_dt |> 
+  mutate(dep_hour = dep_time - floor_date(dep_time, "day")) |> 
+  ggplot(aes(x = dep_hour)) +
+  geom_freqpoly(binwidth = 60 * 30)
+```
+
+
+## factors.qmd
+
+```{r}
+# Source: factors.qmd (line 158)
+#| fig-alt: |
+#|   A scatterplot of with tvhours on the x-axis and religion on the y-axis.
+#|   The y-axis is ordered seemingly aribtrarily making it hard to get
+#|   any sense of overall pattern.
+relig_summary <- gss_cat |>
+  group_by(relig) |>
+  summarize(
+    tvhours = mean(tvhours, na.rm = TRUE),
+    n = n()
+  )
+
+ggplot(relig_summary, aes(x = tvhours, y = relig)) +
+  geom_point()
+```
+
+```{r}
+# Source: factors.qmd (line 182)
+#| fig-alt: |
+#|   The same scatterplot as above, but now the religion is displayed in
+#|   increasing order of tvhours. "Other eastern" has the fewest tvhours
+#|   under 2, and "Don't know" has the highest (over 5).
+relig_summary <- gss_cat |>
+  group_by(relig) |>
+  summarize(
+    tvhours = mean(tvhours, na.rm = TRUE),
+    n = n()
+  )
+
+ggplot(relig_summary, aes(x = tvhours, y = fct_reorder(relig, tvhours))) +
+  geom_point()
+```
+
+```{r}
+# Source: factors.qmd (line 208)
+#| fig-alt: |
+#|   A scatterplot with age on the x-axis and income on the y-axis. Income
+#|   has been reordered in order of average age which doesn't make much
+#|   sense. One section of the y-axis goes from $6000-6999, then <$1000,
+#|   then $8000-9999.
+rincome_summary <- gss_cat |>
+  group_by(rincome) |>
+  summarize(
+    age = mean(age, na.rm = TRUE),
+    n = n()
+  )
+
+ggplot(rincome_summary, aes(x = age, y = fct_reorder(rincome, age))) +
+  geom_point()
+```
+
+```{r}
+# Source: factors.qmd (line 233)
+#| fig-alt: |
+#|   The same scatterplot but now "Not Applicable" is displayed at the
+#|   bottom of the y-axis. Generally there is a positive association
+#|   between income and age, and the income band with the highethst average
+#|   age is "Not applicable".
+rincome_summary <- gss_cat |>
+  group_by(rincome) |>
+  summarize(
+    age = mean(age, na.rm = TRUE),
+    n = n()
+  )
+
+ggplot(rincome_summary, aes(x = age, y = fct_relevel(rincome, "Not applicable"))) +
+  geom_point()
+```
+
+```{r}
+# Source: factors.qmd (line 249)
+#| layout-ncol: 2
+#| fig-width: 3
+#| fig-alt: |
+#|     A line plot with age on the x-axis and proportion on the y-axis.
+#|     There is one line for each category of marital status: no answer,
+#|     never married, separated, divorced, widowed, and married. It is
+#|     a little hard to read the plot because the order of the legend is
+#|     unrelated to the lines on the plot. Rearranging the legend makes
+#|     the plot easier to read because the legend colors now match the
+#|     order of the lines on the far right of the plot. You can see some
+#|     unsurprising patterns: the proportion never married decreases with
+#|     age, married forms an upside down U shape, and widowed starts off
+#|     low but increases steeply after age 60.
+by_age <- gss_cat |>
+  filter(!is.na(age)) |>
+  count(age, marital) |>
+  group_by(age) |>
+  mutate(
+    prop = n / sum(n)
+  )
+
+by_age <- gss_cat |>
+  filter(!is.na(age)) |>
+  count(age, marital) |>
+  group_by(age) |>
+  mutate(
+    prop = n / sum(n)
+  )
+
+ggplot(by_age, aes(x = age, y = prop, color = marital)) +
+  geom_line(linewidth = 1) +
+  scale_color_brewer(palette = "Set1")
+
+ggplot(by_age, aes(x = age, y = prop, color = fct_reorder2(marital, age, prop))) +
+  geom_line(linewidth = 1) +
+  scale_color_brewer(palette = "Set1") +
+  labs(color = "marital")
+```
+
+```{r}
+# Source: factors.qmd (line 284)
+#| fig-alt: |
+#|   A bar char of marital status ordered from least to most common:
+#|   no answer (~0), separated (~1,000), widowed (~2,000), divorced
+#|   (~3,000), never married (~5,000), married (~10,000).
+gss_cat |>
+  mutate(marital = marital |> fct_infreq() |> fct_rev()) |>
+  ggplot(aes(x = marital)) +
+  geom_bar()
+```
+
+
+## functions.qmd
+
+```{r}
+# Source: functions.qmd (line 631)
+#| fig-show: hide
+diamonds |> 
+  ggplot(aes(x = carat)) +
+  geom_histogram(binwidth = 0.1)
+
+diamonds |> 
+  ggplot(aes(x = carat)) +
+  geom_histogram(binwidth = 0.05)
+```
+
+```{r}
+# Source: functions.qmd (line 645)
+#| fig-alt: |
+#|   A histogram of carats of diamonds, ranging from 0 to 5, showing a unimodal, 
+#|   right-skewed distribution with a peak between 0 to 1 carats.
+histogram <- function(df, var, binwidth = NULL) {
+  df |> 
+    ggplot(aes(x = {{ var }})) + 
+    geom_histogram(binwidth = binwidth)
+}
+
+diamonds |> histogram(carat, 0.1)
+```
+
+```{r}
+# Source: functions.qmd (line 673)
+#| fig-alt: |
+#|   Scatterplot of height vs. mass of StarWars characters showing a positive 
+#|   relationship. A smooth curve of the relationship is plotted in red, and 
+#|   the best fit line is ploted in blue.
+# https://twitter.com/tyler_js_smith/status/1574377116988104704
+linearity_check <- function(df, x, y) {
+  df |>
+    ggplot(aes(x = {{ x }}, y = {{ y }})) +
+    geom_point() +
+    geom_smooth(method = "loess", formula = y ~ x, color = "red", se = FALSE) +
+    geom_smooth(method = "lm", formula = y ~ x, color = "blue", se = FALSE) 
+}
+
+starwars |> 
+  filter(mass < 1000) |> 
+  linearity_check(mass, height)
+```
+
+```{r}
+# Source: functions.qmd (line 694)
+#| fig-alt: |
+#|   Hex plot of price vs. carat of diamonds showing a positive relationship. 
+#|   There are more diamonds that are less than 2 carats than more than 2 carats.
+# https://twitter.com/ppaxisa/status/1574398423175921665
+hex_plot <- function(df, x, y, z, bins = 20, fun = "mean") {
+  df |> 
+    ggplot(aes(x = {{ x }}, y = {{ y }}, z = {{ z }})) + 
+    stat_summary_hex(
+      aes(color = after_scale(fill)), # make border same color as fill
+      bins = bins, 
+      fun = fun,
+    )
+}
+
+diamonds |> hex_plot(carat, price, depth)
+```
+
+```{r}
+# Source: functions.qmd (line 718)
+#| fig-alt: |
+#|   Bar plot of clarify of diamonds, where clarity is on the y-axis and counts 
+#|   are on the x-axis, and the bars are ordered in order of frequency: SI1, 
+#|   VS2, SI2, VS1, VVS2, VVS1, IF, I1.
+sorted_bars <- function(df, var) {
+  df |> 
+    mutate({{ var }} := fct_rev(fct_infreq({{ var }})))  |>
+    ggplot(aes(y = {{ var }})) +
+    geom_bar()
+}
+
+diamonds |> sorted_bars(clarity)
+```
+
+```{r}
+# Source: functions.qmd (line 739)
+#| fig-alt: |
+#|   Bar plot of clarity of diamonds. The most common is SI1, then SI2, then 
+#|   VS2, then VS1, then VVS2, then VVS1, then I1, then lastly IF.
+conditional_bars <- function(df, condition, var) {
+  df |> 
+    filter({{ condition }}) |> 
+    ggplot(aes(x = {{ var }})) + 
+    geom_bar()
+}
+
+diamonds |> conditional_bars(cut == "Good", clarity)
+```
+
+```{r}
+# Source: functions.qmd (line 763)
+histogram <- function(df, var, binwidth = NULL) {
+  df |> 
+    ggplot(aes(x = {{ var }})) + 
+    geom_histogram(binwidth = binwidth)
+}
+```
+
+```{r}
+# Source: functions.qmd (line 779)
+#| fig-alt: |
+#|   Histogram of carats of diamonds, ranging from 0 to 5. The distribution is 
+#|   unimodal and right skewed with a peak between 0 to 1 carats.
+histogram <- function(df, var, binwidth) {
+  label <- rlang::englue("A histogram of {{var}} with binwidth {binwidth}")
+  
+  df |> 
+    ggplot(aes(x = {{ var }})) + 
+    geom_histogram(binwidth = binwidth) + 
+    labs(title = label)
+}
+
+diamonds |> histogram(carat, 0.1)
+```
+
+```{r}
+# Source: functions.qmd (line 836)
+# Missing extra two spaces
+density <- function(color, facets, binwidth = 0.1) {
+diamonds |> 
+  ggplot(aes(x = carat, y = after_stat(density), color = {{ color }})) +
+  geom_freqpoly(binwidth = binwidth) +
+  facet_wrap(vars({{ facets }}))
+}
+
+# Pipe indented incorrectly
+density <- function(color, facets, binwidth = 0.1) {
+  diamonds |> 
+  ggplot(aes(x = carat, y = after_stat(density), color = {{ color }})) +
+  geom_freqpoly(binwidth = binwidth) +
+  facet_wrap(vars({{ facets }}))
+}
+```
+
+
+## iteration.qmd
+
+```{r}
+# Source: iteration.qmd (line 949)
+#| fig-alt: |
+#|   Histogram of carats of diamonds from the by_clarity dataset, ranging from 
+#|   0 to 5 carats. The distribution is unimodal and right skewed with a peak 
+#|   around 1 carat.
+by_clarity <- diamonds |>
+  group_nest(clarity)
+
+
+carat_histogram <- function(df) {
+  ggplot(df, aes(x = carat)) + geom_histogram(binwidth = 0.1)  
+}
+
+carat_histogram(by_clarity$data[[1]])
+```
+
+
+## layers.qmd
+
+```{r}
+# Source: layers.qmd (line 58)
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-alt: |
+#|   Two scatterplots next to each other, both visualizing highway fuel 
+#|   efficiency versus engine size of cars and showing a negative 
+#|   association. In the plot on the left class is mapped to the color 
+#|   aesthetic, resulting in different colors for each class. 
+#|   In the plot on the right class is mapped the shape aesthetic, 
+#|   resulting in different plotting character shapes for each class,
+#|   except for suv. Each plot comes with a legend that shows the 
+#|   mapping between color or shape and levels of the class variable.
+# Left
+ggplot(mpg, aes(x = displ, y = hwy, color = class)) +
+  geom_point()
+
+# Right
+ggplot(mpg, aes(x = displ, y = hwy, shape = class)) +
+  geom_point()
+```
+
+```{r}
+# Source: layers.qmd (line 91)
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-alt: |
+#|   Two scatterplots next to each other, both visualizing highway fuel 
+#|   efficiency versus engine size of cars and showing a negative 
+#|   association. In the plot on the left class is mapped to the size 
+#|   aesthetic, resulting in different sizes for each class. 
+#|   In the plot on the right class is mapped the alpha aesthetic, 
+#|   resulting in different alpha (transparency) levels for each class. 
+#|   Each plot comes with a legend that shows the mapping between size 
+#|   or alpha level and levels of the class variable.
+# Left
+ggplot(mpg, aes(x = displ, y = hwy, size = class)) +
+  geom_point()
+
+# Right
+ggplot(mpg, aes(x = displ, y = hwy, alpha = class)) +
+  geom_point()
+```
+
+```{r}
+# Source: layers.qmd (line 126)
+#| fig-alt: |
+#|   Scatterplot of highway fuel efficiency versus engine size of cars 
+#|   that shows a negative association. All points are blue.
+ggplot(mpg, aes(x = displ, y = hwy)) + 
+  geom_point(color = "blue")
+```
+
+```{r}
+# Source: layers.qmd (line 141)
+#| label: fig-shapes
+#| echo: false
+#| warning: false
+#| fig.asp: 0.364
+#| fig-align: "center"
+#| fig-cap: |
+#|   R has 26 built-in shapes that are identified by numbers. There are some 
+#|   seeming duplicates: for example, 0, 15, and 22 are all squares. The 
+#|   difference comes from the interaction of the `color` and `fill` 
+#|   aesthetics. The hollow shapes (0--14) have a border determined by `color`; 
+#|   the solid shapes (15--20) are filled with `color`; the filled shapes 
+#|   (21--25) have a border of `color` and are filled with `fill`. Shapes are 
+#|   arranged to keep similar shapes next to each other.  
+#| fig-alt: |
+#|   Mapping between shapes and the numbers that represent them: 0 - square open, 
+#|   1 - circle open, 2 - triangle open, 3 - plus, 4 - cross, 5 - diamond open, 
+#|   6 - triangle down open, 7 - square cross, 8 - asterisk, 9 - diamond plus, 
+#|   10 - circle plus, 11 - star, 12 - square plus, 
+#|   13 - circle cross, 14 - square triangle, 15 - square, 
+#|   16 - circle small, 17 - triangle, 18 - diamond, 
+#|   19 - circle, 20 - bullet, 21 - circle filled, 
+#|   22 - square filled, 23 - diamond filled, 24 - triangle filled, 
+#|   25 - triangle down filled.
+shapes <- tibble(
+  shape = c(0, 1, 2, 5, 3, 4, 6:19, 22, 21, 24, 23, 20, 25),
+  x = (0:25 %/% 5) / 2,
+  y = (-(0:25 %% 5)) / 4
+)
+ggplot(shapes, aes(x, y)) + 
+  geom_point(aes(shape = shape), size = 5, fill = "red") +
+  geom_text(aes(label = shape), hjust = 0, nudge_x = 0.15) +
+  scale_shape_identity() +
+  expand_limits(x = 4.1) +
+  scale_x_continuous(NULL, breaks = NULL) + 
+  scale_y_continuous(NULL, breaks = NULL, limits = c(-1.2, 0.2)) + 
+  theme_minimal() +
+  theme(aspect.ratio = 1/2.75)
+```
+
+```{r}
+# Source: layers.qmd (line 214)
+#| echo: false
+#| message: false
+#| layout-ncol: 2
+#| fig-width: 3
+#| fig-alt: |
+#|   There are two plots. The plot on the left is a scatterplot of highway 
+#|   fuel efficiency versus engine size of cars and the plot on the right 
+#|   shows a smooth curve that follows the trajectory of the relationship 
+#|   between these variables. A confidence interval around the smooth 
+#|   curve is also displayed.
+ggplot(mpg, aes(x = displ, y = hwy)) + 
+  geom_point()
+
+ggplot(mpg, aes(x = displ, y = hwy)) + 
+  geom_smooth()
+```
+
+```{r}
+# Source: layers.qmd (line 258)
+#| message: false
+#| layout-ncol: 2
+#| fig-width: 3
+#| fig-alt: |
+#|   Two plots of highway fuel efficiency versus engine size of cars.
+#|   The data are represented with smooth curves. On the left, three 
+#|   smooth curves, all with the same linetype. On the right, three 
+#|   smooth curves with different line types (solid, dashed, or long 
+#|   dashed) for each type of drive train. In both plots, confidence 
+#|   intervals around the smooth curves are also displayed.
+# Left
+ggplot(mpg, aes(x = displ, y = hwy, shape = drv)) + 
+  geom_smooth()
+
+# Right
+ggplot(mpg, aes(x = displ, y = hwy, linetype = drv)) + 
+  geom_smooth()
+```
+
+```{r}
+# Source: layers.qmd (line 284)
+#| message: false
+#| fig-alt: |
+#|   A plot of highway fuel efficiency versus engine size of cars. The data 
+#|   are represented with points (colored by drive train) as well as smooth 
+#|   curves (where line type is determined based on drive train as well). 
+#|   Confidence intervals around the smooth curves are also displayed.
+ggplot(mpg, aes(x = displ, y = hwy, color = drv)) + 
+  geom_point() +
+  geom_smooth(aes(linetype = drv))
+```
+
+```{r}
+# Source: layers.qmd (line 304)
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-asp: 1
+#| message: false
+#| fig-alt: |
+#|   Three plots, each with highway fuel efficiency on the y-axis and engine 
+#|   size of cars on the x-axis, where data are represented by a smooth curve.
+#|   The first plot 
+#|   only has these two variables, the center plot has three separate smooth 
+#|   curves for each level of drive train, and the right plot not only has the 
+#|   same three separate smooth curves for each level of drive train but these 
+#|   curves are plotted in different colors. 
+#|   Confidence intervals around the smooth curves 
+#|   are also displayed.
+# Left
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_smooth()
+
+# Middle
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_smooth(aes(group = drv))
+
+# Right
+ggplot(mpg, aes(x = displ, y = hwy)) +
+  geom_smooth(aes(color = drv), show.legend = FALSE)
+```
+
+```{r}
+# Source: layers.qmd (line 336)
+#| message: false
+#| fig-alt: |
+#|   Scatterplot of highway fuel efficiency versus engine size of cars, where 
+#|   points are colored according to the car class. A smooth curve following 
+#|   the trajectory of the relationship between highway fuel efficiency versus 
+#|   engine size of cars is overlaid along with a confidence interval around it.
+ggplot(mpg, aes(x = displ, y = hwy)) + 
+  geom_point(aes(color = class)) + 
+  geom_smooth()
+```
+
+```{r}
+# Source: layers.qmd (line 352)
+#| message: false
+#| fig-alt: |
+#|   Scatterplot of highway fuel efficiency versus engine size of cars, where 
+#|   two-seater cars are highlighted with red points and open circles. 
+ggplot(mpg, aes(x = displ, y = hwy)) + 
+  geom_point() + 
+  geom_point(
+    data = mpg |> filter(class == "2seater"), 
+    color = "red"
+  ) +
+  geom_point(
+    data = mpg |> filter(class == "2seater"), 
+    shape = "circle open", size = 3, color = "red"
+  )
+```
+
+```{r}
+# Source: layers.qmd (line 373)
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-alt: |
+#|   Three plots: histogram, density plot, and box plot of highway
+#|   mileage.
+# Left
+ggplot(mpg, aes(x = hwy)) +
+  geom_histogram(binwidth = 2)
+
+# Middle
+ggplot(mpg, aes(x = hwy)) +
+  geom_density()
+
+# Right
+ggplot(mpg, aes(x = hwy)) +
+  geom_boxplot()
+```
+
+```{r}
+# Source: layers.qmd (line 397)
+#| fig-asp: 0.33
+#| fig-alt: 
+#|   Density curves for highway mileage for cars with rear wheel, 
+#|   front wheel, and 4-wheel drives plotted separately. The 
+#|   distribution is bimodal and roughly symmetric for real and 
+#|   4 wheel drive cars and unimodal and right skewed for front 
+#|   wheel drive cars.
+library(ggridges)
+
+ggplot(mpg, aes(x = hwy, y = drv, fill = drv, color = drv)) +
+  geom_density_ridges(alpha = 0.5, show.legend = FALSE)
+```
+
+```{r}
+# Source: layers.qmd (line 483)
+#| fig-alt: |
+#|   Scatterplot of highway fuel efficiency versus engine size of cars, 
+#|   faceted by number of cylinders, with facets spanning two rows.
+ggplot(mpg, aes(x = displ, y = hwy)) + 
+  geom_point() + 
+  facet_wrap(~cyl)
+```
+
+```{r}
+# Source: layers.qmd (line 495)
+#| fig-alt: |
+#|   Scatterplot of highway fuel efficiency versus engine size of cars, faceted 
+#|   by number of cylinders across rows and by type of drive train across 
+#|   columns. This results in a 4x3 grid of 12 facets. Some of these facets have 
+#|   no observations: 5 cylinders and 4 wheel drive, 4 or 5 cylinders and front 
+#|   wheel drive.
+ggplot(mpg, aes(x = displ, y = hwy)) + 
+  geom_point() + 
+  facet_grid(drv ~ cyl)
+```
+
+```{r}
+# Source: layers.qmd (line 603)
+#| fig-alt: |
+#|   Bar chart of number of each cut of diamond. There are roughly 1500 
+#|   Fair, 5000 Good, 12000 Very Good, 14000 Premium, and 22000 Ideal cut 
+#|   diamonds.
+ggplot(diamonds, aes(x = cut)) + 
+  geom_bar()
+```
+
+```{r}
+# Source: layers.qmd (line 738)
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-alt: |
+#|   Two bar charts of drive types of cars. In the first plot, the bars have 
+#|   colored borders. In the second plot, they're filled with colors. Heights 
+#|   of the bars correspond to the number of cars in each drv category.
+# Left
+ggplot(mpg, aes(x = drv, color = drv)) + 
+  geom_bar()
+
+# Right
+ggplot(mpg, aes(x = drv, fill = drv)) + 
+  geom_bar()
+```
+
+```{r}
+# Source: layers.qmd (line 757)
+#| fig-alt: |
+#|   Segmented bar chart of drive types of cars, where each bar is filled with 
+#|   colors for the classes of cars. Heights of the bars correspond to the 
+#|   number of cars in each drive category, and heights of the colored 
+#|   segments represent the number of cars with a given class 
+#|   level within a given drive type level.
+ggplot(mpg, aes(x = drv, fill = class)) + 
+  geom_bar()
+```
+
+
+## missing-values.qmd
+
+```{r}
+# Source: missing-values.qmd (line 226)
+#| layout-ncol: 2
+#| fig-width: 3
+#| fig-alt: 
+#|   - A bar chart with a single value on the x-axis, "no".
+#|   - The same bar chart as the last plot, but now with two values on
+#|     the x-axis, "yes" and "no". There is no bar for the "yes" category.
+health <- tibble(
+  name   = c("Ikaia", "Oletta", "Leriah", "Dashay", "Tresaun"),
+  smoker = factor(c("no", "no", "no", "no", "no"), levels = c("yes", "no")),
+  age    = c(34, 88, 75, 47, 56),
+)
+
+ggplot(health, aes(x = smoker)) +
+  geom_bar() +
+  scale_x_discrete()
+
+ggplot(health, aes(x = smoker)) +
+  geom_bar() +
+  scale_x_discrete(drop = FALSE)
+```
+
+
+## numbers.qmd
+
+```{r}
+# Source: numbers.qmd (line 237)
+#| label: fig-prop-cancelled
+#| fig-cap: | 
+#|   A line plot with scheduled departure hour on the x-axis, and proportion
+#|   of cancelled flights on the y-axis. Cancellations seem to accumulate
+#|   over the course of the day until 8pm, very late flights are much
+#|   less likely to be cancelled.
+#| fig-alt: |
+#|   A line plot showing how proportion of cancelled flights changes over
+#|   the course of the day. The proportion starts low at around 0.5% at
+#|   5am, then steadily increases over the course of the day until peaking
+#|   at 4% at 7pm. The proportion of cancelled flights then drops rapidly
+#|   getting down to around 1% by midnight.
+flights |> 
+  group_by(hour = sched_dep_time %/% 100) |> 
+  summarize(prop_cancelled = mean(is.na(dep_time)), n = n()) |> 
+  filter(hour > 1) |> 
+  ggplot(aes(x = hour, y = prop_cancelled)) +
+  geom_line(color = "grey50") + 
+  geom_point(aes(size = n))
+```
+
+```{r}
+# Source: numbers.qmd (line 579)
+#| label: fig-mean-vs-median
+#| fig-cap: |
+#|   A scatterplot showing the differences of summarizing daily departure
+#|   delay with median instead of mean.
+#| fig-alt: |
+#|   All points fall below a 45° line, meaning that the median delay is
+#|   always less than the mean delay. Most points are clustered in a 
+#|   dense region of mean [0, 20] and median [-5, 5]. As the mean delay
+#|   increases, the spread of the median also increases. There are two
+#|   outlying points with mean ~60, median ~30, and mean ~85, median ~55.
+flights |>
+  group_by(year, month, day) |>
+  summarize(
+    mean = mean(dep_delay, na.rm = TRUE),
+    median = median(dep_delay, na.rm = TRUE),
+    n = n(),
+    .groups = "drop"
+  ) |> 
+  ggplot(aes(x = mean, y = median)) + 
+  geom_abline(slope = 1, intercept = 0, color = "white", linewidth = 2) +
+  geom_point()
+```
+
+```{r}
+# Source: numbers.qmd (line 659)
+#| echo: false
+#| label: fig-flights-dist
+#| fig-cap: |
+#|   (Left) The histogram of the full data is extremely skewed making it
+#|   hard to get any details. (Right) Zooming into delays of less than two
+#|   hours makes it possible to see what's happening with the bulk of the
+#|   observations.
+#| fig-alt: |
+#|   Two histograms of `dep_delay`. On the left, it's very hard to see
+#|   any pattern except that there's a very large spike around zero, the
+#|   bars rapidly decay in height, and for most of the plot, you can't
+#|   see any bars because they are too short to see. On the right,
+#|   where we've discarded delays of greater than two hours, we can
+#|   see that the spike occurs slightly below zero (i.e. most flights
+#|   leave a couple of minutes early), but there's still a very steep
+#|   decay after that.
+#| fig-asp: 0.5
+library(patchwork)
+
+full <- flights |>
+  ggplot(aes(x = dep_delay)) + 
+  geom_histogram(binwidth = 15, na.rm = TRUE)
+
+delayed120 <- flights |>
+  filter(dep_delay < 120) |> 
+  ggplot(aes(x = dep_delay)) + 
+  geom_histogram(binwidth = 5)
+
+full + delayed120
+```
+
+```{r}
+# Source: numbers.qmd (line 695)
+#| fig-alt: |
+#|   The distribution of `dep_delay` is highly right skewed with a strong
+#|   peak slightly less than 0. The 365 frequency polygons are mostly 
+#|   overlapping forming a thick black band.
+flights |>
+  filter(dep_delay < 120) |> 
+  ggplot(aes(x = dep_delay, group = interaction(day, month))) + 
+  geom_freqpoly(binwidth = 5, alpha = 1/5)
+```
+
+
+## regexps.qmd
+
+```{r}
+# Source: regexps.qmd (line 135)
+#| fig-alt: |
+#|   A time series showing the proportion of baby names that contain the letter x. 
+#|   The proportion declines gradually from 8 per 1000 in 1880 to 4 per 1000 in 
+#|   1980, then increases rapidly to 16 per 1000 in 2019.
+babynames |> 
+  group_by(year) |> 
+  summarize(prop_x = mean(str_detect(name, "x"))) |> 
+  ggplot(aes(x = year, y = prop_x)) + 
+  geom_line()
+```
+
+## workflow-style.qmd
+
+```{r}
+# Source: workflow-style.qmd (line 201)
+#| eval: false
+flights |> 
+  group_by(month) |> 
+  summarize(
+    delay = mean(arr_delay, na.rm = TRUE)
+  ) |> 
+  ggplot(aes(x = month, y = delay)) +
+  geom_point() + 
+  geom_line()
+```
+
+```{r}
+# Source: workflow-style.qmd (line 215)
+#| eval: false
+flights |> 
+  group_by(dest) |> 
+  summarize(
+    distance = mean(distance),
+    speed = mean(distance / air_time, na.rm = TRUE)
+  ) |> 
+  ggplot(aes(x = distance, y = speed)) +
+  geom_smooth(
+    method = "loess",
+    span = 0.5,
+    se = FALSE, 
+    color = "white", 
+    linewidth = 4
+  ) +
+  geom_point()
+```
+
