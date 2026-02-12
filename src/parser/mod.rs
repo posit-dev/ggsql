@@ -41,12 +41,10 @@ assert_eq!(specs[0].layers[0].geom, Geom::line());
 use crate::{Plot, Result};
 
 pub mod builder;
-pub mod error;
 pub mod source_tree;
 pub mod splitter;
 
 pub use builder::build_ast;
-pub use error::ParseError;
 pub use source_tree::SourceTree;
 pub use splitter::split_from_tree;
 
