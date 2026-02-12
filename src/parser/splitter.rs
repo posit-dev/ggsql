@@ -7,19 +7,6 @@ use crate::{GgsqlError, Result};
 
 use super::SourceTree;
 
-/// Split a ggsql query into SQL and visualization portions
-///
-/// Returns (sql_part, viz_part) where:
-/// - sql_part: SQL to execute (may be injected with SELECT * FROM if VISUALISE FROM is present)
-/// - viz_part: Everything from first "VISUALISE/VISUALIZE" onwards (may contain multiple VISUALISE statements)
-///
-/// If VISUALISE FROM <source> is used, this function will inject "SELECT * FROM <source>"
-/// into the SQL portion, handling semicolons correctly.
-pub fn split_query(query: &str) -> Result<(String, String)> {
-    let source_tree = SourceTree::new(query)?;
-    split_from_tree(&source_tree)
-}
-
 /// Split a ggsql query into SQL and visualization portions using an existing SourceTree
 ///
 /// Returns (sql_part, viz_part) where:

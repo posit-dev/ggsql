@@ -46,7 +46,7 @@ pub mod splitter;
 
 pub use builder::build_ast;
 pub use source_tree::SourceTree;
-pub use splitter::{split_from_tree, split_query};
+pub use splitter::split_from_tree;
 
 /// Main entry point for parsing ggsql queries
 ///
