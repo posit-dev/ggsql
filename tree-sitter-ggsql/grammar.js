@@ -700,6 +700,7 @@ module.exports = grammar({
 
     // VIA clause - transformation method
     scale_via_clause: $ => seq(
+      caseInsensitive('VIA'),
       $.identifier
     ),
 
