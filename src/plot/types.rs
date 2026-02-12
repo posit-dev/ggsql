@@ -129,7 +129,7 @@ pub enum AestheticValue {
         is_dummy: bool,
     },
     /// Literal value (quoted string, number, or boolean)
-    Literal(LiteralValue),
+    Literal(ParameterValue),
 }
 
 impl AestheticValue {
@@ -176,24 +176,6 @@ impl std::fmt::Display for AestheticValue {
         match self {
             AestheticValue::Column { name, .. } => write!(f, "{}", name),
             AestheticValue::Literal(lit) => write!(f, "{}", lit),
-        }
-    }
-}
-
-/// Literal values in aesthetic mappings
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum LiteralValue {
-    String(String),
-    Number(f64),
-    Boolean(bool),
-}
-
-impl std::fmt::Display for LiteralValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LiteralValue::String(s) => write!(f, "'{}'", s),
-            LiteralValue::Number(n) => write!(f, "{}", n),
-            LiteralValue::Boolean(b) => write!(f, "{}", b),
         }
     }
 }
@@ -268,6 +250,30 @@ impl ParameterValue {
         match self {
             ParameterValue::Array(arr) => Some(arr),
             _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for ParameterValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParameterValue::String(s) => write!(f, "'{}'", s),
+            ParameterValue::Number(n) => write!(f, "{}", n),
+            ParameterValue::Boolean(b) => write!(f, "{}", b),
+            ParameterValue::Array(arr) => {
+                write!(f, "[")?;
+                for (i, elem) in arr.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    match elem {
+                        ArrayElement::String(s) => write!(f, "'{}'", s)?,
+                        ArrayElement::Number(n) => write!(f, "{}", n)?,
+                        ArrayElement::Boolean(b) => write!(f, "{}", b)?,
+                    }
+                }
+                write!(f, "]")
+            }
         }
     }
 }

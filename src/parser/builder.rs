@@ -610,25 +610,16 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
 fn parse_literal_value(node: &Node, source_tree: &SourceTree) -> Result<AestheticValue> {
     // literal_value is a choice(), so it has exactly one child (validated upstream)
     let child = node.child(0).unwrap();
+    let value = parse_value_node(&child, source_tree, "literal")?;
 
-    match child.kind() {
-        "string" => {
-            let value = parse_string_node(&child, source_tree);
-            Ok(AestheticValue::Literal(LiteralValue::String(value)))
-        }
-        "number" => {
-            let num = parse_number_node(&child, source_tree)?;
-            Ok(AestheticValue::Literal(LiteralValue::Number(num)))
-        }
-        "boolean" => {
-            let bool_val = parse_boolean_node(&child, source_tree);
-            Ok(AestheticValue::Literal(LiteralValue::Boolean(bool_val)))
-        }
-        _ => Err(GgsqlError::ParseError(format!(
-            "Unexpected literal value type: {}",
-            child.kind()
-        ))),
+    // Grammar ensures literals can't be arrays, but add safety check
+    if matches!(value, ParameterValue::Array(_)) {
+        return Err(GgsqlError::ParseError(
+            "Arrays cannot be used as literal values in aesthetic mappings".to_string()
+        ));
     }
+
+    Ok(AestheticValue::Literal(value))
 }
 
 /// Build a Scale from a scale_clause node

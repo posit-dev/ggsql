@@ -4,7 +4,7 @@
 //! handling both global SQL and layer-specific data sources.
 
 use crate::naming;
-use crate::plot::{AestheticValue, ColumnInfo, Layer, LiteralValue, Schema, StatResult};
+use crate::plot::{AestheticValue, ColumnInfo, Layer, ParameterValue, Schema, StatResult};
 use crate::{parser, DataFrame, DataSource, Facet, GgsqlError, Plot, Result};
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Parser};
@@ -148,16 +148,19 @@ fn transform_cte_references(sql: &str, cte_names: &HashSet<String>) -> String {
 }
 
 /// Format a literal value as SQL
-fn literal_to_sql(lit: &LiteralValue) -> String {
+fn literal_to_sql(lit: &ParameterValue) -> String {
     match lit {
-        LiteralValue::String(s) => format!("'{}'", s.replace('\'', "''")),
-        LiteralValue::Number(n) => n.to_string(),
-        LiteralValue::Boolean(b) => {
+        ParameterValue::String(s) => format!("'{}'", s.replace('\'', "''")),
+        ParameterValue::Number(n) => n.to_string(),
+        ParameterValue::Boolean(b) => {
             if *b {
                 "TRUE".to_string()
             } else {
                 "FALSE".to_string()
             }
+        }
+        ParameterValue::Array(_) => {
+            unreachable!("Arrays cannot appear as literal values in aesthetic mappings")
         }
     }
 }
@@ -388,7 +391,7 @@ fn add_discrete_columns_to_partition_by(layers: &mut [Layer], layer_schemas: &[S
 }
 
 /// Extract constant aesthetics from a layer
-fn extract_constants(layer: &Layer) -> Vec<(String, LiteralValue)> {
+fn extract_constants(layer: &Layer) -> Vec<(String, ParameterValue)> {
     layer
         .mappings
         .aesthetics
@@ -574,7 +577,7 @@ fn build_layer_query<F>(
     has_global: bool,
     layer_idx: usize,
     facet: Option<&Facet>,
-    constants: &[(String, LiteralValue)],
+    constants: &[(String, ParameterValue)],
     execute_query: &F,
 ) -> Result<LayerQueryResult>
 where
@@ -960,7 +963,7 @@ where
 
     // First, extract global constants from VISUALISE clause (e.g., VISUALISE 'value' AS color)
     // These apply to all layers that use global data
-    let global_mappings_constants: Vec<(String, LiteralValue)> = first_spec
+    let global_mappings_constants: Vec<(String, ParameterValue)> = first_spec
         .global_mappings
         .aesthetics
         .iter()
@@ -983,7 +986,7 @@ where
         .collect();
 
     // Collect all constants: layer-specific constants + global constants for each global-data layer
-    let mut global_constants: Vec<(usize, String, LiteralValue)> = Vec::new();
+    let mut global_constants: Vec<(usize, String, ParameterValue)> = Vec::new();
 
     // Add layer-specific constants (from MAPPING clauses)
     for (layer_idx, layer) in first_spec.layers.iter().enumerate() {
@@ -1749,11 +1752,11 @@ mod tests {
         let constants = vec![
             (
                 "color".to_string(),
-                LiteralValue::String("value".to_string()),
+                ParameterValue::String("value".to_string()),
             ),
             (
                 "size".to_string(),
-                LiteralValue::String("value2".to_string()),
+                ParameterValue::String("value2".to_string()),
             ),
         ];
 
@@ -1786,7 +1789,7 @@ mod tests {
         let empty_schema: Schema = Vec::new();
         let constants = vec![(
             "fill".to_string(),
-            LiteralValue::String("value".to_string()),
+            ParameterValue::String("value".to_string()),
         )];
 
         // No source but has constants - should use global table with session UUID

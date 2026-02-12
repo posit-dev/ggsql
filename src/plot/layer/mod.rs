@@ -15,7 +15,7 @@ pub use geom::{
 };
 
 use crate::plot::types::{
-    AestheticValue, DataSource, LiteralValue, Mappings, ParameterValue, SqlExpression,
+    AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression,
 };
 
 /// A single visualization layer (from DRAW clause)
@@ -106,7 +106,7 @@ impl Layer {
     }
 
     /// Get a literal value from an aesthetic, if it's mapped to a literal
-    pub fn get_literal(&self, aesthetic: &str) -> Option<&LiteralValue> {
+    pub fn get_literal(&self, aesthetic: &str) -> Option<&ParameterValue> {
         match self.mappings.get(aesthetic) {
             Some(AestheticValue::Literal(lit)) => Some(lit),
             _ => None,

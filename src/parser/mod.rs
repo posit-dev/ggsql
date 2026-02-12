@@ -68,7 +68,7 @@ pub fn parse_query(query: &str) -> Result<Vec<Plot>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::LiteralValue;
+    use crate::plot::ParameterValue;
     use crate::{AestheticValue, DataSource, Geom};
 
     #[test]
@@ -123,7 +123,7 @@ mod tests {
         assert_eq!(specs[0].layers[1].mappings.len(), 2);
         assert!(matches!(
             specs[0].layers[1].mappings.get("color"),
-            Some(AestheticValue::Literal(LiteralValue::String(s))) if s == "value"
+            Some(AestheticValue::Literal(ParameterValue::String(s))) if s == "value"
         ));
     }
 

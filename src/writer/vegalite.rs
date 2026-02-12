@@ -21,7 +21,7 @@
 //! ```
 
 use crate::plot::layer::geom::{GeomAesthetics, GeomType};
-use crate::plot::{ArrayElement, Coord, CoordType, LiteralValue, ParameterValue};
+use crate::plot::{ArrayElement, Coord, CoordType, ParameterValue};
 use crate::writer::Writer;
 use crate::{naming, Layer};
 use crate::{AestheticValue, DataFrame, Geom, GgsqlError, Plot, Result};
@@ -413,9 +413,12 @@ impl VegaLiteWriter {
             AestheticValue::Literal(lit) => {
                 // For literal values, use constant value encoding
                 let val = match lit {
-                    LiteralValue::String(s) => json!(s),
-                    LiteralValue::Number(n) => json!(n),
-                    LiteralValue::Boolean(b) => json!(b),
+                    ParameterValue::String(s) => json!(s),
+                    ParameterValue::Number(n) => json!(n),
+                    ParameterValue::Boolean(b) => json!(b),
+                    ParameterValue::Array(_) => {
+                        unreachable!("Arrays cannot appear as literal values in aesthetic mappings")
+                    }
                 };
                 Ok(json!({"value": val}))
             }
@@ -1552,7 +1555,7 @@ fn render_boxplot(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::{Labels, Layer, LiteralValue, ParameterValue};
+    use crate::plot::{Labels, Layer, ParameterValue};
     use std::collections::HashMap;
 
     /// Helper to wrap a DataFrame in a data map for testing
@@ -1683,7 +1686,7 @@ mod tests {
             )
             .with_aesthetic(
                 "color".to_string(),
-                AestheticValue::Literal(LiteralValue::String("blue".to_string())),
+                AestheticValue::Literal(ParameterValue::String("blue".to_string())),
             );
         spec.layers.push(layer);
 
@@ -2075,7 +2078,7 @@ mod tests {
             )
             .with_aesthetic(
                 "size".to_string(),
-                AestheticValue::Literal(LiteralValue::Number(100.0)),
+                AestheticValue::Literal(ParameterValue::Number(100.0)),
             );
         spec.layers.push(layer);
 
@@ -2107,7 +2110,7 @@ mod tests {
             )
             .with_aesthetic(
                 "linetype".to_string(),
-                AestheticValue::Literal(LiteralValue::Boolean(true)),
+                AestheticValue::Literal(ParameterValue::Boolean(true)),
             );
         spec.layers.push(layer);
 
@@ -2153,7 +2156,7 @@ mod tests {
             )
             .with_aesthetic(
                 "color".to_string(),
-                AestheticValue::Literal(LiteralValue::String("red".to_string())),
+                AestheticValue::Literal(ParameterValue::String("red".to_string())),
             );
         spec.layers.push(layer2);
 
