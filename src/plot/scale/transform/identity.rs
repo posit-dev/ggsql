@@ -1,0 +1,134 @@
+//! Identity transform implementation (no transformation)
+
+use super::{TransformKind, TransformTrait};
+use crate::plot::scale::breaks::{linear_breaks, minor_breaks_linear, pretty_breaks};
+
+/// Identity transform - no transformation (linear scale)
+#[derive(Debug, Clone, Copy)]
+pub struct Identity;
+
+impl TransformTrait for Identity {
+    fn transform_kind(&self) -> TransformKind {
+        TransformKind::Identity
+    }
+
+    fn name(&self) -> &'static str {
+        "identity"
+    }
+
+    fn allowed_domain(&self) -> (f64, f64) {
+        (f64::NEG_INFINITY, f64::INFINITY)
+    }
+
+    fn calculate_breaks(&self, min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
+        if pretty {
+            pretty_breaks(min, max, n)
+        } else {
+            linear_breaks(min, max, n)
+        }
+    }
+
+    fn calculate_minor_breaks(
+        &self,
+        major_breaks: &[f64],
+        n: usize,
+        range: Option<(f64, f64)>,
+    ) -> Vec<f64> {
+        minor_breaks_linear(major_breaks, n, range)
+    }
+
+    fn transform(&self, value: f64) -> f64 {
+        value
+    }
+
+    fn inverse(&self, value: f64) -> f64 {
+        value
+    }
+}
+
+impl std::fmt::Display for Identity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_identity_domain() {
+        let t = Identity;
+        let (min, max) = t.allowed_domain();
+        assert!(min.is_infinite() && min.is_sign_negative());
+        assert!(max.is_infinite() && max.is_sign_positive());
+    }
+
+    #[test]
+    fn test_identity_transform() {
+        let t = Identity;
+        assert_eq!(t.transform(1.0), 1.0);
+        assert_eq!(t.transform(-5.0), -5.0);
+        assert_eq!(t.transform(0.0), 0.0);
+        assert_eq!(t.transform(100.0), 100.0);
+    }
+
+    #[test]
+    fn test_identity_inverse() {
+        let t = Identity;
+        assert_eq!(t.inverse(1.0), 1.0);
+        assert_eq!(t.inverse(-5.0), -5.0);
+    }
+
+    #[test]
+    fn test_identity_roundtrip() {
+        let t = Identity;
+        for &val in &[0.0, 1.0, -1.0, 100.0, -100.0, 0.001] {
+            let transformed = t.transform(val);
+            let back = t.inverse(transformed);
+            assert!((back - val).abs() < 1e-10, "Roundtrip failed for {}", val);
+        }
+    }
+
+    #[test]
+    fn test_identity_breaks_pretty() {
+        let t = Identity;
+        let breaks = t.calculate_breaks(0.0, 100.0, 5, true);
+        assert!(!breaks.is_empty());
+        // Pretty breaks should produce nice numbers
+    }
+
+    #[test]
+    fn test_identity_breaks_linear() {
+        let t = Identity;
+        let breaks = t.calculate_breaks(0.0, 100.0, 5, false);
+        // linear_breaks gives exact coverage from min to max
+        // step = 25, so: 0, 25, 50, 75, 100
+        assert_eq!(breaks, vec![0.0, 25.0, 50.0, 75.0, 100.0]);
+    }
+
+    #[test]
+    fn test_identity_minor_breaks() {
+        let t = Identity;
+        let majors = vec![0.0, 25.0, 50.0, 75.0, 100.0];
+        let minors = t.calculate_minor_breaks(&majors, 1, None);
+        // One midpoint per interval
+        assert_eq!(minors, vec![12.5, 37.5, 62.5, 87.5]);
+    }
+
+    #[test]
+    fn test_identity_minor_breaks_with_extension() {
+        let t = Identity;
+        let majors = vec![25.0, 50.0, 75.0];
+        let minors = t.calculate_minor_breaks(&majors, 1, Some((0.0, 100.0)));
+        // Should extend before 25 and after 75
+        assert!(minors.contains(&12.5)); // Before first major
+        assert!(minors.contains(&87.5)); // After last major
+    }
+
+    #[test]
+    fn test_identity_default_minor_break_count() {
+        let t = Identity;
+        assert_eq!(t.default_minor_break_count(), 1);
+    }
+}

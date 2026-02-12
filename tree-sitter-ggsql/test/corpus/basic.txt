@@ -443,8 +443,8 @@ Plot with scales and theme
 
 VISUALISE x, y, group AS color
 DRAW point
-SCALE x SETTING type => 'linear', limits => [0, 100]
-SCALE color SETTING palette => 'viridis'
+SCALE CONTINUOUS x FROM [0, 100]
+SCALE color TO viridis
 THEME minimal
 
 --------------------------------------------------------------------------------
@@ -474,26 +474,20 @@ THEME minimal
         (geom_type)))
     (viz_clause
       (scale_clause
+        (scale_type_identifier)
         (aesthetic_name)
-        (scale_property
-          (scale_property_name)
-          (scale_property_value
-            (string)))
-        (scale_property
-          (scale_property_name)
-          (scale_property_value
-            (array
-              (array_element
-                (number))
-              (array_element
-                (number)))))))
+        (scale_from_clause
+          (array
+            (array_element
+              (number))
+            (array_element
+              (number))))))
     (viz_clause
       (scale_clause
         (aesthetic_name)
-        (scale_property
-          (scale_property_name)
-          (scale_property_value
-            (string)))))
+        (scale_to_clause
+          (identifier
+            (bare_identifier)))))
     (viz_clause
       (theme_clause
         (theme_name)))))
@@ -2104,153 +2098,145 @@ SELECT * FROM "data.csv"
                   (quoted_identifier))))))))))
 
 ================================================================================
-Qualified name in function argument
+SCALE RENAMING with explicit mappings
 ================================================================================
 
-SELECT SUM(s.quantity) FROM sales s VISUALISE DRAW bar MAPPING x AS x
+VISUALISE x, y
+DRAW point
+SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
 
 --------------------------------------------------------------------------------
 
 (query
-  (sql_portion
-    (sql_statement
-      (select_statement
-        (select_body
-          (function_call
-            (identifier
-              (bare_identifier))
-            (function_args
-              (function_arg
-                (positional_arg
-                  (qualified_name
-                    (identifier
-                      (bare_identifier))
-                    (identifier
-                      (bare_identifier)))))))
-          (from_clause
-            (table_ref
-              table: (qualified_name
-                (identifier
-                  (bare_identifier)))
-              alias: (identifier
-                (bare_identifier))))))))
   (visualise_statement
     (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
     (viz_clause
       (draw_clause
-        (geom_type)
-        (mapping_clause
-          (mapping_list
-            (mapping_element
-              (explicit_mapping
-                value: (mapping_value
-                  (column_reference
-                    (identifier
-                      (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+        (geom_type)))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_renaming_clause
+          (renaming_assignment
+            from: (string)
+            to: (string))
+          (renaming_assignment
+            from: (string)
+            to: (string)))))))
 
 ================================================================================
-Nested function calls
+SCALE RENAMING with NULL suppression
 ================================================================================
 
-SELECT ROUND(AVG(price), 2) as avg FROM data VISUALISE DRAW bar MAPPING x AS x
+VISUALISE x, y
+DRAW bar
+SCALE DISCRETE x RENAMING 'internal' => NULL
 
 --------------------------------------------------------------------------------
 
 (query
-  (sql_portion
-    (sql_statement
-      (select_statement
-        (select_body
-          (function_call
-            (identifier
-              (bare_identifier))
-            (function_args
-              (function_arg
-                (positional_arg
-                  (function_call
-                    (identifier
-                      (bare_identifier))
-                    (function_args
-                      (function_arg
-                        (positional_arg
-                          (qualified_name
-                            (identifier
-                              (bare_identifier)))))))))
-              (function_arg
-                (positional_arg
-                  (number)))))
-          (identifier
-            (bare_identifier))
-          (identifier
-            (bare_identifier))
-          (from_clause
-            (table_ref
-              table: (qualified_name
-                (identifier
-                  (bare_identifier)))))))))
   (visualise_statement
     (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
     (viz_clause
       (draw_clause
-        (geom_type)
-        (mapping_clause
-          (mapping_list
-            (mapping_element
-              (explicit_mapping
-                value: (mapping_value
-                  (column_reference
-                    (identifier
-                      (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+        (geom_type)))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_renaming_clause
+          (renaming_assignment
+            from: (string)
+            to: (null_literal)))))))
 
 ================================================================================
-Arithmetic in function argument
+SCALE RENAMING with wildcard template
 ================================================================================
 
-SELECT SUM(quantity * price) as total FROM data VISUALISE DRAW bar MAPPING x AS x
+VISUALISE x, y
+DRAW point
+SCALE CONTINUOUS x RENAMING * => '{} units'
 
 --------------------------------------------------------------------------------
 
 (query
-  (sql_portion
-    (sql_statement
-      (select_statement
-        (select_body
-          (function_call
-            (identifier
-              (bare_identifier))
-            (function_args
-              (function_arg
-                (positional_arg
-                  (positional_arg
-                    (qualified_name
-                      (identifier
-                        (bare_identifier))))
-                  (positional_arg
-                    (qualified_name
-                      (identifier
-                        (bare_identifier))))))))
-          (identifier
-            (bare_identifier))
-          (identifier
-            (bare_identifier))
-          (from_clause
-            (table_ref
-              table: (qualified_name
-                (identifier
-                  (bare_identifier)))))))))
   (visualise_statement
     (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
     (viz_clause
       (draw_clause
-        (geom_type)
-        (mapping_clause
-          (mapping_list
-            (mapping_element
-              (explicit_mapping
-                value: (mapping_value
-                  (column_reference
-                    (identifier
-                      (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+        (geom_type)))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_renaming_clause
+          (renaming_assignment
+            to: (string)))))))
+
+================================================================================
+SCALE RENAMING with mixed explicit and wildcard
+================================================================================
+
+VISUALISE x, y
+DRAW bar
+SCALE DISCRETE x RENAMING 'A' => 'Alpha', * => 'Category {}'
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_renaming_clause
+          (renaming_assignment
+            from: (string)
+            to: (string))
+          (renaming_assignment
+            to: (string)))))))

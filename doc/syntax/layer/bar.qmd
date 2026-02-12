@@ -77,3 +77,13 @@ VISUALISE
 DRAW bar
     MAPPING species AS x, max_mass AS y
 ```
+
+Use together with a binned scale as an alternative to the [histogram layer](histogram.qmd)
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW bar
+    MAPPING body_mass AS x
+SCALE BINNED x
+    SETTING breaks => 10
+```

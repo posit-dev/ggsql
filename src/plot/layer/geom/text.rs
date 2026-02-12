@@ -14,8 +14,8 @@ impl GeomTrait for Text {
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
             supported: &[
-                "x", "y", "label", "color", "colour", "stroke", "size", "opacity", "family",
-                "fontface", "hjust", "vjust",
+                "x", "y", "label", "stroke", "size", "opacity", "family", "fontface", "hjust",
+                "vjust",
             ],
             required: &["x", "y"],
             hidden: &[],

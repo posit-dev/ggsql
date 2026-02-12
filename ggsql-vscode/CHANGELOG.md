@@ -16,7 +16,6 @@
   - COORD clause with coordinate types (cartesian, polar, flip)
   - FACET clause (WRAP, BY with scale options)
   - LABEL clause (title, subtitle, axis labels, caption)
-  - GUIDE clause (legend, colorbar, axis configuration)
   - THEME clause (minimal, classic, dark, etc.)
 - Aesthetic name highlighting (x, y, color, fill, size, shape, etc.)
 - String and number literal highlighting

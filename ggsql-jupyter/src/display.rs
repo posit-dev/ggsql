@@ -68,7 +68,7 @@ fn format_vegalite(spec: String) -> Value {
       window.requirejs.config({{
         paths: {{
           'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
-          'vega': 'https://cdn.jsdelivr.net/npm/vega@5/build/vega.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
           'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
           'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
         }}
@@ -100,7 +100,7 @@ fn format_vegalite(spec: String) -> Value {
       }}
 
       Promise.all([
-        loadScript('https://cdn.jsdelivr.net/npm/vega@5'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
         loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
         loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
       ])

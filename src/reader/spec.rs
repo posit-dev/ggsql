@@ -21,22 +21,19 @@ impl Spec {
         warnings: Vec<ValidationWarning>,
     ) -> Self {
         // Compute metadata from data
-        let (rows, columns) = if let Some(df) = data.get(naming::GLOBAL_DATA_KEY) {
-            let cols: Vec<String> = df
-                .get_column_names()
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
-            (df.height(), cols)
-        } else if let Some(df) = data.values().next() {
-            let cols: Vec<String> = df
-                .get_column_names()
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
-            (df.height(), cols)
+        // Get rows from data, but columns from layer mappings (since scale-syntax renames columns)
+        let rows = data
+            .get(naming::GLOBAL_DATA_KEY)
+            .or_else(|| data.get(&naming::layer_key(0)))
+            .map(|df| df.height())
+            .unwrap_or(0);
+
+        // Get aesthetic names from mappings (these are what the user thinks of as columns)
+        // This provides backwards-compatible column names like "x", "y" instead of internal names
+        let columns: Vec<String> = if !plot.layers.is_empty() {
+            plot.layers[0].mappings.aesthetics.keys().cloned().collect()
         } else {
-            (0, Vec::new())
+            Vec::new()
         };
 
         let layer_count = plot.layers.len();
@@ -73,11 +70,6 @@ impl Spec {
         self.plot.layers.len()
     }
 
-    /// Get global data (main query result).
-    pub fn data(&self) -> Option<&DataFrame> {
-        self.data.get(naming::GLOBAL_DATA_KEY)
-    }
-
     /// Get layer-specific data (from FILTER or FROM clause).
     pub fn layer_data(&self, layer_index: usize) -> Option<&DataFrame> {
         self.data.get(&naming::layer_key(layer_index))
@@ -89,7 +81,7 @@ impl Spec {
     }
 
     /// Get internal data map (all DataFrames by key).
-    pub fn data_map(&self) -> &HashMap<String, DataFrame> {
+    pub fn data(&self) -> &HashMap<String, DataFrame> {
         &self.data
     }
 
