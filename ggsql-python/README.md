@@ -102,7 +102,7 @@ print(f"Layers: {spec.layer_count()}")
 # 5. Inspect SQL/VISUALISE portions and data
 print(f"SQL: {spec.sql()}")
 print(f"Visual: {spec.visual()}")
-print(spec.data())  # Returns polars DataFrame
+print(spec.layer_data(0))  # Returns polars DataFrame
 
 # 6. Render to Vega-Lite JSON
 writer = ggsql.VegaLiteWriter()

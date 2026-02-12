@@ -28,7 +28,7 @@ VISUALISE month AS x, total_quantity AS y, region AS color FROM monthly_sales
 DRAW line
 DRAW point SETTING size => 3
 SCALE x SETTING type => 'date'
-SCALE color SETTING palette => 'viridis'
+SCALE color TO viridis
 FACET WRAP region SETTING scales => 'free_y'
 LABEL title => 'Sales Trends by Region',
       x => 'Month',
@@ -51,7 +51,6 @@ COORD flip
 LABEL title => 'Top 10 Product Categories',
       x => 'Category',
       y => 'Total Sales'
-GUIDE fill SETTING type => 'none'
 THEME dark
 
 -- ============================================================================
@@ -128,17 +127,13 @@ VISUALISE sale_date AS x, revenue AS y, category AS color, quantity AS size, cat
 DRAW point
 SCALE x SETTING type => 'date'
 SCALE y SETTING type => 'log10'
-SCALE color SETTING domain => ['Electronics', 'Clothing', 'Food', 'Books']
+SCALE DISCRETE color FROM ['Electronics', 'Clothing', 'Food', 'Books']
 FACET category BY employee_name SETTING scales => 'free_y'
 LABEL title => 'Sales Performance Analysis',
       x => 'Sale Date',
       y => 'Revenue (log scale)',
       color => 'Product Category',
       size => 'Quantity Sold'
-GUIDE color SETTING
-    type => 'legend',
-    position => 'right',
-    title => 'Categories'
 THEME grey
 
 -- ============================================================================
@@ -156,7 +151,7 @@ WITH quarterly_breakdown AS (
 VISUALISE quarter AS x, revenue AS y, category AS fill FROM quarterly_breakdown
 DRAW area SETTING opacity => 0.7
 SCALE x SETTING type => 'date'
-SCALE fill SETTING palette => 'plasma', domain => ['A', 'B', 'C', 'D']
+SCALE DISCRETE fill FROM ['A', 'B', 'C', 'D'] TO plasma
 LABEL title => 'Quarterly Revenue by Category',
       x => 'Quarter',
       y => 'Revenue ($)',
@@ -193,14 +188,13 @@ DRAW point
     MAPPING sales_count AS size, sales_count AS color
 DRAW text
     MAPPING product_name AS label
-SCALE color SETTING palette => 'viridis'
+SCALE color TO viridis
 SCALE size SETTING limits => [0, 10000]
 COORD cartesian SETTING xlim => [0, 1000], ylim => [0, 5]
 LABEL title => 'Featured Products: Price vs Rating',
       x => 'Price ($)',
       y => 'Customer Rating',
       size => 'Total Sales'
-GUIDE size SETTING type => 'legend', position => 'bottom'
 
 -- ============================================================================
 -- Example 11: Multiple VISUALISE Statements

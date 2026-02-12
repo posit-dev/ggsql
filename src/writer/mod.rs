@@ -106,6 +106,6 @@ pub trait Writer {
     /// let json = writer.render(&spec)?;
     /// ```
     fn render(&self, spec: &Spec) -> Result<Self::Output> {
-        self.write(spec.plot(), spec.data_map())
+        self.write(spec.plot(), spec.data())
     }
 }
