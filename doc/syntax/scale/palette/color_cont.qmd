@@ -10,134 +10,19 @@ SCALE fill TO viridis
 
 ggsql includes a wide selection of perceptually uniform and scientifically designed color palettes from several sources. The default palette for continuous color scales is `navia` from the Scientific Color Maps project.
 
-## Matplotlib Perceptually Uniform
+You can easily use your own palette by providing an array of colors. ggsql will interpolate between the colors in the array to automatically, so at it's simplest, a manual continuous palette can be defined as an array of two colors, e.g.
 
-These palettes were developed for matplotlib and are designed to be perceptually uniform, meaning equal steps in data produce equal perceptual changes in color. They are also designed to work well for colorblind viewers and when printed in grayscale.
-
-::: {.callout-note}
-**Source:** van der Walt, S. & Smith, N. (2015). A Better Default Colormap for Matplotlib. SciPy 2015.
-:::
-
-```{=html}
-<style>
-.palette-row { display: flex; align-items: center; margin: 0.5em 0; }
-.palette-name { width: 100px; font-family: monospace; }
-.palette-gradient { height: 24px; flex-grow: 1; border-radius: 4px; }
-</style>
+```ggsql
+SCALE fill TO ['cream', 'firebrick']
 ```
 
-### viridis
+or, using hex color notation
 
-The default matplotlib colormap. Perceptually uniform, colorblind-friendly, and prints well in grayscale. Ranges from dark purple through blue and green to yellow.
-
-::: {.palette-row}
-[`viridis`]{.palette-name}
-![](gradient_viridis.svg){.palette-gradient}
-:::
-
-```{ggsql}
-VISUALISE bill_len AS x, bill_dep AS y, body_mass AS color FROM ggsql:penguins
-DRAW point
-SCALE color TO viridis
+```ggsql
+SCALE fill TO ['#fffdd0', '#b22222']
 ```
 
-### plasma
-
-A perceptually uniform colormap ranging from dark purple through pink to yellow. Higher contrast than viridis.
-
-::: {.palette-row}
-[`plasma`]{.palette-name}
-![](gradient_plasma.svg){.palette-gradient}
-:::
-
-```{ggsql}
-VISUALISE bill_len AS x, bill_dep AS y, body_mass AS color FROM ggsql:penguins
-DRAW point
-SCALE color TO plasma
-```
-
-### magma
-
-A perceptually uniform colormap ranging from black through purple and pink to light yellow. Good for highlighting high values.
-
-::: {.palette-row}
-[`magma`]{.palette-name}
-![](gradient_magma.svg){.palette-gradient}
-:::
-
-### inferno
-
-Similar to magma but with more yellow/orange tones. Ranges from black through red and orange to light yellow.
-
-::: {.palette-row}
-[`inferno`]{.palette-name}
-![](gradient_inferno.svg){.palette-gradient}
-:::
-
-### cividis
-
-A colorblind-optimized colormap that works for all forms of color vision deficiency. Ranges from dark blue through gray to yellow.
-
-::: {.palette-row}
-[`cividis`]{.palette-name}
-![](gradient_cividis.svg){.palette-gradient}
-:::
-
-## ColorBrewer Sequential
-
-Sequential palettes from ColorBrewer, designed for mapping ordered data from low to high. These use 9 colors that are interpolated for continuous scales.
-
-::: {.callout-note}
-**Source:** Brewer, C.A. (2002). ColorBrewer: Color Advice for Cartography. [colorbrewer2.org](https://colorbrewer2.org)
-:::
-
-### Single-hue
-
-Simple light-to-dark progressions in a single color family.
-
-| Name | Gradient | Description |
-|------|----------|-------------|
-| `blues` | ![](gradient_blues.svg){height=20} | Light to dark blue |
-| `greens` | ![](gradient_greens.svg){height=20} | Light to dark green |
-| `oranges` | ![](gradient_oranges.svg){height=20} | Light to dark orange |
-| `reds` | ![](gradient_reds.svg){height=20} | Light to dark red |
-| `purples` | ![](gradient_purples.svg){height=20} | Light to dark purple |
-| `greys` | ![](gradient_greys.svg){height=20} | Light to dark grey (also `grays`) |
-
-### Multi-hue
-
-Sequential palettes that transition through multiple hues for better discrimination.
-
-| Name | Gradient | Description |
-|------|----------|-------------|
-| `ylorbr` | ![](gradient_ylorbr.svg){height=20} | Yellow-Orange-Brown |
-| `ylorrd` | ![](gradient_ylorrd.svg){height=20} | Yellow-Orange-Red |
-| `ylgn` | ![](gradient_ylgn.svg){height=20} | Yellow-Green |
-| `ylgnbu` | ![](gradient_ylgnbu.svg){height=20} | Yellow-Green-Blue |
-| `gnbu` | ![](gradient_gnbu.svg){height=20} | Green-Blue |
-| `bugn` | ![](gradient_bugn.svg){height=20} | Blue-Green |
-| `bupu` | ![](gradient_bupu.svg){height=20} | Blue-Purple |
-| `pubu` | ![](gradient_pubu.svg){height=20} | Purple-Blue |
-| `pubugn` | ![](gradient_pubugn.svg){height=20} | Purple-Blue-Green |
-| `purd` | ![](gradient_purd.svg){height=20} | Purple-Red |
-| `rdpu` | ![](gradient_rdpu.svg){height=20} | Red-Purple |
-| `orrd` | ![](gradient_orrd.svg){height=20} | Orange-Red |
-
-## ColorBrewer Diverging
-
-Diverging palettes emphasize a critical midpoint with two contrasting hues on either side. Ideal for data with a meaningful center point (e.g., zero, average).
-
-| Name | Gradient | Description |
-|------|----------|-------------|
-| `rdbu` | ![](gradient_rdbu.svg){height=20} | Red-Blue |
-| `rdylbu` | ![](gradient_rdylbu.svg){height=20} | Red-Yellow-Blue |
-| `rdylgn` | ![](gradient_rdylgn.svg){height=20} | Red-Yellow-Green |
-| `spectral` | ![](gradient_spectral.svg){height=20} | Spectral (rainbow-like) |
-| `brbg` | ![](gradient_brbg.svg){height=20} | Brown-Blue-Green |
-| `prgn` | ![](gradient_prgn.svg){height=20} | Purple-Green |
-| `piyg` | ![](gradient_piyg.svg){height=20} | Pink-Yellow-Green |
-| `rdgy` | ![](gradient_rdgy.svg){height=20} | Red-Grey |
-| `puor` | ![](gradient_puor.svg){height=20} | Purple-Orange |
+However, not all palettes are equally good since we should take care that they are perceptually uniform and color blind friendly. Due to this it is advised to use one of the included palettes if at all possible since they have been designed with this in mind.
 
 ## Crameri Scientific Colour Maps
 
@@ -215,6 +100,78 @@ Cyclic palettes wrap around, making them suitable for periodic data like angles,
 | `broco` | ![](gradient_broco.svg){height=20} | Cyclic brown-green |
 | `corko` | ![](gradient_corko.svg){height=20} | Cyclic blue-green |
 | `viko` | ![](gradient_viko.svg){height=20} | Cyclic blue-red |
+
+## ColorBrewer Sequential
+
+Sequential palettes from ColorBrewer, designed for mapping ordered data from low to high. These use 9 colors that are interpolated for continuous scales.
+
+::: {.callout-note}
+**Source:** Brewer, C.A. (2002). ColorBrewer: Color Advice for Cartography. [colorbrewer2.org](https://colorbrewer2.org)
+:::
+
+### Single-hue
+
+Simple light-to-dark progressions in a single color family.
+
+| Name | Gradient | Description |
+|------|----------|-------------|
+| `blues` | ![](gradient_blues.svg){height=20} | Light to dark blue |
+| `greens` | ![](gradient_greens.svg){height=20} | Light to dark green |
+| `oranges` | ![](gradient_oranges.svg){height=20} | Light to dark orange |
+| `reds` | ![](gradient_reds.svg){height=20} | Light to dark red |
+| `purples` | ![](gradient_purples.svg){height=20} | Light to dark purple |
+| `greys` | ![](gradient_greys.svg){height=20} | Light to dark grey (also `grays`) |
+
+### Multi-hue
+
+Sequential palettes that transition through multiple hues for better discrimination.
+
+| Name | Gradient | Description |
+|------|----------|-------------|
+| `ylorbr` | ![](gradient_ylorbr.svg){height=20} | Yellow-Orange-Brown |
+| `ylorrd` | ![](gradient_ylorrd.svg){height=20} | Yellow-Orange-Red |
+| `ylgn` | ![](gradient_ylgn.svg){height=20} | Yellow-Green |
+| `ylgnbu` | ![](gradient_ylgnbu.svg){height=20} | Yellow-Green-Blue |
+| `gnbu` | ![](gradient_gnbu.svg){height=20} | Green-Blue |
+| `bugn` | ![](gradient_bugn.svg){height=20} | Blue-Green |
+| `bupu` | ![](gradient_bupu.svg){height=20} | Blue-Purple |
+| `pubu` | ![](gradient_pubu.svg){height=20} | Purple-Blue |
+| `pubugn` | ![](gradient_pubugn.svg){height=20} | Purple-Blue-Green |
+| `purd` | ![](gradient_purd.svg){height=20} | Purple-Red |
+| `rdpu` | ![](gradient_rdpu.svg){height=20} | Red-Purple |
+| `orrd` | ![](gradient_orrd.svg){height=20} | Orange-Red |
+
+## ColorBrewer Diverging
+
+Diverging palettes emphasize a critical midpoint with two contrasting hues on either side. Ideal for data with a meaningful center point (e.g., zero, average).
+
+| Name | Gradient | Description |
+|------|----------|-------------|
+| `rdbu` | ![](gradient_rdbu.svg){height=20} | Red-Blue |
+| `rdylbu` | ![](gradient_rdylbu.svg){height=20} | Red-Yellow-Blue |
+| `rdylgn` | ![](gradient_rdylgn.svg){height=20} | Red-Yellow-Green |
+| `spectral` | ![](gradient_spectral.svg){height=20} | Spectral (rainbow-like) |
+| `brbg` | ![](gradient_brbg.svg){height=20} | Brown-Blue-Green |
+| `prgn` | ![](gradient_prgn.svg){height=20} | Purple-Green |
+| `piyg` | ![](gradient_piyg.svg){height=20} | Pink-Yellow-Green |
+| `rdgy` | ![](gradient_rdgy.svg){height=20} | Red-Grey |
+| `puor` | ![](gradient_puor.svg){height=20} | Purple-Orange |
+
+## Matplotlib Perceptually Uniform
+
+These palettes were developed for matplotlib and are designed to be perceptually uniform, meaning equal steps in data produce equal perceptual changes in color. They are also designed to work well for colorblind viewers and when printed in grayscale.
+
+::: {.callout-note}
+**Source:** van der Walt, S. & Smith, N. (2015). A Better Default Colormap for Matplotlib. SciPy 2015.
+:::
+
+| Name | Gradient | Description |
+|------|----------|-------------|
+| `viridis` | ![](gradient_viridis.svg){height=20} | Dark purple through blue and green to yellow |
+| `plasma` | ![](gradient_plasma.svg){height=20} | Dark purple through pink to yellow (higher contrast) |
+| `magma` | ![](gradient_magma.svg){height=20} | Black through purple and pink to light yellow |
+| `inferno` | ![](gradient_inferno.svg){height=20} | Black through red and orange to light yellow |
+| `cividis` | ![](gradient_cividis.svg){height=20} | Dark blue through gray to yellow (colorblind-optimized) |
 
 ## Choosing a Palette
 
