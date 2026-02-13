@@ -84,26 +84,38 @@ fn main() {
     // CARGO_MANIFEST_DIR points to tree-sitter-ggsql/ where Cargo.toml and grammar.js live
     let grammar_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let src_dir = grammar_dir.join("src");
+    let parser_c = src_dir.join("parser.c");
 
-    let tree_sitter = find_tree_sitter().unwrap_or_else(|| {
-        panic!("tree-sitter-cli not found. Please install it: npm install -g tree-sitter-cli");
-    });
+    // Only regenerate if parser.c doesn't exist (e.g., after a fresh checkout or when
+    // the generated files have not been produced yet). While tree-sitter projects
+    // typically commit generated files to the repo, this project's CI workflow
+    // explicitly runs `tree-sitter generate` to ensure the committed and generated
+    // sources stay consistent, rather than relying solely on the committed output.
+    if !parser_c.exists() {
+        let tree_sitter = find_tree_sitter().unwrap_or_else(|| {
+            panic!(
+                "tree-sitter-cli not found and src/parser.c does not exist. \
+                 Either run `tree-sitter generate` first, or install tree-sitter-cli: \
+                 npm install -g tree-sitter-cli"
+            );
+        });
 
-    let generate_result = run_tree_sitter(&tree_sitter, &grammar_dir);
+        let generate_result = run_tree_sitter(&tree_sitter, &grammar_dir);
 
-    match generate_result {
-        Ok(status) if status.success() => {}
-        Ok(status) => {
-            panic!("tree-sitter generate failed with status: {}", status);
-        }
-        Err(e) => {
-            panic!("Failed to run tree-sitter generate: {}", e);
+        match generate_result {
+            Ok(status) if status.success() => {}
+            Ok(status) => {
+                panic!("tree-sitter generate failed with status: {}", status);
+            }
+            Err(e) => {
+                panic!("Failed to run tree-sitter generate: {}", e);
+            }
         }
     }
 
     // The generated files are in the grammar_dir/src directory
     cc::Build::new()
         .include(&src_dir)
-        .file(src_dir.join("parser.c"))
+        .file(&parser_c)
         .compile("tree-sitter-ggsql");
 }
