@@ -10,6 +10,17 @@ See [RELEASING.md](RELEASING.md) for release instructions.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-02-13
+
+### Changed
+
+- New SCALE clause syntax with `FROM`, `TO`, `VIA`, and `RENAMING` subclauses, type modifiers (`CONTINUOUS`, `DISCRETE`, `BINNED`, `DATE`, `DATETIME`), and named color palettes (e.g., `SCALE color TO viridis`).
+- `Spec.data()` now delegates to `layer_data(0)` for consistency with the multi-layer data model.
+
+### Fixed
+
+- Parser now supports `CAST` and `TRY_CAST` expressions in the SQL portion of queries.
+
 ## [0.1.1] - 2026-02-11
 
 ### Fixed
