@@ -1,0 +1,82 @@
+---
+title: "Density"
+---
+
+> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+
+Visualise the distribution of a single continuous variable by computing a kernel density estimate. It has a similar interpretation as a histogram but smoothing out observations rather than binning them.
+
+## Aesthetics
+The following aesthetics are recognised by the density layer.
+
+### Required
+* `x`: Position on the x-axis.
+
+### Optional
+* `stroke`: The colour of the contour lines.
+* `fill`: The colour of the inner area.
+* `colour`: Shorthand for setting `stroke` and `fill` simultaneously.
+* `opacity`: The opacity of the colours.
+* `linewidth`: The width of the contour lines.
+
+## Settings
+* `stacking`: Determines how multiple groups are displayed. One of the following:
+    * `'off'`: The groups `y`-values are displayed as-is (default).
+    * `'on'`: The `y`-values are stacked per `x` position, accumulating over groups.
+    * `'fill'`: Like `'on'` but displayed as a fraction of the total per `x` position.
+* `bandwidth`: A numerical value setting the smoothing bandwidth to use. If absent (default), the bandwidth will be computed using Silverman's rule of thumb.
+* `adjust`: A numerical value as multiplier for the `bandwidth` setting, with 1 as default.
+* `kernel`: Determines the smoothing kernel shape. Can be one of the following:
+    * `'gaussian'` (default)
+    * `'epanechnikov'`
+    * `'triangular'`
+    * `'rectangular'` or `'uniform'`
+    * `'biweight'` or `'quartic'`
+    * `'cosine'`
+
+## Data transformation
+The density layer will compute a 1-dimensional grid using the range of the data. The distances between the grid locations and observations are computed and serve as input for a kernel function. The contributions of each observation is then averaged across the grid.
+
+### Properties
+
+* `weight`: If mapped, it sets the relative contribution of an observation to the density estimate.
+
+### Calculated statistics
+
+* `density`: The estimated probability density per point on the grid. The total area of a single density curve adds up to 1.
+
+### Default remappings
+
+* `density AS y`: By default the density layer will display the computed density along the y-axis.
+
+## Examples
+
+A typical KDE computation with different groups:
+
+```{ggsql}
+VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
+  DRAW density SETTING opacity => 0.8
+```
+
+Changing the relative bandwidth through the `adjust` setting.
+
+```{ggsql}
+VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
+  DRAW density SETTING opacity => 0.8, adjust => 0.1
+```
+
+Stacking the different groups instead of overlaying them.
+
+```{ggsql}
+VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
+  DRAW density SETTING stacking => 'on'
+```
+
+Using weighted estimates by mapping a column to the optional weight aesthetic. Note that the difference in output is subtle.
+
+```{ggsql}
+VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
+  DRAW density 
+    MAPPING body_mass AS weight
+    SETTING opacity => 0.8
+```

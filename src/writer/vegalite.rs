@@ -525,6 +525,7 @@ impl VegaLiteWriter {
             GeomType::Ribbon => "area",
             GeomType::Histogram => "bar",
             GeomType::Density => "area",
+            GeomType::Violin => "line",
             GeomType::Boxplot => "boxplot",
             GeomType::Text => "text",
             GeomType::Label => "text",
@@ -1510,6 +1511,34 @@ impl VegaLiteWriter {
             Some(json!(details))
         }
     }
+
+    /// Get effective partition_by list, including geom-specific requirements
+    ///
+    /// Some geoms require additional columns in partition_by for proper Vega-Lite rendering.
+    /// For example, violin plots need the x aesthetic in detail encoding to create separate
+    /// violins per x category (required by Vega-Lite's filled line marks).
+    fn get_effective_partition_by(
+        &self,
+        layer: &Layer,
+        encoding: &Map<String, Value>,
+    ) -> Vec<String> {
+        let mut partition_by = layer.partition_by.clone();
+
+        // Violin geoms need x in partition_by for proper Vega-Lite rendering
+        if matches!(layer.geom.geom_type(), GeomType::Violin) {
+            if let Some(x_field) = encoding
+                .get("x")
+                .and_then(|x| x.get("field"))
+                .and_then(|f| f.as_str())
+            {
+                if !partition_by.iter().any(|col| col == x_field) {
+                    partition_by.push(x_field.to_string());
+                }
+            }
+        }
+
+        partition_by
+    }
 }
 
 impl Writer for VegaLiteWriter {
@@ -1764,7 +1793,9 @@ impl Writer for VegaLiteWriter {
             }
 
             // Add detail encoding for partition_by columns (grouping)
-            if let Some(detail) = self.build_detail_encoding(&layer.partition_by) {
+            // Get effective partition_by including geom-specific requirements
+            let effective_partition_by = self.get_effective_partition_by(layer, &encoding);
+            if let Some(detail) = self.build_detail_encoding(&effective_partition_by) {
                 encoding.insert("detail".to_string(), detail);
             }
 
@@ -1782,7 +1813,10 @@ impl Writer for VegaLiteWriter {
             // Handle geom-specific encoding transformations
             match layer.geom.geom_type() {
                 GeomType::Ribbon => render_ribbon(&mut encoding),
-                GeomType::Area => render_area(&mut encoding, layer)?,
+                GeomType::Area | GeomType::Density => render_area(&mut encoding, layer)?,
+                GeomType::Violin => {
+                    layer_spec = render_violin(&mut encoding, layer_spec);
+                }
                 _ => {}
             }
 
@@ -1913,6 +1947,63 @@ fn render_ribbon(encoding: &mut Map<String, Value>) {
     if let Some(ymin) = encoding.remove("ymin") {
         encoding.insert("y2".to_string(), ymin);
     }
+}
+
+fn render_violin(encoding: &mut Map<String, Value>, mut spec: Value) -> Value {
+    spec["mark"] = json!({
+        "type": "line",
+        "filled": true
+    });
+
+    // Mirror the density on both sides.
+    // It'll be implemented as an offset.
+    let density_col = naming::stat_column("density");
+    let violin_offset = format!("[datum.{density}, -datum.{density}]", density = density_col);
+    // We use an order calculation to create a proper closed shape.
+    // Right side (+ offset), sort by -y (top -> bottom)
+    // Left side (- offset), sort by +y (bottom -> top)
+    let calc_order = format!(
+        "datum.__violin_offset > 0 ? -datum.{y} : datum.{y}",
+        y = naming::stat_column("y")
+    );
+    // Filter threshold to trim very low density regions (removes thin tails)
+    // In theory, this depends on the grid resolution and might be better
+    // handled upstream, but for now it seems not unreasonable.
+    let filter_expr = format!("datum.{} > 0.001", density_col);
+
+    spec["transform"] = json!([
+        {
+            // Remove points with very low density to clean up thin tails
+            "filter": filter_expr
+        },
+        {
+            "calculate": violin_offset,
+            "as": "violin_offsets"
+        },
+        {
+            "flatten": ["violin_offsets"],
+            "as": ["__violin_offset"]
+        },
+        {
+            "calculate": calc_order,
+            "as": "__order"
+        }
+    ]);
+    encoding.insert(
+        "xOffset".to_string(),
+        json!({
+            "field": "__violin_offset",
+            "type": "quantitative"
+        }),
+    );
+    encoding.insert(
+        "order".to_string(),
+        json!({
+            "field": "__order",
+            "type": "quantitative"
+        }),
+    );
+    spec
 }
 
 fn render_area(encoding: &mut Map<String, Value>, layer: &Layer) -> Result<()> {

@@ -1,0 +1,76 @@
+---
+title: "Violin"
+---
+
+> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+
+Violin plots display the distribution of a single continuous variable for multiple groups.
+The violins are mirrored kernel density estimates, similar to the [density](density.qmd) layer, but organised as distinct groups.
+
+## Aesthetics
+The following aesthetics are recognised by the violin layer.
+
+### Required
+* `x`: Position on the x-axis (categorical).
+* `y`: Value on the y-axis for which to compute density.
+
+### Optional
+* `stroke`: The colour of the contour lines.
+* `fill`: The colour of the inner area.
+* `colour`: Shorthand for setting `stroke` and `fill` simultaneously.
+* `opacity`: The opacity of the colours.
+* `linewidth`: The width of the contour lines.
+
+
+## Settings
+* `bandwidth`: A numerical value setting the smoothing bandwidth to use. If absent (default), the bandwidth will be computed using Silverman's rule of thumb.
+* `adjust`: A numerical value as multiplier for the `bandwidth` setting, with 1 as default.
+* `kernel`: Determines the smoothing kernel shape. Can be one of the following:
+    * `'gaussian'` (default)
+    * `'epanechnikov'`
+    * `'triangular'`
+    * `'rectangular'` or `'uniform'`
+    * `'biweight'` or `'quartic'`
+    * `'cosine'`
+
+## Data transformation
+The violin layer will compute a 1-dimensional grid using the range of the y-value data. The distances between the grid locations and observations are computed and serve as input for a kernel function. The contributions of each observation is then averaged across the grid.
+
+### Properties
+
+* `weight`: If mapped, it sets the relative contribution of an observation to the density estimate.
+
+### Calculated statistics
+
+* `density`: The estimated probability density per point on the grid. The total area of a single density curve adds up to 1.
+
+### Default remappings
+
+The grammar does not accommodate the density via an aesthetic, but the density will be displayed as an offset in the horizontal direction.
+
+## Examples
+
+A typical violin plot.
+
+```{ggsql}
+VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
+  DRAW violin
+```
+
+The `adjust` setting controls the smoothing.
+
+```{ggsql}
+VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
+  DRAW violin SETTING adjust => 0.1
+```
+
+You can combine groups to expand the categories.
+
+<!-- When dodging is implemented we should use that example instead -->
+
+```{ggsql}
+SELECT *, species || ' ' || island AS groups FROM ggsql:penguins
+VISUALISE groups AS x, bill_dep AS y, island AS fill
+  DRAW violin
+```
+
