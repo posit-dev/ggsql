@@ -73,7 +73,7 @@ fn parse_array_node(node: &Node, source: &SourceTree) -> Result<Vec<ArrayElement
     Ok(values)
 }
 
-/// Parse a value node directly (string, number, boolean, or array)
+/// Parse a value node directly (string, number, boolean, array, or null)
 fn parse_value_node(node: &Node, source: &SourceTree, context: &str) -> Result<ParameterValue> {
     match node.kind() {
         "string" => {
@@ -91,6 +91,9 @@ fn parse_value_node(node: &Node, source: &SourceTree, context: &str) -> Result<P
         "array" => {
             let values = parse_array_node(node, source)?;
             Ok(ParameterValue::Array(values))
+        }
+        "null_literal" => {
+            Ok(ParameterValue::Null)
         }
         _ => Err(GgsqlError::ParseError(format!(
             "Unexpected {} value type: {}",
@@ -120,10 +123,10 @@ fn parse_literal_value(node: &Node, source: &SourceTree) -> Result<AestheticValu
     let child = node.child(0).unwrap();
     let value = parse_value_node(&child, source, "literal")?;
 
-    // Grammar ensures literals can't be arrays, but add safety check
-    if matches!(value, ParameterValue::Array(_)) {
+    // Grammar ensures literals can't be arrays or nulls, but add safety check
+    if matches!(value, ParameterValue::Array(_) | ParameterValue::Null) {
         return Err(GgsqlError::ParseError(
-            "Arrays cannot be used as literal values in aesthetic mappings".to_string()
+            "Arrays and null cannot be used as literal values in aesthetic mappings".to_string()
         ));
     }
 
@@ -649,19 +652,19 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
             }
             "scale_from_clause" => {
                 // Parse FROM [array] -> input_range
-                input_range = parse_scale_from_clause(&child, source)?;
+                input_range = Some(parse_scale_from_clause(&child, source)?);
                 // Mark as explicit input range (user specified FROM clause)
-                explicit_input_range = input_range.is_some();
+                explicit_input_range = true;
             }
             "scale_to_clause" => {
                 // Parse TO [array | identifier] -> output_range
-                output_range = parse_scale_to_clause(&child, source)?;
+                output_range = Some(parse_scale_to_clause(&child, source)?);
             }
             "scale_via_clause" => {
                 // Parse VIA identifier -> transform
-                transform = parse_scale_via_clause(&child, source)?;
+                transform = Some(parse_scale_via_clause(&child, source)?);
                 // Mark as explicit transform (user specified VIA clause)
-                explicit_transform = transform.is_some();
+                explicit_transform = true;
             }
             "setting_clause" => {
                 // Reuse existing setting_clause parser
@@ -734,55 +737,46 @@ fn parse_scale_type_identifier(text: &str) -> Result<ScaleType> {
 }
 
 /// Parse FROM clause: FROM [array]
-fn parse_scale_from_clause(node: &Node, source: &SourceTree) -> Result<Option<Vec<ArrayElement>>> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "array" {
-            return Ok(Some(parse_array_node(&child, source)?));
-        }
-    }
-    Ok(None)
+fn parse_scale_from_clause(node: &Node, source: &SourceTree) -> Result<Vec<ArrayElement>> {
+    let query = "(array) @arr";
+    let array_node = source.find_node(node, query)
+        .ok_or_else(|| GgsqlError::ParseError("FROM clause missing array".to_string()))?;
+    parse_array_node(&array_node, source)
 }
 
 /// Parse TO clause: TO [array | identifier]
-fn parse_scale_to_clause(node: &Node, source: &SourceTree) -> Result<Option<OutputRange>> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "array" => {
-                let elements = parse_array_node(&child, source)?;
-                return Ok(Some(OutputRange::Array(elements)));
-            }
-            "identifier" | "bare_identifier" | "quoted_identifier" => {
-                let palette_name = source.get_text(&child);
-                return Ok(Some(OutputRange::Palette(palette_name)));
-            }
-            _ => continue,
-        }
+fn parse_scale_to_clause(node: &Node, source: &SourceTree) -> Result<OutputRange> {
+    // Try array first
+    let array_query = "(array) @arr";
+    if let Some(array_node) = source.find_node(node, array_query) {
+        let elements = parse_array_node(&array_node, source)?;
+        return Ok(OutputRange::Array(elements));
     }
-    Ok(None)
+
+    // Try identifier (palette name)
+    let ident_query = "[(identifier) (bare_identifier) (quoted_identifier)] @id";
+    if let Some(ident_node) = source.find_node(node, ident_query) {
+        let palette_name = source.get_text(&ident_node);
+        return Ok(OutputRange::Palette(palette_name));
+    }
+
+    Err(GgsqlError::ParseError("TO clause must contain either an array or identifier".to_string()))
 }
 
 /// Parse VIA clause: VIA identifier
-fn parse_scale_via_clause(node: &Node, source: &SourceTree) -> Result<Option<Transform>> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if matches!(
-            child.kind(),
-            "identifier" | "bare_identifier" | "quoted_identifier"
-        ) {
-            let transform_name = source.get_text(&child);
-            return match Transform::from_name(&transform_name) {
-                Some(t) => Ok(Some(t)),
-                None => Err(GgsqlError::ParseError(format!(
-                    "Unknown transform: '{}'. Valid transforms are: {}",
-                    transform_name,
-                    crate::plot::scale::ALL_TRANSFORM_NAMES.join(", ")
-                ))),
-            };
-        }
-    }
-    Ok(None)
+fn parse_scale_via_clause(node: &Node, source: &SourceTree) -> Result<Transform> {
+    let query = "[(identifier) (bare_identifier) (quoted_identifier)] @id";
+    let ident_node = source.find_node(node, query)
+        .ok_or_else(|| GgsqlError::ParseError("VIA clause missing transform identifier".to_string()))?;
+
+    let transform_name = source.get_text(&ident_node);
+    Transform::from_name(&transform_name).ok_or_else(|| {
+        GgsqlError::ParseError(format!(
+            "Unknown transform: '{}'. Valid transforms are: {}",
+            transform_name,
+            crate::plot::scale::ALL_TRANSFORM_NAMES.join(", ")
+        ))
+    })
 }
 
 /// Parse RENAMING clause: RENAMING 'A' => 'Alpha', 'B' => 'Beta', 'internal' => NULL, * => '{} units'
@@ -796,52 +790,53 @@ fn parse_scale_renaming_clause(
 ) -> Result<(HashMap<String, Option<String>>, String)> {
     let mut mappings = HashMap::new();
     let mut template = "{}".to_string();
-    let mut cursor = node.walk();
 
-    for child in node.children(&mut cursor) {
-        if child.kind() == "renaming_assignment" {
-            let mut from_value: Option<String> = None;
-            let mut is_wildcard = false;
-            let mut to_value: Option<Option<String>> = None; // None = not set, Some(None) = NULL
+    // Find all renaming_assignment nodes
+    let query = "(renaming_assignment) @assign";
+    let assignment_nodes = source.find_nodes(node, query);
 
-            let mut assignment_cursor = child.walk();
-            for assignment_child in child.children(&mut assignment_cursor) {
-                match assignment_child.kind() {
-                    "*" => {
-                        is_wildcard = true;
-                    }
-                    "string" => {
-                        let unquoted = parse_string_node(&assignment_child, source);
-                        if from_value.is_none() && !is_wildcard {
-                            from_value = Some(unquoted);
-                        } else {
-                            to_value = Some(Some(unquoted));
-                        }
-                    }
-                    "number" => {
-                        // Handle numeric keys for continuous/binned scales
-                        let text = source.get_text(&assignment_child);
-                        if from_value.is_none() && !is_wildcard {
-                            from_value = Some(text);
-                        }
-                    }
-                    "null_literal" => {
-                        // NULL suppresses the label
-                        to_value = Some(None);
-                    }
-                    _ => {}
+    for assignment_node in assignment_nodes {
+        let mut from_value: Option<String> = None;
+        let mut is_wildcard = false;
+        let mut to_value: Option<Option<String>> = None; // None = not set, Some(None) = NULL
+
+        let mut assignment_cursor = assignment_node.walk();
+        for assignment_child in assignment_node.children(&mut assignment_cursor) {
+            match assignment_child.kind() {
+                "*" => {
+                    is_wildcard = true;
                 }
-            }
-
-            if is_wildcard {
-                // Wildcard: * => 'template'
-                if let Some(Some(tmpl)) = to_value {
-                    template = tmpl;
+                "string" => {
+                    let unquoted = parse_string_node(&assignment_child, source);
+                    if from_value.is_none() && !is_wildcard {
+                        from_value = Some(unquoted);
+                    } else {
+                        to_value = Some(Some(unquoted));
+                    }
                 }
-            } else if let (Some(from), Some(to)) = (from_value, to_value) {
-                // Explicit mapping: 'A' => 'Alpha'
-                mappings.insert(from, to);
+                "number" => {
+                    // Handle numeric keys for continuous/binned scales
+                    let text = source.get_text(&assignment_child);
+                    if from_value.is_none() && !is_wildcard {
+                        from_value = Some(text);
+                    }
+                }
+                "null_literal" => {
+                    // NULL suppresses the label
+                    to_value = Some(None);
+                }
+                _ => {}
             }
+        }
+
+        if is_wildcard {
+            // Wildcard: * => 'template'
+            if let Some(Some(tmpl)) = to_value {
+                template = tmpl;
+            }
+        } else if let (Some(from), Some(to)) = (from_value, to_value) {
+            // Explicit mapping: 'A' => 'Alpha'
+            mappings.insert(from, to);
         }
     }
 
