@@ -162,9 +162,8 @@ pub fn build_ast(source: &SourceTree) -> Result<Vec<Plot>> {
     }
 
     // Extract SQL portion node (if exists)
-    let sql_portion_node = root
-        .children(&mut root.walk())
-        .find(|n| n.kind() == "sql_portion");
+    let query = "(sql_portion) @sql";
+    let sql_portion_node = source.find_node(&root, query);
 
     // Check if last SQL statement is SELECT
     let last_is_select = if let Some(sql_node) = sql_portion_node {
@@ -224,14 +223,10 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
                 spec.global_mappings.wildcard = true;
             }
             "from_clause" => {
-                // Find table_ref within from_clause
-                let query = "(table_ref) @ref";
-                let table_refs = source.find_nodes(&child, query);
-
-                if let Some(table_ref) = table_refs.first() {
-                    if let Some(ref_node) = table_ref.named_child(0) {
-                        spec.source = Some(parse_data_source(&ref_node, source));
-                    }
+                // Extract the 'table' field from table_ref (grammar: FROM table_ref)
+                let query = "(table_ref table: (_) @table)";
+                if let Some(table_node) = source.find_node(&child, query) {
+                    spec.source = Some(parse_data_source(&table_node, source));
                 }
             }
             "viz_clause" => {
@@ -469,15 +464,6 @@ fn parse_setting_clause(
     Ok(parameters)
 }
 
-/// Parse a partition_clause: PARTITION BY col1, col2, ...
-fn parse_partition_clause(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
-    let query = r#"
-        (partition_columns
-          (identifier) @col)
-    "#;
-    Ok(source.find_texts(node, query))
-}
-
 /// Parse a parameter_assignment: param => value
 fn parse_parameter_assignment(
     node: &Node,
@@ -499,6 +485,15 @@ fn parse_parameter_assignment(
     };
 
     Ok((param_name, param_value))
+}
+
+/// Parse a partition_clause: PARTITION BY col1, col2, ...
+fn parse_partition_clause(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
+    let query = r#"
+        (partition_columns
+          (identifier) @col)
+    "#;
+    Ok(source.find_texts(node, query))
 }
 
 /// Parse a filter_clause: FILTER <raw SQL expression>
