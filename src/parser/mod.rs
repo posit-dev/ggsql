@@ -38,64 +38,35 @@ assert_eq!(specs[0].layers[0].geom, Geom::line());
 ```
 */
 
-use crate::{GgsqlError, Plot, Result};
-use tree_sitter::Tree;
+use crate::{Plot, Result};
 
 pub mod builder;
-pub mod error;
-pub mod splitter;
+pub mod source_tree;
 
-pub use error::ParseError;
-pub use splitter::split_query;
+pub use builder::build_ast;
+pub use source_tree::SourceTree;
 
 /// Main entry point for parsing ggsql queries
 ///
 /// Takes a complete ggsql query (SQL + VISUALISE) and returns a vector of
 /// parsed specifications (one per VISUALISE statement).
 pub fn parse_query(query: &str) -> Result<Vec<Plot>> {
-    // Parse the full query using tree-sitter (includes SQL + VISUALISE portions)
-    let tree = parse_full_query(query)?;
+    // Parse the full query and create SourceTree
+    let source_tree = SourceTree::new(query)?;
 
-    // Build AST from the tree-sitter parse tree
-    let specs = builder::build_ast(&tree, query)?;
+    // Validate the parse tree has no errors
+    source_tree.validate()?;
+
+    // Build AST from the parse tree
+    let specs = builder::build_ast(&source_tree)?;
 
     Ok(specs)
-}
-
-/// Parse the full ggsql query (SQL + VISUALISE) using tree-sitter
-fn parse_full_query(query: &str) -> Result<Tree> {
-    let mut parser = tree_sitter::Parser::new();
-
-    // Set the tree-sitter-ggsql language
-    parser
-        .set_language(&tree_sitter_ggsql::language())
-        .map_err(|e| GgsqlError::ParseError(format!("Failed to set language: {}", e)))?;
-
-    // Parse the full query (SQL + VISUALISE portions together)
-    let tree = parser
-        .parse(query, None)
-        .ok_or_else(|| GgsqlError::ParseError("Failed to parse query".to_string()))?;
-
-    // Check for parse errors
-    if tree.root_node().has_error() {
-        return Err(GgsqlError::ParseError(
-            "Parse tree contains errors".to_string(),
-        ));
-    }
-
-    Ok(tree)
-}
-
-/// Extract just the SQL portion from a ggsql query
-pub fn extract_sql(query: &str) -> Result<String> {
-    let (sql_part, _) = splitter::split_query(query)?;
-    Ok(sql_part)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::LiteralValue;
+    use crate::plot::ParameterValue;
     use crate::{AestheticValue, DataSource, Geom};
 
     #[test]
@@ -123,7 +94,8 @@ mod tests {
             DRAW line
         "#;
 
-        let sql = extract_sql(query).unwrap();
+        let source_tree = SourceTree::new(query).unwrap();
+        let sql = source_tree.extract_sql().unwrap();
         assert!(sql.contains("SELECT date, revenue FROM sales"));
         assert!(sql.contains("WHERE year = 2024"));
         assert!(!sql.contains("VISUALISE"));
@@ -149,7 +121,7 @@ mod tests {
         assert_eq!(specs[0].layers[1].mappings.len(), 2);
         assert!(matches!(
             specs[0].layers[1].mappings.get("color"),
-            Some(AestheticValue::Literal(LiteralValue::String(s))) if s == "value"
+            Some(AestheticValue::Literal(ParameterValue::String(s))) if s == "value"
         ));
     }
 
@@ -267,7 +239,7 @@ mod tests {
             VISUALISE date AS x, revenue AS y
             DRAW line
             DRAW line MAPPING cost AS y
-            SCALE x SETTING type => 'date'
+            SCALE x VIA date
             LABEL title => 'Revenue and Cost Trends'
             THEME minimal
             VISUALIZE
@@ -297,20 +269,24 @@ mod tests {
         let query = "SELECT * FROM (VALUES (1, 2)) AS t(x, y) VISUALISE x, y DRAW point";
 
         // First check if tree-sitter can parse it
-        let tree = parse_full_query(query);
-        if let Err(ref e) = tree {
+        let source_tree = SourceTree::new(query);
+        if let Err(ref e) = source_tree {
             eprintln!("Parse error: {}", e);
         }
 
         // Print the tree
-        if let Ok(ref t) = tree {
-            let root = t.root_node();
+        if let Ok(ref st) = source_tree {
+            let root = st.root();
             eprintln!("Root kind: {}", root.kind());
             eprintln!("Has error: {}", root.has_error());
             eprintln!("Tree: {}", root.to_sexp());
         }
 
-        assert!(tree.is_ok(), "Failed to parse VALUES subquery: {:?}", tree);
+        assert!(
+            source_tree.is_ok(),
+            "Failed to parse VALUES subquery: {:?}",
+            source_tree
+        );
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 1);

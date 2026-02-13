@@ -4,7 +4,7 @@
 //! scale requirements and updating type info accordingly.
 
 use crate::plot::scale::coerce_dtypes;
-use crate::plot::{CastTargetType, Layer, LiteralValue, Plot, SqlTypeNames};
+use crate::plot::{CastTargetType, Layer, ParameterValue, Plot, SqlTypeNames};
 use crate::{naming, DataSource};
 use polars::prelude::{DataType, TimeUnit};
 use std::collections::{HashMap, HashSet};
@@ -23,16 +23,19 @@ pub struct TypeRequirement {
 }
 
 /// Format a literal value as SQL
-pub fn literal_to_sql(lit: &LiteralValue) -> String {
+pub fn literal_to_sql(lit: &ParameterValue) -> String {
     match lit {
-        LiteralValue::String(s) => format!("'{}'", s.replace('\'', "''")),
-        LiteralValue::Number(n) => n.to_string(),
-        LiteralValue::Boolean(b) => {
+        ParameterValue::String(s) => format!("'{}'", s.replace('\'', "''")),
+        ParameterValue::Number(n) => n.to_string(),
+        ParameterValue::Boolean(b) => {
             if *b {
                 "TRUE".to_string()
             } else {
                 "FALSE".to_string()
             }
+        }
+        ParameterValue::Array(_) | ParameterValue::Null => {
+            unreachable!("Grammar prevents arrays and null in literal aesthetic mappings")
         }
     }
 }

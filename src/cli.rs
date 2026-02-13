@@ -5,7 +5,6 @@ Provides commands for executing ggsql queries with various data sources and outp
 */
 
 use clap::{Parser, Subcommand};
-use ggsql::parser::extract_sql;
 use ggsql::{parser, VERSION};
 use std::path::PathBuf;
 
@@ -328,14 +327,17 @@ fn cmd_validate(query: String, _reader: Option<String>) {
 
 // Prints a CSV-like output to stdout with aligned columns
 fn print_table_fallback(query: &str, reader: &DuckDBReader, max_rows: usize) {
-    let parsed = extract_sql(query);
-    if let Err(e) = parsed {
-        eprintln!("Failed to split query: {}", e);
-        std::process::exit(1);
-    }
-    let parsed = parsed.unwrap();
+    let source_tree = match parser::SourceTree::new(query) {
+        Ok(st) => st,
+        Err(e) => {
+            eprintln!("Failed to parse query: {}", e);
+            std::process::exit(1);
+        }
+    };
 
-    let data = reader.execute_sql(&parsed);
+    let sql_part = source_tree.extract_sql().unwrap_or_default();
+
+    let data = reader.execute_sql(&sql_part);
     if let Err(e) = data {
         eprintln!("Failed to execute SQL query: {}", e);
         std::process::exit(1)

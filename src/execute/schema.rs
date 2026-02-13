@@ -6,7 +6,7 @@
 //! 2. Apply casting to queries
 //! 3. complete_schema_ranges() - get min/max from cast queries
 
-use crate::plot::{AestheticValue, ColumnInfo, Layer, LiteralValue, Schema};
+use crate::plot::{AestheticValue, ColumnInfo, Layer, ParameterValue, Schema};
 use crate::{naming, DataFrame, Result};
 use polars::prelude::DataType;
 
@@ -247,11 +247,15 @@ pub fn add_literal_columns_to_type_info(layers: &[Layer], layer_type_info: &mut 
         for (aesthetic, value) in &layer.mappings.aesthetics {
             if let AestheticValue::Literal(lit) = value {
                 let dtype = match lit {
-                    LiteralValue::String(_) => DataType::String,
-                    LiteralValue::Number(_) => DataType::Float64,
-                    LiteralValue::Boolean(_) => DataType::Boolean,
+                    ParameterValue::String(_) => DataType::String,
+                    ParameterValue::Number(_) => DataType::Float64,
+                    ParameterValue::Boolean(_) => DataType::Boolean,
+                    ParameterValue::Array(_) | ParameterValue::Null => unreachable!(
+                        "Grammar prevents arrays and null in literal aesthetic mappings"
+                    ),
                 };
-                let is_discrete = matches!(lit, LiteralValue::String(_) | LiteralValue::Boolean(_));
+                let is_discrete =
+                    matches!(lit, ParameterValue::String(_) | ParameterValue::Boolean(_));
                 let col_name = naming::aesthetic_column(aesthetic);
 
                 // Only add if not already present
@@ -307,14 +311,20 @@ pub fn build_aesthetic_schema(layer: &Layer, schema: &Schema) -> Schema {
             AestheticValue::Literal(lit) => {
                 // Literals become columns with appropriate type
                 let dtype = match lit {
-                    LiteralValue::String(_) => DataType::String,
-                    LiteralValue::Number(_) => DataType::Float64,
-                    LiteralValue::Boolean(_) => DataType::Boolean,
+                    ParameterValue::String(_) => DataType::String,
+                    ParameterValue::Number(_) => DataType::Float64,
+                    ParameterValue::Boolean(_) => DataType::Boolean,
+                    ParameterValue::Array(_) | ParameterValue::Null => unreachable!(
+                        "Grammar prevents arrays and null in literal aesthetic mappings"
+                    ),
                 };
                 aesthetic_schema.push(ColumnInfo {
                     name: aes_col_name,
                     dtype,
-                    is_discrete: matches!(lit, LiteralValue::String(_) | LiteralValue::Boolean(_)),
+                    is_discrete: matches!(
+                        lit,
+                        ParameterValue::String(_) | ParameterValue::Boolean(_)
+                    ),
                     min: None,
                     max: None,
                 });

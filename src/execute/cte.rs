@@ -4,9 +4,9 @@
 //! materializing them as temporary tables, and transforming CTE references
 //! in SQL queries.
 
-use crate::{naming, DataFrame, GgsqlError, Result};
+use crate::{naming, parser::SourceTree, DataFrame, GgsqlError, Result};
 use std::collections::HashSet;
-use tree_sitter::{Node, Parser};
+use tree_sitter::Node;
 
 /// Extracted CTE (Common Table Expression) definition
 #[derive(Debug, Clone)]
@@ -17,52 +17,19 @@ pub struct CteDefinition {
     pub body: String,
 }
 
-/// Extract CTE definitions from SQL using tree-sitter
+/// Extract CTE definitions from the source tree
 ///
-/// Parses the SQL and extracts all CTE definitions from WITH clauses.
+/// Extracts all CTE definitions from WITH clauses using the existing parse tree.
 /// Returns CTEs in declaration order (important for dependency resolution).
-pub fn extract_ctes(sql: &str) -> Vec<CteDefinition> {
-    let mut ctes = Vec::new();
+pub fn extract_ctes(source_tree: &SourceTree) -> Vec<CteDefinition> {
+    let root = source_tree.root();
 
-    // Parse with tree-sitter
-    let mut parser = Parser::new();
-    if parser.set_language(&tree_sitter_ggsql::language()).is_err() {
-        return ctes;
-    }
-
-    let tree = match parser.parse(sql, None) {
-        Some(t) => t,
-        None => return ctes,
-    };
-
-    let root = tree.root_node();
-
-    // Walk the tree looking for WITH statements
-    extract_ctes_from_node(&root, sql, &mut ctes);
-
-    ctes
-}
-
-/// Recursively extract CTEs from a node and its children
-fn extract_ctes_from_node(node: &Node, source: &str, ctes: &mut Vec<CteDefinition>) {
-    // Check if this is a with_statement
-    if node.kind() == "with_statement" {
-        // Find all cte_definition children (in declaration order)
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "cte_definition" {
-                if let Some(cte) = parse_cte_definition(&child, source) {
-                    ctes.push(cte);
-                }
-            }
-        }
-    }
-
-    // Recurse into children
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        extract_ctes_from_node(&child, source, ctes);
-    }
+    // Use declarative tree-sitter query to find all CTE definitions
+    source_tree
+        .find_nodes(&root, "(cte_definition) @cte")
+        .into_iter()
+        .filter_map(|node| parse_cte_definition(&node, source_tree.source))
+        .collect()
 }
 
 /// Parse a single CTE definition node into a CteDefinition
@@ -184,51 +151,30 @@ where
     Ok(materialized)
 }
 
-/// Extract the trailing SELECT statement from a WITH clause
+/// Extract the trailing SELECT statement from a WITH clause using existing tree
 ///
 /// Given SQL like `WITH a AS (...), b AS (...) SELECT * FROM a`, extracts
 /// just the `SELECT * FROM a` part. Returns None if there's no trailing SELECT.
-pub fn extract_trailing_select(sql: &str) -> Option<String> {
-    let mut parser = Parser::new();
-    if parser.set_language(&tree_sitter_ggsql::language()).is_err() {
-        return None;
-    }
+pub fn extract_trailing_select(source_tree: &SourceTree) -> Option<String> {
+    let root = source_tree.root();
 
-    let tree = parser.parse(sql, None)?;
-    let root = tree.root_node();
-
-    // Find sql_portion → sql_statement → with_statement → select_statement
-    let mut cursor = root.walk();
-    for child in root.children(&mut cursor) {
-        if child.kind() == "sql_portion" {
-            let mut sql_cursor = child.walk();
-            for sql_child in child.children(&mut sql_cursor) {
-                if sql_child.kind() == "sql_statement" {
-                    let mut stmt_cursor = sql_child.walk();
-                    for stmt_child in sql_child.children(&mut stmt_cursor) {
-                        if stmt_child.kind() == "with_statement" {
-                            // Find trailing select_statement in with_statement
-                            let mut with_cursor = stmt_child.walk();
-                            let mut seen_cte = false;
-                            for with_child in stmt_child.children(&mut with_cursor) {
-                                if with_child.kind() == "cte_definition" {
-                                    seen_cte = true;
-                                } else if with_child.kind() == "select_statement" && seen_cte {
-                                    // This is the trailing SELECT
-                                    return Some(get_node_text(&with_child, sql).to_string());
-                                }
-                            }
-                        } else if stmt_child.kind() == "select_statement" {
-                            // Direct SELECT (no WITH clause)
-                            return Some(get_node_text(&stmt_child, sql).to_string());
-                        }
-                    }
-                }
+    // Try to find WITH statement first
+    if let Some(with_node) = source_tree.find_node(&root, "(with_statement) @with") {
+        // Look for the trailing SELECT that comes AFTER cte_definition nodes
+        let mut cursor = with_node.walk();
+        let mut seen_cte = false;
+        for child in with_node.children(&mut cursor) {
+            if child.kind() == "cte_definition" {
+                seen_cte = true;
+            } else if child.kind() == "select_statement" && seen_cte {
+                // This is the trailing SELECT after CTEs
+                return Some(source_tree.get_text(&child));
             }
         }
     }
 
-    None
+    // Otherwise, look for direct SELECT statement (no WITH clause)
+    source_tree.find_text(&root, "(sql_statement (select_statement) @select)")
 }
 
 /// Transform global SQL for execution with temp tables
@@ -236,17 +182,20 @@ pub fn extract_trailing_select(sql: &str) -> Option<String> {
 /// If the SQL has a WITH clause followed by SELECT, extracts just the SELECT
 /// portion and transforms CTE references to temp table names.
 /// For SQL without WITH clause, just transforms any CTE references.
-pub fn transform_global_sql(sql: &str, materialized_ctes: &HashSet<String>) -> Option<String> {
-    // Try to extract trailing SELECT from WITH clause
-    if let Some(trailing_select) = extract_trailing_select(sql) {
+pub fn transform_global_sql(
+    source_tree: &SourceTree,
+    materialized_ctes: &HashSet<String>,
+) -> Option<String> {
+    // Try to extract SELECT (handles both WITH...SELECT and direct SELECT)
+    if let Some(select_sql) = extract_trailing_select(source_tree) {
         // Transform CTE references in the SELECT
-        Some(transform_cte_references(
-            &trailing_select,
-            materialized_ctes,
-        ))
-    } else if has_executable_sql(sql) {
-        // No WITH clause but has executable SQL - just transform references
-        Some(transform_cte_references(sql, materialized_ctes))
+        Some(transform_cte_references(&select_sql, materialized_ctes))
+    } else if has_executable_sql(source_tree) {
+        // Non-SELECT executable SQL (CREATE, INSERT, UPDATE, DELETE)
+        // OR VISUALISE FROM (which injects SELECT * FROM <source>)
+        // Extract SQL (with injection if VISUALISE FROM) and transform CTE references
+        let sql = source_tree.extract_sql()?;
+        Some(transform_cte_references(&sql, materialized_ctes))
     } else {
         // No executable SQL (just CTEs)
         None
@@ -259,47 +208,38 @@ pub fn transform_global_sql(sql: &str, materialized_ctes: &HashSet<String>) -> O
 /// This handles cases like `WITH a AS (...), b AS (...) VISUALISE` where the WITH
 /// clause has no trailing SELECT - these CTEs are still extracted for layer use
 /// but shouldn't be executed as global data.
-pub fn has_executable_sql(sql: &str) -> bool {
-    // Parse with tree-sitter to check for executable statements
-    let mut parser = Parser::new();
-    if parser.set_language(&tree_sitter_ggsql::language()).is_err() {
-        // If we can't parse, assume it's executable (fail safely)
+pub fn has_executable_sql(source_tree: &SourceTree) -> bool {
+    let root = source_tree.root();
+
+    // Check for direct executable statements (SELECT, CREATE, INSERT, UPDATE, DELETE)
+    let direct_statements = r#"
+        (sql_statement
+          [(select_statement)
+           (create_statement)
+           (insert_statement)
+           (update_statement)
+           (delete_statement)] @stmt)
+    "#;
+
+    if source_tree.find_node(&root, direct_statements).is_some() {
         return true;
     }
 
-    let tree = match parser.parse(sql, None) {
-        Some(t) => t,
-        None => return true, // Assume executable if parse fails
-    };
-
-    let root = tree.root_node();
-
-    // Look for sql_portion which should contain actual SQL statements
-    let mut cursor = root.walk();
-    for child in root.children(&mut cursor) {
-        if child.kind() == "sql_portion" {
-            // Check if sql_portion contains actual statement nodes
-            let mut sql_cursor = child.walk();
-            for sql_child in child.children(&mut sql_cursor) {
-                if sql_child.kind() == "sql_statement" {
-                    // Check if this is a WITH-only statement (no trailing SELECT)
-                    let mut stmt_cursor = sql_child.walk();
-                    for stmt_child in sql_child.children(&mut stmt_cursor) {
-                        match stmt_child.kind() {
-                            "select_statement" | "create_statement" | "insert_statement"
-                            | "update_statement" | "delete_statement" => return true,
-                            "with_statement" => {
-                                // Check if WITH has trailing SELECT
-                                if with_has_trailing_select(&stmt_child) {
-                                    return true;
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
+    // Check for WITH statements that have trailing SELECT
+    let with_statements = source_tree.find_nodes(&root, "(with_statement) @with");
+    for with_node in with_statements {
+        if with_has_trailing_select(&with_node) {
+            return true;
         }
+    }
+
+    // Check for VISUALISE FROM (which injects SELECT * FROM <source>)
+    let visualise_from = r#"
+        (visualise_statement
+          (from_clause) @from)
+    "#;
+    if source_tree.find_node(&root, visualise_from).is_some() {
+        return true;
     }
 
     false
@@ -328,7 +268,8 @@ mod tests {
     #[test]
     fn test_extract_ctes_single() {
         let sql = "WITH sales AS (SELECT * FROM raw_sales) SELECT * FROM sales";
-        let ctes = extract_ctes(sql);
+        let source_tree = SourceTree::new(sql).unwrap();
+        let ctes = extract_ctes(&source_tree);
 
         assert_eq!(ctes.len(), 1);
         assert_eq!(ctes[0].name, "sales");
@@ -341,7 +282,8 @@ mod tests {
             sales AS (SELECT * FROM raw_sales),
             targets AS (SELECT * FROM goals)
         SELECT * FROM sales";
-        let ctes = extract_ctes(sql);
+        let source_tree = SourceTree::new(sql).unwrap();
+        let ctes = extract_ctes(&source_tree);
 
         assert_eq!(ctes.len(), 2);
         // Verify order is preserved
@@ -352,7 +294,8 @@ mod tests {
     #[test]
     fn test_extract_ctes_none() {
         let sql = "SELECT * FROM sales WHERE year = 2024";
-        let ctes = extract_ctes(sql);
+        let source_tree = SourceTree::new(sql).unwrap();
+        let ctes = extract_ctes(&source_tree);
 
         assert!(ctes.is_empty());
     }

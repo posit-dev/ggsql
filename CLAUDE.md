@@ -22,7 +22,7 @@ THEME minimal
 - 507-line Tree-sitter grammar (simplified, no external scanner)
 - Full bindings: Rust, C, Python, Node.js with tree-sitter integration
 - Syntax highlighting support via Tree-sitter queries
-- 166 total tests (comprehensive parser, builder, and integration tests)
+- 916 total tests (174 parser tests, comprehensive builder and integration tests)
 - End-to-end working pipeline: SQL → Data → Visualization
 - Coordinate transformations: Cartesian (xlim/ylim), Flip, Polar
 - VISUALISE FROM shorthand syntax with automatic SELECT injection
@@ -100,8 +100,10 @@ DRAW line MAPPING month AS x, total AS y
                          │
                          ▼
          ┌───────────────────────────────┐
-         │      Query Splitter           │
-         │  (Regex-based, tree-sitter)   │
+         │        SourceTree             │
+         │  (Parse once, reuse CST)      │
+         │  • extract_sql()              │
+         │  • extract_visualise()        │
          └───────────┬───────────────────┘
                      │
          ┌───────────┴───────────┐
@@ -226,18 +228,30 @@ For detailed API documentation, see [`src/doc/API.md`](src/doc/API.md).
 
 **Responsibility**: Split queries and parse visualization specifications into typed AST.
 
-#### Query Splitter (`splitter.rs`)
+#### SourceTree (`source_tree.rs`)
 
-- Uses tree-sitter to parse the full query and find VISUALISE statements
-- Splits query at byte offset of first VISUALISE statement
-- Handles VISUALISE FROM by injecting `SELECT * FROM <source>`
-- Robust to parse errors in SQL portion (complex SQL we don't fully parse)
-- Properly handles semicolons between SQL statements
+**Parse-once architecture** that eliminates duplicate parsing throughout the pipeline.
 
-**Key Features:**
+**Core Design**:
 
-1. **Byte offset splitting**: Uses character positions instead of parse tree node boundaries
-2. **SELECT injection**: Automatically adds `SELECT * FROM <source>` when VISUALISE FROM is used
+- Wraps tree-sitter `Tree` + source text + `Language`
+- Parses query once, reuses CST for all operations
+- Declarative tree-sitter query API instead of manual tree walking
+- Lazy extraction methods for SQL and VISUALISE portions
+
+**High-Level Query API**:
+
+- `find_node(query)` - Find first matching node via tree-sitter query
+- `find_nodes(query)` - Find all matching nodes
+- `find_text(query)` - Extract text of first match
+- `find_texts(query)` - Extract text of all matches
+
+**Lazy Extraction Methods**:
+
+- `extract_sql()` - Lazily extract SQL portion (before VISUALISE)
+- `extract_visualise()` - Lazily extract VISUALISE portion
+- Both methods use declarative tree-sitter queries
+- Handles VISUALISE FROM by automatically injecting `SELECT * FROM <source>`
 
 #### Tree-sitter Integration (`mod.rs`)
 
@@ -266,11 +280,14 @@ Key grammar rules:
 
 ```rust
 pub fn parse_query(query: &str) -> Result<Vec<Plot>> {
-    // Parse full query (SQL + VISUALISE) with tree-sitter
-    let tree = parse_full_query(query)?;
+    // Parse once with SourceTree
+    let source_tree = SourceTree::new(query)?;
+
+    // Validate query structure
+    source_tree.validate()?;
 
     // Build AST from parse tree
-    let specs = builder::build_ast(&tree, query)?;
+    let specs = builder::build_ast(&source_tree)?;
     Ok(specs)
 }
 ```
@@ -322,19 +339,14 @@ pub enum Geom {
 
 pub enum AestheticValue {
     Column(String),                  // Unquoted column reference: revenue AS x
-    Literal(LiteralValue),           // Quoted literal: 'value' AS fill
-}
-
-pub enum LiteralValue {
-    String(String),
-    Number(f64),
-    Boolean(bool),
+    Literal(ParameterValue),         // Quoted literal: 'value' AS fill
 }
 
 pub enum ParameterValue {
     String(String),
     Number(f64),
     Boolean(bool),
+    Array(Vec<ParameterValue>),      // Array values for properties
 }
 
 pub struct Scale {
@@ -407,6 +419,7 @@ pub struct Theme {
 - `Plot::new()` - Create a new empty Plot
 - `Plot::with_global_mapping(mapping)` - Create Plot with a global mapping
 - `Plot::find_scale(aesthetic)` - Look up scale specification for an aesthetic
+- `Plot::find_guide(aesthetic)` - Find a guide specification for an aesthetic
 - `Plot::has_layers()` - Check if Plot has any layers
 - `Plot::layer_count()` - Get the number of layers
 
