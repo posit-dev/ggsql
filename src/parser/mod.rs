@@ -38,8 +38,8 @@ assert_eq!(specs[0].layers[0].geom, Geom::line());
 ```
 */
 
-use crate::{GgsqlError, Plot, Result};
-use tree_sitter::{Node, Query, QueryCursor, StreamingIterator, Tree};
+use crate::{Plot, Result};
+use tree_sitter::{Node, Query, QueryCursor, StreamingIterator};
 
 pub mod builder;
 pub mod source_tree;
