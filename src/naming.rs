@@ -66,6 +66,9 @@ const CTE_PREFIX: &str = concatcp!(GGSQL_PREFIX, "cte_");
 /// Full prefix for CTE tables: `__ggsql_cte_`
 const LAYER_PREFIX: &str = concatcp!(GGSQL_PREFIX, "layer_");
 
+/// Full prefix for aesthetic columns: `__ggsql_aes_`
+const AES_PREFIX: &str = concatcp!(GGSQL_PREFIX, "aes_");
+
 /// Key for global data in the layer data HashMap.
 /// Used as the key in PreparedData.data to store global data that applies to all layers.
 /// This is NOT a SQL table name - use `global_table()` for SQL statements.
@@ -73,6 +76,11 @@ pub const GLOBAL_DATA_KEY: &str = concatcp!(GGSQL_PREFIX, "global", GGSQL_SUFFIX
 
 /// Column name for row ordering in Vega-Lite (used by Path geom)
 pub const ORDER_COLUMN: &str = concatcp!(GGSQL_PREFIX, "order", GGSQL_SUFFIX);
+
+/// Column name for source identification in unified datasets
+/// Added to each row to identify which layer's data the row belongs to.
+/// Used with Vega-Lite filter transforms to select per-layer data.
+pub const SOURCE_COLUMN: &str = concatcp!(GGSQL_PREFIX, "source", GGSQL_SUFFIX);
 
 /// Alias for schema extraction queries
 pub const SCHEMA_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "schema", GGSQL_SUFFIX);
@@ -182,6 +190,22 @@ pub fn layer_key(layer_idx: usize) -> String {
     format!("{}{}{}", LAYER_PREFIX, layer_idx, GGSQL_SUFFIX)
 }
 
+/// Generate column name for an aesthetic mapping.
+///
+/// Used when renaming source columns to aesthetic names in layer queries.
+/// The prefix avoids conflicts with source data columns that might have
+/// the same name as an aesthetic (e.g., a column named "x" or "color").
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// assert_eq!(naming::aesthetic_column("x"), "__ggsql_aes_x__");
+/// assert_eq!(naming::aesthetic_column("fill"), "__ggsql_aes_fill__");
+/// ```
+pub fn aesthetic_column(aesthetic: &str) -> String {
+    format!("{}{}{}", AES_PREFIX, aesthetic, GGSQL_SUFFIX)
+}
+
 // ============================================================================
 // Detection Functions
 // ============================================================================
@@ -212,6 +236,20 @@ pub fn is_stat_column(name: &str) -> bool {
     name.starts_with(STAT_PREFIX)
 }
 
+/// Check if a column name is a synthetic aesthetic column.
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// assert!(naming::is_aesthetic_column("__ggsql_aes_x__"));
+/// assert!(naming::is_aesthetic_column("__ggsql_aes_fill__"));
+/// assert!(!naming::is_aesthetic_column("x"));
+/// assert!(!naming::is_aesthetic_column("__ggsql_stat_count"));
+/// ```
+pub fn is_aesthetic_column(name: &str) -> bool {
+    name.starts_with(AES_PREFIX) && name.ends_with(GGSQL_SUFFIX)
+}
+
 /// Check if a column name is any synthetic ggsql column.
 ///
 /// # Example
@@ -219,10 +257,33 @@ pub fn is_stat_column(name: &str) -> bool {
 /// use ggsql::naming;
 /// assert!(naming::is_synthetic_column("__ggsql_const_color__"));
 /// assert!(naming::is_synthetic_column("__ggsql_stat_count"));
+/// assert!(naming::is_synthetic_column("__ggsql_aes_x__"));
 /// assert!(!naming::is_synthetic_column("revenue"));
 /// ```
 pub fn is_synthetic_column(name: &str) -> bool {
-    is_const_column(name) || is_stat_column(name)
+    is_const_column(name) || is_stat_column(name) || is_aesthetic_column(name)
+}
+
+/// Generate bin end column name for a binned column.
+///
+/// Used by the Vega-Lite writer to store the upper bound of a bin
+/// when using `bin: "binned"` encoding with x2/y2 channels.
+///
+/// If the column is an aesthetic column (e.g., `__ggsql_aes_x__`), returns
+/// the corresponding `2` aesthetic (e.g., `__ggsql_aes_x2__`).
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// assert_eq!(naming::bin_end_column("temperature"), "__ggsql_bin_end_temperature__");
+/// assert_eq!(naming::bin_end_column("__ggsql_aes_x__"), "__ggsql_aes_x2__");
+/// ```
+pub fn bin_end_column(column: &str) -> String {
+    // If it's an aesthetic column, use the x2/y2 naming convention
+    if let Some(aesthetic) = extract_aesthetic_name(column) {
+        return aesthetic_column(&format!("{}2", aesthetic));
+    }
+    format!("{}bin_end_{}{}", GGSQL_PREFIX, column, GGSQL_SUFFIX)
 }
 
 /// Extract the stat name from a stat column (for display purposes).
@@ -238,6 +299,23 @@ pub fn is_synthetic_column(name: &str) -> bool {
 /// ```
 pub fn extract_stat_name(name: &str) -> Option<&str> {
     name.strip_prefix(STAT_PREFIX)
+}
+
+/// Extract the aesthetic name from an aesthetic column.
+///
+/// Returns the aesthetic name from a prefixed column name.
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// assert_eq!(naming::extract_aesthetic_name("__ggsql_aes_x__"), Some("x"));
+/// assert_eq!(naming::extract_aesthetic_name("__ggsql_aes_fill__"), Some("fill"));
+/// assert_eq!(naming::extract_aesthetic_name("regular_column"), None);
+/// assert_eq!(naming::extract_aesthetic_name("__ggsql_stat_count"), None);
+/// ```
+pub fn extract_aesthetic_name(name: &str) -> Option<&str> {
+    name.strip_prefix(AES_PREFIX)
+        .and_then(|s| s.strip_suffix(GGSQL_SUFFIX))
 }
 
 #[cfg(test)]
@@ -342,7 +420,23 @@ mod tests {
     fn test_constants() {
         assert_eq!(GLOBAL_DATA_KEY, "__ggsql_global__");
         assert_eq!(ORDER_COLUMN, "__ggsql_order__");
+        assert_eq!(SOURCE_COLUMN, "__ggsql_source__");
         assert_eq!(SCHEMA_ALIAS, "__schema__");
+    }
+
+    #[test]
+    fn test_bin_end_column() {
+        // Regular columns use bin_end prefix
+        assert_eq!(
+            bin_end_column("temperature"),
+            "__ggsql_bin_end_temperature__"
+        );
+        assert_eq!(bin_end_column("x"), "__ggsql_bin_end_x__");
+        assert_eq!(bin_end_column("value"), "__ggsql_bin_end_value__");
+
+        // Aesthetic columns use the x2/y2 convention
+        assert_eq!(bin_end_column("__ggsql_aes_x__"), "__ggsql_aes_x2__");
+        assert_eq!(bin_end_column("__ggsql_aes_y__"), "__ggsql_aes_y2__");
     }
 
     #[test]
@@ -352,5 +446,35 @@ mod tests {
         assert_eq!(STAT_PREFIX, "__ggsql_stat_");
         assert_eq!(CTE_PREFIX, "__ggsql_cte_");
         assert_eq!(LAYER_PREFIX, "__ggsql_layer_");
+        assert_eq!(AES_PREFIX, "__ggsql_aes_");
+    }
+
+    #[test]
+    fn test_aesthetic_column() {
+        assert_eq!(aesthetic_column("x"), "__ggsql_aes_x__");
+        assert_eq!(aesthetic_column("y"), "__ggsql_aes_y__");
+        assert_eq!(aesthetic_column("fill"), "__ggsql_aes_fill__");
+        assert_eq!(aesthetic_column("color"), "__ggsql_aes_color__");
+    }
+
+    #[test]
+    fn test_is_aesthetic_column() {
+        assert!(is_aesthetic_column("__ggsql_aes_x__"));
+        assert!(is_aesthetic_column("__ggsql_aes_fill__"));
+        assert!(!is_aesthetic_column("x"));
+        assert!(!is_aesthetic_column("__ggsql_stat_count"));
+        assert!(!is_aesthetic_column("__ggsql_const_color__"));
+        // Partial matches should fail
+        assert!(!is_aesthetic_column("__ggsql_aes_x")); // missing suffix
+    }
+
+    #[test]
+    fn test_extract_aesthetic_name() {
+        assert_eq!(extract_aesthetic_name("__ggsql_aes_x__"), Some("x"));
+        assert_eq!(extract_aesthetic_name("__ggsql_aes_fill__"), Some("fill"));
+        assert_eq!(extract_aesthetic_name("__ggsql_aes_color__"), Some("color"));
+        assert_eq!(extract_aesthetic_name("regular_column"), None);
+        assert_eq!(extract_aesthetic_name("__ggsql_stat_count"), None);
+        assert_eq!(extract_aesthetic_name("__ggsql_const_color__"), None);
     }
 }

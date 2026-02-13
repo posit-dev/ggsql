@@ -4,6 +4,7 @@
 //! handling all the node types defined in the grammar.
 
 use crate::plot::layer::geom::Geom;
+use crate::plot::scale::{color_to_hex, is_color_aesthetic, Transform};
 use crate::plot::*;
 use crate::{GgsqlError, Result};
 use std::collections::HashMap;
@@ -113,7 +114,7 @@ fn build_visualise_statement(node: &Node, source: &str) -> Result<Plot> {
         }
     }
 
-    // Validate no conflicts between SCALE and COORD domain specifications
+    // Validate no conflicts between SCALE and COORD input range specifications
     validate_scale_coord_conflicts(&spec)?;
 
     Ok(spec)
@@ -203,10 +204,10 @@ fn parse_explicit_mapping(node: &Node, source: &str) -> Result<(String, Aestheti
     }
 }
 
-/// Check for conflicts between SCALE domain and COORD aesthetic domain specifications
+/// Check for conflicts between SCALE input range and COORD aesthetic input range specifications
 fn validate_scale_coord_conflicts(spec: &Plot) -> Result<()> {
     if let Some(ref coord) = spec.coord {
-        // Get all aesthetic names that have domains in COORD
+        // Get all aesthetic names that have input ranges in COORD
         let coord_aesthetics: Vec<String> = coord
             .properties
             .keys()
@@ -214,18 +215,15 @@ fn validate_scale_coord_conflicts(spec: &Plot) -> Result<()> {
             .cloned()
             .collect();
 
-        // Check if any of these also have domain in SCALE
+        // Check if any of these also have input range in SCALE
         for aesthetic in coord_aesthetics {
             for scale in &spec.scales {
-                if scale.aesthetic == aesthetic {
-                    // Check if this scale has a domain property
-                    if scale.properties.contains_key("domain") {
-                        return Err(GgsqlError::ParseError(format!(
-                            "Domain for '{}' specified in both SCALE and COORD clauses. \
-                            Please specify domain in only one location.",
-                            aesthetic
-                        )));
-                    }
+                if scale.aesthetic == aesthetic && scale.input_range.is_some() {
+                    return Err(GgsqlError::ParseError(format!(
+                        "Input range for '{}' specified in both SCALE and COORD clauses. \
+                        Please specify input range in only one location.",
+                        aesthetic
+                    )));
                 }
             }
         }
@@ -263,10 +261,6 @@ fn process_viz_clause(node: &Node, source: &str, spec: &mut Plot) -> Result<()> 
                 } else {
                     spec.labels = Some(new_labels);
                 }
-            }
-            "guide_clause" => {
-                let guide = build_guide(&child, source)?;
-                spec.guides.push(guide);
             }
             "theme_clause" => {
                 spec.theme = Some(build_theme(&child, source)?);
@@ -410,13 +404,12 @@ fn parse_setting_clause(node: &Node, source: &str) -> Result<HashMap<String, Par
     for child in node.children(&mut cursor) {
         if child.kind() == "parameter_assignment" {
             let (param, mut value) = parse_parameter_assignment(&child, source)?;
-            match param.as_str() {
-                "color" | "col" | "colour" | "fill" | "stroke" => {
-                    if let ParameterValue::String(color) = value {
-                        value = ParameterValue::String(color_to_hex(&color));
-                    }
+            if is_color_aesthetic(&param) {
+                if let ParameterValue::String(color) = value {
+                    value = ParameterValue::String(
+                        color_to_hex(&color).map_err(GgsqlError::ParseError)?,
+                    );
                 }
-                _ => {}
             }
             parameters.insert(param, value);
         }
@@ -481,7 +474,7 @@ fn parse_parameter_assignment(node: &Node, source: &str) -> Result<(String, Para
     Ok((param_name, param_value.unwrap()))
 }
 
-/// Parse a parameter_value (string, number, or boolean)
+/// Parse a parameter_value (string, number, boolean, or null)
 fn parse_parameter_value(node: &Node, source: &str) -> Result<ParameterValue> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -502,6 +495,13 @@ fn parse_parameter_value(node: &Node, source: &str) -> Result<ParameterValue> {
                 let text = get_node_text(&child, source);
                 let bool_val = text == "true";
                 return Ok(ParameterValue::Boolean(bool_val));
+            }
+            "null_literal" => {
+                return Ok(ParameterValue::Null);
+            }
+            "array" => {
+                let elements = parse_array(&child, source)?;
+                return Ok(ParameterValue::Array(elements));
             }
             _ => {}
         }
@@ -614,45 +614,58 @@ fn parse_literal_value(node: &Node, source: &str) -> Result<AestheticValue> {
 }
 
 /// Build a Scale from a scale_clause node
+/// SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]
 fn build_scale(node: &Node, source: &str) -> Result<Scale> {
     let mut aesthetic = String::new();
     let mut scale_type: Option<ScaleType> = None;
+    let mut input_range: Option<Vec<ArrayElement>> = None;
+    let mut explicit_input_range = false;
+    let mut output_range: Option<OutputRange> = None;
+    let mut transform: Option<Transform> = None;
+    let mut explicit_transform = false;
     let mut properties = HashMap::new();
+    let mut label_mapping: Option<HashMap<String, Option<String>>> = None;
+    let mut label_template = "{}".to_string();
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "SCALE" | "SETTING" | "=>" | "," => continue, // Skip keywords
-            "aesthetic_name" => {
-                aesthetic = get_node_text(&child, source);
+            "SCALE" | "SETTING" | "=>" | "," | "FROM" | "TO" | "VIA" | "RENAMING" => continue, // Skip keywords
+            "scale_type_identifier" => {
+                // Parse scale type: CONTINUOUS, DISCRETE, BINNED, DATE, DATETIME
+                let type_text = get_node_text(&child, source);
+                scale_type = Some(parse_scale_type_identifier(&type_text)?);
             }
-            "scale_property" => {
-                // Parse scale property: name = value
-                let mut prop_cursor = child.walk();
-                let mut prop_name = String::new();
-                let mut prop_value: Option<ParameterValue> = None;
-
-                for prop_child in child.children(&mut prop_cursor) {
-                    match prop_child.kind() {
-                        "scale_property_name" => {
-                            prop_name = get_node_text(&prop_child, source);
-                        }
-                        "scale_property_value" => {
-                            prop_value = Some(parse_scale_property_value(&prop_child, source)?);
-                        }
-                        "=>" => continue,
-                        _ => {}
-                    }
+            "aesthetic_name" => {
+                aesthetic = normalise_aes_name(&get_node_text(&child, source));
+            }
+            "scale_from_clause" => {
+                // Parse FROM [array] -> input_range
+                input_range = parse_scale_from_clause(&child, source)?;
+                // Mark as explicit input range (user specified FROM clause)
+                explicit_input_range = input_range.is_some();
+            }
+            "scale_to_clause" => {
+                // Parse TO [array | identifier] -> output_range
+                output_range = parse_scale_to_clause(&child, source)?;
+            }
+            "scale_via_clause" => {
+                // Parse VIA identifier -> transform
+                transform = parse_scale_via_clause(&child, source)?;
+                // Mark as explicit transform (user specified VIA clause)
+                explicit_transform = transform.is_some();
+            }
+            "setting_clause" => {
+                // Reuse existing setting_clause parser
+                properties = parse_setting_clause(&child, source)?;
+            }
+            "scale_renaming_clause" => {
+                // Parse RENAMING 'A' => 'Alpha', 'B' => 'Beta', * => '{} units'
+                let (mappings, template) = parse_scale_renaming_clause(&child, source)?;
+                if !mappings.is_empty() {
+                    label_mapping = Some(mappings);
                 }
-
-                // If this is a 'type' property, set scale_type
-                if prop_name == "type" {
-                    if let Some(ParameterValue::String(type_str)) = prop_value {
-                        scale_type = Some(parse_scale_type(&type_str)?);
-                    }
-                } else if !prop_name.is_empty() && prop_value.is_some() {
-                    properties.insert(prop_name, prop_value.unwrap());
-                }
+                label_template = template;
             }
             _ => {}
         }
@@ -664,119 +677,204 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
         ));
     }
 
-    // Replace colour palettes by their hex codes
-    if matches!(
-        aesthetic.as_str(),
-        "stroke" | "colour" | "fill" | "color" | "col"
-    ) {
-        if let Some(ParameterValue::Array(elements)) = properties.get("palette") {
-            let mut hex_codes = Vec::new();
-            for elem in elements {
-                if let ArrayElement::String(color) = elem {
-                    let hex = ArrayElement::String(color_to_hex(color));
-                    hex_codes.push(hex);
-                } else {
-                    hex_codes.push(elem.clone());
-                }
-            }
-            properties.insert("palette".to_string(), ParameterValue::Array(hex_codes));
+    // Replace colour palettes by their hex codes in output_range
+    if is_color_aesthetic(&aesthetic) {
+        if let Some(OutputRange::Array(ref elements)) = output_range {
+            let hex_codes: Vec<ArrayElement> = elements
+                .iter()
+                .map(|elem| {
+                    if let ArrayElement::String(color) = elem {
+                        color_to_hex(color).map(ArrayElement::String)
+                    } else {
+                        Ok(elem.clone())
+                    }
+                })
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(GgsqlError::ParseError)?;
+            output_range = Some(OutputRange::Array(hex_codes));
         }
     }
 
     Ok(Scale {
         aesthetic,
         scale_type,
+        input_range,
+        explicit_input_range,
+        output_range,
+        transform,
+        explicit_transform,
         properties,
+        resolved: false,
+        label_mapping,
+        label_template,
     })
 }
 
-/// Parse scale type from text
-fn parse_scale_type(text: &str) -> Result<ScaleType> {
+/// Parse scale type identifier (CONTINUOUS, DISCRETE, BINNED, ORDINAL, IDENTITY)
+fn parse_scale_type_identifier(text: &str) -> Result<ScaleType> {
     match text.to_lowercase().as_str() {
-        "linear" => Ok(ScaleType::Linear),
-        "log" | "log10" => Ok(ScaleType::Log),
-        "sqrt" => Ok(ScaleType::Sqrt),
-        "reverse" => Ok(ScaleType::Reverse),
-        "categorical" => Ok(ScaleType::Categorical),
-        "ordinal" => Ok(ScaleType::Ordinal),
-        "date" => Ok(ScaleType::Date),
-        "datetime" => Ok(ScaleType::DateTime),
-        "viridis" => Ok(ScaleType::Viridis),
-        "plasma" => Ok(ScaleType::Plasma),
-        "diverging" => Ok(ScaleType::Diverging),
-        "sequential" => Ok(ScaleType::Sequential),
-        "identity" => Ok(ScaleType::Identity),
-        "manual" => Ok(ScaleType::Manual),
+        "continuous" => Ok(ScaleType::continuous()),
+        "discrete" => Ok(ScaleType::discrete()),
+        "binned" => Ok(ScaleType::binned()),
+        "ordinal" => Ok(ScaleType::ordinal()),
+        "identity" => Ok(ScaleType::identity()),
         _ => Err(GgsqlError::ParseError(format!(
-            "Unknown scale type: {}",
+            "Unknown scale type: '{}'. Valid types: continuous, discrete, binned, ordinal, identity",
             text
         ))),
     }
 }
 
-/// Parse scale property value
-fn parse_scale_property_value(node: &Node, source: &str) -> Result<ParameterValue> {
+/// Parse FROM clause: FROM [array]
+fn parse_scale_from_clause(node: &Node, source: &str) -> Result<Option<Vec<ArrayElement>>> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "array" {
+            return Ok(Some(parse_array(&child, source)?));
+        }
+    }
+    Ok(None)
+}
+
+/// Parse TO clause: TO [array | identifier]
+fn parse_scale_to_clause(node: &Node, source: &str) -> Result<Option<OutputRange>> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "string" => {
-                let text = get_node_text(&child, source);
-                let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                return Ok(ParameterValue::String(unquoted.to_string()));
-            }
-            "number" => {
-                let text = get_node_text(&child, source);
-                let num = text.parse::<f64>().map_err(|e| {
-                    GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
-                })?;
-                return Ok(ParameterValue::Number(num));
-            }
-            "boolean" => {
-                let text = get_node_text(&child, source);
-                let bool_val = text == "true";
-                return Ok(ParameterValue::Boolean(bool_val));
-            }
             "array" => {
-                // Parse array of values
-                let mut values = Vec::new();
-                let mut array_cursor = child.walk();
-                for array_child in child.children(&mut array_cursor) {
-                    if array_child.kind() == "array_element" {
-                        // Array elements wrap the actual values
-                        let mut elem_cursor = array_child.walk();
-                        for elem_child in array_child.children(&mut elem_cursor) {
-                            match elem_child.kind() {
-                                "string" => {
-                                    let text = get_node_text(&elem_child, source);
-                                    let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                                    values.push(ArrayElement::String(unquoted.to_string()));
-                                }
-                                "number" => {
-                                    let text = get_node_text(&elem_child, source);
-                                    if let Ok(num) = text.parse::<f64>() {
-                                        values.push(ArrayElement::Number(num));
-                                    }
-                                }
-                                "boolean" => {
-                                    let text = get_node_text(&elem_child, source);
-                                    let bool_val = text == "true";
-                                    values.push(ArrayElement::Boolean(bool_val));
-                                }
-                                _ => continue,
-                            }
+                let elements = parse_array(&child, source)?;
+                return Ok(Some(OutputRange::Array(elements)));
+            }
+            "identifier" | "bare_identifier" | "quoted_identifier" => {
+                let palette_name = get_node_text(&child, source);
+                return Ok(Some(OutputRange::Palette(palette_name)));
+            }
+            _ => continue,
+        }
+    }
+    Ok(None)
+}
+
+/// Parse VIA clause: VIA identifier
+fn parse_scale_via_clause(node: &Node, source: &str) -> Result<Option<Transform>> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if matches!(
+            child.kind(),
+            "identifier" | "bare_identifier" | "quoted_identifier"
+        ) {
+            let transform_name = get_node_text(&child, source);
+            return match Transform::from_name(&transform_name) {
+                Some(t) => Ok(Some(t)),
+                None => Err(GgsqlError::ParseError(format!(
+                    "Unknown transform: '{}'. Valid transforms are: {}",
+                    transform_name,
+                    crate::plot::scale::ALL_TRANSFORM_NAMES.join(", ")
+                ))),
+            };
+        }
+    }
+    Ok(None)
+}
+
+/// Parse RENAMING clause: RENAMING 'A' => 'Alpha', 'B' => 'Beta', 'internal' => NULL, * => '{} units'
+///
+/// Returns a tuple of:
+/// - HashMap where: Key = original value, Value = Some(label) or None for suppressed labels
+/// - Template string for wildcard mappings (* => '...'), defaults to "{}"
+fn parse_scale_renaming_clause(
+    node: &Node,
+    source: &str,
+) -> Result<(HashMap<String, Option<String>>, String)> {
+    let mut mappings = HashMap::new();
+    let mut template = "{}".to_string();
+    let mut cursor = node.walk();
+
+    for child in node.children(&mut cursor) {
+        if child.kind() == "renaming_assignment" {
+            let mut from_value: Option<String> = None;
+            let mut is_wildcard = false;
+            let mut to_value: Option<Option<String>> = None; // None = not set, Some(None) = NULL
+
+            let mut assignment_cursor = child.walk();
+            for assignment_child in child.children(&mut assignment_cursor) {
+                match assignment_child.kind() {
+                    "*" => {
+                        is_wildcard = true;
+                    }
+                    "string" => {
+                        let text = get_node_text(&assignment_child, source);
+                        let unquoted = text.trim_matches(|c| c == '\'' || c == '"').to_string();
+                        if from_value.is_none() && !is_wildcard {
+                            from_value = Some(unquoted);
+                        } else {
+                            to_value = Some(Some(unquoted));
                         }
                     }
+                    "number" => {
+                        // Handle numeric keys for continuous/binned scales
+                        let text = get_node_text(&assignment_child, source);
+                        if from_value.is_none() && !is_wildcard {
+                            from_value = Some(text);
+                        }
+                    }
+                    "null_literal" => {
+                        // NULL suppresses the label
+                        to_value = Some(None);
+                    }
+                    _ => {}
                 }
-                return Ok(ParameterValue::Array(values));
             }
-            _ => {}
+
+            if is_wildcard {
+                // Wildcard: * => 'template'
+                if let Some(Some(tmpl)) = to_value {
+                    template = tmpl;
+                }
+            } else if let (Some(from), Some(to)) = (from_value, to_value) {
+                // Explicit mapping: 'A' => 'Alpha'
+                mappings.insert(from, to);
+            }
         }
     }
 
-    Err(GgsqlError::ParseError(format!(
-        "Could not parse scale property value from node: {}",
-        node.kind()
-    )))
+    Ok((mappings, template))
+}
+
+/// Parse an array node into Vec<ArrayElement>
+fn parse_array(node: &Node, source: &str) -> Result<Vec<ArrayElement>> {
+    let mut values = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "array_element" {
+            let mut elem_cursor = child.walk();
+            for elem_child in child.children(&mut elem_cursor) {
+                match elem_child.kind() {
+                    "string" => {
+                        let text = get_node_text(&elem_child, source);
+                        let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
+                        values.push(ArrayElement::String(unquoted.to_string()));
+                    }
+                    "number" => {
+                        let text = get_node_text(&elem_child, source);
+                        if let Ok(num) = text.parse::<f64>() {
+                            values.push(ArrayElement::Number(num));
+                        }
+                    }
+                    "boolean" => {
+                        let text = get_node_text(&elem_child, source);
+                        let bool_val = text == "true";
+                        values.push(ArrayElement::Boolean(bool_val));
+                    }
+                    "null_literal" => {
+                        values.push(ArrayElement::Null);
+                    }
+                    _ => continue,
+                }
+            }
+        }
+    }
+    Ok(values)
 }
 
 /// Build a Facet from a facet_clause node
@@ -1063,6 +1161,7 @@ fn parse_coord_property_value(node: &Node, source: &str) -> Result<ParameterValu
             let bool_val = text == "true";
             Ok(ParameterValue::Boolean(bool_val))
         }
+        "null_literal" => Ok(ParameterValue::Null),
         "array" => {
             // Parse array of values
             let mut values = Vec::new();
@@ -1137,106 +1236,6 @@ fn build_labels(node: &Node, source: &str) -> Result<Labels> {
     }
 
     Ok(Labels { labels })
-}
-
-/// Build a Guide from a guide_clause node
-fn build_guide(node: &Node, source: &str) -> Result<Guide> {
-    let mut aesthetic = String::new();
-    let mut guide_type: Option<GuideType> = None;
-    let mut properties = HashMap::new();
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "GUIDE" | "SETTING" | "=>" | "," => continue, // Skip keywords
-            "aesthetic_name" => {
-                aesthetic = get_node_text(&child, source);
-            }
-            "guide_property" => {
-                // Parse guide property
-                let mut prop_cursor = child.walk();
-                for prop_child in child.children(&mut prop_cursor) {
-                    if prop_child.kind() == "guide_type" {
-                        // This is a type property: type = legend
-                        let type_text = get_node_text(&prop_child, source);
-                        guide_type = Some(parse_guide_type(&type_text)?);
-                    } else if prop_child.kind() == "guide_property_name" {
-                        // Regular property: name = value
-                        let prop_name = get_node_text(&prop_child, source);
-
-                        // Find the value (next sibling after '=>')
-                        let mut found_to = false;
-                        let mut value_cursor = child.walk();
-                        for value_child in child.children(&mut value_cursor) {
-                            if value_child.kind() == "=>" {
-                                found_to = true;
-                                continue;
-                            }
-                            if found_to {
-                                let prop_value = parse_guide_property_value(&value_child, source)?;
-                                properties.insert(prop_name.clone(), prop_value);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    if aesthetic.is_empty() {
-        return Err(GgsqlError::ParseError(
-            "Guide clause missing aesthetic name".to_string(),
-        ));
-    }
-
-    Ok(Guide {
-        aesthetic,
-        guide_type,
-        properties,
-    })
-}
-
-/// Parse guide type from text
-fn parse_guide_type(text: &str) -> Result<GuideType> {
-    match text.to_lowercase().as_str() {
-        "legend" => Ok(GuideType::Legend),
-        "colorbar" => Ok(GuideType::ColorBar),
-        "axis" => Ok(GuideType::Axis),
-        "none" => Ok(GuideType::None),
-        _ => Err(GgsqlError::ParseError(format!(
-            "Unknown guide type: {}",
-            text
-        ))),
-    }
-}
-
-/// Parse guide property value
-fn parse_guide_property_value(node: &Node, source: &str) -> Result<ParameterValue> {
-    match node.kind() {
-        "string" => {
-            let text = get_node_text(node, source);
-            let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-            Ok(ParameterValue::String(unquoted.to_string()))
-        }
-        "number" => {
-            let text = get_node_text(node, source);
-            let num = text.parse::<f64>().map_err(|e| {
-                GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
-            })?;
-            Ok(ParameterValue::Number(num))
-        }
-        "boolean" => {
-            let text = get_node_text(node, source);
-            let bool_val = text == "true";
-            Ok(ParameterValue::Boolean(bool_val))
-        }
-        _ => Err(GgsqlError::ParseError(format!(
-            "Unexpected guide property value type: {}",
-            node.kind()
-        ))),
-    }
 }
 
 /// Build a Theme from a theme_clause node
@@ -1366,17 +1365,6 @@ pub fn normalise_aes_name(name: &str) -> String {
         _ => name.to_string(),
     }
 }
-
-fn color_to_hex(value: &str) -> String {
-    match csscolorparser::parse(value) {
-        Ok(value) => value.to_css_hex(),
-        Err(e) => {
-            eprintln!("{}", e);
-            std::process::exit(1)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1437,7 +1425,7 @@ mod tests {
     }
 
     #[test]
-    fn test_coord_cartesian_valid_aesthetic_domain() {
+    fn test_coord_cartesian_valid_aesthetic_input_range() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color
@@ -1469,7 +1457,7 @@ mod tests {
     }
 
     #[test]
-    fn test_coord_flip_valid_aesthetic_domain() {
+    fn test_coord_flip_valid_aesthetic_input_range() {
         let query = r#"
             VISUALISE
             DRAW bar MAPPING category AS x, value AS y, region AS color
@@ -1551,7 +1539,7 @@ mod tests {
     }
 
     #[test]
-    fn test_coord_polar_valid_aesthetic_domain() {
+    fn test_coord_polar_valid_aesthetic_input_range() {
         let query = r#"
             VISUALISE
             DRAW bar MAPPING category AS x, value AS y, region AS color
@@ -1599,15 +1587,15 @@ mod tests {
     }
 
     // ========================================
-    // SCALE/COORD Domain Conflict Tests
+    // SCALE/COORD Input Range Conflict Tests
     // ========================================
 
     #[test]
-    fn test_scale_coord_conflict_x_domain() {
+    fn test_scale_coord_conflict_x_input_range() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            SCALE x SETTING domain => [0, 100]
+            SCALE x FROM [0, 100]
             COORD cartesian SETTING x => [0, 50]
         "#;
 
@@ -1616,15 +1604,15 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err
             .to_string()
-            .contains("Domain for 'x' specified in both SCALE and COORD"));
+            .contains("Input range for 'x' specified in both SCALE and COORD"));
     }
 
     #[test]
-    fn test_scale_coord_conflict_color_domain() {
+    fn test_scale_coord_conflict_color_input_range() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color
-            SCALE color SETTING domain => ['A', 'B']
+            SCALE color FROM ['A', 'B']
             COORD cartesian SETTING color => ['A', 'B', 'C']
         "#;
 
@@ -1633,7 +1621,7 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err
             .to_string()
-            .contains("Domain for 'color' specified in both SCALE and COORD"));
+            .contains("Input range for 'color' specified in both SCALE and COORD"));
     }
 
     #[test]
@@ -1641,7 +1629,7 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color
-            SCALE color SETTING domain => ['A', 'B']
+            SCALE color FROM ['A', 'B']
             COORD cartesian SETTING xlim => [0, 100]
         "#;
 
@@ -1650,11 +1638,11 @@ mod tests {
     }
 
     #[test]
-    fn test_scale_coord_no_conflict_scale_without_domain() {
+    fn test_scale_coord_no_conflict_scale_without_input_range() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            SCALE x SETTING type => 'linear'
+            SCALE CONTINUOUS x
             COORD cartesian SETTING x => [0, 100]
         "#;
 
@@ -3113,25 +3101,458 @@ mod tests {
     fn test_colour_scale_hex_code_conversion() {
         let query = r#"
           VISUALISE foo AS x
-          SCALE color SETTING palette => ['rgb(0, 0, 255)', 'green', '#FF0000']
+          SCALE color TO ['rgb(0, 0, 255)', 'green', '#FF0000']
         "#;
         let specs = parse_test_query(query).unwrap();
 
         let scales = &specs[0].scales;
         assert_eq!(scales.len(), 1);
 
-        let scale_params = &scales[0].properties;
-        let palette = scale_params.get("palette");
-        assert!(palette.is_some());
-        let palette = palette.unwrap();
+        // Check output_range instead of properties.palette
+        let output_range = &scales[0].output_range;
+        assert!(output_range.is_some());
+        let output_range = output_range.as_ref().unwrap();
 
         let mut ok = false;
-        if let ParameterValue::Array(elems) = palette {
+        if let OutputRange::Array(elems) = output_range {
             ok = matches!(&elems[0], ArrayElement::String(color) if color == "#0000ff");
             ok = ok && matches!(&elems[1], ArrayElement::String(color) if color == "#008000");
             ok = ok && matches!(&elems[2], ArrayElement::String(color) if color == "#ff0000");
         }
         assert!(ok);
-        eprintln!("{:?}", palette);
+        eprintln!("{:?}", output_range);
+    }
+
+    // ========================================
+    // Null in Scale Input Range Tests
+    // ========================================
+
+    #[test]
+    fn test_scale_from_with_null_max() {
+        // SCALE x FROM [0, null] - explicit min, infer max
+        let query = r#"
+            VISUALISE x, y
+            DRAW point
+            SCALE x FROM [0, null]
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "x");
+
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 2);
+        assert!(matches!(&input_range[0], ArrayElement::Number(n) if *n == 0.0));
+        assert!(matches!(&input_range[1], ArrayElement::Null));
+    }
+
+    #[test]
+    fn test_scale_from_with_null_min() {
+        // SCALE x FROM [null, 100] - infer min, explicit max
+        let query = r#"
+            VISUALISE x, y
+            DRAW point
+            SCALE x FROM [null, 100]
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 2);
+        assert!(matches!(&input_range[0], ArrayElement::Null));
+        assert!(matches!(&input_range[1], ArrayElement::Number(n) if *n == 100.0));
+    }
+
+    #[test]
+    fn test_scale_from_with_both_nulls() {
+        // SCALE x FROM [null, null] - infer both (same as no FROM clause)
+        let query = r#"
+            VISUALISE x, y
+            DRAW point
+            SCALE x FROM [null, null]
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 2);
+        assert!(matches!(&input_range[0], ArrayElement::Null));
+        assert!(matches!(&input_range[1], ArrayElement::Null));
+    }
+
+    #[test]
+    fn test_scale_from_with_null_case_insensitive() {
+        // NULL should be case-insensitive
+        let query = r#"
+            VISUALISE x, y
+            DRAW point
+            SCALE x FROM [0, NULL]
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert!(matches!(&input_range[1], ArrayElement::Null));
+    }
+
+    #[test]
+    fn test_scale_from_with_null() {
+        // Scale with partial input range: explicit start, infer end
+        // Note: DATE/DATETIME are no longer scale types - temporal handling is done
+        // via transforms that are automatically inferred from column data types
+        let query = r#"
+            VISUALISE date AS x, value AS y
+            DRAW line
+            SCALE x FROM ['2024-01-01', null]
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 2);
+        assert!(matches!(&input_range[0], ArrayElement::String(s) if s == "2024-01-01"));
+        assert!(matches!(&input_range[1], ArrayElement::Null));
+    }
+
+    #[test]
+    fn test_scale_via_date_transform() {
+        // Explicit date transform via VIA clause
+        let query = r#"
+            VISUALISE date AS x, value AS y
+            DRAW line
+            SCALE x VIA date
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "x");
+        assert!(scales[0].transform.is_some());
+        assert_eq!(scales[0].transform.as_ref().unwrap().name(), "date");
+    }
+
+    #[test]
+    fn test_scale_via_integer_transform() {
+        // Explicit integer transform via VIA clause
+        let query = r#"
+            VISUALISE val AS x, count AS y
+            DRAW point
+            SCALE x VIA integer
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "x");
+        assert!(scales[0].transform.is_some());
+        assert_eq!(scales[0].transform.as_ref().unwrap().name(), "integer");
+    }
+
+    #[test]
+    fn test_scale_via_int_alias() {
+        // Integer transform using 'int' alias
+        let query = r#"
+            VISUALISE val AS x, count AS y
+            DRAW point
+            SCALE x VIA int
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert!(scales[0].transform.is_some());
+        assert_eq!(scales[0].transform.as_ref().unwrap().name(), "integer");
+    }
+
+    #[test]
+    fn test_scale_via_bigint_alias() {
+        // Integer transform using 'bigint' alias
+        let query = r#"
+            VISUALISE val AS x, count AS y
+            DRAW point
+            SCALE x VIA bigint
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert!(scales[0].transform.is_some());
+        assert_eq!(scales[0].transform.as_ref().unwrap().name(), "integer");
+    }
+
+    // ========================================
+    // RENAMING clause tests
+    // ========================================
+
+    #[test]
+    fn test_scale_renaming_basic() {
+        // Basic RENAMING clause with string keys
+        let query = r#"
+            VISUALISE x AS x, y AS y
+            DRAW bar
+            SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "x");
+
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+        assert_eq!(label_mapping.len(), 2);
+        assert_eq!(label_mapping.get("A"), Some(&Some("Alpha".to_string())));
+        assert_eq!(label_mapping.get("B"), Some(&Some("Beta".to_string())));
+    }
+
+    #[test]
+    fn test_scale_renaming_with_null() {
+        // RENAMING with NULL to suppress labels
+        let query = r#"
+            VISUALISE x AS x, y AS y
+            DRAW bar
+            SCALE DISCRETE x RENAMING 'internal' => NULL, 'visible' => 'Shown'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+
+        assert_eq!(label_mapping.get("internal"), Some(&None)); // NULL -> None
+        assert_eq!(
+            label_mapping.get("visible"),
+            Some(&Some("Shown".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_scale_renaming_with_numeric_keys() {
+        // RENAMING with numeric keys (for binned scales)
+        let query = r#"
+            VISUALISE temp AS x, count AS y
+            DRAW bar
+            SCALE BINNED x RENAMING 0 => '0-10', 10 => '10-20', 20 => '20-30'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+
+        assert_eq!(label_mapping.len(), 3);
+        assert_eq!(label_mapping.get("0"), Some(&Some("0-10".to_string())));
+        assert_eq!(label_mapping.get("10"), Some(&Some("10-20".to_string())));
+        assert_eq!(label_mapping.get("20"), Some(&Some("20-30".to_string())));
+    }
+
+    #[test]
+    fn test_scale_renaming_for_color_legend() {
+        // RENAMING for color legend labels
+        let query = r#"
+            VISUALISE x, y, category AS color
+            DRAW point
+            SCALE DISCRETE color RENAMING 'cat_a' => 'Category A', 'cat_b' => 'Category B'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "color");
+
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+        assert_eq!(
+            label_mapping.get("cat_a"),
+            Some(&Some("Category A".to_string()))
+        );
+        assert_eq!(
+            label_mapping.get("cat_b"),
+            Some(&Some("Category B".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_scale_renaming_with_setting() {
+        // RENAMING combined with SETTING
+        let query = r#"
+            VISUALISE x, y
+            DRAW bar
+            SCALE DISCRETE x SETTING reverse => true RENAMING 'A' => 'First', 'B' => 'Second'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        // Check SETTING was parsed
+        assert_eq!(
+            scales[0].properties.get("reverse"),
+            Some(&ParameterValue::Boolean(true))
+        );
+
+        // Check RENAMING was parsed
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+        assert_eq!(label_mapping.get("A"), Some(&Some("First".to_string())));
+        assert_eq!(label_mapping.get("B"), Some(&Some("Second".to_string())));
+    }
+
+    #[test]
+    fn test_scale_renaming_with_from_to() {
+        // RENAMING combined with FROM and TO clauses
+        let query = r#"
+            VISUALISE x, y, cat AS color
+            DRAW point
+            SCALE DISCRETE color FROM ['A', 'B'] TO ['red', 'blue']
+                RENAMING 'A' => 'Option A', 'B' => 'Option B'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        // Check FROM was parsed
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 2);
+
+        // Check TO was parsed
+        assert!(scales[0].output_range.is_some());
+
+        // Check RENAMING was parsed
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+        assert_eq!(label_mapping.get("A"), Some(&Some("Option A".to_string())));
+    }
+
+    #[test]
+    fn test_scale_renaming_wildcard_template() {
+        // Wildcard template for label generation
+        let query = r#"
+            VISUALISE x AS x, y AS y
+            DRAW point
+            SCALE CONTINUOUS x RENAMING * => '{} units'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        // Check label_template was parsed
+        assert!(scales[0].label_mapping.is_none()); // No explicit mappings
+        assert_eq!(scales[0].label_template, "{} units");
+    }
+
+    #[test]
+    fn test_scale_renaming_wildcard_with_explicit() {
+        // Mixed explicit mappings and wildcard template
+        let query = r#"
+            VISUALISE x AS x, y AS y
+            DRAW point
+            SCALE DISCRETE x RENAMING 'A' => 'Alpha', * => 'Category {}'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        // Check explicit mapping was parsed
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+        assert_eq!(label_mapping.get("A"), Some(&Some("Alpha".to_string())));
+
+        // Check template was also parsed
+        assert_eq!(scales[0].label_template, "Category {}");
+    }
+
+    #[test]
+    fn test_scale_renaming_wildcard_uppercase() {
+        // Wildcard template with uppercase transformation
+        let query = r#"
+            VISUALISE x AS x, y AS y
+            DRAW bar
+            SCALE DISCRETE x RENAMING * => '{:UPPER}'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        assert_eq!(scales[0].label_template, "{:UPPER}");
+    }
+
+    #[test]
+    fn test_scale_renaming_wildcard_datetime() {
+        // Wildcard template with datetime formatting
+        let query = r#"
+            VISUALISE date AS x, value AS y
+            DRAW line
+            SCALE CONTINUOUS x RENAMING * => '{:time %b %Y}'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        assert_eq!(scales[0].label_template, "{:time %b %Y}");
+    }
+
+    // ========================================
+    // ORDINAL scale type tests
+    // ========================================
+
+    #[test]
+    fn test_scale_ordinal_basic() {
+        // Basic ORDINAL scale type
+        let query = r#"
+            VISUALISE x AS x, y AS y, category AS fill
+            DRAW point
+            SCALE ORDINAL fill FROM ['low', 'medium', 'high'] TO viridis
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "fill");
+        assert!(scales[0].scale_type.is_some());
+        assert_eq!(
+            scales[0].scale_type.as_ref().unwrap().scale_type_kind(),
+            crate::plot::ScaleTypeKind::Ordinal
+        );
+
+        // Check input range was parsed
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 3);
+
+        // Check output range was parsed as palette
+        assert!(scales[0].output_range.is_some());
+    }
+
+    #[test]
+    fn test_scale_ordinal_with_explicit_colors() {
+        // ORDINAL scale with explicit color array
+        let query = r#"
+            VISUALISE x AS x, y AS y, size_cat AS fill
+            DRAW point
+            SCALE ORDINAL fill FROM ['S', 'M', 'L'] TO ['#ff0000', '#00ff00', '#0000ff']
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(
+            scales[0].scale_type.as_ref().unwrap().scale_type_kind(),
+            crate::plot::ScaleTypeKind::Ordinal
+        );
+    }
+
+    #[test]
+    fn test_scale_ordinal_case_insensitive() {
+        // ORDINAL should be case-insensitive
+        let query = r#"
+            VISUALISE x AS x, y AS y, cat AS color
+            DRAW point
+            SCALE ordinal color FROM ['a', 'b', 'c']
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(
+            scales[0].scale_type.as_ref().unwrap().scale_type_kind(),
+            crate::plot::ScaleTypeKind::Ordinal
+        );
     }
 }

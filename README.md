@@ -219,7 +219,7 @@ Key grammar elements:
 - `SCALE <aesthetic> SETTING` - Configure data-to-visual mappings
 - `FACET` - Create small multiples (WRAP for flowing layout, BY for grid)
 - `COORD` - Coordinate transformations (cartesian, flip, polar)
-- `LABEL`, `THEME`, `GUIDE` - Styling and annotation
+- `LABEL`, `THEME` - Styling and annotation
 
 ## Jupyter Kernel
 

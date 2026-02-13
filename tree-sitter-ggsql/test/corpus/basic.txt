@@ -443,8 +443,8 @@ Plot with scales and theme
 
 VISUALISE x, y, group AS color
 DRAW point
-SCALE x SETTING type => 'linear', limits => [0, 100]
-SCALE color SETTING palette => 'viridis'
+SCALE CONTINUOUS x FROM [0, 100]
+SCALE color TO viridis
 THEME minimal
 
 --------------------------------------------------------------------------------
@@ -474,26 +474,20 @@ THEME minimal
         (geom_type)))
     (viz_clause
       (scale_clause
+        (scale_type_identifier)
         (aesthetic_name)
-        (scale_property
-          (scale_property_name)
-          (scale_property_value
-            (string)))
-        (scale_property
-          (scale_property_name)
-          (scale_property_value
-            (array
-              (array_element
-                (number))
-              (array_element
-                (number)))))))
+        (scale_from_clause
+          (array
+            (array_element
+              (number))
+            (array_element
+              (number))))))
     (viz_clause
       (scale_clause
         (aesthetic_name)
-        (scale_property
-          (scale_property_name)
-          (scale_property_value
-            (string)))))
+        (scale_to_clause
+          (identifier
+            (bare_identifier)))))
     (viz_clause
       (theme_clause
         (theme_name)))))
@@ -1123,8 +1117,9 @@ DRAW line MAPPING x AS x, total AS y
             (function_args
               (function_arg
                 (positional_arg
-                  (identifier
-                    (bare_identifier)))))
+                  (qualified_name
+                    (identifier
+                      (bare_identifier))))))
             (window_specification
               (window_order_clause
                 (order_item
@@ -2101,3 +2096,147 @@ SELECT * FROM "data.csv"
               (qualified_name
                 (identifier
                   (quoted_identifier))))))))))
+
+================================================================================
+SCALE RENAMING with explicit mappings
+================================================================================
+
+VISUALISE x, y
+DRAW point
+SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_renaming_clause
+          (renaming_assignment
+            from: (string)
+            to: (string))
+          (renaming_assignment
+            from: (string)
+            to: (string)))))))
+
+================================================================================
+SCALE RENAMING with NULL suppression
+================================================================================
+
+VISUALISE x, y
+DRAW bar
+SCALE DISCRETE x RENAMING 'internal' => NULL
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_renaming_clause
+          (renaming_assignment
+            from: (string)
+            to: (null_literal)))))))
+
+================================================================================
+SCALE RENAMING with wildcard template
+================================================================================
+
+VISUALISE x, y
+DRAW point
+SCALE CONTINUOUS x RENAMING * => '{} units'
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_renaming_clause
+          (renaming_assignment
+            to: (string)))))))
+
+================================================================================
+SCALE RENAMING with mixed explicit and wildcard
+================================================================================
+
+VISUALISE x, y
+DRAW bar
+SCALE DISCRETE x RENAMING 'A' => 'Alpha', * => 'Category {}'
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_renaming_clause
+          (renaming_assignment
+            from: (string)
+            to: (string))
+          (renaming_assignment
+            to: (string)))))))

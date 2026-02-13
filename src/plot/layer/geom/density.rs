@@ -14,7 +14,7 @@ impl GeomTrait for Density {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &["x", "color", "colour", "fill", "stroke", "opacity"],
+            supported: &["x", "fill", "stroke", "opacity"],
             required: &["x"],
             hidden: &[],
         }
