@@ -16,6 +16,33 @@ use super::SourceTree;
 // Basic Type Parsers
 // ============================================================================
 
+/// Extract 'name' and 'value' field nodes from an assignment-like node
+///
+/// Returns (name_node, value_node) without any interpretation.
+/// Works for both patterns:
+/// - `name => value` (SETTING, COORD, THEME, LABEL, RENAMING)
+/// - `value AS name` (MAPPING explicit_mapping)
+///
+/// Caller is responsible for interpreting the nodes based on their context.
+fn extract_name_value_nodes<'a>(
+    node: &'a Node<'a>,
+    context: &str,
+) -> Result<(Node<'a>, Node<'a>)> {
+    let name_node = node
+        .child_by_field_name("name")
+        .ok_or_else(|| {
+            GgsqlError::ParseError(format!("Missing 'name' field in {}", context))
+        })?;
+
+    let value_node = node
+        .child_by_field_name("value")
+        .ok_or_else(|| {
+            GgsqlError::ParseError(format!("Missing 'value' field in {}", context))
+        })?;
+
+    Ok((name_node, value_node))
+}
+
 /// Parse a string node, removing quotes
 fn parse_string_node(node: &Node, source: &SourceTree) -> String {
     let text = source.get_text(node);
@@ -45,29 +72,23 @@ fn parse_array_node(node: &Node, source: &SourceTree) -> Result<Vec<ArrayElement
     let array_elements = source.find_nodes(node, query);
 
     for array_element in array_elements {
-        // Array elements wrap the actual values
-        let mut elem_cursor = array_element.walk();
-        for elem_child in array_element.children(&mut elem_cursor) {
-            match elem_child.kind() {
-                "string" => {
-                    let value = parse_string_node(&elem_child, source);
-                    values.push(ArrayElement::String(value));
-                }
-                "number" => {
-                    if let Ok(num) = parse_number_node(&elem_child, source) {
-                        values.push(ArrayElement::Number(num));
-                    }
-                }
-                "boolean" => {
-                    let value = parse_boolean_node(&elem_child, source);
-                    values.push(ArrayElement::Boolean(value));
-                }
-                "null_literal" => {
-                    values.push(ArrayElement::Null);
-                }
-                _ => continue,
+        // array_element is a choice node, so it has exactly one child
+        let elem_child = array_element.child(0)
+            .ok_or_else(|| GgsqlError::ParseError("Invalid array_element: missing child".to_string()))?;
+
+        let value = match elem_child.kind() {
+            "string" => ArrayElement::String(parse_string_node(&elem_child, source)),
+            "number" => ArrayElement::Number(parse_number_node(&elem_child, source)?),
+            "boolean" => ArrayElement::Boolean(parse_boolean_node(&elem_child, source)),
+            "null_literal" => ArrayElement::Null,
+            _ => {
+                return Err(GgsqlError::ParseError(format!(
+                    "Invalid array element type: {}",
+                    elem_child.kind()
+                )));
             }
-        }
+        };
+        values.push(value);
     }
 
     Ok(values)
@@ -273,50 +294,33 @@ fn parse_mapping_list(node: &Node, source: &SourceTree, mappings: &mut Mappings)
 /// Parse an explicit_mapping node (value AS aesthetic)
 /// Returns (aesthetic_name, value)
 fn parse_explicit_mapping(node: &Node, source: &SourceTree) -> Result<(String, AestheticValue)> {
-    let mut value: Option<AestheticValue> = None;
-    let mut aesthetic: Option<String> = None;
+    // Extract name and value nodes using field-based queries
+    let (name_node, value_node) = extract_name_value_nodes(node, "explicit mapping")?;
 
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "mapping_value" => {
-                // Get the column/literal value
-                let mut inner_cursor = child.walk();
-                for inner_child in child.children(&mut inner_cursor) {
-                    match inner_child.kind() {
-                        "column_reference" => {
-                            // Find identifier within column_reference
-                            let query = "(identifier) @id";
-                            if let Some(identifier) = source.find_text(&inner_child, query) {
-                                value = Some(AestheticValue::standard_column(identifier));
-                            }
-                        }
-                        "identifier" => {
-                            value = Some(AestheticValue::standard_column(
-                                source.get_text(&inner_child)
-                            ));
-                        }
-                        "literal_value" => {
-                            value = Some(parse_literal_value(&inner_child, source)?);
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            "aesthetic_name" => {
-                aesthetic = Some(source.get_text(&child));
-            }
-            "AS" => continue,
-            _ => continue,
+    // Parse aesthetic name
+    let aesthetic = source.get_text(&name_node);
+
+    // Parse value (mapping_value has exactly one child: column_reference or literal_value)
+    let value_child = value_node.child(0)
+        .ok_or_else(|| GgsqlError::ParseError("Invalid explicit mapping: missing value".to_string()))?;
+
+    let value = match value_child.kind() {
+        "column_reference" => {
+            // column_reference is just an identifier wrapper, get its text directly
+            AestheticValue::standard_column(source.get_text(&value_child))
         }
-    }
+        "literal_value" => {
+            parse_literal_value(&value_child, source)?
+        }
+        _ => {
+            return Err(GgsqlError::ParseError(format!(
+                "Invalid explicit mapping value type: {}",
+                value_child.kind()
+            )));
+        }
+    };
 
-    match (value, aesthetic) {
-        (Some(val), Some(aes)) => Ok((aes, val)),
-        _ => Err(GgsqlError::ParseError(
-            "Invalid explicit mapping: missing value or aesthetic".to_string(),
-        )),
-    }
+    Ok((aesthetic, value))
 }
 
 /// Check for conflicts between SCALE input range and COORD aesthetic input range specifications
@@ -475,24 +479,30 @@ fn parse_mapping_clause(node: &Node, source: &SourceTree) -> Result<(Mappings, O
 /// Parse a mapping_element: wildcard, explicit, or implicit mapping
 /// Shared by both global (VISUALISE) and layer (MAPPING) mappings
 fn parse_mapping_element(node: &Node, source: &SourceTree, mappings: &mut Mappings) -> Result<()> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "wildcard_mapping" => {
-                mappings.wildcard = true;
-            }
-            "explicit_mapping" => {
-                let (aesthetic, value) = parse_explicit_mapping(&child, source)?;
-                mappings.insert(normalise_aes_name(&aesthetic), value);
-            }
-            "implicit_mapping" | "identifier" => {
-                let name = source.get_text(&child);
-                mappings.insert(
-                    normalise_aes_name(&name),
-                    AestheticValue::standard_column(&name),
-                );
-            }
-            _ => continue,
+    // mapping_element is a choice node, so it has exactly one child
+    let child = node.child(0)
+        .ok_or_else(|| GgsqlError::ParseError("Invalid mapping_element: missing child".to_string()))?;
+
+    match child.kind() {
+        "wildcard_mapping" => {
+            mappings.wildcard = true;
+        }
+        "explicit_mapping" => {
+            let (aesthetic, value) = parse_explicit_mapping(&child, source)?;
+            mappings.insert(normalise_aes_name(&aesthetic), value);
+        }
+        "implicit_mapping" | "identifier" => {
+            let name = source.get_text(&child);
+            mappings.insert(
+                normalise_aes_name(&name),
+                AestheticValue::standard_column(&name),
+            );
+        }
+        _ => {
+            return Err(GgsqlError::ParseError(format!(
+                "Invalid mapping_element child type: {}",
+                child.kind()
+            )));
         }
     }
     Ok(())
@@ -532,35 +542,22 @@ fn parse_partition_clause(node: &Node, source: &SourceTree) -> Result<Vec<String
 
 /// Parse a parameter_assignment: param => value
 fn parse_parameter_assignment(node: &Node, source: &SourceTree) -> Result<(String, ParameterValue)> {
-    // Extract parameter name (try identifier within parameter_name first, then fallback to raw text)
-    let name_query = r#"
-        (parameter_name
-          (identifier) @name)
-    "#;
-    let param_name = if let Some(name) = source.find_text(node, name_query) {
-        name
+    // Extract name and value nodes using field-based queries
+    let (name_node, value_node) = extract_name_value_nodes(node, "parameter assignment")?;
+
+    // Parse parameter name (parameter_name is just an identifier)
+    let param_name = source.get_text(&name_node);
+
+    // Parse parameter value (parameter_value wraps the actual value node)
+    let param_value = if let Some(value_child) = value_node.child(0) {
+        parse_value_node(&value_child, source, "parameter")?
     } else {
-        // Fallback: extract parameter_name text directly
-        source.find_text(node, "(parameter_name) @name")
-            .unwrap_or_default()
+        return Err(GgsqlError::ParseError(
+            "Invalid parameter assignment: empty parameter_value".to_string()
+        ));
     };
 
-    // Extract parameter value
-    let query = "(parameter_value) @value";
-    let value_nodes = source.find_nodes(node, query);
-    let param_value = value_nodes
-        .first()
-        .map(|node| parse_value_node(&node.child(0).unwrap(), source, "parameter"))
-        .transpose()?;
-
-    if param_name.is_empty() || param_value.is_none() {
-        return Err(GgsqlError::ParseError(format!(
-            "Invalid parameter assignment: param='{}', value={:?}",
-            param_name, param_value
-        )));
-    }
-
-    Ok((param_name, param_value.unwrap()))
+    Ok((param_name, param_value))
 }
 
 /// Parse a filter_clause: FILTER <raw SQL expression>
@@ -796,47 +793,45 @@ fn parse_scale_renaming_clause(
     let assignment_nodes = source.find_nodes(node, query);
 
     for assignment_node in assignment_nodes {
-        let mut from_value: Option<String> = None;
-        let mut is_wildcard = false;
-        let mut to_value: Option<Option<String>> = None; // None = not set, Some(None) = NULL
+        // Extract name and value nodes using field-based queries
+        let (name_node, value_node) = extract_name_value_nodes(&assignment_node, "scale renaming")?;
 
-        let mut assignment_cursor = assignment_node.walk();
-        for assignment_child in assignment_node.children(&mut assignment_cursor) {
-            match assignment_child.kind() {
-                "*" => {
-                    is_wildcard = true;
-                }
-                "string" => {
-                    let unquoted = parse_string_node(&assignment_child, source);
-                    if from_value.is_none() && !is_wildcard {
-                        from_value = Some(unquoted);
-                    } else {
-                        to_value = Some(Some(unquoted));
-                    }
-                }
-                "number" => {
-                    // Handle numeric keys for continuous/binned scales
-                    let text = source.get_text(&assignment_child);
-                    if from_value.is_none() && !is_wildcard {
-                        from_value = Some(text);
-                    }
-                }
-                "null_literal" => {
-                    // NULL suppresses the label
-                    to_value = Some(None);
-                }
-                _ => {}
+        // Check if 'name' is a wildcard
+        let is_wildcard = name_node.kind() == "*";
+
+        // Parse 'name' (from) value - wildcards, strings need unquoting, numbers are raw
+        let from_value = match name_node.kind() {
+            "*" => "*".to_string(),
+            "string" => parse_string_node(&name_node, source),
+            "number" => source.get_text(&name_node),
+            _ => {
+                return Err(GgsqlError::ParseError(format!(
+                    "Invalid 'from' type in scale renaming: {}",
+                    name_node.kind()
+                )));
             }
-        }
+        };
+
+        // Parse 'value' (to) - string or NULL
+        let to_value: Option<String> = match value_node.kind() {
+            "string" => Some(parse_string_node(&value_node, source)),
+            "null_literal" => None,  // NULL suppresses the label
+            _ => {
+                return Err(GgsqlError::ParseError(format!(
+                    "Invalid 'to' type in scale renaming: {}",
+                    value_node.kind()
+                )));
+            }
+        };
 
         if is_wildcard {
             // Wildcard: * => 'template'
-            if let Some(Some(tmpl)) = to_value {
+            if let Some(tmpl) = to_value {
                 template = tmpl;
             }
-        } else if let (Some(from), Some(to)) = (from_value, to_value) {
-            // Explicit mapping: 'A' => 'Alpha'
-            mappings.insert(from, to);
+        } else {
+            // Explicit mapping: 'A' => 'Alpha' or '10' => 'Ten'
+            mappings.insert(from_value, to_value);
         }
     }
 
@@ -954,40 +949,30 @@ fn build_coord(node: &Node, source: &SourceTree) -> Result<Coord> {
 
 /// Parse a single coord_property node into (name, value)
 fn parse_single_coord_property(node: &Node, source: &SourceTree) -> Result<(String, ParameterValue)> {
-    let mut prop_name = String::new();
-    let mut prop_value: Option<ParameterValue> = None;
+    // Extract name and value nodes using field-based queries
+    let (name_node, value_node) = extract_name_value_nodes(node, "coord property")?;
 
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "coord_property_name" => {
-                // Try to find aesthetic_name within coord_property_name
-                let query = "(aesthetic_name) @name";
-                prop_name = source.find_text(&child, query)
-                    .unwrap_or_else(|| source.get_text(&child));
-            }
-            "string" | "number" | "boolean" | "array" => {
-                prop_value = Some(parse_value_node(&child, source, "coord property")?);
-            }
-            "identifier" => {
-                // New: identifiers can be property values (e.g., theta = y)
-                let ident = source.get_text(&child);
-                prop_value = Some(ParameterValue::String(ident));
-            }
-            "=" => continue,
-            _ => {}
+    // Parse property name (can be a literal like 'xlim' or an aesthetic_name)
+    let prop_name = source.get_text(&name_node);
+
+    // Parse property value based on its type
+    let prop_value = match value_node.kind() {
+        "string" | "number" | "boolean" | "array" => {
+            parse_value_node(&value_node, source, "coord property")?
         }
-    }
+        "identifier" => {
+            // identifiers can be property values (e.g., theta => y)
+            ParameterValue::String(source.get_text(&value_node))
+        }
+        _ => {
+            return Err(GgsqlError::ParseError(format!(
+                "Invalid coord property value type: {}",
+                value_node.kind()
+            )));
+        }
+    };
 
-    if prop_name.is_empty() || prop_value.is_none() {
-        return Err(GgsqlError::ParseError(format!(
-            "Invalid coord property: name='{}', value present={}",
-            prop_name,
-            prop_value.is_some()
-        )));
-    }
-
-    Ok((prop_name, prop_value.unwrap()))
+    Ok((prop_name, prop_value))
 }
 
 /// Validate that properties are valid for the given coord type
@@ -1092,25 +1077,24 @@ fn build_labels(node: &Node, source: &SourceTree) -> Result<Labels> {
     let label_nodes = source.find_nodes(node, query);
 
     for label_node in label_nodes {
-        let mut assignment_cursor = label_node.walk();
-        let mut label_type: Option<String> = None;
-        let mut label_value: Option<String> = None;
+        // Extract name and value nodes using field-based queries
+        let (name_node, value_node) = extract_name_value_nodes(&label_node, "label assignment")?;
 
-        for assignment_child in label_node.children(&mut assignment_cursor) {
-            match assignment_child.kind() {
-                "label_type" => {
-                    label_type = Some(source.get_text(&assignment_child));
-                }
-                "string" => {
-                    label_value = Some(parse_string_node(&assignment_child, source));
-                }
-                _ => {}
+        // Parse label type (name)
+        let label_type = source.get_text(&name_node);
+
+        // Parse label value (must be a string)
+        let label_value = match value_node.kind() {
+            "string" => parse_string_node(&value_node, source),
+            _ => {
+                return Err(GgsqlError::ParseError(format!(
+                    "Label '{}' must have a string value, got: {}",
+                    label_type, value_node.kind()
+                )));
             }
-        }
+        };
 
-        if let (Some(typ), Some(val)) = (label_type, label_value) {
-            labels.insert(typ, val);
-        }
+        labels.insert(label_type, label_value);
     }
 
     Ok(Labels { labels })
@@ -1129,28 +1113,26 @@ fn build_theme(node: &Node, source: &SourceTree) -> Result<Theme> {
                 style = Some(source.get_text(&child));
             }
             "theme_property" => {
-                // Parse theme property: name = value
-                let mut prop_cursor = child.walk();
-                let mut prop_name = String::new();
-                let mut prop_value: Option<ParameterValue> = None;
+                // Parse theme property: name => value using field-based queries
+                let (name_node, value_node) = extract_name_value_nodes(&child, "theme property")?;
 
-                for prop_child in child.children(&mut prop_cursor) {
-                    match prop_child.kind() {
-                        "theme_property_name" => {
-                            prop_name = source.get_text(&prop_child);
-                        }
-                        "string" | "number" | "boolean" => {
-                            prop_value = Some(parse_value_node(&prop_child, source, "theme property")?);
-                        }
-                        "=>" => continue,
-                        _ => {}
+                // Parse property name
+                let prop_name = source.get_text(&name_node);
+
+                // Parse property value
+                let prop_value = match value_node.kind() {
+                    "string" | "number" | "boolean" => {
+                        parse_value_node(&value_node, source, "theme property")?
                     }
-                }
-                if !prop_name.is_empty() {
-                    if let Some(value) = prop_value {
-                        properties.insert(prop_name, value);
+                    _ => {
+                        return Err(GgsqlError::ParseError(format!(
+                            "Invalid theme property value type: {}",
+                            value_node.kind()
+                        )));
                     }
-                }
+                };
+
+                properties.insert(prop_name, prop_value);
             }
             _ => {}
         }
