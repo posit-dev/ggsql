@@ -24,21 +24,14 @@ use super::SourceTree;
 /// - `value AS name` (MAPPING explicit_mapping)
 ///
 /// Caller is responsible for interpreting the nodes based on their context.
-fn extract_name_value_nodes<'a>(
-    node: &'a Node<'a>,
-    context: &str,
-) -> Result<(Node<'a>, Node<'a>)> {
+fn extract_name_value_nodes<'a>(node: &'a Node<'a>, context: &str) -> Result<(Node<'a>, Node<'a>)> {
     let name_node = node
         .child_by_field_name("name")
-        .ok_or_else(|| {
-            GgsqlError::ParseError(format!("Missing 'name' field in {}", context))
-        })?;
+        .ok_or_else(|| GgsqlError::ParseError(format!("Missing 'name' field in {}", context)))?;
 
     let value_node = node
         .child_by_field_name("value")
-        .ok_or_else(|| {
-            GgsqlError::ParseError(format!("Missing 'value' field in {}", context))
-        })?;
+        .ok_or_else(|| GgsqlError::ParseError(format!("Missing 'value' field in {}", context)))?;
 
     Ok((name_node, value_node))
 }
@@ -52,9 +45,8 @@ fn parse_string_node(node: &Node, source: &SourceTree) -> String {
 /// Parse a number node into f64
 fn parse_number_node(node: &Node, source: &SourceTree) -> Result<f64> {
     let text = source.get_text(node);
-    text.parse::<f64>().map_err(|e| {
-        GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
-    })
+    text.parse::<f64>()
+        .map_err(|e| GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e)))
 }
 
 /// Parse a boolean node
@@ -73,8 +65,9 @@ fn parse_array_node(node: &Node, source: &SourceTree) -> Result<Vec<ArrayElement
 
     for array_element in array_elements {
         // array_element is a choice node, so it has exactly one child
-        let elem_child = array_element.child(0)
-            .ok_or_else(|| GgsqlError::ParseError("Invalid array_element: missing child".to_string()))?;
+        let elem_child = array_element.child(0).ok_or_else(|| {
+            GgsqlError::ParseError("Invalid array_element: missing child".to_string())
+        })?;
 
         let value = match elem_child.kind() {
             "string" => ArrayElement::String(parse_string_node(&elem_child, source)),
@@ -113,9 +106,7 @@ fn parse_value_node(node: &Node, source: &SourceTree, context: &str) -> Result<P
             let values = parse_array_node(node, source)?;
             Ok(ParameterValue::Array(values))
         }
-        "null_literal" => {
-            Ok(ParameterValue::Null)
-        }
+        "null_literal" => Ok(ParameterValue::Null),
         _ => Err(GgsqlError::ParseError(format!(
             "Unexpected {} value type: {}",
             context,
@@ -147,7 +138,7 @@ fn parse_literal_value(node: &Node, source: &SourceTree) -> Result<AestheticValu
     // Grammar ensures literals can't be arrays or nulls, but add safety check
     if matches!(value, ParameterValue::Array(_) | ParameterValue::Null) {
         return Err(GgsqlError::ParseError(
-            "Arrays and null cannot be used as literal values in aesthetic mappings".to_string()
+            "Arrays and null cannot be used as literal values in aesthetic mappings".to_string(),
         ));
     }
 
@@ -260,97 +251,6 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
     Ok(spec)
 }
 
-/// Parse global_mapping node into Mappings struct
-/// global_mapping contains a mapping_list child node
-fn parse_global_mapping(node: &Node, source: &SourceTree) -> Result<Mappings> {
-    // global_mapping: $ => $.mapping_list - contains a mapping_list child node
-    let mut mappings = Mappings::new();
-
-    // Find mapping_list within global_mapping
-    let query = "(mapping_list) @list";
-    let mapping_lists = source.find_nodes(node, query);
-
-    for mapping_list in mapping_lists {
-        parse_mapping_list(&mapping_list, source, &mut mappings)?;
-    }
-
-    Ok(mappings)
-}
-
-/// Parse a mapping_list: comma-separated mapping_element nodes
-/// Shared by both global (VISUALISE) and layer (MAPPING) mappings
-fn parse_mapping_list(node: &Node, source: &SourceTree, mappings: &mut Mappings) -> Result<()> {
-    // Find all mapping_element nodes
-    let query = "(mapping_element) @elem";
-    let mapping_nodes = source.find_nodes(node, query);
-
-    for mapping_node in mapping_nodes {
-        parse_mapping_element(&mapping_node, source, mappings)?;
-    }
-
-    Ok(())
-}
-
-/// Parse an explicit_mapping node (value AS aesthetic)
-/// Returns (aesthetic_name, value)
-fn parse_explicit_mapping(node: &Node, source: &SourceTree) -> Result<(String, AestheticValue)> {
-    // Extract name and value nodes using field-based queries
-    let (name_node, value_node) = extract_name_value_nodes(node, "explicit mapping")?;
-
-    // Parse aesthetic name
-    let aesthetic = source.get_text(&name_node);
-
-    // Parse value (mapping_value has exactly one child: column_reference or literal_value)
-    let value_child = value_node.child(0)
-        .ok_or_else(|| GgsqlError::ParseError("Invalid explicit mapping: missing value".to_string()))?;
-
-    let value = match value_child.kind() {
-        "column_reference" => {
-            // column_reference is just an identifier wrapper, get its text directly
-            AestheticValue::standard_column(source.get_text(&value_child))
-        }
-        "literal_value" => {
-            parse_literal_value(&value_child, source)?
-        }
-        _ => {
-            return Err(GgsqlError::ParseError(format!(
-                "Invalid explicit mapping value type: {}",
-                value_child.kind()
-            )));
-        }
-    };
-
-    Ok((aesthetic, value))
-}
-
-/// Check for conflicts between SCALE input range and COORD aesthetic input range specifications
-fn validate_scale_coord_conflicts(spec: &Plot) -> Result<()> {
-    if let Some(ref coord) = spec.coord {
-        // Get all aesthetic names that have input ranges in COORD
-        let coord_aesthetics: Vec<String> = coord
-            .properties
-            .keys()
-            .filter(|k| is_aesthetic_name(k))
-            .cloned()
-            .collect();
-
-        // Check if any of these also have input range in SCALE
-        for aesthetic in coord_aesthetics {
-            for scale in &spec.scales {
-                if scale.aesthetic == aesthetic && scale.input_range.is_some() {
-                    return Err(GgsqlError::ParseError(format!(
-                        "Input range for '{}' specified in both SCALE and COORD clauses. \
-                        Please specify input range in only one location.",
-                        aesthetic
-                    )));
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
 /// Process a visualization clause node
 fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Result<()> {
     let mut cursor = node.walk();
@@ -393,6 +293,135 @@ fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Resu
 
     Ok(())
 }
+
+// ============================================================================
+// Mapping Building
+// ============================================================================
+
+/// Parse global_mapping node into Mappings struct
+/// global_mapping contains a mapping_list child node
+fn parse_global_mapping(node: &Node, source: &SourceTree) -> Result<Mappings> {
+    // global_mapping: $ => $.mapping_list - contains a mapping_list child node
+    let mut mappings = Mappings::new();
+
+    // Find mapping_list within global_mapping
+    let query = "(mapping_list) @list";
+    let mapping_lists = source.find_nodes(node, query);
+
+    for mapping_list in mapping_lists {
+        parse_mapping_list(&mapping_list, source, &mut mappings)?;
+    }
+
+    Ok(mappings)
+}
+
+/// Parse a mapping_clause: MAPPING col AS x, "blue" AS color [FROM source]
+/// Returns (aesthetics as Mappings, optional data source)
+fn parse_mapping_clause(
+    node: &Node,
+    source: &SourceTree,
+) -> Result<(Mappings, Option<DataSource>)> {
+    let mut mappings = Mappings::new();
+
+    // Parse mapping elements using the shared mapping_list structure
+    // With the unified grammar, all aesthetic mappings come through mapping_list.
+    // Bare identifiers here are part of the FROM clause, not mappings.
+    let query = "(mapping_list) @list";
+    let mapping_lists = source.find_nodes(node, query);
+
+    for mapping_list in mapping_lists {
+        parse_mapping_list(&mapping_list, source, &mut mappings)?;
+    }
+
+    // Extract layer_source field (FROM identifier or FROM 'file.csv')
+    let data_source = node
+        .child_by_field_name("layer_source")
+        .map(|child| parse_data_source(&child, source));
+
+    Ok((mappings, data_source))
+}
+
+/// Parse a mapping_list: comma-separated mapping_element nodes
+/// Shared by both global (VISUALISE) and layer (MAPPING) mappings
+fn parse_mapping_list(node: &Node, source: &SourceTree, mappings: &mut Mappings) -> Result<()> {
+    // Find all mapping_element nodes
+    let query = "(mapping_element) @elem";
+    let mapping_nodes = source.find_nodes(node, query);
+
+    for mapping_node in mapping_nodes {
+        parse_mapping_element(&mapping_node, source, mappings)?;
+    }
+
+    Ok(())
+}
+
+/// Parse a mapping_element: wildcard, explicit, or implicit mapping
+/// Shared by both global (VISUALISE) and layer (MAPPING) mappings
+fn parse_mapping_element(node: &Node, source: &SourceTree, mappings: &mut Mappings) -> Result<()> {
+    // mapping_element is a choice node, so it has exactly one child
+    let child = node.child(0).ok_or_else(|| {
+        GgsqlError::ParseError("Invalid mapping_element: missing child".to_string())
+    })?;
+
+    match child.kind() {
+        "wildcard_mapping" => {
+            mappings.wildcard = true;
+        }
+        "explicit_mapping" => {
+            let (aesthetic, value) = parse_explicit_mapping(&child, source)?;
+            mappings.insert(normalise_aes_name(&aesthetic), value);
+        }
+        "implicit_mapping" | "identifier" => {
+            let name = source.get_text(&child);
+            mappings.insert(
+                normalise_aes_name(&name),
+                AestheticValue::standard_column(&name),
+            );
+        }
+        _ => {
+            return Err(GgsqlError::ParseError(format!(
+                "Invalid mapping_element child type: {}",
+                child.kind()
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Parse an explicit_mapping node (value AS aesthetic)
+/// Returns (aesthetic_name, value)
+fn parse_explicit_mapping(node: &Node, source: &SourceTree) -> Result<(String, AestheticValue)> {
+    // Extract name and value nodes using field-based queries
+    let (name_node, value_node) = extract_name_value_nodes(node, "explicit mapping")?;
+
+    // Parse aesthetic name
+    let aesthetic = source.get_text(&name_node);
+
+    // Parse value (mapping_value has exactly one child: column_reference or literal_value)
+    let value_child = value_node.child(0).ok_or_else(|| {
+        GgsqlError::ParseError("Invalid explicit mapping: missing value".to_string())
+    })?;
+
+    let value = match value_child.kind() {
+        "column_reference" => {
+            // column_reference is just an identifier wrapper, get its text directly
+            AestheticValue::standard_column(source.get_text(&value_child))
+        }
+        "literal_value" => parse_literal_value(&value_child, source)?,
+        _ => {
+            return Err(GgsqlError::ParseError(format!(
+                "Invalid explicit mapping value type: {}",
+                value_child.kind()
+            )));
+        }
+    };
+
+    Ok((aesthetic, value))
+}
+
+// ============================================================================
+// Layer Building
+// ============================================================================
 
 /// Build a Layer from a draw_clause node
 /// Syntax: DRAW geom [MAPPING col AS x, ... [FROM source]] [REMAPPING stat AS aes, ...] [SETTING param => val, ...] [PARTITION BY col, ...] [FILTER condition]
@@ -454,62 +483,11 @@ fn build_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
     Ok(layer)
 }
 
-/// Parse a mapping_clause: MAPPING col AS x, "blue" AS color [FROM source]
-/// Returns (aesthetics as Mappings, optional data source)
-fn parse_mapping_clause(node: &Node, source: &SourceTree) -> Result<(Mappings, Option<DataSource>)> {
-    let mut mappings = Mappings::new();
-
-    // Parse mapping elements using the shared mapping_list structure
-    // With the unified grammar, all aesthetic mappings come through mapping_list.
-    // Bare identifiers here are part of the FROM clause, not mappings.
-    let query = "(mapping_list) @list";
-    let mapping_lists = source.find_nodes(node, query);
-
-    for mapping_list in mapping_lists {
-        parse_mapping_list(&mapping_list, source, &mut mappings)?;
-    }
-
-    // Extract layer_source field (FROM identifier or FROM 'file.csv')
-    let data_source = node.child_by_field_name("layer_source")
-        .map(|child| parse_data_source(&child, source));
-
-    Ok((mappings, data_source))
-}
-
-/// Parse a mapping_element: wildcard, explicit, or implicit mapping
-/// Shared by both global (VISUALISE) and layer (MAPPING) mappings
-fn parse_mapping_element(node: &Node, source: &SourceTree, mappings: &mut Mappings) -> Result<()> {
-    // mapping_element is a choice node, so it has exactly one child
-    let child = node.child(0)
-        .ok_or_else(|| GgsqlError::ParseError("Invalid mapping_element: missing child".to_string()))?;
-
-    match child.kind() {
-        "wildcard_mapping" => {
-            mappings.wildcard = true;
-        }
-        "explicit_mapping" => {
-            let (aesthetic, value) = parse_explicit_mapping(&child, source)?;
-            mappings.insert(normalise_aes_name(&aesthetic), value);
-        }
-        "implicit_mapping" | "identifier" => {
-            let name = source.get_text(&child);
-            mappings.insert(
-                normalise_aes_name(&name),
-                AestheticValue::standard_column(&name),
-            );
-        }
-        _ => {
-            return Err(GgsqlError::ParseError(format!(
-                "Invalid mapping_element child type: {}",
-                child.kind()
-            )));
-        }
-    }
-    Ok(())
-}
-
 /// Parse a setting_clause: SETTING param => value, ...
-fn parse_setting_clause(node: &Node, source: &SourceTree) -> Result<HashMap<String, ParameterValue>> {
+fn parse_setting_clause(
+    node: &Node,
+    source: &SourceTree,
+) -> Result<HashMap<String, ParameterValue>> {
     let mut parameters = HashMap::new();
 
     // Find all parameter_assignment nodes
@@ -520,9 +498,8 @@ fn parse_setting_clause(node: &Node, source: &SourceTree) -> Result<HashMap<Stri
         let (param, mut value) = parse_parameter_assignment(&param_node, source)?;
         if is_color_aesthetic(&param) {
             if let ParameterValue::String(color) = value {
-                value = ParameterValue::String(
-                    color_to_hex(&color).map_err(GgsqlError::ParseError)?,
-                );
+                value =
+                    ParameterValue::String(color_to_hex(&color).map_err(GgsqlError::ParseError)?);
             }
         }
         parameters.insert(param, value);
@@ -541,7 +518,10 @@ fn parse_partition_clause(node: &Node, source: &SourceTree) -> Result<Vec<String
 }
 
 /// Parse a parameter_assignment: param => value
-fn parse_parameter_assignment(node: &Node, source: &SourceTree) -> Result<(String, ParameterValue)> {
+fn parse_parameter_assignment(
+    node: &Node,
+    source: &SourceTree,
+) -> Result<(String, ParameterValue)> {
     // Extract name and value nodes using field-based queries
     let (name_node, value_node) = extract_name_value_nodes(node, "parameter assignment")?;
 
@@ -553,7 +533,7 @@ fn parse_parameter_assignment(node: &Node, source: &SourceTree) -> Result<(Strin
         parse_value_node(&value_child, source, "parameter")?
     } else {
         return Err(GgsqlError::ParseError(
-            "Invalid parameter assignment: empty parameter_value".to_string()
+            "Invalid parameter assignment: empty parameter_value".to_string(),
         ));
     };
 
@@ -620,7 +600,10 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
     }
 }
 
-/// Parse a literal_value node into an AestheticValue::Literal
+// ============================================================================
+// Scale Building
+// ============================================================================
+
 /// Build a Scale from a scale_clause node
 /// SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]
 fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
@@ -736,7 +719,8 @@ fn parse_scale_type_identifier(text: &str) -> Result<ScaleType> {
 /// Parse FROM clause: FROM [array]
 fn parse_scale_from_clause(node: &Node, source: &SourceTree) -> Result<Vec<ArrayElement>> {
     let query = "(array) @arr";
-    let array_node = source.find_node(node, query)
+    let array_node = source
+        .find_node(node, query)
         .ok_or_else(|| GgsqlError::ParseError("FROM clause missing array".to_string()))?;
     parse_array_node(&array_node, source)
 }
@@ -757,14 +741,17 @@ fn parse_scale_to_clause(node: &Node, source: &SourceTree) -> Result<OutputRange
         return Ok(OutputRange::Palette(palette_name));
     }
 
-    Err(GgsqlError::ParseError("TO clause must contain either an array or identifier".to_string()))
+    Err(GgsqlError::ParseError(
+        "TO clause must contain either an array or identifier".to_string(),
+    ))
 }
 
 /// Parse VIA clause: VIA identifier
 fn parse_scale_via_clause(node: &Node, source: &SourceTree) -> Result<Transform> {
     let query = "[(identifier) (bare_identifier) (quoted_identifier)] @id";
-    let ident_node = source.find_node(node, query)
-        .ok_or_else(|| GgsqlError::ParseError("VIA clause missing transform identifier".to_string()))?;
+    let ident_node = source.find_node(node, query).ok_or_else(|| {
+        GgsqlError::ParseError("VIA clause missing transform identifier".to_string())
+    })?;
 
     let transform_name = source.get_text(&ident_node);
     Transform::from_name(&transform_name).ok_or_else(|| {
@@ -815,7 +802,7 @@ fn parse_scale_renaming_clause(
         // Parse 'value' (to) - string or NULL
         let to_value: Option<String> = match value_node.kind() {
             "string" => Some(parse_string_node(&value_node, source)),
-            "null_literal" => None,  // NULL suppresses the label
+            "null_literal" => None, // NULL suppresses the label
             _ => {
                 return Err(GgsqlError::ParseError(format!(
                     "Invalid 'to' type in scale renaming: {}",
@@ -838,7 +825,10 @@ fn parse_scale_renaming_clause(
     Ok((mappings, template))
 }
 
-/// Parse an array node into Vec<ArrayElement>
+// ============================================================================
+// Facet Building
+// ============================================================================
+
 /// Build a Facet from a facet_clause node
 fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
     let mut is_wrap = false;
@@ -911,6 +901,10 @@ fn parse_facet_scales(node: &Node, source: &SourceTree) -> Result<FacetScales> {
     }
 }
 
+// ============================================================================
+// Coord Building
+// ============================================================================
+
 /// Build a Coord from a coord_clause node
 fn build_coord(node: &Node, source: &SourceTree) -> Result<Coord> {
     let mut coord_type = CoordType::Cartesian;
@@ -929,8 +923,7 @@ fn build_coord(node: &Node, source: &SourceTree) -> Result<Coord> {
                 let prop_nodes = source.find_nodes(&child, query);
 
                 for prop_node in prop_nodes {
-                    let (prop_name, prop_value) =
-                        parse_single_coord_property(&prop_node, source)?;
+                    let (prop_name, prop_value) = parse_single_coord_property(&prop_node, source)?;
                     properties.insert(prop_name, prop_value);
                 }
             }
@@ -948,7 +941,10 @@ fn build_coord(node: &Node, source: &SourceTree) -> Result<Coord> {
 }
 
 /// Parse a single coord_property node into (name, value)
-fn parse_single_coord_property(node: &Node, source: &SourceTree) -> Result<(String, ParameterValue)> {
+fn parse_single_coord_property(
+    node: &Node,
+    source: &SourceTree,
+) -> Result<(String, ParameterValue)> {
     // Extract name and value nodes using field-based queries
     let (name_node, value_node) = extract_name_value_nodes(node, "coord property")?;
 
@@ -1068,6 +1064,10 @@ fn parse_coord_type(node: &Node, source: &SourceTree) -> Result<CoordType> {
     }
 }
 
+// ============================================================================
+// Labels Building
+// ============================================================================
+
 /// Build Labels from a label_clause node
 fn build_labels(node: &Node, source: &SourceTree) -> Result<Labels> {
     let mut labels = HashMap::new();
@@ -1089,7 +1089,8 @@ fn build_labels(node: &Node, source: &SourceTree) -> Result<Labels> {
             _ => {
                 return Err(GgsqlError::ParseError(format!(
                     "Label '{}' must have a string value, got: {}",
-                    label_type, value_node.kind()
+                    label_type,
+                    value_node.kind()
                 )));
             }
         };
@@ -1099,6 +1100,10 @@ fn build_labels(node: &Node, source: &SourceTree) -> Result<Labels> {
 
     Ok(Labels { labels })
 }
+
+// ============================================================================
+// Theme Building
+// ============================================================================
 
 /// Build a Theme from a theme_clause node
 fn build_theme(node: &Node, source: &SourceTree) -> Result<Theme> {
@@ -1139,6 +1144,38 @@ fn build_theme(node: &Node, source: &SourceTree) -> Result<Theme> {
     }
 
     Ok(Theme { style, properties })
+}
+
+// ============================================================================
+// Validation & Utilities
+// ============================================================================
+
+/// Check for conflicts between SCALE input range and COORD aesthetic input range specifications
+fn validate_scale_coord_conflicts(spec: &Plot) -> Result<()> {
+    if let Some(ref coord) = spec.coord {
+        // Get all aesthetic names that have input ranges in COORD
+        let coord_aesthetics: Vec<String> = coord
+            .properties
+            .keys()
+            .filter(|k| is_aesthetic_name(k))
+            .cloned()
+            .collect();
+
+        // Check if any of these also have input range in SCALE
+        for aesthetic in coord_aesthetics {
+            for scale in &spec.scales {
+                if scale.aesthetic == aesthetic && scale.input_range.is_some() {
+                    return Err(GgsqlError::ParseError(format!(
+                        "Input range for '{}' specified in both SCALE and COORD clauses. \
+                        Please specify input range in only one location.",
+                        aesthetic
+                    )));
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Check if the last SQL statement in sql_portion is a SELECT statement
@@ -1191,6 +1228,11 @@ pub fn normalise_aes_name(name: &str) -> String {
         _ => name.to_string(),
     }
 }
+
+// ============================================================================
+// Tests
+// ============================================================================
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3466,7 +3508,9 @@ mod tests {
 
         let literal_node = source.find_node(&root, "(literal_value) @lit").unwrap();
         let parsed = parse_literal_value(&literal_node, &source).unwrap();
-        assert!(matches!(parsed, AestheticValue::Literal(ParameterValue::String(ref s)) if s == "red"));
+        assert!(
+            matches!(parsed, AestheticValue::Literal(ParameterValue::String(ref s)) if s == "red")
+        );
 
         // Test number literal
         let source2 = make_source("VISUALISE DRAW point MAPPING 42 AS size");
