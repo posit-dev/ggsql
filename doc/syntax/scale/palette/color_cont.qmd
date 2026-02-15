@@ -1,0 +1,26 @@
+---
+title: Color (continuous)
+---
+
+Continuous color palettes are used to map numeric values to colors. They are specified in the `TO` clause of a `SCALE` statement when scaling fill or stroke:
+
+```ggsql
+SCALE fill TO viridis
+```
+
+ggsql includes a wide selection of perceptually uniform and scientifically designed color palettes from several sources. The default palette for continuous color scales is `navia` from the Scientific Color Maps project.
+
+You can easily use your own palette by providing an array of colors. ggsql will interpolate between the colors in the array to automatically, so at it's simplest, a manual continuous palette can be defined as an array of two colors, e.g.
+
+```ggsql
+SCALE fill TO ['cream', 'firebrick']
+```
+
+or, using hex color notation
+
+```ggsql
+SCALE fill TO ['#fffdd0', '#b22222']
+```
+
+However, not all palettes are equally good since we should take care that they are perceptually uniform and color blind friendly. Due to this it is advised to use one of the included palettes if at all possible since they have been designed with this in mind.
+
