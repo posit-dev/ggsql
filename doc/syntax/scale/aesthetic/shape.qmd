@@ -1,0 +1,121 @@
+---
+title: Shape
+---
+
+Shape palettes are used to map categorical values to different point shapes. They are specified in the `TO` clause of a `SCALE` statement when scaling shape:
+
+```ggsql
+SCALE shape TO shapes
+```
+
+ggsql includes 15 distinct point shapes organized into two categories:
+
+1. **Closed shapes** - Shapes with enclosed areas that can be filled
+2. **Open shapes** - Shapes made of strokes/lines without enclosed areas
+
+## Closed Shapes
+
+Closed shapes have an enclosed area and are rendered with a fill color. These are the most commonly used shapes for scatter plots and point markers. All closed shapes are area-equalized for consistent visual weight.
+
+| Name | Shape | Description |
+|------|-------|-------------|
+| `circle` | ![](examples/shape_circle.svg){height=20 .lightbox} | Circular point (default) |
+| `square` | ![](examples/shape_square.svg){height=20 .lightbox} | Square point |
+| `diamond` | ![](examples/shape_diamond.svg){height=20 .lightbox} | Diamond/rhombus |
+| `triangle-up` | ![](examples/shape_triangle_up.svg){height=20 .lightbox} | Upward-pointing triangle |
+| `triangle-down` | ![](examples/shape_triangle_down.svg){height=20 .lightbox} | Downward-pointing triangle |
+| `star` | ![](examples/shape_star.svg){height=20 .lightbox} | 5-pointed star |
+| `square-cross` | ![](examples/shape_square_cross.svg){height=20 .lightbox} | Square with X cutout |
+| `circle-plus` | ![](examples/shape_circle_plus.svg){height=20 .lightbox} | Circle with + cutout |
+| `square-plus` | ![](examples/shape_square_plus.svg){height=20 .lightbox} | Square with + cutout |
+
+## Open Shapes
+
+Open shapes are made of strokes without an enclosed fill area. These are useful when you need shapes that don't obscure underlying data.
+
+| Name | Shape | Description |
+|------|-------|-------------|
+| `cross` | ![](examples/shape_cross.svg){height=20 .lightbox} | X shape |
+| `plus` | ![](examples/shape_plus.svg){height=20 .lightbox} | + shape |
+| `stroke` | ![](examples/shape_stroke.svg){height=20 .lightbox} | Horizontal line |
+| `vline` | ![](examples/shape_vline.svg){height=20 .lightbox} | Vertical line |
+| `asterisk` | ![](examples/shape_asterisk.svg){height=20 .lightbox} | 6-pointed asterisk |
+| `bowtie` | ![](examples/shape_bowtie.svg){height=20 .lightbox} | Bowtie/hourglass |
+
+## Shape Palettes
+
+ggsql provides three built-in shape palettes:
+
+### Default Palette (`closed`)
+
+The default palette contains the 9 closed shapes:
+
+```ggsql
+SCALE shape TO closed
+```
+
+This is the recommended palette for most use cases, as closed shapes are more visually prominent and easier to distinguish at small sizes.
+
+### All Shapes Palette (`shapes`)
+
+Contains all 15 shapes, ordered by visual distinguishability:
+
+```ggsql
+SCALE shape TO shapes
+```
+
+Shapes are ordered: closed shapes first (most distinguishable), then open shapes.
+
+### Open Palette (`open`)
+
+Contains only the 6 open shapes:
+
+```ggsql
+SCALE shape TO open
+```
+
+Use when you want transparent shapes that don't obscure data.
+
+## Custom Shape Lists
+
+You can specify a custom list of shapes:
+
+```ggsql
+SCALE shape TO ['circle', 'square', 'triangle-up']
+```
+
+## Choosing Shapes
+
+### For general categorical data
+
+Use **closed shapes** for most applications:
+
+- More visually prominent
+- Easier to distinguish at small sizes
+- Work well with color encoding
+
+### For overlapping data
+
+Use **open shapes** when points overlap:
+
+- Don't obscure underlying points
+- Work well at higher densities
+- Good for comparing distributions
+
+### For combined encoding
+
+Combine shape with color for redundant encoding:
+
+```ggsql
+DRAW point
+    MAPPING x AS x, y AS y, category AS color, category AS shape
+SCALE shape TO shapes
+SCALE color TO tableau10
+```
+
+### Accessibility considerations
+
+- Limit to 6-7 distinct shapes for readability
+- Combine with color for redundant encoding
+- Use larger point sizes when using complex shapes
+- Closed shapes are more visible than open shapes

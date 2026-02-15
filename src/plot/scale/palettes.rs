@@ -2053,8 +2053,8 @@ pub fn get_color_palette(name: &str) -> Option<&'static [&'static str]> {
 /// Look up a shape palette by name.
 pub fn get_shape_palette(name: &str) -> Option<&'static [&'static str]> {
     match name.to_lowercase().as_str() {
-        "shapes" | "default" => Some(SHAPES),
-        "shapes_closed" | "closed" => Some(SHAPES_CLOSED),
+        "shapes" => Some(SHAPES),
+        "shapes_closed" | "closed" | "default" => Some(SHAPES_CLOSED),
         "shapes_open" | "open" => Some(SHAPES_OPEN),
         _ => None,
     }
@@ -2225,15 +2225,16 @@ mod tests {
 
     #[test]
     fn test_get_shape_palette() {
-        // Default/combined palette
+        // Combined palette (all shapes)
         assert!(get_shape_palette("shapes").is_some());
-        assert!(get_shape_palette("default").is_some());
         assert_eq!(get_shape_palette("shapes").unwrap().len(), 15);
 
-        // Closed shapes palette
+        // Closed shapes palette (default)
         assert!(get_shape_palette("shapes_closed").is_some());
         assert!(get_shape_palette("closed").is_some());
+        assert!(get_shape_palette("default").is_some());
         assert_eq!(get_shape_palette("closed").unwrap().len(), 9);
+        assert_eq!(get_shape_palette("default").unwrap().len(), 9);
 
         // Open shapes palette
         assert!(get_shape_palette("shapes_open").is_some());

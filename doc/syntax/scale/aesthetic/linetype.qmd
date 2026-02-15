@@ -1,0 +1,118 @@
+---
+title: Linetype
+---
+
+Linetype palettes are used to map values to different line patterns. They are specified in the `TO` clause of a `SCALE` statement when scaling linetype:
+
+```ggsql
+SCALE linetype TO linetypes
+```
+
+ggsql supports two approaches to linetype mapping:
+
+1. **Fixed/Named linetypes** - A set of visually distinct patterns for categorical data
+2. **Sequential linetypes** - Generated patterns with varying ink density for ordered data
+
+## Named Linetypes
+
+The default linetype palette consists of six visually distinct line patterns, ordered by distinguishability. These are compatible with ggplot2's linetype names.
+
+| Name | Pattern | Stroke-dasharray | Description |
+|------|---------|------------------|-------------|
+| `solid` | ![](examples/linetype_solid.svg){height=20 .lightbox} | (none) | Continuous solid line |
+| `dashed` | ![](examples/linetype_dashed.svg){height=20 .lightbox} | 6 4 | Standard dashed line |
+| `dotted` | ![](examples/linetype_dotted.svg){height=20 .lightbox} | 1 2 | Dotted line |
+| `dotdash` | ![](examples/linetype_dotdash.svg){height=20 .lightbox} | 1 2 6 2 | Alternating dot and dash |
+| `longdash` | ![](examples/linetype_longdash.svg){height=20 .lightbox} | 10 4 | Long dashes |
+| `twodash` | ![](examples/linetype_twodash.svg){height=20 .lightbox} | 6 2 2 2 | Two different dash lengths |
+
+### Using the Named Palette
+
+To use the default named linetype palette:
+
+```ggsql
+SCALE linetype TO linetypes
+```
+
+Or specify individual linetypes directly:
+
+```ggsql
+SCALE linetype TO ['solid', 'dashed', 'dotted']
+```
+
+## Sequential Linetypes
+
+For ordered categorical data, ggsql can generate linetypes with evenly-spaced ink densities. This creates a visual progression from sparse (low ink) to solid (100% ink).
+
+Sequential linetypes are generated automatically when you map an ordered variable to linetype, or you can request a specific number of levels.
+
+### Example: 5-Level Sequential
+
+| Level | Pattern | Ink Density | Description |
+|-------|---------|-------------|-------------|
+| 1 | ![](examples/linetype_seq_1.svg){height=20 .lightbox} | ~6% | Sparse dots |
+| 2 | ![](examples/linetype_seq_2.svg){height=20 .lightbox} | ~29% | Short dashes |
+| 3 | ![](examples/linetype_seq_3.svg){height=20 .lightbox} | ~52% | Medium dashes |
+| 4 | ![](examples/linetype_seq_4.svg){height=20 .lightbox} | ~75% | Long dashes |
+| 5 | ![](examples/linetype_solid.svg){height=20 .lightbox} | 100% | Solid |
+
+### How Sequential Generation Works
+
+Sequential linetypes use a hex-string pattern system (compatible with ggplot2):
+
+- Each pattern has a cycle of 16 units
+- Ink density ranges from ~6% (1/16) to 100% (solid)
+- The pattern `"1f"` means 1 unit on, 15 units off (~6% ink)
+- The pattern `"88"` means 8 units on, 8 units off (50% ink)
+- The last level is always solid (100% ink)
+
+## Custom Hex Patterns
+
+You can specify custom linetype patterns using hex strings:
+
+```ggsql
+SCALE linetype TO ['44', '1343', 'solid']
+```
+
+Each pair of hex digits represents on/off lengths:
+
+- `"44"` = 4 on, 4 off (50% ink, similar to dashed)
+- `"13"` = 1 on, 3 off (25% ink, similar to dotted)
+- `"1343"` = 1 on, 3 off, 4 on, 3 off (dot-dash pattern)
+- `"73"` = 7 on, 3 off (70% ink, long dash)
+
+Valid hex patterns:
+- Must have 2, 4, 6, or 8 hex digits
+- Digits can be 1-9 or a-f (0 is not allowed)
+- Digits represent line lengths in abstract units
+
+## Choosing a Linetype Approach
+
+### For categorical data (unordered)
+
+Use **named linetypes** when categories have no inherent order:
+
+```ggsql
+-- Different product lines
+SCALE linetype TO linetypes
+```
+
+The six named linetypes are optimized for visual distinction.
+
+### For ordered categorical data
+
+Use **sequential linetypes** when categories have an inherent order:
+
+```ggsql
+-- Confidence levels: low, medium, high
+SCALE linetype TO sequential
+```
+
+The progression from sparse to solid creates an intuitive visual hierarchy.
+
+### Accessibility considerations
+
+- Linetypes work well for colorblind viewers
+- Combine with color for redundant encoding
+- Limit to 4-6 distinct linetypes for readability
+- Solid lines are most visible; use for primary data

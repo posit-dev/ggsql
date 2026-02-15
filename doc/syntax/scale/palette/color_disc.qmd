@@ -1,3 +1,20 @@
 ---
 title: Color (discrete)
 ---
+
+Discrete color palettes are used to map categorical values to colors. They are specified in the `TO` clause of a `SCALE` statement when scaling fill or stroke:
+
+```ggsql
+SCALE fill TO tableau10
+```
+
+ggsql includes a selection of well-designed categorical color palettes from several sources. The default palette for discrete color scales is `ggsql10`, which is optimized for distinguishability and accessibility.
+
+You can easily use your own palette by providing an array of colors:
+
+```ggsql
+SCALE fill TO ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3']
+```
+
+However, not all palettes are equally good since we should take care that the colors are distinguishable for all viewers, including those with color vision deficiencies. The included palettes have been designed with this in mind.
+

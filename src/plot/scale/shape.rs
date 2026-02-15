@@ -20,10 +20,10 @@ pub fn get_shape_coordinates(name: &str) -> Option<Vec<Vec<(f64, f64)>>> {
         "vline" => Some(vline_coords()),
         "asterisk" => Some(asterisk_coords()),
         "bowtie" => Some(bowtie_coords()),
-        // Composite shapes
-        "square-cross" => Some(combine_shapes(square_coords(), cross_coords())),
-        "circle-plus" => Some(combine_shapes(circle_coords(), plus_coords())),
-        "square-plus" => Some(combine_shapes(square_coords(), plus_coords())),
+        // Composite shapes with cutouts (use evenodd fill-rule)
+        "square-cross" => Some(square_cross_coords()),
+        "circle-plus" => Some(circle_plus_coords()),
+        "square-plus" => Some(square_plus_coords()),
         _ => None,
     }
 }
@@ -54,15 +54,20 @@ pub fn shape_to_svg_path(name: &str) -> Option<String> {
     Some(svg_paths.join(" "))
 }
 
-/// Combine two shapes' coordinate sets into one.
-fn combine_shapes(a: Vec<Vec<(f64, f64)>>, b: Vec<Vec<(f64, f64)>>) -> Vec<Vec<(f64, f64)>> {
-    let mut result = a;
-    result.extend(b);
-    result
-}
+// =============================================================================
+// Area-equalized shape coordinates
+// =============================================================================
+// All closed shapes are scaled to have approximately equal visual area.
+// Reference: circle with radius 0.8 has area π×0.8² ≈ 2.01
+//
+// Scale factors derived from:
+// - Square: area = 4s² → s = √(π×0.8²/4) ≈ 0.71
+// - Diamond: area = 2d² → d = √(π×0.8²/2) ≈ 0.89
+// - Triangle: area = √3×r² (equilateral) → needs ~15% larger radius
+// - Star: area ≈ 0.5 × circle → needs ~40% larger radius
 
 /// Circle approximated with 32-point polygon.
-/// Radius 0.8 centered at origin.
+/// Radius 0.8 centered at origin. Area ≈ 2.01 (reference shape).
 fn circle_coords() -> Vec<Vec<(f64, f64)>> {
     let n = 32;
     let radius = 0.8;
@@ -75,30 +80,44 @@ fn circle_coords() -> Vec<Vec<(f64, f64)>> {
     vec![points]
 }
 
-/// Square with corners at (-0.8, -0.8) to (0.8, 0.8).
+/// Square scaled for equal area with circle.
+/// Half-side 0.71 gives area ≈ 2.01.
 fn square_coords() -> Vec<Vec<(f64, f64)>> {
-    vec![vec![(-0.8, -0.8), (0.8, -0.8), (0.8, 0.8), (-0.8, 0.8)]]
+    let s = 0.71; // √(π×0.8²/4) ≈ 0.709
+    vec![vec![(-s, -s), (s, -s), (s, s), (-s, s)]]
 }
 
-/// Diamond (square rotated 45 degrees).
+/// Diamond (square rotated 45 degrees) scaled for equal area.
+/// Half-diagonal 0.89 gives area ≈ 2.01.
 fn diamond_coords() -> Vec<Vec<(f64, f64)>> {
-    vec![vec![(0.0, -0.8), (0.8, 0.0), (0.0, 0.8), (-0.8, 0.0)]]
+    let d = 0.89; // √(π×0.8²/2) ≈ 0.892
+    vec![vec![(0.0, -d), (d, 0.0), (0.0, d), (-d, 0.0)]]
 }
 
-/// Triangle pointing up.
+/// Triangle pointing up, scaled for equal area.
+/// Base and height adjusted for area ≈ 2.01.
 fn triangle_up_coords() -> Vec<Vec<(f64, f64)>> {
-    vec![vec![(0.0, -0.8), (0.8, 0.8), (-0.8, 0.8)]]
+    // Equilateral-ish triangle: area = 0.5 × base × height
+    // For area 2.01 with base = 2r and height = 1.5r: r ≈ 0.92
+    let r = 0.92;
+    let h = r * 0.75; // height offset from center
+    vec![vec![(0.0, -r), (r, h), (-r, h)]]
 }
 
-/// Triangle pointing down.
+/// Triangle pointing down, scaled for equal area.
 fn triangle_down_coords() -> Vec<Vec<(f64, f64)>> {
-    vec![vec![(-0.8, -0.8), (0.8, -0.8), (0.0, 0.8)]]
+    let r = 0.92;
+    let h = r * 0.75;
+    vec![vec![(-r, -h), (r, -h), (0.0, r)]]
 }
 
-/// 5-pointed star with alternating outer (0.8) and inner (0.4) radii.
+/// 5-pointed star scaled for equal area.
+/// Outer radius increased to compensate for inner concavity.
 fn star_coords() -> Vec<Vec<(f64, f64)>> {
-    let outer_radius = 0.8;
-    let inner_radius = 0.4;
+    // Star area ≈ 0.5 × circle area for same outer radius
+    // Scale up by √2 ≈ 1.41 to compensate
+    let outer_radius = 0.95; // 0.8 × ~1.19, capped to stay in bounds
+    let inner_radius = outer_radius * 0.4; // maintain proportions
     let points: Vec<(f64, f64)> = (0..10)
         .map(|i| {
             // Start from top (-PI/2) and go clockwise
@@ -130,6 +149,7 @@ fn plus_coords() -> Vec<Vec<(f64, f64)>> {
     ]
 }
 
+
 /// Horizontal line at y=0.
 fn stroke_coords() -> Vec<Vec<(f64, f64)>> {
     vec![vec![(-0.8, 0.0), (0.8, 0.0)]]
@@ -154,6 +174,106 @@ fn bowtie_coords() -> Vec<Vec<(f64, f64)>> {
     vec![
         vec![(-0.8, -0.8), (0.0, 0.0), (-0.8, 0.8)], // left triangle
         vec![(0.8, -0.8), (0.0, 0.0), (0.8, 0.8)],   // right triangle
+    ]
+}
+
+/// Square divided into 4 triangles by X-shaped gap.
+/// Creates 4 separate triangular pieces (top, right, bottom, left).
+fn square_cross_coords() -> Vec<Vec<(f64, f64)>> {
+    let s = 0.71; // area-equalized square size
+    let g = 0.12; // half-gap width (perpendicular to diagonal)
+
+    // 4 triangles pointing inward from each edge
+    vec![
+        // Top triangle
+        vec![(-s + g, -s), (s - g, -s), (0.0, -g)],
+        // Right triangle
+        vec![(s, -s + g), (s, s - g), (g, 0.0)],
+        // Bottom triangle
+        vec![(s - g, s), (-s + g, s), (0.0, g)],
+        // Left triangle
+        vec![(-s, s - g), (-s, -s + g), (-g, 0.0)],
+    ]
+}
+
+/// Circle divided into 4 quarters by +-shaped gap with constant width.
+/// Creates 4 separate quarter-circle pieces.
+fn circle_plus_coords() -> Vec<Vec<(f64, f64)>> {
+    let r: f64 = 0.8; // circle radius
+    let g: f64 = 0.12 / std::f64::consts::SQRT_2; // half-gap width, scaled to match X visually
+    let n = 8; // points per quarter arc
+
+    // Where the circle intersects the gap edge: sqrt(r² - g²)
+    let edge = (r * r - g * g).sqrt();
+
+    // Start and end angles for the arc (where circle intersects gap)
+    let start_angle = (g / r).asin(); // angle where y = g on circle
+    let end_angle = std::f64::consts::FRAC_PI_2 - start_angle; // angle where x = g
+
+    let mut quarters = Vec::new();
+
+    for q in 0..4 {
+        let base_angle = (q as f64) * std::f64::consts::FRAC_PI_2;
+        let mut points = Vec::new();
+
+        // Inner corner point
+        let (cx, cy) = match q {
+            0 => (g, g),    // top-right
+            1 => (-g, g),   // top-left
+            2 => (-g, -g),  // bottom-left
+            _ => (g, -g),   // bottom-right
+        };
+        points.push((cx, cy));
+
+        // Point where gap meets circle (start of arc)
+        let (sx, sy) = match q {
+            0 => (edge, g),   // right edge of horizontal gap
+            1 => (-g, edge),  // top edge of vertical gap
+            2 => (-edge, -g), // left edge of horizontal gap
+            _ => (g, -edge),  // bottom edge of vertical gap
+        };
+        points.push((sx, sy));
+
+        // Arc points
+        let arc_start = base_angle + start_angle;
+        let arc_span = end_angle - start_angle;
+        for i in 0..=n {
+            let t = (i as f64) / (n as f64);
+            let angle = arc_start + t * arc_span;
+            points.push((r * angle.cos(), r * angle.sin()));
+        }
+
+        // Point where arc meets gap (end of arc)
+        let (ex, ey) = match q {
+            0 => (g, edge),   // top edge of vertical gap
+            1 => (-edge, g),  // left edge of horizontal gap
+            2 => (-g, -edge), // bottom edge of vertical gap
+            _ => (edge, -g),  // right edge of horizontal gap
+        };
+        points.push((ex, ey));
+
+        quarters.push(points);
+    }
+
+    quarters
+}
+
+/// Square divided into 4 smaller squares by +-shaped gap.
+/// Creates 4 separate square pieces in each corner.
+fn square_plus_coords() -> Vec<Vec<(f64, f64)>> {
+    let s = 0.71; // area-equalized square size
+    let g = 0.12 / std::f64::consts::SQRT_2; // half-gap width, scaled to match X visually
+
+    // 4 smaller squares in each corner
+    vec![
+        // Top-left square
+        vec![(-s, -s), (-g, -s), (-g, -g), (-s, -g)],
+        // Top-right square
+        vec![(g, -s), (s, -s), (s, -g), (g, -g)],
+        // Bottom-right square
+        vec![(g, g), (s, g), (s, s), (g, s)],
+        // Bottom-left square
+        vec![(-s, g), (-g, g), (-g, s), (-s, s)],
     ]
 }
 

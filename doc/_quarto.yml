@@ -85,13 +85,14 @@ website:
           - section: Types
             contents:
               - auto: syntax/scale/type/*
-          - section: Palettes
+          - section: Aesthetics
             contents:
-              - auto: syntax/scale/palette/*
+              - auto: syntax/scale/aesthetic/*
 
 
 format:
   html:
+    lightbox: auto
     syntax-definitions:
       - ggsql.xml
     theme:
