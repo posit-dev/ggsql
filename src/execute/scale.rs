@@ -11,8 +11,8 @@ use crate::plot::scale::{
     transform::Transform, OOB_CENSOR, OOB_KEEP, OOB_SQUISH,
 };
 use crate::plot::{
-    AestheticValue, ArrayElement, ArrayElementType, ColumnInfo, Layer, LiteralValue,
-    ParameterValue, Plot, Scale, ScaleType, ScaleTypeKind, Schema,
+    AestheticValue, ArrayElement, ArrayElementType, ColumnInfo, Layer, ParameterValue, Plot, Scale,
+    ScaleType, ScaleTypeKind, Schema,
 };
 use crate::{DataFrame, GgsqlError, Result};
 use polars::prelude::Column;
@@ -500,27 +500,30 @@ pub fn find_schema_columns_for_aesthetic(
 /// Create a synthetic ColumnInfo from a literal value.
 ///
 /// Used to include literal mappings in scale resolution.
-pub fn column_info_from_literal(aesthetic: &str, lit: &LiteralValue) -> Option<ColumnInfo> {
+pub fn column_info_from_literal(aesthetic: &str, lit: &ParameterValue) -> Option<ColumnInfo> {
     use polars::prelude::DataType;
 
     match lit {
-        LiteralValue::Number(n) => Some(ColumnInfo {
+        ParameterValue::Number(n) => Some(ColumnInfo {
             name: naming::const_column(aesthetic),
             dtype: DataType::Float64,
             is_discrete: false,
             min: Some(ArrayElement::Number(*n)),
             max: Some(ArrayElement::Number(*n)),
         }),
-        LiteralValue::String(s) => Some(ColumnInfo {
+        ParameterValue::String(s) => Some(ColumnInfo {
             name: naming::const_column(aesthetic),
             dtype: DataType::String,
             is_discrete: true,
             min: Some(ArrayElement::String(s.clone())),
             max: Some(ArrayElement::String(s.clone())),
         }),
-        LiteralValue::Boolean(_) => {
+        ParameterValue::Boolean(_) => {
             // Boolean literals don't contribute to numeric ranges
             None
+        }
+        ParameterValue::Array(_) | ParameterValue::Null => {
+            unreachable!("Grammar prevents arrays and null in literal aesthetic mappings")
         }
     }
 }

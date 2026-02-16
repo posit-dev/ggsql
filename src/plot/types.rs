@@ -159,7 +159,7 @@ pub enum AestheticValue {
         is_dummy: bool,
     },
     /// Literal value (quoted string, number, or boolean)
-    Literal(LiteralValue),
+    Literal(ParameterValue),
 }
 
 impl AestheticValue {
@@ -262,32 +262,14 @@ impl DefaultAestheticValue {
     pub fn to_aesthetic_value(&self) -> AestheticValue {
         match self {
             Self::Column(name) => AestheticValue::standard_column(name.to_string()),
-            Self::String(s) => AestheticValue::Literal(LiteralValue::String(s.to_string())),
-            Self::Number(n) => AestheticValue::Literal(LiteralValue::Number(*n)),
-            Self::Boolean(b) => AestheticValue::Literal(LiteralValue::Boolean(*b)),
+            Self::String(s) => AestheticValue::Literal(ParameterValue::String(s.to_string())),
+            Self::Number(n) => AestheticValue::Literal(ParameterValue::Number(*n)),
+            Self::Boolean(b) => AestheticValue::Literal(ParameterValue::Boolean(*b)),
         }
     }
 }
 
-/// Literal values in aesthetic mappings
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum LiteralValue {
-    String(String),
-    Number(f64),
-    Boolean(bool),
-}
-
-impl std::fmt::Display for LiteralValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LiteralValue::String(s) => write!(f, "'{}'", s),
-            LiteralValue::Number(n) => write!(f, "{}", n),
-            LiteralValue::Boolean(b) => write!(f, "{}", b),
-        }
-    }
-}
-
-/// Value for geom parameters
+/// Value for geom parameters (also used for literals)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ParameterValue {
     String(String),
@@ -296,6 +278,35 @@ pub enum ParameterValue {
     Array(Vec<ArrayElement>),
     /// Null value to explicitly opt out of a setting
     Null,
+}
+
+impl std::fmt::Display for ParameterValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParameterValue::String(s) => write!(f, "'{}'", s),
+            ParameterValue::Number(n) => write!(f, "{}", n),
+            ParameterValue::Boolean(b) => write!(f, "{}", b),
+            ParameterValue::Array(arr) => {
+                write!(f, "[")?;
+                for (i, elem) in arr.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    match elem {
+                        ArrayElement::String(s) => write!(f, "'{}'", s)?,
+                        ArrayElement::Number(n) => write!(f, "{}", n)?,
+                        ArrayElement::Boolean(b) => write!(f, "{}", b)?,
+                        ArrayElement::Null => write!(f, "null")?,
+                        ArrayElement::Date(d) => write!(f, "'{}'", d)?,
+                        ArrayElement::DateTime(dt) => write!(f, "'{}'", dt)?,
+                        ArrayElement::Time(t) => write!(f, "'{}'", t)?,
+                    }
+                }
+                write!(f, "]")
+            }
+            ParameterValue::Null => write!(f, "null"),
+        }
+    }
 }
 
 /// Elements in arrays (shared type for property values)

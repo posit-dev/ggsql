@@ -4,7 +4,7 @@
 //! transformations, stat transforms, and post-query operations.
 
 use crate::plot::{
-    AestheticValue, DefaultAestheticValue, Layer, LiteralValue, Scale, Schema, SqlTypeNames,
+    AestheticValue, DefaultAestheticValue, Layer, ParameterValue, Scale, Schema, SqlTypeNames,
     StatResult,
 };
 use crate::{naming, DataFrame, Facet, GgsqlError, Result};
@@ -154,13 +154,16 @@ pub fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataF
 }
 
 /// Convert a literal value to a Polars Series with constant values.
-pub fn literal_to_series(name: &str, lit: &LiteralValue, len: usize) -> polars::prelude::Series {
+pub fn literal_to_series(name: &str, lit: &ParameterValue, len: usize) -> polars::prelude::Series {
     use polars::prelude::{NamedFrom, Series};
 
     match lit {
-        LiteralValue::Number(n) => Series::new(name.into(), vec![*n; len]),
-        LiteralValue::String(s) => Series::new(name.into(), vec![s.as_str(); len]),
-        LiteralValue::Boolean(b) => Series::new(name.into(), vec![*b; len]),
+        ParameterValue::Number(n) => Series::new(name.into(), vec![*n; len]),
+        ParameterValue::String(s) => Series::new(name.into(), vec![s.as_str(); len]),
+        ParameterValue::Boolean(b) => Series::new(name.into(), vec![*b; len]),
+        ParameterValue::Array(_) | ParameterValue::Null => {
+            unreachable!("Grammar prevents arrays and null in literal aesthetic mappings")
+        }
     }
 }
 
