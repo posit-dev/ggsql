@@ -2252,13 +2252,13 @@ mod tests {
     #[test]
     fn test_get_linetype_palette() {
         // Default palette
-        assert!(get_linetype_palette("linetypes").is_some());
+        assert!(get_linetype_palette("categorical").is_some());
         assert!(get_linetype_palette("default").is_some());
-        assert_eq!(get_linetype_palette("linetypes").unwrap().len(), 6);
+        assert_eq!(get_linetype_palette("categorical").unwrap().len(), 6);
 
         // Case insensitivity
-        assert!(get_linetype_palette("LINETYPES").is_some());
-        assert!(get_linetype_palette("Linetypes").is_some());
+        assert!(get_linetype_palette("CATEGORICAL").is_some());
+        assert!(get_linetype_palette("Categorical").is_some());
 
         // Unknown palette
         assert!(get_linetype_palette("unknown_lt").is_none());
@@ -2349,7 +2349,7 @@ mod tests {
         let result = lookup_palette("shape", "default");
         assert!(result.is_ok());
         let arr = result.unwrap();
-        assert_eq!(arr.len(), 15); // default shapes palette
+        assert_eq!(arr.len(), 9); // default shapes palette
     }
 
     #[test]
