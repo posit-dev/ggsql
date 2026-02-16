@@ -492,11 +492,24 @@ pub fn prepare_data_with_reader<R: Reader + ?Sized>(
 ) -> Result<PreparedData> {
     let execute_query = |sql: &str| reader.execute_sql(sql);
     let type_names = reader.sql_type_names();
-    // Split query into SQL and viz portions
-    let (sql_part, viz_part) = parser::split_query(query)?;
 
-    // Parse visualization portion
-    let mut specs = parser::parse_query(query)?;
+    // Parse once and create SourceTree
+    let source_tree = parser::SourceTree::new(query)?;
+    source_tree.validate()?;
+
+    // Check if query has VISUALISE statements
+    let root = source_tree.root();
+    if source_tree
+        .find_node(&root, "(visualise_statement) @viz")
+        .is_none()
+    {
+        return Err(GgsqlError::ValidationError(
+            "No visualization specifications found".to_string(),
+        ));
+    }
+
+    // Build AST from existing tree
+    let mut specs = parser::build_ast(&source_tree)?;
 
     if specs.is_empty() {
         return Err(GgsqlError::ValidationError(
@@ -504,15 +517,8 @@ pub fn prepare_data_with_reader<R: Reader + ?Sized>(
         ));
     }
 
-    // Check if we have any visualization content
-    if viz_part.trim().is_empty() {
-        return Err(GgsqlError::ValidationError(
-            "The visualization portion is empty".to_string(),
-        ));
-    }
-
-    // Extract CTE definitions from the global SQL (in declaration order)
-    let ctes = cte::extract_ctes(&sql_part);
+    // Extract CTE definitions from the source tree (in declaration order)
+    let ctes = cte::extract_ctes(&source_tree);
 
     // Materialize CTEs as temporary tables
     // This creates __ggsql_cte_<name>__ tables that persist for the session
@@ -521,13 +527,16 @@ pub fn prepare_data_with_reader<R: Reader + ?Sized>(
     // Build data map for multi-source support
     let mut data_map: HashMap<String, DataFrame> = HashMap::new();
 
+    // Extract SQL once (reused later for PreparedData)
+    let sql_part = source_tree.extract_sql();
+
     // Execute global SQL if present
     // If there's a WITH clause, extract just the trailing SELECT and transform CTE references.
     // The global result is stored as a temp table so filtered layers can query it efficiently.
     // Track whether we actually create the temp table (depends on transform_global_sql succeeding)
     let mut has_global_table = false;
-    if !sql_part.trim().is_empty() {
-        if let Some(transformed_sql) = cte::transform_global_sql(&sql_part, &materialized_ctes) {
+    if sql_part.is_some() {
+        if let Some(transformed_sql) = cte::transform_global_sql(&source_tree, &materialized_ctes) {
             // Create temp table for global result
             let create_global = format!(
                 "CREATE OR REPLACE TEMP TABLE {} AS {}",
@@ -775,11 +784,14 @@ pub fn prepare_data_with_reader<R: Reader + ?Sized>(
     // Prune unnecessary columns from each layer's DataFrame
     prune_dataframes_per_layer(&specs, &mut data_map)?;
 
+    // Extract VISUALISE text for PreparedData (SQL already extracted earlier)
+    let visual_part = source_tree.extract_visualise().unwrap_or_default();
+
     Ok(PreparedData {
         data: data_map,
         specs,
-        sql: sql_part,
-        visual: viz_part,
+        sql: sql_part.unwrap_or_default(),
+        visual: visual_part,
     })
 }
 

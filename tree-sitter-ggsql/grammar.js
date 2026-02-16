@@ -405,11 +405,11 @@ module.exports = grammar({
     // Wildcard mapping: maps all columns to aesthetics with matching names
     wildcard_mapping: $ => '*',
 
-    // Explicit mapping: value AS aesthetic
+    // Explicit mapping: value AS aesthetic (name)
     explicit_mapping: $ => seq(
       field('value', $.mapping_value),
       caseInsensitive('AS'),
-      field('aesthetic', $.aesthetic_name)
+      field('name', $.aesthetic_name)
     ),
 
     // Implicit mapping: just an identifier (column name = aesthetic name)
@@ -493,7 +493,7 @@ module.exports = grammar({
     ),
 
     parameter_assignment: $ => seq(
-      field('param', $.parameter_name),
+      field('name', $.parameter_name),
       '=>',
       field('value', $.parameter_value)
     ),
@@ -665,13 +665,13 @@ module.exports = grammar({
     ),
 
     renaming_assignment: $ => seq(
-      field('from', choice(
+      field('name', choice(
         '*',                              // Wildcard for template
         $.string,
         $.number
       )),
       '=>',
-      field('to', choice($.string, $.null_literal))  // String label or NULL to suppress
+      field('value', choice($.string, $.null_literal))  // String label or NULL to suppress
     ),
 
     // Scale types - describe the nature of the data
@@ -756,9 +756,9 @@ module.exports = grammar({
     ),
 
     coord_property: $ => seq(
-      $.coord_property_name,
+      field('name', $.coord_property_name),
       '=>',
-      choice($.string, $.number, $.boolean, $.array, $.identifier)
+      field('value', choice($.string, $.number, $.boolean, $.array, $.identifier))
     ),
 
     coord_property_name: $ => choice(
@@ -777,9 +777,9 @@ module.exports = grammar({
     ),
 
     label_assignment: $ => seq(
-      $.label_type,
+      field('name', $.label_type),
       '=>',
-      $.string
+      field('value', $.string)
     ),
 
     label_type: $ => choice(
@@ -811,9 +811,9 @@ module.exports = grammar({
     ),
 
     theme_property: $ => seq(
-      $.theme_property_name,
+      field('name', $.theme_property_name),
       '=>',
-      choice($.string, $.number, $.boolean)
+      field('value', choice($.string, $.number, $.boolean))
     ),
 
     theme_property_name: $ => choice(

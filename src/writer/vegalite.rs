@@ -34,7 +34,7 @@ const POINTS_TO_AREA: f64 = std::f64::consts::PI * POINTS_TO_PIXELS * POINTS_TO_
 // ArrayElement is used in tests and for pattern matching; suppress unused import warning
 #[allow(unused_imports)]
 use crate::plot::ArrayElement;
-use crate::plot::{Coord, CoordType, LiteralValue, ParameterValue};
+use crate::plot::{Coord, CoordType, ParameterValue};
 use crate::writer::Writer;
 use crate::{naming, Layer};
 use crate::{AestheticValue, DataFrame, Geom, GgsqlError, Plot, Result};
@@ -1022,8 +1022,8 @@ impl VegaLiteWriter {
                 // For literal values, use constant value encoding
                 // Size and linewidth need unit conversion from points to Vega-Lite units
                 let val = match lit {
-                    LiteralValue::String(s) => json!(s),
-                    LiteralValue::Number(n) => {
+                    ParameterValue::String(s) => json!(s),
+                    ParameterValue::Number(n) => {
                         match aesthetic {
                             // Size: interpret as radius in points, convert to area in pixels²
                             // area = r² × π × (96/72)²
@@ -1034,7 +1034,11 @@ impl VegaLiteWriter {
                             _ => json!(n),
                         }
                     }
-                    LiteralValue::Boolean(b) => json!(b),
+                    ParameterValue::Boolean(b) => json!(b),
+                    // Grammar prevents arrays and null in literal aesthetic mappings
+                    ParameterValue::Array(_) | ParameterValue::Null => unreachable!(
+                        "Grammar prevents arrays and null in literal aesthetic mappings"
+                    ),
                 };
                 Ok(json!({"value": val}))
             }
@@ -2323,9 +2327,7 @@ fn render_boxplot(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::{
-        ArrayElement, Labels, Layer, LiteralValue, OutputRange, ParameterValue, Scale,
-    };
+    use crate::plot::{ArrayElement, Labels, Layer, OutputRange, ParameterValue, Scale};
     use std::collections::HashMap;
 
     /// Helper to wrap a DataFrame in a data map for testing (uses layer 0 key)
@@ -2492,7 +2494,7 @@ mod tests {
             )
             .with_aesthetic(
                 "color".to_string(),
-                AestheticValue::Literal(LiteralValue::String("blue".to_string())),
+                AestheticValue::Literal(ParameterValue::String("blue".to_string())),
             );
         spec.layers.push(layer);
 
@@ -2894,7 +2896,7 @@ mod tests {
             )
             .with_aesthetic(
                 "opacity".to_string(),
-                AestheticValue::Literal(LiteralValue::Number(0.5)),
+                AestheticValue::Literal(ParameterValue::Number(0.5)),
             );
         spec.layers.push(layer);
 
@@ -2930,7 +2932,7 @@ mod tests {
             .with_aesthetic(
                 "size".to_string(),
                 // Radius of 5 points
-                AestheticValue::Literal(LiteralValue::Number(5.0)),
+                AestheticValue::Literal(ParameterValue::Number(5.0)),
             );
         spec.layers.push(layer);
 
@@ -2975,7 +2977,7 @@ mod tests {
             .with_aesthetic(
                 "linewidth".to_string(),
                 // Width of 3 points
-                AestheticValue::Literal(LiteralValue::Number(3.0)),
+                AestheticValue::Literal(ParameterValue::Number(3.0)),
             );
         spec.layers.push(layer);
 
@@ -3018,7 +3020,7 @@ mod tests {
             )
             .with_aesthetic(
                 "linetype".to_string(),
-                AestheticValue::Literal(LiteralValue::Boolean(true)),
+                AestheticValue::Literal(ParameterValue::Boolean(true)),
             );
         spec.layers.push(layer);
 
@@ -3065,7 +3067,7 @@ mod tests {
             )
             .with_aesthetic(
                 "color".to_string(),
-                AestheticValue::Literal(LiteralValue::String("red".to_string())),
+                AestheticValue::Literal(ParameterValue::String("red".to_string())),
             );
         spec.layers.push(layer2);
 
@@ -6241,7 +6243,7 @@ mod tests {
             )
             .with_aesthetic(
                 "opacity".to_string(),
-                AestheticValue::Literal(LiteralValue::Number(0.75)),
+                AestheticValue::Literal(ParameterValue::Number(0.75)),
             );
         spec.layers.push(layer);
 
