@@ -977,7 +977,8 @@ impl VegaLiteWriter {
 
                         // Threshold domain = internal breaks (excluding first and last terminal bounds)
                         // breaks = [0, 25, 50, 75, 100] → domain = [25, 50, 75]
-                        if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
+                        if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks")
+                        {
                             if breaks.len() > 2 {
                                 let internal_breaks: Vec<Value> = breaks[1..breaks.len() - 1]
                                     .iter()
@@ -1034,8 +1035,7 @@ impl VegaLiteWriter {
                     // Vega-Lite's automatic tick placement with bin:"binned" only works for equal-width bins
                     if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
                         // Get all break values (filtering is applied selectively below)
-                        let all_values: Vec<Value> =
-                            breaks.iter().map(|e| e.to_json()).collect();
+                        let all_values: Vec<Value> = breaks.iter().map(|e| e.to_json()).collect();
 
                         // Positional aesthetics use axis.values, others use legend.values
                         if matches!(
@@ -1080,8 +1080,7 @@ impl VegaLiteWriter {
                                 // - Not fill/stroke (always symbol legend)
                                 // - OR multiple binned legend scales (forces symbol legend)
                                 let binned_legend_count = self.count_binned_legend_scales(spec);
-                                let is_gradient_aesthetic =
-                                    matches!(aesthetic, "fill" | "stroke");
+                                let is_gradient_aesthetic = matches!(aesthetic, "fill" | "stroke");
                                 let uses_symbol_legend =
                                     !is_gradient_aesthetic || binned_legend_count > 1;
 
@@ -1130,8 +1129,7 @@ impl VegaLiteWriter {
                             // labels like "0 – 25", "25 – 50", "≥ 75" which we need to map
                             let (filtered_mapping, null_key) = if is_binned_legend {
                                 let binned_legend_count = self.count_binned_legend_scales(spec);
-                                let is_gradient_aesthetic =
-                                    matches!(aesthetic, "fill" | "stroke");
+                                let is_gradient_aesthetic = matches!(aesthetic, "fill" | "stroke");
                                 let uses_symbol_legend =
                                     !is_gradient_aesthetic || binned_legend_count > 1;
 
@@ -1176,8 +1174,11 @@ impl VegaLiteWriter {
                                 (label_mapping.clone(), None)
                             };
 
-                            let label_expr =
-                                build_label_expr(&filtered_mapping, time_format, null_key.as_deref());
+                            let label_expr = build_label_expr(
+                                &filtered_mapping,
+                                time_format,
+                                null_key.as_deref(),
+                            );
 
                             if matches!(
                                 aesthetic,
@@ -7484,7 +7485,10 @@ mod tests {
 
         // The fill encoding should have domain with internal breaks only
         let domain = &vl_spec["layer"][0]["encoding"]["fill"]["scale"]["domain"];
-        assert!(domain.is_array(), "Threshold scale should have domain array");
+        assert!(
+            domain.is_array(),
+            "Threshold scale should have domain array"
+        );
         let domain_arr = domain.as_array().unwrap();
         assert_eq!(
             domain_arr.len(),
@@ -7807,10 +7811,7 @@ mod tests {
 
         // The color encoding should have legend.values with last terminal removed
         let legend_values = &vl_spec["layer"][0]["encoding"]["color"]["legend"]["values"];
-        assert!(
-            legend_values.is_array(),
-            "Legend should have values array"
-        );
+        assert!(legend_values.is_array(), "Legend should have values array");
         let values_arr = legend_values.as_array().unwrap();
         assert_eq!(
             values_arr.len(),
@@ -8001,10 +8002,22 @@ mod tests {
 
         // VL generates: "0 – 25", "25 – 50", "50 – 75", "≥ 75"
         // We map to range format using custom labels: "lower_label – upper_label"
-        assert_eq!(result.get("0 – 25"), Some(&Some("Low – Medium".to_string())));
-        assert_eq!(result.get("25 – 50"), Some(&Some("Medium – High".to_string())));
-        assert_eq!(result.get("50 – 75"), Some(&Some("High – Very High".to_string())));
-        assert_eq!(result.get("≥ 75"), Some(&Some("Very High – Max".to_string())));
+        assert_eq!(
+            result.get("0 – 25"),
+            Some(&Some("Low – Medium".to_string()))
+        );
+        assert_eq!(
+            result.get("25 – 50"),
+            Some(&Some("Medium – High".to_string()))
+        );
+        assert_eq!(
+            result.get("50 – 75"),
+            Some(&Some("High – Very High".to_string()))
+        );
+        assert_eq!(
+            result.get("≥ 75"),
+            Some(&Some("Very High – Max".to_string()))
+        );
 
         // Should not include a mapping for the last terminal value directly
         assert!(result.get("100").is_none());
