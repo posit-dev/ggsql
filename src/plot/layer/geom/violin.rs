@@ -49,7 +49,10 @@ impl GeomTrait for Violin {
     }
 
     fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
-        &[("y", DefaultAestheticValue::Column("y"))]
+        &[
+            ("y", DefaultAestheticValue::Column("y")),
+            ("density", DefaultAestheticValue::Column("density")),
+        ]
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {
