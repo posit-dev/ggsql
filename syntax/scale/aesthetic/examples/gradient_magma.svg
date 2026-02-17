@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="60">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0.0%" stop-color="#000003"/>
+      <stop offset="5.3%" stop-color="#07051b"/>
+      <stop offset="10.5%" stop-color="#160e3a"/>
+      <stop offset="15.8%" stop-color="#281159"/>
+      <stop offset="21.1%" stop-color="#400f73"/>
+      <stop offset="26.3%" stop-color="#55137d"/>
+      <stop offset="31.6%" stop-color="#6b1c80"/>
+      <stop offset="36.8%" stop-color="#7f2481"/>
+      <stop offset="42.1%" stop-color="#942b80"/>
+      <stop offset="47.4%" stop-color="#ab337c"/>
+      <stop offset="52.6%" stop-color="#c03a75"/>
+      <stop offset="57.9%" stop-color="#d6446c"/>
+      <stop offset="63.2%" stop-color="#e75262"/>
+      <stop offset="68.4%" stop-color="#f3675b"/>
+      <stop offset="73.7%" stop-color="#fa805e"/>
+      <stop offset="78.9%" stop-color="#fd9969"/>
+      <stop offset="84.2%" stop-color="#feb37b"/>
+      <stop offset="89.5%" stop-color="#fecb8e"/>
+      <stop offset="94.7%" stop-color="#fce5a6"/>
+      <stop offset="100.0%" stop-color="#fbfcbf"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="60" fill="url(#grad)" rx="3" ry="3"/>
+</svg>
