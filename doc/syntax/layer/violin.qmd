@@ -20,7 +20,7 @@ The following aesthetics are recognised by the violin layer.
 * `colour`: Shorthand for setting `stroke` and `fill` simultaneously.
 * `opacity`: The opacity of the colours.
 * `linewidth`: The width of the contour lines.
-
+* `linetype` The dash pattern of the contour line.
 
 ## Settings
 * `bandwidth`: A numerical value setting the smoothing bandwidth to use. If absent (default), the bandwidth will be computed using Silverman's rule of thumb.

@@ -18,6 +18,7 @@ The following aesthetics are recognised by the density layer.
 * `colour`: Shorthand for setting `stroke` and `fill` simultaneously.
 * `opacity`: The opacity of the colours.
 * `linewidth`: The width of the contour lines.
+* `linetype` The dash pattern of the contour line.
 
 ## Settings
 * `stacking`: Determines how multiple groups are displayed. One of the following:
