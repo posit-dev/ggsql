@@ -155,6 +155,9 @@ Besides direct renaming you can also provide a formatting string if you want the
 
 You can combine formatting with direct renaming in which case the direct renaming has priority over the formatting.
 
+### Labels in binned legends
+With some writers the legend for binned scales looks like the standard legend but with the label showing the range of the bin. In these situations the renaming is applied before the range label is being created. For example, if you have a `RENAMING 0 => 'zero'`, then the final label will become "zero – 10" (assuming the upper end of the bin is 10). There is currently no way to take control over the format of the range label.
+
 ### Examples
 
 #### Rename a select break
