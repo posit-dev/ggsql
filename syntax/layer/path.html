@@ -20,10 +20,45 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
-<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
 <script src="../../site_libs/quarto-nav/headroom.min.js"></script>
 <script src="../../site_libs/clipboard/clipboard.min.js"></script>
 <script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
@@ -73,6 +108,9 @@ ul.task-list li input[type="checkbox"] {
     "search-label": "Search"
   }
 }</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
 <script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
 
 
@@ -324,6 +362,12 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../../syntax/layer/polygon.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Polygon</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../../syntax/layer/ribbon.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Ribbon</span></a>
   </div>
@@ -432,7 +476,7 @@ gradient teal.
 <blockquote class="blockquote">
 <p>Layers are declared with the <a href="../../syntax/clause/draw.html"><code>DRAW</code> clause</a>. Read the documentation for this clause for a thorough description of how to use it.</p>
 </blockquote>
-<p>The path layer is used to create lineplots, but contrary to the <a href="../../syntax/layer/line.html">line layer</a> the data will not be connected along the x-axis. Instead records are connected in the order they appear in the data. Because of this the ordering is quite important and you may want to use the <a href="../../syntax/clause/draw.html#order-by"><code>ORDER BY</code></a> clause to ensure data comes out of the back-end in the desired order. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers <a href="../../syntax/clause/draw.html#partition-by"><code>PARTITION BY</code></a>.</p>
+<p>The path layer is used to create lineplots, but contrary to the <a href="../../syntax/layer/line.html">line layer</a> the data will not be connected along the x-axis. Instead records are connected in the order they appear in the data. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers <a href="../../syntax/clause/draw.html#partition-by"><code>PARTITION BY</code></a>.</p>
 <section id="aesthetics" class="level2">
 <h2 class="anchored" data-anchor-id="aesthetics">Aesthetics</h2>
 <p>The following aesthetics are recognised by the path layer.</p>
@@ -463,7 +507,413 @@ gradient teal.
 </section>
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
-<p>TBD</p>
+<div id="7580c0f1" class="cell" data-execution_count="1">
+<details class="code-fold">
+<summary>Create example data</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> df <span class="kw">AS</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> (<span class="kw">VALUES</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">1.0</span>, <span class="dv">1.0</span>, <span class="st">'A'</span>),</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">2.0</span>, <span class="dv">1.0</span>, <span class="st">'A'</span>),</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">1.0</span>, <span class="dv">3.0</span>, <span class="st">'A'</span>),</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">3.0</span>, <span class="dv">1.0</span>, <span class="st">'B'</span>),</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">2.0</span>, <span class="dv">3.0</span>, <span class="st">'B'</span>),</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">3.0</span>, <span class="dv">3.0</span>, <span class="st">'B'</span>),</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>) <span class="kw">AS</span> t(x, y, id)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-display" data-execution_count="1">
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<tbody>
+</tbody>
+</table>
+</div>
+</div>
+<p>Simple example path.</p>
+<div id="9ec08d42" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<div id="vis-1771317346674"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"order":{"value":null},"x":{"axis":{"labelExpr":"datum.label == '3' ? '3' : datum.label == '1.5' ? '1.5' : datum.label == '1' ? '1' : datum.label == '2.5' ? '2.5' : datum.label == '2' ? '2' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '1' ? '1' : datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '2' ? '2' : datum.label == '1.5' ? '1.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771317346674';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>Contrary to <code>line</code> drawings, <code>path</code> is not forced to follow the order along the axis.</p>
+<div id="cba929a6" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span> <span class="kw">MAPPING</span> <span class="st">'Path'</span> AS <span class="at">colour</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">line</span> <span class="kw">MAPPING</span> <span class="st">'Line'</span> AS <span class="at">colour</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<div id="vis-1771317346692"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"}]},"height":"container","layer":[{"encoding":{"order":{"value":null},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'Line' ? 'Line' : datum.label == 'Path' ? 'Path' : datum.label"},"scale":{"domain":["Line","Path"],"range":["#0067A5","#F3C300"]},"title":"stroke","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '1.5' ? '1.5' : datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label == '2' ? '2' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '1' ? '1' : datum.label == '2' ? '2' : datum.label == '1.5' ? '1.5' : datum.label == '3' ? '3' : datum.label == '2.5' ? '2.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'Line' ? 'Line' : datum.label == 'Path' ? 'Path' : datum.label"},"scale":{"domain":["Line","Path"],"range":["#0067A5","#F3C300"]},"title":"stroke","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '1.5' ? '1.5' : datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label == '2' ? '2' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '1' ? '1' : datum.label == '2' ? '2' : datum.label == '1.5' ? '1.5' : datum.label == '3' ? '3' : datum.label == '2.5' ? '2.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_1__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771317346692';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>Groups of individual paths can be declared via <code>PARTITION BY</code>.</p>
+<div id="f18abb25" class="cell" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span> <span class="kw">PARTITION</span> BY id</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<div id="vis-1771317346706"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"},{"__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"},{"__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"id","type":"nominal"},"order":{"value":null},"x":{"axis":{"labelExpr":"datum.label == '2' ? '2' : datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label == '1.5' ? '1.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '1.5' ? '1.5' : datum.label == '2' ? '2' : datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771317346706';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>Invoking a group through discrete aesthetics works as well.</p>
+<div id="fc52bac2" class="cell" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span> <span class="kw">MAPPING</span> id AS <span class="at">colour</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<div id="vis-1771317346720"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_stroke__":"A","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"A","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"A","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"B","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"B","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"B","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_stroke__","type":"nominal"},"order":{"value":null},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'A' ? 'A' : datum.label == 'B' ? 'B' : datum.label"},"scale":{"domain":["A","B"],"range":["#0067A5","#F3C300"]},"title":"id","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '1.5' ? '1.5' : datum.label == '2' ? '2' : datum.label == '3' ? '3' : datum.label == '2.5' ? '2.5' : datum.label == '1' ? '1' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '1.5' ? '1.5' : datum.label == '1' ? '1' : datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '2' ? '2' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771317346720';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>Compared to polygons, paths don’t close their shapes and fill their interiors.</p>
+<div id="5b82a578" class="cell" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">polygon</span> <span class="kw">MAPPING</span> <span class="st">'Polygon'</span> AS <span class="at">stroke</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span> <span class="kw">MAPPING</span> <span class="st">'Path'</span> AS <span class="at">stroke</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<div id="vis-1771317346737"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"}]},"height":"container","layer":[{"encoding":{"order":{"value":null},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'Polygon' ? 'Polygon' : datum.label == 'Path' ? 'Path' : datum.label"},"scale":{"domain":["Path","Polygon"],"range":["#0067A5","#F3C300"]},"title":"stroke","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '2' ? '2' : datum.label == '1.5' ? '1.5' : datum.label == '1' ? '1' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '1.5' ? '1.5' : datum.label == '3' ? '3' : datum.label == '2' ? '2' : datum.label == '1' ? '1' : datum.label == '2.5' ? '2.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"fill":"#888888","interpolate":"linear-closed","stroke":"#888888","type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"order":{"value":null},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'Polygon' ? 'Polygon' : datum.label == 'Path' ? 'Path' : datum.label"},"scale":{"domain":["Path","Polygon"],"range":["#0067A5","#F3C300"]},"title":"stroke","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '2' ? '2' : datum.label == '1.5' ? '1.5' : datum.label == '1' ? '1' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '1.5' ? '1.5' : datum.label == '3' ? '3' : datum.label == '2' ? '2' : datum.label == '1' ? '1' : datum.label == '2.5' ? '2.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_1__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771317346737';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
 
 
 </section>

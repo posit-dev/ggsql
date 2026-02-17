@@ -284,286 +284,63 @@
     ]
   },
   {
-    "objectID": "syntax/layer/boxplot.html",
-    "href": "syntax/layer/boxplot.html",
-    "title": "Boxplot",
+    "objectID": "syntax/layer/path.html",
+    "href": "syntax/layer/path.html",
+    "title": "Path",
     "section": "",
-    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nBoxplots display a summary of a continuous distribution. In the style of Tukey, it displays the median, two hinges and two whiskers as well as outlying points.",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe path layer is used to create lineplots, but contrary to the line layer the data will not be connected along the x-axis. Instead records are connected in the order they appear in the data. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers PARTITION BY.",
     "crumbs": [
       "Home",
       "Layers",
-      "Boxplot"
+      "Path"
     ]
   },
   {
-    "objectID": "syntax/layer/boxplot.html#aesthetics",
-    "href": "syntax/layer/boxplot.html#aesthetics",
-    "title": "Boxplot",
+    "objectID": "syntax/layer/path.html#aesthetics",
+    "href": "syntax/layer/path.html#aesthetics",
+    "title": "Path",
     "section": "Aesthetics",
-    "text": "Aesthetics\nThe following aesthetics are recognised by the boxplot layer.\n\nRequired\n\nx: Position on the x-axis\ny: Position on the y-axis\n\n\n\nOptional\n\nstroke: The colour of the box contours, whiskers, median line and outliers.\nfill: The colour of the box interior.\ncolour: Shorthand for setting stroke and fill simultaneously. Note that the median line will have bad visibility if stroke and fill are the same.\nopacity: The opacity of the box interior.\nlinewidth The width of the box outline, whiskers, median line and outlier stroke.\nlinetype The linetype of the box outline, whiskers, median line and outlier stroke.\nsize The absolute size of outlier points.\nshape The shape of outlier points.",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the path layer.\n\nRequired\n\nx: Position along the x-axis\ny: Position along the y-axis\n\n\n\nOptional\n\ncolour/stroke: The colour of the path\nopacity: The opacity of the path\nlinewidth: The width of the path\nlinetype: The type of path, i.e. the dashing pattern",
     "crumbs": [
       "Home",
       "Layers",
-      "Boxplot"
+      "Path"
     ]
   },
   {
-    "objectID": "syntax/layer/boxplot.html#settings",
-    "href": "syntax/layer/boxplot.html#settings",
-    "title": "Boxplot",
+    "objectID": "syntax/layer/path.html#settings",
+    "href": "syntax/layer/path.html#settings",
+    "title": "Path",
     "section": "Settings",
-    "text": "Settings\n\noutliers: Whether to display outliers as points. Defaults to true.\ncoef: A number indicating the length of the whiskers as a multiple of the interquartile range (IQR). Defaults to 1.5.\nwidth: Relative width of the boxes. Defaults to 0.9.",
+    "text": "Settings\nThe line layer has no additional settings",
     "crumbs": [
       "Home",
       "Layers",
-      "Boxplot"
+      "Path"
     ]
   },
   {
-    "objectID": "syntax/layer/boxplot.html#data-transformation",
-    "href": "syntax/layer/boxplot.html#data-transformation",
-    "title": "Boxplot",
+    "objectID": "syntax/layer/path.html#data-transformation",
+    "href": "syntax/layer/path.html#data-transformation",
+    "title": "Path",
     "section": "Data transformation",
-    "text": "Data transformation\nPer group, data will be divided into 4 quartiles and summary statistics will be derived from their extremes. Because number of observations per quartile may differ by one, the result of this approach may slightly differ from a pure quantile-based approach. The central line represents the median. The boxes are displayed from the 25th up to the 75th percentiles. The whiskers are calculated from the 25th/75th percentiles +/- the IQR times coef, but no more extreme than the data extrema. Observations are considered outliers when they are more extreme than the whiskers.\n\nCalculated statistics\n\ntype: A string representing the type of metric (upper,lower,q1,q3,median,outlier).\nvalue: The value corresponding to the metric.\n\n\n\nDefault remapping\n\nvalue AS y: By default the values are displayed along the y-axis.\n\n\n\nExamples\nA basic boxplot showing the bill length per species.\n\nVISUALISE FROM ggsql:penguins\nDRAW boxplot\n  MAPPING species AS x, bill_len AS y\n\n\n\n\n\nAdditional groups will dodge the boxplots.\n\nVISUALISE FROM ggsql:penguins\nDRAW boxplot\n  MAPPING \n    species AS x, \n    bill_len AS y,\n    island AS stroke\n\n\n\n\n\nNarrow boxes by shrinking the width parameter.\n\nVISUALISE FROM ggsql:penguins\nDRAW boxplot\n  MAPPING species AS x, bill_len AS y\n  SETTING width =&gt; 0.2\n\n\n\n\n\nConsider more observations as outliers by setting a smaller coef:\n\nVISUALISE FROM ggsql:penguins\nDRAW boxplot\n  MAPPING species AS x, bill_len AS y\n  SETTING coef =&gt; 0.1",
+    "text": "Data transformation\nThe line layer does not transform its data but passes it through unchanged",
     "crumbs": [
       "Home",
       "Layers",
-      "Boxplot"
+      "Path"
     ]
   },
   {
-    "objectID": "syntax/layer/point.html",
-    "href": "syntax/layer/point.html",
-    "title": "Point",
-    "section": "",
-    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe point layer is used to create scatterplots. The scatterplot is most useful for displaying the relationship between two continuous variables. A bubblechart is a scatterplot with a third variable mapped to the size of points.",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Point"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/point.html#aesthetics",
-    "href": "syntax/layer/point.html#aesthetics",
-    "title": "Point",
-    "section": "Aesthetics",
-    "text": "Aesthetics\nThe following aesthetics are recognised by the point layer.\n\nRequired\n\nx: Position along the x-axis\ny: Position along the y-axis\n\n\n\nOptional\n\nsize: The size of each point\ncolour: The default colour of each point\nstroke: The colour of the stroke around each point (if any). Overrides colour\nfill: The fill colour of each point (if any). Overrides colour\nopacity: The opacity of the point\nshape: The shape used to draw the point",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Point"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/point.html#settings",
-    "href": "syntax/layer/point.html#settings",
-    "title": "Point",
-    "section": "Settings",
-    "text": "Settings\nThe point layer has no additional settings",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Point"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/point.html#data-transformation",
-    "href": "syntax/layer/point.html#data-transformation",
-    "title": "Point",
-    "section": "Data transformation",
-    "text": "Data transformation\nThe point layer does not transform its data but passes it through unchanged",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Point"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/point.html#examples",
-    "href": "syntax/layer/point.html#examples",
-    "title": "Point",
+    "objectID": "syntax/layer/path.html#examples",
+    "href": "syntax/layer/path.html#examples",
+    "title": "Path",
     "section": "Examples",
-    "text": "Examples\nCreate a classic scatterplot\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, species AS fill\n    SETTING size =&gt; 30\n\n\n\n\n\nMap to size to create a bubble chart\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, body_mass AS size\n\n\n\n\n\nUse filter to only plot a subset of the data\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, species AS fill\n    SETTING size =&gt; 30\n    FILTER sex = 'female'",
+    "text": "Examples\n\n\nCreate example data\nCREATE TABLE df AS\nSELECT * FROM (VALUES\n  (1.0, 1.0, 'A'),\n  (2.0, 1.0, 'A'),\n  (1.0, 3.0, 'A'),\n  (3.0, 1.0, 'B'),\n  (2.0, 3.0, 'B'),\n  (3.0, 3.0, 'B'),\n) AS t(x, y, id)\n\n\n\n\n\n\n\n\nSimple example path.\n\nVISUALISE x, y FROM df\n  DRAW path\n\n\n\n\n\nContrary to line drawings, path is not forced to follow the order along the axis.\n\nVISUALISE x, y FROM df\n  DRAW path MAPPING 'Path' AS colour\n  DRAW line MAPPING 'Line' AS colour\n\n\n\n\n\nGroups of individual paths can be declared via PARTITION BY.\n\nVISUALISE x, y FROM df\n  DRAW path PARTITION BY id\n\n\n\n\n\nInvoking a group through discrete aesthetics works as well.\n\nVISUALISE x, y FROM df\n  DRAW path MAPPING id AS colour\n\n\n\n\n\nCompared to polygons, paths don’t close their shapes and fill their interiors.\n\nVISUALISE x, y FROM df\n  DRAW polygon MAPPING 'Polygon' AS stroke\n  DRAW path MAPPING 'Path' AS stroke",
     "crumbs": [
       "Home",
       "Layers",
-      "Point"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/ribbon.html",
-    "href": "syntax/layer/ribbon.html",
-    "title": "Ribbon",
-    "section": "",
-    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe ribbon layer is used to display extrema over a sorted x-axis. It can be seen as an area chart that is unanchored from zero.",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Ribbon"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/ribbon.html#aesthetics",
-    "href": "syntax/layer/ribbon.html#aesthetics",
-    "title": "Ribbon",
-    "section": "Aesthetics",
-    "text": "Aesthetics\nThe following aesthetics are recognised by the ribbon layer.\n\nRequired\n\nx: Position along the x-axis\nymin: Lower position along the y-axis.\nymax: Upper position along the y-axis.\n\n\n\nOptional\n\nstroke: The colour of the contour lines.\nfill: The colour of the inner area.\ncolour: Shorthand for setting stroke and fill simultaneously.\nopacity: The opacity of the colours.\nlinewidth: The width of the contour lines.",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Ribbon"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/ribbon.html#settings",
-    "href": "syntax/layer/ribbon.html#settings",
-    "title": "Ribbon",
-    "section": "Settings",
-    "text": "Settings\nThe ribbon layer has no additional settings.",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Ribbon"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/ribbon.html#data-transformation",
-    "href": "syntax/layer/ribbon.html#data-transformation",
-    "title": "Ribbon",
-    "section": "Data transformation",
-    "text": "Data transformation\nThe ribbon layer does not transform its data but passes it through unchanged.",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Ribbon"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/ribbon.html#examples",
-    "href": "syntax/layer/ribbon.html#examples",
-    "title": "Ribbon",
-    "section": "Examples",
-    "text": "Examples\nA ribbon plot with arbitrary values as minima/maxima\n\nVISUALISE FROM ggsql:airquality\n  DRAW ribbon\n    MAPPING Date AS x, Wind AS ymin, Temp AS ymax\n\n\n\n\n\nRibbon plots are great for showing the range of some aggregation.\n\n// Weekly aggregation of temperature\nSELECT \n  WEEKOFYEAR(Date) AS Week, \n  MAX(Temp) AS MaxTemp, \n  MEAN(Temp) AS MeanTemp,\n  MIN(Temp) AS MinTemp \nFROM ggsql:airquality\nGROUP BY WEEKOFYEAR(Date)\n\nVISUALISE Week AS x\n  DRAW ribbon \n    MAPPING MinTemp AS ymin, MaxTemp AS ymax\n    SETTING opacity =&gt; 0.5\n  DRAW line\n    MAPPING MeanTemp AS y",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Ribbon"
-    ]
-  },
-  {
-    "objectID": "syntax/index.html",
-    "href": "syntax/index.html",
-    "title": "Syntax",
-    "section": "",
-    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends",
-    "crumbs": [
-      "Home",
-      "Overview"
-    ]
-  },
-  {
-    "objectID": "syntax/index.html#main-clauses",
-    "href": "syntax/index.html#main-clauses",
-    "title": "Syntax",
-    "section": "",
-    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends",
-    "crumbs": [
-      "Home",
-      "Overview"
-    ]
-  },
-  {
-    "objectID": "syntax/index.html#layers",
-    "href": "syntax/index.html#layers",
-    "title": "Syntax",
-    "section": "Layers",
-    "text": "Layers\nThere are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the DRAW clause\n\npoint is used to create a scatterplot layer\nline is used to produce lineplots with the data sorted along the x axis\npath is like line above but does not sort the data but plot it according to its own order\narea is used to display series as an area chart.\nribbon is used to display series extrema.\nbar creates a bar chart, optionally calculating y from the number of records in each bar\nhistogram bins the data along the x axis and produces a bar for each bin showing the number of records in it\nboxplot displays continuous variables as 5-number summaries",
-    "crumbs": [
-      "Home",
-      "Overview"
-    ]
-  },
-  {
-    "objectID": "syntax/index.html#scales",
-    "href": "syntax/index.html#scales",
-    "title": "Syntax",
-    "section": "Scales",
-    "text": "Scales",
-    "crumbs": [
-      "Home",
-      "Overview"
-    ]
-  },
-  {
-    "objectID": "syntax/index.html#coordinate-systems",
-    "href": "syntax/index.html#coordinate-systems",
-    "title": "Syntax",
-    "section": "Coordinate systems",
-    "text": "Coordinate systems",
-    "crumbs": [
-      "Home",
-      "Overview"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/histogram.html",
-    "href": "syntax/layer/histogram.html",
-    "title": "Histogram",
-    "section": "",
-    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nVisualise the distribution of a single continuous variable by dividing the x axis into bins and counting the number of observations in each bin. If providing a weight then a weighted histogram is calculated instead.",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Histogram"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/histogram.html#aesthetics",
-    "href": "syntax/layer/histogram.html#aesthetics",
-    "title": "Histogram",
-    "section": "Aesthetics",
-    "text": "Aesthetics\nThe following aesthetics are recognised by the bar layer.\n\nRequired\n\nx: Position on the x-axis\n\n\n\nOptional\n\ncolour: The default colour of each bar\nstroke: The colour of the stroke around each bar. Overrides colour\nfill: The fill colour of each bar. Overrides colour\nopacity: The opacity of the bar fill\nlinewidth: The width of the stroke\nlinetype: The type of stroke, i.e. the dashing pattern",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Histogram"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/histogram.html#settings",
-    "href": "syntax/layer/histogram.html#settings",
-    "title": "Histogram",
-    "section": "Settings",
-    "text": "Settings\n\nbins: The number of bins to calculate. Defaults to 30\nbinwidth: The width of each bin. If provided it will override the binwidth calculated from bins\nclosed: Either 'left' or 'right' (default). Determines whether the bin intervals are closed to the left or right side",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Histogram"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/histogram.html#data-transformation",
-    "href": "syntax/layer/histogram.html#data-transformation",
-    "title": "Histogram",
-    "section": "Data transformation",
-    "text": "Data transformation\nThe histogram layer will bin the records in each group and count them. By default it will map the count to y.\n\nProperties\n\nweight: If mapped, the sum of the weights within each bin is calculated instead of the count in each bin\n\n\n\nCalculated statistics\n\ncount: The count or, if weight have been mapped, sum of weights in each bin.\ndensity: The groupwise density, i.e. the count divided by the sum of count among all bins within each group\n\n\n\nDefault remappings\n\ncount AS y: By default the histogram will show count as the height of the bars",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Histogram"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/histogram.html#examples",
-    "href": "syntax/layer/histogram.html#examples",
-    "title": "Histogram",
-    "section": "Examples",
-    "text": "Examples\nShow the number of each species in the data\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x\n\n\n\n\n\nSplit the histogram in two by mapping sex to fill\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x, sex AS fill\n\n\n\n\n\nMake the two histograms the same scale by remapping to density\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x, sex AS fill\n    REMAPPING density AS y\n\n\n\n\n\nSpecify an exact binwidth if needed\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x\n    SETTING binwidth =&gt; 100",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Histogram"
+      "Path"
     ]
   },
   {
@@ -627,63 +404,346 @@
     ]
   },
   {
-    "objectID": "syntax/layer/path.html",
-    "href": "syntax/layer/path.html",
-    "title": "Path",
+    "objectID": "syntax/layer/histogram.html",
+    "href": "syntax/layer/histogram.html",
+    "title": "Histogram",
     "section": "",
-    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe path layer is used to create lineplots, but contrary to the line layer the data will not be connected along the x-axis. Instead records are connected in the order they appear in the data. Because of this the ordering is quite important and you may want to use the ORDER BY clause to ensure data comes out of the back-end in the desired order. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers PARTITION BY.",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nVisualise the distribution of a single continuous variable by dividing the x axis into bins and counting the number of observations in each bin. If providing a weight then a weighted histogram is calculated instead.",
     "crumbs": [
       "Home",
       "Layers",
-      "Path"
+      "Histogram"
     ]
   },
   {
-    "objectID": "syntax/layer/path.html#aesthetics",
-    "href": "syntax/layer/path.html#aesthetics",
-    "title": "Path",
+    "objectID": "syntax/layer/histogram.html#aesthetics",
+    "href": "syntax/layer/histogram.html#aesthetics",
+    "title": "Histogram",
     "section": "Aesthetics",
-    "text": "Aesthetics\nThe following aesthetics are recognised by the path layer.\n\nRequired\n\nx: Position along the x-axis\ny: Position along the y-axis\n\n\n\nOptional\n\ncolour/stroke: The colour of the path\nopacity: The opacity of the path\nlinewidth: The width of the path\nlinetype: The type of path, i.e. the dashing pattern",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the bar layer.\n\nRequired\n\nx: Position on the x-axis\n\n\n\nOptional\n\ncolour: The default colour of each bar\nstroke: The colour of the stroke around each bar. Overrides colour\nfill: The fill colour of each bar. Overrides colour\nopacity: The opacity of the bar fill\nlinewidth: The width of the stroke\nlinetype: The type of stroke, i.e. the dashing pattern",
     "crumbs": [
       "Home",
       "Layers",
-      "Path"
+      "Histogram"
     ]
   },
   {
-    "objectID": "syntax/layer/path.html#settings",
-    "href": "syntax/layer/path.html#settings",
-    "title": "Path",
+    "objectID": "syntax/layer/histogram.html#settings",
+    "href": "syntax/layer/histogram.html#settings",
+    "title": "Histogram",
     "section": "Settings",
-    "text": "Settings\nThe line layer has no additional settings",
+    "text": "Settings\n\nbins: The number of bins to calculate. Defaults to 30\nbinwidth: The width of each bin. If provided it will override the binwidth calculated from bins\nclosed: Either 'left' or 'right' (default). Determines whether the bin intervals are closed to the left or right side",
     "crumbs": [
       "Home",
       "Layers",
-      "Path"
+      "Histogram"
     ]
   },
   {
-    "objectID": "syntax/layer/path.html#data-transformation",
-    "href": "syntax/layer/path.html#data-transformation",
-    "title": "Path",
+    "objectID": "syntax/layer/histogram.html#data-transformation",
+    "href": "syntax/layer/histogram.html#data-transformation",
+    "title": "Histogram",
     "section": "Data transformation",
-    "text": "Data transformation\nThe line layer does not transform its data but passes it through unchanged",
+    "text": "Data transformation\nThe histogram layer will bin the records in each group and count them. By default it will map the count to y.\n\nProperties\n\nweight: If mapped, the sum of the weights within each bin is calculated instead of the count in each bin\n\n\n\nCalculated statistics\n\ncount: The count or, if weight have been mapped, sum of weights in each bin.\ndensity: The groupwise density, i.e. the count divided by the sum of count among all bins within each group\n\n\n\nDefault remappings\n\ncount AS y: By default the histogram will show count as the height of the bars",
     "crumbs": [
       "Home",
       "Layers",
-      "Path"
+      "Histogram"
     ]
   },
   {
-    "objectID": "syntax/layer/path.html#examples",
-    "href": "syntax/layer/path.html#examples",
-    "title": "Path",
+    "objectID": "syntax/layer/histogram.html#examples",
+    "href": "syntax/layer/histogram.html#examples",
+    "title": "Histogram",
     "section": "Examples",
-    "text": "Examples\nTBD",
+    "text": "Examples\nShow the number of each species in the data\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x\n\n\n\n\n\nSplit the histogram in two by mapping sex to fill\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x, sex AS fill\n\n\n\n\n\nMake the two histograms the same scale by remapping to density\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x, sex AS fill\n    REMAPPING density AS y\n\n\n\n\n\nSpecify an exact binwidth if needed\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x\n    SETTING binwidth =&gt; 100",
     "crumbs": [
       "Home",
       "Layers",
-      "Path"
+      "Histogram"
+    ]
+  },
+  {
+    "objectID": "syntax/index.html",
+    "href": "syntax/index.html",
+    "title": "Syntax",
+    "section": "",
+    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends",
+    "crumbs": [
+      "Home",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/index.html#main-clauses",
+    "href": "syntax/index.html#main-clauses",
+    "title": "Syntax",
+    "section": "",
+    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends",
+    "crumbs": [
+      "Home",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/index.html#layers",
+    "href": "syntax/index.html#layers",
+    "title": "Syntax",
+    "section": "Layers",
+    "text": "Layers\nThere are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the DRAW clause\n\npoint is used to create a scatterplot layer\nline is used to produce lineplots with the data sorted along the x axis\npath is like line above but does not sort the data but plot it according to its own order\narea is used to display series as an area chart.\nribbon is used to display series extrema.\npolygon is used to display arbitrary shapes as polygons.\nbar creates a bar chart, optionally calculating y from the number of records in each bar\nhistogram bins the data along the x axis and produces a bar for each bin showing the number of records in it\nboxplot displays continuous variables as 5-number summaries",
+    "crumbs": [
+      "Home",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/index.html#scales",
+    "href": "syntax/index.html#scales",
+    "title": "Syntax",
+    "section": "Scales",
+    "text": "Scales",
+    "crumbs": [
+      "Home",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/index.html#coordinate-systems",
+    "href": "syntax/index.html#coordinate-systems",
+    "title": "Syntax",
+    "section": "Coordinate systems",
+    "text": "Coordinate systems",
+    "crumbs": [
+      "Home",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/ribbon.html",
+    "href": "syntax/layer/ribbon.html",
+    "title": "Ribbon",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe ribbon layer is used to display extrema over a sorted x-axis. It can be seen as an area chart that is unanchored from zero.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Ribbon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/ribbon.html#aesthetics",
+    "href": "syntax/layer/ribbon.html#aesthetics",
+    "title": "Ribbon",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the ribbon layer.\n\nRequired\n\nx: Position along the x-axis\nymin: Lower position along the y-axis.\nymax: Upper position along the y-axis.\n\n\n\nOptional\n\nstroke: The colour of the contour lines.\nfill: The colour of the inner area.\ncolour: Shorthand for setting stroke and fill simultaneously.\nopacity: The opacity of the colours.\nlinewidth: The width of the contour lines.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Ribbon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/ribbon.html#settings",
+    "href": "syntax/layer/ribbon.html#settings",
+    "title": "Ribbon",
+    "section": "Settings",
+    "text": "Settings\nThe ribbon layer has no additional settings.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Ribbon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/ribbon.html#data-transformation",
+    "href": "syntax/layer/ribbon.html#data-transformation",
+    "title": "Ribbon",
+    "section": "Data transformation",
+    "text": "Data transformation\nThe ribbon layer does not transform its data but passes it through unchanged.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Ribbon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/ribbon.html#examples",
+    "href": "syntax/layer/ribbon.html#examples",
+    "title": "Ribbon",
+    "section": "Examples",
+    "text": "Examples\nA ribbon plot with arbitrary values as minima/maxima\n\nVISUALISE FROM ggsql:airquality\n  DRAW ribbon\n    MAPPING Date AS x, Wind AS ymin, Temp AS ymax\n\n\n\n\n\nRibbon plots are great for showing the range of some aggregation.\n\n// Weekly aggregation of temperature\nSELECT \n  WEEKOFYEAR(Date) AS Week, \n  MAX(Temp) AS MaxTemp, \n  MEAN(Temp) AS MeanTemp,\n  MIN(Temp) AS MinTemp \nFROM ggsql:airquality\nGROUP BY WEEKOFYEAR(Date)\n\nVISUALISE Week AS x\n  DRAW ribbon \n    MAPPING MinTemp AS ymin, MaxTemp AS ymax\n    SETTING opacity =&gt; 0.5\n  DRAW line\n    MAPPING MeanTemp AS y",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Ribbon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/point.html",
+    "href": "syntax/layer/point.html",
+    "title": "Point",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe point layer is used to create scatterplots. The scatterplot is most useful for displaying the relationship between two continuous variables. A bubblechart is a scatterplot with a third variable mapped to the size of points.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Point"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/point.html#aesthetics",
+    "href": "syntax/layer/point.html#aesthetics",
+    "title": "Point",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the point layer.\n\nRequired\n\nx: Position along the x-axis\ny: Position along the y-axis\n\n\n\nOptional\n\nsize: The size of each point\ncolour: The default colour of each point\nstroke: The colour of the stroke around each point (if any). Overrides colour\nfill: The fill colour of each point (if any). Overrides colour\nopacity: The opacity of the point\nshape: The shape used to draw the point",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Point"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/point.html#settings",
+    "href": "syntax/layer/point.html#settings",
+    "title": "Point",
+    "section": "Settings",
+    "text": "Settings\nThe point layer has no additional settings",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Point"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/point.html#data-transformation",
+    "href": "syntax/layer/point.html#data-transformation",
+    "title": "Point",
+    "section": "Data transformation",
+    "text": "Data transformation\nThe point layer does not transform its data but passes it through unchanged",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Point"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/point.html#examples",
+    "href": "syntax/layer/point.html#examples",
+    "title": "Point",
+    "section": "Examples",
+    "text": "Examples\nCreate a classic scatterplot\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, species AS fill\n    SETTING size =&gt; 30\n\n\n\n\n\nMap to size to create a bubble chart\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, body_mass AS size\n\n\n\n\n\nUse filter to only plot a subset of the data\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_len AS x, bill_dep AS y, species AS fill\n    SETTING size =&gt; 30\n    FILTER sex = 'female'",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Point"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/boxplot.html",
+    "href": "syntax/layer/boxplot.html",
+    "title": "Boxplot",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nBoxplots display a summary of a continuous distribution. In the style of Tukey, it displays the median, two hinges and two whiskers as well as outlying points.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Boxplot"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/boxplot.html#aesthetics",
+    "href": "syntax/layer/boxplot.html#aesthetics",
+    "title": "Boxplot",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the boxplot layer.\n\nRequired\n\nx: Position on the x-axis\ny: Position on the y-axis\n\n\n\nOptional\n\nstroke: The colour of the box contours, whiskers, median line and outliers.\nfill: The colour of the box interior.\ncolour: Shorthand for setting stroke and fill simultaneously. Note that the median line will have bad visibility if stroke and fill are the same.\nopacity: The opacity of the box interior.\nlinewidth The width of the box outline, whiskers, median line and outlier stroke.\nlinetype The linetype of the box outline, whiskers, median line and outlier stroke.\nsize The absolute size of outlier points.\nshape The shape of outlier points.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Boxplot"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/boxplot.html#settings",
+    "href": "syntax/layer/boxplot.html#settings",
+    "title": "Boxplot",
+    "section": "Settings",
+    "text": "Settings\n\noutliers: Whether to display outliers as points. Defaults to true.\ncoef: A number indicating the length of the whiskers as a multiple of the interquartile range (IQR). Defaults to 1.5.\nwidth: Relative width of the boxes. Defaults to 0.9.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Boxplot"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/boxplot.html#data-transformation",
+    "href": "syntax/layer/boxplot.html#data-transformation",
+    "title": "Boxplot",
+    "section": "Data transformation",
+    "text": "Data transformation\nPer group, data will be divided into 4 quartiles and summary statistics will be derived from their extremes. Because number of observations per quartile may differ by one, the result of this approach may slightly differ from a pure quantile-based approach. The central line represents the median. The boxes are displayed from the 25th up to the 75th percentiles. The whiskers are calculated from the 25th/75th percentiles +/- the IQR times coef, but no more extreme than the data extrema. Observations are considered outliers when they are more extreme than the whiskers.\n\nCalculated statistics\n\ntype: A string representing the type of metric (upper,lower,q1,q3,median,outlier).\nvalue: The value corresponding to the metric.\n\n\n\nDefault remapping\n\nvalue AS y: By default the values are displayed along the y-axis.\n\n\n\nExamples\nA basic boxplot showing the bill length per species.\n\nVISUALISE FROM ggsql:penguins\nDRAW boxplot\n  MAPPING species AS x, bill_len AS y\n\n\n\n\n\nAdditional groups will dodge the boxplots.\n\nVISUALISE FROM ggsql:penguins\nDRAW boxplot\n  MAPPING \n    species AS x, \n    bill_len AS y,\n    island AS stroke\n\n\n\n\n\nNarrow boxes by shrinking the width parameter.\n\nVISUALISE FROM ggsql:penguins\nDRAW boxplot\n  MAPPING species AS x, bill_len AS y\n  SETTING width =&gt; 0.2\n\n\n\n\n\nConsider more observations as outliers by setting a smaller coef:\n\nVISUALISE FROM ggsql:penguins\nDRAW boxplot\n  MAPPING species AS x, bill_len AS y\n  SETTING coef =&gt; 0.1",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Boxplot"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/polygon.html",
+    "href": "syntax/layer/polygon.html",
+    "title": "Polygon",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nPolygons can be used to draw arbitrary closed shapes based on an ordered sequence of x,y-coordinates. They are similar to paths, but close the shapes and fill the interior.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Polygon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/polygon.html#aesthetics",
+    "href": "syntax/layer/polygon.html#aesthetics",
+    "title": "Polygon",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the polygon layer.\n\nRequired\n\nx Position along the x-axis.\ny Position along the y-axis.\n\n\n\nOptional\n\nstroke The colour of the contour lines.\nfill The colour of the inner area.\ncolour Shorthand for setting stroke and fill simultaneously.\nopacity The opacity of colours.\nlinewidth The width of the contour lines.\nlinetype The dash pattern of the contour line.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Polygon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/polygon.html#settings",
+    "href": "syntax/layer/polygon.html#settings",
+    "title": "Polygon",
+    "section": "Settings",
+    "text": "Settings\nThe polygon layer has no additional settings",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Polygon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/polygon.html#data-transformation",
+    "href": "syntax/layer/polygon.html#data-transformation",
+    "title": "Polygon",
+    "section": "Data transformation",
+    "text": "Data transformation\nThe polygon layer does not transform its data but passes it through unchanged",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Polygon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/polygon.html#examples",
+    "href": "syntax/layer/polygon.html#examples",
+    "title": "Polygon",
+    "section": "Examples",
+    "text": "Examples\n\n\nCreate example data\nCREATE TABLE df AS\nSELECT * FROM (VALUES\n  (1.0, 1.0, 'A'),\n  (1.0, 3.0, 'A'),\n  (2.0, 1.0, 'A'),\n  (2.0, 3.0, 'B'),\n  (3.0, 1.0, 'B'),\n  (3.0, 3.0, 'B'),\n) AS t(x, y, id)\n\n\n\n\n\n\n\n\nSimple example polygon.\n\nVISUALISE x, y FROM df\n  DRAW polygon\n\n\n\n\n\nGroups of individual polygons can be declared via PARTITION BY.\n\nVISUALISE x, y FROM df\n  DRAW polygon PARTITION BY id\n\n\n\n\n\nInvoking a group through discrete aesthetics works as well.\n\nVISUALISE x, y FROM df\n  DRAW polygon MAPPING id AS colour",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Polygon"
     ]
   },
   {

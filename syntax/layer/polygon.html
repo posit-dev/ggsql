@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Define different titles with LABEL – ggsql</title>
+<title>Polygon – ggsql</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -58,7 +58,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 
 
-<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
 <script src="../../site_libs/quarto-nav/headroom.min.js"></script>
 <script src="../../site_libs/clipboard/clipboard.min.js"></script>
 <script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
@@ -108,20 +108,23 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     "search-label": "Search"
   }
 }</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
 <script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
 
 
-<meta property="og:title" content="Define different titles with LABEL – ggsql">
+<meta property="og:title" content="Polygon – ggsql">
 <meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta property="og:image" content="https://ggsql.org/syntax/clause/assets/logo.png">
+<meta property="og:image" content="https://ggsql.org/syntax/layer/assets/logo.png">
 <meta property="og:site_name" content="ggsql">
 <meta property="og:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
 handle is made up of the classic database silo icon and is coloured in a
 gradient teal.
 ">
-<meta name="twitter:title" content="Define different titles with LABEL – ggsql">
+<meta name="twitter:title" content="Polygon – ggsql">
 <meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta name="twitter:image" content="https://ggsql.org/syntax/clause/assets/logo.png">
+<meta name="twitter:image" content="https://ggsql.org/syntax/layer/assets/logo.png">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
 handle is made up of the classic database silo icon and is coloured in a
@@ -224,7 +227,7 @@ gradient teal.
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/clause/visualise.html">Main clauses</a></li><li class="breadcrumb-item"><a href="../../syntax/clause/label.html"><code>LABEL</code></a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/polygon.html">Polygon</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -300,7 +303,7 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../../syntax/clause/label.html" class="sidebar-item-text sidebar-link active">
+  <a href="../../syntax/clause/label.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text"><code>LABEL</code></span></a>
   </div>
 </li>
@@ -359,7 +362,7 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/polygon.html" class="sidebar-item-text sidebar-link">
+  <a href="../../syntax/layer/polygon.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">Polygon</span></a>
   </div>
 </li>
@@ -437,17 +440,23 @@ gradient teal.
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#clause-syntax" id="toc-clause-syntax" class="nav-link active" data-scroll-target="#clause-syntax">Clause syntax</a></li>
-  <li><a href="#automatic-labelling-logic" id="toc-automatic-labelling-logic" class="nav-link" data-scroll-target="#automatic-labelling-logic">Automatic labelling logic</a></li>
+  <li><a href="#aesthetics" id="toc-aesthetics" class="nav-link active" data-scroll-target="#aesthetics">Aesthetics</a>
+  <ul class="collapse">
+  <li><a href="#required" id="toc-required" class="nav-link" data-scroll-target="#required">Required</a></li>
+  <li><a href="#optional" id="toc-optional" class="nav-link" data-scroll-target="#optional">Optional</a></li>
+  </ul></li>
+  <li><a href="#settings" id="toc-settings" class="nav-link" data-scroll-target="#settings">Settings</a></li>
+  <li><a href="#data-transformation" id="toc-data-transformation" class="nav-link" data-scroll-target="#data-transformation">Data transformation</a></li>
+  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
     </div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/clause/visualise.html">Main clauses</a></li><li class="breadcrumb-item"><a href="../../syntax/clause/label.html"><code>LABEL</code></a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/polygon.html">Polygon</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">Define different titles with <code>LABEL</code></h1>
+<h1 class="title">Polygon</h1>
 </div>
 
 
@@ -464,31 +473,293 @@ gradient teal.
 </header>
 
 
-<p>The <code>LABEL</code> clause is one of the simpler clauses in ggsql an allow you to override the default naming of axes and legends, as well as adding titles to the plot</p>
-<section id="clause-syntax" class="level2">
-<h2 class="anchored" data-anchor-id="clause-syntax">Clause syntax</h2>
-<p>The <code>LABEL</code> clause takes one or more labeling settings.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">LABEL</span> <span class="op">&lt;</span>aesthetic<span class="op">/</span>title<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span>string<span class="op">&gt;</span>, <span class="op">..</span>.</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>If an <code>aesthetic</code> is given, then the title will be used for the relevant axis or legend, e.g.&nbsp;<code>x =&gt; 'my x-axis'</code> will label the x axis, whereas <code>fill =&gt; 'Species'</code> will label the legend for fill (if any).</p>
-<p>There are a few additional labels beside the aesthetics that govern the different titles of the plot and can be given instead of an aesthetic name:</p>
+<blockquote class="blockquote">
+<p>Layers are declared with the <a href="../../syntax/clause/draw.html"><code>DRAW</code> clause</a>. Read the documentation for this clause for a thorough description of how to use it.</p>
+</blockquote>
+<p>Polygons can be used to draw arbitrary closed shapes based on an ordered sequence of x,y-coordinates. They are similar to <a href="../../syntax/layer/path.html">paths</a>, but close the shapes and fill the interior.</p>
+<section id="aesthetics" class="level2">
+<h2 class="anchored" data-anchor-id="aesthetics">Aesthetics</h2>
+<p>The following aesthetics are recognised by the polygon layer.</p>
+<section id="required" class="level3">
+<h3 class="anchored" data-anchor-id="required">Required</h3>
 <ul>
-<li><code>title</code>: The main title of the plot</li>
-<li><code>subtitle</code>: An additional, often longer and more descriptive, title beneath the main title</li>
-<li><code>caption</code>: A string placed below the plot, often used to add additional information about the data source etc.</li>
+<li><code>x</code> Position along the x-axis.</li>
+<li><code>y</code> Position along the y-axis.</li>
 </ul>
 </section>
-<section id="automatic-labelling-logic" class="level2">
-<h2 class="anchored" data-anchor-id="automatic-labelling-logic">Automatic labelling logic</h2>
-<p>Axes and legends get an automatic label from the mapping. The logic is as follows:</p>
-<ol type="1">
-<li>Start from the global mapping and then go through the layer mappings as they appear.</li>
-<li>Collect mappings for each aesthetic in the order they appear</li>
-<li>For each aesthetic determine the label based on the following priority:</li>
-<li>An explicitly provided one with <code>LABEL</code></li>
-<li>The name of the first appearing column mapping</li>
-<li>The name of the aesthetic</li>
-</ol>
-<p>This means that constants mapped to an aesthetic doesn’t contribute to the derived label, only data columns, and if all else fails the name of the aesthetic will be used.</p>
+<section id="optional" class="level3">
+<h3 class="anchored" data-anchor-id="optional">Optional</h3>
+<ul>
+<li><code>stroke</code> The colour of the contour lines.</li>
+<li><code>fill</code> The colour of the inner area.</li>
+<li><code>colour</code> Shorthand for setting <code>stroke</code> and <code>fill</code> simultaneously.</li>
+<li><code>opacity</code> The opacity of colours.</li>
+<li><code>linewidth</code> The width of the contour lines.</li>
+<li><code>linetype</code> The dash pattern of the contour line.</li>
+</ul>
+</section>
+</section>
+<section id="settings" class="level2">
+<h2 class="anchored" data-anchor-id="settings">Settings</h2>
+<p>The polygon layer has no additional settings</p>
+</section>
+<section id="data-transformation" class="level2">
+<h2 class="anchored" data-anchor-id="data-transformation">Data transformation</h2>
+<p>The polygon layer does not transform its data but passes it through unchanged</p>
+</section>
+<section id="examples" class="level2">
+<h2 class="anchored" data-anchor-id="examples">Examples</h2>
+<div id="4db690d2" class="cell" data-execution_count="1">
+<details class="code-fold">
+<summary>Create example data</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> df <span class="kw">AS</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> (<span class="kw">VALUES</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">1.0</span>, <span class="dv">1.0</span>, <span class="st">'A'</span>),</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">1.0</span>, <span class="dv">3.0</span>, <span class="st">'A'</span>),</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">2.0</span>, <span class="dv">1.0</span>, <span class="st">'A'</span>),</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">2.0</span>, <span class="dv">3.0</span>, <span class="st">'B'</span>),</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">3.0</span>, <span class="dv">1.0</span>, <span class="st">'B'</span>),</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">3.0</span>, <span class="dv">3.0</span>, <span class="st">'B'</span>),</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>) <span class="kw">AS</span> t(x, y, id)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-display" data-execution_count="1">
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<tbody>
+</tbody>
+</table>
+</div>
+</div>
+<p>Simple example polygon.</p>
+<div id="635a1aca" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">polygon</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<div id="vis-1771317349269"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"order":{"value":null},"x":{"axis":{"labelExpr":"datum.label == '2' ? '2' : datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label == '1.5' ? '1.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '2' ? '2' : datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label == '2.5' ? '2.5' : datum.label == '1.5' ? '1.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"fill":"#888888","interpolate":"linear-closed","stroke":"#888888","type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771317349269';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>Groups of individual polygons can be declared via <code>PARTITION BY</code>.</p>
+<div id="9fa32b70" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">polygon</span> <span class="kw">PARTITION</span> BY id</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<div id="vis-1771317349283"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"},{"__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"},{"__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"id","type":"nominal"},"order":{"value":null},"x":{"axis":{"labelExpr":"datum.label == '1.5' ? '1.5' : datum.label == '2.5' ? '2.5' : datum.label == '2' ? '2' : datum.label == '1' ? '1' : datum.label == '3' ? '3' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '1' ? '1' : datum.label == '3' ? '3' : datum.label == '2' ? '2' : datum.label == '2.5' ? '2.5' : datum.label == '1.5' ? '1.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"fill":"#888888","interpolate":"linear-closed","stroke":"#888888","type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771317349283';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>Invoking a group through discrete aesthetics works as well.</p>
+<div id="b822fb82" class="cell" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">polygon</span> <span class="kw">MAPPING</span> id AS <span class="at">colour</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<div id="vis-1771317349298"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_fill__":"A","__ggsql_aes_stroke__":"A","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"A","__ggsql_aes_stroke__":"A","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"A","__ggsql_aes_stroke__":"A","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"B","__ggsql_aes_stroke__":"B","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"B","__ggsql_aes_stroke__":"B","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"B","__ggsql_aes_stroke__":"B","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":[{"field":"__ggsql_aes_fill__","type":"nominal"},{"field":"__ggsql_aes_stroke__","type":"nominal"}],"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'A' ? 'A' : datum.label == 'B' ? 'B' : datum.label"},"scale":{"domain":["A","B"],"range":["#0067A5","#F3C300"]},"title":"id","type":"nominal"},"order":{"value":null},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'A' ? 'A' : datum.label == 'B' ? 'B' : datum.label"},"scale":{"domain":["A","B"],"range":["#0067A5","#F3C300"]},"title":"id","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '2.5' ? '2.5' : datum.label == '2' ? '2' : datum.label == '1.5' ? '1.5' : datum.label == '1' ? '1' : datum.label == '3' ? '3' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '2' ? '2' : datum.label == '1.5' ? '1.5' : datum.label == '2.5' ? '2.5' : datum.label == '1' ? '1' : datum.label == '3' ? '3' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"fill":"#888888","interpolate":"linear-closed","stroke":"#888888","type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771317349298';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
 
 
 </section>
