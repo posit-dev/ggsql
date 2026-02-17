@@ -2,7 +2,7 @@
 title: Linetype
 ---
 
-`linetype` defines the stroke pattern of lines, e.i. a succession of "on" and "off" areas of the line to make different stipple patterns. Linetype is most useful for [line](../../layer/line.qmd) and [path](../../layer/path.qmd) layers as a colourless way to differentiate between categories. 
+The `linetype` aesthetic defines the stroke pattern of lines: a succession of "on" and "off" parts of the line to make different stipple patterns. Linetype is most useful for [line](../../layer/line.qmd) and [path](../../layer/path.qmd) layers as a colorless way to differentiate between categories. 
 
 While linetypes are most useful for differentiating between discrete data, ggsql also comes with a sequential palette that gradually increases the amount of ink used for the pattern.
 
@@ -37,6 +37,7 @@ Each pair of hex digits represents on/off lengths:
 - `'3c6c9c'` = 3 on, 12 off, 6 on, 12 off, 9 on, 12 off
 
 Valid hex patterns:
+
 - Must have 2, 4, 6, or 8 hex digits
 - Digits can be 1-9 or a-f (0 is not allowed)
 - Digits represent line lengths as multiples of the linewidth
@@ -44,7 +45,7 @@ Valid hex patterns:
 ## Palettes
 ggsql provides two linetype palettes which are generally enough for every need
 
-### Categorical palette
+The `categorical` palette is the default palette for discrete linetype scales. It consists of the 6 named patterns [shown above](#literal-values) in the same order. Since it is the only palette for discrete linetypes, there is rarely a need to specify it.
 The `categorical` palette is the default palette for discrete linetype scales. It consists of the 6 named patterns [shown above](#literal-values) in the same order. Since it is the only palette for discrete linetypes there is rarely a need to specify it.
 
 ### Sequential palette

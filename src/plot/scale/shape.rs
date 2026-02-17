@@ -16,7 +16,7 @@ pub fn get_shape_coordinates(name: &str) -> Option<Vec<Vec<(f64, f64)>>> {
         "star" => Some(star_coords()),
         "cross" => Some(cross_coords()),
         "plus" => Some(plus_coords()),
-        "stroke" => Some(stroke_coords()),
+        "hline" => Some(hline_coords()),
         "vline" => Some(vline_coords()),
         "asterisk" => Some(asterisk_coords()),
         "bowtie" => Some(bowtie_coords()),
@@ -134,10 +134,13 @@ fn star_coords() -> Vec<Vec<(f64, f64)>> {
 }
 
 /// X shape (diagonal cross) - two line segments.
+/// Scaled by 1/√2 so diagonal length matches the plus's axis-aligned length.
 fn cross_coords() -> Vec<Vec<(f64, f64)>> {
+    // 0.8 / √2 ≈ 0.566 gives same line length as plus (1.6 units)
+    let c = 0.8 / std::f64::consts::SQRT_2;
     vec![
-        vec![(-0.8, -0.8), (0.8, 0.8)], // diagonal from bottom-left to top-right
-        vec![(-0.8, 0.8), (0.8, -0.8)], // diagonal from top-left to bottom-right
+        vec![(-c, -c), (c, c)], // diagonal from bottom-left to top-right
+        vec![(-c, c), (c, -c)], // diagonal from top-left to bottom-right
     ]
 }
 
@@ -150,7 +153,7 @@ fn plus_coords() -> Vec<Vec<(f64, f64)>> {
 }
 
 /// Horizontal line at y=0.
-fn stroke_coords() -> Vec<Vec<(f64, f64)>> {
+fn hline_coords() -> Vec<Vec<(f64, f64)>> {
     vec![vec![(-0.8, 0.0), (0.8, 0.0)]]
 }
 
@@ -297,7 +300,7 @@ mod tests {
         // Open/stroke shapes may have multiple line segments
         assert!(get_shape_coordinates("cross").is_some());
         assert!(get_shape_coordinates("plus").is_some());
-        assert!(get_shape_coordinates("stroke").is_some());
+        assert!(get_shape_coordinates("hline").is_some());
         assert!(get_shape_coordinates("vline").is_some());
         assert!(get_shape_coordinates("asterisk").is_some());
         assert!(get_shape_coordinates("bowtie").is_some());
@@ -395,8 +398,8 @@ mod tests {
     #[test]
     fn test_shape_to_svg_path_open_shapes_not_closed() {
         // Open shapes (lines) should NOT end with Z
-        let stroke = shape_to_svg_path("stroke").unwrap();
-        assert!(!stroke.ends_with('Z'));
+        let hline = shape_to_svg_path("hline").unwrap();
+        assert!(!hline.ends_with('Z'));
 
         let vline = shape_to_svg_path("vline").unwrap();
         assert!(!vline.ends_with('Z'));

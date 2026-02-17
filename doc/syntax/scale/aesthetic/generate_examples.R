@@ -63,7 +63,7 @@ NAMED_LINETYPES <- list(
 SHAPES_CLOSED <- c("circle", "square", "diamond", "triangle-up", "triangle-down",
                    "star", "square-cross", "circle-plus", "square-plus")
 # Open shapes (stroke only)
-SHAPES_OPEN <- c("cross", "plus", "stroke", "vline", "asterisk", "bowtie")
+SHAPES_OPEN <- c("cross", "plus", "asterisk", "bowtie", "hline", "vline")
 # All shapes
 SHAPES_ALL <- c(SHAPES_CLOSED, SHAPES_OPEN)
 
@@ -257,8 +257,8 @@ get_shape_path <- function(name, size = 12, cx = 20, cy = 20) {
       paste0("M", points[1], " L", paste(points[-1], collapse = " L"), " Z")
     },
     "cross" = {
-      # X shape - open shapes use base size
-      s <- size
+      # X shape - scaled by 1/√2 so diagonal length matches plus's axis-aligned length
+      s <- size / sqrt(2)
       sprintf("M%.1f,%.1f L%.1f,%.1f M%.1f,%.1f L%.1f,%.1f",
               cx - s, cy - s, cx + s, cy + s, cx + s, cy - s, cx - s, cy + s)
     },
@@ -268,7 +268,7 @@ get_shape_path <- function(name, size = 12, cx = 20, cy = 20) {
       sprintf("M%.1f,%.1f L%.1f,%.1f M%.1f,%.1f L%.1f,%.1f",
               cx - s, cy, cx + s, cy, cx, cy - s, cx, cy + s)
     },
-    "stroke" = {
+    "hline" = {
       # Horizontal line
       s <- size
       sprintf("M%.1f,%.1f L%.1f,%.1f", cx - s, cy, cx + s, cy)
@@ -545,7 +545,7 @@ main <- function() {
 
   # Output directory (subfolder called "examples")
   base_dir <- if (interactive()) {
-    "doc/syntax/scale/palette"
+    "doc/syntax/scale/aesthetic/"
   } else {
     script_dir
   }

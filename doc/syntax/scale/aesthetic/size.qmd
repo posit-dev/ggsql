@@ -2,12 +2,12 @@
 title: Size
 ---
 
-`size` defines the size of points (of any shape). It is measured as radius in points (1pt = 1/72th inch) of an idealized circle. Size is most often used to create a bubble chart, which is a variant of a scatter plot where a continuous value is mapped to the size of the points.
+The `size` aesthetic defines the size of points (of any shape). It is measured as radius in points (1pt = 1/72 inch) of an idealized circle. Size is most often used to create a bubble chart, which is a variant of a scatter plot where a continuous value is mapped to the `size` of the points.
 
-Despite being a measure of radius, `size` is scaled by area (i.e. it has an implicit square root transform applied on top of any other transform you may add). This is to ensure that steps in data value corresponds to equal steps in perceived size (which is governed by area).
+`size` is scaled by area rather than radius. This means it has an implicit square root transform applied on top of any other transform you may add. This ensures that steps in data value correspond to equal steps in perceived size (which is proportional to area).
 
 ## Literal values
-Size are given as bare numbers and measured in points. The following code will e.g. set the radius of points to 3pt (~28pt²):
+Sizes are given as bare numbers and measured in points. The following code will e.g. set the radius of points to 3pt (~28pt²):
 
 ```ggsql
 DRAW point

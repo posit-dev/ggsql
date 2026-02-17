@@ -2,7 +2,7 @@
 title: Shape
 ---
 
-`shape` governs how points look, wherever they may appear (usually in a point layer). Shape can be used instead of color to differentiate between categories of points (or even better, in concert with color). Shape is only meaningful in relation to discrete data.
+The `shape` aesthetic governs how points look. Shape can be used instead of color to differentiate between categories of points (or even better, in concert with color). Shape is only meaningful in relation to discrete data.
 
 ## Literal values
 Shapes are given by name from the following list of 15 possible shapes
@@ -20,10 +20,10 @@ Shapes are given by name from the following list of 15 possible shapes
 | `square-plus` | ![](examples/shape_square_plus.svg){height=20 .lightbox} | Square with + cutout |
 | `cross` | ![](examples/shape_cross.svg){height=20 .lightbox} | X shape |
 | `plus` | ![](examples/shape_plus.svg){height=20 .lightbox} | + shape |
-| `stroke` | ![](examples/shape_stroke.svg){height=20 .lightbox} | Horizontal line |
-| `vline` | ![](examples/shape_vline.svg){height=20 .lightbox} | Vertical line |
 | `asterisk` | ![](examples/shape_asterisk.svg){height=20 .lightbox} | 6-pointed asterisk |
 | `bowtie` | ![](examples/shape_bowtie.svg){height=20 .lightbox} | Bowtie/hourglass |
+| `hline` | ![](examples/shape_hline.svg){height=20 .lightbox} | Horizontal line |
+| `vline` | ![](examples/shape_vline.svg){height=20 .lightbox} | Vertical line |
 
 You can use these names directly when setting the shape of a point:
 
@@ -34,10 +34,32 @@ DRAW point
 
 ## Palettes
 
-ggsql provides three built-in shape palettes:
+ggsql provides three built-in shape palettes, which is often all you need.
+
+Palettes are used by giving them as names in the `TO` clause:
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW point
+    MAPPING bill_dep AS x, body_mass AS y, species AS shape
+    SETTING linewidth => 1, size => 5
+SCALE shape TO open
+```
+
+Instead of using a named palette you can create one on the fly using an array of shape names:
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW point
+    MAPPING bill_dep AS x, body_mass AS y, species AS shape
+    SETTING linewidth => 1, size => 5
+SCALE shape TO ['star', 'bowtie', 'square-plus']
+```
 
 ### Default Palette (`closed`)
 The default palette contains the 9 closed shapes (first nine in the table above). This is the recommended palette for most use cases, as closed shapes are more visually prominent and easier to distinguish at small sizes.
+
+While the closed shapes are most often used filled, you can also turn if fill and only draw the stroke for a lighter look.
 
 ### Open Palette (`open`)
 The `open` palette contains the last 6 shapes in the table. None of these have a fill. You may use this palette when you want transparent shapes that don't obscure data.

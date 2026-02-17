@@ -1910,10 +1910,10 @@ pub const SHAPES_CLOSED: &[&str] = &[
 pub const SHAPES_OPEN: &[&str] = &[
     "cross",    // X shape
     "plus",     // + shape
-    "stroke",   // horizontal line
-    "vline",    // vertical line
     "asterisk", // * shape (6-pointed)
     "bowtie",   // two triangles pointing inward
+    "hline",    // horizontal line
+    "vline",    // vertical line
 ];
 
 /// Default point shapes - combined palette ordered by distinguishability
@@ -1931,10 +1931,10 @@ pub const SHAPES: &[&str] = &[
     // Open shapes
     "cross",
     "plus",
-    "stroke",
-    "vline",
     "asterisk",
     "bowtie",
+    "hline",
+    "vline",
 ];
 
 // =============================================================================

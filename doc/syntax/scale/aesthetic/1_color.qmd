@@ -1,0 +1,289 @@
+---
+title: "Fill and Stroke"
+format:
+  html:
+    toc: true
+    toc-depth: 4
+---
+
+Color values are used in two places in ggsql: When setting stroke color and fill color. Stroke color governs the color of lines, be it the outline of a rectangle (e.g. in a [bar layer](../../layer/bar.qmd)), or the line of a path (e.g. in a [line layer](../../layer/line.qmd)). The fill color determines the color of the inside of a shape. It follows that all layers respond to the stroke aesthetic but only those containing closed shapes respond to the fill aesthetic.
+
+## The color meta-aesthetic
+In addition to the `fill` and `stroke` aesthetics there is also a `color` meta-aesthetic. Setting this will set the fill *and* stroke at the same time unless they are set directly. For instance, the following will set the fill and stroke to red
+
+```ggsql
+DRAW bar
+    SETTING color => 'red'
+```
+
+whereas this will set the fill to red and stroke to black
+
+```ggsql
+DRAW bar
+    SETTING color => 'red', stroke => 'black'
+```
+
+The same logic applies when defining a scale. Defining a `color` scale creates two scales, one for `fill` and one for `stroke`, with the same settings (unless either are defined explicitly). For instance, the following
+
+```ggsql
+SCALE color TO viridis
+```
+
+defines two separate scales for `fill` and `stroke` that both use the `viridis` palette.
+
+In general, it is highly advisable to be explicit and directly use the `fill` and `stroke` aesthetics. The `color` meta-aesthetic is a quick shortcut if you need it.
+
+## Literal values
+Literal color values can be defined in any CSS compatible way ^[For a complete overview see the [documentation for the csscolorparser crate](https://docs.rs/csscolorparser/latest/csscolorparser/) which is what we use internally.]. The gist of it is that colors can be defined in one of three different ways:
+
+* As a named color, e.g. `'red'`, or `'lemonchiffon'`
+* As a hex color value, e.g. `'#FF0000'` or `'#FFFACD88'`
+* As a css color function, e.g. `'rgba(100%, 0%, 0%, 50%)'` or `'oklab(98%, -0.012, 0.057)'`
+
+Literal color values are used in three places in ggsql. Either when setting an aesthetic (as opposed to mapping), e.g.
+
+```ggsql
+DRAW line
+    SETTING stroke => '#FF0000'
+```
+
+when you define the output range of a fill or stroke scale manually, e.g.
+
+```ggsql
+SCALE fill TO ['rgb(100%, 0%, 0%)', 'lemonchiffon']
+```
+
+or when using an identity scale for color in which case the data values must be parsable as colors.
+
+Note that all different types of color notation can be mixed in the same place.
+
+Literal color values may be translucent, either by providing a fourth channel the the hex-notation, or by using a css color function that includes an alpha level (e.g. `rgba()`). You should avoid mixing this with the use of the opacity aesthetic to ensure the opacity is predictable.
+
+## Palettes
+There are two different types of palettes for fill and stroke — those intended for continuous data and those intended for discrete data. While they both consists of multiple color values, the continuous palettes are meant for interpolation between successive values whereas the discrete palettes are not. 
+
+Palettes are used by giving them as names in the `TO` clause:
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW point
+    MAPPING bill_dep AS x, body_mass AS y, species AS fill
+    SETTING stroke => null
+SCALE color TO category10
+```
+
+Instead of using a named palette you can create one on the fly using an array of color values:
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW point
+    MAPPING bill_dep AS x, body_mass AS y, flipper_len AS fill
+    SETTING stroke => null
+SCALE color TO ['antiquewhite', 'firebrick']
+```
+
+### Continuous palettes
+
+#### Sequential
+Sequential palettes for numeric data. `navia` is the default continuous color palette in ggsql.
+
+| Name | Gradient | Source | Description |
+|------|----------|--------|-------------|
+| `navia` | ![](examples/gradient_navia.svg){height=20 .lightbox} | Crameri | **Default.** Blue-green-cream (alias: `sequential`) |
+| `batlow` | ![](examples/gradient_batlow.svg){height=20 .lightbox} | Crameri | Blue-green-yellow-red |
+| `batlowk` | ![](examples/gradient_batlowk.svg){height=20 .lightbox} | Crameri | Dark variant of batlow |
+| `batloww` | ![](examples/gradient_batloww.svg){height=20 .lightbox} | Crameri | Light variant of batlow |
+| `hawaii` | ![](examples/gradient_hawaii.svg){height=20 .lightbox} | Crameri | Green-yellow-orange-magenta |
+| `lajolla` | ![](examples/gradient_lajolla.svg){height=20 .lightbox} | Crameri | Cream-yellow-orange-brown |
+| `tokyo` | ![](examples/gradient_tokyo.svg){height=20 .lightbox} | Crameri | White-magenta-dark blue |
+| `turku` | ![](examples/gradient_turku.svg){height=20 .lightbox} | Crameri | Cream-green-dark brown |
+| `acton` | ![](examples/gradient_acton.svg){height=20 .lightbox} | Crameri | White-purple |
+| `bamako` | ![](examples/gradient_bamako.svg){height=20 .lightbox} | Crameri | White-brown-dark brown |
+| `bilbao` | ![](examples/gradient_bilbao.svg){height=20 .lightbox} | Crameri | White-orange-dark brown |
+| `buda` | ![](examples/gradient_buda.svg){height=20 .lightbox} | Crameri | White-pink-magenta |
+| `davos` | ![](examples/gradient_davos.svg){height=20 .lightbox} | Crameri | White-blue |
+| `devon` | ![](examples/gradient_devon.svg){height=20 .lightbox} | Crameri | White-blue-dark blue |
+| `glasgow` | ![](examples/gradient_glasgow.svg){height=20 .lightbox} | Crameri | Blue-cream-orange |
+| `grayc` | ![](examples/gradient_grayc.svg){height=20 .lightbox} | Crameri | White-black grayscale |
+| `imola` | ![](examples/gradient_imola.svg){height=20 .lightbox} | Crameri | Blue-cream-green |
+| `lapaz` | ![](examples/gradient_lapaz.svg){height=20 .lightbox} | Crameri | White-blue-dark |
+| `lipari` | ![](examples/gradient_lipari.svg){height=20 .lightbox} | Crameri | White-orange-dark blue |
+| `nuuk` | ![](examples/gradient_nuuk.svg){height=20 .lightbox} | Crameri | White-blue-green |
+| `oslo` | ![](examples/gradient_oslo.svg){height=20 .lightbox} | Crameri | White-blue-black |
+| `blues` | ![](examples/gradient_blues.svg){height=20 .lightbox} | ColorBrewer | Light to dark blue |
+| `greens` | ![](examples/gradient_greens.svg){height=20 .lightbox} | ColorBrewer | Light to dark green |
+| `oranges` | ![](examples/gradient_oranges.svg){height=20 .lightbox} | ColorBrewer | Light to dark orange |
+| `reds` | ![](examples/gradient_reds.svg){height=20 .lightbox} | ColorBrewer | Light to dark red |
+| `purples` | ![](examples/gradient_purples.svg){height=20 .lightbox} | ColorBrewer | Light to dark purple |
+| `greys` | ![](examples/gradient_greys.svg){height=20 .lightbox} | ColorBrewer | Light to dark grey (also `grays`) |
+| `ylorbr` | ![](examples/gradient_ylorbr.svg){height=20 .lightbox} | ColorBrewer | Yellow-Orange-Brown |
+| `ylorrd` | ![](examples/gradient_ylorrd.svg){height=20 .lightbox} | ColorBrewer | Yellow-Orange-Red |
+| `ylgn` | ![](examples/gradient_ylgn.svg){height=20 .lightbox} | ColorBrewer | Yellow-Green |
+| `ylgnbu` | ![](examples/gradient_ylgnbu.svg){height=20 .lightbox} | ColorBrewer | Yellow-Green-Blue |
+| `gnbu` | ![](examples/gradient_gnbu.svg){height=20 .lightbox} | ColorBrewer | Green-Blue |
+| `bugn` | ![](examples/gradient_bugn.svg){height=20 .lightbox} | ColorBrewer | Blue-Green |
+| `bupu` | ![](examples/gradient_bupu.svg){height=20 .lightbox} | ColorBrewer | Blue-Purple |
+| `pubu` | ![](examples/gradient_pubu.svg){height=20 .lightbox} | ColorBrewer | Purple-Blue |
+| `pubugn` | ![](examples/gradient_pubugn.svg){height=20 .lightbox} | ColorBrewer | Purple-Blue-Green |
+| `purd` | ![](examples/gradient_purd.svg){height=20 .lightbox} | ColorBrewer | Purple-Red |
+| `rdpu` | ![](examples/gradient_rdpu.svg){height=20 .lightbox} | ColorBrewer | Red-Purple |
+| `orrd` | ![](examples/gradient_orrd.svg){height=20 .lightbox} | ColorBrewer | Orange-Red |
+| `viridis` | ![](examples/gradient_viridis.svg){height=20 .lightbox} | Matplotlib | Dark purple through blue and green to yellow |
+| `plasma` | ![](examples/gradient_plasma.svg){height=20 .lightbox} | Matplotlib | Dark purple through pink to yellow (higher contrast) |
+| `magma` | ![](examples/gradient_magma.svg){height=20 .lightbox} | Matplotlib | Black through purple and pink to light yellow |
+| `inferno` | ![](examples/gradient_inferno.svg){height=20 .lightbox} | Matplotlib | Black through red and orange to light yellow |
+| `cividis` | ![](examples/gradient_cividis.svg){height=20 .lightbox} | Matplotlib | Dark blue through gray to yellow (colorblind-optimized) |
+
+#### Diverging
+
+Diverging palettes emphasize a critical midpoint with two contrasting hues on either side. Ideal for data with a meaningful center point (e.g., zero, average).
+
+| Name | Gradient | Source | Description |
+|------|----------|--------|-------------|
+| `vik` | ![](examples/gradient_vik.svg){height=20 .lightbox} | Crameri | Blue-white-red (alias: `diverging`) |
+| `berlin` | ![](examples/gradient_berlin.svg){height=20 .lightbox} | Crameri | Blue-white-red (different hues) |
+| `roma` | ![](examples/gradient_roma.svg){height=20 .lightbox} | Crameri | Green-cream-orange |
+| `bam` | ![](examples/gradient_bam.svg){height=20 .lightbox} | Crameri | Blue-white-red |
+| `broc` | ![](examples/gradient_broc.svg){height=20 .lightbox} | Crameri | Brown-white-green |
+| `cork` | ![](examples/gradient_cork.svg){height=20 .lightbox} | Crameri | Blue-white-green |
+| `lisbon` | ![](examples/gradient_lisbon.svg){height=20 .lightbox} | Crameri | Blue-white-brown |
+| `managua` | ![](examples/gradient_managua.svg){height=20 .lightbox} | Crameri | Blue-white-magenta |
+| `tofino` | ![](examples/gradient_tofino.svg){height=20 .lightbox} | Crameri | Blue-cream-brown |
+| `vanimo` | ![](examples/gradient_vanimo.svg){height=20 .lightbox} | Crameri | Magenta-white-green |
+| `rdbu` | ![](examples/gradient_rdbu.svg){height=20 .lightbox} | ColorBrewer | Red-Blue |
+| `rdylbu` | ![](examples/gradient_rdylbu.svg){height=20 .lightbox} | ColorBrewer | Red-Yellow-Blue |
+| `rdylgn` | ![](examples/gradient_rdylgn.svg){height=20 .lightbox} | ColorBrewer | Red-Yellow-Green |
+| `spectral` | ![](examples/gradient_spectral.svg){height=20 .lightbox} | ColorBrewer | Spectral (rainbow-like) |
+| `brbg` | ![](examples/gradient_brbg.svg){height=20 .lightbox} | ColorBrewer | Brown-Blue-Green |
+| `prgn` | ![](examples/gradient_prgn.svg){height=20 .lightbox} | ColorBrewer | Purple-Green |
+| `piyg` | ![](examples/gradient_piyg.svg){height=20 .lightbox} | ColorBrewer | Pink-Yellow-Green |
+| `rdgy` | ![](examples/gradient_rdgy.svg){height=20 .lightbox} | ColorBrewer | Red-Grey |
+| `puor` | ![](examples/gradient_puor.svg){height=20 .lightbox} | ColorBrewer | Purple-Orange |
+
+#### Multi-Sequential
+
+Multi-sequential palettes have multiple sequential segments, useful for categorical data with ordered subcategories.
+
+| Name | Gradient | Source | Description |
+|------|----------|--------|-------------|
+| `bukavu` | ![](examples/gradient_bukavu.svg){height=20 .lightbox} | Crameri | Multi-hue sequential |
+| `fes` | ![](examples/gradient_fes.svg){height=20 .lightbox} | Crameri | Multi-hue sequential |
+| `oleron` | ![](examples/gradient_oleron.svg){height=20 .lightbox} | Crameri | Topographic (land/sea) |
+
+#### Cyclic
+
+Cyclic palettes wrap around, making them suitable for periodic data like angles, phases, or time of day.
+
+| Name | Gradient | Source | Description |
+|------|----------|--------|-------------|
+| `romao` | ![](examples/gradient_romao.svg){height=20 .lightbox} | Crameri | Cyclic green-orange (alias: `cyclic`) |
+| `bamo` | ![](examples/gradient_bamo.svg){height=20 .lightbox} | Crameri | Cyclic blue-red |
+| `broco` | ![](examples/gradient_broco.svg){height=20 .lightbox} | Crameri | Cyclic brown-green |
+| `corko` | ![](examples/gradient_corko.svg){height=20 .lightbox} | Crameri | Cyclic blue-green |
+| `viko` | ![](examples/gradient_viko.svg){height=20 .lightbox} | Crameri | Cyclic blue-red |
+
+### Discrete palettes
+
+#### Qualitative
+
+Qualitative palettes for categorical data where no ordering is implied.
+
+| Name | Swatches | Colors | Source | Description |
+|------|----------|--------|--------|-------------|
+| `ggsql10` | ![](examples/swatch_ggsql10.svg){height=20 .lightbox} | 10 | ggsql | **Default.** Optimized for distinguishability |
+| `tableau10` | ![](examples/swatch_tableau10.svg){height=20 .lightbox} | 10 | Tableau | Tableau's default categorical palette |
+| `category10` | ![](examples/swatch_category10.svg){height=20 .lightbox} | 10 | D3 | D3's default categorical palette |
+| `set1` | ![](examples/swatch_set1.svg){height=20 .lightbox} | 9 | ColorBrewer | Bold, saturated colors |
+| `set2` | ![](examples/swatch_set2.svg){height=20 .lightbox} | 8 | ColorBrewer | Muted, softer colors |
+| `set3` | ![](examples/swatch_set3.svg){height=20 .lightbox} | 12 | ColorBrewer | Pastel-like, lighter colors |
+| `pastel1` | ![](examples/swatch_pastel1.svg){height=20 .lightbox} | 9 | ColorBrewer | Light pastel colors |
+| `pastel2` | ![](examples/swatch_pastel2.svg){height=20 .lightbox} | 8 | ColorBrewer | Soft pastel colors |
+| `dark2` | ![](examples/swatch_dark2.svg){height=20 .lightbox} | 8 | ColorBrewer | Dark, saturated colors |
+| `paired` | ![](examples/swatch_paired.svg){height=20 .lightbox} | 12 | ColorBrewer | Light-dark paired colors |
+| `accent` | ![](examples/swatch_accent.svg){height=20 .lightbox} | 8 | ColorBrewer | Accent colors for emphasis |
+| `kelly22` | ![](examples/swatch_kelly22.svg){height=20 .lightbox} | 20 | Kelly | Maximum contrast colors |
+
+### References
+
+##### Crameri Scientific Colour Maps
+Crameri, F. (2018). Scientific colour maps. Zenodo. [doi:10.5281/zenodo.1243862](https://doi.org/10.5281/zenodo.1243862)
+
+Crameri, F., Shephard, G.E., & Heron, P.J. (2020). The misuse of colour in science communication. *Nature Communications*, 11, 5444.
+
+##### ColorBrewer
+Brewer, C.A. (2002). ColorBrewer: Color Advice for Cartography. [colorbrewer2.org](https://colorbrewer2.org)
+
+##### Matplotlib
+van der Walt, S. & Smith, N. (2015). A Better Default Colormap for Matplotlib. SciPy 2015.
+
+##### Tableau
+Tableau Software. [tableau.com](https://www.tableau.com)
+
+##### D3
+Bostock, M. D3.js. [d3js.org](https://d3js.org)
+
+##### Kelly's Colors
+Kelly, K.L. (1965). Twenty-two colors of maximum contrast. *Color Engineering*, 3(6), 26-27.
+
+### Choosing a Palette
+
+#### For general continuous data
+
+- **`navia`** (default) - Good all-purpose choice, perceptually uniform
+- **`viridis`** - Excellent for print, colorblind-safe, perceptually uniform
+- **`batlow`** - Wide perceptual range, good for scientific data
+
+#### For data with a meaningful midpoint
+
+Use a diverging palette:
+
+- **`vik`** or **`berlin`** - Clear red/blue contrast
+- **`roma`** - Warm/cool contrast without red/blue
+
+#### For data representing categories with magnitude
+
+Consider multi-sequential palettes:
+
+- **`oleron`** - Good for topographic data
+
+#### For periodic/cyclic data
+
+Use a cyclic palette:
+
+- **`romao`** - Smooth transitions that wrap around
+
+#### For general categorical data
+
+- **`ggsql10`** (default) - Good all-purpose choice, accessible
+- **`tableau10`** - Familiar to many users, well-tested
+- **`category10`** - Standard web visualization palette
+
+#### For many categories (> 10)
+
+- **`kelly22`** - Up to 20 distinguishable colors
+- **`set3`** or **`paired`** - 12 colors each
+
+#### For subtle/background colors
+
+- **`pastel1`** or **`pastel2`** - Light, unobtrusive
+- **`set2`** - Muted but still distinguishable
+
+#### For bold/emphasis
+
+- **`set1`** - Highly saturated, attention-grabbing
+- **`dark2`** - Rich, deep colors
+
+#### For paired/related categories
+
+- **`paired`** - Light-dark pairs show relationships
+
+## Accessibility
+- *Don't rely on color alone:* Use redundant encoding by combining color with shape, pattern, or direct labels. This ensures information is accessible when color cannot be perceived.
+- *Choose colorblind-safe palettes:* Approximately 8% of men and 0.5% of women have some form of color vision deficiency. Palettes like `viridis`, `cividis`, and the Crameri scientific palettes are designed to be distinguishable by colorblind viewers.
+- *Avoid red-green combinations:* Red-green color blindness (deuteranopia/protanopia) is the most common form. Avoid using red and green as the only distinguishing colors between categories.
+- *Ensure sufficient contrast:* Light colors on light backgrounds or dark colors on dark backgrounds can be difficult to perceive. Aim for a contrast ratio of at least 3:1 for graphical elements.
+- *Test in grayscale:* Print or display your visualization in grayscale to verify that information is still distinguishable without color. Palettes like `viridis` and `cividis` maintain luminance variation when desaturated.
+- *Limit the number of colors:* Most people can only reliably distinguish 6-8 colors at a glance. For more categories, consider grouping, faceting, or interactive filtering instead of adding more colors.
+- *Use perceptually uniform palettes:* Palettes where equal data differences produce equal perceived color differences prevent visual distortion of your data. The Crameri and matplotlib palettes (`viridis`, `plasma`, etc.) are perceptually uniform.
+- *Consider cultural associations:* Colors carry different meanings across cultures (e.g., red can signify danger, luck, or political affiliation). Be mindful of unintended connotations in your audience.
+- *Provide alternatives:* When possible, offer a data table or text description alongside color-encoded visualizations for users who cannot perceive the colors.

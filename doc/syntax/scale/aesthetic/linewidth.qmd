@@ -2,10 +2,10 @@
 title: Linewidth
 ---
 
-`linewidth` sets the width of strokes and lines. It is measured in points (1pt = 1/72th inch). Linewidth can be used to represent continuous data, but care should be taken since the eye is not good at differentiating the relative thinness of thin lines, and using thick lines will often result in severe overplotting.
+The `linewidth` aesthetic sets the width of strokes and lines. It is measured in points (1pt = 1/72 inch). Linewidth can be used to represent continuous data. However, care should be taken because the eye is not good at differentiating the relative thinness of thin lines, and using thick lines will often result in severe overplotting.
 
 ## Literal values
-Linewidth are given as bare numbers and measured in points. The following code will e.g. set the width of the lines to 3pt:
+Linewidth are given as bare numbers and measured in points. The following code sets the width of the lines to 3pt:
 
 ```ggsql
 DRAW line
