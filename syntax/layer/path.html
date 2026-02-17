@@ -556,7 +556,7 @@ gradient teal.
 </section>
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
-<div id="aa4369f3" class="cell" data-execution_count="1">
+<div id="3f1ea940" class="cell" data-execution_count="1">
 <details class="code-fold">
 <summary>Create example data</summary>
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> df <span class="kw">AS</span></span>
@@ -577,15 +577,15 @@ gradient teal.
 </div>
 </div>
 <p>Simple example path.</p>
-<div id="470433c4" class="cell" data-execution_count="2">
+<div id="9d2bcc3d" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
-<div id="vis-1771318960148"></div>
+<div id="vis-1771337514126"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"order":{"value":null},"x":{"axis":{"labelExpr":"datum.label == '3' ? '3' : datum.label == '2.5' ? '2.5' : datum.label == '1.5' ? '1.5' : datum.label == '1' ? '1' : datum.label == '2' ? '2' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '1.5' ? '1.5' : datum.label == '2' ? '2' : datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1771318960148';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"order":{"value":null},"x":{"axis":{"labelExpr":"datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label == '2.5' ? '2.5' : datum.label == '1.5' ? '1.5' : datum.label == '2' ? '2' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '2.5' ? '2.5' : datum.label == '1.5' ? '1.5' : datum.label == '3' ? '3' : datum.label == '2' ? '2' : datum.label == '1' ? '1' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771337514126';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -606,7 +606,7 @@ gradient teal.
         paths: {
           'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
           'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
           'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
         }
       });
@@ -638,7 +638,7 @@ gradient teal.
 
       Promise.all([
         loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
         loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
       ])
         .then(() => {
@@ -654,16 +654,16 @@ gradient teal.
 </div>
 </div>
 <p>Contrary to <code>line</code> drawings, <code>path</code> is not forced to follow the order along the axis.</p>
-<div id="786a5245" class="cell" data-execution_count="3">
+<div id="4028ade2" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span> <span class="kw">MAPPING</span> <span class="st">'Path'</span> AS <span class="at">colour</span></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">line</span> <span class="kw">MAPPING</span> <span class="st">'Line'</span> AS <span class="at">colour</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
-<div id="vis-1771318960167"></div>
+<div id="vis-1771337514144"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"}]},"height":"container","layer":[{"encoding":{"order":{"value":null},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'Path' ? 'Path' : datum.label == 'Line' ? 'Line' : datum.label"},"scale":{"domain":["Line","Path"],"range":["#0067A5","#F3C300"]},"title":"stroke","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '2' ? '2' : datum.label == '1' ? '1' : datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '1.5' ? '1.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label == '2.5' ? '2.5' : datum.label == '1.5' ? '1.5' : datum.label == '2' ? '2' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'Path' ? 'Path' : datum.label == 'Line' ? 'Line' : datum.label"},"scale":{"domain":["Line","Path"],"range":["#0067A5","#F3C300"]},"title":"stroke","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '2' ? '2' : datum.label == '1' ? '1' : datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '1.5' ? '1.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label == '2.5' ? '2.5' : datum.label == '1.5' ? '1.5' : datum.label == '2' ? '2' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_1__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1771318960167';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Line","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"}]},"height":"container","layer":[{"encoding":{"order":{"value":null},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'Path' ? 'Path' : datum.label == 'Line' ? 'Line' : datum.label"},"scale":{"domain":["Line","Path"],"range":["#0067A5","#F3C300"]},"title":"stroke","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '1' ? '1' : datum.label == '1.5' ? '1.5' : datum.label == '2' ? '2' : datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '1' ? '1' : datum.label == '2' ? '2' : datum.label == '1.5' ? '1.5' : datum.label == '3' ? '3' : datum.label == '2.5' ? '2.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'Path' ? 'Path' : datum.label == 'Line' ? 'Line' : datum.label"},"scale":{"domain":["Line","Path"],"range":["#0067A5","#F3C300"]},"title":"stroke","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '1' ? '1' : datum.label == '1.5' ? '1.5' : datum.label == '2' ? '2' : datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '1' ? '1' : datum.label == '2' ? '2' : datum.label == '1.5' ? '1.5' : datum.label == '3' ? '3' : datum.label == '2.5' ? '2.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_1__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771337514144';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -684,7 +684,7 @@ gradient teal.
         paths: {
           'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
           'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
           'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
         }
       });
@@ -716,7 +716,7 @@ gradient teal.
 
       Promise.all([
         loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
         loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
       ])
         .then(() => {
@@ -732,15 +732,15 @@ gradient teal.
 </div>
 </div>
 <p>Groups of individual paths can be declared via <code>PARTITION BY</code>.</p>
-<div id="3c5120c2" class="cell" data-execution_count="4">
+<div id="2bb614d1" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span> <span class="kw">PARTITION</span> BY id</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="4">
-<div id="vis-1771318960181"></div>
+<div id="vis-1771337514158"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"},{"__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"},{"__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"id","type":"nominal"},"order":{"value":null},"x":{"axis":{"labelExpr":"datum.label == '1.5' ? '1.5' : datum.label == '2.5' ? '2.5' : datum.label == '2' ? '2' : datum.label == '1' ? '1' : datum.label == '3' ? '3' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '2.5' ? '2.5' : datum.label == '2' ? '2' : datum.label == '3' ? '3' : datum.label == '1.5' ? '1.5' : datum.label == '1' ? '1' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1771318960181';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"},{"__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"},{"__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"id","type":"nominal"},"order":{"value":null},"x":{"axis":{"labelExpr":"datum.label == '3' ? '3' : datum.label == '1.5' ? '1.5' : datum.label == '2' ? '2' : datum.label == '2.5' ? '2.5' : datum.label == '1' ? '1' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '1' ? '1' : datum.label == '3' ? '3' : datum.label == '1.5' ? '1.5' : datum.label == '2.5' ? '2.5' : datum.label == '2' ? '2' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771337514158';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -761,7 +761,7 @@ gradient teal.
         paths: {
           'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
           'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
           'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
         }
       });
@@ -793,7 +793,7 @@ gradient teal.
 
       Promise.all([
         loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
         loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
       ])
         .then(() => {
@@ -809,15 +809,15 @@ gradient teal.
 </div>
 </div>
 <p>Invoking a group through discrete aesthetics works as well.</p>
-<div id="91762e70" class="cell" data-execution_count="5">
+<div id="a01addd4" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span> <span class="kw">MAPPING</span> id AS <span class="at">colour</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="5">
-<div id="vis-1771318960196"></div>
+<div id="vis-1771337514172"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_stroke__":"A","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"A","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"A","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"B","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"B","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"B","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_stroke__","type":"nominal"},"order":{"value":null},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'A' ? 'A' : datum.label == 'B' ? 'B' : datum.label"},"scale":{"domain":["A","B"],"range":["#0067A5","#F3C300"]},"title":"id","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '2' ? '2' : datum.label == '1.5' ? '1.5' : datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label == '2.5' ? '2.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '1' ? '1' : datum.label == '2.5' ? '2.5' : datum.label == '2' ? '2' : datum.label == '3' ? '3' : datum.label == '1.5' ? '1.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1771318960196';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_stroke__":"A","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"A","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"A","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"B","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"B","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"B","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_stroke__","type":"nominal"},"order":{"value":null},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'A' ? 'A' : datum.label == 'B' ? 'B' : datum.label"},"scale":{"domain":["A","B"],"range":["#0067A5","#F3C300"]},"title":"id","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '2' ? '2' : datum.label == '1' ? '1' : datum.label == '1.5' ? '1.5' : datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '2' ? '2' : datum.label == '1' ? '1' : datum.label == '1.5' ? '1.5' : datum.label == '3' ? '3' : datum.label == '2.5' ? '2.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771337514172';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -838,7 +838,7 @@ gradient teal.
         paths: {
           'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
           'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
           'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
         }
       });
@@ -870,7 +870,7 @@ gradient teal.
 
       Promise.all([
         loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
         loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
       ])
         .then(() => {
@@ -886,16 +886,16 @@ gradient teal.
 </div>
 </div>
 <p>Compared to polygons, paths don’t close their shapes and fill their interiors.</p>
-<div id="ba9be8b0" class="cell" data-execution_count="6">
+<div id="e0117fcb" class="cell" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">polygon</span> <span class="kw">MAPPING</span> <span class="st">'Polygon'</span> AS <span class="at">stroke</span></span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span> <span class="kw">MAPPING</span> <span class="st">'Path'</span> AS <span class="at">stroke</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="6">
-<div id="vis-1771318960213"></div>
+<div id="vis-1771337514189"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"}]},"height":"container","layer":[{"encoding":{"order":{"value":null},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'Polygon' ? 'Polygon' : datum.label == 'Path' ? 'Path' : datum.label"},"scale":{"domain":["Path","Polygon"],"range":["#0067A5","#F3C300"]},"title":"stroke","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '1.5' ? '1.5' : datum.label == '2.5' ? '2.5' : datum.label == '1' ? '1' : datum.label == '3' ? '3' : datum.label == '2' ? '2' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '1.5' ? '1.5' : datum.label == '1' ? '1' : datum.label == '2' ? '2' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"fill":"#888888","interpolate":"linear-closed","stroke":"#888888","type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"order":{"value":null},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'Polygon' ? 'Polygon' : datum.label == 'Path' ? 'Path' : datum.label"},"scale":{"domain":["Path","Polygon"],"range":["#0067A5","#F3C300"]},"title":"stroke","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '1.5' ? '1.5' : datum.label == '2.5' ? '2.5' : datum.label == '1' ? '1' : datum.label == '3' ? '3' : datum.label == '2' ? '2' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '1.5' ? '1.5' : datum.label == '1' ? '1' : datum.label == '2' ? '2' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_1__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1771318960213';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Polygon","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":1.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":1.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":2.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_stroke__":"Path","__ggsql_aes_x__":3.0,"__ggsql_aes_y__":3.0,"__ggsql_source__":"__ggsql_layer_1__"}]},"height":"container","layer":[{"encoding":{"order":{"value":null},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'Polygon' ? 'Polygon' : datum.label == 'Path' ? 'Path' : datum.label"},"scale":{"domain":["Path","Polygon"],"range":["#0067A5","#F3C300"]},"title":"stroke","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '1.5' ? '1.5' : datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label == '2' ? '2' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '2' ? '2' : datum.label == '1' ? '1' : datum.label == '1.5' ? '1.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"fill":"#888888","interpolate":"linear-closed","stroke":"#888888","type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"order":{"value":null},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'Polygon' ? 'Polygon' : datum.label == 'Path' ? 'Path' : datum.label"},"scale":{"domain":["Path","Polygon"],"range":["#0067A5","#F3C300"]},"title":"stroke","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '1.5' ? '1.5' : datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label == '2' ? '2' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_x__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '2.5' ? '2.5' : datum.label == '3' ? '3' : datum.label == '2' ? '2' : datum.label == '1' ? '1' : datum.label == '1.5' ? '1.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_y__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_1__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771337514189';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -916,7 +916,7 @@ gradient teal.
         paths: {
           'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
           'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
           'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
         }
       });
@@ -948,7 +948,7 @@ gradient teal.
 
       Promise.all([
         loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
         loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
       ])
         .then(() => {

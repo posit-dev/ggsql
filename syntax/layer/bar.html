@@ -584,16 +584,16 @@ gradient teal.
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
 <p>Show the number of each species in the data</p>
-<div id="0fc76247" class="cell" data-execution_count="1">
+<div id="0c3c1b7d" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> species AS <span class="at">x</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="1">
-<div id="vis-1771318954722"></div>
+<div id="vis-1771337508888"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x__":"Chinstrap","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":68,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":"Gentoo","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":124,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":"Adelie","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":152,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_x__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '150' ? '150' : datum.label == '100' ? '100' : datum.label == '0' ? '0' : datum.label == '50' ? '50' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-7.6,159.6],"zero":false},"title":"count","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '150' ? '150' : datum.label == '100' ? '100' : datum.label == '0' ? '0' : datum.label == '50' ? '50' : datum.label","values":[0.0,50.0,100.0,150.0]},"scale":{"domain":[-7.6,159.6]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1771318954722';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x__":"Chinstrap","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":68,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":"Gentoo","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":124,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":"Adelie","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":152,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_x__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '100' ? '100' : datum.label == '150' ? '150' : datum.label == '50' ? '50' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-7.6,159.6],"zero":false},"title":"count","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '100' ? '100' : datum.label == '150' ? '150' : datum.label == '50' ? '50' : datum.label","values":[0.0,50.0,100.0,150.0]},"scale":{"domain":[-7.6,159.6]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771337508888';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -614,7 +614,7 @@ gradient teal.
         paths: {
           'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
           'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
           'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
         }
       });
@@ -646,7 +646,7 @@ gradient teal.
 
       Promise.all([
         loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
         loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
       ])
         .then(() => {
@@ -662,16 +662,16 @@ gradient teal.
 </div>
 </div>
 <p>Use <code>weight</code> to instead show the collective mass of each species</p>
-<div id="7efde809" class="cell" data-execution_count="2">
+<div id="ad58e456" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> species AS <span class="at">x</span>, body_mass AS <span class="at">weight</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
-<div id="vis-1771318954740"></div>
+<div id="vis-1771337508905"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x__":"Chinstrap","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":253850.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":"Gentoo","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":624350.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":"Adelie","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":558800.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_x__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '200000' ? '200000' : datum.label == '400000' ? '400000' : datum.label == '600000' ? '600000' : datum.label","values":[0.0,200000.0,400000.0,600000.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-31217.5,655567.5],"zero":false},"title":"count","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '200000' ? '200000' : datum.label == '400000' ? '400000' : datum.label == '600000' ? '600000' : datum.label","values":[0.0,200000.0,400000.0,600000.0]},"scale":{"domain":[-31217.5,655567.5]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1771318954740';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x__":"Chinstrap","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":253850.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":"Gentoo","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":624350.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":"Adelie","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":558800.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"field":"__ggsql_aes_x__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '400000' ? '400000' : datum.label == '200000' ? '200000' : datum.label == '600000' ? '600000' : datum.label","values":[0.0,200000.0,400000.0,600000.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-31217.5,655567.5],"zero":false},"title":"count","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '400000' ? '400000' : datum.label == '200000' ? '200000' : datum.label == '600000' ? '600000' : datum.label","values":[0.0,200000.0,400000.0,600000.0]},"scale":{"domain":[-31217.5,655567.5]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771337508905';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -692,7 +692,7 @@ gradient teal.
         paths: {
           'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
           'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
           'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
         }
       });
@@ -724,7 +724,7 @@ gradient teal.
 
       Promise.all([
         loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
         loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
       ])
         .then(() => {
@@ -740,16 +740,16 @@ gradient teal.
 </div>
 </div>
 <p>Map fill to a discrete value to create a stacked bar chart</p>
-<div id="674a69fd" class="cell" data-execution_count="3">
+<div id="680849ed" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> species AS <span class="at">x</span>, island AS <span class="at">fill</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
-<div id="vis-1771318954758"></div>
+<div id="vis-1771337508922"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_fill__":"Dream","__ggsql_aes_x__":"Adelie","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":56,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_x__":"Chinstrap","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":68,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_x__":"Gentoo","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":124,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_x__":"Adelie","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":44,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Torgersen","__ggsql_aes_x__":"Adelie","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":52,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Dream' ? 'Dream' : datum.label == 'Biscoe' ? 'Biscoe' : datum.label == 'Torgersen' ? 'Torgersen' : datum.label"},"scale":{"domain":["Biscoe","Dream","Torgersen"],"range":["#0067A5","#F3C300","#008856"]},"title":"island","type":"nominal"},"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_x__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '100' ? '100' : datum.label == '0' ? '0' : datum.label == '50' ? '50' : datum.label","values":[0.0,50.0,100.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-6.2,130.2],"zero":false},"title":"count","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '100' ? '100' : datum.label == '0' ? '0' : datum.label == '50' ? '50' : datum.label","values":[0.0,50.0,100.0]},"scale":{"domain":[-6.2,130.2]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1771318954758';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_fill__":"Dream","__ggsql_aes_x__":"Adelie","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":56,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_x__":"Chinstrap","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":68,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Torgersen","__ggsql_aes_x__":"Adelie","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":52,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_x__":"Adelie","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":44,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_x__":"Gentoo","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":124,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Biscoe' ? 'Biscoe' : datum.label == 'Dream' ? 'Dream' : datum.label == 'Torgersen' ? 'Torgersen' : datum.label"},"scale":{"domain":["Biscoe","Dream","Torgersen"],"range":["#0067A5","#F3C300","#008856"]},"title":"island","type":"nominal"},"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"field":"__ggsql_aes_x__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '100' ? '100' : datum.label == '50' ? '50' : datum.label","values":[0.0,50.0,100.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-6.2,130.2],"zero":false},"title":"count","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '100' ? '100' : datum.label == '50' ? '50' : datum.label","values":[0.0,50.0,100.0]},"scale":{"domain":[-6.2,130.2]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771337508922';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -770,7 +770,7 @@ gradient teal.
         paths: {
           'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
           'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
           'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
         }
       });
@@ -802,7 +802,7 @@ gradient teal.
 
       Promise.all([
         loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
         loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
       ])
         .then(() => {
@@ -818,18 +818,18 @@ gradient teal.
 </div>
 </div>
 <p>Map to y if the dataset already contains the value you want to show</p>
-<div id="0c074357" class="cell" data-execution_count="4">
+<div id="8a2e2e5c" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> species, <span class="fu">MAX</span>(body_mass) <span class="kw">AS</span> max_mass <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">GROUP</span> <span class="kw">BY</span> species</span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span></span>
 <span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> species AS <span class="at">x</span>, max_mass AS <span class="at">y</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="4">
-<div id="vis-1771318954771"></div>
+<div id="vis-1771337508935"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x__":"Chinstrap","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":4800,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":"Gentoo","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":6300,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":"Adelie","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":4775,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_x__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '4000' ? '4000' : datum.label == '0' ? '0' : datum.label == '6000' ? '6000' : datum.label == '2000' ? '2000' : datum.label","values":[0.0,2000.0,4000.0,6000.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-315.0,6615.0],"zero":false},"title":"max_mass","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '4000' ? '4000' : datum.label == '0' ? '0' : datum.label == '6000' ? '6000' : datum.label == '2000' ? '2000' : datum.label","values":[0.0,2000.0,4000.0,6000.0]},"scale":{"domain":[-315.0,6615.0]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1771318954771';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x__":"Gentoo","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":6300,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":"Chinstrap","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":4800,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x__":"Adelie","__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":4775,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_x__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '4000' ? '4000' : datum.label == '6000' ? '6000' : datum.label == '2000' ? '2000' : datum.label == '0' ? '0' : datum.label","values":[0.0,2000.0,4000.0,6000.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-315.0,6615.0],"zero":false},"title":"max_mass","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '4000' ? '4000' : datum.label == '6000' ? '6000' : datum.label == '2000' ? '2000' : datum.label == '0' ? '0' : datum.label","values":[0.0,2000.0,4000.0,6000.0]},"scale":{"domain":[-315.0,6615.0]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771337508935';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -850,7 +850,7 @@ gradient teal.
         paths: {
           'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
           'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
           'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
         }
       });
@@ -882,7 +882,7 @@ gradient teal.
 
       Promise.all([
         loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
         loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
       ])
         .then(() => {
@@ -898,18 +898,18 @@ gradient teal.
 </div>
 </div>
 <p>Use together with a binned scale as an alternative to the <a href="../../syntax/layer/histogram.html">histogram layer</a></p>
-<div id="ed29ee27" class="cell" data-execution_count="5">
+<div id="57b03f78" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> body_mass AS <span class="at">x</span></span>
 <span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span></span>
 <span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">breaks</span> <span class="op">=&gt;</span> <span class="dv">10</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="5">
-<div id="vis-1771318954789"></div>
+<div id="vis-1771337508953"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x2__":5000.0,"__ggsql_aes_x__":4500.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":51,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":5500.0,"__ggsql_aes_x__":5000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":34,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":null,"__ggsql_aes_x__":null,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":3000.0,"__ggsql_aes_x__":2500.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":6000.0,"__ggsql_aes_x__":5500.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":29,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":3500.0,"__ggsql_aes_x__":3000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":62,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":4000.0,"__ggsql_aes_x__":3500.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":94,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":4500.0,"__ggsql_aes_x__":4000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":59,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":6500.0,"__ggsql_aes_x__":6000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":4,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == '3000' ? '3000' : datum.label == '2500' ? '2500' : datum.label == '5000' ? '5000' : datum.label == '5500' ? '5500' : datum.label == '3500' ? '3500' : datum.label == '4000' ? '4000' : datum.label == '6000' ? '6000' : datum.label == '6500' ? '6500' : datum.label == '4500' ? '4500' : datum.label","values":[2500.0,3000.0,3500.0,4000.0,4500.0,5000.0,5500.0,6000.0,6500.0]},"bin":"binned","field":"__ggsql_aes_x__","scale":{"domain":[2300.0,6700.0],"zero":false},"title":"body_mass","type":"quantitative"},"x2":{"field":"__ggsql_aes_x2__"},"y":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '20' ? '20' : datum.label == '0' ? '0' : datum.label == '60' ? '60' : datum.label == '80' ? '80' : datum.label","values":[0.0,20.0,40.0,60.0,80.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-4.7,98.7],"zero":false},"title":"count","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '20' ? '20' : datum.label == '0' ? '0' : datum.label == '60' ? '60' : datum.label == '80' ? '80' : datum.label","values":[0.0,20.0,40.0,60.0,80.0]},"scale":{"domain":[-4.7,98.7]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1771318954789';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","data":{"name":"__ggsql_global__"},"datasets":{"__ggsql_global__":[{"__ggsql_aes_x2__":5000.0,"__ggsql_aes_x__":4500.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":51,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":5500.0,"__ggsql_aes_x__":5000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":34,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":null,"__ggsql_aes_x__":null,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":3000.0,"__ggsql_aes_x__":2500.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":6000.0,"__ggsql_aes_x__":5500.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":29,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":3500.0,"__ggsql_aes_x__":3000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":62,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":4000.0,"__ggsql_aes_x__":3500.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":94,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":4500.0,"__ggsql_aes_x__":4000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":59,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_x2__":6500.0,"__ggsql_aes_x__":6000.0,"__ggsql_aes_y2__":0.0,"__ggsql_aes_y__":4,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"width":{"value":0.9},"x":{"axis":{"labelExpr":"datum.label == '3500' ? '3500' : datum.label == '5000' ? '5000' : datum.label == '4500' ? '4500' : datum.label == '6500' ? '6500' : datum.label == '6000' ? '6000' : datum.label == '2500' ? '2500' : datum.label == '3000' ? '3000' : datum.label == '4000' ? '4000' : datum.label == '5500' ? '5500' : datum.label","values":[2500.0,3000.0,3500.0,4000.0,4500.0,5000.0,5500.0,6000.0,6500.0]},"bin":"binned","field":"__ggsql_aes_x__","scale":{"domain":[2300.0,6700.0],"zero":false},"title":"body_mass","type":"quantitative"},"x2":{"field":"__ggsql_aes_x2__"},"y":{"axis":{"labelExpr":"datum.label == '80' ? '80' : datum.label == '60' ? '60' : datum.label == '20' ? '20' : datum.label == '0' ? '0' : datum.label == '40' ? '40' : datum.label","values":[0.0,20.0,40.0,60.0,80.0]},"field":"__ggsql_aes_y__","scale":{"domain":[-4.7,98.7],"zero":false},"title":"count","type":"quantitative"},"y2":{"field":"__ggsql_aes_y2__","legend":{"labelExpr":"datum.label == '80' ? '80' : datum.label == '60' ? '60' : datum.label == '20' ? '20' : datum.label == '0' ? '0' : datum.label == '40' ? '40' : datum.label","values":[0.0,20.0,40.0,60.0,80.0]},"scale":{"domain":[-4.7,98.7]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1771337508953';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -930,7 +930,7 @@ gradient teal.
         paths: {
           'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
           'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6/build/vega-lite.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
           'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
         }
       });
@@ -962,7 +962,7 @@ gradient teal.
 
       Promise.all([
         loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
         loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
       ])
         .then(() => {
