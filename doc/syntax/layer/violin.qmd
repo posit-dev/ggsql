@@ -34,7 +34,8 @@ The following aesthetics are recognised by the violin layer.
     * `'cosine'`
 
 ## Data transformation
-The violin layer will compute a 1-dimensional grid using the range of the y-value data. The distances between the grid locations and observations are computed and serve as input for a kernel function. The contributions of each observation is then averaged across the grid.
+A violin layer uses the same computation as a density layer. See the [density data transformation](density.qmd#data-transformation) section for details.
+The major difference between a violin layer and a density layer is just the matter of display.
 
 ### Properties
 
@@ -43,10 +44,11 @@ The violin layer will compute a 1-dimensional grid using the range of the y-valu
 ### Calculated statistics
 
 * `density`: The estimated probability density per point on the grid. The total area of a single density curve adds up to 1.
+* `intensity`: Also termed 'probability intensity estimation', it is the precursor of the `density` variable. Specifically it is the same as the density without normalisation. You can use `REMAPPING intensity AS offset` if you want to reflect differences in group sizes.
 
 ### Default remappings
 
-The grammar does not accommodate the density via an aesthetic, but the density will be displayed as an offset in the horizontal direction.
+* `density AS offset`: By default the offsets around a centerline reflect the computed density.
 
 ## Examples
 
@@ -62,6 +64,14 @@ The `adjust` setting controls the smoothing.
 ```{ggsql}
 VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
   DRAW violin SETTING adjust => 0.1
+```
+
+To more clearly indicate differences in group sizes, you can use the `intensity` computed variable.
+Note that we have fewer (n=68) Chinstrap penguins than Adelie (n=152) or Gentoo (n=124) penguins.
+
+```{ggsql}
+VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
+  DRAW violin REMAPPING intensity AS offset
 ```
 
 You can combine groups to expand the categories.
