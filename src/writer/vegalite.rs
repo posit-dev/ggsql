@@ -1186,16 +1186,39 @@ impl VegaLiteWriter {
         Ok(())
     }
 
-    /// Apply Flip coordinate transformation (swap x and y)
+    /// Apply Flip coordinate transformation (swap x and y, x2 and y2)
     fn apply_flip_coord(&self, vl_spec: &mut Value) -> Result<()> {
+        /// Swap encoding pairs (a↔b) in a Vega-Lite encoding object.
+        fn swap_encoding_pair(enc_obj: &mut serde_json::Map<String, Value>, a: &str, b: &str) {
+            match (enc_obj.remove(a), enc_obj.remove(b)) {
+                (Some(va), Some(vb)) => {
+                    enc_obj.insert(a.to_string(), vb);
+                    enc_obj.insert(b.to_string(), va);
+                }
+                (Some(va), None) => {
+                    enc_obj.insert(b.to_string(), va);
+                }
+                (None, Some(vb)) => {
+                    enc_obj.insert(a.to_string(), vb);
+                }
+                (None, None) => {}
+            }
+        }
+
+        fn flip_encoding(enc_obj: &mut serde_json::Map<String, Value>) {
+            swap_encoding_pair(enc_obj, "x", "y");
+            swap_encoding_pair(enc_obj, "x2", "y2");
+            swap_encoding_pair(enc_obj, "width", "height");
+        }
+
+        fn flip_mark(mark_obj: &mut serde_json::Map<String, Value>) {
+            swap_encoding_pair(mark_obj, "width", "height");
+        }
+
         // Handle single layer
         if let Some(encoding) = vl_spec.get_mut("encoding") {
             if let Some(enc_obj) = encoding.as_object_mut() {
-                // Swap x and y encodings
-                if let (Some(x), Some(y)) = (enc_obj.remove("x"), enc_obj.remove("y")) {
-                    enc_obj.insert("x".to_string(), y);
-                    enc_obj.insert("y".to_string(), x);
-                }
+                flip_encoding(enc_obj);
             }
         }
 
@@ -1205,10 +1228,12 @@ impl VegaLiteWriter {
                 for layer in layers_arr {
                     if let Some(encoding) = layer.get_mut("encoding") {
                         if let Some(enc_obj) = encoding.as_object_mut() {
-                            if let (Some(x), Some(y)) = (enc_obj.remove("x"), enc_obj.remove("y")) {
-                                enc_obj.insert("x".to_string(), y);
-                                enc_obj.insert("y".to_string(), x);
-                            }
+                            flip_encoding(enc_obj);
+                        }
+                    }
+                    if let Some(mark) = layer.get_mut("mark") {
+                        if let Some(mark_obj) = mark.as_object_mut() {
+                            flip_mark(mark_obj);
                         }
                     }
                 }
@@ -3882,6 +3907,75 @@ mod tests {
             "category"
         );
         assert_eq!(vl_spec["layer"][0]["encoding"]["size"]["field"], "value");
+    }
+
+    #[test]
+    fn test_coord_flip_swaps_y2_to_x2() {
+        use crate::plot::Coord;
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::bar())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("category".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            )
+            .with_aesthetic(
+                "y2".to_string(),
+                AestheticValue::standard_column("baseline".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add COORD flip
+        spec.coord = Some(Coord {
+            coord_type: CoordType::Flip,
+            properties: HashMap::new(),
+        });
+
+        let df = df! {
+            "category" => &["A", "B", "C"],
+            "value" => &[10, 20, 30],
+            "baseline" => &[0, 0, 0],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        let encoding = &vl_spec["layer"][0]["encoding"];
+
+        // After flip: x should have "value", y should have "category"
+        assert_eq!(encoding["x"]["field"], "value");
+        assert_eq!(encoding["y"]["field"], "category");
+
+        // y2 should have been swapped to x2
+        assert!(
+            encoding.get("x2").is_some() && !encoding["x2"].is_null(),
+            "Expected x2 encoding after flip (was y2 before flip), but found none"
+        );
+        assert_eq!(encoding["x2"]["field"], "baseline");
+
+        // y2 should no longer exist
+        assert!(
+            encoding.get("y2").is_none() || encoding["y2"].is_null(),
+            "y2 encoding should not exist after flip (should have become x2)"
+        );
+
+        // mark width should become mark height (bar thickness)
+        let mark = &vl_spec["layer"][0]["mark"];
+        assert!(
+            mark.get("height").is_some() && !mark["height"].is_null(),
+            "Expected mark height after flip (was mark width before flip)"
+        );
+        assert!(
+            mark.get("width").is_none() || mark["width"].is_null(),
+            "mark width should not exist after flip (should have become height)"
+        );
     }
 
     #[test]
