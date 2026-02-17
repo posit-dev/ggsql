@@ -65,7 +65,8 @@ pub fn parse_connection_string(uri: &str) -> Result<ConnectionInfo> {
     if uri.starts_with("polars://") {
         // Polars only supports in-memory mode
         return Err(GgsqlError::ReaderError(
-            "Polars reader only supports in-memory mode. Use 'polars://memory' or 'polars://'".to_string(),
+            "Polars reader only supports in-memory mode. Use 'polars://memory' or 'polars://'"
+                .to_string(),
         ));
     }
 

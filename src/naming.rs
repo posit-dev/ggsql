@@ -459,10 +459,7 @@ mod tests {
 
     #[test]
     fn test_builtin_data_table() {
-        assert_eq!(
-            builtin_data_table("penguins"),
-            "__ggsql__data__penguins__"
-        );
+        assert_eq!(builtin_data_table("penguins"), "__ggsql__data__penguins__");
         assert_eq!(
             builtin_data_table("airquality"),
             "__ggsql__data__airquality__"

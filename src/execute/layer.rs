@@ -534,7 +534,11 @@ where
                 // we can't wrap it in a subquery because Polars SQL doesn't
                 // support CTEs inside subqueries. Instead, append the final
                 // SELECT as another CTE and add the rename SELECT on top.
-                if transformed_query.trim_start().to_uppercase().starts_with("WITH") {
+                if transformed_query
+                    .trim_start()
+                    .to_uppercase()
+                    .starts_with("WITH")
+                {
                     // Find the first top-level SELECT (at paren depth 0).
                     // All SELECTs inside CTE definitions are at depth >= 1,
                     // so the first depth-0 SELECT is the final query body.

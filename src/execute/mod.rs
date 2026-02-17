@@ -486,10 +486,7 @@ pub struct PreparedData {
 /// # Arguments
 /// * `query` - The full ggsql query string
 /// * `reader` - A Reader implementation for executing SQL
-pub fn prepare_data_with_reader<R: Reader>(
-    query: &str,
-    reader: &R,
-) -> Result<PreparedData> {
+pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<PreparedData> {
     let execute_query = |sql: &str| reader.execute_sql(sql);
     let type_names = reader.sql_type_names();
 
