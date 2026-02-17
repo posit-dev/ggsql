@@ -523,6 +523,7 @@ impl VegaLiteWriter {
             GeomType::Area => "area",
             GeomType::Tile => "rect",
             GeomType::Ribbon => "area",
+            GeomType::Polygon => "line",
             GeomType::Histogram => "bar",
             GeomType::Density => "area",
             GeomType::Boxplot => "boxplot",
@@ -1652,24 +1653,6 @@ impl Writer for VegaLiteWriter {
                 "mark": self.geom_to_mark(&layer.geom)
             });
 
-            // For Bar geom, set mark with width parameter
-            if layer.geom.geom_type() == GeomType::Bar {
-                use crate::plot::ParameterValue;
-                let width = layer
-                    .parameters
-                    .get("width")
-                    .and_then(|p| match p {
-                        ParameterValue::Number(n) => Some(*n),
-                        _ => None,
-                    })
-                    .unwrap_or(0.9);
-                layer_spec["mark"] = json!({
-                    "type": "bar",
-                    "width": {"band": width},
-                    "clip": true
-                });
-            }
-
             // Build transform array for this layer
             // Always starts with a filter to select this layer's data from unified dataset
             let mut transforms: Vec<Value> = Vec::new();
@@ -1683,21 +1666,6 @@ impl Writer for VegaLiteWriter {
                         "equal": data_key
                     }
                 }));
-            }
-
-            // Add window transform for Path geoms to preserve data order
-            // (Line geom uses Vega-Lite's default x-axis sorting)
-            if layer.geom.geom_type() == GeomType::Path {
-                let mut window_transform = json!({
-                    "window": [{"op": "row_number", "as": naming::ORDER_COLUMN}]
-                });
-
-                // Add groupby if partition_by is present (restarts numbering per group)
-                if !layer.partition_by.is_empty() {
-                    window_transform["groupby"] = json!(layer.partition_by);
-                }
-
-                transforms.push(window_transform);
             }
 
             // Set transform array on layer spec
@@ -1772,21 +1740,13 @@ impl Writer for VegaLiteWriter {
                 encoding.insert("detail".to_string(), detail);
             }
 
-            // Add order encoding for Path geoms (preserves data order instead of x-axis sorting)
-            if layer.geom.geom_type() == GeomType::Path {
-                encoding.insert(
-                    "order".to_string(),
-                    json!({
-                        "field": naming::ORDER_COLUMN,
-                        "type": "quantitative"
-                    }),
-                );
-            }
-
             // Handle geom-specific encoding transformations
             match layer.geom.geom_type() {
+                GeomType::Bar => layer_spec = render_bar(layer_spec, layer),
+                GeomType::Path => render_path(&mut encoding),
                 GeomType::Ribbon => render_ribbon(&mut encoding),
                 GeomType::Area => render_area(&mut encoding, layer)?,
+                GeomType::Polygon => layer_spec = render_polygon(layer_spec, &mut encoding),
                 _ => {}
             }
 
@@ -1908,6 +1868,42 @@ impl Writer for VegaLiteWriter {
 
         Ok(())
     }
+}
+
+fn render_bar(mut spec: Value, layer: &Layer) -> Value {
+    let width = match layer.parameters.get("width") {
+        Some(ParameterValue::Number(w)) => *w,
+        _ => 0.9,
+    };
+    spec["mark"] = json!({
+        "type": "bar",
+        "width": {"band": width},
+        "clip": true
+    });
+    spec
+}
+
+fn render_path(encoding: &mut Map<String, Value>) {
+    // Use the natural data order
+    encoding.insert("order".to_string(), json!({"value": Value::Null}));
+}
+
+fn render_polygon(mut spec: Value, encoding: &mut Map<String, Value>) -> Value {
+    // Polygon needs both `fill` and `stroke` independently, but map_aesthetic_name()
+    // converts fill → color (which works for most geoms). For closed line marks,
+    // we need actual `fill` and `stroke` channels, so we undo the mapping here.
+    if let Some(color) = encoding.remove("color") {
+        encoding.insert("fill".to_string(), color);
+    }
+    // Use the natural data order
+    encoding.insert("order".to_string(), json!({"value": Value::Null}));
+    spec["mark"] = json!({
+        "type": "line",
+        "interpolate": "linear-closed", // This closes the path
+        "fill": "#888888", // default values
+        "stroke": "#888888"
+    });
+    spec
 }
 
 fn render_ribbon(encoding: &mut Map<String, Value>) {
@@ -4605,112 +4601,6 @@ mod tests {
         assert!(
             vl_spec["layer"][0]["encoding"]["fill"]["value"].is_null(),
             "Should not have value encoding when MAPPING is present"
-        );
-    }
-
-    // ========================================
-    // Path Geom Order Preservation Tests
-    // ========================================
-
-    #[test]
-    fn test_path_geom_has_order_encoding_and_transform() {
-        let writer = VegaLiteWriter::new();
-
-        let mut spec = Plot::new();
-        let mut layer = Layer::new(Geom::path());
-        layer.mappings.insert(
-            "x".to_string(),
-            AestheticValue::standard_column("lon".to_string()),
-        );
-        layer.mappings.insert(
-            "y".to_string(),
-            AestheticValue::standard_column("lat".to_string()),
-        );
-        spec.layers.push(layer);
-
-        let df = df! {
-            "lon" => &[1.0, 2.0, 3.0],
-            "lat" => &[4.0, 5.0, 6.0],
-        }
-        .unwrap();
-
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
-        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
-
-        // Path layer should have transforms array
-        // First transform is filter (for unified data), second is window
-        let layer_spec = &vl_spec["layer"][0];
-        let transforms = layer_spec["transform"]
-            .as_array()
-            .expect("Should have transforms");
-        assert!(
-            transforms.len() >= 2,
-            "Path should have at least 2 transforms (filter + window)"
-        );
-
-        // First transform should be filter
-        assert!(
-            transforms[0].get("filter").is_some(),
-            "First transform should be filter"
-        );
-
-        // Second transform should be window with row_number
-        let window_transform = &transforms[1];
-        assert_eq!(window_transform["window"][0]["op"], "row_number");
-        assert_eq!(window_transform["window"][0]["as"], "__ggsql_order__");
-
-        // Path should have order encoding
-        let encoding = &layer_spec["encoding"];
-        assert!(
-            encoding.get("order").is_some(),
-            "Path geom should have order encoding"
-        );
-        assert_eq!(encoding["order"]["field"], "__ggsql_order__");
-        assert_eq!(encoding["order"]["type"], "quantitative");
-    }
-
-    #[test]
-    fn test_path_geom_with_partition_by() {
-        let writer = VegaLiteWriter::new();
-
-        let mut spec = Plot::new();
-        let mut layer = Layer::new(Geom::path());
-        layer.mappings.insert(
-            "x".to_string(),
-            AestheticValue::standard_column("lon".to_string()),
-        );
-        layer.mappings.insert(
-            "y".to_string(),
-            AestheticValue::standard_column("lat".to_string()),
-        );
-        layer.partition_by = vec!["trip_id".to_string()];
-        spec.layers.push(layer);
-
-        let df = df! {
-            "lon" => &[1.0, 2.0, 3.0],
-            "lat" => &[4.0, 5.0, 6.0],
-            "trip_id" => &["A", "A", "B"],
-        }
-        .unwrap();
-
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
-        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
-
-        // Path layer has transforms: filter first, then window
-        let transforms = vl_spec["layer"][0]["transform"]
-            .as_array()
-            .expect("Should have transforms");
-        assert!(
-            transforms.len() >= 2,
-            "Should have at least filter + window transforms"
-        );
-
-        // Window transform (second) should have groupby for partition
-        let window_transform = &transforms[1];
-        assert_eq!(
-            window_transform["groupby"],
-            json!(["trip_id"]),
-            "Window transform should have groupby for partition_by columns"
         );
     }
 
