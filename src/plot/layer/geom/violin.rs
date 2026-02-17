@@ -32,7 +32,7 @@ impl GeomTrait for Violin {
                 "linetype",
             ],
             required: &["x", "y"],
-            hidden: &["density"],
+            hidden: &[],
         }
     }
 
@@ -65,7 +65,7 @@ impl GeomTrait for Violin {
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {
-        &["y", "density"]
+        &["y", "density", "intensity"]
     }
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {

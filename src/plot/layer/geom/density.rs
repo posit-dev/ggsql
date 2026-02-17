@@ -36,7 +36,7 @@ impl GeomTrait for Density {
                 "linetype",
             ],
             required: &["x"],
-            hidden: &["density"],
+            hidden: &["y"],
         }
     }
 
@@ -73,7 +73,7 @@ impl GeomTrait for Density {
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {
-        &["x", "density"]
+        &["x", "density", "intensity"]
     }
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {
@@ -148,8 +148,12 @@ pub(crate) fn stat_density(
     );
 
     let mut consumed = vec![value_aesthetic.to_string()];
-    // Default stats for density (1D): grid position (x) and density value
-    let stats = vec![value_aesthetic.to_string(), "density".to_string()];
+    // Stat columns produced: grid position (x), intensity (unnormalized), and density (normalized)
+    let stats = vec![
+        value_aesthetic.to_string(),
+        "intensity".to_string(),
+        "density".to_string(),
+    ];
     if weight.is_some() {
         consumed.push("weight".to_string());
     }
@@ -482,12 +486,12 @@ fn compute_density(
           {intensity_column},
           {intensity_column} / __norm AS {density_column}
         FROM (
-        SELECT
-          grid.x AS {x_column},
-          {grid_groups}
+          SELECT
+            grid.x AS {x_column},
+            {grid_groups}
             {kernel} AS {intensity_column},
             SUM(data.weight) AS __norm
-        {join_logic}
+          {join_logic}
           {aggregation}
         )",
         bandwidth_cte = bandwidth_cte,
@@ -540,14 +544,14 @@ mod tests {
           __ggsql_stat_intensity,
           __ggsql_stat_intensity / __norm AS __ggsql_stat_density
         FROM (
-        SELECT
-          grid.x AS __ggsql_stat_x,
+          SELECT
+            grid.x AS __ggsql_stat_x,
             SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_intensity,
             SUM(data.weight) AS __norm
-        FROM data
-        INNER JOIN bandwidth ON true
-        CROSS JOIN grid
-        GROUP BY grid.x
+          FROM data
+          INNER JOIN bandwidth ON true
+          CROSS JOIN grid
+          GROUP BY grid.x
           ORDER BY grid.x
         )";
 
@@ -561,7 +565,11 @@ mod tests {
 
         assert_eq!(
             df.get_column_names(),
-            vec!["__ggsql_stat_x", "__ggsql_stat_intensity", "__ggsql_stat_density"]
+            vec![
+                "__ggsql_stat_x",
+                "__ggsql_stat_intensity",
+                "__ggsql_stat_density"
+            ]
         );
         assert_eq!(df.height(), 512); // 512 grid points
     }
@@ -602,16 +610,16 @@ mod tests {
           __ggsql_stat_intensity,
           __ggsql_stat_intensity / __norm AS __ggsql_stat_density
         FROM (
-        SELECT
-          grid.x AS __ggsql_stat_x,
-          grid.region, grid.category,
+          SELECT
+            grid.x AS __ggsql_stat_x,
+            grid.region, grid.category,
             SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_intensity,
             SUM(data.weight) AS __norm
-        FROM data
-        INNER JOIN bandwidth ON data.region = bandwidth.region AND data.category = bandwidth.category
-        CROSS JOIN grid
-        WHERE grid.region = data.region AND grid.category = data.category
-        GROUP BY grid.x, grid.region, grid.category
+          FROM data
+          INNER JOIN bandwidth ON data.region = bandwidth.region AND data.category = bandwidth.category
+          CROSS JOIN grid
+          WHERE grid.region = data.region AND grid.category = data.category
+          GROUP BY grid.x, grid.region, grid.category
           ORDER BY grid.x, grid.region, grid.category
         )";
 
@@ -700,7 +708,11 @@ mod tests {
 
         assert_eq!(
             df.get_column_names(),
-            vec!["__ggsql_stat_x", "__ggsql_stat_intensity", "__ggsql_stat_density"]
+            vec![
+                "__ggsql_stat_x",
+                "__ggsql_stat_intensity",
+                "__ggsql_stat_density"
+            ]
         );
         assert_eq!(df.height(), 512);
 
@@ -857,6 +869,74 @@ mod tests {
                 w
             );
         }
+    }
+
+    #[test]
+    fn test_density_with_intensity_remapping() {
+        use crate::reader::duckdb::DuckDBReader;
+        use crate::reader::Reader;
+
+        // Create test data
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Query that uses REMAPPING to map y to intensity instead of density
+        let query = "
+            SELECT x FROM (VALUES (1.0), (2.0), (3.0), (4.0), (5.0)) AS t(x)
+            VISUALISE
+            DRAW density
+                MAPPING x AS x
+                REMAPPING intensity AS y
+                SETTING bandwidth => 1.0
+        ";
+
+        let spec = reader.execute(query).expect("Query should execute");
+
+        // Debug: print what SQL was generated and what data we have
+        println!("Generated stat SQL:");
+        if let Some(sql) = spec.stat_sql(0) {
+            println!("{}", sql);
+        }
+
+        // Get the stat-transformed data for layer 0
+        let df = spec.stat_data(0).expect("Layer 0 should have stat data");
+        println!("\nActual columns in stat_data: {:?}", df.get_column_names());
+        println!("Number of rows: {}", df.height());
+
+        // After remapping, stat columns are renamed to aesthetic columns
+        // The stat transform produces: x, intensity, density
+        // With REMAPPING intensity AS y, we get: __ggsql_aes_x__, __ggsql_aes_y__
+        // (y is mapped from intensity, not the default density)
+
+        let col_names: Vec<&str> = df.get_column_names().iter().map(|s| s.as_str()).collect();
+
+        // Should have x and y aesthetics after remapping
+        assert!(
+            col_names.contains(&"__ggsql_aes_x__"),
+            "Should have x aesthetic, got: {:?}",
+            col_names
+        );
+        assert!(
+            col_names.contains(&"__ggsql_aes_y__"),
+            "Should have y aesthetic, got: {:?}",
+            col_names
+        );
+
+        // Verify we have data
+        assert!(df.height() > 0);
+
+        // Verify y values (from intensity) are non-negative
+        let y_col = df.column("__ggsql_aes_y__").expect("y aesthetic exists");
+        let all_non_negative = y_col
+            .f64()
+            .expect("y is f64")
+            .into_iter()
+            .all(|v| v.map(|x| x >= 0.0).unwrap_or(true));
+        assert!(
+            all_non_negative,
+            "All y values (from intensity) should be non-negative"
+        );
+
+        println!("✓ Successfully used REMAPPING to map y to intensity instead of density");
     }
 
     #[test]
