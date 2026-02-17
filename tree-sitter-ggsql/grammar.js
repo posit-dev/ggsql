@@ -405,7 +405,7 @@ module.exports = grammar({
 
     // VISUALISE keyword as explicit high-precedence token
     visualise_keyword: $ => token(prec(10, choice(
-      caseInsensitive("VISUALISE"), 
+      caseInsensitive("VISUALISE"),
       caseInsensitive("VISUALIZE")
     ))),
 
@@ -426,11 +426,11 @@ module.exports = grammar({
     // Wildcard mapping: maps all columns to aesthetics with matching names
     wildcard_mapping: $ => '*',
 
-    // Explicit mapping: value AS aesthetic
+    // Explicit mapping: value AS aesthetic (name)
     explicit_mapping: $ => seq(
       field('value', $.mapping_value),
       caseInsensitive('AS'),
-      field('aesthetic', $.aesthetic_name)
+      field('name', $.aesthetic_name)
     ),
 
     // Implicit mapping: just an identifier (column name = aesthetic name)
@@ -446,7 +446,6 @@ module.exports = grammar({
       $.facet_clause,
       $.coord_clause,
       $.label_clause,
-      $.guide_clause,
       $.theme_clause,
     ),
 
@@ -515,7 +514,7 @@ module.exports = grammar({
     ),
 
     parameter_assignment: $ => seq(
-      field('param', $.parameter_name),
+      field('name', $.parameter_name),
       '=>',
       field('value', $.parameter_value)
     ),
@@ -525,7 +524,9 @@ module.exports = grammar({
     parameter_value: $ => choice(
       $.string,
       $.number,
-      $.boolean
+      $.boolean,
+      $.null_literal,
+      $.array
     ),
 
     // PARTITION BY clause for grouping: PARTITION BY category, region
@@ -657,33 +658,71 @@ module.exports = grammar({
       $.boolean
     ),
 
-    // SCALE clause - SCALE aesthetic SETTING prop => value, ...
+    // SCALE clause - SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]
+    // Examples:
+    //   SCALE DATE x
+    //   SCALE CONTINUOUS y FROM [0, 100]
+    //   SCALE DISCRETE color FROM ['A', 'B'] TO ['red', 'blue']
+    //   SCALE color TO viridis
+    //   SCALE x FROM [0, 100] SETTING breaks => '1 month'
+    //   SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
     scale_clause: $ => seq(
       caseInsensitive('SCALE'),
+      optional($.scale_type_identifier),  // optional type before aesthetic
       $.aesthetic_name,
-      caseInsensitive('SETTING'),
-      optional(seq(
-        $.scale_property,
-        repeat(seq(',', $.scale_property))
-      ))
+      optional($.scale_from_clause),
+      optional($.scale_to_clause),
+      optional($.scale_via_clause),
+      optional($.setting_clause),  // reuse existing setting_clause from DRAW
+      optional($.scale_renaming_clause)  // custom label mappings
     ),
 
-    scale_property: $ => seq(
-      $.scale_property_name,
+    // RENAMING clause for custom axis/legend labels
+    // Syntax: RENAMING 'A' => 'Alpha', 'B' => 'Beta', 'C' => NULL
+    scale_renaming_clause: $ => seq(
+      caseInsensitive('RENAMING'),
+      $.renaming_assignment,
+      repeat(seq(',', $.renaming_assignment))
+    ),
+
+    renaming_assignment: $ => seq(
+      field('name', choice(
+        '*',                              // Wildcard for template
+        $.string,
+        $.number
+      )),
       '=>',
-      $.scale_property_value
+      field('value', choice($.string, $.null_literal))  // String label or NULL to suppress
     ),
 
-    scale_property_name: $ => choice(
-      'type', 'limits', 'breaks', 'labels', 'expand',
-      'direction', 'na_value', 'palette', 'domain', 'range'
+    // Scale types - describe the nature of the data
+    scale_type_identifier: $ => choice(
+      caseInsensitive('CONTINUOUS'),  // continuous numeric data
+      caseInsensitive('DISCRETE'),    // categorical/discrete data
+      caseInsensitive('BINNED'),      // binned/bucketed data
+      caseInsensitive('ORDINAL'),     // ordered categorical data with interpolated output
+      caseInsensitive('IDENTITY')     // pass-through scale (data already in output format)
     ),
 
-    scale_property_value: $ => choice(
-      $.string,
-      $.number,
-      $.boolean,
+    // FROM clause - input range specification
+    scale_from_clause: $ => seq(
+      caseInsensitive('FROM'),
       $.array
+    ),
+
+    // TO clause - output range (explicit array or named palette)
+    scale_to_clause: $ => seq(
+      caseInsensitive('TO'),
+      choice(
+        $.array,      // ['red', 'blue'] - explicit values
+        $.identifier  // viridis - named palette
+      )
+    ),
+
+    // VIA clause - transformation method
+    scale_via_clause: $ => seq(
+      caseInsensitive('VIA'),
+      $.identifier
     ),
 
     // FACET clause - FACET ... SETTING scales => ...
@@ -738,14 +777,14 @@ module.exports = grammar({
     ),
 
     coord_property: $ => seq(
-      $.coord_property_name,
+      field('name', $.coord_property_name),
       '=>',
-      choice($.string, $.number, $.boolean, $.array, $.identifier)
+      field('value', choice($.string, $.number, $.boolean, $.array, $.identifier))
     ),
 
     coord_property_name: $ => choice(
       'xlim', 'ylim', 'ratio', 'theta', 'clip',
-      // Also allow aesthetic names as properties (for domain specification)
+      // Also allow aesthetic names as properties (for range specification)
       $.aesthetic_name
     ),
 
@@ -759,41 +798,15 @@ module.exports = grammar({
     ),
 
     label_assignment: $ => seq(
-      $.label_type,
+      field('name', $.label_type),
       '=>',
-      $.string
+      field('value', $.string)
     ),
 
     label_type: $ => choice(
       'title', 'subtitle', 'x', 'y', 'caption', 'tag',
       // Aesthetic names for legend titles
       'color', 'colour', 'fill', 'size', 'shape', 'linetype'
-    ),
-
-    // GUIDE clause - GUIDE aesthetic SETTING prop => value, ...
-    guide_clause: $ => seq(
-      caseInsensitive('GUIDE'),
-      $.aesthetic_name,
-      caseInsensitive('SETTING'),
-      optional(seq(
-        $.guide_property,
-        repeat(seq(',', $.guide_property))
-      ))
-    ),
-
-    guide_property: $ => choice(
-      seq('type', '=>', $.guide_type),
-      seq($.guide_property_name, '=>', choice($.string, $.number, $.boolean))
-    ),
-
-    guide_type: $ => choice(
-      'legend', 'colorbar', 'axis', 'none'
-    ),
-
-    guide_property_name: $ => choice(
-      'position', 'direction', 'nrow', 'ncol', 'title',
-      'title_position', 'label_position', 'text_angle', 'text_size',
-      'reverse', 'order'
     ),
 
     // THEME clause - THEME [name] [SETTING prop => value, ...]
@@ -819,9 +832,9 @@ module.exports = grammar({
     ),
 
     theme_property: $ => seq(
-      $.theme_property_name,
+      field('name', $.theme_property_name),
       '=>',
-      choice($.string, $.number, $.boolean)
+      field('value', choice($.string, $.number, $.boolean))
     ),
 
     theme_property_name: $ => choice(
@@ -873,8 +886,11 @@ module.exports = grammar({
     array_element: $ => choice(
       $.string,
       $.number,
-      $.boolean
+      $.boolean,
+      $.null_literal
     ),
+
+    null_literal: $ => caseInsensitive('NULL'),
 
     // Comments
     comment: $ => choice(

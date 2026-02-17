@@ -21,14 +21,14 @@ DRAW point MAPPING x AS x, y AS y
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))
+                name: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))
 
 ================================================================================
 Global mapping with explicit mappings
@@ -50,14 +50,14 @@ DRAW line
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))
+            name: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)))))
@@ -136,7 +136,7 @@ DRAW line
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)))))
@@ -162,14 +162,14 @@ DRAW point MAPPING 'value' AS color
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))
+            name: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)))
@@ -183,7 +183,7 @@ DRAW point MAPPING 'value' AS color
                 value: (mapping_value
                   (literal_value
                     (string)))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))
 
 ================================================================================
 DRAW with SETTING clause
@@ -212,13 +212,13 @@ DRAW point SETTING opacity => 0.5, size => 3
         (geom_type)
         (setting_clause
           (parameter_assignment
-            param: (parameter_name
+            name: (parameter_name
               (identifier
                 (bare_identifier)))
             value: (parameter_value
               (number)))
           (parameter_assignment
-            param: (parameter_name
+            name: (parameter_name
               (identifier
                 (bare_identifier)))
             value: (parameter_value
@@ -280,7 +280,7 @@ DRAW point MAPPING x AS x FILTER a > 10 AND b < 20
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))
+                name: (aesthetic_name)))))
         (filter_clause
           (filter_expression
             (filter_token
@@ -318,7 +318,7 @@ DRAW point MAPPING x AS x FILTER a = 1 OR b = 2
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))
+                name: (aesthetic_name)))))
         (filter_clause
           (filter_expression
             (filter_token
@@ -356,17 +356,17 @@ DRAW point MAPPING x AS x, y AS y SETTING opacity => 0.5 FILTER year > 2020
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))
+                name: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))
+                name: (aesthetic_name)))))
         (setting_clause
           (parameter_assignment
-            param: (parameter_name
+            name: (parameter_name
               (identifier
                 (bare_identifier)))
             value: (parameter_value
@@ -402,7 +402,7 @@ DRAW point MAPPING x AS x FILTER region = 'North'
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))
+                name: (aesthetic_name)))))
         (filter_clause
           (filter_expression
             (filter_token
@@ -443,8 +443,8 @@ Plot with scales and theme
 
 VISUALISE x, y, group AS color
 DRAW point
-SCALE x SETTING type => 'linear', limits => [0, 100]
-SCALE color SETTING palette => 'viridis'
+SCALE CONTINUOUS x FROM [0, 100]
+SCALE color TO viridis
 THEME minimal
 
 --------------------------------------------------------------------------------
@@ -468,32 +468,26 @@ THEME minimal
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)))
     (viz_clause
       (scale_clause
+        (scale_type_identifier)
         (aesthetic_name)
-        (scale_property
-          (scale_property_name)
-          (scale_property_value
-            (string)))
-        (scale_property
-          (scale_property_name)
-          (scale_property_value
-            (array
-              (array_element
-                (number))
-              (array_element
-                (number)))))))
+        (scale_from_clause
+          (array
+            (array_element
+              (number))
+            (array_element
+              (number))))))
     (viz_clause
       (scale_clause
         (aesthetic_name)
-        (scale_property
-          (scale_property_name)
-          (scale_property_value
-            (string)))))
+        (scale_to_clause
+          (identifier
+            (bare_identifier)))))
     (viz_clause
       (theme_clause
         (theme_name)))))
@@ -595,14 +589,14 @@ COORD flip
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))
+            name: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)))
@@ -644,14 +638,14 @@ DRAW point
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))
+            name: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (from_clause
       (table_ref
         table: (qualified_name
@@ -691,14 +685,14 @@ DRAW bar
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))
+            name: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)))))
@@ -735,7 +729,7 @@ DRAW point MAPPING 'blue' AS color
                 value: (mapping_value
                   (literal_value
                     (string)))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))
 
 ================================================================================
 VISUALISE FROM without global mapping
@@ -765,14 +759,14 @@ DRAW bar MAPPING category AS x, total AS y
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))
+                name: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))
 
 ================================================================================
 Empty VISUALISE with layer mappings
@@ -798,14 +792,14 @@ DRAW point MAPPING date AS x, profit AS y
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))
+                name: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))
+                name: (aesthetic_name)))))))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -817,14 +811,14 @@ DRAW point MAPPING date AS x, profit AS y
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))
+                name: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))
 
 ================================================================================
 Layer-specific FROM in MAPPING clause
@@ -849,14 +843,14 @@ DRAW point MAPPING x AS x, y AS y FROM my_cte
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))
+                name: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name))))
+                name: (aesthetic_name))))
           layer_source: (qualified_name
             (identifier
               (bare_identifier))))))))
@@ -881,14 +875,14 @@ DRAW line PARTITION BY category
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))
+            name: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -917,14 +911,14 @@ DRAW line PARTITION BY category, region
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))
+            name: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -955,20 +949,20 @@ DRAW line SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY category
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))
+            name: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)
         (setting_clause
           (parameter_assignment
-            param: (parameter_name
+            name: (parameter_name
               (identifier
                 (bare_identifier)))
             value: (parameter_value
@@ -1032,14 +1026,14 @@ DRAW point MAPPING x AS x, rn AS y
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))
+                name: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))
 
 ================================================================================
 Window function with PARTITION BY
@@ -1091,14 +1085,14 @@ DRAW point MAPPING x AS x, rnk AS y
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))
+                name: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))
 
 ================================================================================
 Window function with frame clause
@@ -1157,14 +1151,14 @@ DRAW line MAPPING x AS x, total AS y
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))
+                name: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))
 
 ================================================================================
 Nested CTEs
@@ -1221,7 +1215,7 @@ DRAW point MAPPING x AS x
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))
 
 ================================================================================
 Named function arguments
@@ -1276,7 +1270,7 @@ DRAW point MAPPING interval AS x
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))
 
 ================================================================================
 ORDER BY single column ASC
@@ -1298,14 +1292,14 @@ DRAW line ORDER BY date ASC
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))
+            name: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1336,14 +1330,14 @@ DRAW point ORDER BY value DESC
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))
+            name: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1374,14 +1368,14 @@ DRAW line ORDER BY category, date DESC
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))
+            name: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1416,14 +1410,14 @@ DRAW point ORDER BY date ASC NULLS FIRST
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))
+            name: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1456,14 +1450,14 @@ DRAW line ORDER BY value DESC NULLS LAST
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))
+            name: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1496,14 +1490,14 @@ DRAW point FILTER x > 0 ORDER BY x ASC
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))
+            name: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1541,14 +1535,14 @@ DRAW line PARTITION BY category ORDER BY date ASC
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))
+            name: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1583,20 +1577,20 @@ DRAW line SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY region ORDER BY
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))
+            name: (aesthetic_name)))
         (mapping_element
           (explicit_mapping
             value: (mapping_value
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)
         (setting_clause
           (parameter_assignment
-            param: (parameter_name
+            name: (parameter_name
               (identifier
                 (bare_identifier)))
             value: (parameter_value
@@ -1639,7 +1633,7 @@ DRAW bar REMAPPING count AS y
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1651,7 +1645,7 @@ DRAW bar REMAPPING count AS y
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))
 
 ================================================================================
 REMAPPING multiple stat columns
@@ -1676,14 +1670,14 @@ DRAW histogram REMAPPING bin AS x, count AS y
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))
+                name: (aesthetic_name)))
             (mapping_element
               (explicit_mapping
                 value: (mapping_value
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))
 
 ================================================================================
 REMAPPING with MAPPING clause
@@ -1708,7 +1702,7 @@ DRAW bar MAPPING category AS x REMAPPING count AS size
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))
+                name: (aesthetic_name)))))
         (remapping_clause
           (mapping_list
             (mapping_element
@@ -1717,7 +1711,7 @@ DRAW bar MAPPING category AS x REMAPPING count AS size
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))
 
 ================================================================================
 REMAPPING with all clauses
@@ -1739,7 +1733,7 @@ DRAW bar MAPPING category AS x REMAPPING count AS y SETTING opacity => 0.8 FILTE
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)
@@ -1751,7 +1745,7 @@ DRAW bar MAPPING category AS x REMAPPING count AS y SETTING opacity => 0.8 FILTE
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))
+                name: (aesthetic_name)))))
         (remapping_clause
           (mapping_list
             (mapping_element
@@ -1760,10 +1754,10 @@ DRAW bar MAPPING category AS x REMAPPING count AS y SETTING opacity => 0.8 FILTE
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))
+                name: (aesthetic_name)))))
         (setting_clause
           (parameter_assignment
-            param: (parameter_name
+            name: (parameter_name
               (identifier
                 (bare_identifier)))
             value: (parameter_value
@@ -1816,7 +1810,7 @@ DRAW point MAPPING x AS x
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))
 
 ================================================================================
 Nested SELECT with alias
@@ -1860,7 +1854,7 @@ DRAW point MAPPING x AS x
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))
 
 ================================================================================
 Deeply nested SELECT
@@ -1909,7 +1903,7 @@ DRAW point MAPPING x AS x
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))
 
 ================================================================================
 Multiple subqueries in FROM
@@ -1962,7 +1956,7 @@ DRAW point MAPPING x AS x
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))
 
 ================================================================================
 Detecting namespaced datasets
@@ -1997,7 +1991,7 @@ DRAW point MAPPING x AS x FROM ggsql:penguins
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name))))
+                name: (aesthetic_name))))
           layer_source: (namespaced_identifier))))))
 
 ================================================================================
@@ -2104,156 +2098,148 @@ SELECT * FROM "data.csv"
                   (quoted_identifier))))))))))
 
 ================================================================================
-Qualified name in function argument
+SCALE RENAMING with explicit mappings
 ================================================================================
 
-SELECT SUM(s.quantity) FROM sales s VISUALISE DRAW bar MAPPING x AS x
+VISUALISE x, y
+DRAW point
+SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
 
 --------------------------------------------------------------------------------
 
 (query
-  (sql_portion
-    (sql_statement
-      (select_statement
-        (select_body
-          (function_call
-            (identifier
-              (bare_identifier))
-            (function_args
-              (function_arg
-                (positional_arg
-                  (qualified_name
-                    (identifier
-                      (bare_identifier))
-                    (identifier
-                      (bare_identifier)))))))
-          (from_clause
-            (table_ref
-              table: (qualified_name
-                (identifier
-                  (bare_identifier)))
-              alias: (identifier
-                (bare_identifier))))))))
   (visualise_statement
     (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
     (viz_clause
       (draw_clause
-        (geom_type)
-        (mapping_clause
-          (mapping_list
-            (mapping_element
-              (explicit_mapping
-                value: (mapping_value
-                  (column_reference
-                    (identifier
-                      (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+        (geom_type)))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_renaming_clause
+          (renaming_assignment
+            name: (string)
+            value: (string))
+          (renaming_assignment
+            name: (string)
+            value: (string)))))))
 
 ================================================================================
-Nested function calls
+SCALE RENAMING with NULL suppression
 ================================================================================
 
-SELECT ROUND(AVG(price), 2) as avg FROM data VISUALISE DRAW bar MAPPING x AS x
+VISUALISE x, y
+DRAW bar
+SCALE DISCRETE x RENAMING 'internal' => NULL
 
 --------------------------------------------------------------------------------
 
 (query
-  (sql_portion
-    (sql_statement
-      (select_statement
-        (select_body
-          (function_call
-            (identifier
-              (bare_identifier))
-            (function_args
-              (function_arg
-                (positional_arg
-                  (function_call
-                    (identifier
-                      (bare_identifier))
-                    (function_args
-                      (function_arg
-                        (positional_arg
-                          (qualified_name
-                            (identifier
-                              (bare_identifier)))))))))
-              (function_arg
-                (positional_arg
-                  (number)))))
-          (identifier
-            (bare_identifier))
-          (identifier
-            (bare_identifier))
-          (from_clause
-            (table_ref
-              table: (qualified_name
-                (identifier
-                  (bare_identifier)))))))))
   (visualise_statement
     (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
     (viz_clause
       (draw_clause
-        (geom_type)
-        (mapping_clause
-          (mapping_list
-            (mapping_element
-              (explicit_mapping
-                value: (mapping_value
-                  (column_reference
-                    (identifier
-                      (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+        (geom_type)))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_renaming_clause
+          (renaming_assignment
+            name: (string)
+            value: (null_literal)))))))
 
 ================================================================================
-Arithmetic in function argument
+SCALE RENAMING with wildcard template
 ================================================================================
 
-SELECT SUM(quantity * price) as total FROM data VISUALISE DRAW bar MAPPING x AS x
+VISUALISE x, y
+DRAW point
+SCALE CONTINUOUS x RENAMING * => '{} units'
 
 --------------------------------------------------------------------------------
 
 (query
-  (sql_portion
-    (sql_statement
-      (select_statement
-        (select_body
-          (function_call
-            (identifier
-              (bare_identifier))
-            (function_args
-              (function_arg
-                (positional_arg
-                  (positional_arg
-                    (qualified_name
-                      (identifier
-                        (bare_identifier))))
-                  (positional_arg
-                    (qualified_name
-                      (identifier
-                        (bare_identifier))))))))
-          (identifier
-            (bare_identifier))
-          (identifier
-            (bare_identifier))
-          (from_clause
-            (table_ref
-              table: (qualified_name
-                (identifier
-                  (bare_identifier)))))))))
   (visualise_statement
     (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
     (viz_clause
       (draw_clause
-        (geom_type)
-        (mapping_clause
-          (mapping_list
-            (mapping_element
-              (explicit_mapping
-                value: (mapping_value
-                  (column_reference
-                    (identifier
-                      (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+        (geom_type)))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_renaming_clause
+          (renaming_assignment
+            value: (string)))))))
+
+================================================================================
+SCALE RENAMING with mixed explicit and wildcard
+================================================================================
+
+VISUALISE x, y
+DRAW bar
+SCALE DISCRETE x RENAMING 'A' => 'Alpha', * => 'Category {}'
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_renaming_clause
+          (renaming_assignment
+            name: (string)
+            value: (string))
+          (renaming_assignment
+            value: (string)))))))
 
 ================================================================================
 CAST expression
@@ -2295,7 +2281,7 @@ SELECT CAST(sale_date AS DATE) as period FROM sales VISUALISE period AS x DRAW p
               (column_reference
                 (identifier
                   (bare_identifier))))
-            aesthetic: (aesthetic_name)))))
+            name: (aesthetic_name)))))
     (viz_clause
       (draw_clause
         (geom_type)))))
@@ -2349,4 +2335,4 @@ SELECT SUM(TRY_CAST(price AS INTEGER)) as total FROM data VISUALISE DRAW bar MAP
                   (column_reference
                     (identifier
                       (bare_identifier))))
-                aesthetic: (aesthetic_name)))))))))
+                name: (aesthetic_name)))))))))

@@ -16,8 +16,6 @@ impl GeomTrait for AbLine {
             supported: &[
                 "slope",
                 "intercept",
-                "color",
-                "colour",
                 "stroke",
                 "linetype",
                 "linewidth",

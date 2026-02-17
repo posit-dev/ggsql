@@ -1,3 +1,66 @@
 ---
 title: "Specify aesthetic scaling with `SCALE`"
 ---
+
+Scales are an important concept in ggsql. While DRAW clauses define what to draw and what data to base the drawing on, scales control *how* that data is interpreted, understood, and translated. Because of this a proper understanding of the `SCALE` clause is integral to releasing all the power of ggsql. Still, scales always comes with sensible defaults so unlike `DRAW` clauses you may not need them for all your visualisations.
+
+## Clause syntax
+The `SCALE` clause takes a number of subclauses, all of them optional:
+
+```ggsql
+SCALE <type> <aesthetic> FROM <input-range> TO <output-range> VIA <transform>
+    SETTING <parameter> => <value>, ...
+    RENAMING <break-value> => <string>, ...
+```
+
+The `type` defines the class of scale to use. It can be one of four different types:
+
+* `CONTINUOUS` to interpret and treat data as continuous
+* `DISCRETE` to interpret and treat data as discrete or categorical
+* `BINNED` to bin continuous data into discrete bins
+* `ORDINAL` to interpret discrete data as ordered
+* `IDENTITY` to let data pass through unscaled
+
+Read more about each type at their dedicated documentation. You do not have to specify the type as it is deduced from the transform, input range, or data if left blank.
+
+You *must* specify an aesthetic so that the scale knows which mapping it belongs to. For positional aesthetics you will provide the base name (`x` or `y`) even though you are mapping to e.g. `xmin`. Creating a scale for `colour` (or `color`) will create a scale for both fill and stroke colour based on the settings. 
+
+### `FROM`
+The `FROM` clause defines the input range of the scale, i.e. the values the scale translates from. If not provided, it will be deduced from the data as the range that covers all mapped data. For discrete scales the input range is defined as an array of all known values to the scale. Values from the data not present in the input range will be `null`'ed by the scale. For continuous and binned scales this is an array with two elements: the lower and upper boundaries of the scale. Either of these can be `null` in which case that value will be determined by the data (e.g. a range of `[0, null]` will go from 0 to the maximum value in the data). Identity scales do not have an input range.
+
+### `TO`
+The `TO` clause defines the output range of the scale, i.e. what the data is translated to. It can either be an array of values or the name of a known palette. Read more under the documentation for the specific scales.
+
+### `VIA`
+The `VIA` clause defines a transform which is applied to the data before mapping it to the output range. While transforms are often understood as mathematical transforms, in ggsql it also defines casting of input data. E.g. the `integer` transform cast all input to integer before mapping. Transforms also takes care of creating breaks that are meaningful for the specific transform, e.g. in the case of the log10 transform where breaks are created to fit the power of 10. Different transforms are available to different scale types. 
+
+### `SETTING`
+This clause behaves much like the `SETTINGS` clause in `DRAW`, in that it allows you to fine-tune specific behavior of the scale. Permissible settings depends on the scale type and are documented there.
+
+### `RENAMING`
+This clause works much like the `LABEL` clause but works on the break names of the scale. The general syntax is that you provide the name of the break on the left and what it should appear as on the right, e.g `'adelie' => 'Pygoscelis adeliae'`. The clause is understood as a look-up table in the sense that if you provide a renaming for a break that doesn't appear in the scale then nothing will happen and if a break exist but doesn't have a renaming defined it will go through unaltered. To suppress the label of a specific break you can rename it to `null`, e.g. `'adelie' => null`. This will not remove the break, only the label.
+
+#### Break formatting
+Apart from the direct renaming described above it is also possible to provide a formatting function to be applied to all breaks. The syntax for this is `* => '...'` with the content of the string on the right being a string interpolation format. The basic syntax for this is that the break value will be inserted into any place where `{}` appears. This means that e.g. `* => '{} species'` will result in the label "adelie species" for the break "adelie". Besides simply inserting the value as-is, it is also possible to apply a formatter to the label before insertion by naming a formatter inside the curly braces prefixed with `:`. Known formatters are:
+
+* `{:Title}` will title-case the value (make the first letter in each work upper case) before insertion, e.g. `* => '{:Title} species'` will become "Adelie species" for the "adelie" break.
+* `{:UPPER}` will make the value upper-case, e.g. `* => '{:UPPER} species'` will become "ADELIE species" for the "adelie" break.
+* `{:lower}` works much like `{:UPPER}` but changes the value to lower-case instead.
+* `{:time ...}` will format a date/datetime/time value according to the format defined afterwards. The formatting follows strftime format using the Rust chrono library. You can see an overview of the supported syntax at the [chrono docs](https://docs.rs/chrono/latest/chrono/format/strftime/index.html). The basic usage is `* => '{:time %B %Y}` which would format a break at 2025-07-04 as "July 2025".
+* `{:num ...}` will format a numeric according to the format defined afterwards. The format follows the printf format using the Rust sprintf library. The syntax is `%[flags][width][.precision]type` with the following meaning:
+  - `flags`: One or more modifiers:
+    * `-`: left-justify
+    * `+`: Force sign for positive numbers
+    * ` `: (space) Space before positive numbers
+    * `0`: Zero-pad
+    * `#`: Alternate form (`0x` prefix for hex, etc)
+  - `width`: The minimum width of characters to render. Depending on the `flags` the string will be padded to be at least this width
+  - `precision`: The maximum precision of the number. For `%g`/`%G` it is the total number of digits whereas for the rest it is the number of digits to the right of the decimal point
+  - `type`: How to present the number. One of:
+    * `d`/`i`: Signed decimal integers
+    * `u`: Unsigned decimal integers
+    * `f`/`F`: Decimal floating point
+    * `e`/`E`: Scientific notation
+    * `g`/`G`: Shortest form of `e` and `f`
+    * `o`: Unsigned octal
+    * `x`/`X`: Unsigned hexadecimal

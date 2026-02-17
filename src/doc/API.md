@@ -236,17 +236,16 @@ println!("Layer count: {}", meta.layer_count);
 
 | Method       | Signature                                              | Description                     |
 | ------------ | ------------------------------------------------------ | ------------------------------- |
-| `data`       | `fn data(&self) -> Option<&DataFrame>`                 | Global data (main query result) |
 | `layer_data` | `fn layer_data(&self, i: usize) -> Option<&DataFrame>` | Layer-specific data             |
 | `stat_data`  | `fn stat_data(&self, i: usize) -> Option<&DataFrame>`  | Stat transform results          |
-| `data_map`   | `fn data_map(&self) -> &HashMap<String, DataFrame>`    | Raw data map access             |
+| `data`       | `fn data(&self) -> &HashMap<String, DataFrame>`        | Raw data map access             |
 
 **Example:**
 
 ```rust
-// Global data
-if let Some(df) = spec.data() {
-    println!("Global data: {} rows", df.height());
+// Layer data (first layer)
+if let Some(df) = spec.layer_data(0) {
+    println!("Layer 0 data: {} rows", df.height());
 }
 
 // Layer-specific data (from FILTER or FROM clause)

@@ -1,0 +1,19 @@
+---
+title: Opacity
+---
+
+The `opacity` aesthetic governs how opaque objects are (or, conversely, how transparent they are). Depending on the layer it controls the opacity of the fill *or* stroke (if a layer has a natural fill then that is what receives the opacity). Opacity goes from 0 (fully transparent) to 1 (fully opaque). 
+
+Color values (fill or stroke aesthetics) may contain opacity information embedded, e.g. by using hex values with an alpha channel. How such colors are merged with the opacity aesthetic is writer-dependent and can't be relied on. Even if the behavior was consistent, mixing the two is never a good idea because it leads to hard-to-decode graphics.
+
+## Literal values
+Opacity has no unit and goes from 0 (fully transparent) to 1 (fully opaque). You can set the opacity of points to a low value to combat overplotting like so:
+
+```ggsql
+DRAW point
+    SETTING opacity => 0.2
+```
+
+## Palettes
+Opacity can only be used for sequential data and has no named palettes. The default for continuous, binned, and ordinal scales is to use the range from 0.1 to 1 and interpolate between them. This can be overwritten by providing a manual output range specification like below where we use the complete range opacity
+

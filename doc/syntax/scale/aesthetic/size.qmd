@@ -1,0 +1,22 @@
+---
+title: Size
+---
+
+The `size` aesthetic defines the size of points (of any shape). It is measured as radius in points (1pt = 1/72 inch) of an idealized circle. Size is most often used to create a bubble chart, which is a variant of a scatter plot where a continuous value is mapped to the `size` of the points.
+
+`size` is scaled by area rather than radius. This means it has an implicit square root transform applied on top of any other transform you may add. This ensures that steps in data value correspond to equal steps in perceived size (which is proportional to area).
+
+## Literal values
+Sizes are given as bare numbers and measured in points. The following code will e.g. set the radius of points to 3pt (~28pt²):
+
+```ggsql
+DRAW point
+    SETTING size => 3
+```
+
+## Palettes
+Size can only be used for sequential data and has no named palettes. The default for continuous, binned, and ordinal scales is to use the range from 1pt to 6 pt and interpolate between them. This can be overwritten by providing a manual output range specification
+
+```ggsql
+SCALE size TO [3, 9]
+```

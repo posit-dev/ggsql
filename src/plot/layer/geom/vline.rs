@@ -13,15 +13,7 @@ impl GeomTrait for VLine {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &[
-                "xintercept",
-                "color",
-                "colour",
-                "stroke",
-                "linetype",
-                "linewidth",
-                "opacity",
-            ],
+            supported: &["xintercept", "stroke", "linetype", "linewidth", "opacity"],
             required: &["xintercept"],
             hidden: &[],
         }

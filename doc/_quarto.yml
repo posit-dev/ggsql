@@ -18,7 +18,7 @@ website:
   announcement:
     icon: info-circle
     dismissable: true
-    content: "ggsql is still in early development and all functionality is subject to change"
+    content: "ggsql is still in early development and all functionality are subject to change"
     type: primary
     position: below-navbar
   twitter-card:
@@ -80,10 +80,19 @@ website:
       - section: Layers
         contents:
           - auto: syntax/layer/*
+      - section: Scales
+        contents:
+          - section: Types
+            contents:
+              - auto: syntax/scale/type/*
+          - section: Aesthetics
+            contents:
+              - auto: syntax/scale/aesthetic/*
 
 
 format:
   html:
+    lightbox: auto
     syntax-definitions:
       - ggsql.xml
     theme:

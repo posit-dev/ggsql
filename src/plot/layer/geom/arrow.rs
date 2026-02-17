@@ -18,8 +18,6 @@ impl GeomTrait for Arrow {
                 "y",
                 "xend",
                 "yend",
-                "color",
-                "colour",
                 "stroke",
                 "linetype",
                 "linewidth",
