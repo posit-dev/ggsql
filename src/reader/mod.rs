@@ -496,7 +496,8 @@ mod tests {
         // Verify threshold scale type for fill
         let fill_scale = &vl["layer"][0]["encoding"]["fill"]["scale"];
         assert_eq!(
-            fill_scale["type"], "threshold",
+            fill_scale["type"],
+            "threshold",
             "Binned fill should use threshold scale type. Got: {}",
             serde_json::to_string_pretty(&vl["layer"][0]["encoding"]["fill"]).unwrap()
         );
@@ -577,7 +578,8 @@ mod tests {
             &encoding["fill"]
         };
         assert_eq!(
-            color_encoding["scale"]["type"], "threshold",
+            color_encoding["scale"]["type"],
+            "threshold",
             "Binned color should use threshold scale. Got encoding: {}",
             serde_json::to_string_pretty(color_encoding).unwrap()
         );

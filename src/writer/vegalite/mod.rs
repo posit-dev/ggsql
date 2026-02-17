@@ -32,7 +32,7 @@ use crate::plot::ArrayElement;
 use crate::plot::ParameterValue;
 use crate::writer::Writer;
 use crate::{naming, AestheticValue, DataFrame, GgsqlError, Plot, Result};
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use std::collections::HashMap;
 
 // Re-export submodule functions for use in write()
@@ -41,7 +41,7 @@ use data::{collect_binned_columns, is_binned_aesthetic, unify_datasets};
 use encoding::{
     build_detail_encoding, build_encoding_channel, infer_field_type, map_aesthetic_name,
 };
-use layer::{geom_to_mark, get_renderer, validate_layer_columns, PreparedData};
+use layer::{geom_to_mark, get_renderer, validate_layer_columns, GeomRenderer, PreparedData};
 
 /// Conversion factor from points to pixels (CSS standard: 96 DPI, 72 points/inch)
 /// 1 point = 96/72 pixels = 1.333
@@ -51,6 +51,294 @@ const POINTS_TO_PIXELS: f64 = 96.0 / 72.0;
 /// Used for size aesthetic: area = pi * r^2 where r is in pixels
 /// So: area_px^2 = pi * (r_pt * POINTS_TO_PIXELS)^2 = pi * r_pt^2 * (96/72)^2
 const POINTS_TO_AREA: f64 = std::f64::consts::PI * POINTS_TO_PIXELS * POINTS_TO_PIXELS;
+
+/// Result of preparing layer data for rendering
+///
+/// Contains the datasets, renderers, and prepared data needed to build Vega-Lite layers.
+struct LayerPreparation {
+    /// Individual datasets keyed by layer/component identifier
+    datasets: serde_json::Map<String, Value>,
+    /// Renderers for each layer (one per layer in spec.layers)
+    renderers: Vec<Box<dyn GeomRenderer>>,
+    /// Prepared data for each layer (one per layer in spec.layers)
+    prepared: Vec<PreparedData>,
+}
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/// Prepare layer data using renderers
+///
+/// For each layer:
+/// - Gets the appropriate renderer for the geom type
+/// - Prepares data (handles both standard and composite cases like boxplot)
+/// - Builds individual datasets map with type-specific keys
+///
+/// Returns the datasets map, renderers, and prepared data for layer building.
+fn prepare_layer_data(
+    spec: &Plot,
+    data: &HashMap<String, DataFrame>,
+    layer_data_keys: &[String],
+    binned_columns: &HashMap<String, Vec<f64>>,
+) -> Result<LayerPreparation> {
+    let mut individual_datasets = serde_json::Map::new();
+    let mut layer_renderers: Vec<Box<dyn GeomRenderer>> = Vec::new();
+    let mut prepared_data: Vec<PreparedData> = Vec::new();
+
+    for (layer_idx, layer) in spec.layers.iter().enumerate() {
+        let data_key = &layer_data_keys[layer_idx];
+        let df = data.get(data_key).ok_or_else(|| {
+            GgsqlError::WriterError(format!(
+                "Missing data source '{}' for layer {}",
+                data_key,
+                layer_idx + 1
+            ))
+        })?;
+
+        // Get the appropriate renderer for this geom type
+        let renderer = get_renderer(&layer.geom);
+
+        // Prepare data using the renderer (handles both standard and composite cases)
+        let prepared = renderer.prepare_data(df, data_key, binned_columns)?;
+
+        // Add data to individual datasets based on prepared type
+        match &prepared {
+            PreparedData::Single { values } => {
+                individual_datasets.insert(data_key.clone(), json!(values));
+            }
+            PreparedData::Composite { components, .. } => {
+                // For composite geoms (boxplot, etc.), add each component dataset
+                // with type-specific keys (e.g., "__ggsql_layer_0__lower_whisker")
+                for (component_name, values) in components {
+                    let type_key = format!("{}{}", data_key, component_name);
+                    individual_datasets.insert(type_key, json!(values));
+                }
+            }
+        }
+
+        layer_renderers.push(renderer);
+        prepared_data.push(prepared);
+    }
+
+    Ok(LayerPreparation {
+        datasets: individual_datasets,
+        renderers: layer_renderers,
+        prepared: prepared_data,
+    })
+}
+
+/// Build Vega-Lite layers from spec
+///
+/// For each layer:
+/// - Creates layer spec with mark type
+/// - Builds transform array with source filter
+/// - Builds encoding channels for each aesthetic mapping
+/// - Handles binned positional aesthetics (x2/y2 channels)
+/// - Adds aesthetic parameters from SETTING as literal encodings
+/// - Adds detail encoding for partition_by columns
+/// - Applies geom-specific modifications via renderer
+/// - Finalizes layers (may expand composite geoms into multiple layers)
+fn build_layers(
+    spec: &Plot,
+    data: &HashMap<String, DataFrame>,
+    layer_data_keys: &[String],
+    layer_renderers: &[Box<dyn GeomRenderer>],
+    prepared_data: &[PreparedData],
+) -> Result<Vec<Value>> {
+    let mut layers = Vec::new();
+
+    for (layer_idx, layer) in spec.layers.iter().enumerate() {
+        let data_key = &layer_data_keys[layer_idx];
+        let df = data.get(data_key).unwrap();
+        let renderer = &layer_renderers[layer_idx];
+        let prepared = &prepared_data[layer_idx];
+
+        // Layer spec with mark
+        let mut layer_spec = json!({
+            "mark": geom_to_mark(&layer.geom)
+        });
+
+        // Build transform array for this layer
+        // Always starts with a filter to select this layer's data from unified dataset
+        let mut transforms: Vec<Value> = Vec::new();
+
+        // Add source filter transform (if the renderer needs it)
+        // Composite geoms like boxplot add their own type-specific filters
+        if renderer.needs_source_filter() {
+            transforms.push(json!({
+                "filter": {
+                    "field": naming::SOURCE_COLUMN,
+                    "equal": data_key
+                }
+            }));
+        }
+
+        // Set transform array on layer spec
+        layer_spec["transform"] = json!(transforms);
+
+        // Build encoding for this layer
+        let encoding = build_layer_encoding(layer, df, spec)?;
+        layer_spec["encoding"] = Value::Object(encoding);
+
+        // Apply geom-specific spec modifications via renderer
+        renderer.modify_spec(&mut layer_spec, layer)?;
+
+        // Finalize the layer (may expand into multiple layers for composite geoms)
+        let final_layers = renderer.finalize(layer_spec, layer, data_key, prepared)?;
+        layers.extend(final_layers);
+    }
+
+    Ok(layers)
+}
+
+/// Build encoding channels for a single layer
+///
+/// Handles:
+/// - Tracking titled aesthetic families (one title per family)
+/// - Building encoding channels for each aesthetic mapping
+/// - Binned positional aesthetics (x2/y2 channels for bin width)
+/// - Aesthetic parameters from SETTING as literal encodings
+/// - Detail encoding for partition_by columns
+/// - Geom-specific encoding modifications via renderer
+fn build_layer_encoding(
+    layer: &crate::plot::Layer,
+    df: &DataFrame,
+    spec: &Plot,
+) -> Result<serde_json::Map<String, Value>> {
+    let mut encoding = serde_json::Map::new();
+
+    // Track which aesthetic families have been titled to ensure only one title per family
+    let mut titled_families: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    // Collect primary aesthetics that exist in the layer (for title handling)
+    // e.g., if layer has "y", then "ymin" and "ymax" should suppress their titles
+    let primary_aesthetics: std::collections::HashSet<String> = layer
+        .mappings
+        .aesthetics
+        .keys()
+        .filter(|a| GeomAesthetics::primary_aesthetic(a) == a.as_str())
+        .cloned()
+        .collect();
+
+    // Create encoding context for this layer
+    let mut enc_ctx = encoding::EncodingContext {
+        df,
+        spec,
+        titled_families: &mut titled_families,
+        primary_aesthetics: &primary_aesthetics,
+    };
+
+    // Build encoding channels for each aesthetic mapping
+    for (aesthetic, value) in &layer.mappings.aesthetics {
+        let channel_name = map_aesthetic_name(aesthetic);
+        let channel_encoding = build_encoding_channel(aesthetic, value, &mut enc_ctx)?;
+        encoding.insert(channel_name, channel_encoding);
+
+        // For binned positional aesthetics (x, y), add x2/y2 channel with bin_end column
+        // This enables proper bin width rendering in Vega-Lite
+        if matches!(aesthetic.as_str(), "x" | "y") && is_binned_aesthetic(aesthetic, spec) {
+            if let AestheticValue::Column { name: col, .. } = value {
+                let end_col = naming::bin_end_column(col);
+                let end_channel = format!("{}2", aesthetic); // "x2" or "y2"
+                encoding.insert(end_channel, json!({"field": end_col}));
+            }
+        }
+    }
+
+    // Add aesthetic parameters from SETTING as literal encodings
+    // (e.g., SETTING color => 'red' becomes {"color": {"value": "red"}})
+    // Only parameters that are supported aesthetics for this geom type are included
+    let supported_aesthetics = layer.geom.aesthetics().supported;
+    for (param_name, param_value) in &layer.parameters {
+        if supported_aesthetics.contains(&param_name.as_str()) {
+            let channel_name = map_aesthetic_name(param_name);
+            // Only add if not already set by MAPPING (MAPPING takes precedence)
+            if !encoding.contains_key(&channel_name) {
+                // Convert size and linewidth from points to Vega-Lite units
+                let converted_value = match (param_name.as_str(), param_value) {
+                    // Size: interpret as radius in points, convert to area in pixels^2
+                    ("size", ParameterValue::Number(n)) => json!(n * n * POINTS_TO_AREA),
+                    // Linewidth: interpret as width in points, convert to pixels
+                    ("linewidth", ParameterValue::Number(n)) => json!(n * POINTS_TO_PIXELS),
+                    // Other aesthetics: pass through unchanged
+                    _ => param_value.to_json(),
+                };
+                encoding.insert(channel_name, json!({"value": converted_value}));
+            }
+        }
+    }
+
+    // Add detail encoding for partition_by columns (grouping)
+    if let Some(detail) = build_detail_encoding(&layer.partition_by) {
+        encoding.insert("detail".to_string(), detail);
+    }
+
+    // Apply geom-specific encoding modifications via renderer
+    let renderer = get_renderer(&layer.geom);
+    renderer.modify_encoding(&mut encoding, layer)?;
+
+    Ok(encoding)
+}
+
+/// Apply faceting to Vega-Lite spec
+///
+/// Handles:
+/// - FACET WRAP (single variable faceting)
+/// - FACET GRID (row × column faceting)
+/// - Moves layers into nested `spec` object
+/// - Infers field types for facet variables
+fn apply_faceting(vl_spec: &mut Value, facet: &crate::plot::Facet, facet_df: &DataFrame) {
+    use crate::plot::Facet;
+
+    match facet {
+        Facet::Wrap { variables, .. } => {
+            if !variables.is_empty() {
+                let field_type = infer_field_type(facet_df, &variables[0]);
+                vl_spec["facet"] = json!({
+                    "field": variables[0],
+                    "type": field_type,
+                });
+
+                // Move layer into spec (data reference stays at top level)
+                let mut spec_inner = json!({});
+                if let Some(layer) = vl_spec.get("layer") {
+                    spec_inner["layer"] = layer.clone();
+                }
+
+                vl_spec["spec"] = spec_inner;
+                vl_spec.as_object_mut().unwrap().remove("layer");
+            }
+        }
+        Facet::Grid { rows, cols, .. } => {
+            let mut facet_spec = serde_json::Map::new();
+            if !rows.is_empty() {
+                let field_type = infer_field_type(facet_df, &rows[0]);
+                facet_spec.insert(
+                    "row".to_string(),
+                    json!({"field": rows[0], "type": field_type}),
+                );
+            }
+            if !cols.is_empty() {
+                let field_type = infer_field_type(facet_df, &cols[0]);
+                facet_spec.insert(
+                    "column".to_string(),
+                    json!({"field": cols[0], "type": field_type}),
+                );
+            }
+            vl_spec["facet"] = Value::Object(facet_spec);
+
+            // Move layer into spec (data reference stays at top level)
+            let mut spec_inner = json!({});
+            if let Some(layer) = vl_spec.get("layer") {
+                spec_inner["layer"] = layer.clone();
+            }
+
+            vl_spec["spec"] = spec_inner;
+            vl_spec.as_object_mut().unwrap().remove("layer");
+        }
+    }
+}
 
 /// Vega-Lite JSON writer
 ///
@@ -79,11 +367,10 @@ impl Writer for VegaLiteWriter {
     type Output = String;
 
     fn write(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<String> {
-        // Validate spec before processing
+        // 1. Validate spec
         self.validate(spec)?;
 
-        // Determine which dataset key each layer should use
-        // Use layer.data_key if set (from execute.rs), otherwise use standard layer key
+        // 2. Determine layer data keys
         let layer_data_keys: Vec<String> = spec
             .layers
             .iter()
@@ -96,7 +383,7 @@ impl Writer for VegaLiteWriter {
             })
             .collect();
 
-        // Validate all required datasets exist and validate column references
+        // 3. Validate columns for each layer
         for (layer_idx, (layer, key)) in spec.layers.iter().zip(layer_data_keys.iter()).enumerate()
         {
             let df = data.get(key).ok_or_else(|| {
@@ -109,247 +396,50 @@ impl Writer for VegaLiteWriter {
             validate_layer_columns(layer, df, layer_idx)?;
         }
 
-        // Build the base Vega-Lite spec
+        // 4. Build base Vega-Lite spec
         let mut vl_spec = json!({
             "$schema": self.schema
         });
-
-        // Responsive plot sizing
         vl_spec["width"] = json!("container");
         vl_spec["height"] = json!("container");
 
-        // Add title if present
         if let Some(labels) = &spec.labels {
             if let Some(title) = labels.labels.get("title") {
                 vl_spec["title"] = json!(title);
             }
         }
 
-        // Collect binned column information from spec
+        // 5. Collect binned columns
         let binned_columns = collect_binned_columns(spec);
 
-        // Build individual datasets using renderers
-        // Each renderer handles its own data preparation (standard or composite)
-        let mut individual_datasets = Map::new();
-        let mut layer_renderers: Vec<Box<dyn layer::GeomRenderer>> = Vec::new();
-        let mut prepared_data: Vec<PreparedData> = Vec::new();
+        // 6. Prepare layer data
+        let prep = prepare_layer_data(spec, data, &layer_data_keys, &binned_columns)?;
 
-        for (layer_idx, layer) in spec.layers.iter().enumerate() {
-            let data_key = &layer_data_keys[layer_idx];
-            let df = data.get(data_key).ok_or_else(|| {
-                GgsqlError::WriterError(format!(
-                    "Missing data source '{}' for layer {}",
-                    data_key,
-                    layer_idx + 1
-                ))
-            })?;
-
-            // Get the appropriate renderer for this geom type
-            let renderer = get_renderer(&layer.geom);
-
-            // Prepare data using the renderer (handles both standard and composite cases)
-            let prepared = renderer.prepare_data(df, data_key, &binned_columns)?;
-
-            // Add data to individual datasets based on prepared type
-            match &prepared {
-                PreparedData::Single { values } => {
-                    individual_datasets.insert(data_key.clone(), json!(values));
-                }
-                PreparedData::Composite { components, .. } => {
-                    // For composite geoms (boxplot, etc.), add each component dataset
-                    // with type-specific keys (e.g., "__ggsql_layer_0__lower_whisker")
-                    for (component_name, values) in components {
-                        let type_key = format!("{}{}", data_key, component_name);
-                        individual_datasets.insert(type_key, json!(values));
-                    }
-                }
-            }
-
-            layer_renderers.push(renderer);
-            prepared_data.push(prepared);
-        }
-
-        // Unify all datasets into a single dataset with source identification
-        // Each row gets a __ggsql_source__ field identifying which layer it belongs to
-        let unified_data = unify_datasets(&individual_datasets)?;
-
-        // Set data directly on the spec (single unified dataset)
+        // 7. Unify datasets
+        let unified_data = unify_datasets(&prep.datasets)?;
         vl_spec["data"] = json!({"values": unified_data});
 
-        // Build layers array
-        // Each layer gets a filter transform to select its data from the unified dataset
-        let mut layers = Vec::new();
-        for (layer_idx, layer) in spec.layers.iter().enumerate() {
-            let data_key = &layer_data_keys[layer_idx];
-            let df = data.get(data_key).unwrap();
-            let renderer = &layer_renderers[layer_idx];
-            let prepared = &prepared_data[layer_idx];
-
-            // Layer spec
-            let mut layer_spec = json!({
-                "mark": geom_to_mark(&layer.geom)
-            });
-
-            // Build transform array for this layer
-            // Always starts with a filter to select this layer's data from unified dataset
-            let mut transforms: Vec<Value> = Vec::new();
-
-            // Add source filter transform (if the renderer needs it)
-            // Composite geoms like boxplot add their own type-specific filters
-            if renderer.needs_source_filter() {
-                transforms.push(json!({
-                    "filter": {
-                        "field": naming::SOURCE_COLUMN,
-                        "equal": data_key
-                    }
-                }));
-            }
-
-            // Set transform array on layer spec
-            layer_spec["transform"] = json!(transforms);
-
-            // Build encoding for this layer
-            // Track which aesthetic families have been titled to ensure only one title per family
-            let mut encoding = Map::new();
-            let mut titled_families: std::collections::HashSet<String> =
-                std::collections::HashSet::new();
-
-            // Collect primary aesthetics that exist in the layer (for title handling)
-            // e.g., if layer has "y", then "ymin" and "ymax" should suppress their titles
-            let primary_aesthetics: std::collections::HashSet<String> = layer
-                .mappings
-                .aesthetics
-                .keys()
-                .filter(|a| GeomAesthetics::primary_aesthetic(a) == a.as_str())
-                .cloned()
-                .collect();
-
-            for (aesthetic, value) in &layer.mappings.aesthetics {
-                let channel_name = map_aesthetic_name(aesthetic);
-                let channel_encoding = build_encoding_channel(
-                    aesthetic,
-                    value,
-                    df,
-                    spec,
-                    &mut titled_families,
-                    &primary_aesthetics,
-                )?;
-                encoding.insert(channel_name, channel_encoding);
-
-                // For binned positional aesthetics (x, y), add x2/y2 channel with bin_end column
-                // This enables proper bin width rendering in Vega-Lite
-                if matches!(aesthetic.as_str(), "x" | "y") && is_binned_aesthetic(aesthetic, spec) {
-                    if let AestheticValue::Column { name: col, .. } = value {
-                        let end_col = naming::bin_end_column(col);
-                        let end_channel = format!("{}2", aesthetic); // "x2" or "y2"
-                        encoding.insert(end_channel, json!({"field": end_col}));
-                    }
-                }
-            }
-
-            // Also add aesthetic parameters from SETTING as literal encodings
-            // (e.g., SETTING color => 'red' becomes {"color": {"value": "red"}})
-            // Only parameters that are supported aesthetics for this geom type are included
-            let supported_aesthetics = layer.geom.aesthetics().supported;
-            for (param_name, param_value) in &layer.parameters {
-                if supported_aesthetics.contains(&param_name.as_str()) {
-                    let channel_name = map_aesthetic_name(param_name);
-                    // Only add if not already set by MAPPING (MAPPING takes precedence)
-                    if !encoding.contains_key(&channel_name) {
-                        // Convert size and linewidth from points to Vega-Lite units
-                        let converted_value = match (param_name.as_str(), param_value) {
-                            // Size: interpret as radius in points, convert to area in pixels^2
-                            ("size", ParameterValue::Number(n)) => json!(n * n * POINTS_TO_AREA),
-                            // Linewidth: interpret as width in points, convert to pixels
-                            ("linewidth", ParameterValue::Number(n)) => json!(n * POINTS_TO_PIXELS),
-                            // Other aesthetics: pass through unchanged
-                            _ => param_value.to_json(),
-                        };
-                        encoding.insert(channel_name, json!({"value": converted_value}));
-                    }
-                }
-            }
-
-            // Add detail encoding for partition_by columns (grouping)
-            if let Some(detail) = build_detail_encoding(&layer.partition_by) {
-                encoding.insert("detail".to_string(), detail);
-            }
-
-            // Apply geom-specific encoding modifications via renderer
-            renderer.modify_encoding(&mut encoding, layer)?;
-
-            layer_spec["encoding"] = Value::Object(encoding);
-
-            // Apply geom-specific spec modifications via renderer
-            renderer.modify_spec(&mut layer_spec, layer)?;
-
-            // Finalize the layer (may expand into multiple layers for composite geoms)
-            let final_layers = renderer.finalize(layer_spec, layer, data_key, prepared)?;
-            layers.extend(final_layers);
-        }
-
+        // 8. Build layers
+        let layers = build_layers(
+            spec,
+            data,
+            &layer_data_keys,
+            &prep.renderers,
+            &prep.prepared,
+        )?;
         vl_spec["layer"] = json!(layers);
 
-        // Apply coordinate transforms (flip, polar, cartesian limits)
-        // This must happen AFTER layers are built since transforms modify layer encodings
+        // 9. Apply coordinate transforms
         let first_df = data.get(&layer_data_keys[0]).unwrap();
         apply_coord_transforms(spec, first_df, &mut vl_spec)?;
 
-        // Handle faceting if present
+        // 10. Apply faceting
         if let Some(facet) = &spec.facet {
-            // Use the unified global dataset for faceting
-            let facet_data = data.get(&layer_data_keys[0]).unwrap();
-
-            use crate::plot::Facet;
-            match facet {
-                Facet::Wrap { variables, .. } => {
-                    if !variables.is_empty() {
-                        let field_type = infer_field_type(facet_data, &variables[0]);
-                        vl_spec["facet"] = json!({
-                            "field": variables[0],
-                            "type": field_type,
-                        });
-
-                        // Move layer into spec (data reference stays at top level)
-                        let mut spec_inner = json!({});
-                        if let Some(layer) = vl_spec.get("layer") {
-                            spec_inner["layer"] = layer.clone();
-                        }
-
-                        vl_spec["spec"] = spec_inner;
-                        vl_spec.as_object_mut().unwrap().remove("layer");
-                    }
-                }
-                Facet::Grid { rows, cols, .. } => {
-                    let mut facet_spec = Map::new();
-                    if !rows.is_empty() {
-                        let field_type = infer_field_type(facet_data, &rows[0]);
-                        facet_spec.insert(
-                            "row".to_string(),
-                            json!({"field": rows[0], "type": field_type}),
-                        );
-                    }
-                    if !cols.is_empty() {
-                        let field_type = infer_field_type(facet_data, &cols[0]);
-                        facet_spec.insert(
-                            "column".to_string(),
-                            json!({"field": cols[0], "type": field_type}),
-                        );
-                    }
-                    vl_spec["facet"] = Value::Object(facet_spec);
-
-                    // Move layer into spec (data reference stays at top level)
-                    let mut spec_inner = json!({});
-                    if let Some(layer) = vl_spec.get("layer") {
-                        spec_inner["layer"] = layer.clone();
-                    }
-
-                    vl_spec["spec"] = spec_inner;
-                    vl_spec.as_object_mut().unwrap().remove("layer");
-                }
-            }
+            let facet_df = data.get(&layer_data_keys[0]).unwrap();
+            apply_faceting(&mut vl_spec, facet, facet_df);
         }
 
+        // 11. Serialize
         serde_json::to_string_pretty(&vl_spec).map_err(|e| {
             GgsqlError::WriterError(format!("Failed to serialize Vega-Lite JSON: {}", e))
         })
@@ -739,7 +829,7 @@ mod tests {
         );
 
         // Should not include a mapping for the last terminal value directly
-        assert!(result.get("100").is_none());
+        assert!(!result.contains_key("100"));
     }
 
     #[test]
