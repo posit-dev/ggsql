@@ -32,7 +32,7 @@ impl GeomTrait for Violin {
                 "linetype",
             ],
             required: &["x", "y"],
-            hidden: &[],
+            hidden: &["offset"],
         }
     }
 
@@ -60,7 +60,7 @@ impl GeomTrait for Violin {
     fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
         &[
             ("y", DefaultAestheticValue::Column("y")),
-            ("density", DefaultAestheticValue::Column("density")),
+            ("offset", DefaultAestheticValue::Column("density")),
         ]
     }
 

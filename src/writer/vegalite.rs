@@ -1957,8 +1957,8 @@ fn render_violin(encoding: &mut Map<String, Value>, mut spec: Value) -> Value {
 
     // Mirror the density on both sides.
     // It'll be implemented as an offset.
-    let density_col = naming::aesthetic_column("density");
-    let violin_offset = format!("[datum.{density}, -datum.{density}]", density = density_col);
+    let offset_col = naming::aesthetic_column("offset");
+    let violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
     // We use an order calculation to create a proper closed shape.
     // Right side (+ offset), sort by -y (top -> bottom)
     // Left side (- offset), sort by +y (bottom -> top)
@@ -1969,7 +1969,7 @@ fn render_violin(encoding: &mut Map<String, Value>, mut spec: Value) -> Value {
     // Filter threshold to trim very low density regions (removes thin tails)
     // In theory, this depends on the grid resolution and might be better
     // handled upstream, but for now it seems not unreasonable.
-    let filter_expr = format!("datum.{} > 0.001", density_col);
+    let filter_expr = format!("datum.{} > 0.001", offset_col);
 
     spec["transform"] = json!([
         {

@@ -626,7 +626,9 @@ module.exports = grammar({
       // Size and shape
       'size', 'shape', 'linetype', 'linewidth', 'width', 'height',
       // Text aesthetics
-      'label', 'family', 'fontface', 'hjust', 'vjust'
+      'label', 'family', 'fontface', 'hjust', 'vjust',
+      // Computed variables
+      'offset'
     ),
 
     column_reference: $ => $.identifier,
