@@ -362,12 +362,8 @@ fn build_data_cte(value: &str, weight: Option<&str>, from: &str, group_by: &[Str
         ", 1.0 AS weight".to_string()
     };
 
-    // Build WHERE clause to filter out nulls in value column and all group_by columns
-    let mut filter_valid = vec![format!("{} IS NOT NULL", value)];
-    for group_col in group_by {
-        filter_valid.push(format!("{} IS NOT NULL", group_col));
-    }
-    let filter_valid = filter_valid.join(" AND ");
+    // Only filter out nulls in value column, keep NULLs in group columns
+    let filter_valid = format!("{} IS NOT NULL", value);
 
     format!(
         "data AS (
@@ -431,24 +427,24 @@ fn compute_density(
     data_cte: &str,
     grid_cte: &str,
 ) -> String {
-    // Build bandwidth join condition
+    // Build bandwidth join condition (NULL-safe)
     let bandwidth_conditions = if group_by.is_empty() {
         "true".to_string()
     } else {
         group_by
             .iter()
-            .map(|g| format!("data.{col} = bandwidth.{col}", col = g))
+            .map(|g| format!("data.{col} IS NOT DISTINCT FROM bandwidth.{col}", col = g))
             .collect::<Vec<String>>()
             .join(" AND ")
     };
 
-    // Build WHERE clause to match grid to data groups
+    // Build WHERE clause to match grid to data groups (NULL-safe)
     let matching_groups = if group_by.is_empty() {
         String::new()
     } else {
         let grid_data_conds: Vec<String> = group_by
             .iter()
-            .map(|g| format!("grid.{col} = data.{col}", col = g))
+            .map(|g| format!("grid.{col} IS NOT DISTINCT FROM data.{col}", col = g))
             .collect();
         format!("WHERE {}", grid_data_conds.join(" AND "))
     };
@@ -595,7 +591,7 @@ mod tests {
         data AS (
           SELECT region, category, x AS val, 1.0 AS weight
           FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category))
-          WHERE x IS NOT NULL AND region IS NOT NULL AND category IS NOT NULL
+          WHERE x IS NOT NULL
         ),
         grid AS (
           SELECT
@@ -616,9 +612,9 @@ mod tests {
             SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_intensity,
             SUM(data.weight) AS __norm
           FROM data
-          INNER JOIN bandwidth ON data.region = bandwidth.region AND data.category = bandwidth.category
+          INNER JOIN bandwidth ON data.region IS NOT DISTINCT FROM bandwidth.region AND data.category IS NOT DISTINCT FROM bandwidth.category
           CROSS JOIN grid
-          WHERE grid.region = data.region AND grid.category = data.category
+          WHERE grid.region IS NOT DISTINCT FROM data.region AND grid.category IS NOT DISTINCT FROM data.category
           GROUP BY grid.x, grid.region, grid.category
           ORDER BY grid.x, grid.region, grid.category
         )";
