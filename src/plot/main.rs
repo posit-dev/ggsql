@@ -15,7 +15,6 @@
 //! ├─ facet: Option<Facet>           (optional, from FACET clause)
 //! ├─ coord: Option<Coord>           (optional, from COORD clause)
 //! ├─ labels: Option<Labels>         (optional, merged from LABEL clauses)
-//! ├─ guides: Vec<Guide>             (0+ GuideNode, one per GUIDE clause)
 //! └─ theme: Option<Theme>           (optional, from THEME clause)
 //! ```
 
@@ -25,8 +24,8 @@ use std::collections::HashMap;
 
 // Re-export input types
 pub use super::types::{
-    AestheticValue, ArrayElement, ColumnInfo, DataSource, LiteralValue, Mappings, ParameterValue,
-    Schema, SqlExpression,
+    AestheticValue, ArrayElement, ColumnInfo, DataSource, DefaultAestheticValue, Mappings,
+    ParameterValue, Schema, SqlExpression,
 };
 
 // Re-export Geom and related types from the layer::geom module
@@ -37,8 +36,8 @@ pub use super::layer::geom::{
 // Re-export Layer from the layer module
 pub use super::layer::Layer;
 
-// Re-export Scale and Guide types from the scale module
-pub use super::scale::{Guide, GuideType, Scale, ScaleType};
+// Re-export Scale types from the scale module
+pub use super::scale::{Scale, ScaleType};
 
 // Re-export Coord types from the coord module
 pub use super::coord::{Coord, CoordType};
@@ -63,8 +62,6 @@ pub struct Plot {
     pub coord: Option<Coord>,
     /// Text labels (merged from all LABEL clauses)
     pub labels: Option<Labels>,
-    /// Guide configurations (one per GUIDE clause)
-    pub guides: Vec<Guide>,
     /// Theme styling (from THEME clause)
     pub theme: Option<Theme>,
 }
@@ -96,7 +93,6 @@ impl Plot {
             facet: None,
             coord: None,
             labels: None,
-            guides: Vec::new(),
             theme: None,
         }
     }
@@ -111,7 +107,6 @@ impl Plot {
             facet: None,
             coord: None,
             labels: None,
-            guides: Vec::new(),
             theme: None,
         }
     }
@@ -133,24 +128,18 @@ impl Plot {
             .find(|scale| scale.aesthetic == aesthetic)
     }
 
-    /// Find a guide for a specific aesthetic
-    pub fn find_guide(&self, aesthetic: &str) -> Option<&Guide> {
-        self.guides
-            .iter()
-            .find(|guide| guide.aesthetic == aesthetic)
-    }
-
     /// Compute aesthetic labels for axes and legends.
     ///
     /// For each aesthetic used in any layer, determines the appropriate label:
     /// - If user specified a label via LABEL clause, use that
-    /// - Otherwise, use the first non-synthetic column name mapped to that aesthetic or its family
-    /// - Aesthetic families (e.g., x, x2, xmin, xmax, xend) all contribute to the same primary label
-    /// - First aesthetic encountered in a family sets the label
+    /// - Otherwise, use the primary aesthetic's column name if mapped
+    /// - Variant aesthetics (x2, xmin, xmax, y2, ymin, ymax) only set the label if
+    ///   no primary aesthetic exists in the layer
     ///
     /// This ensures that:
     /// - Synthetic constant columns (like `__ggsql_const_color_0__`) don't appear as axis/legend titles
-    /// - Variant aesthetics like `xmin`/`xmax` can contribute to the primary aesthetic's label
+    /// - Primary aesthetics always take precedence over variants for labels
+    /// - Variant aesthetics can still contribute labels when the primary doesn't exist
     pub fn compute_aesthetic_labels(&mut self) {
         // Ensure Labels struct exists
         if self.labels.is_none() {
@@ -160,31 +149,47 @@ impl Plot {
         }
         let labels = self.labels.as_mut().unwrap();
 
-        // Process all layers and their aesthetics
-        for layer in &self.layers {
-            for (aesthetic, value) in &layer.mappings.aesthetics {
-                if let AestheticValue::Column { name, .. } = value {
-                    // Skip synthetic constant columns
-                    if naming::is_const_column(name) {
+        // Two passes: first primaries, then variants
+        // This ensures primaries always get priority regardless of HashMap iteration order
+        for primaries_only in [true, false] {
+            for layer in &self.layers {
+                for (aesthetic, value) in &layer.mappings.aesthetics {
+                    let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+                    let is_primary = aesthetic == primary;
+
+                    // First pass: only primaries; second pass: only variants
+                    if primaries_only != is_primary {
                         continue;
                     }
 
-                    // Get the primary aesthetic for this aesthetic (e.g., "xmin" -> "x")
-                    let primary = GeomAesthetics::primary_aesthetic(aesthetic);
-
-                    // Skip if label already set (user-specified or from earlier aesthetic)
+                    // Skip if label already set (user-specified or from earlier)
                     if labels.labels.contains_key(primary) {
                         continue;
                     }
 
-                    // Compute the label from the column name
-                    let column_name = if let Some(stat_name) = naming::extract_stat_name(name) {
-                        stat_name.to_string()
-                    } else {
-                        name.clone()
-                    };
+                    if let AestheticValue::Column { name, .. } = value {
+                        // Skip synthetic constant columns
+                        if naming::is_const_column(name) {
+                            continue;
+                        }
 
-                    labels.labels.insert(primary.to_string(), column_name);
+                        // Use label_name() to get the original column name for display
+                        let label_source = value.label_name().unwrap_or(name);
+
+                        // Strip synthetic prefixes from label
+                        let column_name = if let Some(stat_name) =
+                            naming::extract_stat_name(label_source)
+                        {
+                            stat_name.to_string()
+                        } else if let Some(aes_name) = naming::extract_aesthetic_name(label_source)
+                        {
+                            aes_name.to_string()
+                        } else {
+                            label_source.to_string()
+                        };
+
+                        labels.labels.insert(primary.to_string(), column_name);
+                    }
                 }
             }
         }
@@ -234,13 +239,15 @@ mod tests {
             .with_aesthetic("y".to_string(), AestheticValue::standard_column("revenue"))
             .with_aesthetic(
                 "color".to_string(),
-                AestheticValue::Literal(LiteralValue::String("blue".to_string())),
+                AestheticValue::Literal(ParameterValue::String("blue".to_string())),
             );
 
         assert_eq!(layer.geom, Geom::point());
         assert_eq!(layer.get_column("x"), Some("date"));
         assert_eq!(layer.get_column("y"), Some("revenue"));
-        assert!(matches!(layer.get_literal("color"), Some(LiteralValue::String(s)) if s == "blue"));
+        assert!(
+            matches!(layer.get_literal("color"), Some(ParameterValue::String(s)) if s == "blue")
+        );
         assert!(layer.filter.is_none());
     }
 
@@ -292,9 +299,9 @@ mod tests {
     #[test]
     fn test_aesthetic_value_display() {
         let column = AestheticValue::standard_column("sales");
-        let string_lit = AestheticValue::Literal(LiteralValue::String("blue".to_string()));
-        let number_lit = AestheticValue::Literal(LiteralValue::Number(3.53));
-        let bool_lit = AestheticValue::Literal(LiteralValue::Boolean(true));
+        let string_lit = AestheticValue::Literal(ParameterValue::String("blue".to_string()));
+        let number_lit = AestheticValue::Literal(ParameterValue::Number(3.53));
+        let bool_lit = AestheticValue::Literal(ParameterValue::Boolean(true));
 
         assert_eq!(format!("{}", column), "sales");
         assert_eq!(format!("{}", string_lit), "'blue'");
@@ -357,7 +364,7 @@ mod tests {
 
     #[test]
     fn test_aesthetic_value_literal() {
-        let lit = AestheticValue::Literal(LiteralValue::String("red".to_string()));
+        let lit = AestheticValue::Literal(ParameterValue::String("red".to_string()));
         assert!(!lit.is_dummy());
         assert_eq!(lit.column_name(), None);
     }
@@ -552,5 +559,59 @@ mod tests {
         let labels = spec.labels.as_ref().unwrap();
         // First layer's x mapping should win
         assert_eq!(labels.labels.get("x"), Some(&"date".to_string()));
+    }
+
+    #[test]
+    fn test_aesthetic_column_prefix_stripped_in_labels() {
+        // Test that __ggsql_aes_ prefix is stripped from labels
+        // This happens when literals are converted to aesthetic columns
+        let mut spec = Plot::new();
+
+        // Simulate a layer where a literal was converted to an aesthetic column
+        // e.g., 'red' AS stroke becomes __ggsql_aes_stroke__ column
+        // The label should be "stroke" (the aesthetic name extracted from the prefix)
+        let layer = Layer::new(Geom::line())
+            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date"))
+            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value"))
+            .with_aesthetic(
+                "stroke".to_string(),
+                AestheticValue::standard_column(naming::aesthetic_column("stroke")),
+            );
+        spec.layers.push(layer);
+
+        spec.compute_aesthetic_labels();
+
+        let labels = spec.labels.as_ref().unwrap();
+        // The stroke label should be "stroke" (extracted from __ggsql_aes_stroke__)
+        assert_eq!(
+            labels.labels.get("stroke"),
+            Some(&"stroke".to_string()),
+            "Stroke aesthetic should use 'stroke' as label"
+        );
+    }
+
+    #[test]
+    fn test_non_color_aesthetic_column_keeps_name() {
+        // Test that non-color aesthetic columns preserve their name
+        let mut spec = Plot::new();
+
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic("x".to_string(), AestheticValue::standard_column("date"))
+            .with_aesthetic("y".to_string(), AestheticValue::standard_column("value"))
+            .with_aesthetic(
+                "size".to_string(),
+                AestheticValue::standard_column(naming::aesthetic_column("size")),
+            );
+        spec.layers.push(layer);
+
+        spec.compute_aesthetic_labels();
+
+        let labels = spec.labels.as_ref().unwrap();
+        // The size label should be "size", not "color"
+        assert_eq!(
+            labels.labels.get("size"),
+            Some(&"size".to_string()),
+            "Non-color aesthetic should keep its name"
+        );
     }
 }

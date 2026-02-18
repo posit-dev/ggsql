@@ -565,7 +565,10 @@ impl PySpec {
     /// polars.DataFrame | None
     ///     The main query result DataFrame, or None if not available.
     fn data(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
-        self.inner.data().map(|df| polars_to_py(py, df)).transpose()
+        self.inner
+            .layer_data(0)
+            .map(|df| polars_to_py(py, df))
+            .transpose()
     }
 
     /// Get layer-specific data (from FILTER or FROM clause).

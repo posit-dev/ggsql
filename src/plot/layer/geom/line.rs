@@ -13,16 +13,7 @@ impl GeomTrait for Line {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &[
-                "x",
-                "y",
-                "color",
-                "colour",
-                "stroke",
-                "linetype",
-                "linewidth",
-                "opacity",
-            ],
+            supported: &["x", "y", "stroke", "linetype", "linewidth", "opacity"],
             required: &["x", "y"],
             hidden: &[],
         }

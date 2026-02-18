@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use super::types::get_column_name;
 use super::{DefaultParam, DefaultParamValue, GeomAesthetics, GeomTrait, GeomType, StatResult};
 use crate::naming;
-use crate::plot::types::ParameterValue;
+use crate::plot::types::{DefaultAestheticValue, ParameterValue};
 use crate::{DataFrame, GgsqlError, Mappings, Result};
 
 use super::types::Schema;
@@ -21,17 +21,20 @@ impl GeomTrait for Histogram {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &[
-                "x", "weight", "color", "colour", "fill", "stroke", "opacity",
-            ],
+            supported: &["x", "weight", "fill", "stroke", "opacity"],
             required: &["x"],
             // y and x2 are produced by stat_histogram but not valid for manual MAPPING
             hidden: &["y", "x2"],
         }
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, &'static str)] {
-        &[("bin", "x"), ("bin_end", "x2"), ("count", "y")]
+    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
+        &[
+            ("x", DefaultAestheticValue::Column("bin")),
+            ("x2", DefaultAestheticValue::Column("bin_end")),
+            ("y", DefaultAestheticValue::Column("count")),
+            ("y2", DefaultAestheticValue::Number(0.0)),
+        ]
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {

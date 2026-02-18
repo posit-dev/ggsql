@@ -10,7 +10,7 @@
 SELECT date, revenue, region FROM sales WHERE year = 2024
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
-SCALE x SETTING type => 'date'
+SCALE x VIA date
 COORD cartesian SETTING ylim => [0, 100000]
 LABEL title => 'Sales by Region', x => 'Date', y => 'Revenue'
 THEME minimal
@@ -22,7 +22,7 @@ THEME minimal
 - 507-line Tree-sitter grammar (simplified, no external scanner)
 - Full bindings: Rust, C, Python, Node.js with tree-sitter integration
 - Syntax highlighting support via Tree-sitter queries
-- 166 total tests (comprehensive parser, builder, and integration tests)
+- 916 total tests (174 parser tests, comprehensive builder and integration tests)
 - End-to-end working pipeline: SQL → Data → Visualization
 - Coordinate transformations: Cartesian (xlim/ylim), Flip, Polar
 - VISUALISE FROM shorthand syntax with automatic SELECT injection
@@ -100,8 +100,10 @@ DRAW line MAPPING month AS x, total AS y
                          │
                          ▼
          ┌───────────────────────────────┐
-         │      Query Splitter           │
-         │  (Regex-based, tree-sitter)   │
+         │        SourceTree             │
+         │  (Parse once, reuse CST)      │
+         │  • extract_sql()              │
+         │  • extract_visualise()        │
          └───────────┬───────────────────┘
                      │
          ┌───────────┴───────────┐
@@ -226,24 +228,36 @@ For detailed API documentation, see [`src/doc/API.md`](src/doc/API.md).
 
 **Responsibility**: Split queries and parse visualization specifications into typed AST.
 
-#### Query Splitter (`splitter.rs`)
+#### SourceTree (`source_tree.rs`)
 
-- Uses tree-sitter to parse the full query and find VISUALISE statements
-- Splits query at byte offset of first VISUALISE statement
-- Handles VISUALISE FROM by injecting `SELECT * FROM <source>`
-- Robust to parse errors in SQL portion (complex SQL we don't fully parse)
-- Properly handles semicolons between SQL statements
+**Parse-once architecture** that eliminates duplicate parsing throughout the pipeline.
 
-**Key Features:**
+**Core Design**:
 
-1. **Byte offset splitting**: Uses character positions instead of parse tree node boundaries
-2. **SELECT injection**: Automatically adds `SELECT * FROM <source>` when VISUALISE FROM is used
+- Wraps tree-sitter `Tree` + source text + `Language`
+- Parses query once, reuses CST for all operations
+- Declarative tree-sitter query API instead of manual tree walking
+- Lazy extraction methods for SQL and VISUALISE portions
+
+**High-Level Query API**:
+
+- `find_node(query)` - Find first matching node via tree-sitter query
+- `find_nodes(query)` - Find all matching nodes
+- `find_text(query)` - Extract text of first match
+- `find_texts(query)` - Extract text of all matches
+
+**Lazy Extraction Methods**:
+
+- `extract_sql()` - Lazily extract SQL portion (before VISUALISE)
+- `extract_visualise()` - Lazily extract VISUALISE portion
+- Both methods use declarative tree-sitter queries
+- Handles VISUALISE FROM by automatically injecting `SELECT * FROM <source>`
 
 #### Tree-sitter Integration (`mod.rs`)
 
 - Uses `tree-sitter-ggsql` grammar (507 lines, simplified approach)
 - Parses **full query** (SQL + VISUALISE) into concrete syntax tree (CST)
-- Grammar supports: PLOT/TABLE/MAP types, DRAW/SCALE/FACET/COORD/LABEL/GUIDE/THEME clauses
+- Grammar supports: PLOT/TABLE/MAP types, DRAW/SCALE/FACET/COORD/LABEL/THEME clauses
 - British and American spellings: `VISUALISE` / `VISUALIZE`
 - **SQL portion parsing**: Basic SQL structure (SELECT, WITH, CREATE, INSERT, subqueries)
 - **Recursive subquery support**: Fully recursive grammar for complex SQL
@@ -266,11 +280,14 @@ Key grammar rules:
 
 ```rust
 pub fn parse_query(query: &str) -> Result<Vec<Plot>> {
-    // Parse full query (SQL + VISUALISE) with tree-sitter
-    let tree = parse_full_query(query)?;
+    // Parse once with SourceTree
+    let source_tree = SourceTree::new(query)?;
+
+    // Validate query structure
+    source_tree.validate()?;
 
     // Build AST from parse tree
-    let specs = builder::build_ast(&tree, query)?;
+    let specs = builder::build_ast(&source_tree)?;
     Ok(specs)
 }
 ```
@@ -288,7 +305,6 @@ pub struct Plot {
     pub facet: Option<Facet>,          // FACET clause
     pub coord: Option<Coord>,          // COORD clause
     pub labels: Option<Labels>,        // LABEL clause
-    pub guides: Vec<Guide>,            // GUIDE clauses
     pub theme: Option<Theme>,          // THEME clause
 }
 
@@ -323,19 +339,14 @@ pub enum Geom {
 
 pub enum AestheticValue {
     Column(String),                  // Unquoted column reference: revenue AS x
-    Literal(LiteralValue),           // Quoted literal: 'value' AS fill
-}
-
-pub enum LiteralValue {
-    String(String),
-    Number(f64),
-    Boolean(bool),
+    Literal(ParameterValue),         // Quoted literal: 'value' AS fill
 }
 
 pub enum ParameterValue {
     String(String),
     Number(f64),
     Boolean(bool),
+    Array(Vec<ParameterValue>),      // Array values for properties
 }
 
 pub struct Scale {
@@ -393,19 +404,6 @@ pub enum CoordType {
 
 pub struct Labels {
     pub labels: HashMap<String, String>,  // label type → text
-}
-
-pub struct Guide {
-    pub aesthetic: String,
-    pub guide_type: Option<GuideType>,
-    pub properties: HashMap<String, ParameterValue>,
-}
-
-pub enum GuideType {
-    Legend,
-    ColorBar,
-    Axis,
-    None,
 }
 
 pub struct Theme {
@@ -781,7 +779,7 @@ SELECT * FROM (VALUES
 SELECT * FROM sales
 VISUALISE
 DRAW line MAPPING date AS x, revenue AS y, region AS color
-SCALE x SETTING type => 'date'
+SCALE x VIA date
 LABEL title => 'Sales Trends'
 ```
 
@@ -1093,16 +1091,15 @@ Where `<global_mapping>` can be:
 
 ### Clause Types
 
-| Clause      | Repeatable | Purpose            | Example                                   |
-| ----------- | ---------- | ------------------ | ----------------------------------------- |
-| `VISUALISE` | ✅ Yes     | Entry point        | `VISUALISE date AS x, revenue AS y`       |
-| `DRAW`      | ✅ Yes     | Define layers      | `DRAW line MAPPING date AS x, value AS y` |
-| `SCALE`     | ✅ Yes     | Configure scales   | `SCALE x SETTING type => 'date'`          |
-| `FACET`     | ❌ No      | Small multiples    | `FACET WRAP region`                       |
-| `COORD`     | ❌ No      | Coordinate system  | `COORD cartesian SETTING xlim => [0,100]` |
-| `LABEL`     | ❌ No      | Text labels        | `LABEL title => 'My Chart', x => 'Date'`  |
-| `GUIDE`     | ✅ Yes     | Legend/axis config | `GUIDE color SETTING position => 'right'` |
-| `THEME`     | ❌ No      | Visual styling     | `THEME minimal`                           |
+| Clause         | Repeatable | Purpose            | Example                              |
+| -------------- | ---------- | ------------------ | ------------------------------------ |
+| `VISUALISE`    | ✅ Yes     | Entry point        | `VISUALISE date AS x, revenue AS y`  |
+| `DRAW`         | ✅ Yes     | Define layers      | `DRAW line MAPPING date AS x, value AS y` |
+| `SCALE`        | ✅ Yes     | Configure scales   | `SCALE x VIA date`                            |
+| `FACET`        | ❌ No      | Small multiples    | `FACET WRAP region`                  |
+| `COORD`        | ❌ No      | Coordinate system  | `COORD cartesian SETTING xlim => [0,100]` |
+| `LABEL`        | ❌ No      | Text labels        | `LABEL title => 'My Chart', x => 'Date'`   |
+| `THEME`        | ❌ No      | Visual styling     | `THEME minimal`                      |
 
 ### DRAW Clause (Layers)
 
@@ -1214,49 +1211,79 @@ DRAW line
 **Syntax**:
 
 ```sql
-SCALE <aesthetic> SETTING
-  [type => <scale_type>]
-  [limits => [min, max]]
-  [breaks => <array | interval>]
-  [palette => <name>]
-  [domain => [values...]]
+SCALE [TYPE] <aesthetic> [FROM <input>] [TO <output>] [VIA <transform>] [SETTING <properties>]
 ```
 
-**Scale Types**:
+**Type Modifiers** (optional, placed before aesthetic):
 
-- **Continuous**: `linear`, `log10`, `log`, `log2`, `sqrt`, `reverse`
-- **Discrete**: `categorical`, `ordinal`
-- **Temporal**: `date`, `datetime`, `time`
-- **Color Palettes**: `viridis`, `plasma`, `magma`, `inferno`, `cividis`, `diverging`, `sequential`
+- **`CONTINUOUS`** - Continuous numeric data
+- **`DISCRETE`** - Categorical/discrete data
+- **`BINNED`** - Binned/bucketed data
+- **`DATE`** - Date data (maps to Vega-Lite temporal type)
+- **`DATETIME`** - Datetime data (maps to Vega-Lite temporal type)
+
+**Subclauses**:
+
+- **`FROM [...]`** - Input range specification (maps to Vega-Lite `scale.domain`)
+- **`TO [...]`** or **`TO palette`** - Output range as array or named palette (maps to Vega-Lite `scale.range` or `scale.scheme`)
+- **`VIA transform`** - Transformation method (reserved for future use)
+- **`SETTING ...`** - Additional properties (e.g., `breaks`)
+
+**Named Palettes** (used with `TO`):
+
+- `viridis`, `plasma`, `magma`, `inferno`, `cividis`, `diverging`, `sequential`
 
 **Critical for Date Formatting**:
 
 ```sql
-SCALE x SETTING type => 'date'
+SCALE x VIA date
 -- Maps to Vega-Lite field type = "temporal"
 -- Enables proper date axis formatting
 ```
 
-**Domain Property**:
+**Input Range Specification** (FROM clause):
 
-The `domain` property explicitly sets the input domain for a scale:
+The `FROM` clause explicitly sets the input range for a scale:
 
 ```sql
--- Set domain for discrete scale
-SCALE color SETTING domain => ['red', 'green', 'blue']
+-- Set range for discrete scale
+SCALE DISCRETE color FROM ['A', 'B', 'C']
 
--- Set domain for continuous scale
-SCALE x SETTING domain => [0, 100]
+-- Set range for continuous scale
+SCALE CONTINUOUS x FROM [0, 100]
 ```
 
-**Note**: Cannot specify domain in both SCALE and COORD for the same aesthetic (will error).
+**Range Specification** (TO clause):
 
-**Example**:
+The `TO` clause sets the output range - either explicit values or a named palette:
 
 ```sql
-SCALE x SETTING type => 'date', breaks => '2 months'
-SCALE y SETTING type => 'log10', limits => [1, 1000]
-SCALE color SETTING palette => 'viridis', domain => ['A', 'B', 'C']
+-- Explicit color values
+SCALE color FROM ['A', 'B'] TO ['red', 'blue']
+
+-- Named palette
+SCALE color TO viridis
+```
+
+**Note**: Cannot specify range in both SCALE and COORD for the same aesthetic (will error).
+
+**Examples**:
+
+```sql
+-- Date scale
+SCALE x VIA date
+
+-- Continuous scale with input range
+SCALE CONTINUOUS y FROM [0, 100]
+
+-- Discrete color scale with input range and output range
+SCALE DISCRETE color FROM ['A', 'B', 'C'] TO ['red', 'green', 'blue']
+
+-- Color scale with named palette
+SCALE color TO viridis
+
+-- Scale with input range and additional settings
+SCALE x VIA date FROM ['2024-01-01', '2024-12-31'] SETTING breaks => '1 month'
 ```
 
 ### FACET Clause
@@ -1313,22 +1340,22 @@ COORD SETTING <properties>
 
 - `xlim => [min, max]` - Set x-axis limits
 - `ylim => [min, max]` - Set y-axis limits
-- `<aesthetic> => [values...]` - Set domain for any aesthetic (color, fill, size, etc.)
+- `<aesthetic> => [values...]` - Set range for any aesthetic (color, fill, size, etc.)
 
 **Flip**:
 
-- `<aesthetic> => [values...]` - Set domain for any aesthetic
+- `<aesthetic> => [values...]` - Set range for any aesthetic
 
 **Polar**:
 
 - `theta => <aesthetic>` - Which aesthetic maps to angle (defaults to `y`)
-- `<aesthetic> => [values...]` - Set domain for any aesthetic
+- `<aesthetic> => [values...]` - Set range for any aesthetic
 
 **Important Notes**:
 
 1. **Axis limits auto-swap**: `xlim => [100, 0]` automatically becomes `[0, 100]`
 2. **ggplot2 compatibility**: `coord_flip` preserves axis label names (labels stay with aesthetic names, not visual position)
-3. **Domain conflicts**: Error if same aesthetic has domain in both SCALE and COORD
+3. **Range conflicts**: Error if same aesthetic has input range in both SCALE and COORD
 4. **Multi-layer support**: All coordinate transforms apply to all layers
 
 **Status**:
@@ -1344,7 +1371,7 @@ COORD SETTING <properties>
 -- Cartesian with axis limits
 COORD cartesian SETTING xlim => [0, 100], ylim => [0, 50]
 
--- Cartesian with aesthetic domain
+-- Cartesian with aesthetic range
 COORD cartesian SETTING color => O ['red', 'green', 'blue']
 
 -- Cartesian shorthand (type optional when using SETTING)
@@ -1353,7 +1380,7 @@ COORD SETTING xlim => [0, 100]
 -- Flip coordinates for horizontal bar chart
 COORD flip
 
--- Flip with aesthetic domain
+-- Flip with aesthetic range
 COORD flip SETTING color => ['A', 'B', 'C']
 
 -- Polar for pie chart (theta defaults to y)
@@ -1427,7 +1454,7 @@ DRAW line
     MAPPING sale_date AS x, total AS y, region AS color
 DRAW point
     MAPPING sale_date AS x, total AS y, region AS color
-SCALE x SETTING type => 'date'
+SCALE x VIA date
 FACET WRAP region
 LABEL title => 'Sales Trends by Region', x => 'Date', y => 'Total Quantity'
 THEME minimal

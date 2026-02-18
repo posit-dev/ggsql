@@ -4,14 +4,154 @@
 //! handling all the node types defined in the grammar.
 
 use crate::plot::layer::geom::Geom;
+use crate::plot::scale::{color_to_hex, is_color_aesthetic, Transform};
 use crate::plot::*;
 use crate::{GgsqlError, Result};
 use std::collections::HashMap;
-use tree_sitter::{Node, Tree};
+use tree_sitter::Node;
+
+use super::SourceTree;
+
+// ============================================================================
+// Basic Type Parsers
+// ============================================================================
+
+/// Extract 'name' and 'value' field nodes from an assignment-like node
+///
+/// Returns (name_node, value_node) without any interpretation.
+/// Works for both patterns:
+/// - `name => value` (SETTING, COORD, THEME, LABEL, RENAMING)
+/// - `value AS name` (MAPPING explicit_mapping)
+///
+/// Caller is responsible for interpreting the nodes based on their context.
+fn extract_name_value_nodes<'a>(node: &'a Node<'a>, context: &str) -> Result<(Node<'a>, Node<'a>)> {
+    let name_node = node
+        .child_by_field_name("name")
+        .ok_or_else(|| GgsqlError::ParseError(format!("Missing 'name' field in {}", context)))?;
+
+    let value_node = node
+        .child_by_field_name("value")
+        .ok_or_else(|| GgsqlError::ParseError(format!("Missing 'value' field in {}", context)))?;
+
+    Ok((name_node, value_node))
+}
+
+/// Parse a string node, removing quotes
+fn parse_string_node(node: &Node, source: &SourceTree) -> String {
+    let text = source.get_text(node);
+    text.trim_matches(|c| c == '\'' || c == '"').to_string()
+}
+
+/// Parse a number node into f64
+fn parse_number_node(node: &Node, source: &SourceTree) -> Result<f64> {
+    let text = source.get_text(node);
+    text.parse::<f64>()
+        .map_err(|e| GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e)))
+}
+
+/// Parse a boolean node
+fn parse_boolean_node(node: &Node, source: &SourceTree) -> bool {
+    let text = source.get_text(node);
+    text == "true"
+}
+
+/// Parse an array node into Vec<ArrayElement>
+fn parse_array_node(node: &Node, source: &SourceTree) -> Result<Vec<ArrayElement>> {
+    let mut values = Vec::new();
+
+    // Find all array_element nodes
+    let query = "(array_element) @elem";
+    let array_elements = source.find_nodes(node, query);
+
+    for array_element in array_elements {
+        // array_element is a choice node, so it has exactly one child
+        let elem_child = array_element.child(0).ok_or_else(|| {
+            GgsqlError::ParseError("Invalid array_element: missing child".to_string())
+        })?;
+
+        let value = match elem_child.kind() {
+            "string" => ArrayElement::String(parse_string_node(&elem_child, source)),
+            "number" => ArrayElement::Number(parse_number_node(&elem_child, source)?),
+            "boolean" => ArrayElement::Boolean(parse_boolean_node(&elem_child, source)),
+            "null_literal" => ArrayElement::Null,
+            _ => {
+                return Err(GgsqlError::ParseError(format!(
+                    "Invalid array element type: {}",
+                    elem_child.kind()
+                )));
+            }
+        };
+        values.push(value);
+    }
+
+    Ok(values)
+}
+
+/// Parse a value node directly (string, number, boolean, array, or null)
+fn parse_value_node(node: &Node, source: &SourceTree, context: &str) -> Result<ParameterValue> {
+    match node.kind() {
+        "string" => {
+            let value = parse_string_node(node, source);
+            Ok(ParameterValue::String(value))
+        }
+        "number" => {
+            let num = parse_number_node(node, source)?;
+            Ok(ParameterValue::Number(num))
+        }
+        "boolean" => {
+            let bool_val = parse_boolean_node(node, source);
+            Ok(ParameterValue::Boolean(bool_val))
+        }
+        "array" => {
+            let values = parse_array_node(node, source)?;
+            Ok(ParameterValue::Array(values))
+        }
+        "null_literal" => Ok(ParameterValue::Null),
+        _ => Err(GgsqlError::ParseError(format!(
+            "Unexpected {} value type: {}",
+            context,
+            node.kind()
+        ))),
+    }
+}
+
+/// Parse a data source node (identifier or string file path)
+fn parse_data_source(node: &Node, source: &SourceTree) -> DataSource {
+    match node.kind() {
+        "string" => {
+            let path = parse_string_node(node, source);
+            DataSource::FilePath(path)
+        }
+        _ => {
+            let text = source.get_text(node);
+            DataSource::Identifier(text)
+        }
+    }
+}
+
+/// Parse a literal_value node into an AestheticValue::Literal
+fn parse_literal_value(node: &Node, source: &SourceTree) -> Result<AestheticValue> {
+    // literal_value is a choice(), so it has exactly one child
+    let child = node.child(0).unwrap();
+    let value = parse_value_node(&child, source, "literal")?;
+
+    // Grammar ensures literals can't be arrays or nulls, but add safety check
+    if matches!(value, ParameterValue::Array(_) | ParameterValue::Null) {
+        return Err(GgsqlError::ParseError(
+            "Arrays and null cannot be used as literal values in aesthetic mappings".to_string(),
+        ));
+    }
+
+    Ok(AestheticValue::Literal(value))
+}
+
+// ============================================================================
+// AST Building
+// ============================================================================
 
 /// Build a Plot struct from a tree-sitter parse tree
-pub fn build_ast(tree: &Tree, source: &str) -> Result<Vec<Plot>> {
-    let root = tree.root_node();
+pub fn build_ast(source: &SourceTree) -> Result<Vec<Plot>> {
+    let root = source.root();
 
     // Check if root is a query node
     if root.kind() != "query" {
@@ -22,37 +162,35 @@ pub fn build_ast(tree: &Tree, source: &str) -> Result<Vec<Plot>> {
     }
 
     // Extract SQL portion node (if exists)
-    let sql_portion_node = root
-        .children(&mut root.walk())
-        .find(|n| n.kind() == "sql_portion");
+    let query = "(sql_portion) @sql";
+    let sql_portion_node = source.find_node(&root, query);
 
     // Check if last SQL statement is SELECT
     let last_is_select = if let Some(sql_node) = sql_portion_node {
-        check_last_statement_is_select(&sql_node)
+        check_last_statement_is_select(&sql_node, source)
     } else {
         false
     };
 
+    // Find all visualise_statement nodes
+    let query = "(visualise_statement) @viz";
+    let viz_nodes = source.find_nodes(&root, query);
+
     let mut specs = Vec::new();
+    for viz_node in viz_nodes {
+        let spec = build_visualise_statement(&viz_node, source)?;
 
-    // Walk through child nodes - each visualise_statement becomes a Plot
-    let mut cursor = root.walk();
-    for child in root.children(&mut cursor) {
-        if child.kind() == "visualise_statement" {
-            let spec = build_visualise_statement(&child, source)?;
-
-            // Validate VISUALISE FROM usage
-            if spec.source.is_some() && last_is_select {
-                return Err(GgsqlError::ParseError(
-                    "Cannot use VISUALISE FROM when the last SQL statement is SELECT. \
-                     Use either 'SELECT ... VISUALISE' or remove the SELECT and use \
-                     'VISUALISE FROM ...'."
-                        .to_string(),
-                ));
-            }
-
-            specs.push(spec);
+        // Validate VISUALISE FROM usage
+        if spec.source.is_some() && last_is_select {
+            return Err(GgsqlError::ParseError(
+                "Cannot use VISUALISE FROM when the last SQL statement is SELECT. \
+                 Use either 'SELECT ... VISUALISE' or remove the SELECT and use \
+                 'VISUALISE FROM ...'."
+                    .to_string(),
+            ));
         }
+
+        specs.push(spec);
     }
 
     if specs.is_empty() {
@@ -65,7 +203,7 @@ pub fn build_ast(tree: &Tree, source: &str) -> Result<Vec<Plot>> {
 }
 
 /// Build a single Plot from a visualise_statement node
-fn build_visualise_statement(node: &Node, source: &str) -> Result<Plot> {
+fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
     let mut spec = Plot::new();
 
     // Walk through children of visualise_statement
@@ -78,28 +216,17 @@ fn build_visualise_statement(node: &Node, source: &str) -> Result<Plot> {
             }
             "global_mapping" => {
                 // Parse global mapping (may include wildcard and/or explicit mappings)
-                spec.global_mappings = parse_global_mapping(&child, source)?;
+                spec.global_mappings = parse_mapping(&child, source)?;
             }
             "wildcard_mapping" => {
                 // Handle standalone wildcard (*) mapping
                 spec.global_mappings.wildcard = true;
             }
             "from_clause" => {
-                for from_child in child.children(&mut child.walk()) {
-                    if from_child.kind() == "table_ref" {
-                        let text = get_node_text(&from_child, source);
-                        let first_ref = from_child.named_child(0);
-                        if let Some(ref_node) = first_ref {
-                            spec.source = Some(match ref_node.kind() {
-                                "string" => {
-                                    let path = text.trim_matches(|c| c == '\'' || c == '"');
-                                    DataSource::FilePath(path.to_string())
-                                }
-                                _ => DataSource::Identifier(text.to_string()),
-                            });
-                        }
-                        break;
-                    }
+                // Extract the 'table' field from table_ref (grammar: FROM table_ref)
+                let query = "(table_ref table: (_) @table)";
+                if let Some(table_node) = source.find_node(&child, query) {
+                    spec.source = Some(parse_data_source(&table_node, source));
                 }
             }
             "viz_clause" => {
@@ -113,129 +240,14 @@ fn build_visualise_statement(node: &Node, source: &str) -> Result<Plot> {
         }
     }
 
-    // Validate no conflicts between SCALE and COORD domain specifications
+    // Validate no conflicts between SCALE and COORD input range specifications
     validate_scale_coord_conflicts(&spec)?;
 
     Ok(spec)
 }
 
-/// Parse global_mapping node into Mappings struct
-/// global_mapping contains a mapping_list child node
-fn parse_global_mapping(node: &Node, source: &str) -> Result<Mappings> {
-    // global_mapping: $ => $.mapping_list - contains a mapping_list child node
-    let mut mappings = Mappings::new();
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "mapping_list" {
-            parse_mapping_list(&child, source, &mut mappings)?;
-        }
-    }
-    Ok(mappings)
-}
-
-/// Parse a mapping_list: comma-separated mapping_element nodes
-/// Shared by both global (VISUALISE) and layer (MAPPING) mappings
-fn parse_mapping_list(node: &Node, source: &str, mappings: &mut Mappings) -> Result<()> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "mapping_element" => {
-                parse_mapping_element(&child, source, mappings)?;
-            }
-            "," => continue,
-            _ => continue,
-        }
-    }
-    Ok(())
-}
-
-/// Parse an explicit_mapping node (value AS aesthetic)
-/// Returns (aesthetic_name, value)
-fn parse_explicit_mapping(node: &Node, source: &str) -> Result<(String, AestheticValue)> {
-    let mut value: Option<AestheticValue> = None;
-    let mut aesthetic: Option<String> = None;
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "mapping_value" => {
-                // Get the column/literal value
-                let mut inner_cursor = child.walk();
-                for inner_child in child.children(&mut inner_cursor) {
-                    match inner_child.kind() {
-                        "column_reference" => {
-                            let mut ref_cursor = inner_child.walk();
-                            for ref_child in inner_child.children(&mut ref_cursor) {
-                                if ref_child.kind() == "identifier" {
-                                    value = Some(AestheticValue::standard_column(get_node_text(
-                                        &ref_child, source,
-                                    )));
-                                }
-                            }
-                        }
-                        "identifier" => {
-                            value = Some(AestheticValue::standard_column(get_node_text(
-                                &inner_child,
-                                source,
-                            )));
-                        }
-                        "literal_value" => {
-                            value = Some(parse_literal_value(&inner_child, source)?);
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            "aesthetic_name" => {
-                aesthetic = Some(get_node_text(&child, source));
-            }
-            "AS" => continue,
-            _ => continue,
-        }
-    }
-
-    match (value, aesthetic) {
-        (Some(val), Some(aes)) => Ok((aes, val)),
-        _ => Err(GgsqlError::ParseError(
-            "Invalid explicit mapping: missing value or aesthetic".to_string(),
-        )),
-    }
-}
-
-/// Check for conflicts between SCALE domain and COORD aesthetic domain specifications
-fn validate_scale_coord_conflicts(spec: &Plot) -> Result<()> {
-    if let Some(ref coord) = spec.coord {
-        // Get all aesthetic names that have domains in COORD
-        let coord_aesthetics: Vec<String> = coord
-            .properties
-            .keys()
-            .filter(|k| is_aesthetic_name(k))
-            .cloned()
-            .collect();
-
-        // Check if any of these also have domain in SCALE
-        for aesthetic in coord_aesthetics {
-            for scale in &spec.scales {
-                if scale.aesthetic == aesthetic {
-                    // Check if this scale has a domain property
-                    if scale.properties.contains_key("domain") {
-                        return Err(GgsqlError::ParseError(format!(
-                            "Domain for '{}' specified in both SCALE and COORD clauses. \
-                            Please specify domain in only one location.",
-                            aesthetic
-                        )));
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
 /// Process a visualization clause node
-fn process_viz_clause(node: &Node, source: &str, spec: &mut Plot) -> Result<()> {
+fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Result<()> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
@@ -264,10 +276,6 @@ fn process_viz_clause(node: &Node, source: &str, spec: &mut Plot) -> Result<()> 
                     spec.labels = Some(new_labels);
                 }
             }
-            "guide_clause" => {
-                let guide = build_guide(&child, source)?;
-                spec.guides.push(guide);
-            }
             "theme_clause" => {
                 spec.theme = Some(build_theme(&child, source)?);
             }
@@ -281,9 +289,98 @@ fn process_viz_clause(node: &Node, source: &str, spec: &mut Plot) -> Result<()> 
     Ok(())
 }
 
+// ============================================================================
+// Mapping Building
+// ============================================================================
+
+/// Parse mapping elements from a node containing mappings and return a Mappings struct
+/// Used by global_mapping (VISUALISE), mapping_clause (MAPPING), and remapping_clause (REMAPPING)
+/// Tree-sitter recursively finds mapping_element nodes within the nested mapping_list
+fn parse_mapping(node: &Node, source: &SourceTree) -> Result<Mappings> {
+    let mut mappings = Mappings::new();
+
+    // Find all mapping_element nodes (recursively searches within mapping_list if present)
+    let query = "(mapping_element) @elem";
+    let mapping_nodes = source.find_nodes(node, query);
+
+    for mapping_node in mapping_nodes {
+        parse_mapping_element(&mapping_node, source, &mut mappings)?;
+    }
+
+    Ok(mappings)
+}
+
+/// Parse a mapping_element: wildcard, explicit, or implicit mapping
+/// Shared by both global (VISUALISE) and layer (MAPPING) mappings
+fn parse_mapping_element(node: &Node, source: &SourceTree, mappings: &mut Mappings) -> Result<()> {
+    // mapping_element is a choice node, so it has exactly one child
+    let child = node.child(0).ok_or_else(|| {
+        GgsqlError::ParseError("Invalid mapping_element: missing child".to_string())
+    })?;
+
+    match child.kind() {
+        "wildcard_mapping" => {
+            mappings.wildcard = true;
+        }
+        "explicit_mapping" => {
+            let (aesthetic, value) = parse_explicit_mapping(&child, source)?;
+            mappings.insert(normalise_aes_name(&aesthetic), value);
+        }
+        "implicit_mapping" | "identifier" => {
+            let name = source.get_text(&child);
+            mappings.insert(
+                normalise_aes_name(&name),
+                AestheticValue::standard_column(&name),
+            );
+        }
+        _ => {
+            return Err(GgsqlError::ParseError(format!(
+                "Invalid mapping_element child type: {}",
+                child.kind()
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Parse an explicit_mapping node (value AS aesthetic)
+/// Returns (aesthetic_name, value)
+fn parse_explicit_mapping(node: &Node, source: &SourceTree) -> Result<(String, AestheticValue)> {
+    // Extract name and value nodes using field-based queries
+    let (name_node, value_node) = extract_name_value_nodes(node, "explicit mapping")?;
+
+    // Parse aesthetic name
+    let aesthetic = source.get_text(&name_node);
+
+    // Parse value (mapping_value has exactly one child: column_reference or literal_value)
+    let value_child = value_node.child(0).ok_or_else(|| {
+        GgsqlError::ParseError("Invalid explicit mapping: missing value".to_string())
+    })?;
+
+    let value = match value_child.kind() {
+        "column_reference" => {
+            // column_reference is just an identifier wrapper, get its text directly
+            AestheticValue::standard_column(source.get_text(&value_child))
+        }
+        "literal_value" => parse_literal_value(&value_child, source)?,
+        _ => {
+            return Err(GgsqlError::ParseError(format!(
+                "Invalid explicit mapping value type: {}",
+                value_child.kind()
+            )));
+        }
+    };
+
+    Ok((aesthetic, value))
+}
+
+// ============================================================================
+// Layer Building
+// ============================================================================
+
 /// Build a Layer from a draw_clause node
 /// Syntax: DRAW geom [MAPPING col AS x, ... [FROM source]] [REMAPPING stat AS aes, ...] [SETTING param => val, ...] [PARTITION BY col, ...] [FILTER condition]
-fn build_layer(node: &Node, source: &str) -> Result<Layer> {
+fn build_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
     let mut geom = Geom::point(); // default
     let mut aesthetics = Mappings::new();
     let mut remappings = Mappings::new();
@@ -297,18 +394,19 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
     for child in node.children(&mut cursor) {
         match child.kind() {
             "geom_type" => {
-                let geom_text = get_node_text(&child, source);
+                let geom_text = source.get_text(&child);
                 geom = parse_geom_type(&geom_text)?;
             }
             "mapping_clause" => {
-                let (aes, src) = parse_mapping_clause(&child, source)?;
-                aesthetics = aes;
-                layer_source = src;
+                // Parse aesthetic mappings and optional data source
+                aesthetics = parse_mapping(&child, source)?;
+                layer_source = child
+                    .child_by_field_name("layer_source")
+                    .map(|src| parse_data_source(&src, source));
             }
             "remapping_clause" => {
-                // Reuse parse_mapping_clause - remapping has same syntax, just different semantics
-                let (remap, _) = parse_mapping_clause(&child, source)?;
-                remappings = remap;
+                // Parse stat result remappings (same syntax as mapping_clause)
+                remappings = parse_mapping(&child, source)?;
             }
             "setting_clause" => {
                 parameters = parse_setting_clause(&child, source)?;
@@ -341,211 +439,90 @@ fn build_layer(node: &Node, source: &str) -> Result<Layer> {
     Ok(layer)
 }
 
-/// Parse a mapping_clause: MAPPING col AS x, "blue" AS color [FROM source]
-/// Returns (aesthetics as Mappings, optional data source)
-fn parse_mapping_clause(node: &Node, source: &str) -> Result<(Mappings, Option<DataSource>)> {
-    let mut mappings = Mappings::new();
-
-    // Parse mapping elements using the shared mapping_list structure
-    // With the unified grammar, all aesthetic mappings come through mapping_list.
-    // Bare identifiers here are part of the FROM clause, not mappings.
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "mapping_list" => {
-                parse_mapping_list(&child, source, &mut mappings)?;
-            }
-            _ => continue,
-        }
-    }
-
-    // Extract layer_source field (FROM identifier or FROM 'file.csv')
-    let data_source = node.child_by_field_name("layer_source").map(|child| {
-        let text = get_node_text(&child, source);
-        match child.kind() {
-            "identifier" => DataSource::Identifier(text.to_string()),
-            "string" => {
-                // Remove surrounding quotes
-                let path = text.trim_matches(|c| c == '\'' || c == '"');
-                DataSource::FilePath(path.to_string())
-            }
-            _ => DataSource::Identifier(text.to_string()),
-        }
-    });
-
-    Ok((mappings, data_source))
-}
-
-/// Parse a mapping_element: wildcard, explicit, or implicit mapping
-/// Shared by both global (VISUALISE) and layer (MAPPING) mappings
-fn parse_mapping_element(node: &Node, source: &str, mappings: &mut Mappings) -> Result<()> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "wildcard_mapping" => {
-                mappings.wildcard = true;
-            }
-            "explicit_mapping" => {
-                let (aesthetic, value) = parse_explicit_mapping(&child, source)?;
-                mappings.insert(normalise_aes_name(&aesthetic), value);
-            }
-            "implicit_mapping" | "identifier" => {
-                let name = get_node_text(&child, source);
-                mappings.insert(
-                    normalise_aes_name(&name),
-                    AestheticValue::standard_column(&name),
-                );
-            }
-            _ => continue,
-        }
-    }
-    Ok(())
-}
-
 /// Parse a setting_clause: SETTING param => value, ...
-fn parse_setting_clause(node: &Node, source: &str) -> Result<HashMap<String, ParameterValue>> {
+fn parse_setting_clause(
+    node: &Node,
+    source: &SourceTree,
+) -> Result<HashMap<String, ParameterValue>> {
     let mut parameters = HashMap::new();
 
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "parameter_assignment" {
-            let (param, mut value) = parse_parameter_assignment(&child, source)?;
-            match param.as_str() {
-                "color" | "col" | "colour" | "fill" | "stroke" => {
-                    if let ParameterValue::String(color) = value {
-                        value = ParameterValue::String(color_to_hex(&color));
-                    }
-                }
-                _ => {}
+    // Find all parameter_assignment nodes
+    let query = "(parameter_assignment) @param";
+    let param_nodes = source.find_nodes(node, query);
+
+    for param_node in param_nodes {
+        let (param, mut value) = parse_parameter_assignment(&param_node, source)?;
+        if is_color_aesthetic(&param) {
+            if let ParameterValue::String(color) = value {
+                value =
+                    ParameterValue::String(color_to_hex(&color).map_err(GgsqlError::ParseError)?);
             }
-            parameters.insert(param, value);
         }
+        parameters.insert(param, value);
     }
 
     Ok(parameters)
 }
 
-/// Parse a partition_clause: PARTITION BY col1, col2, ...
-fn parse_partition_clause(node: &Node, source: &str) -> Result<Vec<String>> {
-    let mut columns = Vec::new();
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "partition_columns" {
-            let mut inner_cursor = child.walk();
-            for inner_child in child.children(&mut inner_cursor) {
-                if inner_child.kind() == "identifier" {
-                    columns.push(get_node_text(&inner_child, source));
-                }
-            }
-        }
-    }
-
-    Ok(columns)
-}
-
 /// Parse a parameter_assignment: param => value
-fn parse_parameter_assignment(node: &Node, source: &str) -> Result<(String, ParameterValue)> {
-    let mut param_name = String::new();
-    let mut param_value = None;
+fn parse_parameter_assignment(
+    node: &Node,
+    source: &SourceTree,
+) -> Result<(String, ParameterValue)> {
+    // Extract name and value nodes using field-based queries
+    let (name_node, value_node) = extract_name_value_nodes(node, "parameter assignment")?;
 
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "parameter_name" => {
-                // parameter_name -> identifier
-                let mut inner_cursor = child.walk();
-                for inner_child in child.children(&mut inner_cursor) {
-                    if inner_child.kind() == "identifier" {
-                        param_name = get_node_text(&inner_child, source);
-                    }
-                }
-                if param_name.is_empty() {
-                    param_name = get_node_text(&child, source);
-                }
-            }
-            "parameter_value" => {
-                param_value = Some(parse_parameter_value(&child, source)?);
-            }
-            _ => continue,
-        }
-    }
+    // Parse parameter name (parameter_name is just an identifier)
+    let param_name = source.get_text(&name_node);
 
-    if param_name.is_empty() || param_value.is_none() {
-        return Err(GgsqlError::ParseError(format!(
-            "Invalid parameter assignment: param='{}', value={:?}",
-            param_name, param_value
-        )));
-    }
+    // Parse parameter value (parameter_value wraps the actual value node)
+    let param_value = if let Some(value_child) = value_node.child(0) {
+        parse_value_node(&value_child, source, "parameter")?
+    } else {
+        return Err(GgsqlError::ParseError(
+            "Invalid parameter assignment: empty parameter_value".to_string(),
+        ));
+    };
 
-    Ok((param_name, param_value.unwrap()))
+    Ok((param_name, param_value))
 }
 
-/// Parse a parameter_value (string, number, or boolean)
-fn parse_parameter_value(node: &Node, source: &str) -> Result<ParameterValue> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "string" => {
-                let text = get_node_text(&child, source);
-                let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                return Ok(ParameterValue::String(unquoted.to_string()));
-            }
-            "number" => {
-                let text = get_node_text(&child, source);
-                let num = text.parse::<f64>().map_err(|e| {
-                    GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
-                })?;
-                return Ok(ParameterValue::Number(num));
-            }
-            "boolean" => {
-                let text = get_node_text(&child, source);
-                let bool_val = text == "true";
-                return Ok(ParameterValue::Boolean(bool_val));
-            }
-            _ => {}
-        }
-    }
-
-    Err(GgsqlError::ParseError(format!(
-        "Could not parse parameter value from node: {}",
-        node.kind()
-    )))
+/// Parse a partition_clause: PARTITION BY col1, col2, ...
+fn parse_partition_clause(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
+    let query = r#"
+        (partition_columns
+          (identifier) @col)
+    "#;
+    Ok(source.find_texts(node, query))
 }
 
 /// Parse a filter_clause: FILTER <raw SQL expression>
 ///
 /// Extracts the raw SQL text from the filter_expression and returns it verbatim.
 /// This allows any valid SQL WHERE expression to be passed to the database backend.
-fn parse_filter_clause(node: &Node, source: &str) -> Result<SqlExpression> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "filter_expression" {
-            // Extract the raw text from the filter_expression node
-            let filter_text = get_node_text(&child, source).trim().to_string();
-            return Ok(SqlExpression::new(filter_text));
-        }
-    }
+fn parse_filter_clause(node: &Node, source: &SourceTree) -> Result<SqlExpression> {
+    let query = "(filter_expression) @expr";
 
-    Err(GgsqlError::ParseError(
-        "Could not find filter expression in filter clause".to_string(),
-    ))
+    if let Some(filter_text) = source.find_text(node, query) {
+        Ok(SqlExpression::new(filter_text.trim().to_string()))
+    } else {
+        Err(GgsqlError::ParseError(
+            "Could not find filter expression in filter clause".to_string(),
+        ))
+    }
 }
 
 /// Parse an order_clause: ORDER BY date ASC, value DESC
-fn parse_order_clause(node: &Node, source: &str) -> Result<SqlExpression> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "order_expression" {
-            // Extract the raw text from the order_expression node
-            let order_text = get_node_text(&child, source).trim().to_string();
-            return Ok(SqlExpression::new(order_text));
-        }
-    }
+fn parse_order_clause(node: &Node, source: &SourceTree) -> Result<SqlExpression> {
+    let query = "(order_expression) @expr";
 
-    Err(GgsqlError::ParseError(
-        "Could not find order expression in order clause".to_string(),
-    ))
+    if let Some(order_text) = source.find_text(node, query) {
+        Ok(SqlExpression::new(order_text.trim().to_string()))
+    } else {
+        Err(GgsqlError::ParseError(
+            "Could not find order expression in order clause".to_string(),
+        ))
+    }
 }
 
 /// Parse a geom_type node text into a Geom
@@ -579,80 +556,63 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
     }
 }
 
-/// Parse a literal_value node into an AestheticValue::Literal
-fn parse_literal_value(node: &Node, source: &str) -> Result<AestheticValue> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "string" => {
-                let text = get_node_text(&child, source);
-                let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                return Ok(AestheticValue::Literal(LiteralValue::String(
-                    unquoted.to_string(),
-                )));
-            }
-            "number" => {
-                let text = get_node_text(&child, source);
-                let num = text.parse::<f64>().map_err(|e| {
-                    GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
-                })?;
-                return Ok(AestheticValue::Literal(LiteralValue::Number(num)));
-            }
-            "boolean" => {
-                let text = get_node_text(&child, source);
-                let bool_val = text == "true";
-                return Ok(AestheticValue::Literal(LiteralValue::Boolean(bool_val)));
-            }
-            _ => {}
-        }
-    }
-
-    Err(GgsqlError::ParseError(format!(
-        "Could not parse literal value from node: {}",
-        node.kind()
-    )))
-}
+// ============================================================================
+// Scale Building
+// ============================================================================
 
 /// Build a Scale from a scale_clause node
-fn build_scale(node: &Node, source: &str) -> Result<Scale> {
+/// SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]
+fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
     let mut aesthetic = String::new();
     let mut scale_type: Option<ScaleType> = None;
+    let mut input_range: Option<Vec<ArrayElement>> = None;
+    let mut explicit_input_range = false;
+    let mut output_range: Option<OutputRange> = None;
+    let mut transform: Option<Transform> = None;
+    let mut explicit_transform = false;
     let mut properties = HashMap::new();
+    let mut label_mapping: Option<HashMap<String, Option<String>>> = None;
+    let mut label_template = "{}".to_string();
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "SCALE" | "SETTING" | "=>" | "," => continue, // Skip keywords
-            "aesthetic_name" => {
-                aesthetic = get_node_text(&child, source);
+            "SCALE" | "SETTING" | "=>" | "," | "FROM" | "TO" | "VIA" | "RENAMING" => continue, // Skip keywords
+            "scale_type_identifier" => {
+                // Parse scale type: CONTINUOUS, DISCRETE, BINNED, DATE, DATETIME
+                let type_text = source.get_text(&child);
+                scale_type = Some(parse_scale_type_identifier(&type_text)?);
             }
-            "scale_property" => {
-                // Parse scale property: name = value
-                let mut prop_cursor = child.walk();
-                let mut prop_name = String::new();
-                let mut prop_value: Option<ParameterValue> = None;
-
-                for prop_child in child.children(&mut prop_cursor) {
-                    match prop_child.kind() {
-                        "scale_property_name" => {
-                            prop_name = get_node_text(&prop_child, source);
-                        }
-                        "scale_property_value" => {
-                            prop_value = Some(parse_scale_property_value(&prop_child, source)?);
-                        }
-                        "=>" => continue,
-                        _ => {}
-                    }
+            "aesthetic_name" => {
+                aesthetic = normalise_aes_name(&source.get_text(&child));
+            }
+            "scale_from_clause" => {
+                // Parse FROM [array] -> input_range
+                input_range = Some(parse_scale_from_clause(&child, source)?);
+                // Mark as explicit input range (user specified FROM clause)
+                explicit_input_range = true;
+            }
+            "scale_to_clause" => {
+                // Parse TO [array | identifier] -> output_range
+                output_range = Some(parse_scale_to_clause(&child, source)?);
+            }
+            "scale_via_clause" => {
+                // Parse VIA identifier -> transform
+                transform = Some(parse_scale_via_clause(&child, source)?);
+                // Mark as explicit transform (user specified VIA clause)
+                explicit_transform = true;
+            }
+            "setting_clause" => {
+                // Reuse existing setting_clause parser
+                properties = parse_setting_clause(&child, source)?;
+            }
+            "scale_renaming_clause" => {
+                // Parse RENAMING 'A' => 'Alpha', 'B' => 'Beta', * => '{} units'
+                let (mappings, template) = parse_scale_renaming_clause(&child, source)?;
+                if !mappings.is_empty() {
+                    label_mapping = Some(mappings);
                 }
-
-                // If this is a 'type' property, set scale_type
-                if prop_name == "type" {
-                    if let Some(ParameterValue::String(type_str)) = prop_value {
-                        scale_type = Some(parse_scale_type(&type_str)?);
-                    }
-                } else if !prop_name.is_empty() && prop_value.is_some() {
-                    properties.insert(prop_name, prop_value.unwrap());
-                }
+                label_template = template;
             }
             _ => {}
         }
@@ -664,123 +624,169 @@ fn build_scale(node: &Node, source: &str) -> Result<Scale> {
         ));
     }
 
-    // Replace colour palettes by their hex codes
-    if matches!(
-        aesthetic.as_str(),
-        "stroke" | "colour" | "fill" | "color" | "col"
-    ) {
-        if let Some(ParameterValue::Array(elements)) = properties.get("palette") {
-            let mut hex_codes = Vec::new();
-            for elem in elements {
-                if let ArrayElement::String(color) = elem {
-                    let hex = ArrayElement::String(color_to_hex(color));
-                    hex_codes.push(hex);
-                } else {
-                    hex_codes.push(elem.clone());
-                }
-            }
-            properties.insert("palette".to_string(), ParameterValue::Array(hex_codes));
+    // Replace colour palettes by their hex codes in output_range
+    if is_color_aesthetic(&aesthetic) {
+        if let Some(OutputRange::Array(ref elements)) = output_range {
+            let hex_codes: Vec<ArrayElement> = elements
+                .iter()
+                .map(|elem| {
+                    if let ArrayElement::String(color) = elem {
+                        color_to_hex(color).map(ArrayElement::String)
+                    } else {
+                        Ok(elem.clone())
+                    }
+                })
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(GgsqlError::ParseError)?;
+            output_range = Some(OutputRange::Array(hex_codes));
         }
     }
 
     Ok(Scale {
         aesthetic,
         scale_type,
+        input_range,
+        explicit_input_range,
+        output_range,
+        transform,
+        explicit_transform,
         properties,
+        resolved: false,
+        label_mapping,
+        label_template,
     })
 }
 
-/// Parse scale type from text
-fn parse_scale_type(text: &str) -> Result<ScaleType> {
+/// Parse scale type identifier (CONTINUOUS, DISCRETE, BINNED, ORDINAL, IDENTITY)
+fn parse_scale_type_identifier(text: &str) -> Result<ScaleType> {
     match text.to_lowercase().as_str() {
-        "linear" => Ok(ScaleType::Linear),
-        "log" | "log10" => Ok(ScaleType::Log),
-        "sqrt" => Ok(ScaleType::Sqrt),
-        "reverse" => Ok(ScaleType::Reverse),
-        "categorical" => Ok(ScaleType::Categorical),
-        "ordinal" => Ok(ScaleType::Ordinal),
-        "date" => Ok(ScaleType::Date),
-        "datetime" => Ok(ScaleType::DateTime),
-        "viridis" => Ok(ScaleType::Viridis),
-        "plasma" => Ok(ScaleType::Plasma),
-        "diverging" => Ok(ScaleType::Diverging),
-        "sequential" => Ok(ScaleType::Sequential),
-        "identity" => Ok(ScaleType::Identity),
-        "manual" => Ok(ScaleType::Manual),
+        "continuous" => Ok(ScaleType::continuous()),
+        "discrete" => Ok(ScaleType::discrete()),
+        "binned" => Ok(ScaleType::binned()),
+        "ordinal" => Ok(ScaleType::ordinal()),
+        "identity" => Ok(ScaleType::identity()),
         _ => Err(GgsqlError::ParseError(format!(
-            "Unknown scale type: {}",
+            "Unknown scale type: '{}'. Valid types: continuous, discrete, binned, ordinal, identity",
             text
         ))),
     }
 }
 
-/// Parse scale property value
-fn parse_scale_property_value(node: &Node, source: &str) -> Result<ParameterValue> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "string" => {
-                let text = get_node_text(&child, source);
-                let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                return Ok(ParameterValue::String(unquoted.to_string()));
+/// Parse FROM clause: FROM [array]
+fn parse_scale_from_clause(node: &Node, source: &SourceTree) -> Result<Vec<ArrayElement>> {
+    let query = "(array) @arr";
+    let array_node = source
+        .find_node(node, query)
+        .ok_or_else(|| GgsqlError::ParseError("FROM clause missing array".to_string()))?;
+    parse_array_node(&array_node, source)
+}
+
+/// Parse TO clause: TO [array | identifier]
+fn parse_scale_to_clause(node: &Node, source: &SourceTree) -> Result<OutputRange> {
+    // Try array first
+    let array_query = "(array) @arr";
+    if let Some(array_node) = source.find_node(node, array_query) {
+        let elements = parse_array_node(&array_node, source)?;
+        return Ok(OutputRange::Array(elements));
+    }
+
+    // Try identifier (palette name)
+    let ident_query = "[(identifier) (bare_identifier) (quoted_identifier)] @id";
+    if let Some(ident_node) = source.find_node(node, ident_query) {
+        let palette_name = source.get_text(&ident_node);
+        return Ok(OutputRange::Palette(palette_name));
+    }
+
+    Err(GgsqlError::ParseError(
+        "TO clause must contain either an array or identifier".to_string(),
+    ))
+}
+
+/// Parse VIA clause: VIA identifier
+fn parse_scale_via_clause(node: &Node, source: &SourceTree) -> Result<Transform> {
+    let query = "[(identifier) (bare_identifier) (quoted_identifier)] @id";
+    let ident_node = source.find_node(node, query).ok_or_else(|| {
+        GgsqlError::ParseError("VIA clause missing transform identifier".to_string())
+    })?;
+
+    let transform_name = source.get_text(&ident_node);
+    Transform::from_name(&transform_name).ok_or_else(|| {
+        GgsqlError::ParseError(format!(
+            "Unknown transform: '{}'. Valid transforms are: {}",
+            transform_name,
+            crate::plot::scale::ALL_TRANSFORM_NAMES.join(", ")
+        ))
+    })
+}
+
+/// Parse RENAMING clause: RENAMING 'A' => 'Alpha', 'B' => 'Beta', 'internal' => NULL, * => '{} units'
+///
+/// Returns a tuple of:
+/// - HashMap where: Key = original value, Value = Some(label) or None for suppressed labels
+/// - Template string for wildcard mappings (* => '...'), defaults to "{}"
+fn parse_scale_renaming_clause(
+    node: &Node,
+    source: &SourceTree,
+) -> Result<(HashMap<String, Option<String>>, String)> {
+    let mut mappings = HashMap::new();
+    let mut template = "{}".to_string();
+
+    // Find all renaming_assignment nodes
+    let query = "(renaming_assignment) @assign";
+    let assignment_nodes = source.find_nodes(node, query);
+
+    for assignment_node in assignment_nodes {
+        // Extract name and value nodes using field-based queries
+        let (name_node, value_node) = extract_name_value_nodes(&assignment_node, "scale renaming")?;
+
+        // Check if 'name' is a wildcard
+        let is_wildcard = name_node.kind() == "*";
+
+        // Parse 'name' (from) value - wildcards, strings need unquoting, numbers are raw
+        let from_value = match name_node.kind() {
+            "*" => "*".to_string(),
+            "string" => parse_string_node(&name_node, source),
+            "number" => source.get_text(&name_node),
+            _ => {
+                return Err(GgsqlError::ParseError(format!(
+                    "Invalid 'from' type in scale renaming: {}",
+                    name_node.kind()
+                )));
             }
-            "number" => {
-                let text = get_node_text(&child, source);
-                let num = text.parse::<f64>().map_err(|e| {
-                    GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
-                })?;
-                return Ok(ParameterValue::Number(num));
+        };
+
+        // Parse 'value' (to) - string or NULL
+        let to_value: Option<String> = match value_node.kind() {
+            "string" => Some(parse_string_node(&value_node, source)),
+            "null_literal" => None, // NULL suppresses the label
+            _ => {
+                return Err(GgsqlError::ParseError(format!(
+                    "Invalid 'to' type in scale renaming: {}",
+                    value_node.kind()
+                )));
             }
-            "boolean" => {
-                let text = get_node_text(&child, source);
-                let bool_val = text == "true";
-                return Ok(ParameterValue::Boolean(bool_val));
+        };
+
+        if is_wildcard {
+            // Wildcard: * => 'template'
+            if let Some(tmpl) = to_value {
+                template = tmpl;
             }
-            "array" => {
-                // Parse array of values
-                let mut values = Vec::new();
-                let mut array_cursor = child.walk();
-                for array_child in child.children(&mut array_cursor) {
-                    if array_child.kind() == "array_element" {
-                        // Array elements wrap the actual values
-                        let mut elem_cursor = array_child.walk();
-                        for elem_child in array_child.children(&mut elem_cursor) {
-                            match elem_child.kind() {
-                                "string" => {
-                                    let text = get_node_text(&elem_child, source);
-                                    let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                                    values.push(ArrayElement::String(unquoted.to_string()));
-                                }
-                                "number" => {
-                                    let text = get_node_text(&elem_child, source);
-                                    if let Ok(num) = text.parse::<f64>() {
-                                        values.push(ArrayElement::Number(num));
-                                    }
-                                }
-                                "boolean" => {
-                                    let text = get_node_text(&elem_child, source);
-                                    let bool_val = text == "true";
-                                    values.push(ArrayElement::Boolean(bool_val));
-                                }
-                                _ => continue,
-                            }
-                        }
-                    }
-                }
-                return Ok(ParameterValue::Array(values));
-            }
-            _ => {}
+        } else {
+            // Explicit mapping: 'A' => 'Alpha' or '10' => 'Ten'
+            mappings.insert(from_value, to_value);
         }
     }
 
-    Err(GgsqlError::ParseError(format!(
-        "Could not parse scale property value from node: {}",
-        node.kind()
-    )))
+    Ok((mappings, template))
 }
 
+// ============================================================================
+// Facet Building
+// ============================================================================
+
 /// Build a Facet from a facet_clause node
-fn build_facet(node: &Node, source: &str) -> Result<Facet> {
+fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
     let mut is_wrap = false;
     let mut row_vars = Vec::new();
     let mut col_vars = Vec::new();
@@ -831,26 +837,14 @@ fn build_facet(node: &Node, source: &str) -> Result<Facet> {
 }
 
 /// Parse facet variables from a facet_vars node
-fn parse_facet_vars(node: &Node, source: &str) -> Result<Vec<String>> {
-    let mut vars = Vec::new();
-    let mut cursor = node.walk();
-
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "identifier" => {
-                vars.push(get_node_text(&child, source));
-            }
-            "," => continue,
-            _ => {}
-        }
-    }
-
-    Ok(vars)
+fn parse_facet_vars(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
+    let query = "(identifier) @var";
+    Ok(source.find_texts(node, query))
 }
 
 /// Parse facet scales from a facet_scales node
-fn parse_facet_scales(node: &Node, source: &str) -> Result<FacetScales> {
-    let text = get_node_text(node, source);
+fn parse_facet_scales(node: &Node, source: &SourceTree) -> Result<FacetScales> {
+    let text = source.get_text(node);
     match text.as_str() {
         "fixed" => Ok(FacetScales::Fixed),
         "free" => Ok(FacetScales::Free),
@@ -863,8 +857,12 @@ fn parse_facet_scales(node: &Node, source: &str) -> Result<FacetScales> {
     }
 }
 
+// ============================================================================
+// Coord Building
+// ============================================================================
+
 /// Build a Coord from a coord_clause node
-fn build_coord(node: &Node, source: &str) -> Result<Coord> {
+fn build_coord(node: &Node, source: &SourceTree) -> Result<Coord> {
     let mut coord_type = CoordType::Cartesian;
     let mut properties = HashMap::new();
 
@@ -876,14 +874,13 @@ fn build_coord(node: &Node, source: &str) -> Result<Coord> {
                 coord_type = parse_coord_type(&child, source)?;
             }
             "coord_properties" => {
-                // New grammar structure: coord_properties contains multiple coord_property
-                let mut props_cursor = child.walk();
-                for prop_node in child.children(&mut props_cursor) {
-                    if prop_node.kind() == "coord_property" {
-                        let (prop_name, prop_value) =
-                            parse_single_coord_property(&prop_node, source)?;
-                        properties.insert(prop_name, prop_value);
-                    }
+                // Find all coord_property nodes
+                let query = "(coord_property) @prop";
+                let prop_nodes = source.find_nodes(&child, query);
+
+                for prop_node in prop_nodes {
+                    let (prop_name, prop_value) = parse_single_coord_property(&prop_node, source)?;
+                    properties.insert(prop_name, prop_value);
                 }
             }
             _ => {}
@@ -900,54 +897,34 @@ fn build_coord(node: &Node, source: &str) -> Result<Coord> {
 }
 
 /// Parse a single coord_property node into (name, value)
-fn parse_single_coord_property(node: &Node, source: &str) -> Result<(String, ParameterValue)> {
-    let mut prop_name = String::new();
-    let mut prop_value: Option<ParameterValue> = None;
+fn parse_single_coord_property(
+    node: &Node,
+    source: &SourceTree,
+) -> Result<(String, ParameterValue)> {
+    // Extract name and value nodes using field-based queries
+    let (name_node, value_node) = extract_name_value_nodes(node, "coord property")?;
 
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "coord_property_name" => {
-                // Could be a keyword or an aesthetic_name
-                let mut name_cursor = child.walk();
-                for name_child in child.children(&mut name_cursor) {
-                    match name_child.kind() {
-                        "aesthetic_name" => {
-                            prop_name = get_node_text(&name_child, source);
-                        }
-                        _ => {
-                            // Direct keyword like xlim, ylim, theta
-                            prop_name = get_node_text(&child, source);
-                            break;
-                        }
-                    }
-                }
-                if prop_name.is_empty() {
-                    prop_name = get_node_text(&child, source);
-                }
-            }
-            "string" | "number" | "boolean" | "array" => {
-                prop_value = Some(parse_coord_property_value(&child, source)?);
-            }
-            "identifier" => {
-                // New: identifiers can be property values (e.g., theta = y)
-                let ident = get_node_text(&child, source);
-                prop_value = Some(ParameterValue::String(ident));
-            }
-            "=" => continue,
-            _ => {}
+    // Parse property name (can be a literal like 'xlim' or an aesthetic_name)
+    let prop_name = source.get_text(&name_node);
+
+    // Parse property value based on its type
+    let prop_value = match value_node.kind() {
+        "string" | "number" | "boolean" | "array" => {
+            parse_value_node(&value_node, source, "coord property")?
         }
-    }
+        "identifier" => {
+            // identifiers can be property values (e.g., theta => y)
+            ParameterValue::String(source.get_text(&value_node))
+        }
+        _ => {
+            return Err(GgsqlError::ParseError(format!(
+                "Invalid coord property value type: {}",
+                value_node.kind()
+            )));
+        }
+    };
 
-    if prop_name.is_empty() || prop_value.is_none() {
-        return Err(GgsqlError::ParseError(format!(
-            "Invalid coord property: name='{}', value present={}",
-            prop_name,
-            prop_value.is_some()
-        )));
-    }
-
-    Ok((prop_name, prop_value.unwrap()))
+    Ok((prop_name, prop_value))
 }
 
 /// Validate that properties are valid for the given coord type
@@ -1026,8 +1003,8 @@ fn is_aesthetic_name(name: &str) -> bool {
 }
 
 /// Parse coord type from a coord_type node
-fn parse_coord_type(node: &Node, source: &str) -> Result<CoordType> {
-    let text = get_node_text(node, source);
+fn parse_coord_type(node: &Node, source: &SourceTree) -> Result<CoordType> {
+    let text = source.get_text(node);
     match text.to_lowercase().as_str() {
         "cartesian" => Ok(CoordType::Cartesian),
         "polar" => Ok(CoordType::Polar),
@@ -1043,204 +1020,49 @@ fn parse_coord_type(node: &Node, source: &str) -> Result<CoordType> {
     }
 }
 
-/// Parse coord property value
-fn parse_coord_property_value(node: &Node, source: &str) -> Result<ParameterValue> {
-    match node.kind() {
-        "string" => {
-            let text = get_node_text(node, source);
-            let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-            Ok(ParameterValue::String(unquoted.to_string()))
-        }
-        "number" => {
-            let text = get_node_text(node, source);
-            let num = text.parse::<f64>().map_err(|e| {
-                GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
-            })?;
-            Ok(ParameterValue::Number(num))
-        }
-        "boolean" => {
-            let text = get_node_text(node, source);
-            let bool_val = text == "true";
-            Ok(ParameterValue::Boolean(bool_val))
-        }
-        "array" => {
-            // Parse array of values
-            let mut values = Vec::new();
-            let mut array_cursor = node.walk();
-            for array_child in node.children(&mut array_cursor) {
-                if array_child.kind() == "array_element" {
-                    // Array elements wrap the actual values
-                    let mut elem_cursor = array_child.walk();
-                    for elem_child in array_child.children(&mut elem_cursor) {
-                        match elem_child.kind() {
-                            "string" => {
-                                let text = get_node_text(&elem_child, source);
-                                let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-                                values.push(ArrayElement::String(unquoted.to_string()));
-                            }
-                            "number" => {
-                                let text = get_node_text(&elem_child, source);
-                                if let Ok(num) = text.parse::<f64>() {
-                                    values.push(ArrayElement::Number(num));
-                                }
-                            }
-                            "boolean" => {
-                                let text = get_node_text(&elem_child, source);
-                                let bool_val = text == "true";
-                                values.push(ArrayElement::Boolean(bool_val));
-                            }
-                            _ => continue,
-                        }
-                    }
-                }
-            }
-            Ok(ParameterValue::Array(values))
-        }
-        _ => Err(GgsqlError::ParseError(format!(
-            "Unexpected coord property value type: {}",
-            node.kind()
-        ))),
-    }
-}
+// ============================================================================
+// Labels Building
+// ============================================================================
 
 /// Build Labels from a label_clause node
-fn build_labels(node: &Node, source: &str) -> Result<Labels> {
+fn build_labels(node: &Node, source: &SourceTree) -> Result<Labels> {
     let mut labels = HashMap::new();
-    let mut cursor = node.walk();
 
-    // Iterate through label_assignment children
-    for child in node.children(&mut cursor) {
-        if child.kind() == "label_assignment" {
-            let mut assignment_cursor = child.walk();
-            let mut label_type: Option<String> = None;
-            let mut label_value: Option<String> = None;
+    // Find all label_assignment nodes
+    let query = "(label_assignment) @label";
+    let label_nodes = source.find_nodes(node, query);
 
-            for assignment_child in child.children(&mut assignment_cursor) {
-                match assignment_child.kind() {
-                    "label_type" => {
-                        label_type = Some(get_node_text(&assignment_child, source));
-                    }
-                    "string" => {
-                        let text = get_node_text(&assignment_child, source);
-                        // Remove quotes from string
-                        label_value =
-                            Some(text.trim_matches(|c| c == '\'' || c == '"').to_string());
-                    }
-                    _ => {}
-                }
+    for label_node in label_nodes {
+        // Extract name and value nodes using field-based queries
+        let (name_node, value_node) = extract_name_value_nodes(&label_node, "label assignment")?;
+
+        // Parse label type (name)
+        let label_type = source.get_text(&name_node);
+
+        // Parse label value (must be a string)
+        let label_value = match value_node.kind() {
+            "string" => parse_string_node(&value_node, source),
+            _ => {
+                return Err(GgsqlError::ParseError(format!(
+                    "Label '{}' must have a string value, got: {}",
+                    label_type,
+                    value_node.kind()
+                )));
             }
+        };
 
-            if let (Some(typ), Some(val)) = (label_type, label_value) {
-                labels.insert(typ, val);
-            }
-        }
+        labels.insert(label_type, label_value);
     }
 
     Ok(Labels { labels })
 }
 
-/// Build a Guide from a guide_clause node
-fn build_guide(node: &Node, source: &str) -> Result<Guide> {
-    let mut aesthetic = String::new();
-    let mut guide_type: Option<GuideType> = None;
-    let mut properties = HashMap::new();
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "GUIDE" | "SETTING" | "=>" | "," => continue, // Skip keywords
-            "aesthetic_name" => {
-                aesthetic = get_node_text(&child, source);
-            }
-            "guide_property" => {
-                // Parse guide property
-                let mut prop_cursor = child.walk();
-                for prop_child in child.children(&mut prop_cursor) {
-                    if prop_child.kind() == "guide_type" {
-                        // This is a type property: type = legend
-                        let type_text = get_node_text(&prop_child, source);
-                        guide_type = Some(parse_guide_type(&type_text)?);
-                    } else if prop_child.kind() == "guide_property_name" {
-                        // Regular property: name = value
-                        let prop_name = get_node_text(&prop_child, source);
-
-                        // Find the value (next sibling after '=>')
-                        let mut found_to = false;
-                        let mut value_cursor = child.walk();
-                        for value_child in child.children(&mut value_cursor) {
-                            if value_child.kind() == "=>" {
-                                found_to = true;
-                                continue;
-                            }
-                            if found_to {
-                                let prop_value = parse_guide_property_value(&value_child, source)?;
-                                properties.insert(prop_name.clone(), prop_value);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    if aesthetic.is_empty() {
-        return Err(GgsqlError::ParseError(
-            "Guide clause missing aesthetic name".to_string(),
-        ));
-    }
-
-    Ok(Guide {
-        aesthetic,
-        guide_type,
-        properties,
-    })
-}
-
-/// Parse guide type from text
-fn parse_guide_type(text: &str) -> Result<GuideType> {
-    match text.to_lowercase().as_str() {
-        "legend" => Ok(GuideType::Legend),
-        "colorbar" => Ok(GuideType::ColorBar),
-        "axis" => Ok(GuideType::Axis),
-        "none" => Ok(GuideType::None),
-        _ => Err(GgsqlError::ParseError(format!(
-            "Unknown guide type: {}",
-            text
-        ))),
-    }
-}
-
-/// Parse guide property value
-fn parse_guide_property_value(node: &Node, source: &str) -> Result<ParameterValue> {
-    match node.kind() {
-        "string" => {
-            let text = get_node_text(node, source);
-            let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-            Ok(ParameterValue::String(unquoted.to_string()))
-        }
-        "number" => {
-            let text = get_node_text(node, source);
-            let num = text.parse::<f64>().map_err(|e| {
-                GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
-            })?;
-            Ok(ParameterValue::Number(num))
-        }
-        "boolean" => {
-            let text = get_node_text(node, source);
-            let bool_val = text == "true";
-            Ok(ParameterValue::Boolean(bool_val))
-        }
-        _ => Err(GgsqlError::ParseError(format!(
-            "Unexpected guide property value type: {}",
-            node.kind()
-        ))),
-    }
-}
+// ============================================================================
+// Theme Building
+// ============================================================================
 
 /// Build a Theme from a theme_clause node
-fn build_theme(node: &Node, source: &str) -> Result<Theme> {
+fn build_theme(node: &Node, source: &SourceTree) -> Result<Theme> {
     let mut style: Option<String> = None;
     let mut properties = HashMap::new();
 
@@ -1249,31 +1071,29 @@ fn build_theme(node: &Node, source: &str) -> Result<Theme> {
         match child.kind() {
             "THEME" | "SETTING" | "=>" | "," => continue,
             "theme_name" => {
-                style = Some(get_node_text(&child, source));
+                style = Some(source.get_text(&child));
             }
             "theme_property" => {
-                // Parse theme property: name = value
-                let mut prop_cursor = child.walk();
-                let mut prop_name = String::new();
-                let mut prop_value: Option<ParameterValue> = None;
+                // Parse theme property: name => value using field-based queries
+                let (name_node, value_node) = extract_name_value_nodes(&child, "theme property")?;
 
-                for prop_child in child.children(&mut prop_cursor) {
-                    match prop_child.kind() {
-                        "theme_property_name" => {
-                            prop_name = get_node_text(&prop_child, source);
-                        }
-                        "string" | "number" | "boolean" => {
-                            prop_value = Some(parse_theme_property_value(&prop_child, source)?);
-                        }
-                        "=>" => continue,
-                        _ => {}
+                // Parse property name
+                let prop_name = source.get_text(&name_node);
+
+                // Parse property value
+                let prop_value = match value_node.kind() {
+                    "string" | "number" | "boolean" => {
+                        parse_value_node(&value_node, source, "theme property")?
                     }
-                }
-                if !prop_name.is_empty() {
-                    if let Some(value) = prop_value {
-                        properties.insert(prop_name, value);
+                    _ => {
+                        return Err(GgsqlError::ParseError(format!(
+                            "Invalid theme property value type: {}",
+                            value_node.kind()
+                        )));
                     }
-                }
+                };
+
+                properties.insert(prop_name, prop_value);
             }
             _ => {}
         }
@@ -1282,51 +1102,47 @@ fn build_theme(node: &Node, source: &str) -> Result<Theme> {
     Ok(Theme { style, properties })
 }
 
-/// Parse theme property value
-fn parse_theme_property_value(node: &Node, source: &str) -> Result<ParameterValue> {
-    match node.kind() {
-        "string" => {
-            let text = get_node_text(node, source);
-            let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
-            Ok(ParameterValue::String(unquoted.to_string()))
-        }
-        "number" => {
-            let text = get_node_text(node, source);
-            let num = text.parse::<f64>().map_err(|e| {
-                GgsqlError::ParseError(format!("Failed to parse number '{}': {}", text, e))
-            })?;
-            Ok(ParameterValue::Number(num))
-        }
-        "boolean" => {
-            let text = get_node_text(node, source);
-            let bool_val = text == "true";
-            Ok(ParameterValue::Boolean(bool_val))
-        }
-        _ => Err(GgsqlError::ParseError(format!(
-            "Unexpected theme property value type: {}",
-            node.kind()
-        ))),
-    }
-}
+// ============================================================================
+// Validation & Utilities
+// ============================================================================
 
-/// Get text content of a node
-fn get_node_text(node: &Node, source: &str) -> String {
-    source[node.start_byte()..node.end_byte()].to_string()
+/// Check for conflicts between SCALE input range and COORD aesthetic input range specifications
+fn validate_scale_coord_conflicts(spec: &Plot) -> Result<()> {
+    if let Some(ref coord) = spec.coord {
+        // Get all aesthetic names that have input ranges in COORD
+        let coord_aesthetics: Vec<String> = coord
+            .properties
+            .keys()
+            .filter(|k| is_aesthetic_name(k))
+            .cloned()
+            .collect();
+
+        // Check if any of these also have input range in SCALE
+        for aesthetic in coord_aesthetics {
+            for scale in &spec.scales {
+                if scale.aesthetic == aesthetic && scale.input_range.is_some() {
+                    return Err(GgsqlError::ParseError(format!(
+                        "Input range for '{}' specified in both SCALE and COORD clauses. \
+                        Please specify input range in only one location.",
+                        aesthetic
+                    )));
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Check if the last SQL statement in sql_portion is a SELECT statement
-fn check_last_statement_is_select(sql_portion_node: &Node) -> bool {
-    let mut last_statement = None;
-    let mut cursor = sql_portion_node.walk();
-
-    // Find last sql_statement node
-    for child in sql_portion_node.children(&mut cursor) {
-        if child.kind() == "sql_statement" {
-            last_statement = Some(child);
-        }
-    }
+fn check_last_statement_is_select(sql_portion_node: &Node, source: &SourceTree) -> bool {
+    // Find all sql_statement nodes and get the last one (can use query for this)
+    let query = "(sql_statement) @stmt";
+    let statements = source.find_nodes(sql_portion_node, query);
+    let last_statement = statements.last();
 
     // Check if last statement is or ends with a SELECT
+    // But we need to check direct children only, not recursive
     if let Some(stmt) = last_statement {
         let mut stmt_cursor = stmt.walk();
         for child in stmt.children(&mut stmt_cursor) {
@@ -1345,6 +1161,8 @@ fn check_last_statement_is_select(sql_portion_node: &Node) -> bool {
 
 /// Check if a with_statement has a trailing SELECT (after the CTE definitions)
 fn with_statement_has_trailing_select(with_node: &Node) -> bool {
+    // Need to check direct children only, not recursive search
+    // A trailing SELECT means there's a select_statement after cte_definition at the same level
     let mut cursor = with_node.walk();
     let mut seen_cte_definition = false;
 
@@ -1367,35 +1185,20 @@ pub fn normalise_aes_name(name: &str) -> String {
     }
 }
 
-fn color_to_hex(value: &str) -> String {
-    match csscolorparser::parse(value) {
-        Ok(value) => value.to_css_hex(),
-        Err(e) => {
-            eprintln!("{}", e);
-            std::process::exit(1)
-        }
-    }
-}
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tree_sitter::Parser;
 
     fn parse_test_query(query: &str) -> Result<Vec<Plot>> {
-        let mut parser = Parser::new();
-        parser.set_language(&tree_sitter_ggsql::language()).unwrap();
+        // Create SourceTree which parses and validates in one step
+        let source = SourceTree::new(query)?;
+        source.validate()?;
 
-        let tree = parser.parse(query, None).unwrap();
-
-        // Check for parse errors like the main parse_full_query does
-        if tree.root_node().has_error() {
-            return Err(GgsqlError::ParseError(
-                "Parse tree contains errors".to_string(),
-            ));
-        }
-
-        build_ast(&tree, query)
+        build_ast(&source)
     }
 
     // ========================================
@@ -1437,7 +1240,7 @@ mod tests {
     }
 
     #[test]
-    fn test_coord_cartesian_valid_aesthetic_domain() {
+    fn test_coord_cartesian_valid_aesthetic_input_range() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color
@@ -1469,7 +1272,7 @@ mod tests {
     }
 
     #[test]
-    fn test_coord_flip_valid_aesthetic_domain() {
+    fn test_coord_flip_valid_aesthetic_input_range() {
         let query = r#"
             VISUALISE
             DRAW bar MAPPING category AS x, value AS y, region AS color
@@ -1551,7 +1354,7 @@ mod tests {
     }
 
     #[test]
-    fn test_coord_polar_valid_aesthetic_domain() {
+    fn test_coord_polar_valid_aesthetic_input_range() {
         let query = r#"
             VISUALISE
             DRAW bar MAPPING category AS x, value AS y, region AS color
@@ -1599,15 +1402,15 @@ mod tests {
     }
 
     // ========================================
-    // SCALE/COORD Domain Conflict Tests
+    // SCALE/COORD Input Range Conflict Tests
     // ========================================
 
     #[test]
-    fn test_scale_coord_conflict_x_domain() {
+    fn test_scale_coord_conflict_x_input_range() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            SCALE x SETTING domain => [0, 100]
+            SCALE x FROM [0, 100]
             COORD cartesian SETTING x => [0, 50]
         "#;
 
@@ -1616,15 +1419,15 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err
             .to_string()
-            .contains("Domain for 'x' specified in both SCALE and COORD"));
+            .contains("Input range for 'x' specified in both SCALE and COORD"));
     }
 
     #[test]
-    fn test_scale_coord_conflict_color_domain() {
+    fn test_scale_coord_conflict_color_input_range() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color
-            SCALE color SETTING domain => ['A', 'B']
+            SCALE color FROM ['A', 'B']
             COORD cartesian SETTING color => ['A', 'B', 'C']
         "#;
 
@@ -1633,7 +1436,7 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err
             .to_string()
-            .contains("Domain for 'color' specified in both SCALE and COORD"));
+            .contains("Input range for 'color' specified in both SCALE and COORD"));
     }
 
     #[test]
@@ -1641,7 +1444,7 @@ mod tests {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y, category AS color
-            SCALE color SETTING domain => ['A', 'B']
+            SCALE color FROM ['A', 'B']
             COORD cartesian SETTING xlim => [0, 100]
         "#;
 
@@ -1650,11 +1453,11 @@ mod tests {
     }
 
     #[test]
-    fn test_scale_coord_no_conflict_scale_without_domain() {
+    fn test_scale_coord_no_conflict_scale_without_input_range() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            SCALE x SETTING type => 'linear'
+            SCALE CONTINUOUS x
             COORD cartesian SETTING x => [0, 100]
         "#;
 
@@ -3113,25 +2916,564 @@ mod tests {
     fn test_colour_scale_hex_code_conversion() {
         let query = r#"
           VISUALISE foo AS x
-          SCALE color SETTING palette => ['rgb(0, 0, 255)', 'green', '#FF0000']
+          SCALE color TO ['rgb(0, 0, 255)', 'green', '#FF0000']
         "#;
         let specs = parse_test_query(query).unwrap();
 
         let scales = &specs[0].scales;
         assert_eq!(scales.len(), 1);
 
-        let scale_params = &scales[0].properties;
-        let palette = scale_params.get("palette");
-        assert!(palette.is_some());
-        let palette = palette.unwrap();
+        // Check output_range instead of properties.palette
+        let output_range = &scales[0].output_range;
+        assert!(output_range.is_some());
+        let output_range = output_range.as_ref().unwrap();
 
         let mut ok = false;
-        if let ParameterValue::Array(elems) = palette {
+        if let OutputRange::Array(elems) = output_range {
             ok = matches!(&elems[0], ArrayElement::String(color) if color == "#0000ff");
             ok = ok && matches!(&elems[1], ArrayElement::String(color) if color == "#008000");
             ok = ok && matches!(&elems[2], ArrayElement::String(color) if color == "#ff0000");
         }
         assert!(ok);
-        eprintln!("{:?}", palette);
+        eprintln!("{:?}", output_range);
+    }
+
+    // ========================================
+    // Null in Scale Input Range Tests
+    // ========================================
+
+    #[test]
+    fn test_scale_from_with_null_max() {
+        // SCALE x FROM [0, null] - explicit min, infer max
+        let query = r#"
+            VISUALISE x, y
+            DRAW point
+            SCALE x FROM [0, null]
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "x");
+
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 2);
+        assert!(matches!(&input_range[0], ArrayElement::Number(n) if *n == 0.0));
+        assert!(matches!(&input_range[1], ArrayElement::Null));
+    }
+
+    #[test]
+    fn test_scale_from_with_null_min() {
+        // SCALE x FROM [null, 100] - infer min, explicit max
+        let query = r#"
+            VISUALISE x, y
+            DRAW point
+            SCALE x FROM [null, 100]
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 2);
+        assert!(matches!(&input_range[0], ArrayElement::Null));
+        assert!(matches!(&input_range[1], ArrayElement::Number(n) if *n == 100.0));
+    }
+
+    #[test]
+    fn test_scale_from_with_both_nulls() {
+        // SCALE x FROM [null, null] - infer both (same as no FROM clause)
+        let query = r#"
+            VISUALISE x, y
+            DRAW point
+            SCALE x FROM [null, null]
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 2);
+        assert!(matches!(&input_range[0], ArrayElement::Null));
+        assert!(matches!(&input_range[1], ArrayElement::Null));
+    }
+
+    #[test]
+    fn test_scale_from_with_null_case_insensitive() {
+        // NULL should be case-insensitive
+        let query = r#"
+            VISUALISE x, y
+            DRAW point
+            SCALE x FROM [0, NULL]
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert!(matches!(&input_range[1], ArrayElement::Null));
+    }
+
+    #[test]
+    fn test_scale_from_with_null() {
+        // Scale with partial input range: explicit start, infer end
+        // Note: DATE/DATETIME are no longer scale types - temporal handling is done
+        // via transforms that are automatically inferred from column data types
+        let query = r#"
+            VISUALISE date AS x, value AS y
+            DRAW line
+            SCALE x FROM ['2024-01-01', null]
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 2);
+        assert!(matches!(&input_range[0], ArrayElement::String(s) if s == "2024-01-01"));
+        assert!(matches!(&input_range[1], ArrayElement::Null));
+    }
+
+    #[test]
+    fn test_scale_via_date_transform() {
+        // Explicit date transform via VIA clause
+        let query = r#"
+            VISUALISE date AS x, value AS y
+            DRAW line
+            SCALE x VIA date
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "x");
+        assert!(scales[0].transform.is_some());
+        assert_eq!(scales[0].transform.as_ref().unwrap().name(), "date");
+    }
+
+    #[test]
+    fn test_scale_via_integer_transform() {
+        // Explicit integer transform via VIA clause
+        let query = r#"
+            VISUALISE val AS x, count AS y
+            DRAW point
+            SCALE x VIA integer
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "x");
+        assert!(scales[0].transform.is_some());
+        assert_eq!(scales[0].transform.as_ref().unwrap().name(), "integer");
+    }
+
+    #[test]
+    fn test_scale_via_int_alias() {
+        // Integer transform using 'int' alias
+        let query = r#"
+            VISUALISE val AS x, count AS y
+            DRAW point
+            SCALE x VIA int
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert!(scales[0].transform.is_some());
+        assert_eq!(scales[0].transform.as_ref().unwrap().name(), "integer");
+    }
+
+    #[test]
+    fn test_scale_via_bigint_alias() {
+        // Integer transform using 'bigint' alias
+        let query = r#"
+            VISUALISE val AS x, count AS y
+            DRAW point
+            SCALE x VIA bigint
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert!(scales[0].transform.is_some());
+        assert_eq!(scales[0].transform.as_ref().unwrap().name(), "integer");
+    }
+
+    // ========================================
+    // RENAMING clause tests
+    // ========================================
+
+    #[test]
+    fn test_scale_renaming_basic() {
+        // Basic RENAMING clause with string keys
+        let query = r#"
+            VISUALISE x AS x, y AS y
+            DRAW bar
+            SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "x");
+
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+        assert_eq!(label_mapping.len(), 2);
+        assert_eq!(label_mapping.get("A"), Some(&Some("Alpha".to_string())));
+        assert_eq!(label_mapping.get("B"), Some(&Some("Beta".to_string())));
+    }
+
+    #[test]
+    fn test_scale_renaming_with_null() {
+        // RENAMING with NULL to suppress labels
+        let query = r#"
+            VISUALISE x AS x, y AS y
+            DRAW bar
+            SCALE DISCRETE x RENAMING 'internal' => NULL, 'visible' => 'Shown'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+
+        assert_eq!(label_mapping.get("internal"), Some(&None)); // NULL -> None
+        assert_eq!(
+            label_mapping.get("visible"),
+            Some(&Some("Shown".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_scale_renaming_with_numeric_keys() {
+        // RENAMING with numeric keys (for binned scales)
+        let query = r#"
+            VISUALISE temp AS x, count AS y
+            DRAW bar
+            SCALE BINNED x RENAMING 0 => '0-10', 10 => '10-20', 20 => '20-30'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+
+        assert_eq!(label_mapping.len(), 3);
+        assert_eq!(label_mapping.get("0"), Some(&Some("0-10".to_string())));
+        assert_eq!(label_mapping.get("10"), Some(&Some("10-20".to_string())));
+        assert_eq!(label_mapping.get("20"), Some(&Some("20-30".to_string())));
+    }
+
+    #[test]
+    fn test_scale_renaming_for_color_legend() {
+        // RENAMING for color legend labels
+        let query = r#"
+            VISUALISE x, y, category AS color
+            DRAW point
+            SCALE DISCRETE color RENAMING 'cat_a' => 'Category A', 'cat_b' => 'Category B'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "color");
+
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+        assert_eq!(
+            label_mapping.get("cat_a"),
+            Some(&Some("Category A".to_string()))
+        );
+        assert_eq!(
+            label_mapping.get("cat_b"),
+            Some(&Some("Category B".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_scale_renaming_with_setting() {
+        // RENAMING combined with SETTING
+        let query = r#"
+            VISUALISE x, y
+            DRAW bar
+            SCALE DISCRETE x SETTING reverse => true RENAMING 'A' => 'First', 'B' => 'Second'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        // Check SETTING was parsed
+        assert_eq!(
+            scales[0].properties.get("reverse"),
+            Some(&ParameterValue::Boolean(true))
+        );
+
+        // Check RENAMING was parsed
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+        assert_eq!(label_mapping.get("A"), Some(&Some("First".to_string())));
+        assert_eq!(label_mapping.get("B"), Some(&Some("Second".to_string())));
+    }
+
+    #[test]
+    fn test_scale_renaming_with_from_to() {
+        // RENAMING combined with FROM and TO clauses
+        let query = r#"
+            VISUALISE x, y, cat AS color
+            DRAW point
+            SCALE DISCRETE color FROM ['A', 'B'] TO ['red', 'blue']
+                RENAMING 'A' => 'Option A', 'B' => 'Option B'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        // Check FROM was parsed
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 2);
+
+        // Check TO was parsed
+        assert!(scales[0].output_range.is_some());
+
+        // Check RENAMING was parsed
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+        assert_eq!(label_mapping.get("A"), Some(&Some("Option A".to_string())));
+    }
+
+    #[test]
+    fn test_scale_renaming_wildcard_template() {
+        // Wildcard template for label generation
+        let query = r#"
+            VISUALISE x AS x, y AS y
+            DRAW point
+            SCALE CONTINUOUS x RENAMING * => '{} units'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        // Check label_template was parsed
+        assert!(scales[0].label_mapping.is_none()); // No explicit mappings
+        assert_eq!(scales[0].label_template, "{} units");
+    }
+
+    #[test]
+    fn test_scale_renaming_wildcard_with_explicit() {
+        // Mixed explicit mappings and wildcard template
+        let query = r#"
+            VISUALISE x AS x, y AS y
+            DRAW point
+            SCALE DISCRETE x RENAMING 'A' => 'Alpha', * => 'Category {}'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        // Check explicit mapping was parsed
+        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
+        assert_eq!(label_mapping.get("A"), Some(&Some("Alpha".to_string())));
+
+        // Check template was also parsed
+        assert_eq!(scales[0].label_template, "Category {}");
+    }
+
+    #[test]
+    fn test_scale_renaming_wildcard_uppercase() {
+        // Wildcard template with uppercase transformation
+        let query = r#"
+            VISUALISE x AS x, y AS y
+            DRAW bar
+            SCALE DISCRETE x RENAMING * => '{:UPPER}'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        assert_eq!(scales[0].label_template, "{:UPPER}");
+    }
+
+    #[test]
+    fn test_scale_renaming_wildcard_datetime() {
+        // Wildcard template with datetime formatting
+        let query = r#"
+            VISUALISE date AS x, value AS y
+            DRAW line
+            SCALE CONTINUOUS x RENAMING * => '{:time %b %Y}'
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+
+        assert_eq!(scales[0].label_template, "{:time %b %Y}");
+    }
+
+    // ========================================
+    // ORDINAL scale type tests
+    // ========================================
+
+    #[test]
+    fn test_scale_ordinal_basic() {
+        // Basic ORDINAL scale type
+        let query = r#"
+            VISUALISE x AS x, y AS y, category AS fill
+            DRAW point
+            SCALE ORDINAL fill FROM ['low', 'medium', 'high'] TO viridis
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(scales.len(), 1);
+        assert_eq!(scales[0].aesthetic, "fill");
+        assert!(scales[0].scale_type.is_some());
+        assert_eq!(
+            scales[0].scale_type.as_ref().unwrap().scale_type_kind(),
+            crate::plot::ScaleTypeKind::Ordinal
+        );
+
+        // Check input range was parsed
+        let input_range = scales[0].input_range.as_ref().unwrap();
+        assert_eq!(input_range.len(), 3);
+
+        // Check output range was parsed as palette
+        assert!(scales[0].output_range.is_some());
+    }
+
+    #[test]
+    fn test_scale_ordinal_with_explicit_colors() {
+        // ORDINAL scale with explicit color array
+        let query = r#"
+            VISUALISE x AS x, y AS y, size_cat AS fill
+            DRAW point
+            SCALE ORDINAL fill FROM ['S', 'M', 'L'] TO ['#ff0000', '#00ff00', '#0000ff']
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(
+            scales[0].scale_type.as_ref().unwrap().scale_type_kind(),
+            crate::plot::ScaleTypeKind::Ordinal
+        );
+    }
+
+    #[test]
+    fn test_scale_ordinal_case_insensitive() {
+        // ORDINAL should be case-insensitive
+        let query = r#"
+            VISUALISE x AS x, y AS y, cat AS color
+            DRAW point
+            SCALE ordinal color FROM ['a', 'b', 'c']
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+        let scales = &specs[0].scales;
+        assert_eq!(
+            scales[0].scale_type.as_ref().unwrap().scale_type_kind(),
+            crate::plot::ScaleTypeKind::Ordinal
+        );
+    }
+
+    // ========================================================================
+    // Basic Type Parser Tests
+    // ========================================================================
+
+    fn make_source(query: &str) -> SourceTree<'_> {
+        SourceTree::new(query).unwrap()
+    }
+
+    #[test]
+    fn test_parse_string_node() {
+        let source = make_source("VISUALISE DRAW point LABEL title => 'hello world'");
+        let root = source.root();
+
+        let string_node = source.find_node(&root, "(string) @s").unwrap();
+        let parsed = parse_string_node(&string_node, &source);
+        assert_eq!(parsed, "hello world");
+    }
+
+    #[test]
+    fn test_parse_number_node() {
+        // Test integers
+        let source = make_source("VISUALISE DRAW point COORD SETTING xlim => [0, 100]");
+        let root = source.root();
+
+        let numbers = source.find_nodes(&root, "(number) @n");
+        assert_eq!(numbers.len(), 2);
+        assert_eq!(parse_number_node(&numbers[0], &source).unwrap(), 0.0);
+        assert_eq!(parse_number_node(&numbers[1], &source).unwrap(), 100.0);
+
+        // Test floats
+        let source2 = make_source("VISUALISE DRAW point COORD SETTING ylim => [-10.5, 20.75]");
+        let root2 = source2.root();
+
+        let numbers2 = source2.find_nodes(&root2, "(number) @n");
+        assert_eq!(parse_number_node(&numbers2[0], &source2).unwrap(), -10.5);
+        assert_eq!(parse_number_node(&numbers2[1], &source2).unwrap(), 20.75);
+    }
+
+    #[test]
+    fn test_parse_array_node() {
+        // Test array of strings
+        let source = make_source("VISUALISE DRAW point SCALE x FROM ['a', 'b', 'c']");
+        let root = source.root();
+
+        let array_node = source.find_node(&root, "(array) @arr").unwrap();
+        let parsed = parse_array_node(&array_node, &source).unwrap();
+
+        assert_eq!(parsed.len(), 3);
+        assert!(matches!(parsed[0], ArrayElement::String(ref s) if s == "a"));
+        assert!(matches!(parsed[1], ArrayElement::String(ref s) if s == "b"));
+        assert!(matches!(parsed[2], ArrayElement::String(ref s) if s == "c"));
+
+        // Test array of numbers
+        let source2 = make_source("VISUALISE DRAW point COORD SETTING xlim => [0, 50, 100]");
+        let root2 = source2.root();
+
+        let array_node2 = source2.find_node(&root2, "(array) @arr").unwrap();
+        let parsed2 = parse_array_node(&array_node2, &source2).unwrap();
+
+        assert_eq!(parsed2.len(), 3);
+        assert!(matches!(parsed2[0], ArrayElement::Number(n) if n == 0.0));
+        assert!(matches!(parsed2[1], ArrayElement::Number(n) if n == 50.0));
+        assert!(matches!(parsed2[2], ArrayElement::Number(n) if n == 100.0));
+    }
+
+    #[test]
+    fn test_parse_data_source() {
+        // Test identifier
+        let source = make_source("VISUALISE FROM sales DRAW bar");
+        let root = source.root();
+
+        let from_node = source.find_node(&root, "(table_ref) @ref").unwrap();
+        let parsed = parse_data_source(&from_node, &source);
+        assert!(matches!(parsed, DataSource::Identifier(ref name) if name == "sales"));
+
+        // Test file path - table_ref contains a string child
+        let source2 = make_source("VISUALISE FROM 'data.csv' DRAW bar");
+        let root2 = source2.root();
+
+        let from_node2 = source2.find_node(&root2, "(table_ref) @ref").unwrap();
+        let string_node = source2.find_node(&from_node2, "(string) @s").unwrap();
+        let parsed2 = parse_data_source(&string_node, &source2);
+        assert!(matches!(parsed2, DataSource::FilePath(ref path) if path == "data.csv"));
+    }
+
+    #[test]
+    fn test_parse_literal_value() {
+        // Test string literal
+        let source = make_source("VISUALISE DRAW point MAPPING 'red' AS color");
+        let root = source.root();
+
+        let literal_node = source.find_node(&root, "(literal_value) @lit").unwrap();
+        let parsed = parse_literal_value(&literal_node, &source).unwrap();
+        assert!(
+            matches!(parsed, AestheticValue::Literal(ParameterValue::String(ref s)) if s == "red")
+        );
+
+        // Test number literal
+        let source2 = make_source("VISUALISE DRAW point MAPPING 42 AS size");
+        let root2 = source2.root();
+
+        let literal_node2 = source2.find_node(&root2, "(literal_value) @lit").unwrap();
+        let parsed2 = parse_literal_value(&literal_node2, &source2).unwrap();
+        assert!(matches!(parsed2, AestheticValue::Literal(ParameterValue::Number(n)) if n == 42.0));
     }
 }

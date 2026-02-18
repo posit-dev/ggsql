@@ -1,0 +1,25 @@
+---
+title: "Position"
+---
+
+Position aesthetics (`x` and `y`, plus all their variants) relate data to placement in the coordinate system of the plot. All layers need at least one of each positional aesthetic mapped in order to show its data. However, the layer may compute positional aesthetics from the mapping. For example, a bar plot calculates the `y` aesthetic by counting the number of records in each group.
+
+## Literal values
+Scales for position aesthetics never use an output range and always relate to the input range. This is a practical decision by ggsql because different writers may treat the positional aesthetic in different ways. ^[In reality one could easily think of positional literal values as either normalized position along the x or y axis, or absolute units of distance from the bottom left corner of the coordinate system.]
+
+::: {.callout-note}
+The lack of true literal values in position means that it is currently hard to place data and annotation "in-between" breaks in a discrete position scale.
+:::
+
+## Aesthetic families
+Positional aesthetics consist of two families: The `x` and `y` family. Each of these consist of their primary aesthetic along with a range of sub aesthetic defined by their suffix:
+
+* `2`
+* `end`
+* `min`
+* `max`
+
+Which version of aesthetic to use depends on the layer, but all aesthetics within a family is scaled by the same scale, which is named after its primary aesthetic. This means that even when rendering a layer that only uses `xmin` and `xmax`, you will still scale it by writing `SCALE x ...` and label it by writing `LABEL x => ...`
+
+## Coordinate system
+Another thing that makes positional aesthetics different from other aesthetic is that they are dependent on a coordinate system which takes position scales and defines how values should be converted to a location on a plane. The default Cartesian coordinate system does what is generally expected: it places points along two perpendicular axes in a 2D plane. Other systems such as polar coordinates may dramatically change the look of a layer, transforming both the straightness of lines and positional relation of data.

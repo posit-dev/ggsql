@@ -88,11 +88,11 @@ pub fn validate(query: &str) -> Result<Validated> {
     let mut errors = Vec::new();
     let warnings = Vec::new();
 
-    // Split to determine if there's a viz portion
-    let (sql_part, viz_part) = match parser::split_query(query) {
-        Ok((sql, viz)) => (sql, viz),
+    // Parse once and create SourceTree
+    let source_tree = match parser::SourceTree::new(query) {
+        Ok(st) => st,
         Err(e) => {
-            // Split error - return as validation error
+            // Parse error - return as validation error
             errors.push(ValidationError {
                 message: e.to_string(),
                 location: None,
@@ -109,36 +109,47 @@ pub fn validate(query: &str) -> Result<Validated> {
         }
     };
 
-    let has_visual = !viz_part.trim().is_empty();
+    // Extract SQL and viz portions using existing tree
+    let sql_part = source_tree.extract_sql().unwrap_or_default();
+    let viz_part = source_tree.extract_visualise().unwrap_or_default();
 
-    // Parse the full query to get the CST
-    let tree = if has_visual {
-        let mut ts_parser = tree_sitter::Parser::new();
-        ts_parser
-            .set_language(&tree_sitter_ggsql::language())
-            .map_err(|e| {
-                crate::GgsqlError::InternalError(format!("Failed to set language: {}", e))
-            })?;
-        ts_parser.parse(query, None)
-    } else {
-        None
-    };
+    let root = source_tree.root();
+    let has_visual = source_tree
+        .find_node(&root, "(visualise_statement) @viz")
+        .is_some();
 
-    // If no visualization, just syntax check passed
+    // If no visualization, return without tree
     if !has_visual {
         return Ok(Validated {
             sql: sql_part,
             visual: viz_part,
-            has_visual,
-            tree,
+            has_visual: false,
+            tree: None,
             valid: true,
             errors,
             warnings,
         });
     }
 
-    // Parse to get plot specifications for validation
-    let plots = match parser::parse_query(query) {
+    // Validate the parse tree for errors
+    if let Err(e) = source_tree.validate() {
+        errors.push(ValidationError {
+            message: e.to_string(),
+            location: None,
+        });
+        return Ok(Validated {
+            sql: sql_part,
+            visual: viz_part,
+            has_visual: true,
+            tree: Some(source_tree.tree),
+            valid: false,
+            errors,
+            warnings,
+        });
+    }
+
+    // Build AST from existing tree for validation
+    let plots = match parser::build_ast(&source_tree) {
         Ok(p) => p,
         Err(e) => {
             errors.push(ValidationError {
@@ -149,7 +160,7 @@ pub fn validate(query: &str) -> Result<Validated> {
                 sql: sql_part,
                 visual: viz_part,
                 has_visual,
-                tree,
+                tree: Some(source_tree.tree),
                 valid: false,
                 errors,
                 warnings,
@@ -189,7 +200,7 @@ pub fn validate(query: &str) -> Result<Validated> {
         sql: sql_part,
         visual: viz_part,
         has_visual,
-        tree,
+        tree: Some(source_tree.tree),
         valid: errors.is_empty(),
         errors,
         warnings,
