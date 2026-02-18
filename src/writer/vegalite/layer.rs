@@ -407,6 +407,30 @@ impl GeomRenderer for ViolinRenderer {
             }
         }
 
+        // Violins use filled line marks, which don't show a fill in the legend.
+        // We intercept the encoding to pupulate a different symbol to display
+        for aesthetic in ["fill", "stroke"] {
+            if let Some(channel) = encoding.get_mut(aesthetic) {
+                // Skip if legend is explicitly null or if it's a literal value
+                if channel.get("legend").is_some_and(|v| v.is_null()) {
+                    continue;
+                }
+                if channel.get("value").is_some() {
+                    continue;
+                }
+
+                // Add/update legend properties
+                let legend = channel.get_mut("legend").and_then(|v| v.as_object_mut());
+                if let Some(legend_map) = legend {
+                    legend_map.insert("symbolType".to_string(), json!("circle"));
+                } else {
+                    channel["legend"] = json!({
+                        "symbolType": "circle"
+                    });
+                }
+            }
+        }
+
         encoding.insert(
             "xOffset".to_string(),
             json!({
