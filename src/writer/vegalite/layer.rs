@@ -62,9 +62,10 @@ pub fn validate_layer_columns(layer: &Layer, data: &DataFrame, layer_idx: usize)
                 } else {
                     " (global data)".to_string()
                 };
+                let display_col = naming::extract_aesthetic_name(col).unwrap_or(col.as_str());
                 return Err(GgsqlError::ValidationError(format!(
                     "Column '{}' referenced in aesthetic '{}' (layer {}{}) does not exist.\nAvailable columns: {}",
-                    col,
+                    display_col,
                     aesthetic,
                     layer_idx + 1,
                     source_desc,

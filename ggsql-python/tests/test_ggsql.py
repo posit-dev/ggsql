@@ -10,6 +10,7 @@ Rust logic (parsing, Vega-Lite generation) is tested in the Rust test suite.
 
 import json
 
+import duckdb
 import pytest
 import polars as pl
 import altair
@@ -399,8 +400,16 @@ class TestCustomReader:
         """Custom reader with execute_sql() method works."""
 
         class SimpleReader:
+            def __init__(self):
+                self.conn = duckdb.connect()
+                self.conn.execute(
+                    "CREATE TABLE data AS SELECT * FROM ("
+                    "VALUES (1, 10), (2, 20), (3, 30)"
+                    ") AS t(x, y)"
+                )
+
             def execute_sql(self, sql: str) -> pl.DataFrame:
-                return pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
+                return self.conn.execute(sql).pl()
 
         reader = SimpleReader()
         spec = ggsql.execute("SELECT * FROM data VISUALISE x, y DRAW point", reader)
@@ -411,19 +420,16 @@ class TestCustomReader:
 
         class RegisterReader:
             def __init__(self):
-                self.tables = {}
+                self.conn = duckdb.connect()
 
             def execute_sql(self, sql: str) -> pl.DataFrame:
-                # Simple: just return the first registered table
-                if self.tables:
-                    return next(iter(self.tables.values()))
-                return pl.DataFrame({"x": [1], "y": [2]})
+                return self.conn.execute(sql).pl()
 
             def supports_register(self) -> bool:
                 return True
 
             def register(self, name: str, df: pl.DataFrame) -> None:
-                self.tables[name] = df
+                self.conn.register(name, df)
 
         reader = RegisterReader()
         spec = ggsql.execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point", reader)
@@ -460,17 +466,20 @@ class TestCustomReader:
     def test_custom_reader_can_render(self):
         """Custom reader result can be rendered to Vega-Lite."""
 
-        class StaticReader:
-            def execute_sql(self, sql: str) -> pl.DataFrame:
-                return pl.DataFrame(
-                    {
-                        "x": [1, 2, 3, 4, 5],
-                        "y": [10, 40, 20, 50, 30],
-                        "category": ["A", "B", "A", "B", "A"],
-                    }
+        class DuckDBBackedReader:
+            def __init__(self):
+                self.conn = duckdb.connect()
+                self.conn.execute(
+                    "CREATE TABLE data AS SELECT * FROM ("
+                    "VALUES (1, 10, 'A'), (2, 40, 'B'), (3, 20, 'A'), "
+                    "(4, 50, 'B'), (5, 30, 'A')"
+                    ") AS t(x, y, category)"
                 )
 
-        reader = StaticReader()
+            def execute_sql(self, sql: str) -> pl.DataFrame:
+                return self.conn.execute(sql).pl()
+
+        reader = DuckDBBackedReader()
         spec = ggsql.execute(
             "SELECT * FROM data VISUALISE x, y, category AS color DRAW point",
             reader,
@@ -488,11 +497,16 @@ class TestCustomReader:
 
         class RecordingReader:
             def __init__(self):
+                self.conn = duckdb.connect()
+                self.conn.execute(
+                    "CREATE TABLE data AS SELECT * FROM ("
+                    "VALUES (1, 2)) AS t(x, y)"
+                )
                 self.execute_calls = []
 
             def execute_sql(self, sql: str) -> pl.DataFrame:
                 self.execute_calls.append(sql)
-                return pl.DataFrame({"x": [1], "y": [2]})
+                return self.conn.execute(sql).pl()
 
         reader = RecordingReader()
         ggsql.execute(
