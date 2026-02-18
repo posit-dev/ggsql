@@ -457,4 +457,148 @@ mod tests {
         let result = reader.execute(query);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_binned_fill_legend_renders_threshold_scale() {
+        // End-to-end test for binned fill scale rendering to Vega-Lite
+        // Verifies that binned non-positional aesthetics use threshold scale type
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create data with values that span the binned range
+        // Binned scales use FROM [min, max] for range and SETTING breaks => [...] for explicit breaks
+        let query = r#"
+            SELECT * FROM (VALUES
+                (1, 10, 15.0),
+                (2, 20, 35.0),
+                (3, 30, 55.0),
+                (4, 40, 85.0)
+            ) AS t(x, y, value)
+            VISUALISE
+            DRAW tile MAPPING x AS x, y AS y, value AS fill
+            SCALE BINNED fill FROM [0, 100] TO viridis SETTING breaks => [0, 25, 50, 75, 100]
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+
+        // Verify spec structure
+        assert_eq!(spec.plot().layers.len(), 1);
+        // Note: scales may include auto-generated x/y scales plus the explicit fill scale
+        assert!(
+            spec.plot().find_scale("fill").is_some(),
+            "Should have a fill scale"
+        );
+
+        // Render to Vega-Lite
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+        let vl: serde_json::Value = serde_json::from_str(&result).unwrap();
+
+        // Verify threshold scale type for fill
+        let fill_scale = &vl["layer"][0]["encoding"]["fill"]["scale"];
+        assert_eq!(
+            fill_scale["type"],
+            "threshold",
+            "Binned fill should use threshold scale type. Got: {}",
+            serde_json::to_string_pretty(&vl["layer"][0]["encoding"]["fill"]).unwrap()
+        );
+
+        // Verify internal breaks as domain (excludes first and last terminals)
+        // breaks = [0, 25, 50, 75, 100] → domain = [25, 50, 75]
+        let domain = fill_scale["domain"].as_array().unwrap();
+        assert_eq!(
+            domain.len(),
+            3,
+            "Threshold domain should have internal breaks only. Got: {:?}",
+            domain
+        );
+        assert_eq!(domain[0], 25.0);
+        assert_eq!(domain[1], 50.0);
+        assert_eq!(domain[2], 75.0);
+
+        // Verify color output - viridis palette gets expanded to an explicit range array
+        // for threshold scales (Vega-Lite needs explicit colors for threshold domain)
+        assert!(
+            fill_scale["range"].is_array() || fill_scale["scheme"] == "viridis",
+            "Should have color range or scheme. Got scale: {}",
+            serde_json::to_string_pretty(fill_scale).unwrap()
+        );
+
+        // Verify legend values
+        // For `fill` alone (single binned legend scale), uses gradient legend with all 5 break values
+        // For symbol legends (multiple binned scales or non-gradient aesthetics), would have N-1 values
+        let legend_values = &vl["layer"][0]["encoding"]["fill"]["legend"]["values"];
+        assert!(
+            legend_values.is_array(),
+            "Legend should have values array. Got: {}",
+            serde_json::to_string_pretty(&vl["layer"][0]["encoding"]["fill"]["legend"]).unwrap()
+        );
+        let values = legend_values.as_array().unwrap();
+        assert_eq!(
+            values.len(),
+            5,
+            "Gradient legend should have all 5 break values. Got: {:?}",
+            values
+        );
+    }
+
+    #[test]
+    fn test_binned_color_legend_with_label_mapping() {
+        // Test binned color scale with custom labels renders correctly
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            SELECT * FROM (VALUES
+                (1, 10, 20.0),
+                (2, 20, 60.0),
+                (3, 30, 90.0)
+            ) AS t(x, y, score)
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y, score AS color
+            SCALE BINNED color FROM [0, 100] TO ['blue', 'yellow', 'red'] SETTING breaks => [0, 50, 100]
+                RENAMING 0 => 'Low', 50 => 'High'
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+        let vl: serde_json::Value = serde_json::from_str(&result).unwrap();
+
+        // Verify threshold scale
+        // Note: "color" aesthetic is mapped to "stroke" for point geom (not fill)
+        let encoding = if vl["layer"].is_array() {
+            &vl["layer"][0]["encoding"]
+        } else {
+            &vl["encoding"]
+        };
+        // Find the stroke or fill encoding (color maps to one of these)
+        let color_encoding = if encoding["stroke"].is_object() {
+            &encoding["stroke"]
+        } else {
+            &encoding["fill"]
+        };
+        assert_eq!(
+            color_encoding["scale"]["type"],
+            "threshold",
+            "Binned color should use threshold scale. Got encoding: {}",
+            serde_json::to_string_pretty(color_encoding).unwrap()
+        );
+
+        // Verify labelExpr exists for custom labels
+        let legend = &color_encoding["legend"];
+        assert!(
+            legend["labelExpr"].is_string(),
+            "Legend should have labelExpr for custom labels. Got legend: {}",
+            serde_json::to_string_pretty(legend).unwrap()
+        );
+
+        let label_expr = legend["labelExpr"].as_str().unwrap_or("");
+        // For symbol legends, VL generates range-style labels like "0 – 50"
+        // Our labelExpr should map these to custom range formats
+        assert!(
+            label_expr.contains("Low") || label_expr.contains("High"),
+            "labelExpr should contain custom labels, got: {}",
+            label_expr
+        );
+    }
 }

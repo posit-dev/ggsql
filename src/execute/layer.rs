@@ -372,6 +372,22 @@ where
     // Build the aesthetic-named schema for stat transforms
     let aesthetic_schema: Schema = build_aesthetic_schema(layer, schema);
 
+    // Collect literal aesthetic column names BEFORE conversion to Column values.
+    // Literal columns contain constant values (same for every row), so adding them to
+    // GROUP BY doesn't affect aggregation results - they're simply preserved through grouping.
+    let literal_columns: Vec<String> = layer
+        .mappings
+        .aesthetics
+        .iter()
+        .filter_map(|(aesthetic, value)| {
+            if value.is_literal() {
+                Some(naming::aesthetic_column(aesthetic))
+            } else {
+                None
+            }
+        })
+        .collect();
+
     // Update mappings to use prefixed aesthetic names
     // This must happen BEFORE stat transforms so they use aesthetic names
     layer.update_mappings_for_aesthetic_columns();
@@ -390,6 +406,15 @@ where
             if !group_by.contains(&var) {
                 group_by.push(var);
             }
+        }
+    }
+
+    // Add literal aesthetic columns to group_by so they survive stat transforms.
+    // Since literal columns contain constant values (same for every row), adding them
+    // to GROUP BY doesn't affect aggregation results - they're simply preserved.
+    for col in &literal_columns {
+        if !group_by.contains(col) {
+            group_by.push(col.clone());
         }
     }
 
