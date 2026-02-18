@@ -2,7 +2,6 @@
 //!
 //! Provides a reader for DuckDB databases with direct Polars DataFrame integration.
 
-use crate::reader::data::init_builtin_data;
 use crate::reader::{connection::ConnectionInfo, Reader};
 use crate::{DataFrame, GgsqlError, Result};
 use arrow::ipc::reader::FileReader;
@@ -10,6 +9,7 @@ use duckdb::vtab::arrow::{arrow_recordbatch_to_query_params, ArrowVTab};
 use duckdb::{params, Connection};
 use polars::io::SerWriter;
 use polars::prelude::*;
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::io::Cursor;
 
@@ -33,7 +33,7 @@ use std::io::Cursor;
 /// ```
 pub struct DuckDBReader {
     conn: Connection,
-    registered_tables: HashSet<String>,
+    registered_tables: RefCell<HashSet<String>>,
 }
 
 impl DuckDBReader {
@@ -79,7 +79,7 @@ impl DuckDBReader {
 
         Ok(Self {
             conn,
-            registered_tables: HashSet::new(),
+            registered_tables: RefCell::new(HashSet::new()),
         })
     }
 
@@ -388,6 +388,13 @@ impl Reader for DuckDBReader {
     fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
         use polars::prelude::*;
 
+        // Register builtin datasets if referenced
+        #[cfg(feature = "builtin-data")]
+        super::data::register_builtin_datasets_duckdb(sql, &self.conn)?;
+
+        // Rewrite ggsql:name → __ggsql_data_name__ in SQL
+        let sql = super::data::rewrite_namespaced_sql(sql)?;
+
         // Check if this is a DDL statement (CREATE, DROP, INSERT, UPDATE, DELETE, ALTER)
         // DDL statements don't return rows, so we handle them specially
         let trimmed = sql.trim().to_uppercase();
@@ -398,21 +405,10 @@ impl Reader for DuckDBReader {
             || trimmed.starts_with("DELETE ")
             || trimmed.starts_with("ALTER ");
 
-        // Initialise built-in datasets
-        let inits = init_builtin_data(sql)?;
-        for init in inits {
-            if let Err(e) = self.conn.execute(&init, params![]) {
-                return Err(GgsqlError::ReaderError(format!(
-                    "Failed to initialise built-in dataset: {}",
-                    e
-                )));
-            }
-        }
-
         if is_ddl {
             // For DDL, just execute and return an empty DataFrame
             self.conn
-                .execute(sql, params![])
+                .execute(&sql, params![])
                 .map_err(|e| GgsqlError::ReaderError(format!("Failed to execute DDL: {}", e)))?;
 
             // Return empty DataFrame for DDL statements
@@ -424,7 +420,7 @@ impl Reader for DuckDBReader {
         // Prepare and execute statement to get schema
         let mut stmt = self
             .conn
-            .prepare(sql)
+            .prepare(&sql)
             .map_err(|e| GgsqlError::ReaderError(format!("Failed to prepare SQL: {}", e)))?;
 
         // Execute to populate schema info
@@ -504,39 +500,84 @@ impl Reader for DuckDBReader {
         Ok(df)
     }
 
-    fn register(&mut self, name: &str, df: DataFrame) -> Result<()> {
+    fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
         // Validate table name
         validate_table_name(name)?;
 
         // Check for duplicates
-        if self.table_exists(name)? {
+        if !replace && self.table_exists(name)? {
             return Err(GgsqlError::ReaderError(format!(
                 "Table '{}' already exists",
                 name
             )));
         }
 
-        // Convert DataFrame to Arrow query params
-        let params = dataframe_to_arrow_params(df)?;
+        // Workaround for a duckdb-rs limitation (not a DuckDB limitation).
+        //
+        // duckdb-rs's `ArrowVTab` writes each RecordBatch into a single DuckDB
+        // `DataChunk`, which has a fixed capacity of `STANDARD_VECTOR_SIZE`.
+        // That constant is defined in DuckDB's C++ source at
+        // `src/include/duckdb/common/constants.hpp` and is currently 2048.
+        // When a RecordBatch exceeds this, `FlatVector::copy` panics with
+        // `assertion failed: data.len() <= self.capacity()`.
+        //
+        // We chunk large DataFrames to stay within this limit. The first chunk
+        // creates the table (letting DuckDB infer the schema from Arrow), and
+        // subsequent chunks INSERT into it.
+        const MAX_ARROW_BATCH_ROWS: usize = 2048;
+        let total_rows = df.height();
+        let create_or_replace = if replace {
+            "CREATE OR REPLACE"
+        } else {
+            "CREATE"
+        };
 
-        // Create temp table from Arrow data
-        let sql = format!(
-            "CREATE TEMP TABLE \"{}\" AS SELECT * FROM arrow(?, ?)",
-            name
-        );
-        self.conn.execute(&sql, params).map_err(|e| {
-            GgsqlError::ReaderError(format!("Failed to register table '{}': {}", name, e))
-        })?;
+        if total_rows <= MAX_ARROW_BATCH_ROWS {
+            // Small DataFrame: register in a single batch
+            let params = dataframe_to_arrow_params(df)?;
+            let sql = format!(
+                "{} TEMP TABLE \"{}\" AS SELECT * FROM arrow(?, ?)",
+                create_or_replace, name
+            );
+            self.conn.execute(&sql, params).map_err(|e| {
+                GgsqlError::ReaderError(format!("Failed to register table '{}': {}", name, e))
+            })?;
+        } else {
+            // Large DataFrame: create table from first chunk, then insert remaining chunks
+            let first_chunk = df.slice(0, MAX_ARROW_BATCH_ROWS);
+            let params = dataframe_to_arrow_params(first_chunk)?;
+            let create_sql = format!(
+                "{} TEMP TABLE \"{}\" AS SELECT * FROM arrow(?, ?)",
+                create_or_replace, name
+            );
+            self.conn.execute(&create_sql, params).map_err(|e| {
+                GgsqlError::ReaderError(format!("Failed to register table '{}': {}", name, e))
+            })?;
+
+            let mut offset = MAX_ARROW_BATCH_ROWS;
+            while offset < total_rows {
+                let chunk_size = std::cmp::min(MAX_ARROW_BATCH_ROWS, total_rows - offset);
+                let chunk = df.slice(offset as i64, chunk_size);
+                let params = dataframe_to_arrow_params(chunk)?;
+                let insert_sql = format!("INSERT INTO \"{}\" SELECT * FROM arrow(?, ?)", name);
+                self.conn.execute(&insert_sql, params).map_err(|e| {
+                    GgsqlError::ReaderError(format!(
+                        "Failed to insert chunk into table '{}': {}",
+                        name, e
+                    ))
+                })?;
+                offset += chunk_size;
+            }
+        }
 
         // Track the table so we can unregister it later
-        self.registered_tables.insert(name.to_string());
-
+        self.registered_tables.borrow_mut().insert(name.to_string());
         Ok(())
     }
 
-    fn unregister(&mut self, name: &str) -> Result<()> {
+    fn unregister(&self, name: &str) -> Result<()> {
         // Only allow unregistering tables we created via register()
-        if !self.registered_tables.contains(name) {
+        if !self.registered_tables.borrow().contains(name) {
             return Err(GgsqlError::ReaderError(format!(
                 "Table '{}' was not registered via this reader",
                 name
@@ -550,13 +591,9 @@ impl Reader for DuckDBReader {
         })?;
 
         // Remove from tracking
-        self.registered_tables.remove(name);
+        self.registered_tables.borrow_mut().remove(name);
 
         Ok(())
-    }
-
-    fn supports_register(&self) -> bool {
-        true
     }
 }
 
@@ -636,7 +673,7 @@ mod tests {
 
     #[test]
     fn test_register_and_query() {
-        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         // Create a DataFrame
         let df = DataFrame::new(vec![
@@ -646,7 +683,7 @@ mod tests {
         .unwrap();
 
         // Register the DataFrame
-        reader.register("my_table", df).unwrap();
+        reader.register("my_table", df, false).unwrap();
 
         // Query the registered table
         let result = reader
@@ -658,16 +695,16 @@ mod tests {
 
     #[test]
     fn test_register_duplicate_name_errors() {
-        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         let df1 = DataFrame::new(vec![Column::new("a".into(), vec![1i32])]).unwrap();
         let df2 = DataFrame::new(vec![Column::new("b".into(), vec![2i32])]).unwrap();
 
         // First registration should succeed
-        reader.register("dup_table", df1).unwrap();
+        reader.register("dup_table", df1, false).unwrap();
 
-        // Second registration with same name should fail
-        let result = reader.register("dup_table", df2);
+        // Second registration with same name should fail (when replace=false)
+        let result = reader.register("dup_table", df2, false);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("already exists"));
@@ -675,16 +712,16 @@ mod tests {
 
     #[test]
     fn test_register_invalid_table_names() {
-        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let df = DataFrame::new(vec![Column::new("a".into(), vec![1i32])]).unwrap();
 
         // Empty name
-        let result = reader.register("", df.clone());
+        let result = reader.register("", df.clone(), false);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("cannot be empty"));
 
         // Name with double quote
-        let result = reader.register("bad\"name", df.clone());
+        let result = reader.register("bad\"name", df.clone(), false);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -692,7 +729,7 @@ mod tests {
             .contains("invalid character"));
 
         // Name with null byte
-        let result = reader.register("bad\0name", df.clone());
+        let result = reader.register("bad\0name", df.clone(), false);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -701,7 +738,7 @@ mod tests {
 
         // Name too long
         let long_name = "a".repeat(200);
-        let result = reader.register(&long_name, df);
+        let result = reader.register(&long_name, df, false);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -710,14 +747,8 @@ mod tests {
     }
 
     #[test]
-    fn test_supports_register() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        assert!(reader.supports_register());
-    }
-
-    #[test]
     fn test_register_empty_dataframe() {
-        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         // Create an empty DataFrame with schema
         let df = DataFrame::new(vec![
@@ -726,7 +757,7 @@ mod tests {
         ])
         .unwrap();
 
-        reader.register("empty_table", df).unwrap();
+        reader.register("empty_table", df, false).unwrap();
 
         // Query should return empty result with correct schema
         let result = reader.execute_sql("SELECT * FROM empty_table").unwrap();
@@ -736,10 +767,10 @@ mod tests {
 
     #[test]
     fn test_unregister() {
-        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let df = DataFrame::new(vec![Column::new("x".into(), vec![1i32, 2, 3])]).unwrap();
 
-        reader.register("test_data", df).unwrap();
+        reader.register("test_data", df, false).unwrap();
 
         // Should be queryable
         let result = reader.execute_sql("SELECT * FROM test_data").unwrap();
@@ -755,7 +786,7 @@ mod tests {
 
     #[test]
     fn test_unregister_not_registered() {
-        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         // Create a table directly (not via register)
         reader
@@ -772,15 +803,80 @@ mod tests {
 
     #[test]
     fn test_reregister_after_unregister() {
-        let mut reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let df = DataFrame::new(vec![Column::new("x".into(), vec![1i32, 2, 3])]).unwrap();
 
-        reader.register("data", df.clone()).unwrap();
+        reader.register("data", df.clone(), false).unwrap();
         reader.unregister("data").unwrap();
 
         // Should be able to register again
-        reader.register("data", df).unwrap();
+        reader.register("data", df, false).unwrap();
         let result = reader.execute_sql("SELECT * FROM data").unwrap();
         assert_eq!(result.height(), 3);
+    }
+
+    #[test]
+    fn test_register_large_dataframe() {
+        // duckdb-rs Arrow vtab has a vector capacity of 2048 rows. DataFrames
+        // larger than this must be chunked to avoid a panic.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let n = 3000;
+        let ids: Vec<i32> = (0..n).collect();
+        let values: Vec<f64> = (0..n).map(|i| i as f64 * 1.5).collect();
+        let names: Vec<String> = (0..n).map(|i| format!("item_{}", i)).collect();
+
+        let df = DataFrame::new(vec![
+            Column::new("id".into(), ids),
+            Column::new("value".into(), values),
+            Column::new("name".into(), names),
+        ])
+        .unwrap();
+
+        reader.register("large_table", df, false).unwrap();
+
+        // Verify row count
+        let result = reader
+            .execute_sql("SELECT COUNT(*) as cnt FROM large_table")
+            .unwrap();
+        let count = result.column("cnt").unwrap().i64().unwrap().get(0).unwrap();
+        assert_eq!(count, n as i64);
+
+        // Verify first and last rows survived chunking intact
+        let result = reader
+            .execute_sql("SELECT id, name FROM large_table ORDER BY id LIMIT 1")
+            .unwrap();
+        assert_eq!(
+            result.column("id").unwrap().i32().unwrap().get(0).unwrap(),
+            0
+        );
+        assert_eq!(
+            result
+                .column("name")
+                .unwrap()
+                .str()
+                .unwrap()
+                .get(0)
+                .unwrap(),
+            "item_0"
+        );
+
+        let result = reader
+            .execute_sql("SELECT id, name FROM large_table ORDER BY id DESC LIMIT 1")
+            .unwrap();
+        assert_eq!(
+            result.column("id").unwrap().i32().unwrap().get(0).unwrap(),
+            (n - 1) as i32
+        );
+        assert_eq!(
+            result
+                .column("name")
+                .unwrap()
+                .str()
+                .unwrap()
+                .get(0)
+                .unwrap(),
+            format!("item_{}", n - 1)
+        );
     }
 }

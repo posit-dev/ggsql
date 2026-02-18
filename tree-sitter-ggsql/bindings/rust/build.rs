@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -120,8 +121,35 @@ fn main() {
     }
 
     // The generated files are in the grammar_dir/src directory
-    cc::Build::new()
+    let parser_path = src_dir.join("parser.c");
+    let mut compiler = cc::Build::new();
+    let mut opt_level = "3";
+
+    // set minimal C sysroot if wasm32-unknown-unknown
+    if std::env::var("TARGET").unwrap() == "wasm32-unknown-unknown" {
+        let sysroot_dir = Path::new("bindings/rust/wasm-sysroot");
+        compiler
+            .archiver("llvm-ar")
+            .include(sysroot_dir.join("include"));
+        opt_level = "z";
+        compiler
+            .include(&src_dir)
+            .opt_level_str(opt_level)
+            .file(sysroot_dir.join("src").join("stdio.c"))
+            .file(sysroot_dir.join("src").join("stdlib.c"))
+            .file(sysroot_dir.join("src").join("string.c"))
+            .file(sysroot_dir.join("src").join("wctype.c"))
+            .compile("stdlib");
+    }
+
+    compiler
         .include(&src_dir)
-        .file(&parser_c)
-        .compile("tree-sitter-ggsql");
+        .opt_level_str(opt_level)
+        .flag_if_supported("-Wno-unused-parameter")
+        .flag_if_supported("-Wno-unused-but-set-variable")
+        .flag_if_supported("-Wno-trigraphs")
+        .file(&parser_path)
+        .compile("parser");
+
+    println!("cargo:rerun-if-changed={}", parser_path.to_str().unwrap());
 }

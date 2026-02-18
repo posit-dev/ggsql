@@ -23,17 +23,17 @@ impl GeomTrait for Histogram {
         GeomAesthetics {
             supported: &["x", "weight", "fill", "stroke", "opacity"],
             required: &["x"],
-            // y and x2 are produced by stat_histogram but not valid for manual MAPPING
-            hidden: &["y", "x2"],
+            // y and xend are produced by stat_histogram but not valid for manual MAPPING
+            hidden: &["y", "xend"],
         }
     }
 
     fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
         &[
             ("x", DefaultAestheticValue::Column("bin")),
-            ("x2", DefaultAestheticValue::Column("bin_end")),
+            ("xend", DefaultAestheticValue::Column("bin_end")),
             ("y", DefaultAestheticValue::Column("count")),
-            ("y2", DefaultAestheticValue::Number(0.0)),
+            ("yend", DefaultAestheticValue::Number(0.0)),
         ]
     }
 
@@ -124,7 +124,7 @@ fn stat_histogram(
 
     // Query min/max to compute bin width
     let stats_query = format!(
-        "SELECT MIN({x}) as min_val, MAX({x}) as max_val FROM ({query})",
+        "SELECT MIN({x}) as min_val, MAX({x}) as max_val FROM ({query}) AS __ggsql_stats__",
         x = x_col,
         query = query
     );

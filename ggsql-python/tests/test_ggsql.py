@@ -85,10 +85,6 @@ class TestDuckDBReader:
         assert isinstance(result, pl.DataFrame)
         assert result.shape == (2, 2)
 
-    def test_supports_register(self):
-        reader = ggsql.DuckDBReader("duckdb://memory")
-        assert reader.supports_register() is True
-
     def test_invalid_connection_string(self):
         with pytest.raises(ValueError):
             ggsql.DuckDBReader("invalid://connection")
@@ -396,25 +392,6 @@ class TestTwoStageAPIIntegration:
 class TestCustomReader:
     """Tests for custom Python reader support."""
 
-    def test_simple_custom_reader(self):
-        """Custom reader with execute_sql() method works."""
-
-        class SimpleReader:
-            def __init__(self):
-                self.conn = duckdb.connect()
-                self.conn.execute(
-                    "CREATE TABLE data AS SELECT * FROM ("
-                    "VALUES (1, 10), (2, 20), (3, 30)"
-                    ") AS t(x, y)"
-                )
-
-            def execute_sql(self, sql: str) -> pl.DataFrame:
-                return self.conn.execute(sql).pl()
-
-        reader = SimpleReader()
-        spec = ggsql.execute("SELECT * FROM data VISUALISE x, y DRAW point", reader)
-        assert spec.metadata()["rows"] == 3
-
     def test_custom_reader_with_register(self):
         """Custom reader with register() support."""
 
@@ -425,10 +402,7 @@ class TestCustomReader:
             def execute_sql(self, sql: str) -> pl.DataFrame:
                 return self.conn.execute(sql).pl()
 
-            def supports_register(self) -> bool:
-                return True
-
-            def register(self, name: str, df: pl.DataFrame) -> None:
+            def register(self, name: str, df: pl.DataFrame, _replace: bool) -> None:
                 self.conn.register(name, df)
 
         reader = RegisterReader()
@@ -479,6 +453,9 @@ class TestCustomReader:
             def execute_sql(self, sql: str) -> pl.DataFrame:
                 return self.conn.execute(sql).pl()
 
+            def register(self, name: str, df: pl.DataFrame, _replace: bool) -> None:
+                self.conn.register(name, df)
+
         reader = DuckDBBackedReader()
         spec = ggsql.execute(
             "SELECT * FROM data VISUALISE x, y, category AS color DRAW point",
@@ -499,14 +476,16 @@ class TestCustomReader:
             def __init__(self):
                 self.conn = duckdb.connect()
                 self.conn.execute(
-                    "CREATE TABLE data AS SELECT * FROM ("
-                    "VALUES (1, 2)) AS t(x, y)"
+                    "CREATE TABLE data AS SELECT * FROM (VALUES (1, 2)) AS t(x, y)"
                 )
                 self.execute_calls = []
 
             def execute_sql(self, sql: str) -> pl.DataFrame:
                 self.execute_calls.append(sql)
                 return self.conn.execute(sql).pl()
+
+            def register(self, name: str, df: pl.DataFrame, _replace: bool) -> None:
+                self.conn.register(name, df)
 
         reader = RecordingReader()
         ggsql.execute(
@@ -530,11 +509,10 @@ class TestCustomReader:
             def execute_sql(self, sql: str) -> pl.DataFrame:
                 return self.con.con.execute(sql).pl()
 
-            def supports_register(self) -> bool:
-                return True
-
-            def register(self, name: str, df: pl.DataFrame) -> None:
-                self.con.create_table(name, df.to_arrow(), overwrite=True)
+            def register(
+                self, name: str, df: pl.DataFrame, replace: bool = True
+            ) -> None:
+                self.con.create_table(name, df.to_arrow(), overwrite=replace)
 
             def unregister(self, name: str) -> None:
                 self.con.drop_table(name)

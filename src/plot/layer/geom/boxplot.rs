@@ -36,7 +36,7 @@ impl GeomTrait for Boxplot {
             ],
             required: &["x", "y"],
             // Internal aesthetics produced by stat transform
-            hidden: &["type", "y", "y2"],
+            hidden: &["type", "y", "yend"],
         }
     }
 
@@ -68,7 +68,7 @@ impl GeomTrait for Boxplot {
     fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
         &[
             ("y", DefaultAestheticValue::Column("value")),
-            ("y2", DefaultAestheticValue::Column("value2")),
+            ("yend", DefaultAestheticValue::Column("value2")),
             ("type", DefaultAestheticValue::Column("type")),
         ]
     }
@@ -157,55 +157,8 @@ fn stat_boxplot(
     })
 }
 
-fn boxplot_sql_assign_quartiles(from: &str, groups: &[String], value: &str) -> String {
-    // Selects all relevant columns and adds a quartile column.
-    // NTILE(4) may create uneven groups
-    format!(
-        "SELECT
-          {value},
-          {groups},
-          NTILE(4) OVER (PARTITION BY {groups} ORDER BY {value} ASC) AS _Q
-        FROM ({from})
-        WHERE {value} IS NOT NULL",
-        value = value,
-        groups = groups.join(", "),
-        from = from
-    )
-}
-
-fn boxplot_sql_quartile_minmax(from: &str, groups: &[String], value: &str) -> String {
-    // Compute the min and max for every quartile.
-    // The verbosity here is to pivot the table to a wide format.
-    // The output is a table with 1 row per groups annotated with quartile metrics
-    format!(
-        "SELECT
-          MIN(CASE WHEN _Q = 1 THEN {value} END) AS Q1_min,
-          MAX(CASE WHEN _Q = 1 THEN {value} END) AS Q1_max,
-          MIN(CASE WHEN _Q = 2 THEN {value} END) AS Q2_min,
-          MAX(CASE WHEN _Q = 2 THEN {value} END) AS Q2_max,
-          MIN(CASE WHEN _Q = 3 THEN {value} END) AS Q3_min,
-          MAX(CASE WHEN _Q = 3 THEN {value} END) AS Q3_max,
-          MIN(CASE WHEN _Q = 4 THEN {value} END) AS Q4_min,
-          MAX(CASE WHEN _Q = 4 THEN {value} END) AS Q4_max,
-          {groups}
-        FROM ({from})
-        GROUP BY {groups}",
-        groups = groups.join(", "),
-        value = value,
-        from = from
-    )
-}
-
-fn boxplot_sql_compute_fivenum(from: &str, groups: &[String], coef: &f64) -> String {
-    // Here we compute the 5 statistics:
-    // * lower: lower whisker
-    // * upper: upper whisker
-    // * q1: box start
-    // * q3: box end
-    // * median
-    // We're assuming equally sized quartiles here, but we may have 1-member
-    // differences. For large datasets this shouldn't be a problem, but in smaller
-    // datasets one might notice.
+fn boxplot_sql_compute_summary(from: &str, groups: &[String], value: &str, coef: &f64) -> String {
+    let groups_str = groups.join(", ");
     format!(
         "SELECT
           *,
@@ -213,24 +166,21 @@ fn boxplot_sql_compute_fivenum(from: &str, groups: &[String], coef: &f64) -> Str
           LEAST(   q3 + {coef} * (q3 - q1), max) AS upper
         FROM (
           SELECT
-            Q1_min AS min,
-            Q4_max AS max,
-            (Q2_max + Q3_min) / 2.0 AS median,
-            (Q1_max + Q2_min) / 2.0 AS q1,
-            (Q3_max + Q4_min) / 2.0 AS q3,
-            {groups}
-          FROM ({from})
-        )",
+            {groups},
+            MIN({value}) AS min,
+            MAX({value}) AS max,
+            QUANTILE_CONT({value}, 0.25) AS q1,
+            QUANTILE_CONT({value}, 0.50) AS median,
+            QUANTILE_CONT({value}, 0.75) AS q3
+          FROM ({from}) AS __ggsql_qt__
+          WHERE {value} IS NOT NULL
+          GROUP BY {groups}
+        ) AS __ggsql_fn__",
         coef = coef,
-        groups = groups.join(", "),
+        groups = groups_str,
+        value = value,
         from = from
     )
-}
-
-fn boxplot_sql_compute_summary(from: &str, groups: &[String], value: &str, coef: &f64) -> String {
-    let query = boxplot_sql_assign_quartiles(from, groups, value);
-    let query = boxplot_sql_quartile_minmax(&query, groups, value);
-    boxplot_sql_compute_fivenum(&query, groups, coef)
 }
 
 fn boxplot_sql_filter_outliers(groups: &[String], value: &str, from: &str) -> String {
@@ -272,7 +222,7 @@ fn boxplot_sql_append_outliers(
     let groups_str = groups.join(", ");
 
     // Helper to build visual-element rows from summary table
-    // Each row type maps to one visual element with y and y2 where needed
+    // Each row type maps to one visual element with y and yend where needed
     let build_summary_select = |table: &str| {
         format!(
             "SELECT {groups}, 'lower_whisker' AS {type_name}, q1 AS {value_name}, lower AS {value2_name} FROM {table}
@@ -350,41 +300,35 @@ mod tests {
     // ==================== SQL Generation Tests (Compact) ====================
 
     #[test]
-    fn test_sql_assign_quartiles_basic() {
+    fn test_sql_compute_summary_basic() {
         let groups = vec!["category".to_string()];
-        let result = boxplot_sql_assign_quartiles("data", &groups, "value");
-        assert!(result.contains("NTILE(4)"));
-        assert!(result.contains("PARTITION BY category"));
+        let result = boxplot_sql_compute_summary("data", &groups, "value", &1.5);
+        assert!(result.contains("QUANTILE_CONT(value, 0.25)"));
+        assert!(result.contains("QUANTILE_CONT(value, 0.50)"));
+        assert!(result.contains("QUANTILE_CONT(value, 0.75)"));
+        assert!(result.contains("MIN(value) AS min"));
+        assert!(result.contains("MAX(value) AS max"));
         assert!(result.contains("WHERE value IS NOT NULL"));
-    }
-
-    #[test]
-    fn test_sql_assign_quartiles_multiple_groups() {
-        let groups = vec!["cat".to_string(), "region".to_string()];
-        let result = boxplot_sql_assign_quartiles("tbl", &groups, "val");
-        assert!(result.contains("PARTITION BY cat, region"));
-    }
-
-    #[test]
-    fn test_sql_quartile_minmax_structure() {
-        let groups = vec!["grp".to_string()];
-        let result = boxplot_sql_quartile_minmax("query", &groups, "v");
-        assert!(result.contains("Q1_min"));
-        assert!(result.contains("Q4_max"));
-        assert!(result.contains("CASE WHEN _Q = 1"));
-        assert!(result.contains("GROUP BY grp"));
-    }
-
-    #[test]
-    fn test_sql_compute_fivenum_coef() {
-        let groups = vec!["x".to_string()];
-        let result = boxplot_sql_compute_fivenum("q", &groups, &2.5);
-        assert!(result.contains("2.5"));
-        assert!(result.contains("AS lower"));
-        assert!(result.contains("AS upper"));
-        assert!(result.contains("AS median"));
+        assert!(result.contains("GROUP BY category"));
         assert!(result.contains("GREATEST"));
         assert!(result.contains("LEAST"));
+    }
+
+    #[test]
+    fn test_sql_compute_summary_multiple_groups() {
+        let groups = vec!["cat".to_string(), "region".to_string()];
+        let result = boxplot_sql_compute_summary("tbl", &groups, "val", &1.5);
+        assert!(result.contains("GROUP BY cat, region"));
+        assert!(result.contains("QUANTILE_CONT(val, 0.25)"));
+    }
+
+    #[test]
+    fn test_sql_compute_summary_custom_coef() {
+        let groups = vec!["x".to_string()];
+        let result = boxplot_sql_compute_summary("q", &groups, "y", &2.5);
+        assert!(result.contains("2.5"));
+        assert!(result.contains("GREATEST(q1 - 2.5 * (q3 - q1), min)"));
+        assert!(result.contains("LEAST(   q3 + 2.5 * (q3 - q1), max)"));
     }
 
     #[test]
@@ -411,30 +355,16 @@ mod tests {
           LEAST(   q3 + 1.5 * (q3 - q1), max) AS upper
         FROM (
           SELECT
-            Q1_min AS min,
-            Q4_max AS max,
-            (Q2_max + Q3_min) / 2.0 AS median,
-            (Q1_max + Q2_min) / 2.0 AS q1,
-            (Q3_max + Q4_min) / 2.0 AS q3,
-            category
-          FROM (SELECT
-          MIN(CASE WHEN _Q = 1 THEN price END) AS Q1_min,
-          MAX(CASE WHEN _Q = 1 THEN price END) AS Q1_max,
-          MIN(CASE WHEN _Q = 2 THEN price END) AS Q2_min,
-          MAX(CASE WHEN _Q = 2 THEN price END) AS Q2_max,
-          MIN(CASE WHEN _Q = 3 THEN price END) AS Q3_min,
-          MAX(CASE WHEN _Q = 3 THEN price END) AS Q3_max,
-          MIN(CASE WHEN _Q = 4 THEN price END) AS Q4_min,
-          MAX(CASE WHEN _Q = 4 THEN price END) AS Q4_max,
-          category
-        FROM (SELECT
-          price,
-          category,
-          NTILE(4) OVER (PARTITION BY category ORDER BY price ASC) AS _Q
-        FROM (SELECT * FROM sales)
-        WHERE price IS NOT NULL)
-        GROUP BY category)
-        )"#;
+            category,
+            MIN(price) AS min,
+            MAX(price) AS max,
+            QUANTILE_CONT(price, 0.25) AS q1,
+            QUANTILE_CONT(price, 0.50) AS median,
+            QUANTILE_CONT(price, 0.75) AS q3
+          FROM (SELECT * FROM sales) AS __ggsql_qt__
+          WHERE price IS NOT NULL
+          GROUP BY category
+        ) AS __ggsql_fn__"#;
 
         assert_eq!(result, expected);
     }
@@ -450,43 +380,18 @@ mod tests {
           LEAST(   q3 + 1.5 * (q3 - q1), max) AS upper
         FROM (
           SELECT
-            Q1_min AS min,
-            Q4_max AS max,
-            (Q2_max + Q3_min) / 2.0 AS median,
-            (Q1_max + Q2_min) / 2.0 AS q1,
-            (Q3_max + Q4_min) / 2.0 AS q3,
-            region, product
-          FROM (SELECT
-          MIN(CASE WHEN _Q = 1 THEN revenue END) AS Q1_min,
-          MAX(CASE WHEN _Q = 1 THEN revenue END) AS Q1_max,
-          MIN(CASE WHEN _Q = 2 THEN revenue END) AS Q2_min,
-          MAX(CASE WHEN _Q = 2 THEN revenue END) AS Q2_max,
-          MIN(CASE WHEN _Q = 3 THEN revenue END) AS Q3_min,
-          MAX(CASE WHEN _Q = 3 THEN revenue END) AS Q3_max,
-          MIN(CASE WHEN _Q = 4 THEN revenue END) AS Q4_min,
-          MAX(CASE WHEN _Q = 4 THEN revenue END) AS Q4_max,
-          region, product
-        FROM (SELECT
-          revenue,
-          region, product,
-          NTILE(4) OVER (PARTITION BY region, product ORDER BY revenue ASC) AS _Q
-        FROM (SELECT * FROM data)
-        WHERE revenue IS NOT NULL)
-        GROUP BY region, product)
-        )"#;
+            region, product,
+            MIN(revenue) AS min,
+            MAX(revenue) AS max,
+            QUANTILE_CONT(revenue, 0.25) AS q1,
+            QUANTILE_CONT(revenue, 0.50) AS median,
+            QUANTILE_CONT(revenue, 0.75) AS q3
+          FROM (SELECT * FROM data) AS __ggsql_qt__
+          WHERE revenue IS NOT NULL
+          GROUP BY region, product
+        ) AS __ggsql_fn__"#;
 
         assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_boxplot_sql_compute_summary_custom_coef() {
-        let groups = vec!["x".to_string()];
-        let result = boxplot_sql_compute_summary("source_query", &groups, "y", &3.0);
-
-        // Verify coef parameter is properly interpolated
-        assert!(result.contains("3 *"));
-        assert!(result.contains("GREATEST(q1 - 3 * (q3 - q1), min)"));
-        assert!(result.contains("LEAST(   q3 + 3 * (q3 - q1), max)"));
     }
 
     #[test]
@@ -695,7 +600,7 @@ mod tests {
 
         assert_eq!(remappings.len(), 3);
         assert!(remappings.contains(&("y", DefaultAestheticValue::Column("value"))));
-        assert!(remappings.contains(&("y2", DefaultAestheticValue::Column("value2"))));
+        assert!(remappings.contains(&("yend", DefaultAestheticValue::Column("value2"))));
         assert!(remappings.contains(&("type", DefaultAestheticValue::Column("type"))));
     }
 

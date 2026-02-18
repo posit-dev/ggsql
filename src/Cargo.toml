@@ -31,7 +31,7 @@ csscolorparser.workspace = true
 palette.workspace = true
 
 # Data processing
-polars.workspace = true
+polars = { workspace = true, features = ["lazy", "sql"] }
 polars-ops.workspace = true
 
 # Readers
@@ -62,7 +62,7 @@ uuid.workspace = true
 
 # Web server (optional)
 axum = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["full"] }
 tower-http = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
@@ -74,13 +74,16 @@ pyo3 = { workspace = true, optional = true }
 proptest.workspace = true
 
 [features]
-default = ["duckdb", "sqlite", "vegalite"]
+default = ["duckdb", "sqlite", "vegalite", "ipc", "builtin-data"]
+ipc = ["polars/ipc"]
 duckdb = ["dep:duckdb", "dep:arrow"]
+polars-sql = ["polars/sql"]
+builtin-data = ["polars/parquet"]
 postgres = ["dep:postgres"]
 sqlite = ["dep:rusqlite"]
 vegalite = []
 ggplot2 = []
 python = ["dep:pyo3"]
 rest-api = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tracing", "dep:tracing-subscriber", "duckdb", "vegalite"]
-all-readers = ["duckdb", "postgres", "sqlite"]
+all-readers = ["duckdb", "postgres", "sqlite", "polars-sql"]
 all-writers = ["vegalite", "ggplot2", "plotters"]

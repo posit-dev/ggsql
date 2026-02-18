@@ -69,6 +69,9 @@ const LAYER_PREFIX: &str = concatcp!(GGSQL_PREFIX, "layer_");
 /// Full prefix for aesthetic columns: `__ggsql_aes_`
 const AES_PREFIX: &str = concatcp!(GGSQL_PREFIX, "aes_");
 
+/// Full prefix for builtin data tables: `__ggsql_data_`
+const DATA_PREFIX: &str = concatcp!(GGSQL_PREFIX, "data_");
+
 /// Key for global data in the layer data HashMap.
 /// Used as the key in PreparedData.data to store global data that applies to all layers.
 /// This is NOT a SQL table name - use `global_table()` for SQL statements.
@@ -127,6 +130,21 @@ pub fn cte_table(cte_name: &str) -> String {
         session_id(),
         GGSQL_SUFFIX
     )
+}
+
+/// Generate table name for a builtin dataset.
+///
+/// Used when rewriting `ggsql:penguins` to the internal table name.
+/// Format: `__ggsql_data_<name>__`
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// assert_eq!(naming::builtin_data_table("penguins"), "__ggsql_data_penguins__");
+/// assert_eq!(naming::builtin_data_table("airquality"), "__ggsql_data_airquality__");
+/// ```
+pub fn builtin_data_table(name: &str) -> String {
+    format!("{}{}{}", DATA_PREFIX, name, GGSQL_SUFFIX)
 }
 
 /// Generate column name for a constant aesthetic value.
@@ -267,21 +285,21 @@ pub fn is_synthetic_column(name: &str) -> bool {
 /// Generate bin end column name for a binned column.
 ///
 /// Used by the Vega-Lite writer to store the upper bound of a bin
-/// when using `bin: "binned"` encoding with x2/y2 channels.
+/// when using `bin: "binned"` encoding with xend/yend channels.
 ///
 /// If the column is an aesthetic column (e.g., `__ggsql_aes_x__`), returns
-/// the corresponding `2` aesthetic (e.g., `__ggsql_aes_x2__`).
+/// the corresponding `end` aesthetic (e.g., `__ggsql_aes_xend__`).
 ///
 /// # Example
 /// ```
 /// use ggsql::naming;
 /// assert_eq!(naming::bin_end_column("temperature"), "__ggsql_bin_end_temperature__");
-/// assert_eq!(naming::bin_end_column("__ggsql_aes_x__"), "__ggsql_aes_x2__");
+/// assert_eq!(naming::bin_end_column("__ggsql_aes_x__"), "__ggsql_aes_xend__");
 /// ```
 pub fn bin_end_column(column: &str) -> String {
-    // If it's an aesthetic column, use the x2/y2 naming convention
+    // If it's an aesthetic column, use the xend/yend naming convention
     if let Some(aesthetic) = extract_aesthetic_name(column) {
-        return aesthetic_column(&format!("{}2", aesthetic));
+        return aesthetic_column(&format!("{}end", aesthetic));
     }
     format!("{}bin_end_{}{}", GGSQL_PREFIX, column, GGSQL_SUFFIX)
 }
@@ -434,9 +452,18 @@ mod tests {
         assert_eq!(bin_end_column("x"), "__ggsql_bin_end_x__");
         assert_eq!(bin_end_column("value"), "__ggsql_bin_end_value__");
 
-        // Aesthetic columns use the x2/y2 convention
-        assert_eq!(bin_end_column("__ggsql_aes_x__"), "__ggsql_aes_x2__");
-        assert_eq!(bin_end_column("__ggsql_aes_y__"), "__ggsql_aes_y2__");
+        // Aesthetic columns use the xend/yend convention
+        assert_eq!(bin_end_column("__ggsql_aes_x__"), "__ggsql_aes_xend__");
+        assert_eq!(bin_end_column("__ggsql_aes_y__"), "__ggsql_aes_yend__");
+    }
+
+    #[test]
+    fn test_builtin_data_table() {
+        assert_eq!(builtin_data_table("penguins"), "__ggsql_data_penguins__");
+        assert_eq!(
+            builtin_data_table("airquality"),
+            "__ggsql_data_airquality__"
+        );
     }
 
     #[test]
@@ -447,6 +474,7 @@ mod tests {
         assert_eq!(CTE_PREFIX, "__ggsql_cte_");
         assert_eq!(LAYER_PREFIX, "__ggsql_layer_");
         assert_eq!(AES_PREFIX, "__ggsql_aes_");
+        assert_eq!(DATA_PREFIX, "__ggsql_data_");
     }
 
     #[test]

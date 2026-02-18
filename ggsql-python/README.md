@@ -125,10 +125,9 @@ reader = ggsql.DuckDBReader("duckdb:///path/to/file.db")  # File database
 
 **Methods:**
 
-- `register(name: str, df: polars.DataFrame)` - Register a DataFrame as a queryable table
+- `register(name: str, df: polars.DataFrame, replace: bool = False)` - Register a DataFrame as a queryable table
 - `unregister(name: str)` - Unregister a previously registered table
 - `execute_sql(sql: str) -> polars.DataFrame` - Execute SQL and return results
-- `supports_register() -> bool` - Check if registration is supported
 
 #### `VegaLiteWriter()`
 
@@ -262,11 +261,10 @@ writer = ggsql.VegaLiteWriter()
 json_output = writer.render(spec)
 ```
 
-**Optional methods** for custom readers:
+**Additional methods** for custom readers:
 
-- `supports_register() -> bool` - Return `True` if your reader supports DataFrame registration
-- `register(name: str, df: polars.DataFrame) -> None` - Register a DataFrame as a queryable table
-- `unregister(name: str) -> None` - Unregister a previously registered table
+- `register(name: str, df: polars.DataFrame, replace: bool = False) -> None` - Register a DataFrame as a queryable table (required)
+- `unregister(name: str) -> None` - Unregister a previously registered table (optional)
 
 ```python
 class AdvancedReader:
@@ -279,10 +277,7 @@ class AdvancedReader:
         # Your SQL execution logic here
         ...
 
-    def supports_register(self) -> bool:
-        return True
-
-    def register(self, name: str, df: pl.DataFrame) -> None:
+    def register(self, name: str, df: pl.DataFrame, replace: bool = False) -> None:
         self.tables[name] = df
 
     def unregister(self, name: str) -> None:
@@ -313,11 +308,8 @@ class IbisReader:
     def execute_sql(self, sql: str) -> pl.DataFrame:
         return self.con.con.execute(sql).pl()
 
-    def supports_register(self) -> bool:
-        return True
-
-    def register(self, name: str, df: pl.DataFrame) -> None:
-        self.con.create_table(name, df.to_arrow(), overwrite=True)
+    def register(self, name: str, df: pl.DataFrame, replace: bool = False) -> None:
+        self.con.create_table(name, df.to_arrow(), overwrite=replace)
 
     def unregister(self, name: str) -> None:
         self.con.drop_table(name)

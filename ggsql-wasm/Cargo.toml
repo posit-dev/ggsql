@@ -1,0 +1,26 @@
+[package]
+name = "ggsql-wasm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+csv = "1"
+polars = { version = "0.52", default-features = false, features = ["sql", "dtype-full"] }
+ggsql = { path = "../src", default-features = false, features = ["polars-sql", "vegalite"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1.35", features = ["full"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tokio = { version = "1.35", default-features = false }
+

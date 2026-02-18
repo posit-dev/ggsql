@@ -26,6 +26,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::transform::{Transform, TransformKind};
+use crate::plot::aesthetic::is_positional_aesthetic;
 use crate::plot::{ArrayElement, ColumnInfo, ParameterValue};
 
 // Scale type implementations
@@ -1318,15 +1319,6 @@ impl<'de> Deserialize<'de> for ScaleType {
 // Shared helpers for input range resolution
 // =============================================================================
 
-/// Check if an aesthetic is a positional aesthetic (x, y, and variants).
-/// Positional aesthetics support properties like `expand`.
-pub(super) fn is_positional_aesthetic(aesthetic: &str) -> bool {
-    matches!(
-        aesthetic,
-        "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
-    )
-}
-
 /// Check if input range contains any Null placeholders
 pub(crate) fn input_range_has_nulls(range: &[ArrayElement]) -> bool {
     range.iter().any(|e| matches!(e, ArrayElement::Null))
@@ -2348,11 +2340,13 @@ mod tests {
 
     #[test]
     fn test_expand_positional_vs_non_positional() {
+        use crate::plot::aesthetic::ALL_POSITIONAL;
+
         let mut props = HashMap::new();
         props.insert("expand".to_string(), ParameterValue::Number(0.1));
 
         // Positional aesthetics should allow expand
-        for aes in &["x", "y", "xmin", "ymax"] {
+        for aes in ALL_POSITIONAL.iter() {
             assert!(
                 ScaleType::continuous()
                     .resolve_properties(aes, &props)
@@ -2375,10 +2369,12 @@ mod tests {
 
     #[test]
     fn test_oob_defaults_by_aesthetic_type() {
+        use crate::plot::aesthetic::ALL_POSITIONAL;
+
         let props = HashMap::new();
 
         // Positional aesthetics default to 'keep'
-        for aesthetic in &["x", "y", "xmin", "xmax", "ymin", "ymax", "xend", "yend"] {
+        for aesthetic in ALL_POSITIONAL.iter() {
             let resolved = ScaleType::continuous()
                 .resolve_properties(aesthetic, &props)
                 .unwrap();

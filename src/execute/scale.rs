@@ -5,7 +5,8 @@
 //! and out-of-bounds (OOB) handling.
 
 use crate::naming;
-use crate::plot::layer::geom::{get_aesthetic_family, GeomAesthetics};
+use crate::plot::aesthetic::primary_aesthetic;
+use crate::plot::layer::geom::get_aesthetic_family;
 use crate::plot::scale::{
     default_oob, gets_default_scale, infer_scale_target_type, infer_transform_from_input_range,
     transform::Transform, OOB_CENSOR, OOB_KEEP, OOB_SQUISH,
@@ -32,11 +33,11 @@ pub fn create_missing_scales(spec: &mut Plot) {
     // (global mappings have already been merged into layers at this point)
     for layer in &spec.layers {
         for aesthetic in layer.mappings.aesthetics.keys() {
-            let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+            let primary = primary_aesthetic(aesthetic);
             used_aesthetics.insert(primary.to_string());
         }
         for aesthetic in layer.remappings.aesthetics.keys() {
-            let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+            let primary = primary_aesthetic(aesthetic);
             used_aesthetics.insert(primary.to_string());
         }
     }
@@ -73,7 +74,7 @@ pub fn create_missing_scales_post_stat(spec: &mut Plot) {
     // Collect all aesthetics currently in layer mappings
     for layer in &spec.layers {
         for aesthetic in layer.mappings.aesthetics.keys() {
-            let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+            let primary = primary_aesthetic(aesthetic);
             current_aesthetics.insert(primary.to_string());
         }
     }
@@ -1254,15 +1255,15 @@ mod tests {
         assert!(x_family.contains(&"x"));
         assert!(x_family.contains(&"xmin"));
         assert!(x_family.contains(&"xmax"));
-        assert!(x_family.contains(&"x2"));
         assert!(x_family.contains(&"xend"));
+        assert_eq!(x_family.len(), 4);
 
         let y_family = get_aesthetic_family("y");
         assert!(y_family.contains(&"y"));
         assert!(y_family.contains(&"ymin"));
         assert!(y_family.contains(&"ymax"));
-        assert!(y_family.contains(&"y2"));
         assert!(y_family.contains(&"yend"));
+        assert_eq!(y_family.len(), 4);
 
         // Test non-family aesthetics return just themselves
         let color_family = get_aesthetic_family("color");

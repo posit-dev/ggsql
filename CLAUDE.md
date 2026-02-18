@@ -994,10 +994,12 @@ spec = ggsql.execute(
 )
 ```
 
+Required methods for custom readers (in addition to `execute_sql`):
+
+- `register(name: str, df: polars.DataFrame, replace: bool = False) -> None` - Register a DataFrame as a table
+
 Optional methods for custom readers:
 
-- `supports_register() -> bool` - Return `True` if registration is supported
-- `register(name: str, df: polars.DataFrame) -> None` - Register a DataFrame as a table
 - `unregister(name: str) -> None` - Unregister a previously registered table
 
 Native readers (e.g., `DuckDBReader`) use an optimized fast path, while custom Python readers are automatically bridged via IPC serialization.
@@ -1091,15 +1093,15 @@ Where `<global_mapping>` can be:
 
 ### Clause Types
 
-| Clause         | Repeatable | Purpose            | Example                              |
-| -------------- | ---------- | ------------------ | ------------------------------------ |
-| `VISUALISE`    | ✅ Yes     | Entry point        | `VISUALISE date AS x, revenue AS y`  |
-| `DRAW`         | ✅ Yes     | Define layers      | `DRAW line MAPPING date AS x, value AS y` |
-| `SCALE`        | ✅ Yes     | Configure scales   | `SCALE x VIA date`                            |
-| `FACET`        | ❌ No      | Small multiples    | `FACET WRAP region`                  |
-| `COORD`        | ❌ No      | Coordinate system  | `COORD cartesian SETTING xlim => [0,100]` |
-| `LABEL`        | ❌ No      | Text labels        | `LABEL title => 'My Chart', x => 'Date'`   |
-| `THEME`        | ❌ No      | Visual styling     | `THEME minimal`                      |
+| Clause      | Repeatable | Purpose           | Example                                   |
+| ----------- | ---------- | ----------------- | ----------------------------------------- |
+| `VISUALISE` | ✅ Yes     | Entry point       | `VISUALISE date AS x, revenue AS y`       |
+| `DRAW`      | ✅ Yes     | Define layers     | `DRAW line MAPPING date AS x, value AS y` |
+| `SCALE`     | ✅ Yes     | Configure scales  | `SCALE x VIA date`                        |
+| `FACET`     | ❌ No      | Small multiples   | `FACET WRAP region`                       |
+| `COORD`     | ❌ No      | Coordinate system | `COORD cartesian SETTING xlim => [0,100]` |
+| `LABEL`     | ❌ No      | Text labels       | `LABEL title => 'My Chart', x => 'Date'`  |
+| `THEME`     | ❌ No      | Visual styling    | `THEME minimal`                           |
 
 ### DRAW Clause (Layers)
 

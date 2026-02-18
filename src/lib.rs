@@ -41,13 +41,11 @@ pub mod naming;
 pub mod parser;
 pub mod plot;
 
-#[cfg(any(feature = "duckdb", feature = "postgres", feature = "sqlite"))]
 pub mod reader;
 
 #[cfg(any(feature = "vegalite", feature = "ggplot2", feature = "plotters"))]
 pub mod writer;
 
-#[cfg(feature = "duckdb")]
 pub mod execute;
 
 pub mod validate;
@@ -55,6 +53,12 @@ pub mod validate;
 // Re-export key types for convenience
 pub use plot::{
     AestheticValue, DataSource, Facet, Geom, Layer, Mappings, Plot, Scale, SqlExpression,
+};
+
+// Re-export aesthetic classification utilities
+pub use plot::aesthetic::{
+    get_aesthetic_family, is_aesthetic_name, is_positional_aesthetic, is_primary_positional,
+    primary_aesthetic, AESTHETIC_FAMILIES, ALL_POSITIONAL, NON_POSITIONAL, PRIMARY_POSITIONAL,
 };
 
 // Future modules - not yet implemented
@@ -154,9 +158,7 @@ mod integration_tests {
 
         // Data values should be ISO temporal strings
         // (DuckDB returns Datetime for DATE + INTERVAL, so we get ISO datetime format)
-        let data_values = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
-            .as_array()
-            .unwrap();
+        let data_values = vl_spec["data"]["values"].as_array().unwrap();
         let date_str = data_values[0]["date"].as_str().unwrap();
         assert!(
             date_str.starts_with("2024-01-01"),
@@ -210,9 +212,7 @@ mod integration_tests {
         assert_eq!(vl_spec["layer"][0]["encoding"]["x"]["type"], "temporal");
 
         // Data values should be ISO datetime strings
-        let data_values = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
-            .as_array()
-            .unwrap();
+        let data_values = vl_spec["data"]["values"].as_array().unwrap();
         assert!(data_values[0]["timestamp"]
             .as_str()
             .unwrap()
@@ -267,9 +267,7 @@ mod integration_tests {
         assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["type"], "quantitative");
 
         // Data values should be numbers (not strings!)
-        let data_values = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
-            .as_array()
-            .unwrap();
+        let data_values = vl_spec["data"]["values"].as_array().unwrap();
         assert_eq!(data_values[0]["int_col"], 1);
         assert_eq!(data_values[0]["float_col"], 2.5);
         assert_eq!(data_values[0]["bool_col"], true);
@@ -316,9 +314,7 @@ mod integration_tests {
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Check null handling in JSON
-        let data_values = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
-            .as_array()
-            .unwrap();
+        let data_values = vl_spec["data"]["values"].as_array().unwrap();
         assert_eq!(data_values[0]["int_col"], 1);
         assert_eq!(data_values[0]["float_col"], 2.5);
         assert_eq!(data_values[1]["float_col"], serde_json::Value::Null);
@@ -449,9 +445,7 @@ mod integration_tests {
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Check values are preserved
-        let data_values = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
-            .as_array()
-            .unwrap();
+        let data_values = vl_spec["data"]["values"].as_array().unwrap();
         let small_val = data_values[0]["small"].as_f64().unwrap();
         let medium_val = data_values[0]["medium"].as_f64().unwrap();
         let large_val = data_values[0]["large"].as_f64().unwrap();
@@ -509,9 +503,7 @@ mod integration_tests {
         assert_eq!(vl_spec["layer"][0]["encoding"]["y"]["type"], "quantitative");
 
         // Check values
-        let data_values = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
-            .as_array()
-            .unwrap();
+        let data_values = vl_spec["data"]["values"].as_array().unwrap();
         assert_eq!(data_values[0]["tiny"], 1);
         assert_eq!(data_values[0]["small"], 1000);
         assert_eq!(data_values[0]["int"], 1000000);
@@ -594,9 +586,9 @@ mod integration_tests {
             "Layer 1 shape should map to prefixed aesthetic-named column"
         );
 
-        // With unified data approach, all data is in a single global dataset
+        // With unified data approach, all data is in a single dataset
         // Each row has __ggsql_source__ identifying which layer's data it belongs to
-        let global_data = &vl_spec["datasets"][naming::GLOBAL_DATA_KEY];
+        let global_data = &vl_spec["data"]["values"];
         assert!(
             global_data.is_array(),
             "Should have unified global data array"
@@ -816,9 +808,9 @@ mod integration_tests {
             stroke_col
         );
 
-        // With unified data approach, all data is in the global dataset
+        // With unified data approach, all data is in the data.values array
         // Verify the stroke value appears in the unified data
-        let global_data = vl_spec["datasets"][naming::GLOBAL_DATA_KEY]
+        let global_data = vl_spec["data"]["values"]
             .as_array()
             .expect("Should have unified global data");
 

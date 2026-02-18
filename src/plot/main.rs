@@ -33,6 +33,8 @@ pub use super::layer::geom::{
     DefaultParam, DefaultParamValue, Geom, GeomAesthetics, GeomTrait, GeomType, StatResult,
 };
 
+use super::aesthetic::primary_aesthetic;
+
 // Re-export Layer from the layer module
 pub use super::layer::Layer;
 
@@ -133,7 +135,7 @@ impl Plot {
     /// For each aesthetic used in any layer, determines the appropriate label:
     /// - If user specified a label via LABEL clause, use that
     /// - Otherwise, use the primary aesthetic's column name if mapped
-    /// - Variant aesthetics (x2, xmin, xmax, y2, ymin, ymax) only set the label if
+    /// - Variant aesthetics (xmin, xmax, xend, ymin, ymax, yend) only set the label if
     ///   no primary aesthetic exists in the layer
     ///
     /// This ensures that:
@@ -154,7 +156,7 @@ impl Plot {
         for primaries_only in [true, false] {
             for layer in &self.layers {
                 for (aesthetic, value) in &layer.mappings.aesthetics {
-                    let primary = GeomAesthetics::primary_aesthetic(aesthetic);
+                    let primary = primary_aesthetic(aesthetic);
                     let is_primary = aesthetic == primary;
 
                     // First pass: only primaries; second pass: only variants
@@ -434,21 +436,19 @@ mod tests {
     #[test]
     fn test_aesthetic_family_primary_lookup() {
         // Test that variant aesthetics map to their primary
-        assert_eq!(GeomAesthetics::primary_aesthetic("x"), "x");
-        assert_eq!(GeomAesthetics::primary_aesthetic("xmin"), "x");
-        assert_eq!(GeomAesthetics::primary_aesthetic("xmax"), "x");
-        assert_eq!(GeomAesthetics::primary_aesthetic("x2"), "x");
-        assert_eq!(GeomAesthetics::primary_aesthetic("xend"), "x");
-        assert_eq!(GeomAesthetics::primary_aesthetic("y"), "y");
-        assert_eq!(GeomAesthetics::primary_aesthetic("ymin"), "y");
-        assert_eq!(GeomAesthetics::primary_aesthetic("ymax"), "y");
-        assert_eq!(GeomAesthetics::primary_aesthetic("y2"), "y");
-        assert_eq!(GeomAesthetics::primary_aesthetic("yend"), "y");
+        assert_eq!(primary_aesthetic("x"), "x");
+        assert_eq!(primary_aesthetic("xmin"), "x");
+        assert_eq!(primary_aesthetic("xmax"), "x");
+        assert_eq!(primary_aesthetic("xend"), "x");
+        assert_eq!(primary_aesthetic("y"), "y");
+        assert_eq!(primary_aesthetic("ymin"), "y");
+        assert_eq!(primary_aesthetic("ymax"), "y");
+        assert_eq!(primary_aesthetic("yend"), "y");
 
         // Non-family aesthetics return themselves
-        assert_eq!(GeomAesthetics::primary_aesthetic("color"), "color");
-        assert_eq!(GeomAesthetics::primary_aesthetic("size"), "size");
-        assert_eq!(GeomAesthetics::primary_aesthetic("fill"), "fill");
+        assert_eq!(primary_aesthetic("color"), "color");
+        assert_eq!(primary_aesthetic("size"), "size");
+        assert_eq!(primary_aesthetic("fill"), "fill");
     }
 
     #[test]

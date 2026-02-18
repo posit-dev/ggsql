@@ -36,7 +36,7 @@ impl GeomTrait for Bar {
         &[
             ("y", DefaultAestheticValue::Column("count")),
             ("x", DefaultAestheticValue::Column("x")),
-            ("y2", DefaultAestheticValue::Number(0.0)),
+            ("yend", DefaultAestheticValue::Number(0.0)),
         ]
     }
 

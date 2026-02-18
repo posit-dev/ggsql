@@ -374,13 +374,10 @@ pub trait Reader {
     fn execute_sql(&self, sql: &str) -> Result<DataFrame>;
 
     /// Register a DataFrame as a queryable table
-    fn register(&mut self, name: &str, df: DataFrame) -> Result<()>;
+    fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()>;
 
     /// Unregister a previously registered table
-    fn unregister(&mut self, name: &str) -> Result<()>;
-
-    /// Check if this reader supports DataFrame registration
-    fn supports_register(&self) -> bool;
+    fn unregister(&self, name: &str) -> Result<()>;
 }
 ```
 
@@ -434,9 +431,6 @@ class DuckDBReader:
 
     def execute_sql(self, sql: str) -> polars.DataFrame:
         """Execute SQL and return a Polars DataFrame."""
-
-    def supports_register(self) -> bool:
-        """Check if registration is supported."""
 ```
 
 #### `VegaLiteWriter`

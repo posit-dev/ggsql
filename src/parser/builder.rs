@@ -3,6 +3,7 @@
 //! Takes a tree-sitter parse tree and builds a typed Plot,
 //! handling all the node types defined in the grammar.
 
+use crate::plot::aesthetic::is_aesthetic_name;
 use crate::plot::layer::geom::Geom;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, Transform};
 use crate::plot::*;
@@ -36,10 +37,40 @@ fn extract_name_value_nodes<'a>(node: &'a Node<'a>, context: &str) -> Result<(No
     Ok((name_node, value_node))
 }
 
-/// Parse a string node, removing quotes
+/// Parse a string node, removing quotes and processing escape sequences
 fn parse_string_node(node: &Node, source: &SourceTree) -> String {
     let text = source.get_text(node);
-    text.trim_matches(|c| c == '\'' || c == '"').to_string()
+    let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
+    process_escape_sequences(unquoted)
+}
+
+/// Process escape sequences in a string (e.g., \n, \t, \\, \')
+fn process_escape_sequences(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('r') => result.push('\r'),
+                Some('\\') => result.push('\\'),
+                Some('\'') => result.push('\''),
+                Some('"') => result.push('"'),
+                Some(other) => {
+                    // Unknown escape sequence - keep as-is
+                    result.push('\\');
+                    result.push(other);
+                }
+                None => result.push('\\'), // Trailing backslash
+            }
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
 }
 
 /// Parse a number node into f64
@@ -970,36 +1001,6 @@ fn validate_coord_properties(
     }
 
     Ok(())
-}
-
-/// Check if a property name is an aesthetic name
-fn is_aesthetic_name(name: &str) -> bool {
-    matches!(
-        name,
-        "x" | "y"
-            | "xmin"
-            | "xmax"
-            | "ymin"
-            | "ymax"
-            | "xend"
-            | "yend"
-            | "color"
-            | "colour"
-            | "fill"
-            | "stroke"
-            | "opacity"
-            | "size"
-            | "shape"
-            | "linetype"
-            | "linewidth"
-            | "width"
-            | "height"
-            | "label"
-            | "family"
-            | "fontface"
-            | "hjust"
-            | "vjust"
-    )
 }
 
 /// Parse coord type from a coord_type node

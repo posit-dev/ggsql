@@ -3,7 +3,8 @@ members = [
     "tree-sitter-ggsql",
     "src",
     "ggsql-jupyter",
-    "ggsql-python"
+    "ggsql-python",
+    "ggsql-wasm"
 ]
 # ggsql-python is excluded from default builds because it's a PyO3 extension
 # that requires Python dev headers. Build it separately with maturin.
@@ -25,18 +26,18 @@ description = "SQL extension for declarative data visualization"
 
 [workspace.dependencies]
 # Parsing
-tree-sitter = "0.25"
+tree-sitter = "0.26"
 csscolorparser = "0.8.1"
 
 # Data processing
-polars = { version = "0.52", features = ["lazy", "sql", "ipc"] }
+polars = { version = "0.52", default-features = false }
 polars-ops = { version = "0.52", features = ["pivot"] }
 
 # Readers
 duckdb = { version = "1.4", features = ["bundled", "vtab-arrow"] }
 arrow = { version = "56", default-features = false, features = ["ipc"] }
 postgres = "0.19"
-sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls"] }
+sqlx = { version = "0.8", features = ["postgres"] }
 rusqlite = "0.32"
 
 # Writers
@@ -68,7 +69,15 @@ uuid = { version = "1.0", features = ["v4"] }
 
 # Web server
 axum = "0.7"
-tokio = { version = "1.35", features = ["full"] }
+tokio = { version = "1.35", default-features = false }
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.wasm]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

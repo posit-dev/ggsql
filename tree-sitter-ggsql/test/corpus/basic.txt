@@ -2240,3 +2240,99 @@ SCALE DISCRETE x RENAMING 'A' => 'Alpha', * => 'Category {}'
             value: (string))
           (renaming_assignment
             value: (string)))))))
+
+================================================================================
+CAST expression
+================================================================================
+
+SELECT CAST(sale_date AS DATE) as period FROM sales VISUALISE period AS x DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (cast_expression
+            (positional_arg
+              (qualified_name
+                (identifier
+                  (bare_identifier))))
+            (type_name
+              (identifier
+                (bare_identifier))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+TRY_CAST nested in function argument
+================================================================================
+
+SELECT SUM(TRY_CAST(price AS INTEGER)) as total FROM data VISUALISE DRAW bar MAPPING x AS x
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (positional_arg
+                  (cast_expression
+                    (positional_arg
+                      (qualified_name
+                        (identifier
+                          (bare_identifier))))
+                    (type_name
+                      (identifier
+                        (bare_identifier))))))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (mapping_clause
+          (mapping_list
+            (mapping_element
+              (explicit_mapping
+                value: (mapping_value
+                  (column_reference
+                    (identifier
+                      (bare_identifier))))
+                name: (aesthetic_name)))))))))

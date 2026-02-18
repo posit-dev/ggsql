@@ -104,6 +104,7 @@ docs/_build/
 .env.local
 .env.production
 config.toml
+!.cargo/config.toml
 secrets.toml
 
 # Generated documentation

@@ -44,7 +44,7 @@ pub fn gets_default_scale(aesthetic: &str) -> bool {
     matches!(
         aesthetic,
         // Position aesthetics
-        "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend" | "x2" | "y2"
+        "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
         // Color aesthetics (color/colour/col already split to fill/stroke)
         | "fill" | "stroke"
         // Size aesthetics

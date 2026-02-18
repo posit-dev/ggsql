@@ -15,6 +15,7 @@
 //! - `facet` - Facet types for small multiples
 //! - `coord` - Coordinate system types
 
+pub mod aesthetic;
 pub mod coord;
 pub mod facet;
 pub mod layer;
@@ -23,6 +24,7 @@ pub mod scale;
 pub mod types;
 
 // Re-export all types for convenience
+pub use aesthetic::*;
 pub use coord::*;
 pub use facet::*;
 pub use layer::*;

@@ -138,29 +138,19 @@ impl Reader for PyReaderBridge {
         })
     }
 
-    fn supports_register(&self) -> bool {
-        Python::attach(|py| {
-            self.obj
-                .bind(py)
-                .call_method0("supports_register")
-                .and_then(|r| r.extract::<bool>())
-                .unwrap_or(false)
-        })
-    }
-
-    fn register(&mut self, name: &str, df: DataFrame) -> ggsql::Result<()> {
+    fn register(&self, name: &str, df: DataFrame, replace: bool) -> ggsql::Result<()> {
         Python::attach(|py| {
             let py_df =
                 polars_to_py(py, &df).map_err(|e| GgsqlError::ReaderError(e.to_string()))?;
             self.obj
                 .bind(py)
-                .call_method1("register", (name, py_df))
+                .call_method1("register", (name, py_df, replace))
                 .map_err(|e| GgsqlError::ReaderError(format!("Reader.register() failed: {}", e)))?;
             Ok(())
         })
     }
 
-    fn unregister(&mut self, name: &str) -> ggsql::Result<()> {
+    fn unregister(&self, name: &str) -> ggsql::Result<()> {
         Python::attach(|py| {
             self.obj
                 .bind(py)
@@ -254,10 +244,17 @@ impl PyDuckDBReader {
     /// ------
     /// ValueError
     ///     If registration fails or the table name is invalid.
-    fn register(&mut self, py: Python<'_>, name: &str, df: &Bound<'_, PyAny>) -> PyResult<()> {
+    #[pyo3(signature = (name, df, replace=false))]
+    fn register(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        df: &Bound<'_, PyAny>,
+        replace: bool,
+    ) -> PyResult<()> {
         let rust_df = py_to_polars(py, df)?;
         self.inner
-            .register(name, rust_df)
+            .register(name, rust_df, replace)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
     }
 
@@ -272,7 +269,7 @@ impl PyDuckDBReader {
     /// ------
     /// ValueError
     ///     If the table wasn't registered via this reader or unregistration fails.
-    fn unregister(&mut self, name: &str) -> PyResult<()> {
+    fn unregister(&self, name: &str) -> PyResult<()> {
         self.inner
             .unregister(name)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
@@ -300,16 +297,6 @@ impl PyDuckDBReader {
             .execute_sql(sql)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
         polars_to_py(py, &df)
-    }
-
-    /// Check if this reader supports DataFrame registration.
-    ///
-    /// Returns
-    /// -------
-    /// bool
-    ///     True if register() is supported, False otherwise.
-    fn supports_register(&self) -> bool {
-        self.inner.supports_register()
     }
 
     /// Execute a ggsql query and return the visualization specification.
