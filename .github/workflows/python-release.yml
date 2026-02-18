@@ -43,6 +43,8 @@ jobs:
     strategy:
       matrix:
         target: [x86_64, aarch64]
+    env:
+      GGSQL_SKIP_GENERATE: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -81,6 +83,8 @@ jobs:
             runner: macos-latest
           - target: aarch64
             runner: macos-latest
+    env:
+      GGSQL_SKIP_GENERATE: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -108,6 +112,8 @@ jobs:
   windows:
     needs: generate
     runs-on: windows-latest
+    env:
+      GGSQL_SKIP_GENERATE: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -135,6 +141,8 @@ jobs:
   sdist:
     needs: generate
     runs-on: ubuntu-latest
+    env:
+      GGSQL_SKIP_GENERATE: "1"
     steps:
       - uses: actions/checkout@v4
 

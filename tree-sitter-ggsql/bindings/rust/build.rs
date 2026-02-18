@@ -86,18 +86,24 @@ fn main() {
     let src_dir = grammar_dir.join("src");
     let parser_c = src_dir.join("parser.c");
 
-    // Only regenerate if parser.c doesn't exist (e.g., after a fresh checkout or when
-    // the generated files have not been produced yet). While tree-sitter projects
-    // typically commit generated files to the repo, this project's CI workflow
-    // explicitly runs `tree-sitter generate` to ensure the committed and generated
-    // sources stay consistent, rather than relying solely on the committed output.
-    if !parser_c.exists() {
-        let tree_sitter = find_tree_sitter().unwrap_or_else(|| {
+    // Re-run this build script if the env var changes.
+    println!("cargo:rerun-if-env-changed=GGSQL_SKIP_GENERATE");
+
+    // By default, always regenerate parser.c from grammar.js so local builds
+    // pick up grammar changes automatically. CI sets GGSQL_SKIP_GENERATE=1 to
+    // skip this step when pre-generated parser files are provided as artifacts.
+    let skip_generate = std::env::var("GGSQL_SKIP_GENERATE").is_ok();
+
+    if skip_generate {
+        if !parser_c.exists() {
             panic!(
-                "tree-sitter-cli not found and src/parser.c does not exist. \
-                 Either run `tree-sitter generate` first, or install tree-sitter-cli: \
-                 npm install -g tree-sitter-cli"
+                "GGSQL_SKIP_GENERATE is set but src/parser.c does not exist. \
+                 Either run `tree-sitter generate` first, or unset GGSQL_SKIP_GENERATE."
             );
+        }
+    } else {
+        let tree_sitter = find_tree_sitter().unwrap_or_else(|| {
+            panic!("tree-sitter-cli not found. Please install it: npm install -g tree-sitter-cli");
         });
 
         let generate_result = run_tree_sitter(&tree_sitter, &grammar_dir);
