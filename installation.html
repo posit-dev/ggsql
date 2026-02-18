@@ -231,8 +231,14 @@ gradient teal.
 <div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
 <!-- sidebar -->
 <!-- margin-sidebar -->
-    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar zindex-bottom">
-        
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#building-from-source" id="toc-building-from-source" class="nav-link active" data-scroll-target="#building-from-source">Building from Source</a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
     </div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
@@ -256,21 +262,86 @@ gradient teal.
 </header>
 
 
-<p>ggsql is very much still a work in progress and the installation process reflects this. Eventually we will have proper installers but for now please follow this process if you wish to play around with it:</p>
+<!-- UNCOMMENT THIS WHEN WE RELEASE
+
+ggsql provides native installers for Windows, macOS, and Linux. You can also build from source if you prefer.
+
+## Native Installers
+
+Download the latest installer for your platform from the [GitHub Releases page](https://github.com/posit-dev/ggsql/releases).
+
+### Windows
+
+**Option 1: NSIS Installer (Recommended)**
+
+1. Download `ggsql_x.x.x_x64-setup.exe`
+2. Double-click to run the installer
+3. Follow the installation wizard
+4. `ggsql` will be automatically added to your PATH
+
+**Option 2: MSI Installer**
+
+1. Download `ggsql_x.x.x_x64_en-US.msi`
+2. Double-click to run the installer
+3. For silent installation: `msiexec /i ggsql_x.x.x_x64_en-US.msi /quiet`
+
+**Note**: Windows may show a security warning since the installer is unsigned. Click "More info" → "Run anyway" to proceed.
+
+### macOS
+
+1. Download the appropriate DMG for your system:
+   - `ggsql_x.x.x_x64.dmg` (Intel Macs)
+   - `ggsql_x.x.x_aarch64.dmg` (Apple Silicon - M1/M2/M3)
+2. Open the DMG file
+3. Drag `ggsql.app` to your Applications folder
+4. Or copy binaries directly to `/usr/local/bin`
+
+**Note**: macOS may show "ggsql.app is damaged" for unsigned apps. If this happens, run:
+```bash
+xattr -cr /Applications/ggsql.app
+```
+
+### Linux (Debian/Ubuntu)
+
+1. Download `ggsql_x.x.x_amd64.deb`
+2. Install with:
+   ```bash
+   sudo dpkg -i ggsql_x.x.x_amd64.deb
+   ```
+3. If dependencies are missing:
+   ```bash
+   sudo apt-get install -f
+   ```
+
+### What Gets Installed
+
+The native installers include the **ggsql CLI** binary only. Additional components must be installed separately:
+
+- **REST API server**: `cargo install ggsql --features rest-api`
+- **Jupyter kernel**: `cargo install ggsql-jupyter`
+
+// -->
+<section id="building-from-source" class="level2">
+<h2 class="anchored" data-anchor-id="building-from-source">Building from Source</h2>
+<p>If you prefer to build from source or need the latest development version:</p>
 <ol type="1">
 <li><p><strong>Clone the repository:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/georgestagg/ggsql</span>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/posit-dev/ggsql</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> ggsql</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
 <li><p><strong>Install tree-sitter CLI:</strong></p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">npm</span> install <span class="at">-g</span> tree-sitter-cli</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
 <li><p><strong>Build the project:</strong></p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> tree-sitter-ggsql <span class="kw">&amp;&amp;</span> <span class="ex">tree-sitter</span> generate <span class="kw">&amp;&amp;</span> <span class="bu">cd</span> ..</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> build</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
-<li><p><strong>Install the Jupyter kernel:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> run <span class="at">--package</span> ggsql-jupyter <span class="at">--</span> <span class="at">--install</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> build <span class="at">--release</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
+<li><p><strong>Install the CLI:</strong></p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> install <span class="at">--path</span> src</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
+<li><p><strong>Install the Jupyter kernel (optional):</strong></p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> install <span class="at">--path</span> ggsql-jupyter</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql-jupyter</span> <span class="at">--install</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
 </ol>
 
 
+</section>
 
 </main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
@@ -678,4 +749,4 @@ gradient teal.
 
 
 
-<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

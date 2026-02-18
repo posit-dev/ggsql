@@ -4,7 +4,14 @@
     "href": "installation.html",
     "title": "Installing ggsql",
     "section": "",
-    "text": "ggsql is very much still a work in progress and the installation process reflects this. Eventually we will have proper installers but for now please follow this process if you wish to play around with it:\n\nClone the repository:\ngit clone https://github.com/georgestagg/ggsql\ncd ggsql\nInstall tree-sitter CLI:\nnpm install -g tree-sitter-cli\nBuild the project:\ncd tree-sitter-ggsql && tree-sitter generate && cd ..\ncargo build\nInstall the Jupyter kernel:\ncargo run --package ggsql-jupyter -- --install"
+    "text": "If you prefer to build from source or need the latest development version:\n\nClone the repository:\ngit clone https://github.com/posit-dev/ggsql\ncd ggsql\nInstall tree-sitter CLI:\nnpm install -g tree-sitter-cli\nBuild the project:\ncd tree-sitter-ggsql && tree-sitter generate && cd ..\ncargo build --release\nInstall the CLI:\ncargo install --path src\nInstall the Jupyter kernel (optional):\ncargo install --path ggsql-jupyter\nggsql-jupyter --install"
+  },
+  {
+    "objectID": "installation.html#building-from-source",
+    "href": "installation.html#building-from-source",
+    "title": "Installing ggsql",
+    "section": "",
+    "text": "If you prefer to build from source or need the latest development version:\n\nClone the repository:\ngit clone https://github.com/posit-dev/ggsql\ncd ggsql\nInstall tree-sitter CLI:\nnpm install -g tree-sitter-cli\nBuild the project:\ncd tree-sitter-ggsql && tree-sitter generate && cd ..\ncargo build --release\nInstall the CLI:\ncargo install --path src\nInstall the Jupyter kernel (optional):\ncargo install --path ggsql-jupyter\nggsql-jupyter --install"
   },
   {
     "objectID": "syntax/scale/aesthetic/2_opacity.html",
