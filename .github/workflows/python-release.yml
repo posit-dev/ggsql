@@ -67,6 +67,9 @@ jobs:
           # aarch64 assembly (missing __ARM_ARCH). 2_28 (AlmaLinux 8, gcc 8+)
           # provides a new enough toolchain.
           manylinux: 2_28
+          # Forward GGSQL_SKIP_GENERATE into the Docker container so the
+          # build script uses the pre-generated parser files.
+          docker-options: -e GGSQL_SKIP_GENERATE=1
 
       - uses: actions/upload-artifact@v4
         with:
