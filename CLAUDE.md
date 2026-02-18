@@ -367,16 +367,22 @@ pub enum ScaleType {
 }
 
 pub enum Facet {
-    /// FACET WRAP variables
+    /// FACET variables (wrap layout)
     Wrap {
         variables: Vec<String>,
         scales: FacetScales,
+        properties: HashMap<String, ParameterValue>,  // From SETTING clause
+        label_mapping: Option<HashMap<String, Option<String>>>,  // From RENAMING
+        label_template: String,  // Wildcard template, defaults to "{}"
     },
-    /// FACET rows BY cols
+    /// FACET rows BY cols (grid layout)
     Grid {
         rows: Vec<String>,
         cols: Vec<String>,
         scales: FacetScales,
+        properties: HashMap<String, ParameterValue>,  // From SETTING clause
+        label_mapping: Option<HashMap<String, Option<String>>>,  // From RENAMING
+        label_template: String,  // Wildcard template, defaults to "{}"
     },
 }
 
@@ -1098,7 +1104,7 @@ Where `<global_mapping>` can be:
 | `VISUALISE` | ✅ Yes     | Entry point       | `VISUALISE date AS x, revenue AS y`       |
 | `DRAW`      | ✅ Yes     | Define layers     | `DRAW line MAPPING date AS x, value AS y` |
 | `SCALE`     | ✅ Yes     | Configure scales  | `SCALE x VIA date`                        |
-| `FACET`     | ❌ No      | Small multiples   | `FACET WRAP region`                       |
+| `FACET`     | ❌ No      | Small multiples   | `FACET region`                            |
 | `COORD`     | ❌ No      | Coordinate system | `COORD cartesian SETTING xlim => [0,100]` |
 | `LABEL`     | ❌ No      | Text labels       | `LABEL title => 'My Chart', x => 'Date'`  |
 | `THEME`     | ❌ No      | Visual styling    | `THEME minimal`                           |
@@ -1293,25 +1299,59 @@ SCALE x VIA date FROM ['2024-01-01', '2024-12-31'] SETTING breaks => '1 month'
 **Syntax**:
 
 ```sql
--- Grid layout
-FACET <row_vars> BY <col_vars> [SETTING scales => <sharing>]
+-- Wrap layout (single variable = automatic wrap)
+FACET <vars> [SETTING <param> => <value>, ...] [RENAMING <from> => <to>, ...]
 
--- Wrapped layout
-FACET WRAP <vars> [SETTING scales => <sharing>]
+-- Grid layout (BY clause for row × column)
+FACET <row_vars> BY <col_vars> [SETTING ...] [RENAMING ...]
 ```
 
-**Scale Sharing**:
+**SETTING Properties**:
+
+- `scales => <sharing>` - Scale sharing mode (see below)
+- `ncol => <number>` - Number of columns for wrap layout
+- `spacing => <number>` - Space between facets
+
+**Scale Sharing** (`scales` property):
 
 - `'fixed'` (default) - Same scales across all facets
 - `'free'` - Independent scales for each facet
 - `'free_x'` - Independent x-axis, shared y-axis
 - `'free_y'` - Independent y-axis, shared x-axis
 
-**Example**:
+**RENAMING Clause**:
+
+Customize facet strip labels:
+
+- Explicit mappings: `'North' => 'Northern Region'`
+- Wildcard template: `* => 'Region: {}'` (substitutes original value)
+- NULL suppression: `'internal' => NULL` (hides label)
+
+**Examples**:
 
 ```sql
-FACET WRAP region SETTING scales => 'free_y'
-FACET region BY category SETTING scales => 'fixed'
+-- Simple wrap facet
+FACET region
+
+-- Grid facet with BY
+FACET region BY category
+
+-- With scale sharing
+FACET region SETTING scales => 'free_y'
+
+-- With column count for wrap
+FACET region SETTING ncol => 3
+
+-- With label renaming
+FACET region RENAMING 'N' => 'North', 'S' => 'South'
+
+-- With wildcard template
+FACET region RENAMING * => 'Region: {}'
+
+-- Combined
+FACET region BY category
+    SETTING scales => 'free', spacing => 10
+    RENAMING 'A' => 'Category A', 'B' => 'Category B'
 ```
 
 ### COORD Clause
@@ -1457,7 +1497,7 @@ DRAW line
 DRAW point
     MAPPING sale_date AS x, total AS y, region AS color
 SCALE x VIA date
-FACET WRAP region
+FACET region
 LABEL title => 'Sales Trends by Region', x => 'Date', y => 'Total Quantity'
 THEME minimal
 ```

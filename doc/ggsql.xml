@@ -105,9 +105,9 @@
       <item>REMAPPING</item>
       <item>SETTING</item>
       <item>FILTER</item>
-      <item>WRAP</item>
       <item>ORDER</item>
       <item>PARTITION</item>
+      <item>RENAMING</item>
       <item>TO</item>
       <item>VIA</item>
     </list>
@@ -603,11 +603,14 @@
         <!-- Facet scales - only highlighted here -->
         <keyword attribute="Data Type" context="#stay" String="facet_scales"/>
 
-        <!-- WRAP keyword -->
-        <WordDetect attribute="Keyword" context="#stay" String="WRAP" insensitive="true"/>
-
-        <!-- scales property -->
+        <!-- Facet properties -->
         <WordDetect attribute="Attribute" context="#stay" String="scales" insensitive="true"/>
+        <WordDetect attribute="Attribute" context="#stay" String="ncol" insensitive="true"/>
+        <WordDetect attribute="Attribute" context="#stay" String="columns" insensitive="true"/>
+        <WordDetect attribute="Attribute" context="#stay" String="spacing" insensitive="true"/>
+
+        <!-- Wildcard for RENAMING -->
+        <DetectChar char="*" attribute="Operator" context="#stay"/>
 
         <!-- Sub-keywords -->
         <keyword attribute="Keyword" context="#stay" String="viz_subkeywords"/>

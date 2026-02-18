@@ -387,7 +387,7 @@ LABEL
 
 ## Faceting
 
-### Facet Wrap by Region
+### Facet by Region
 
 ```{ggsql}
 SELECT sale_date, revenue, region FROM 'sales.csv'
@@ -395,7 +395,7 @@ WHERE category = 'Electronics'
 VISUALISE sale_date AS x, revenue AS y
 DRAW line
 SCALE x VIA date
-FACET WRAP region
+FACET region
 LABEL 
     title => 'Electronics Sales by Region', 
     x => 'Date', 
@@ -787,8 +787,8 @@ VISUALISE sale_date AS x, total_quantity AS y, region AS color
 DRAW line
 DRAW point
 SCALE x VIA date
-FACET WRAP region
-LABEL 
+FACET region
+LABEL
     title => 'Sales Trends by Region', 
     x => 'Date', 
     y => 'Total Quantity'

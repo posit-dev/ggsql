@@ -215,13 +215,13 @@ THEME dark SETTING background => '#1a1a1a'
 
 ## Faceting
 
-### Facet Wrap
+### Facet (Wrap Layout)
 
 ```sql
 SELECT date, value, region FROM sales
 VISUALISE date AS x, value AS y
 DRAW line
-FACET WRAP region
+FACET region
 ```
 
 ### Facet Grid
@@ -239,7 +239,7 @@ FACET region BY product
 SELECT date, value, category FROM metrics
 VISUALISE date AS x, value AS y
 DRAW line
-FACET WRAP category SETTING scales => 'free_y'
+FACET category SETTING scales => 'free_y'
 ```
 
 ---
@@ -373,7 +373,7 @@ WITH ranked_products AS (
 SELECT * FROM ranked_products WHERE rank <= 5
 VISUALISE product_name AS x, revenue AS y, category AS color
 DRAW bar
-FACET WRAP category SETTING scales => 'free_x'
+FACET category SETTING scales => 'free_x'
 COORD flip
 LABEL title => 'Top 5 Products per Category',
       x => 'Product',
@@ -450,7 +450,7 @@ VISUALISE sale_date AS x, total_quantity AS y, region AS color
 DRAW line
 DRAW point
 SCALE x SETTING type => 'date'
-FACET WRAP region
+FACET region
 LABEL title => 'Sales Trends by Region',
       x => 'Date',
       y => 'Total Quantity'

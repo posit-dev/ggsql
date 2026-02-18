@@ -58,7 +58,7 @@ SELECT
 FROM generate_series(1, 10) as t(n)
 VISUALISE x, y
 DRAW point
-FACET WRAP group
+FACET group
 LABEL title => 'Faceted Plot';
 
 -- Visualization with FILTER clause - global mapping with layer filter

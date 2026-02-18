@@ -329,16 +329,16 @@
       "end": "(?i)(?=\\b(DRAW|SCALE|COORD|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
-          "name": "keyword.other.ggsql",
-          "match": "\\b(?i:WRAP)\\b"
-        },
-        {
           "name": "constant.language.facet-scales.ggsql",
           "match": "\\b(fixed|free|free_x|free_y)\\b"
         },
         {
           "name": "support.type.property.ggsql",
-          "match": "\\b(scales)\\b"
+          "match": "\\b(scales|ncol|columns|spacing)\\b"
+        },
+        {
+          "name": "keyword.operator.wildcard.ggsql",
+          "match": "\\*"
         },
         { "include": "#common-clause-patterns" }
       ]

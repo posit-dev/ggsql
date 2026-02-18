@@ -52,7 +52,7 @@ DRAW point
     MAPPING date AS x, value AS y
 SCALE x 
     SETTING type => 'date'
-FACET WRAP region
+FACET region
 ```
 :::
 
@@ -144,7 +144,7 @@ SCALE x
 SCALE y 
     SETTING type => 'linear', limits => [0, 100000]
 
-FACET WRAP region SETTING scales => 'free_y'
+FACET region SETTING scales => 'free_y'
 
 LABEL
   title => 'Revenue Trends by Region',
