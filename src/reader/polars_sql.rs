@@ -160,7 +160,7 @@ impl Reader for PolarsReader {
             }
         }
 
-        // Rewrite ggsql:name → __ggsql__data__name__ in SQL
+        // Rewrite ggsql:name → __ggsql_data_name__ in SQL
         let sql = super::data::rewrite_namespaced_sql(sql)?;
 
         // Execute the query - this returns a LazyFrame
@@ -464,7 +464,7 @@ mod tests {
         let table_name = naming::builtin_data_table("penguins");
         reader.register(&table_name, df, false).unwrap();
 
-        // ggsql:penguins should be rewritten to __ggsql__data__penguins__ and resolve
+        // ggsql:penguins should be rewritten to __ggsql_data_penguins__ and resolve
         let result = reader.execute_sql("SELECT * FROM ggsql:penguins").unwrap();
         assert_eq!(result.height(), 3);
     }

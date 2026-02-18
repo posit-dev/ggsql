@@ -43,7 +43,7 @@ fn builtin_parquet_bytes(name: &str) -> Option<&'static [u8]> {
 /// Register any builtin datasets referenced in the SQL with a DuckDB connection.
 ///
 /// Finds `ggsql:X` patterns in the SQL, writes the embedded parquet data to
-/// a temp file, and creates a table named `__ggsql__data__X__` in DuckDB.
+/// a temp file, and creates a table named `__ggsql_data_X__` in DuckDB.
 #[cfg(all(feature = "duckdb", feature = "builtin-data"))]
 pub fn register_builtin_datasets_duckdb(
     sql: &str,
@@ -145,7 +145,7 @@ pub fn extract_builtin_dataset_names(sql: &str) -> Result<Vec<String>, GgsqlErro
 
 /// Rewrite SQL to replace namespaced identifiers with internal table names.
 ///
-/// e.g., `SELECT * FROM ggsql:penguins` -> `SELECT * FROM __ggsql__data__penguins__`
+/// e.g., `SELECT * FROM ggsql:penguins` -> `SELECT * FROM __ggsql_data_penguins__`
 ///
 /// Uses tree-sitter to find the exact byte positions of namespaced identifiers,
 /// then replaces them in reverse order to preserve offsets.
@@ -315,7 +315,7 @@ mod tests {
     fn test_rewrite_namespaced_sql_simple() {
         let sql = "SELECT * FROM ggsql:penguins";
         let rewritten = rewrite_namespaced_sql(sql).unwrap();
-        assert_eq!(rewritten, "SELECT * FROM __ggsql__data__penguins__");
+        assert_eq!(rewritten, "SELECT * FROM __ggsql_data_penguins__");
     }
 
     #[test]
@@ -324,7 +324,7 @@ mod tests {
         let rewritten = rewrite_namespaced_sql(sql).unwrap();
         assert_eq!(
             rewritten,
-            "SELECT * FROM __ggsql__data__penguins__ p, __ggsql__data__airquality__ a WHERE p.id = a.id"
+            "SELECT * FROM __ggsql_data_penguins__ p, __ggsql_data_airquality__ a WHERE p.id = a.id"
         );
     }
 
@@ -339,7 +339,7 @@ mod tests {
     fn test_rewrite_namespaced_sql_with_visualise() {
         let sql = "SELECT * FROM ggsql:penguins VISUALISE DRAW point MAPPING bill_len AS x, bill_dep AS y";
         let rewritten = rewrite_namespaced_sql(sql).unwrap();
-        assert!(rewritten.starts_with("SELECT * FROM __ggsql__data__penguins__"));
+        assert!(rewritten.starts_with("SELECT * FROM __ggsql_data_penguins__"));
         assert!(!rewritten.contains("ggsql:"));
     }
 }

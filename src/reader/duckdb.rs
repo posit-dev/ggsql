@@ -392,7 +392,7 @@ impl Reader for DuckDBReader {
         #[cfg(feature = "builtin-data")]
         super::data::register_builtin_datasets_duckdb(sql, &self.conn)?;
 
-        // Rewrite ggsql:name → __ggsql__data__name__ in SQL
+        // Rewrite ggsql:name → __ggsql_data_name__ in SQL
         let sql = super::data::rewrite_namespaced_sql(sql)?;
 
         // Check if this is a DDL statement (CREATE, DROP, INSERT, UPDATE, DELETE, ALTER)

@@ -69,8 +69,8 @@ const LAYER_PREFIX: &str = concatcp!(GGSQL_PREFIX, "layer_");
 /// Full prefix for aesthetic columns: `__ggsql_aes_`
 const AES_PREFIX: &str = concatcp!(GGSQL_PREFIX, "aes_");
 
-/// Full prefix for builtin data tables: `__ggsql__data__`
-const DATA_PREFIX: &str = "__ggsql__data__";
+/// Full prefix for builtin data tables: `__ggsql_data_`
+const DATA_PREFIX: &str = concatcp!(GGSQL_PREFIX, "data_");
 
 /// Key for global data in the layer data HashMap.
 /// Used as the key in PreparedData.data to store global data that applies to all layers.
@@ -135,13 +135,13 @@ pub fn cte_table(cte_name: &str) -> String {
 /// Generate table name for a builtin dataset.
 ///
 /// Used when rewriting `ggsql:penguins` to the internal table name.
-/// Format: `__ggsql__data__<name>__`
+/// Format: `__ggsql_data_<name>__`
 ///
 /// # Example
 /// ```
 /// use ggsql::naming;
-/// assert_eq!(naming::builtin_data_table("penguins"), "__ggsql__data__penguins__");
-/// assert_eq!(naming::builtin_data_table("airquality"), "__ggsql__data__airquality__");
+/// assert_eq!(naming::builtin_data_table("penguins"), "__ggsql_data_penguins__");
+/// assert_eq!(naming::builtin_data_table("airquality"), "__ggsql_data_airquality__");
 /// ```
 pub fn builtin_data_table(name: &str) -> String {
     format!("{}{}{}", DATA_PREFIX, name, GGSQL_SUFFIX)
@@ -459,10 +459,10 @@ mod tests {
 
     #[test]
     fn test_builtin_data_table() {
-        assert_eq!(builtin_data_table("penguins"), "__ggsql__data__penguins__");
+        assert_eq!(builtin_data_table("penguins"), "__ggsql_data_penguins__");
         assert_eq!(
             builtin_data_table("airquality"),
-            "__ggsql__data__airquality__"
+            "__ggsql_data_airquality__"
         );
     }
 
@@ -474,7 +474,7 @@ mod tests {
         assert_eq!(CTE_PREFIX, "__ggsql_cte_");
         assert_eq!(LAYER_PREFIX, "__ggsql_layer_");
         assert_eq!(AES_PREFIX, "__ggsql_aes_");
-        assert_eq!(DATA_PREFIX, "__ggsql__data__");
+        assert_eq!(DATA_PREFIX, "__ggsql_data_");
     }
 
     #[test]
