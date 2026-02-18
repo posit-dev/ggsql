@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=7.0"]
+test = ["pytest>=7.0", "duckdb>=1.0", "pyarrow>=14.0"]
 dev = ["maturin>=1.4"]
 
 [tool.maturin]
@@ -31,6 +31,8 @@ module-name = "ggsql._ggsql"
 
 [dependency-groups]
 dev = [
+    "duckdb>=1.0",
     "maturin>=1.11.5",
+    "pyarrow>=14.0",
     "pytest>=9.0.2",
 ]
