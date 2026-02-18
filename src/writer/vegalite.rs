@@ -1303,9 +1303,11 @@ impl VegaLiteWriter {
                     } else {
                         " (global data)".to_string()
                     };
+                    // Use user-friendly column name (extract aesthetic name from internal names)
+                    let display_col = naming::extract_aesthetic_name(col).unwrap_or(col.as_str());
                     return Err(GgsqlError::ValidationError(format!(
                         "Column '{}' referenced in aesthetic '{}' (layer {}{}) does not exist.\nAvailable columns: {}",
-                        col,
+                        display_col,
                         aesthetic,
                         layer_idx + 1,
                         source_desc,
