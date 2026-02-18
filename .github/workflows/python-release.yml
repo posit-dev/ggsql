@@ -1,0 +1,203 @@
+name: Python Release
+
+on:
+  push:
+    tags:
+      - "py/v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Must match the abi3-py3XX feature in ggsql-python/Cargo.toml.
+  # abi3 wheels built against 3.10 are forward-compatible with all later
+  # Python versions, so this should be the minimum supported version.
+  PYTHON_VERSION: "3.10"
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
+      - name: Generate parser
+        working-directory: tree-sitter-ggsql
+        run: tree-sitter generate
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tree-sitter-generated
+          path: tree-sitter-ggsql/src/
+
+  linux:
+    needs: generate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [x86_64, aarch64]
+    env:
+      GGSQL_SKIP_GENERATE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tree-sitter-generated
+          path: tree-sitter-ggsql/src/
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --interpreter python${{ env.PYTHON_VERSION }}
+          working-directory: ggsql-python
+          # manylinux2014's cross-compiler is too old for the `ring` crate's
+          # aarch64 assembly (missing __ARM_ARCH). 2_28 (AlmaLinux 8, gcc 8+)
+          # provides a new enough toolchain.
+          manylinux: 2_28
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-${{ matrix.target }}
+          path: ggsql-python/dist
+
+  macos:
+    needs: generate
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64
+            runner: macos-latest
+          - target: aarch64
+            runner: macos-latest
+    env:
+      GGSQL_SKIP_GENERATE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tree-sitter-generated
+          path: tree-sitter-ggsql/src/
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --interpreter python${{ env.PYTHON_VERSION }}
+          working-directory: ggsql-python
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos-${{ matrix.target }}
+          path: ggsql-python/dist
+
+  windows:
+    needs: generate
+    runs-on: windows-latest
+    env:
+      GGSQL_SKIP_GENERATE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tree-sitter-generated
+          path: tree-sitter-ggsql/src/
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: x64
+          args: --release --out dist --interpreter python${{ env.PYTHON_VERSION }}
+          working-directory: ggsql-python
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-windows-x64
+          path: ggsql-python/dist
+
+  sdist:
+    needs: generate
+    runs-on: ubuntu-latest
+    env:
+      GGSQL_SKIP_GENERATE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tree-sitter-generated
+          path: tree-sitter-ggsql/src/
+
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+          working-directory: ggsql-python
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: ggsql-python/dist
+
+  publish:
+    needs: [linux, macos, windows, sdist]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
+
+      - name: List wheels
+        run: ls -lh dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
