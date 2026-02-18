@@ -825,7 +825,10 @@ mod tests {
 
         // Case 1: No detail encoding - should add x
         let mut encoding = serde_json::Map::new();
-        encoding.insert("x".to_string(), json!({"field": "species", "type": "nominal"}));
+        encoding.insert(
+            "x".to_string(),
+            json!({"field": "species", "type": "nominal"}),
+        );
         renderer.modify_encoding(&mut encoding, &layer).unwrap();
         assert_eq!(
             encoding.get("detail"),
@@ -834,8 +837,14 @@ mod tests {
 
         // Case 2: Detail is single object (not x) - should convert to array
         let mut encoding = serde_json::Map::new();
-        encoding.insert("x".to_string(), json!({"field": "species", "type": "nominal"}));
-        encoding.insert("detail".to_string(), json!({"field": "island", "type": "nominal"}));
+        encoding.insert(
+            "x".to_string(),
+            json!({"field": "species", "type": "nominal"}),
+        );
+        encoding.insert(
+            "detail".to_string(),
+            json!({"field": "island", "type": "nominal"}),
+        );
         renderer.modify_encoding(&mut encoding, &layer).unwrap();
         assert_eq!(
             encoding.get("detail"),
@@ -847,8 +856,14 @@ mod tests {
 
         // Case 3: Detail is single object (already x) - should not change
         let mut encoding = serde_json::Map::new();
-        encoding.insert("x".to_string(), json!({"field": "species", "type": "nominal"}));
-        encoding.insert("detail".to_string(), json!({"field": "species", "type": "nominal"}));
+        encoding.insert(
+            "x".to_string(),
+            json!({"field": "species", "type": "nominal"}),
+        );
+        encoding.insert(
+            "detail".to_string(),
+            json!({"field": "species", "type": "nominal"}),
+        );
         renderer.modify_encoding(&mut encoding, &layer).unwrap();
         assert_eq!(
             encoding.get("detail"),
@@ -857,10 +872,13 @@ mod tests {
 
         // Case 4: Detail is array without x - should add x
         let mut encoding = serde_json::Map::new();
-        encoding.insert("x".to_string(), json!({"field": "species", "type": "nominal"}));
+        encoding.insert(
+            "x".to_string(),
+            json!({"field": "species", "type": "nominal"}),
+        );
         encoding.insert(
             "detail".to_string(),
-            json!([{"field": "island", "type": "nominal"}])
+            json!([{"field": "island", "type": "nominal"}]),
         );
         renderer.modify_encoding(&mut encoding, &layer).unwrap();
         assert_eq!(
@@ -873,13 +891,16 @@ mod tests {
 
         // Case 5: Detail is array with x already - should not change
         let mut encoding = serde_json::Map::new();
-        encoding.insert("x".to_string(), json!({"field": "species", "type": "nominal"}));
+        encoding.insert(
+            "x".to_string(),
+            json!({"field": "species", "type": "nominal"}),
+        );
         encoding.insert(
             "detail".to_string(),
             json!([
                 {"field": "island", "type": "nominal"},
                 {"field": "species", "type": "nominal"}
-            ])
+            ]),
         );
         renderer.modify_encoding(&mut encoding, &layer).unwrap();
         assert_eq!(
