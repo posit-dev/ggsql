@@ -2,12 +2,74 @@
 title: "Installing ggsql"
 ---
 
-ggsql is very much still a work in progress and the installation process reflects this. Eventually we will have proper installers but for now please follow this process if you wish to play around with it:
+<!-- UNCOMMENT THIS WHEN WE RELEASE
+
+ggsql provides native installers for Windows, macOS, and Linux. You can also build from source if you prefer.
+
+## Native Installers
+
+Download the latest installer for your platform from the [GitHub Releases page](https://github.com/posit-dev/ggsql/releases).
+
+### Windows
+
+**Option 1: NSIS Installer (Recommended)**
+
+1. Download `ggsql_x.x.x_x64-setup.exe`
+2. Double-click to run the installer
+3. Follow the installation wizard
+4. `ggsql` will be automatically added to your PATH
+
+**Option 2: MSI Installer**
+
+1. Download `ggsql_x.x.x_x64_en-US.msi`
+2. Double-click to run the installer
+3. For silent installation: `msiexec /i ggsql_x.x.x_x64_en-US.msi /quiet`
+
+**Note**: Windows may show a security warning since the installer is unsigned. Click "More info" → "Run anyway" to proceed.
+
+### macOS
+
+1. Download the appropriate DMG for your system:
+   - `ggsql_x.x.x_x64.dmg` (Intel Macs)
+   - `ggsql_x.x.x_aarch64.dmg` (Apple Silicon - M1/M2/M3)
+2. Open the DMG file
+3. Drag `ggsql.app` to your Applications folder
+4. Or copy binaries directly to `/usr/local/bin`
+
+**Note**: macOS may show "ggsql.app is damaged" for unsigned apps. If this happens, run:
+```bash
+xattr -cr /Applications/ggsql.app
+```
+
+### Linux (Debian/Ubuntu)
+
+1. Download `ggsql_x.x.x_amd64.deb`
+2. Install with:
+   ```bash
+   sudo dpkg -i ggsql_x.x.x_amd64.deb
+   ```
+3. If dependencies are missing:
+   ```bash
+   sudo apt-get install -f
+   ```
+
+### What Gets Installed
+
+The native installers include the **ggsql CLI** binary only. Additional components must be installed separately:
+
+- **REST API server**: `cargo install ggsql --features rest-api`
+- **Jupyter kernel**: `cargo install ggsql-jupyter`
+
+// -->
+
+## Building from Source
+
+If you prefer to build from source or need the latest development version:
 
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/georgestagg/ggsql
+   git clone https://github.com/posit-dev/ggsql
    cd ggsql
    ```
 
@@ -21,11 +83,17 @@ ggsql is very much still a work in progress and the installation process reflect
 
    ```bash
    cd tree-sitter-ggsql && tree-sitter generate && cd ..
-   cargo build
+   cargo build --release
    ```
 
-4. **Install the Jupyter kernel:**
+4. **Install the CLI:**
    ```bash
-   cargo run --package ggsql-jupyter -- --install
+   cargo install --path src
+   ```
+
+5. **Install the Jupyter kernel (optional):**
+   ```bash
+   cargo install --path ggsql-jupyter
+   ggsql-jupyter --install
    ```
 

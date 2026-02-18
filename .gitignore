@@ -141,3 +141,11 @@ pkg/
 *.Rdata
 .Rproj.user
 ggsql.Rcheck/
+
+# cargo-packager artifacts
+*.msi
+*.deb
+*.rpm
+*.dmg
+*.AppImage
+.cargo-packager/

@@ -1,0 +1,197 @@
+name: Release Installers
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags (e.g., v0.1.0)
+  workflow_dispatch:  # Allow manual triggering
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows:
+    name: Build Windows Installers
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-release
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Build ggsql binary
+        run: cargo build --release --package ggsql --bin ggsql
+
+      - name: Build NSIS installer
+        run: cargo packager --release --formats nsis
+        working-directory: src
+
+      - name: Build MSI installer
+        run: cargo packager --release --formats wix
+        working-directory: src
+
+      - name: Upload NSIS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggsql-windows-nsis
+          path: src/target/release/packager/*.exe
+          retention-days: 30
+
+      - name: Upload MSI installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggsql-windows-msi
+          path: src/target/release/packager/*.msi
+          retention-days: 30
+
+  build-macos:
+    name: Build macOS Installers
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin, aarch64-apple-darwin
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos-release
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Build ggsql binary (x86_64)
+        run: cargo build --release --package ggsql --bin ggsql
+
+      - name: Build DMG installer (x86_64)
+        run: cargo packager --release --formats dmg
+        working-directory: src
+
+      - name: Build ggsql binary (aarch64)
+        run: cargo build --release --package ggsql --bin ggsql --target aarch64-apple-darwin
+
+      - name: Build DMG installer (aarch64)
+        run: cargo packager --release --target aarch64-apple-darwin --formats dmg
+        working-directory: src
+
+      - name: Upload DMG installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggsql-macos-dmg
+          path: src/target/release/packager/*.dmg
+          retention-days: 30
+
+  build-linux:
+    name: Build Linux Installers
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: linux-release
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Build ggsql binary
+        run: cargo build --release --package ggsql --bin ggsql
+
+      - name: Build Debian package
+        run: cargo packager --release --formats deb
+        working-directory: src
+
+      - name: Upload Debian package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggsql-linux-deb
+          path: src/target/release/packager/*.deb
+          retention-days: 30
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Create release and upload installers
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/**/*.exe
+            artifacts/**/*.msi
+            artifacts/**/*.dmg
+            artifacts/**/*.deb
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
