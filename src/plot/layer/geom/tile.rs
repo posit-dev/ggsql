@@ -17,8 +17,8 @@ impl GeomTrait for Tile {
             defaults: &[
                 ("x", DefaultAestheticValue::Required),
                 ("y", DefaultAestheticValue::Required),
-                ("fill", DefaultAestheticValue::String("steelblue")),
-                ("stroke", DefaultAestheticValue::Null),
+                ("fill", DefaultAestheticValue::String("black")),
+                ("stroke", DefaultAestheticValue::String("black")),
                 ("width", DefaultAestheticValue::Null),
                 ("height", DefaultAestheticValue::Null),
                 ("opacity", DefaultAestheticValue::Number(1.0)),

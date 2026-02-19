@@ -27,12 +27,12 @@ impl GeomTrait for Boxplot {
                 ("x", DefaultAestheticValue::Required),
                 ("y", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::String("black")),
-                ("fill", DefaultAestheticValue::String("#FFFFFF00")), // Transparent
+                ("fill", DefaultAestheticValue::String("#FFFFFFCC")),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
-                ("opacity", DefaultAestheticValue::Null),
-                ("linetype", DefaultAestheticValue::Null),
-                ("size", DefaultAestheticValue::Null),
-                ("shape", DefaultAestheticValue::Null),
+                ("opacity", DefaultAestheticValue::Number(1.0)),
+                ("linetype", DefaultAestheticValue::String("solid")),
+                ("size", DefaultAestheticValue::Number(3.0)),
+                ("shape", DefaultAestheticValue::String("circle")),
                 // Internal aesthetics produced by stat transform
                 ("type", DefaultAestheticValue::Delayed),
                 ("yend", DefaultAestheticValue::Delayed),

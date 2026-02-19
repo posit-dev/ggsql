@@ -25,12 +25,12 @@ impl GeomTrait for Violin {
                 ("x", DefaultAestheticValue::Required),
                 ("y", DefaultAestheticValue::Required),
                 ("weight", DefaultAestheticValue::Null),
-                ("fill", DefaultAestheticValue::String("steelblue")),
+                ("fill", DefaultAestheticValue::String("#000000B2")),
                 ("stroke", DefaultAestheticValue::String("black")),
-                ("opacity", DefaultAestheticValue::Number(0.7)),
+                ("opacity", DefaultAestheticValue::Number(1.0)),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
-                ("linetype", DefaultAestheticValue::Null),
-                ("offset", DefaultAestheticValue::Delayed),  // Computed by stat
+                ("linetype", DefaultAestheticValue::String("solid")),
+                ("offset", DefaultAestheticValue::Delayed), // Computed by stat
             ],
         }
     }

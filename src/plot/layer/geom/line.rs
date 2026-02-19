@@ -18,9 +18,9 @@ impl GeomTrait for Line {
                 ("x", DefaultAestheticValue::Required),
                 ("y", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::String("black")),
-                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("linewidth", DefaultAestheticValue::Number(1.5)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
-                ("linetype", DefaultAestheticValue::Null),
+                ("linetype", DefaultAestheticValue::String("solid")),
             ],
         }
     }

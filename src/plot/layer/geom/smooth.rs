@@ -18,10 +18,10 @@ impl GeomTrait for Smooth {
             defaults: &[
                 ("x", DefaultAestheticValue::Required),
                 ("y", DefaultAestheticValue::Required),
-                ("stroke", DefaultAestheticValue::String("blue")),
+                ("stroke", DefaultAestheticValue::String("#3366FF")),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
-                ("linetype", DefaultAestheticValue::Null),
+                ("linetype", DefaultAestheticValue::String("solid")),
             ],
         }
     }

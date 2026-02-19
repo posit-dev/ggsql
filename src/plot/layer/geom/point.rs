@@ -19,10 +19,10 @@ impl GeomTrait for Point {
                 ("y", DefaultAestheticValue::Required),
                 ("size", DefaultAestheticValue::Number(3.0)),
                 ("stroke", DefaultAestheticValue::String("black")),
-                ("fill", DefaultAestheticValue::Null),
+                ("fill", DefaultAestheticValue::String("#000000B2")),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
-                ("shape", DefaultAestheticValue::Null),
-                ("linewidth", DefaultAestheticValue::Null),
+                ("shape", DefaultAestheticValue::String("circle")),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
             ],
         }
     }

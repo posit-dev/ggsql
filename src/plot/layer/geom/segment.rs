@@ -22,7 +22,7 @@ impl GeomTrait for Segment {
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
-                ("linetype", DefaultAestheticValue::Null),
+                ("linetype", DefaultAestheticValue::String("solid")),
             ],
         }
     }

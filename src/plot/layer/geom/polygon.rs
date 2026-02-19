@@ -17,11 +17,11 @@ impl GeomTrait for Polygon {
             defaults: &[
                 ("x", DefaultAestheticValue::Required),
                 ("y", DefaultAestheticValue::Required),
-                ("fill", DefaultAestheticValue::String("#888888")),
-                ("stroke", DefaultAestheticValue::String("#888888")),
+                ("fill", DefaultAestheticValue::String("#000000B2")),
+                ("stroke", DefaultAestheticValue::String("black")),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
-                ("linewidth", DefaultAestheticValue::Null),
-                ("linetype", DefaultAestheticValue::Null),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("linetype", DefaultAestheticValue::String("solid")),
             ],
         }
     }

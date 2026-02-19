@@ -1,6 +1,6 @@
 //! Area geom implementation
 
-use crate::plot::{DefaultParam, DefaultParamValue, types::DefaultAestheticValue};
+use crate::plot::{types::DefaultAestheticValue, DefaultParam, DefaultParamValue};
 
 use super::{DefaultAesthetics, GeomTrait, GeomType};
 
@@ -18,11 +18,11 @@ impl GeomTrait for Area {
             defaults: &[
                 ("x", DefaultAestheticValue::Required),
                 ("y", DefaultAestheticValue::Required),
-                ("fill", DefaultAestheticValue::String("steelblue")),
-                ("stroke", DefaultAestheticValue::Null),
-                ("opacity", DefaultAestheticValue::Number(1.0)),
-                ("linewidth", DefaultAestheticValue::Null),
-                // "linetype", // vegalite doesn't support strokeDash
+                ("fill", DefaultAestheticValue::String("black")),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("opacity", DefaultAestheticValue::Number(0.8)),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("linetype", DefaultAestheticValue::String("solid")),
             ],
         }
     }

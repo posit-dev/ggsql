@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use super::types::get_column_name;
-use super::{DefaultParam, DefaultParamValue, DefaultAesthetics, GeomTrait, GeomType, StatResult};
+use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, StatResult};
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
 use crate::{DataFrame, GgsqlError, Mappings, Result};
@@ -26,13 +26,15 @@ impl GeomTrait for Bar {
             // If x is missing: single bar showing total
             // If y is missing: stat computes COUNT or SUM(weight)
             // weight: optional, if mapped uses SUM(weight) instead of COUNT(*)
+            // width is a parameter, not an aesthetic.
+            // if we ever want to make 'width' an aesthetic, we'd probably need to
+            // translate it to 'size'.
             defaults: &[
                 ("x", DefaultAestheticValue::Null), // Optional - stat may provide
                 ("y", DefaultAestheticValue::Null), // Optional - stat may compute
                 ("weight", DefaultAestheticValue::Null),
-                ("fill", DefaultAestheticValue::String("steelblue")),
-                ("stroke", DefaultAestheticValue::Null),
-                ("width", DefaultAestheticValue::Null),
+                ("fill", DefaultAestheticValue::String("#000000B2")),
+                ("stroke", DefaultAestheticValue::String("black")),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
             ],
         }

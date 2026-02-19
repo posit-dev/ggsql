@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use super::types::get_column_name;
-use super::{DefaultParam, DefaultParamValue, DefaultAesthetics, GeomTrait, GeomType, StatResult};
+use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, StatResult};
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
 use crate::{DataFrame, GgsqlError, Mappings, Result};
@@ -24,8 +24,8 @@ impl GeomTrait for Histogram {
             defaults: &[
                 ("x", DefaultAestheticValue::Required),
                 ("weight", DefaultAestheticValue::Null),
-                ("fill", DefaultAestheticValue::String("steelblue")),
-                ("stroke", DefaultAestheticValue::Null),
+                ("fill", DefaultAestheticValue::String("#000000B2")),
+                ("stroke", DefaultAestheticValue::String("black")),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
                 // y and xend are produced by stat_histogram but not valid for manual MAPPING
                 ("y", DefaultAestheticValue::Delayed),

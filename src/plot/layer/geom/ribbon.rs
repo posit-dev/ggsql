@@ -18,11 +18,11 @@ impl GeomTrait for Ribbon {
                 ("x", DefaultAestheticValue::Required),
                 ("ymin", DefaultAestheticValue::Required),
                 ("ymax", DefaultAestheticValue::Required),
-                ("fill", DefaultAestheticValue::String("steelblue")),
-                ("stroke", DefaultAestheticValue::Null),
-                ("opacity", DefaultAestheticValue::Number(0.5)),
-                ("linewidth", DefaultAestheticValue::Null),
-                // "linetype" // vegalite doesn't support strokeDash
+                ("fill", DefaultAestheticValue::String("#000000B2")),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("opacity", DefaultAestheticValue::Number(1.0)),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("linetype", DefaultAestheticValue::String("solid")),
             ],
         }
     }
