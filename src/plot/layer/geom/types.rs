@@ -69,6 +69,14 @@ impl DefaultAesthetics {
             .iter()
             .any(|(n, value)| *n == name && matches!(value, DefaultAestheticValue::Required))
     }
+
+    /// Get the default value for an aesthetic by name
+    pub fn get(&self, name: &str) -> Option<&'static DefaultAestheticValue> {
+        self.defaults
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, value)| value)
+    }
 }
 
 /// Default value for a layer parameter
@@ -125,4 +133,73 @@ pub fn get_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String>
         AestheticValue::Column { name, .. } => Some(name.clone()),
         _ => None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_aesthetics_methods() {
+        // Create a DefaultAesthetics with various value types
+        let aes = DefaultAesthetics {
+            defaults: &[
+                ("x", DefaultAestheticValue::Required),
+                ("y", DefaultAestheticValue::Required),
+                ("size", DefaultAestheticValue::Number(3.0)),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("fill", DefaultAestheticValue::Null),
+                ("yend", DefaultAestheticValue::Delayed),
+            ],
+        };
+
+        // Test get() method
+        assert_eq!(aes.get("x"), Some(&DefaultAestheticValue::Required));
+        assert_eq!(aes.get("size"), Some(&DefaultAestheticValue::Number(3.0)));
+        assert_eq!(
+            aes.get("stroke"),
+            Some(&DefaultAestheticValue::String("black"))
+        );
+        assert_eq!(aes.get("fill"), Some(&DefaultAestheticValue::Null));
+        assert_eq!(aes.get("yend"), Some(&DefaultAestheticValue::Delayed));
+        assert_eq!(aes.get("nonexistent"), None);
+
+        // Test names() - includes all aesthetics
+        let names = aes.names();
+        assert_eq!(names.len(), 6);
+        assert!(names.contains(&"x"));
+        assert!(names.contains(&"yend"));
+
+        // Test supported() - excludes Delayed
+        let supported = aes.supported();
+        assert_eq!(supported.len(), 5);
+        assert!(supported.contains(&"x"));
+        assert!(supported.contains(&"size"));
+        assert!(supported.contains(&"fill"));
+        assert!(!supported.contains(&"yend")); // Delayed excluded
+
+        // Test required() - only Required variants
+        let required = aes.required();
+        assert_eq!(required.len(), 2);
+        assert!(required.contains(&"x"));
+        assert!(required.contains(&"y"));
+        assert!(!required.contains(&"size"));
+
+        // Test is_supported() - efficient membership check
+        assert!(aes.is_supported("x"));
+        assert!(aes.is_supported("size"));
+        assert!(!aes.is_supported("yend")); // Delayed not supported
+        assert!(!aes.is_supported("nonexistent"));
+
+        // Test contains() - includes Delayed
+        assert!(aes.contains("x"));
+        assert!(aes.contains("yend")); // Delayed included
+        assert!(!aes.contains("nonexistent"));
+
+        // Test is_required()
+        assert!(aes.is_required("x"));
+        assert!(aes.is_required("y"));
+        assert!(!aes.is_required("size"));
+        assert!(!aes.is_required("yend"));
+    }
 }
