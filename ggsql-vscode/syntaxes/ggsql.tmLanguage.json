@@ -268,6 +268,10 @@
           "match": "\\b(?i:MAPPING|REMAPPING|SETTING|FILTER|FROM|ORDER|BY|PARTITION|RENAMING)\\b"
         },
         {
+          "name": "constant.language.null.ggsql",
+          "match": "\\b(?i:NULL|TRUE|FALSE)\\b"
+        },
+        {
           "name": "punctuation.separator.comma.ggsql",
           "match": ","
         },
@@ -308,7 +312,7 @@
         },
         {
           "name": "keyword.other.ggsql",
-          "match": "\\b(?i:TO|VIA)\\b"
+          "match": "\\b(?i:TO|VIA|RENAMING)\\b"
         },
         {
           "name": "constant.language.scale-type.ggsql",
@@ -339,6 +343,10 @@
         {
           "name": "keyword.operator.wildcard.ggsql",
           "match": "\\*"
+        },
+        {
+          "name": "keyword.other.ggsql",
+          "match": "\\b(?i:RENAMING)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]

@@ -232,6 +232,13 @@ fn build_layer_encoding(
 
     // Build encoding channels for each aesthetic mapping
     for (aesthetic, value) in &layer.mappings.aesthetics {
+        // Skip facet aesthetics - they are handled via top-level facet structure,
+        // not as encoding channels. Adding them to encoding would create row-based
+        // faceting instead of the intended wrap/grid layout.
+        if matches!(aesthetic.as_str(), "facet" | "row" | "column") {
+            continue;
+        }
+
         let channel_name = map_aesthetic_name(aesthetic);
         let channel_encoding = build_encoding_channel(aesthetic, value, &mut enc_ctx)?;
         encoding.insert(channel_name, channel_encoding);
@@ -431,7 +438,7 @@ fn build_facet_field_def(df: &DataFrame, col: &str, scale: Option<&Scale>) -> Va
 
 /// Apply facet ordering via Vega-Lite's sort property.
 ///
-/// For discrete facets: uses explicit breaks array order
+/// For discrete facets: uses input_range (FROM clause) or breaks array order
 /// For binned facets: uses "descending" sort if reversed
 fn apply_facet_ordering(facet_def: &mut Value, scale: Option<&Scale>) {
     let Some(scale) = scale else {
@@ -456,14 +463,20 @@ fn apply_facet_ordering(facet_def: &mut Value, scale: Option<&Scale>) {
         }
         // Default is ascending, no need to specify
     } else {
-        // For discrete facets: use explicit breaks array order
-        let breaks = match scale.properties.get("breaks") {
-            Some(ParameterValue::Array(arr)) => arr.clone(),
-            _ => return,
+        // For discrete facets: use input_range (FROM clause) if present,
+        // otherwise fall back to breaks property
+        let order_values: Vec<ArrayElement> = if let Some(ref input_range) = scale.input_range {
+            // Use explicit input_range from FROM clause
+            input_range.clone()
+        } else if let Some(ParameterValue::Array(arr)) = scale.properties.get("breaks") {
+            // Fall back to breaks if present
+            arr.clone()
+        } else {
+            return;
         };
 
-        // Convert breaks to JSON values
-        let mut sort_values: Vec<Value> = breaks.iter().map(|e| e.to_json()).collect();
+        // Convert to JSON values, preserving null
+        let mut sort_values: Vec<Value> = order_values.iter().map(|e| e.to_json()).collect();
 
         // Apply reverse if specified
         if is_reversed {
@@ -605,7 +618,12 @@ fn build_discrete_facet_label_expr(
 
     // Add explicit mappings
     for (from, to) in mappings {
-        let condition = format!("datum.value == '{}'", escape_vega_string(from));
+        // Handle null values: 'null' key maps to JSON null comparison
+        let condition = if from == "null" {
+            "datum.value == null".to_string()
+        } else {
+            format!("datum.value == '{}'", escape_vega_string(from))
+        };
         let result = match to {
             Some(label) => format!("'{}'", escape_vega_string(label)),
             None => "''".to_string(), // NULL suppresses label
@@ -1298,6 +1316,113 @@ mod tests {
             result_right.get("≥ 75"),
             Some(&Some("> Very High".to_string())),
             "Last bin with closed='right' should use '> lower' format"
+        );
+    }
+
+    #[test]
+    fn test_facet_ordering_uses_input_range() {
+        // Test that apply_facet_ordering uses input_range (FROM clause) for discrete scales
+        use crate::plot::scale::Scale;
+
+        let mut facet_def = json!({"field": "__ggsql_aes_facet__", "type": "nominal"});
+
+        // Create a scale with input_range (simulating SCALE facet FROM ['A', 'B', 'C'])
+        let mut scale = Scale::new("facet");
+        scale.input_range = Some(vec![
+            ArrayElement::String("A".to_string()),
+            ArrayElement::String("B".to_string()),
+            ArrayElement::String("C".to_string()),
+        ]);
+
+        apply_facet_ordering(&mut facet_def, Some(&scale));
+
+        // Verify sort order matches input_range
+        assert_eq!(
+            facet_def["sort"],
+            json!(["A", "B", "C"]),
+            "Facet sort should use input_range order"
+        );
+    }
+
+    #[test]
+    fn test_facet_ordering_with_null_in_input_range() {
+        // Test that apply_facet_ordering preserves null values in input_range
+        // This is the fix for the bug where null panels appear first
+        use crate::plot::scale::Scale;
+
+        let mut facet_def = json!({"field": "__ggsql_aes_facet__", "type": "nominal"});
+
+        // Create a scale with input_range including null at the end
+        // (simulating SCALE facet FROM ['Adelie', 'Gentoo', null])
+        let mut scale = Scale::new("facet");
+        scale.input_range = Some(vec![
+            ArrayElement::String("Adelie".to_string()),
+            ArrayElement::String("Gentoo".to_string()),
+            ArrayElement::Null,
+        ]);
+
+        apply_facet_ordering(&mut facet_def, Some(&scale));
+
+        // Verify sort order preserves null at the end
+        assert_eq!(
+            facet_def["sort"],
+            json!(["Adelie", "Gentoo", null]),
+            "Facet sort should preserve null position from input_range"
+        );
+    }
+
+    #[test]
+    fn test_facet_ordering_with_null_first_in_input_range() {
+        // Test that null at the beginning of input_range produces null first in sort
+        use crate::plot::scale::Scale;
+
+        let mut facet_def = json!({"field": "__ggsql_aes_facet__", "type": "nominal"});
+
+        // Create a scale with null at the beginning
+        let mut scale = Scale::new("facet");
+        scale.input_range = Some(vec![
+            ArrayElement::Null,
+            ArrayElement::String("Adelie".to_string()),
+            ArrayElement::String("Gentoo".to_string()),
+        ]);
+
+        apply_facet_ordering(&mut facet_def, Some(&scale));
+
+        // Verify null is first in sort order
+        assert_eq!(
+            facet_def["sort"],
+            json!([null, "Adelie", "Gentoo"]),
+            "Facet sort should preserve null at beginning"
+        );
+    }
+
+    #[test]
+    fn test_discrete_facet_label_expr_renames_null() {
+        // Test that 'null' key in label_mapping generates correct Vega expression
+        // for comparing against JSON null (not string 'null')
+        let mut mappings = HashMap::new();
+        mappings.insert("Adelie".to_string(), Some("Adelie Penguin".to_string()));
+        mappings.insert("null".to_string(), Some("Missing".to_string()));
+
+        let expr = build_discrete_facet_label_expr(Some(&mappings));
+
+        // Should contain null comparison without quotes
+        assert!(
+            expr.contains("datum.value == null"),
+            "Label expr should use 'datum.value == null' (not string), got: {}",
+            expr
+        );
+        // Should map null to 'Missing'
+        assert!(
+            expr.contains("'Missing'"),
+            "Label expr should contain 'Missing', got: {}",
+            expr
+        );
+        // Should still use string comparison for non-null values
+        assert!(
+            expr.contains("datum.value == 'Adelie'"),
+            "Label expr should use string comparison for Adelie, got: {}",
+            expr
         );
     }
 }
