@@ -761,15 +761,11 @@ fn collect_layer_required_columns(layer: &Layer, spec: &Plot) -> HashSet<String>
 
     let mut required = HashSet::new();
 
-    // Facet variables (shared across all layers)
-    // Include both original variable names AND aesthetic-prefixed names
-    // to support layers that were expanded via cross_join (missing facet column)
+    // Facet aesthetic columns (shared across all layers)
+    // Only the aesthetic-prefixed columns are needed for Vega-Lite output.
+    // The original variable names (e.g., "species") are not needed after
+    // the aesthetic columns (e.g., "__ggsql_aes_facet__") have been created.
     if let Some(ref facet) = spec.facet {
-        for var in facet.get_variables() {
-            required.insert(var);
-        }
-        // Also add aesthetic-prefixed names for facet aesthetics
-        // This ensures the facet column is kept for layers expanded by handle_missing_facet_columns
         for aesthetic in facet.layout.get_aesthetics() {
             required.insert(naming::aesthetic_column(aesthetic));
         }
