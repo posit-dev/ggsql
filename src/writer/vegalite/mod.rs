@@ -272,6 +272,31 @@ fn build_layer_encoding(
         }
     }
 
+    // Add default aesthetic values from geom (lowest priority)
+    // Only apply if not already set by MAPPING or SETTING
+    let geom_aesthetics = layer.geom.aesthetics();
+    for (aesthetic_name, default_value) in geom_aesthetics.defaults {
+        let channel_name = map_aesthetic_name(aesthetic_name);
+
+        // Skip if already set by MAPPING or SETTING
+        if encoding.contains_key(&channel_name) {
+            continue;
+        }
+
+        // Convert to AestheticValue
+        let aesthetic_value = default_value.to_aesthetic_value();
+
+        // Skip if not a literal or if it's Null (Required/Null/Delayed all become Null)
+        match aesthetic_value {
+            AestheticValue::Literal(ParameterValue::Null) | AestheticValue::Column { .. } => continue,
+            AestheticValue::Literal(_) => {} // Has a real value, proceed
+        }
+
+        // Use existing encoding builder with unit conversions
+        let channel_encoding = build_encoding_channel(aesthetic_name, &aesthetic_value, &mut enc_ctx)?;
+        encoding.insert(channel_name, channel_encoding);
+    }
+
     // Add detail encoding for partition_by columns (grouping)
     if let Some(detail) = build_detail_encoding(&layer.partition_by) {
         encoding.insert("detail".to_string(), detail);
