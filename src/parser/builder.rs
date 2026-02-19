@@ -4,7 +4,7 @@
 //! handling all the node types defined in the grammar.
 
 use crate::plot::layer::geom::Geom;
-use crate::plot::scale::{color_to_hex, is_color_aesthetic, Transform};
+use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_facet_aesthetic, Transform};
 use crate::plot::*;
 use crate::{GgsqlError, Result};
 use std::collections::HashMap;
@@ -642,6 +642,14 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
         }
     }
 
+    // Validate facet aesthetics cannot have output ranges (TO clause)
+    if is_facet_aesthetic(&aesthetic) && output_range.is_some() {
+        return Err(GgsqlError::ValidationError(format!(
+            "SCALE {}: facet variables cannot have output ranges (TO clause)",
+            aesthetic
+        )));
+    }
+
     Ok(Scale {
         aesthetic,
         scale_type,
@@ -792,7 +800,7 @@ fn parse_scale_renaming_clause(
 /// - BY clause = grid layout
 fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
     let mut row_vars = Vec::new();
-    let mut col_vars = Vec::new();
+    let mut column_vars = Vec::new();
     let mut properties = HashMap::new();
     let mut label_mapping: Option<HashMap<String, Option<String>>> = None;
     let mut label_template = "{}".to_string();
@@ -810,7 +818,7 @@ fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
                 // Parse list of variable names
                 let vars = parse_facet_vars(&child, source)?;
                 if next_vars_are_cols {
-                    col_vars = vars;
+                    column_vars = vars;
                 } else {
                     row_vars = vars;
                 }
@@ -831,15 +839,15 @@ fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
         }
     }
 
-    // Determine layout variant: if col_vars is empty, it's a wrap layout
-    let layout = if col_vars.is_empty() {
+    // Determine layout variant: if column_vars is empty, it's a wrap layout
+    let layout = if column_vars.is_empty() {
         FacetLayout::Wrap {
             variables: row_vars,
         }
     } else {
         FacetLayout::Grid {
-            rows: row_vars,
-            cols: col_vars,
+            row: row_vars,
+            column: column_vars,
         }
     };
 

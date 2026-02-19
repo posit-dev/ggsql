@@ -57,6 +57,9 @@
   "fontface"
   "hjust"
   "vjust"
+  "facet"
+  "row"
+  "column"
 ] @attribute
 
 ; String literals

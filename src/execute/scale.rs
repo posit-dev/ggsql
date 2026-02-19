@@ -8,7 +8,7 @@ use crate::naming;
 use crate::plot::layer::geom::{get_aesthetic_family, GeomAesthetics};
 use crate::plot::scale::{
     default_oob, gets_default_scale, infer_scale_target_type, infer_transform_from_input_range,
-    transform::Transform, OOB_CENSOR, OOB_KEEP, OOB_SQUISH,
+    is_facet_aesthetic, transform::Transform, OOB_CENSOR, OOB_KEEP, OOB_SQUISH,
 };
 use crate::plot::{
     AestheticValue, ArrayElement, ArrayElementType, ColumnInfo, Layer, ParameterValue, Plot, Scale,
@@ -257,6 +257,17 @@ pub fn resolve_scale_types_and_transforms(
     for scale in &mut spec.scales {
         // Skip scales that already have explicit types (user specified)
         if let Some(scale_type) = &scale.scale_type {
+            // Validate facet aesthetics cannot use Continuous scales
+            if is_facet_aesthetic(&scale.aesthetic)
+                && scale_type.scale_type_kind() == ScaleTypeKind::Continuous
+            {
+                return Err(GgsqlError::ValidationError(format!(
+                    "SCALE {}: facet variables require Discrete or Binned scales, got Continuous. \
+                     Use SCALE BINNED {} to bin continuous data.",
+                    scale.aesthetic, scale.aesthetic
+                )));
+            }
+
             // Collect all dtypes for validation and transform inference
             let all_dtypes =
                 collect_dtypes_for_aesthetic(&spec.layers, &scale.aesthetic, layer_type_info);
@@ -342,14 +353,16 @@ pub fn resolve_scale_types_and_transforms(
                     | TransformKind::Integer => ScaleType::continuous(),
                     // Discrete transforms (String, Bool) use Discrete scale
                     TransformKind::String | TransformKind::Bool => ScaleType::discrete(),
-                    // Identity: fall back to dtype inference
-                    TransformKind::Identity => ScaleType::infer(&common_dtype),
+                    // Identity: fall back to dtype inference (considers aesthetic)
+                    TransformKind::Identity => {
+                        ScaleType::infer_for_aesthetic(&common_dtype, &scale.aesthetic)
+                    }
                 }
             } else {
-                ScaleType::infer(&common_dtype)
+                ScaleType::infer_for_aesthetic(&common_dtype, &scale.aesthetic)
             }
         } else {
-            ScaleType::infer(&common_dtype)
+            ScaleType::infer_for_aesthetic(&common_dtype, &scale.aesthetic)
         };
         scale.scale_type = Some(inferred_scale_type.clone());
 
@@ -894,7 +907,8 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
 
         // Infer scale_type if not already set
         if spec.scales[idx].scale_type.is_none() {
-            spec.scales[idx].scale_type = Some(ScaleType::infer(column_refs[0].dtype()));
+            spec.scales[idx].scale_type =
+                Some(ScaleType::infer_for_aesthetic(column_refs[0].dtype(), &aesthetic));
         }
 
         // Clone scale_type (cheap Arc clone) to avoid borrow conflict with mutations

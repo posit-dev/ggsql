@@ -23,7 +23,7 @@ pub use schema::TypeInfo;
 
 use crate::naming;
 use crate::parser;
-use crate::plot::facet::{resolve_properties as resolve_facet, FacetDataContext};
+use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDataContext};
 use crate::plot::layer::geom::GeomAesthetics;
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
 use crate::{DataFrame, GgsqlError, Plot, Result};
@@ -163,9 +163,13 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             // 1. First merge explicit global aesthetics (layer overrides global)
             // Note: "color"/"colour" are accepted even though not in supported,
             // because split_color_aesthetic will convert them to fill/stroke later
+            // Note: facet aesthetics (facet, row, column) are also accepted,
+            // as they apply to all layers regardless of geom support
             for (aesthetic, value) in &spec.global_mappings.aesthetics {
                 let is_color_alias = matches!(aesthetic.as_str(), "color" | "colour");
-                if supported.contains(&aesthetic.as_str()) || is_color_alias {
+                let is_facet_aesthetic =
+                    crate::plot::scale::is_facet_aesthetic(aesthetic.as_str());
+                if supported.contains(&aesthetic.as_str()) || is_color_alias || is_facet_aesthetic {
                     layer
                         .mappings
                         .aesthetics
@@ -260,6 +264,384 @@ fn split_color_aesthetic(spec: &mut Plot) {
             layer.parameters.remove("color");
         }
     }
+}
+
+// =============================================================================
+// Facet Mapping Injection
+// =============================================================================
+
+/// Add facet variable mappings to each layer's mappings.
+///
+/// This allows facet aesthetics to flow through the same code paths as
+/// regular aesthetics (scale resolution, type casting, SELECT list building,
+/// partition_by handling, etc.).
+///
+/// Skips injection if:
+/// - The layer already has the facet aesthetic mapped (from MAPPING or global)
+/// - The variables list is empty (inferred from layer mappings, not FACET clause)
+/// - The column doesn't exist in this layer's schema (different data source)
+fn add_facet_mappings_to_layers(
+    layers: &mut [Layer],
+    facet: &crate::plot::Facet,
+    layer_type_info: &[Vec<schema::TypeInfo>],
+) {
+    for (layer_idx, layer) in layers.iter_mut().enumerate() {
+        if layer_idx >= layer_type_info.len() {
+            continue;
+        }
+        let type_info = &layer_type_info[layer_idx];
+
+        for (var, aesthetic) in facet.layout.get_aesthetic_mappings() {
+            // Skip if layer already has this facet aesthetic mapped (from MAPPING or global)
+            if layer.mappings.aesthetics.contains_key(aesthetic) {
+                continue;
+            }
+
+            // Only inject if the column exists in this layer's schema
+            // (variables list is empty when inferred from layer mappings - no injection needed)
+            if type_info.iter().any(|(col, _, _)| col == var) {
+                // Add mapping: variable → facet aesthetic
+                layer.mappings.aesthetics.insert(
+                    aesthetic.to_string(),
+                    AestheticValue::Column {
+                        name: var.to_string(),
+                        original_name: Some(var.to_string()),
+                        is_dummy: false,
+                    },
+                );
+            }
+        }
+    }
+}
+
+// =============================================================================
+// Facet Missing Column Detection and Handling
+// =============================================================================
+
+/// Identify which layers are missing the facet column.
+///
+/// Returns a vector of booleans, one per layer. A layer is considered "missing"
+/// the facet column if ANY of the facet variables are not present in the layer's
+/// schema (type_info).
+///
+/// This is used to determine which layers need data duplication when
+/// `missing => 'repeat'` is set on the facet.
+fn identify_layers_missing_facet_column(
+    layers: &[Layer],
+    facet: &crate::plot::Facet,
+    layer_type_info: &[Vec<schema::TypeInfo>],
+) -> Vec<bool> {
+    let facet_variables = facet.get_variables();
+
+    // If variables list is empty (inferred from layer mappings), no layers are "missing"
+    if facet_variables.is_empty() {
+        return vec![false; layers.len()];
+    }
+
+    layers
+        .iter()
+        .enumerate()
+        .map(|(layer_idx, _layer)| {
+            if layer_idx >= layer_type_info.len() {
+                return false;
+            }
+            let type_info = &layer_type_info[layer_idx];
+            let schema_columns: std::collections::HashSet<&str> =
+                type_info.iter().map(|(name, _, _)| name.as_str()).collect();
+
+            // Layer is missing if ANY facet variable is absent from its schema
+            facet_variables
+                .iter()
+                .any(|var| !schema_columns.contains(var.as_str()))
+        })
+        .collect()
+}
+
+/// Get unique facet values from layers that have the facet column.
+///
+/// Collects all unique values for a facet aesthetic from layers that have the column,
+/// to be used for cross-joining with layers that are missing the column.
+fn get_unique_facet_values(
+    data_map: &HashMap<String, DataFrame>,
+    facet_aesthetic: &str,
+    layers: &[Layer],
+    layers_missing_facet: &[bool],
+) -> Option<polars::prelude::Series> {
+    use polars::prelude::*;
+
+    let aes_col = naming::aesthetic_column(facet_aesthetic);
+    let mut all_values: Vec<Series> = Vec::new();
+
+    for (idx, layer) in layers.iter().enumerate() {
+        // Skip layers that are missing the facet column
+        if idx < layers_missing_facet.len() && layers_missing_facet[idx] {
+            continue;
+        }
+
+        if let Some(ref data_key) = layer.data_key {
+            if let Some(df) = data_map.get(data_key) {
+                if let Ok(col) = df.column(&aes_col) {
+                    all_values.push(col.as_materialized_series().clone());
+                }
+            }
+        }
+    }
+
+    if all_values.is_empty() {
+        return None;
+    }
+
+    // Concatenate all series and get unique values
+    let mut combined = all_values.remove(0);
+    for s in all_values {
+        let _ = combined.extend(&s);
+    }
+
+    combined.unique().ok()
+}
+
+/// Cross-join a DataFrame with facet values (duplicate for each facet panel).
+///
+/// Creates a new DataFrame where every row is duplicated for each unique facet value.
+/// The facet column is added with the appropriate values.
+fn cross_join_with_facet_values(
+    df: &DataFrame,
+    unique_values: &polars::prelude::Series,
+    facet_aesthetic: &str,
+) -> Result<DataFrame> {
+    use polars::prelude::*;
+
+    let aes_col = naming::aesthetic_column(facet_aesthetic);
+    let n_values = unique_values.len();
+
+    if n_values == 0 {
+        return Ok(df.clone());
+    }
+
+    let n_rows = df.height();
+
+    // Create the repeated data manually (polars cross_join requires an import we may not have)
+    // For each row in df, repeat n_values times
+    // For facet column, for each row's repetitions, cycle through unique_values
+
+    // 1. Repeat each original column n_values times
+    let mut new_columns: Vec<Column> = Vec::new();
+    for col in df.get_columns() {
+        // Repeat each value n_values times: [a, b, c] with n_values=2 -> [a, a, b, b, c, c]
+        let indices: Vec<u32> = (0..n_rows)
+            .flat_map(|i| std::iter::repeat(i as u32).take(n_values))
+            .collect();
+        let idx = IdxCa::new(PlSmallStr::EMPTY, &indices);
+        let repeated = col
+            .as_materialized_series()
+            .take(&idx)
+            .map_err(|e| {
+                crate::GgsqlError::InternalError(format!("Failed to repeat column: {}", e))
+            })?;
+        new_columns.push(repeated.into());
+    }
+
+    // 2. Create the facet column: tile unique_values for each row
+    // [v1, v2, v1, v2, v1, v2] for n_rows=3, n_values=2
+    let facet_indices: Vec<u32> = (0..n_rows)
+        .flat_map(|_| (0..n_values).map(|j| j as u32))
+        .collect();
+    let facet_idx = IdxCa::new(PlSmallStr::EMPTY, &facet_indices);
+    let facet_col = unique_values
+        .take(&facet_idx)
+        .map_err(|e| {
+            crate::GgsqlError::InternalError(format!("Failed to create facet column: {}", e))
+        })?
+        .with_name(aes_col.into());
+    new_columns.push(facet_col.into());
+
+    DataFrame::new(new_columns)
+        .map_err(|e| crate::GgsqlError::InternalError(format!("Failed to create expanded DataFrame: {}", e)))
+}
+
+/// Handle layers missing the facet column based on facet.missing setting.
+///
+/// - `repeat` (default): Cross-join layer data with all unique facet values,
+///   effectively duplicating the layer's data across all facet panels.
+/// - `null`: Do nothing (current behavior - nulls added during unification,
+///   layer appears only in null panel if null is in scale's input range).
+fn handle_missing_facet_columns(
+    spec: &Plot,
+    data_map: &mut HashMap<String, DataFrame>,
+    layers_missing_facet: &[bool],
+) -> Result<()> {
+    use crate::plot::ParameterValue;
+
+    let facet = match &spec.facet {
+        Some(f) => f,
+        None => return Ok(()),
+    };
+
+    // Get the missing setting (default to "repeat")
+    let missing_setting = facet
+        .properties
+        .get("missing")
+        .and_then(|v| {
+            if let ParameterValue::String(s) = v {
+                Some(s.as_str())
+            } else {
+                None
+            }
+        })
+        .unwrap_or("repeat");
+
+    // If null, do nothing (existing behavior handles this)
+    if missing_setting == "null" {
+        return Ok(());
+    }
+
+    // Get facet aesthetics from layout
+    let facet_aesthetics = facet.layout.get_aesthetics();
+
+    // Process each facet aesthetic
+    for facet_aesthetic in facet_aesthetics {
+        // Get unique values from layers that HAVE the column
+        let unique_values = match get_unique_facet_values(
+            data_map,
+            facet_aesthetic,
+            &spec.layers,
+            layers_missing_facet,
+        ) {
+            Some(v) => v,
+            None => continue, // No layers have this column, skip
+        };
+
+        // For each layer MISSING the column, cross-join with facet values
+        for (idx, layer) in spec.layers.iter().enumerate() {
+            if idx >= layers_missing_facet.len() || !layers_missing_facet[idx] {
+                continue;
+            }
+
+            if let Some(ref data_key) = layer.data_key {
+                if let Some(df) = data_map.get(data_key) {
+                    // Only process if this DataFrame doesn't already have the column
+                    let aes_col = naming::aesthetic_column(facet_aesthetic);
+                    if df.column(&aes_col).is_err() {
+                        let expanded_df =
+                            cross_join_with_facet_values(df, &unique_values, facet_aesthetic)?;
+                        data_map.insert(data_key.clone(), expanded_df);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// =============================================================================
+// Facet Resolution from Layer Mappings
+// =============================================================================
+
+/// Resolve facet configuration from layer mappings and FACET clause.
+///
+/// Logic:
+/// 1. Collect all facet aesthetic mappings from layers (after global merge)
+/// 2. Validate no conflicting layout types (cannot mix 'facet' with 'row'/'column')
+/// 3. Validate Grid layout has both 'row' and 'column' if either is used
+/// 4. If FACET clause exists:
+///    - Validate layer mappings are compatible with layout type
+///    - Layer mappings take precedence (override FACET clause columns)
+/// 5. If no FACET clause: infer layout from layer mappings
+///
+/// Returns:
+/// - `Ok(Some(Facet))` - Resolved facet configuration
+/// - `Ok(None)` - No faceting needed
+/// - `Err(...)` - Validation error
+fn resolve_facet(
+    layers: &[crate::plot::Layer],
+    existing_facet: Option<crate::plot::Facet>,
+) -> Result<Option<crate::plot::Facet>> {
+    use crate::plot::facet::FacetLayout;
+    use crate::plot::scale::is_facet_aesthetic;
+
+    // Collect facet aesthetic mappings from all layers
+    let mut has_facet = false;
+    let mut has_row = false;
+    let mut has_column = false;
+
+    for layer in layers {
+        for aesthetic in layer.mappings.aesthetics.keys() {
+            if is_facet_aesthetic(aesthetic) {
+                match aesthetic.as_str() {
+                    "facet" => has_facet = true,
+                    "row" => has_row = true,
+                    "column" => has_column = true,
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    // Validate: cannot mix Wrap (facet) with Grid (row/column)
+    if has_facet && (has_row || has_column) {
+        return Err(GgsqlError::ValidationError(
+            "Cannot mix 'facet' aesthetic (Wrap layout) with 'row'/'column' aesthetics (Grid layout). \
+             Use either 'facet' for Wrap or 'row'/'column' for Grid.".to_string()
+        ));
+    }
+
+    // Validate: Grid requires both row and column
+    if (has_row || has_column) && !(has_row && has_column) {
+        let missing = if has_row { "column" } else { "row" };
+        return Err(GgsqlError::ValidationError(format!(
+            "Grid facet layout requires both 'row' and 'column' aesthetics. Missing: '{}'",
+            missing
+        )));
+    }
+
+    // Determine inferred layout from layer mappings
+    let inferred_layout = if has_facet {
+        Some(FacetLayout::Wrap {
+            variables: vec![], // Empty - each layer has its own mapping
+        })
+    } else if has_row && has_column {
+        Some(FacetLayout::Grid {
+            row: vec![],    // Empty - each layer has its own mapping
+            column: vec![], // Empty - each layer has its own mapping
+        })
+    } else {
+        None
+    };
+
+    // If no layer mappings and no FACET clause, no faceting
+    if inferred_layout.is_none() && existing_facet.is_none() {
+        return Ok(None);
+    }
+
+    // If FACET clause exists, validate compatibility with layer mappings
+    if let Some(ref facet) = existing_facet {
+        let is_wrap = facet.is_wrap();
+
+        if is_wrap && (has_row || has_column) {
+            return Err(GgsqlError::ValidationError(
+                "FACET clause uses Wrap layout, but layer mappings use 'row'/'column' (Grid layout). \
+                 Remove FACET clause to infer Grid layout, or use 'facet' aesthetic instead.".to_string()
+            ));
+        }
+
+        if !is_wrap && has_facet {
+            return Err(GgsqlError::ValidationError(
+                "FACET clause uses Grid layout, but layer mappings use 'facet' aesthetic (Wrap layout). \
+                 Remove FACET clause to infer Wrap layout, or use 'row'/'column' aesthetics instead.".to_string()
+            ));
+        }
+
+        // FACET clause exists and is compatible - use it (layer mappings will override columns)
+        return Ok(Some(facet.clone()));
+    }
+
+    // No FACET clause - infer from layer mappings
+    if let Some(layout) = inferred_layout {
+        return Ok(Some(crate::plot::Facet::new(layout)));
+    }
+
+    Ok(None)
 }
 
 // =============================================================================
@@ -387,9 +769,16 @@ fn collect_layer_required_columns(layer: &Layer, spec: &Plot) -> HashSet<String>
     let mut required = HashSet::new();
 
     // Facet variables (shared across all layers)
+    // Include both original variable names AND aesthetic-prefixed names
+    // to support layers that were expanded via cross_join (missing facet column)
     if let Some(ref facet) = spec.facet {
         for var in facet.get_variables() {
             required.insert(var);
+        }
+        // Also add aesthetic-prefixed names for facet aesthetics
+        // This ensures the facet column is kept for layers expanded by handle_missing_facet_columns
+        for aesthetic in facet.layout.get_aesthetics() {
+            required.insert(naming::aesthetic_column(aesthetic));
         }
     }
 
@@ -595,6 +984,24 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         .map(|ti| schema::type_info_to_schema(ti))
         .collect();
 
+    // Resolve facet: infer from layer mappings or validate against FACET clause
+    // This must happen AFTER merge_global_mappings_into_layers so layer mappings include global aesthetics
+    specs[0].facet = resolve_facet(&specs[0].layers, specs[0].facet.clone())?;
+
+    // Inject facet variable mappings into layers (only for missing aesthetics)
+    // This allows facet aesthetics (facet, row, column) to flow through the same
+    // code paths as regular aesthetics - scale creation, type resolution, etc.
+    if let Some(facet) = specs[0].facet.clone() {
+        add_facet_mappings_to_layers(&mut specs[0].layers, &facet, &layer_type_info);
+    }
+
+    // Identify layers missing the facet column (for later data duplication)
+    let layers_missing_facet = if let Some(ref facet) = specs[0].facet {
+        identify_layers_missing_facet_column(&specs[0].layers, facet, &layer_type_info)
+    } else {
+        vec![false; specs[0].layers.len()]
+    };
+
     // Validate all layers against their schemas
     // This must happen BEFORE build_layer_query because stat transforms remove consumed aesthetics
     validate(&specs[0].layers, &layer_schemas)?;
@@ -771,7 +1178,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
                 GgsqlError::InternalError("Missing layer 0 data for facet resolution".to_string())
             })?;
             let context = FacetDataContext::from_dataframe(facet_df, &facet.get_variables());
-            resolve_facet(facet, &context)
+            resolve_facet_properties(facet, &context)
                 .map_err(|e| GgsqlError::ValidationError(format!("Facet: {}", e)))?;
         }
     }
@@ -785,6 +1192,12 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     // Apply out-of-bounds handling to data based on scale oob properties
     for spec in &specs {
         scale::apply_scale_oob(spec, &mut data_map)?;
+    }
+
+    // Handle layers missing the facet column based on facet.missing setting
+    // This must happen after OOB handling but before pruning
+    for spec in &specs {
+        handle_missing_facet_columns(spec, &mut data_map, &layers_missing_facet)?;
     }
 
     // Prune unnecessary columns from each layer's DataFrame
@@ -1260,5 +1673,551 @@ mod tests {
 
         // Should have fewer rows than original (binned)
         assert!(layer_df.height() < 100);
+    }
+
+    // =========================================================================
+    // Facet Aesthetic Mapping Tests
+    // =========================================================================
+
+    mod resolve_facet_tests {
+        use super::*;
+        use crate::plot::facet::FacetLayout;
+        use crate::plot::layer::geom::Geom;
+        use crate::plot::layer::Layer;
+        use crate::plot::Facet;
+
+        fn make_layer_with_mapping(aesthetic: &str, column: &str) -> Layer {
+            let mut layer = Layer::new(Geom::point());
+            layer.mappings.aesthetics.insert(
+                aesthetic.to_string(),
+                AestheticValue::standard_column(column),
+            );
+            layer
+        }
+
+        #[test]
+        fn test_resolve_facet_infers_wrap_from_layer_mapping() {
+            let layers = vec![make_layer_with_mapping("facet", "region")];
+
+            let result = resolve_facet(&layers, None).unwrap();
+
+            assert!(result.is_some());
+            let facet = result.unwrap();
+            assert!(facet.is_wrap());
+            // Variables should be empty (each layer has its own mapping)
+            assert!(facet.get_variables().is_empty());
+        }
+
+        #[test]
+        fn test_resolve_facet_infers_grid_from_layer_mappings() {
+            let mut layer = Layer::new(Geom::point());
+            layer.mappings.aesthetics.insert(
+                "row".to_string(),
+                AestheticValue::standard_column("region"),
+            );
+            layer.mappings.aesthetics.insert(
+                "column".to_string(),
+                AestheticValue::standard_column("year"),
+            );
+            let layers = vec![layer];
+
+            let result = resolve_facet(&layers, None).unwrap();
+
+            assert!(result.is_some());
+            let facet = result.unwrap();
+            assert!(facet.is_grid());
+            // Variables should be empty
+            assert!(facet.get_variables().is_empty());
+        }
+
+        #[test]
+        fn test_resolve_facet_error_mixed_wrap_and_grid() {
+            let mut layer = Layer::new(Geom::point());
+            layer.mappings.aesthetics.insert(
+                "facet".to_string(),
+                AestheticValue::standard_column("region"),
+            );
+            layer.mappings.aesthetics.insert(
+                "row".to_string(),
+                AestheticValue::standard_column("year"),
+            );
+            let layers = vec![layer];
+
+            let result = resolve_facet(&layers, None);
+
+            assert!(result.is_err());
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("Cannot mix"));
+            assert!(err.contains("facet"));
+            assert!(err.contains("row"));
+        }
+
+        #[test]
+        fn test_resolve_facet_error_incomplete_grid() {
+            // Only row, missing column
+            let layers = vec![make_layer_with_mapping("row", "region")];
+
+            let result = resolve_facet(&layers, None);
+
+            assert!(result.is_err());
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("requires both"));
+            assert!(err.contains("column"));
+        }
+
+        #[test]
+        fn test_resolve_facet_uses_existing_facet_clause() {
+            let layers = vec![Layer::new(Geom::point())]; // No facet mappings
+
+            let existing_facet = Facet::new(FacetLayout::Wrap {
+                variables: vec!["region".to_string()],
+            });
+
+            let result = resolve_facet(&layers, Some(existing_facet.clone())).unwrap();
+
+            assert!(result.is_some());
+            let facet = result.unwrap();
+            assert!(facet.is_wrap());
+            assert_eq!(facet.get_variables(), vec!["region".to_string()]);
+        }
+
+        #[test]
+        fn test_resolve_facet_error_wrap_clause_with_grid_mapping() {
+            let mut layer = Layer::new(Geom::point());
+            layer.mappings.aesthetics.insert(
+                "row".to_string(),
+                AestheticValue::standard_column("category"),
+            );
+            layer.mappings.aesthetics.insert(
+                "column".to_string(),
+                AestheticValue::standard_column("year"),
+            );
+            let layers = vec![layer];
+
+            let existing_facet = Facet::new(FacetLayout::Wrap {
+                variables: vec!["region".to_string()],
+            });
+
+            let result = resolve_facet(&layers, Some(existing_facet));
+
+            assert!(result.is_err());
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("Wrap layout"));
+            assert!(err.contains("row"));
+        }
+
+        #[test]
+        fn test_resolve_facet_error_grid_clause_with_wrap_mapping() {
+            let layers = vec![make_layer_with_mapping("facet", "region")];
+
+            let existing_facet = Facet::new(FacetLayout::Grid {
+                row: vec!["region".to_string()],
+                column: vec!["year".to_string()],
+            });
+
+            let result = resolve_facet(&layers, Some(existing_facet));
+
+            assert!(result.is_err());
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("Grid layout"));
+            assert!(err.contains("facet"));
+        }
+
+        #[test]
+        fn test_resolve_facet_no_mappings_no_clause() {
+            let layers = vec![Layer::new(Geom::point())];
+
+            let result = resolve_facet(&layers, None).unwrap();
+
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn test_resolve_facet_layer_override_compatible_with_clause() {
+            // Layer has facet mapping, FACET clause is Wrap - compatible
+            let layers = vec![make_layer_with_mapping("facet", "category")];
+
+            let existing_facet = Facet::new(FacetLayout::Wrap {
+                variables: vec!["region".to_string()],
+            });
+
+            // Should succeed - layer mapping takes precedence over FACET clause columns
+            let result = resolve_facet(&layers, Some(existing_facet)).unwrap();
+            assert!(result.is_some());
+            assert!(result.unwrap().is_wrap());
+        }
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_facet_aesthetic_mapping_wrap() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE facet_test AS SELECT * FROM (VALUES
+                    (1, 10, 'A'), (2, 20, 'A'), (3, 30, 'B'), (4, 40, 'B')
+                ) AS t(x, y, region)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Use facet aesthetic in layer mapping (not FACET clause)
+        let query = r#"
+            SELECT * FROM facet_test
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y, region AS facet
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Should have a facet configuration inferred from layer mapping
+        assert!(result.specs[0].facet.is_some());
+        let facet = result.specs[0].facet.as_ref().unwrap();
+        assert!(facet.is_wrap());
+
+        // Data should have facet aesthetic column
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
+        let facet_col = naming::aesthetic_column("facet");
+        assert!(
+            layer_df.column(&facet_col).is_ok(),
+            "Should have '{}' column: {:?}",
+            facet_col,
+            layer_df.get_column_names_str()
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_facet_aesthetic_mapping_grid() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE grid_facet_test AS SELECT * FROM (VALUES
+                    (1, 10, 'A', 2020), (2, 20, 'B', 2020),
+                    (3, 30, 'A', 2021), (4, 40, 'B', 2021)
+                ) AS t(x, y, region, year)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Use row/column aesthetics in layer mapping
+        let query = r#"
+            SELECT * FROM grid_facet_test
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y, region AS row, year AS column
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Should have a grid facet configuration
+        assert!(result.specs[0].facet.is_some());
+        let facet = result.specs[0].facet.as_ref().unwrap();
+        assert!(facet.is_grid());
+
+        // Data should have row and column aesthetic columns
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
+        let row_col = naming::aesthetic_column("row");
+        let col_col = naming::aesthetic_column("column");
+        assert!(
+            layer_df.column(&row_col).is_ok(),
+            "Should have '{}' column",
+            row_col
+        );
+        assert!(
+            layer_df.column(&col_col).is_ok(),
+            "Should have '{}' column",
+            col_col
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_facet_global_mapping() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE global_facet_test AS SELECT * FROM (VALUES
+                    (1, 10, 'A'), (2, 20, 'B')
+                ) AS t(x, y, region)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Use facet aesthetic in global VISUALISE mapping
+        let query = r#"
+            SELECT * FROM global_facet_test
+            VISUALISE region AS facet
+            DRAW point MAPPING x AS x, y AS y
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Should have a facet configuration
+        assert!(result.specs[0].facet.is_some());
+        assert!(result.specs[0].facet.as_ref().unwrap().is_wrap());
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_facet_layer_override_of_facet_clause() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE override_test AS SELECT * FROM (VALUES
+                    (1, 10, 'A', 'X'), (2, 20, 'B', 'Y')
+                ) AS t(x, y, region, category)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // FACET clause specifies region, but layer mapping uses category
+        let query = r#"
+            SELECT * FROM override_test
+            VISUALISE
+            FACET region
+            DRAW point MAPPING x AS x, y AS y, category AS facet
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Should succeed - layer mapping overrides FACET clause
+        let layer = &result.specs[0].layers[0];
+        let facet_mapping = layer.mappings.aesthetics.get("facet").unwrap();
+        // Use label_name() which returns original column name before internal renaming
+        assert_eq!(
+            facet_mapping.label_name(),
+            Some("category"),
+            "Layer should override FACET clause with category column"
+        );
+    }
+
+    // =========================================================================
+    // Facet Missing Column Tests
+    // =========================================================================
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_facet_missing_repeat_broadcasts_layer() {
+        // Test that missing => 'repeat' (default) broadcasts a layer without the facet column
+        // across all facet panels
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create main data with facet column
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE main_data AS SELECT * FROM (VALUES
+                    (1, 10, 'A'), (2, 20, 'A'), (3, 30, 'B'), (4, 40, 'B')
+                ) AS t(x, y, region)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Create reference line data WITHOUT the facet column
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE ref_data AS SELECT * FROM (VALUES
+                    (0, 25)
+                ) AS t(x, y)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Query with two layers: main data has facet, ref line doesn't
+        // Default missing => 'repeat' should broadcast ref line to both panels
+        let query = r#"
+            SELECT * FROM main_data
+            VISUALISE
+            FACET region
+            DRAW point MAPPING x AS x, y AS y
+            DRAW point MAPPING x AS x, y AS y FROM ref_data
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Layer 1 (ref_data point) should have its data expanded to include both facet values
+        let ref_key = result.specs[0].layers[1]
+            .data_key
+            .as_ref()
+            .expect("ref layer should have data_key");
+        let ref_df = result.data.get(ref_key).unwrap();
+
+        // With repeat, the ref_data should have 2 rows (one per facet value: A and B)
+        assert_eq!(
+            ref_df.height(),
+            2,
+            "ref layer should be repeated for each facet panel (A and B)"
+        );
+
+        // The facet column should exist in the ref_data
+        let facet_col = naming::aesthetic_column("facet");
+        assert!(
+            ref_df.column(&facet_col).is_ok(),
+            "ref data should have facet column after broadcast"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_facet_missing_null_no_broadcast() {
+        // Test that missing => 'null' does NOT broadcast layers
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create main data with facet column
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE main_data_null AS SELECT * FROM (VALUES
+                    (1, 10, 'A'), (2, 20, 'A'), (3, 30, 'B'), (4, 40, 'B')
+                ) AS t(x, y, region)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Create reference line data WITHOUT the facet column
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE ref_data_null AS SELECT * FROM (VALUES
+                    (0, 25)
+                ) AS t(x, y)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Query with missing => 'null'
+        let query = r#"
+            SELECT * FROM main_data_null
+            VISUALISE
+            FACET region SETTING missing => 'null'
+            DRAW point MAPPING x AS x, y AS y
+            DRAW point MAPPING x AS x, y AS y FROM ref_data_null
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Layer 1 should NOT have its data expanded
+        let ref_key = result.specs[0].layers[1]
+            .data_key
+            .as_ref()
+            .expect("ref layer should have data_key");
+        let ref_df = result.data.get(ref_key).unwrap();
+
+        // With null, the ref data should have 1 row (not repeated)
+        assert_eq!(
+            ref_df.height(),
+            1,
+            "ref layer should NOT be repeated with missing => 'null'"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_facet_missing_repeat_grid_layout() {
+        // Test repeat behavior with grid facets (row + column)
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create main data with row and column facet variables
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE grid_main AS SELECT * FROM (VALUES
+                    (1, 10, 'A', 2020), (2, 20, 'A', 2021),
+                    (3, 30, 'B', 2020), (4, 40, 'B', 2021)
+                ) AS t(x, y, region, year)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Create reference data WITHOUT facet columns
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE grid_ref AS SELECT * FROM (VALUES
+                    (0, 25)
+                ) AS t(x, y)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Grid facet with default repeat
+        let query = r#"
+            SELECT * FROM grid_main
+            VISUALISE
+            FACET region BY year
+            DRAW point MAPPING x AS x, y AS y
+            DRAW point MAPPING x AS x, y AS y FROM grid_ref
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Layer 1 should be expanded for both row and column
+        let ref_key = result.specs[0].layers[1]
+            .data_key
+            .as_ref()
+            .expect("ref layer should have data_key");
+        let ref_df = result.data.get(ref_key).unwrap();
+
+        // With grid (2 regions x 2 years = 4 panels), the ref should have 4 rows
+        assert_eq!(
+            ref_df.height(),
+            4,
+            "ref layer should be repeated for each grid panel (2 regions x 2 years)"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_facet_missing_layer_with_facet_column_unchanged() {
+        // Ensure layers that DO have the facet column are not affected
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create data where both layers have the facet column
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE both_have_facet AS SELECT * FROM (VALUES
+                    (1, 10, 'A'), (2, 20, 'B')
+                ) AS t(x, y, region)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT * FROM both_have_facet
+            VISUALISE
+            FACET region
+            DRAW point MAPPING x AS x, y AS y
+            DRAW line MAPPING x AS x, y AS y
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Both layers should have 2 rows (original data, not expanded)
+        let point_key = result.specs[0].layers[0].data_key.as_ref().unwrap();
+        let line_key = result.specs[0].layers[1].data_key.as_ref().unwrap();
+
+        let point_df = result.data.get(point_key).unwrap();
+        let line_df = result.data.get(line_key).unwrap();
+
+        assert_eq!(
+            point_df.height(),
+            2,
+            "point layer with facet column should not be expanded"
+        );
+        assert_eq!(
+            line_df.height(),
+            2,
+            "line layer with facet column should not be expanded"
+        );
     }
 }

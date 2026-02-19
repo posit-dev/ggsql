@@ -647,7 +647,9 @@ module.exports = grammar({
       // Size and shape
       'size', 'shape', 'linetype', 'linewidth', 'width', 'height',
       // Text aesthetics
-      'label', 'family', 'fontface', 'hjust', 'vjust'
+      'label', 'family', 'fontface', 'hjust', 'vjust',
+      // Facet aesthetics
+      'facet', 'row', 'column'
     ),
 
     column_reference: $ => $.identifier,

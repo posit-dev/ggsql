@@ -249,7 +249,7 @@
       "patterns": [
         {
           "name": "support.type.aesthetic.ggsql",
-          "match": "\\b(x|y|xmin|xmax|ymin|ymax|xend|yend|weight|color|colour|fill|stroke|opacity|size|shape|linetype|linewidth|width|height|label|family|fontface|hjust|vjust)\\b"
+          "match": "\\b(x|y|xmin|xmax|ymin|ymax|xend|yend|weight|color|colour|fill|stroke|opacity|size|shape|linetype|linewidth|width|height|label|family|fontface|hjust|vjust|facet|row|column)\\b"
         }
       ]
     },
@@ -334,7 +334,7 @@
         },
         {
           "name": "support.type.property.ggsql",
-          "match": "\\b(scales|ncol|columns|spacing)\\b"
+          "match": "\\b(scales|ncol|columns|spacing|missing)\\b"
         },
         {
           "name": "keyword.operator.wildcard.ggsql",

@@ -29,7 +29,7 @@ use crate::plot::layer::geom::GeomAesthetics;
 // ArrayElement is used in tests and for pattern matching; suppress unused import warning
 #[allow(unused_imports)]
 use crate::plot::ArrayElement;
-use crate::plot::ParameterValue;
+use crate::plot::{ParameterValue, Scale, ScaleTypeKind};
 use crate::writer::Writer;
 use crate::{naming, AestheticValue, DataFrame, GgsqlError, Plot, Result};
 use serde_json::{json, Value};
@@ -39,7 +39,8 @@ use std::collections::HashMap;
 use coord::apply_coord_transforms;
 use data::{collect_binned_columns, is_binned_aesthetic, unify_datasets};
 use encoding::{
-    build_detail_encoding, build_encoding_channel, infer_field_type, map_aesthetic_name,
+    build_detail_encoding, build_encoding_channel, build_label_expr,
+    build_symbol_legend_label_mapping, infer_field_type, map_aesthetic_name,
 };
 use layer::{geom_to_mark, get_renderer, validate_layer_columns, GeomRenderer, PreparedData};
 
@@ -285,65 +286,93 @@ fn build_layer_encoding(
 ///
 /// Handles:
 /// - FACET vars (wrap layout)
-/// - FACET rows BY cols (grid layout)
+/// - FACET rows BY columns (grid layout)
 /// - Moves layers into nested `spec` object
-/// - Infers field types for facet variables
+/// - Uses aesthetic column names (e.g., __ggsql_aes_facet__)
+/// - Respects scale types (Binned facets use bin: "binned")
 /// - Scale resolution (scales property)
 /// - Label renaming (RENAMING clause)
 /// - Additional properties (ncol, spacing, etc.)
-fn apply_faceting(vl_spec: &mut Value, facet: &crate::plot::Facet, facet_df: &DataFrame) {
+fn apply_faceting(
+    vl_spec: &mut Value,
+    facet: &crate::plot::Facet,
+    facet_df: &DataFrame,
+    scales: &[Scale],
+) {
     use crate::plot::FacetLayout;
 
     match &facet.layout {
-        FacetLayout::Wrap { variables } => {
-            if !variables.is_empty() {
-                let field_type = infer_field_type(facet_df, &variables[0]);
-                let mut facet_def = json!({
-                    "field": variables[0],
-                    "type": field_type,
-                });
+        FacetLayout::Wrap { variables: _ } => {
+            // Use the aesthetic column name for facet
+            let aes_col = naming::aesthetic_column("facet");
 
-                // Apply label renaming via header.labelExpr
-                apply_facet_label_renaming(&mut facet_def, &facet.label_mapping);
+            // Look up scale for "facet" aesthetic
+            let scale = scales.iter().find(|s| s.aesthetic == "facet");
 
-                vl_spec["facet"] = facet_def;
+            // Build facet field definition with proper binned support
+            let mut facet_def = build_facet_field_def(facet_df, &aes_col, scale);
 
-                // Move layer into spec (data reference stays at top level)
-                let mut spec_inner = json!({});
-                if let Some(layer) = vl_spec.get("layer") {
-                    spec_inner["layer"] = layer.clone();
-                }
+            // Prefer scale label_mapping over facet label_mapping
+            let label_mapping = scale
+                .and_then(|s| s.label_mapping.as_ref())
+                .or(facet.label_mapping.as_ref());
 
-                vl_spec["spec"] = spec_inner;
-                vl_spec.as_object_mut().unwrap().remove("layer");
+            // Apply label renaming via header.labelExpr
+            apply_facet_label_renaming(&mut facet_def, label_mapping, scale);
 
-                // Apply scale resolution
-                apply_facet_scale_resolution(vl_spec, &facet.properties);
+            // Apply facet ordering from breaks/reverse
+            apply_facet_ordering(&mut facet_def, scale);
 
-                // Apply additional properties (columns for wrap)
-                apply_facet_properties(vl_spec, &facet.properties, true);
+            vl_spec["facet"] = facet_def;
+
+            // Move layer into spec (data reference stays at top level)
+            let mut spec_inner = json!({});
+            if let Some(layer) = vl_spec.get("layer") {
+                spec_inner["layer"] = layer.clone();
             }
-        }
-        FacetLayout::Grid { rows, cols } => {
-            let mut facet_spec = serde_json::Map::new();
-            if !rows.is_empty() {
-                let field_type = infer_field_type(facet_df, &rows[0]);
-                let mut row_def = json!({"field": rows[0], "type": field_type});
 
-                // Apply label renaming to row
-                apply_facet_label_renaming(&mut row_def, &facet.label_mapping);
+            vl_spec["spec"] = spec_inner;
+            vl_spec.as_object_mut().unwrap().remove("layer");
+
+            // Apply scale resolution
+            apply_facet_scale_resolution(vl_spec, &facet.properties);
+
+            // Apply additional properties (columns for wrap)
+            apply_facet_properties(vl_spec, &facet.properties, true);
+        }
+        FacetLayout::Grid { row: _, column: _ } => {
+            let mut facet_spec = serde_json::Map::new();
+
+            // Row facet: use aesthetic column "row"
+            let row_aes_col = naming::aesthetic_column("row");
+            if facet_df.column(&row_aes_col).is_ok() {
+                let row_scale = scales.iter().find(|s| s.aesthetic == "row");
+                let mut row_def = build_facet_field_def(facet_df, &row_aes_col, row_scale);
+
+                let row_label_mapping = row_scale
+                    .and_then(|s| s.label_mapping.as_ref())
+                    .or(facet.label_mapping.as_ref());
+                apply_facet_label_renaming(&mut row_def, row_label_mapping, row_scale);
+                apply_facet_ordering(&mut row_def, row_scale);
 
                 facet_spec.insert("row".to_string(), row_def);
             }
-            if !cols.is_empty() {
-                let field_type = infer_field_type(facet_df, &cols[0]);
-                let mut col_def = json!({"field": cols[0], "type": field_type});
 
-                // Apply label renaming to column
-                apply_facet_label_renaming(&mut col_def, &facet.label_mapping);
+            // Column facet: use aesthetic column "column"
+            let col_aes_col = naming::aesthetic_column("column");
+            if facet_df.column(&col_aes_col).is_ok() {
+                let col_scale = scales.iter().find(|s| s.aesthetic == "column");
+                let mut col_def = build_facet_field_def(facet_df, &col_aes_col, col_scale);
+
+                let col_label_mapping = col_scale
+                    .and_then(|s| s.label_mapping.as_ref())
+                    .or(facet.label_mapping.as_ref());
+                apply_facet_label_renaming(&mut col_def, col_label_mapping, col_scale);
+                apply_facet_ordering(&mut col_def, col_scale);
 
                 facet_spec.insert("column".to_string(), col_def);
             }
+
             vl_spec["facet"] = Value::Object(facet_spec);
 
             // Move layer into spec (data reference stays at top level)
@@ -361,6 +390,87 @@ fn apply_faceting(vl_spec: &mut Value, facet: &crate::plot::Facet, facet_df: &Da
             // Apply additional properties (not columns for grid)
             apply_facet_properties(vl_spec, &facet.properties, false);
         }
+    }
+}
+
+/// Build a facet field definition with proper bin and type.
+///
+/// For binned facets: uses "bin": "binned" and "type": "quantitative"
+/// For discrete facets: uses "type": "nominal"
+fn build_facet_field_def(df: &DataFrame, col: &str, scale: Option<&Scale>) -> Value {
+    let mut field_def = json!({
+        "field": col,
+    });
+
+    if let Some(scale) = scale {
+        if let Some(ref scale_type) = scale.scale_type {
+            match scale_type.scale_type_kind() {
+                ScaleTypeKind::Binned => {
+                    // Pre-binned data: use "bin": "binned" and type "quantitative"
+                    // Vega-Lite requires this for already-binned facet data
+                    field_def["bin"] = json!("binned");
+                    field_def["type"] = json!("quantitative");
+                    return field_def;
+                }
+                ScaleTypeKind::Discrete | ScaleTypeKind::Ordinal => {
+                    field_def["type"] = json!("nominal");
+                    return field_def;
+                }
+                _ => {
+                    field_def["type"] = json!("nominal");
+                    return field_def;
+                }
+            }
+        }
+    }
+
+    // Fall back to column type inference
+    field_def["type"] = json!(infer_field_type(df, col));
+    field_def
+}
+
+/// Apply facet ordering via Vega-Lite's sort property.
+///
+/// For discrete facets: uses explicit breaks array order
+/// For binned facets: uses "descending" sort if reversed
+fn apply_facet_ordering(facet_def: &mut Value, scale: Option<&Scale>) {
+    let Some(scale) = scale else {
+        return;
+    };
+
+    let is_reversed = matches!(
+        scale.properties.get("reverse"),
+        Some(ParameterValue::Boolean(true))
+    );
+
+    let is_binned = scale
+        .scale_type
+        .as_ref()
+        .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)
+        .unwrap_or(false);
+
+    if is_binned {
+        // For binned facets: use "descending" sort if reversed
+        if is_reversed {
+            facet_def["sort"] = json!("descending");
+        }
+        // Default is ascending, no need to specify
+    } else {
+        // For discrete facets: use explicit breaks array order
+        let breaks = match scale.properties.get("breaks") {
+            Some(ParameterValue::Array(arr)) => arr.clone(),
+            _ => return,
+        };
+
+        // Convert breaks to JSON values
+        let mut sort_values: Vec<Value> = breaks.iter().map(|e| e.to_json()).collect();
+
+        // Apply reverse if specified
+        if is_reversed {
+            sort_values.reverse();
+        }
+
+        facet_def["sort"] = json!(sort_values);
     }
 }
 
@@ -411,42 +521,104 @@ fn apply_facet_scale_resolution(
 /// Apply label renaming to a facet definition via header.labelExpr
 ///
 /// Uses Vega expression to transform facet labels:
-/// - Explicit mappings: 'A' => 'Alpha' becomes datum.value == 'A' ? 'Alpha' : ...
+/// - For discrete facets: 'A' => 'Alpha' becomes datum.value == 'A' ? 'Alpha' : ...
+/// - For binned facets: uses build_symbol_legend_label_mapping for range-style labels
 /// - NULL values suppress labels (maps to empty string)
 ///
 /// Note: Wildcard templates are resolved during facet property resolution,
 /// so by this point label_mapping contains all expanded mappings.
 fn apply_facet_label_renaming(
     facet_def: &mut Value,
-    label_mapping: &Option<HashMap<String, Option<String>>>,
+    label_mapping: Option<&HashMap<String, Option<String>>>,
+    scale: Option<&Scale>,
 ) {
     // Only apply if there's a label mapping
-    let has_mapping = label_mapping.as_ref().is_some_and(|m| !m.is_empty());
+    let has_mapping = label_mapping.is_some_and(|m| !m.is_empty());
 
     if !has_mapping {
         return;
     }
 
+    // Check if this is a binned facet
+    let is_binned = scale
+        .and_then(|s| s.scale_type.as_ref())
+        .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)
+        .unwrap_or(false);
+
+    let label_expr = if is_binned {
+        // For binned facets: reuse build_symbol_legend_label_mapping and build_label_expr
+        build_binned_facet_label_expr(label_mapping, scale)
+    } else {
+        // For discrete facets: compare datum.value against string values
+        build_discrete_facet_label_expr(label_mapping)
+    };
+
+    // Add to facet definition
+    facet_def["header"] = json!({
+        "labelExpr": label_expr
+    });
+}
+
+/// Build labelExpr for binned facet values.
+///
+/// Reuses build_symbol_legend_label_mapping and build_label_expr from encoding.rs.
+fn build_binned_facet_label_expr(
+    label_mapping: Option<&HashMap<String, Option<String>>>,
+    scale: Option<&Scale>,
+) -> String {
+    let Some(scale) = scale else {
+        return "datum.label".to_string();
+    };
+
+    let Some(label_mapping) = label_mapping else {
+        return "datum.label".to_string();
+    };
+
+    let breaks = match scale.properties.get("breaks") {
+        Some(ParameterValue::Array(arr)) => arr,
+        _ => return "datum.label".to_string(),
+    };
+
+    let closed = scale
+        .properties
+        .get("closed")
+        .and_then(|v| match v {
+            ParameterValue::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .unwrap_or("left");
+
+    // Reuse the same mapping logic as legends
+    let symbol_mapping = build_symbol_legend_label_mapping(breaks, label_mapping, closed);
+
+    // Reuse the same labelExpr builder as legends
+    build_label_expr(&symbol_mapping, None, None)
+}
+
+/// Build labelExpr for discrete facet values.
+fn build_discrete_facet_label_expr(label_mapping: Option<&HashMap<String, Option<String>>>) -> String {
+    let Some(mappings) = label_mapping else {
+        return "datum.value".to_string();
+    };
+
     // Build labelExpr for Vega-Lite
     let mut expr_parts: Vec<String> = Vec::new();
 
     // Add explicit mappings
-    if let Some(mappings) = label_mapping {
-        for (from, to) in mappings {
-            let condition = format!("datum.value == '{}'", escape_vega_string(from));
-            let result = match to {
-                Some(label) => format!("'{}'", escape_vega_string(label)),
-                None => "''".to_string(), // NULL suppresses label
-            };
-            expr_parts.push(format!("{} ? {}", condition, result));
-        }
+    for (from, to) in mappings {
+        let condition = format!("datum.value == '{}'", escape_vega_string(from));
+        let result = match to {
+            Some(label) => format!("'{}'", escape_vega_string(label)),
+            None => "''".to_string(), // NULL suppresses label
+        };
+        expr_parts.push(format!("{} ? {}", condition, result));
     }
 
     // Default case: show original value
     let default_expr = "datum.value".to_string();
 
     // Build the full expression as nested ternary
-    let label_expr = if expr_parts.is_empty() {
+    if expr_parts.is_empty() {
         default_expr
     } else {
         // Chain conditions: cond1 ? val1 : cond2 ? val2 : default
@@ -455,12 +627,7 @@ fn apply_facet_label_renaming(
             expr = format!("{} : {}", part, expr);
         }
         expr
-    };
-
-    // Add to facet definition
-    facet_def["header"] = json!({
-        "labelExpr": label_expr
-    });
+    }
 }
 
 /// Escape a string for use in Vega expressions
@@ -600,7 +767,7 @@ impl Writer for VegaLiteWriter {
         // 10. Apply faceting
         if let Some(facet) = &spec.facet {
             let facet_df = data.get(&layer_data_keys[0]).unwrap();
-            apply_faceting(&mut vl_spec, facet, facet_df);
+            apply_faceting(&mut vl_spec, facet, facet_df, &spec.scales);
         }
 
         // 11. Serialize

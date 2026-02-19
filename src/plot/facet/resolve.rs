@@ -53,10 +53,13 @@ impl FacetDataContext {
 }
 
 /// Allowed properties for wrap facets
-const WRAP_ALLOWED: &[&str] = &["scales", "ncol", "spacing"];
+const WRAP_ALLOWED: &[&str] = &["scales", "ncol", "spacing", "missing"];
 
 /// Allowed properties for grid facets
-const GRID_ALLOWED: &[&str] = &["scales", "spacing"];
+const GRID_ALLOWED: &[&str] = &["scales", "spacing", "missing"];
+
+/// Valid values for the missing property
+const MISSING_VALUES: &[&str] = &["repeat", "null"];
 
 /// Valid values for the scales property
 const SCALES_VALUES: &[&str] = &["fixed", "free", "free_x", "free_y"];
@@ -124,6 +127,7 @@ pub fn resolve_properties(facet: &mut Facet, context: &FacetDataContext) -> Resu
     validate_scales_property(facet)?;
     validate_ncol_property(facet)?;
     validate_spacing_property(facet)?;
+    validate_missing_property(facet)?;
 
     // Step 3: Apply defaults for missing properties
     apply_defaults(facet, context);
@@ -232,6 +236,27 @@ fn validate_spacing_property(facet: &Facet) -> Result<(), String> {
     Ok(())
 }
 
+/// Validate missing property value
+fn validate_missing_property(facet: &Facet) -> Result<(), String> {
+    if let Some(value) = facet.properties.get("missing") {
+        match value {
+            ParameterValue::String(s) => {
+                if !MISSING_VALUES.contains(&s.as_str()) {
+                    return Err(format!(
+                        "invalid 'missing' value '{}'. Expected one of: {}",
+                        s,
+                        MISSING_VALUES.join(", ")
+                    ));
+                }
+            }
+            _ => {
+                return Err("'missing' must be a string ('repeat' or 'null')".to_string());
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Apply default values for missing properties
 fn apply_defaults(facet: &mut Facet, context: &FacetDataContext) {
     // Default scales to "fixed"
@@ -273,8 +298,8 @@ mod tests {
 
     fn make_grid_facet() -> Facet {
         Facet::new(FacetLayout::Grid {
-            rows: vec!["row_var".to_string()],
-            cols: vec!["col_var".to_string()],
+            row: vec!["row_var".to_string()],
+            column: vec!["col_var".to_string()],
         })
     }
 
@@ -709,5 +734,81 @@ mod tests {
         // Others get template applied
         assert_eq!(mappings.get("south"), Some(&Some("SOUTH".to_string())));
         assert_eq!(mappings.get("east"), Some(&Some("EAST".to_string())));
+    }
+
+    // ========================================
+    // Missing Property Tests
+    // ========================================
+
+    #[test]
+    fn test_missing_property_repeat_valid() {
+        let mut facet = make_wrap_facet();
+        facet.properties.insert(
+            "missing".to_string(),
+            ParameterValue::String("repeat".to_string()),
+        );
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_missing_property_null_valid() {
+        let mut facet = make_wrap_facet();
+        facet.properties.insert(
+            "missing".to_string(),
+            ParameterValue::String("null".to_string()),
+        );
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_error_invalid_missing_value() {
+        let mut facet = make_wrap_facet();
+        facet.properties.insert(
+            "missing".to_string(),
+            ParameterValue::String("invalid".to_string()),
+        );
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("invalid"));
+        assert!(err.contains("missing"));
+    }
+
+    #[test]
+    fn test_error_missing_not_string() {
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("missing".to_string(), ParameterValue::Number(1.0));
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("missing"));
+        assert!(err.contains("string"));
+    }
+
+    #[test]
+    fn test_missing_allowed_on_grid_facet() {
+        let mut facet = make_grid_facet();
+        facet.properties.insert(
+            "missing".to_string(),
+            ParameterValue::String("repeat".to_string()),
+        );
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context);
+        assert!(result.is_ok());
     }
 }

@@ -1106,6 +1106,40 @@ impl ScaleType {
         }
     }
 
+    /// Infer scale type from data type, considering the aesthetic.
+    ///
+    /// For most aesthetics, uses standard inference:
+    /// - Numeric/temporal → Continuous
+    /// - String/boolean → Discrete
+    ///
+    /// For facet aesthetics (facet, rows, columns):
+    /// - Numeric/temporal → Binned (not Continuous, since facets need discrete categories)
+    /// - String/boolean → Discrete
+    pub fn infer_for_aesthetic(dtype: &DataType, aesthetic: &str) -> Self {
+        if is_facet_aesthetic(aesthetic) {
+            // Facet aesthetics: numeric/temporal defaults to Binned
+            match dtype {
+                DataType::Int8
+                | DataType::Int16
+                | DataType::Int32
+                | DataType::Int64
+                | DataType::UInt8
+                | DataType::UInt16
+                | DataType::UInt32
+                | DataType::UInt64
+                | DataType::Float32
+                | DataType::Float64
+                | DataType::Date
+                | DataType::Datetime(_, _)
+                | DataType::Time => Self::binned(),
+                _ => Self::discrete(),
+            }
+        } else {
+            // Standard inference for other aesthetics
+            Self::infer(dtype)
+        }
+    }
+
     /// Create a ScaleType from a ScaleTypeKind
     pub fn from_kind(kind: ScaleTypeKind) -> Self {
         match kind {
@@ -1325,6 +1359,14 @@ pub(super) fn is_positional_aesthetic(aesthetic: &str) -> bool {
         aesthetic,
         "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
     )
+}
+
+/// Check if an aesthetic is a facet aesthetic (facet, row, column).
+///
+/// Facet aesthetics only support Discrete and Binned scale types,
+/// and cannot have output ranges (TO clause).
+pub fn is_facet_aesthetic(aesthetic: &str) -> bool {
+    matches!(aesthetic, "facet" | "row" | "column")
 }
 
 /// Check if input range contains any Null placeholders
