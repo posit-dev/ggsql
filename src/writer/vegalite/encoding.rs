@@ -859,7 +859,9 @@ fn build_column_encoding(
 fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value> {
     let val = match lit {
         ParameterValue::String(s) => match aesthetic {
-            "linetype" => linetype_to_stroke_dash(s).map(|arr| json!(arr)).unwrap_or_else(|| json!(s)),
+            "linetype" => linetype_to_stroke_dash(s)
+                .map(|arr| json!(arr))
+                .unwrap_or_else(|| json!(s)),
             _ => json!(s),
         },
         ParameterValue::Number(n) => {

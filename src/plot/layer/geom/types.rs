@@ -2,7 +2,7 @@
 //!
 //! These types are used by all geom implementations and are shared across the module.
 
-use crate::{Mappings, plot::types::DefaultAestheticValue};
+use crate::{plot::types::DefaultAestheticValue, Mappings};
 
 /// Default aesthetic values for a geom type
 ///

@@ -51,7 +51,7 @@ mod violin;
 mod vline;
 
 // Re-export types
-pub use types::{DefaultParam, DefaultParamValue, DefaultAesthetics, StatResult};
+pub use types::{DefaultAesthetics, DefaultParam, DefaultParamValue, StatResult};
 
 // Re-export aesthetic family utilities from the central module
 pub use crate::plot::aesthetic::{get_aesthetic_family, AESTHETIC_FAMILIES};

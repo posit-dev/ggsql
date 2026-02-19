@@ -1206,11 +1206,10 @@ mod tests {
 
         // Line with linetype as SETTING (literal)
         let mut spec = Plot::new();
-        let layer = build_layer(Geom::line())
-            .with_aesthetic(
-                "linetype".to_string(),
-                AestheticValue::Literal(ParameterValue::String("dashed".to_string())),
-            );
+        let layer = build_layer(Geom::line()).with_aesthetic(
+            "linetype".to_string(),
+            AestheticValue::Literal(ParameterValue::String("dashed".to_string())),
+        );
         spec.layers.push(layer);
 
         let result = writer.write(&spec, &wrap_data(simple_df()));

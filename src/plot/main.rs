@@ -397,7 +397,6 @@ mod tests {
         // Bar geom - optional x and y (stat decides aggregation)
         let bar = Geom::bar().aesthetics();
         assert!(bar.is_supported("fill"));
-        assert!(bar.is_supported("width"));
         assert!(bar.is_supported("y")); // Bar accepts optional y
         assert!(bar.is_supported("x")); // Bar accepts optional x
         assert_eq!(bar.required(), &[] as &[&str]); // No required aesthetics

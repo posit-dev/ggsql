@@ -11,7 +11,7 @@ pub mod geom;
 
 // Re-export geom types for convenience
 pub use geom::{
-    DefaultParam, DefaultParamValue, Geom, DefaultAesthetics, GeomTrait, GeomType, StatResult,
+    DefaultAesthetics, DefaultParam, DefaultParamValue, Geom, GeomTrait, GeomType, StatResult,
 };
 
 use crate::plot::types::{AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression};
