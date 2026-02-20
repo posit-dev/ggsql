@@ -1,3 +1,60 @@
 ---
 title: "Create small multiples with `FACET`"
 ---
+
+The `FACET` clause allows you to split your data by one or two variables and plot each group as a small version of the plot, a technique called small multiples. The technique is great for preventing overplotting and since each small plot by default share the same positional scales it is easy to visualy compare between groups.
+
+## Clause syntax
+The `FACET` syntax contains a number of subclauses that are all optional
+
+```ggsql
+FACET <column> BY <column>
+    SETTING <parameter> => <value>, ...
+    RENAMING <break-value> => <string>, ...
+```
+
+The first `column` is mandatory. It names a column in the layer data that will be used for splitting the data. If the layer data does not contain the column the behavior for that layer depends on the `missing` parameter of the facet.
+
+### `BY`
+The optional `BY` clause is used to define an additional column to split the data by. If it is missing the small multiples are laid out in a grid with the facet panels filling the cells in a row-wise fashion. If `BY` is present then the categories of the first `column` defines the rows of the grid and the categories of the second `column` the columns of the grid. Each multiple is then positioned according to that.
+
+### `SETTING`
+This clause behaves much like the `SETTINGS` clause in `DRAW`, in that it allows you to fine-tune specific behavior of the faceting. The following parameters exist:
+
+* `scales`: Controls whether the positional scales are kept fixed between the small multiples. Permissible values are `'fixed'` (default), `'free'`, `'free_x'`, and `'free_y'`. `'free'` allows both positional scales to vary between the panels, while the `free_x`/`free_y` versions keeps their counterpart fixed.
+* `missing`: Determines how layers with a missing faceting column behaves. It can take two values: `'repeat'` (default), and `'null'`. If `'repeat'` is set then the layer data is repeated in each panel. If `'null'` then the faceting variable is set to `null` and only displayed if a null panel is shown (controlled by the facet scale).
+* `ncol`: The number of columns to use when faceting by a single variable. Default is 3 when fewer than 6 categories are present, 4 when fewer than 12 categeries are present and otherwise 5
+
+### `RENAMING`
+This clause works much like the `LABEL` clause but works on the facet categories of the plot. The general syntax is that you provide the name of the category on the left and what it should appear as on the right, e.g `'adelie' => 'Pygoscelis adeliae'`. The clause is understood as a look-up table in the sense that if you provide a renaming for a category that doesn't appear in the facet then nothing will happen and if a category exist but doesn't have a renaming defined it will go through unaltered. To suppress the label of a specific category you can rename it to `null`, e.g. `'adelie' => null`. This will not remove the facet panel, only the label.
+
+#### Break formatting
+Apart from the direct renaming described above it is also possible to provide a formatting function to be applied to all categories. The syntax for this is `* => '...'` with the content of the string on the right being a string interpolation format. The basic syntax for this is that the category value will be inserted into any place where `{}` appears. This means that e.g. `* => '{} species'` will result in the label "adelie species" for the category "adelie". Besides simply inserting the value as-is, it is also possible to apply a formatter to the label before insertion by naming a formatter inside the curly braces prefixed with `:`. Known formatters are:
+
+* `{:Title}` will title-case the value (make the first letter in each work upper case) before insertion, e.g. `* => '{:Title} species'` will become "Adelie species" for the "adelie" category.
+* `{:UPPER}` will make the value upper-case, e.g. `* => '{:UPPER} species'` will become "ADELIE species" for the "adelie" category.
+* `{:lower}` works much like `{:UPPER}` but changes the value to lower-case instead.
+* `{:time ...}` will format a date/datetime/time value according to the format defined afterwards. The formatting follows strftime format using the Rust chrono library. You can see an overview of the supported syntax at the [chrono docs](https://docs.rs/chrono/latest/chrono/format/strftime/index.html). The basic usage is `* => '{:time %B %Y}` which would format a category at 2025-07-04 as "July 2025".
+* `{:num ...}` will format a numeric according to the format defined afterwards. The format follows the printf format using the Rust sprintf library. The syntax is `%[flags][width][.precision]type` with the following meaning:
+  - `flags`: One or more modifiers:
+    * `-`: left-justify
+    * `+`: Force sign for positive numbers
+    * ` `: (space) Space before positive numbers
+    * `0`: Zero-pad
+    * `#`: Alternate form (`0x` prefix for hex, etc)
+  - `width`: The minimum width of characters to render. Depending on the `flags` the string will be padded to be at least this width
+  - `precision`: The maximum precision of the number. For `%g`/`%G` it is the total number of digits whereas for the rest it is the number of digits to the right of the decimal point
+  - `type`: How to present the number. One of:
+    * `d`/`i`: Signed decimal integers
+    * `u`: Unsigned decimal integers
+    * `f`/`F`: Decimal floating point
+    * `e`/`E`: Scientific notation
+    * `g`/`G`: Shortest form of `e` and `f`
+    * `o`: Unsigned octal
+    * `x`/`X`: Unsigned hexadecimal
+
+### Facet variables as aesthetics
+When you apply faceting to a plot you are creating new aesthetics you can control. For 1-dimensional faceting (no `BY` clause) the aesthetic is called `panel` and for 2-dimensional faceting the aesthetics are called `row` and `column`. You can read more about these aesthetics in [their documentation](../scale/aesthetic/Z_facetting.qmd)
+
+#### `RENAMING` priority
+It is possible to alter the category labels in two places. In the `RENAMING` clause of `FACET` and in the `RENAMING` clause of the scale for the facet variables. If both is provided then the scale renaming wins

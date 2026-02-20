@@ -1231,6 +1231,11 @@ impl TemporalInterval {
 
 /// Calculate temporal breaks at interval boundaries for Date scale.
 /// min/max are days since epoch for Date.
+///
+/// For binning, breaks must SPAN the data range. This means we need a terminal
+/// break AFTER max_date to close the last bin. For example, data from Jan 15 to
+/// Mar 15 with monthly breaks needs: [Jan-01, Feb-01, Mar-01, Apr-01] to create
+/// bins that cover all data.
 pub fn temporal_breaks_date(
     min_days: i32,
     max_days: i32,
@@ -1248,10 +1253,18 @@ pub fn temporal_breaks_date(
     let mut breaks = vec![];
     let mut current = align_date_to_interval(min_date, &interval);
 
+    // Generate breaks up to and including max_date
     while current <= max_date {
         breaks.push(current.format("%Y-%m-%d").to_string());
         current = advance_date_by_interval(current, &interval);
     }
+
+    // Add terminal break after max_date to close the last bin
+    // This ensures data at max_date falls within a bin, not outside
+    if !breaks.is_empty() {
+        breaks.push(current.format("%Y-%m-%d").to_string());
+    }
+
     breaks
 }
 
@@ -1302,6 +1315,9 @@ fn advance_date_by_interval(
 
 /// Calculate temporal breaks at interval boundaries for DateTime scale.
 /// min/max are microseconds since epoch.
+///
+/// For binning, breaks must SPAN the data range. This means we need a terminal
+/// break AFTER max_dt to close the last bin.
 pub fn temporal_breaks_datetime(
     min_us: i64,
     max_us: i64,
@@ -1327,10 +1343,17 @@ pub fn temporal_breaks_datetime(
     let mut breaks = vec![];
     let mut current = align_datetime_to_interval(min_dt, &interval);
 
+    // Generate breaks up to and including max_dt
     while current <= max_dt {
         breaks.push(current.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
         current = advance_datetime_by_interval(current, &interval);
     }
+
+    // Add terminal break after max_dt to close the last bin
+    if !breaks.is_empty() {
+        breaks.push(current.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
+    }
+
     breaks
 }
 
@@ -1426,6 +1449,9 @@ fn advance_datetime_by_interval(
 
 /// Calculate temporal breaks at interval boundaries for Time scale.
 /// min/max are nanoseconds since midnight.
+///
+/// For binning, breaks must SPAN the data range. This means we need a terminal
+/// break AFTER max_time to close the last bin (unless it would overflow past 24 hours).
 pub fn temporal_breaks_time(min_ns: i64, max_ns: i64, interval: TemporalInterval) -> Vec<String> {
     use chrono::NaiveTime;
 
@@ -1450,6 +1476,7 @@ pub fn temporal_breaks_time(min_ns: i64, max_ns: i64, interval: TemporalInterval
     let mut breaks = vec![];
     let mut current = align_time_to_interval(min_time, &interval);
 
+    // Generate breaks up to and including max_time
     while current <= max_time {
         breaks.push(current.format("%H:%M:%S%.3f").to_string());
         current = match advance_time_by_interval(current, &interval) {
@@ -1457,6 +1484,12 @@ pub fn temporal_breaks_time(min_ns: i64, max_ns: i64, interval: TemporalInterval
             _ => break, // Overflow past 24 hours
         };
     }
+
+    // Add terminal break after max_time to close the last bin (if no overflow)
+    if !breaks.is_empty() && current > max_time {
+        breaks.push(current.format("%H:%M:%S%.3f").to_string());
+    }
+
     breaks
 }
 
@@ -2253,5 +2286,62 @@ mod tests {
         assert!(!breaks.is_empty());
         assert!(breaks[0] <= 0.0);
         assert!(*breaks.last().unwrap() >= 100.0);
+    }
+
+    // =========================================================================
+    // Terminal Break Tests (for binning coverage)
+    // =========================================================================
+
+    #[test]
+    fn test_temporal_breaks_date_includes_terminal_break() {
+        // Test that temporal_breaks_date includes a terminal break AFTER max_date
+        // to ensure all data falls within a bin.
+        //
+        // Data spanning Jan 15 to Mar 15 with monthly breaks should produce:
+        // [Jan-01, Feb-01, Mar-01, Apr-01] - the Apr-01 is the terminal break
+        // that closes the [Mar-01, Apr-01] bin for data in March.
+
+        // 2024-01-15 to 2024-03-15 (days since epoch)
+        // Jan 15, 2024 = 19738 days since epoch
+        // Mar 15, 2024 = 19798 days since epoch
+        let monthly = TemporalInterval::create_from_str("month").unwrap();
+        let breaks = temporal_breaks_date(19738, 19798, monthly);
+
+        // Should include terminal break (Apr-01) after max_date (Mar-15)
+        assert!(
+            breaks.contains(&"2024-04-01".to_string()),
+            "Should include terminal break Apr-01 to close the last bin. Got: {:?}",
+            breaks
+        );
+
+        // Verify all expected breaks are present
+        assert!(breaks.contains(&"2024-01-01".to_string()));
+        assert!(breaks.contains(&"2024-02-01".to_string()));
+        assert!(breaks.contains(&"2024-03-01".to_string()));
+
+        // The terminal break ensures data from Mar 2-15 falls within [Mar-01, Apr-01]
+        assert_eq!(breaks.len(), 4, "Should have 4 breaks for 3 bins");
+    }
+
+    #[test]
+    fn test_temporal_breaks_datetime_includes_terminal_break() {
+        // Test that temporal_breaks_datetime includes a terminal break
+        // 2024-01-01T00:00:00 to 2024-01-01T02:30:00 with hourly breaks
+
+        let hourly = TemporalInterval::create_from_str("hour").unwrap();
+        // Jan 1, 2024 00:00:00 = 1704067200 seconds = 1704067200000000 microseconds
+        let min_us = 1704067200_i64 * 1_000_000;
+        // Jan 1, 2024 02:30:00 = 1704076200 seconds
+        let max_us = 1704076200_i64 * 1_000_000;
+
+        let breaks = temporal_breaks_datetime(min_us, max_us, hourly);
+
+        // Should include 00:00, 01:00, 02:00, and terminal 03:00
+        assert_eq!(
+            breaks.len(),
+            4,
+            "Should have 4 breaks (including terminal). Got: {:?}",
+            breaks
+        );
     }
 }

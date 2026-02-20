@@ -12,6 +12,7 @@ pub mod transform;
 mod types;
 
 pub use crate::format::apply_label_template;
+pub use crate::plot::aesthetic::is_facet_aesthetic;
 pub use crate::plot::types::{CastTargetType, SqlTypeNames};
 pub use colour::{color_to_hex, gradient, interpolate_colors, is_color_aesthetic, ColorSpace};
 pub use linetype::linetype_to_stroke_dash;
@@ -51,6 +52,8 @@ pub fn gets_default_scale(aesthetic: &str) -> bool {
         | "size" | "linewidth"
         // Other visual aesthetics
         | "opacity" | "shape" | "linetype"
+        // Facet aesthetics (need Discrete/Binned, not Identity)
+        | "panel" | "row" | "column"
     )
 }
 

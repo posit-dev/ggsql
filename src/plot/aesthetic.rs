@@ -36,6 +36,14 @@ pub const AESTHETIC_FAMILIES: &[(&str, &str)] = &[
     ("yend", "y"),
 ];
 
+/// Facet aesthetics (for creating small multiples)
+///
+/// These aesthetics control faceting layout:
+/// - `panel`: Single variable faceting (wrap layout)
+/// - `row`: Row variable for grid faceting
+/// - `column`: Column variable for grid faceting
+pub const FACET_AESTHETICS: &[&str] = &["panel", "row", "column"];
+
 /// Non-positional aesthetics (visual properties shown in legends or applied to marks)
 ///
 /// These include:
@@ -66,6 +74,15 @@ pub const NON_POSITIONAL: &[&str] = &[
 #[inline]
 pub fn is_primary_positional(aesthetic: &str) -> bool {
     PRIMARY_POSITIONAL.contains(&aesthetic)
+}
+
+/// Check if aesthetic is a facet aesthetic (panel, row, column)
+///
+/// Facet aesthetics control the creation of small multiples (faceted plots).
+/// They only support Discrete and Binned scale types, and cannot have output ranges (TO clause).
+#[inline]
+pub fn is_facet_aesthetic(aesthetic: &str) -> bool {
+    FACET_AESTHETICS.contains(&aesthetic)
 }
 
 /// Check if aesthetic is positional (maps to axis, not legend)
@@ -138,6 +155,15 @@ mod tests {
         assert!(is_primary_positional("y"));
         assert!(!is_primary_positional("xmin"));
         assert!(!is_primary_positional("color"));
+    }
+
+    #[test]
+    fn test_facet_aesthetic() {
+        assert!(is_facet_aesthetic("panel"));
+        assert!(is_facet_aesthetic("row"));
+        assert!(is_facet_aesthetic("column"));
+        assert!(!is_facet_aesthetic("x"));
+        assert!(!is_facet_aesthetic("color"));
     }
 
     #[test]

@@ -5,7 +5,7 @@
 
 use crate::plot::aesthetic::is_aesthetic_name;
 use crate::plot::layer::geom::Geom;
-use crate::plot::scale::{color_to_hex, is_color_aesthetic, Transform};
+use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_facet_aesthetic, Transform};
 use crate::plot::*;
 use crate::{GgsqlError, Result};
 use std::collections::HashMap;
@@ -673,6 +673,14 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
         }
     }
 
+    // Validate facet aesthetics cannot have output ranges (TO clause)
+    if is_facet_aesthetic(&aesthetic) && output_range.is_some() {
+        return Err(GgsqlError::ValidationError(format!(
+            "SCALE {}: facet variables cannot have output ranges (TO clause)",
+            aesthetic
+        )));
+    }
+
     Ok(Scale {
         aesthetic,
         scale_type,
@@ -817,54 +825,70 @@ fn parse_scale_renaming_clause(
 // ============================================================================
 
 /// Build a Facet from a facet_clause node
+///
+/// New syntax: FACET vars [BY vars] [SETTING ...] [RENAMING ...]
+/// - Single variable = wrap layout (no WRAP keyword needed)
+/// - BY clause = grid layout
 fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
-    let mut is_wrap = false;
     let mut row_vars = Vec::new();
-    let mut col_vars = Vec::new();
-    let mut scales = FacetScales::Fixed;
+    let mut column_vars = Vec::new();
+    let mut properties = HashMap::new();
+    let mut label_mapping: Option<HashMap<String, Option<String>>> = None;
+    let mut label_template = "{}".to_string();
 
     let mut cursor = node.walk();
     let mut next_vars_are_cols = false;
 
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "FACET" | "SETTING" | "=>" => continue,
-            "facet_wrap" => {
-                is_wrap = true;
-            }
+            "FACET" => continue,
             "facet_by" => {
                 next_vars_are_cols = true;
             }
             "facet_vars" => {
                 // Parse list of variable names
                 let vars = parse_facet_vars(&child, source)?;
-                if is_wrap {
-                    row_vars = vars;
-                } else if next_vars_are_cols {
-                    col_vars = vars;
+                if next_vars_are_cols {
+                    column_vars = vars;
                 } else {
                     row_vars = vars;
                 }
             }
-            "facet_scales" => {
-                scales = parse_facet_scales(&child, source)?;
+            "setting_clause" => {
+                // Reuse existing setting_clause parser
+                properties = parse_setting_clause(&child, source)?;
+            }
+            "facet_renaming_clause" => {
+                // Parse RENAMING clause (same syntax as scale renaming)
+                let (mappings, template) = parse_facet_renaming_clause(&child, source)?;
+                if !mappings.is_empty() {
+                    label_mapping = Some(mappings);
+                }
+                label_template = template;
             }
             _ => {}
         }
     }
 
-    if is_wrap {
-        Ok(Facet::Wrap {
+    // Determine layout variant: if column_vars is empty, it's a wrap layout
+    let layout = if column_vars.is_empty() {
+        FacetLayout::Wrap {
             variables: row_vars,
-            scales,
-        })
+        }
     } else {
-        Ok(Facet::Grid {
-            rows: row_vars,
-            cols: col_vars,
-            scales,
-        })
-    }
+        FacetLayout::Grid {
+            row: row_vars,
+            column: column_vars,
+        }
+    };
+
+    Ok(Facet {
+        layout,
+        properties,
+        label_mapping,
+        label_template,
+        resolved: false,
+    })
 }
 
 /// Parse facet variables from a facet_vars node
@@ -873,19 +897,66 @@ fn parse_facet_vars(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
     Ok(source.find_texts(node, query))
 }
 
-/// Parse facet scales from a facet_scales node
-fn parse_facet_scales(node: &Node, source: &SourceTree) -> Result<FacetScales> {
-    let text = source.get_text(node);
-    match text.as_str() {
-        "fixed" => Ok(FacetScales::Fixed),
-        "free" => Ok(FacetScales::Free),
-        "free_x" => Ok(FacetScales::FreeX),
-        "free_y" => Ok(FacetScales::FreeY),
-        _ => Err(GgsqlError::ParseError(format!(
-            "Unknown facet scales: {}",
-            text
-        ))),
+/// Parse RENAMING clause for facets: RENAMING 'A' => 'Alpha', * => 'Region: {}'
+///
+/// Same syntax as scale renaming. Returns:
+/// - HashMap where: Key = original value, Value = Some(label) or None for suppressed
+/// - Template string for wildcard mappings (* => '...'), defaults to "{}"
+fn parse_facet_renaming_clause(
+    node: &Node,
+    source: &SourceTree,
+) -> Result<(HashMap<String, Option<String>>, String)> {
+    let mut mappings = HashMap::new();
+    let mut template = "{}".to_string();
+
+    // Find all renaming_assignment nodes
+    let query = "(renaming_assignment) @assign";
+    let assignment_nodes = source.find_nodes(node, query);
+
+    for assignment_node in assignment_nodes {
+        // Extract name and value nodes using field-based queries
+        let (name_node, value_node) = extract_name_value_nodes(&assignment_node, "facet renaming")?;
+
+        // Check if 'name' is a wildcard
+        let is_wildcard = name_node.kind() == "*";
+
+        // Parse 'name' (from) value - wildcards, strings need unquoting, numbers are raw
+        let from_value = match name_node.kind() {
+            "*" => "*".to_string(),
+            "string" => parse_string_node(&name_node, source),
+            "number" => source.get_text(&name_node),
+            _ => {
+                return Err(GgsqlError::ParseError(format!(
+                    "Invalid 'from' type in facet renaming: {}",
+                    name_node.kind()
+                )));
+            }
+        };
+
+        // Parse 'value' (to) - string or NULL
+        let to_value: Option<String> = match value_node.kind() {
+            "string" => Some(parse_string_node(&value_node, source)),
+            "null_literal" => None, // NULL suppresses the label
+            _ => {
+                return Err(GgsqlError::ParseError(format!(
+                    "Invalid 'to' type in facet renaming: {}",
+                    value_node.kind()
+                )));
+            }
+        };
+
+        if is_wildcard {
+            // Wildcard: * => 'template'
+            if let Some(tmpl) = to_value {
+                template = tmpl;
+            }
+        } else {
+            // Explicit mapping: 'A' => 'Alpha'
+            mappings.insert(from_value, to_value);
+        }
     }
+
+    Ok((mappings, template))
 }
 
 // ============================================================================

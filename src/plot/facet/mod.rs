@@ -2,6 +2,8 @@
 //!
 //! This module defines faceting configuration for small multiples.
 
+mod resolve;
 mod types;
 
-pub use types::{Facet, FacetScales};
+pub use resolve::{resolve_properties, FacetDataContext};
+pub use types::{Facet, FacetLayout};

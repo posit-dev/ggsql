@@ -26,7 +26,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::transform::{Transform, TransformKind};
-use crate::plot::aesthetic::is_positional_aesthetic;
+use crate::plot::aesthetic::{is_facet_aesthetic, is_positional_aesthetic};
 use crate::plot::{ArrayElement, ColumnInfo, ParameterValue};
 
 // Scale type implementations
@@ -1104,6 +1104,40 @@ impl ScaleType {
             DataType::Date | DataType::Datetime(_, _) | DataType::Time => Self::continuous(),
             DataType::Boolean | DataType::String => Self::discrete(),
             _ => Self::discrete(),
+        }
+    }
+
+    /// Infer scale type from data type, considering the aesthetic.
+    ///
+    /// For most aesthetics, uses standard inference:
+    /// - Numeric/temporal → Continuous
+    /// - String/boolean → Discrete
+    ///
+    /// For facet aesthetics (panel, row, column):
+    /// - Numeric/temporal → Binned (not Continuous, since facets need discrete categories)
+    /// - String/boolean → Discrete
+    pub fn infer_for_aesthetic(dtype: &DataType, aesthetic: &str) -> Self {
+        if is_facet_aesthetic(aesthetic) {
+            // Facet aesthetics: numeric/temporal defaults to Binned
+            match dtype {
+                DataType::Int8
+                | DataType::Int16
+                | DataType::Int32
+                | DataType::Int64
+                | DataType::UInt8
+                | DataType::UInt16
+                | DataType::UInt32
+                | DataType::UInt64
+                | DataType::Float32
+                | DataType::Float64
+                | DataType::Date
+                | DataType::Datetime(_, _)
+                | DataType::Time => Self::binned(),
+                _ => Self::discrete(),
+            }
+        } else {
+            // Standard inference for other aesthetics
+            Self::infer(dtype)
         }
     }
 

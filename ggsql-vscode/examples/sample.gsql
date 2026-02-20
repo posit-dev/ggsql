@@ -29,7 +29,7 @@ DRAW line
 DRAW point SETTING size => 3
 SCALE x SETTING type => 'date'
 SCALE color TO viridis
-FACET WRAP region SETTING scales => 'free_y'
+FACET region SETTING scales => 'free_y'
 LABEL title => 'Sales Trends by Region',
       x => 'Month',
       y => 'Total Quantity',
@@ -73,7 +73,7 @@ WHERE age BETWEEN 18 AND 80
 VISUALISE age AS x, gender AS fill
 DRAW histogram
 SCALE x SETTING type => 'linear', limits => [18, 80]
-FACET WRAP gender SETTING scales => 'fixed'
+FACET gender SETTING scales => 'fixed'
 LABEL title => 'Age Distribution by Gender',
       x => 'Age',
       y => 'Count'

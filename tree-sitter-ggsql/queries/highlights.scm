@@ -57,6 +57,9 @@
   "fontface"
   "hjust"
   "vjust"
+  "panel"
+  "row"
+  "column"
 ] @attribute
 
 ; String literals

@@ -52,7 +52,8 @@ pub mod validate;
 
 // Re-export key types for convenience
 pub use plot::{
-    AestheticValue, DataSource, Facet, Geom, Layer, Mappings, Plot, Scale, SqlExpression,
+    AestheticValue, DataSource, Facet, FacetLayout, Geom, Layer, Mappings, Plot, Scale,
+    SqlExpression,
 };
 
 // Re-export aesthetic classification utilities
@@ -693,17 +694,21 @@ mod integration_tests {
                 stroke_col,
                 col_names
             );
-            // Facet columns should be included
+            // Facet aesthetic columns should be included (row and column for grid facet)
+            let row_col = naming::aesthetic_column("row");
+            let column_col = naming::aesthetic_column("column");
             assert!(
-                col_names.iter().any(|c| c.as_str() == "region"),
-                "Layer {} should have 'region' facet column: {:?}",
+                col_names.iter().any(|c| c.as_str() == row_col),
+                "Layer {} should have '{}' facet column: {:?}",
                 layer_idx,
+                row_col,
                 col_names
             );
             assert!(
-                col_names.iter().any(|c| c.as_str() == "category"),
-                "Layer {} should have 'category' facet column: {:?}",
+                col_names.iter().any(|c| c.as_str() == column_col),
+                "Layer {} should have '{}' facet column: {:?}",
                 layer_idx,
+                column_col,
                 col_names
             );
         }

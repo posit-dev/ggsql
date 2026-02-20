@@ -866,7 +866,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             result.column("id").unwrap().i32().unwrap().get(0).unwrap(),
-            (n - 1) as i32
+            (n - 1)
         );
         assert_eq!(
             result

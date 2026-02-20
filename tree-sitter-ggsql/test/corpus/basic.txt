@@ -2336,3 +2336,273 @@ SELECT SUM(TRY_CAST(price AS INTEGER)) as total FROM data VISUALISE DRAW bar MAP
                     (identifier
                       (bare_identifier))))
                 name: (aesthetic_name)))))))))
+
+================================================================================
+FACET single variable (wrap layout)
+================================================================================
+
+VISUALISE x AS x, y AS y
+DRAW point
+FACET region
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (facet_clause
+        (facet_vars
+          (identifier
+            (bare_identifier)))))))
+
+================================================================================
+FACET grid layout with BY
+================================================================================
+
+VISUALISE x AS x, y AS y
+DRAW point
+FACET region BY category
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (facet_clause
+        (facet_vars
+          (identifier
+            (bare_identifier)))
+        (facet_by)
+        (facet_vars
+          (identifier
+            (bare_identifier)))))))
+
+================================================================================
+FACET with SETTING clause
+================================================================================
+
+VISUALISE x AS x, y AS y
+DRAW point
+FACET region SETTING scales => 'free_y', ncol => 3
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (facet_clause
+        (facet_vars
+          (identifier
+            (bare_identifier)))
+        (setting_clause
+          (parameter_assignment
+            name: (parameter_name
+              (identifier
+                (bare_identifier)))
+            value: (parameter_value
+              (string)))
+          (parameter_assignment
+            name: (parameter_name
+              (identifier
+                (bare_identifier)))
+            value: (parameter_value
+              (number))))))))
+
+================================================================================
+FACET with RENAMING clause
+================================================================================
+
+VISUALISE x AS x, y AS y
+DRAW point
+FACET region RENAMING 'North' => 'Northern Region', 'South' => 'Southern Region'
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (facet_clause
+        (facet_vars
+          (identifier
+            (bare_identifier)))
+        (facet_renaming_clause
+          (renaming_assignment
+            name: (string)
+            value: (string))
+          (renaming_assignment
+            name: (string)
+            value: (string)))))))
+
+================================================================================
+FACET with wildcard template
+================================================================================
+
+VISUALISE x AS x, y AS y
+DRAW point
+FACET region RENAMING * => 'Region: {}'
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (facet_clause
+        (facet_vars
+          (identifier
+            (bare_identifier)))
+        (facet_renaming_clause
+          (renaming_assignment
+            value: (string)))))))
+
+================================================================================
+FACET grid with SETTING and RENAMING
+================================================================================
+
+VISUALISE x AS x, y AS y
+DRAW point
+FACET region BY category SETTING scales => 'free' RENAMING 'A' => 'Category A'
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (facet_clause
+        (facet_vars
+          (identifier
+            (bare_identifier)))
+        (facet_by)
+        (facet_vars
+          (identifier
+            (bare_identifier)))
+        (setting_clause
+          (parameter_assignment
+            name: (parameter_name
+              (identifier
+                (bare_identifier)))
+            value: (parameter_value
+              (string))))
+        (facet_renaming_clause
+          (renaming_assignment
+            name: (string)
+            value: (string)))))))

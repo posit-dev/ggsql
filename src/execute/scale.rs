@@ -9,7 +9,7 @@ use crate::plot::aesthetic::primary_aesthetic;
 use crate::plot::layer::geom::get_aesthetic_family;
 use crate::plot::scale::{
     default_oob, gets_default_scale, infer_scale_target_type, infer_transform_from_input_range,
-    transform::Transform, OOB_CENSOR, OOB_KEEP, OOB_SQUISH,
+    is_facet_aesthetic, transform::Transform, OOB_CENSOR, OOB_KEEP, OOB_SQUISH,
 };
 use crate::plot::{
     AestheticValue, ArrayElement, ArrayElementType, ColumnInfo, Layer, ParameterValue, Plot, Scale,
@@ -258,6 +258,17 @@ pub fn resolve_scale_types_and_transforms(
     for scale in &mut spec.scales {
         // Skip scales that already have explicit types (user specified)
         if let Some(scale_type) = &scale.scale_type {
+            // Validate facet aesthetics cannot use Continuous scales
+            if is_facet_aesthetic(&scale.aesthetic)
+                && scale_type.scale_type_kind() == ScaleTypeKind::Continuous
+            {
+                return Err(GgsqlError::ValidationError(format!(
+                    "SCALE {}: facet variables require Discrete or Binned scales, got Continuous. \
+                     Use SCALE BINNED {} to bin continuous data.",
+                    scale.aesthetic, scale.aesthetic
+                )));
+            }
+
             // Collect all dtypes for validation and transform inference
             let all_dtypes =
                 collect_dtypes_for_aesthetic(&spec.layers, &scale.aesthetic, layer_type_info);
@@ -343,14 +354,16 @@ pub fn resolve_scale_types_and_transforms(
                     | TransformKind::Integer => ScaleType::continuous(),
                     // Discrete transforms (String, Bool) use Discrete scale
                     TransformKind::String | TransformKind::Bool => ScaleType::discrete(),
-                    // Identity: fall back to dtype inference
-                    TransformKind::Identity => ScaleType::infer(&common_dtype),
+                    // Identity: fall back to dtype inference (considers aesthetic)
+                    TransformKind::Identity => {
+                        ScaleType::infer_for_aesthetic(&common_dtype, &scale.aesthetic)
+                    }
                 }
             } else {
-                ScaleType::infer(&common_dtype)
+                ScaleType::infer_for_aesthetic(&common_dtype, &scale.aesthetic)
             }
         } else {
-            ScaleType::infer(&common_dtype)
+            ScaleType::infer_for_aesthetic(&common_dtype, &scale.aesthetic)
         };
         scale.scale_type = Some(inferred_scale_type.clone());
 
@@ -895,7 +908,10 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
 
         // Infer scale_type if not already set
         if spec.scales[idx].scale_type.is_none() {
-            spec.scales[idx].scale_type = Some(ScaleType::infer(column_refs[0].dtype()));
+            spec.scales[idx].scale_type = Some(ScaleType::infer_for_aesthetic(
+                column_refs[0].dtype(),
+                &aesthetic,
+            ));
         }
 
         // Clone scale_type (cheap Arc clone) to avoid borrow conflict with mutations
@@ -1159,11 +1175,28 @@ pub fn apply_oob_to_column_numeric(
                 .map(|opt| opt.map(|v| v.clamp(range_min, range_max)))
                 .collect();
 
+            // Restore temporal type if original column was temporal
+            // This ensures Date/DateTime/Time values serialize to ISO strings in JSON
+            let original_dtype = series.dtype().clone();
+            let clamped_series = clamped.into_series();
+
+            let restored_series = match &original_dtype {
+                DataType::Date | DataType::Datetime(_, _) | DataType::Time => {
+                    clamped_series.cast(&original_dtype).map_err(|e| {
+                        GgsqlError::InternalError(format!(
+                            "Failed to restore temporal type for '{}': {}",
+                            col_name, e
+                        ))
+                    })?
+                }
+                _ => clamped_series,
+            };
+
             // Replace column with clamped values, maintaining original name
-            let clamped_series = clamped.into_series().with_name(col_name.into());
+            let named_series = restored_series.with_name(col_name.into());
 
             df.clone()
-                .with_column(clamped_series)
+                .with_column(named_series)
                 .map(|df| df.clone())
                 .map_err(|e| GgsqlError::InternalError(format!("Failed to replace column: {}", e)))
         }

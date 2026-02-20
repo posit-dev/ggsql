@@ -25,10 +25,8 @@ mod data;
 mod encoding;
 mod layer;
 
-// ArrayElement is used in tests and for pattern matching; suppress unused import warning
-#[allow(unused_imports)]
 use crate::plot::ArrayElement;
-use crate::plot::ParameterValue;
+use crate::plot::{ParameterValue, Scale, ScaleTypeKind};
 use crate::writer::Writer;
 use crate::{
     is_primary_positional, naming, primary_aesthetic, AestheticValue, DataFrame, GgsqlError, Plot,
@@ -141,12 +139,17 @@ fn prepare_layer_data(
 /// - Adds detail encoding for partition_by columns
 /// - Applies geom-specific modifications via renderer
 /// - Finalizes layers (may expand composite geoms into multiple layers)
+///
+/// The `free_x` and `free_y` flags indicate whether facet free scales are enabled.
+/// When true, explicit domains should not be set for that axis.
 fn build_layers(
     spec: &Plot,
     data: &HashMap<String, DataFrame>,
     layer_data_keys: &[String],
     layer_renderers: &[Box<dyn GeomRenderer>],
     prepared_data: &[PreparedData],
+    free_x: bool,
+    free_y: bool,
 ) -> Result<Vec<Value>> {
     let mut layers = Vec::new();
 
@@ -179,8 +182,8 @@ fn build_layers(
         // Set transform array on layer spec
         layer_spec["transform"] = json!(transforms);
 
-        // Build encoding for this layer
-        let encoding = build_layer_encoding(layer, df, spec)?;
+        // Build encoding for this layer (pass free scale flags)
+        let encoding = build_layer_encoding(layer, df, spec, free_x, free_y)?;
         layer_spec["encoding"] = Value::Object(encoding);
 
         // Apply geom-specific spec modifications via renderer
@@ -203,10 +206,15 @@ fn build_layers(
 /// - Aesthetic parameters from SETTING as literal encodings
 /// - Detail encoding for partition_by columns
 /// - Geom-specific encoding modifications via renderer
+///
+/// The `free_x` and `free_y` flags indicate whether facet free scales are enabled.
+/// When true, explicit domains should not be set for that axis.
 fn build_layer_encoding(
     layer: &crate::plot::Layer,
     df: &DataFrame,
     spec: &Plot,
+    free_x: bool,
+    free_y: bool,
 ) -> Result<serde_json::Map<String, Value>> {
     let mut encoding = serde_json::Map::new();
 
@@ -229,10 +237,19 @@ fn build_layer_encoding(
         spec,
         titled_families: &mut titled_families,
         primary_aesthetics: &primary_aesthetics,
+        free_x,
+        free_y,
     };
 
     // Build encoding channels for each aesthetic mapping
     for (aesthetic, value) in &layer.mappings.aesthetics {
+        // Skip facet aesthetics - they are handled via top-level facet structure,
+        // not as encoding channels. Adding them to encoding would create row-based
+        // faceting instead of the intended wrap/grid layout.
+        if matches!(aesthetic.as_str(), "panel" | "row" | "column") {
+            continue;
+        }
+
         let channel_name = map_aesthetic_name(aesthetic);
         let channel_encoding = build_encoding_channel(aesthetic, value, &mut enc_ctx)?;
         encoding.insert(channel_name, channel_encoding);
@@ -287,48 +304,94 @@ fn build_layer_encoding(
 /// Apply faceting to Vega-Lite spec
 ///
 /// Handles:
-/// - FACET WRAP (single variable faceting)
-/// - FACET GRID (row × column faceting)
+/// - FACET vars (wrap layout)
+/// - FACET rows BY columns (grid layout)
 /// - Moves layers into nested `spec` object
-/// - Infers field types for facet variables
-fn apply_faceting(vl_spec: &mut Value, facet: &crate::plot::Facet, facet_df: &DataFrame) {
-    use crate::plot::Facet;
+/// - Uses aesthetic column names (e.g., __ggsql_aes_panel__)
+/// - Respects scale types (Binned facets use bin: "binned")
+/// - Scale resolution (scales property)
+/// - Label renaming (RENAMING clause)
+/// - Additional properties (ncol, etc.)
+fn apply_faceting(
+    vl_spec: &mut Value,
+    facet: &crate::plot::Facet,
+    facet_df: &DataFrame,
+    scales: &[Scale],
+) {
+    use crate::plot::FacetLayout;
 
-    match facet {
-        Facet::Wrap { variables, .. } => {
-            if !variables.is_empty() {
-                let field_type = infer_field_type(facet_df, &variables[0]);
-                vl_spec["facet"] = json!({
-                    "field": variables[0],
-                    "type": field_type,
-                });
+    match &facet.layout {
+        FacetLayout::Wrap { variables: _ } => {
+            // Use the aesthetic column name for panel
+            let aes_col = naming::aesthetic_column("panel");
 
-                // Move layer into spec (data reference stays at top level)
-                let mut spec_inner = json!({});
-                if let Some(layer) = vl_spec.get("layer") {
-                    spec_inner["layer"] = layer.clone();
-                }
+            // Look up scale for "panel" aesthetic
+            let scale = scales.iter().find(|s| s.aesthetic == "panel");
 
-                vl_spec["spec"] = spec_inner;
-                vl_spec.as_object_mut().unwrap().remove("layer");
+            // Build facet field definition with proper binned support
+            let mut facet_def = build_facet_field_def(facet_df, &aes_col, scale);
+
+            // Prefer scale label_mapping over facet label_mapping
+            let label_mapping = scale
+                .and_then(|s| s.label_mapping.as_ref())
+                .or(facet.label_mapping.as_ref());
+
+            // Apply label renaming via header.labelExpr
+            apply_facet_label_renaming(&mut facet_def, label_mapping, scale);
+
+            // Apply facet ordering from breaks/reverse
+            apply_facet_ordering(&mut facet_def, scale);
+
+            vl_spec["facet"] = facet_def;
+
+            // Move layer into spec (data reference stays at top level)
+            let mut spec_inner = json!({});
+            if let Some(layer) = vl_spec.get("layer") {
+                spec_inner["layer"] = layer.clone();
             }
+
+            vl_spec["spec"] = spec_inner;
+            vl_spec.as_object_mut().unwrap().remove("layer");
+
+            // Apply scale resolution
+            apply_facet_scale_resolution(vl_spec, &facet.properties);
+
+            // Apply additional properties (columns for wrap)
+            apply_facet_properties(vl_spec, &facet.properties, true);
         }
-        Facet::Grid { rows, cols, .. } => {
+        FacetLayout::Grid { row: _, column: _ } => {
             let mut facet_spec = serde_json::Map::new();
-            if !rows.is_empty() {
-                let field_type = infer_field_type(facet_df, &rows[0]);
-                facet_spec.insert(
-                    "row".to_string(),
-                    json!({"field": rows[0], "type": field_type}),
-                );
+
+            // Row facet: use aesthetic column "row"
+            let row_aes_col = naming::aesthetic_column("row");
+            if facet_df.column(&row_aes_col).is_ok() {
+                let row_scale = scales.iter().find(|s| s.aesthetic == "row");
+                let mut row_def = build_facet_field_def(facet_df, &row_aes_col, row_scale);
+
+                let row_label_mapping = row_scale
+                    .and_then(|s| s.label_mapping.as_ref())
+                    .or(facet.label_mapping.as_ref());
+                apply_facet_label_renaming(&mut row_def, row_label_mapping, row_scale);
+                apply_facet_ordering(&mut row_def, row_scale);
+
+                facet_spec.insert("row".to_string(), row_def);
             }
-            if !cols.is_empty() {
-                let field_type = infer_field_type(facet_df, &cols[0]);
-                facet_spec.insert(
-                    "column".to_string(),
-                    json!({"field": cols[0], "type": field_type}),
-                );
+
+            // Column facet: use aesthetic column "column"
+            let col_aes_col = naming::aesthetic_column("column");
+            if facet_df.column(&col_aes_col).is_ok() {
+                let col_scale = scales.iter().find(|s| s.aesthetic == "column");
+                let mut col_def = build_facet_field_def(facet_df, &col_aes_col, col_scale);
+
+                let col_label_mapping = col_scale
+                    .and_then(|s| s.label_mapping.as_ref())
+                    .or(facet.label_mapping.as_ref());
+                apply_facet_label_renaming(&mut col_def, col_label_mapping, col_scale);
+                apply_facet_ordering(&mut col_def, col_scale);
+
+                facet_spec.insert("column".to_string(), col_def);
             }
+
             vl_spec["facet"] = Value::Object(facet_spec);
 
             // Move layer into spec (data reference stays at top level)
@@ -339,6 +402,423 @@ fn apply_faceting(vl_spec: &mut Value, facet: &crate::plot::Facet, facet_df: &Da
 
             vl_spec["spec"] = spec_inner;
             vl_spec.as_object_mut().unwrap().remove("layer");
+
+            // Apply scale resolution
+            apply_facet_scale_resolution(vl_spec, &facet.properties);
+
+            // Apply additional properties (not columns for grid)
+            apply_facet_properties(vl_spec, &facet.properties, false);
+        }
+    }
+}
+
+/// Build a facet field definition with proper type.
+///
+/// Facets always use "type": "nominal" since facet values are categorical
+/// (even for binned data, the bin labels are discrete categories).
+fn build_facet_field_def(df: &DataFrame, col: &str, scale: Option<&Scale>) -> Value {
+    let mut field_def = json!({
+        "field": col,
+    });
+
+    if let Some(scale) = scale {
+        if let Some(ref scale_type) = scale.scale_type {
+            match scale_type.scale_type_kind() {
+                // All scale types use nominal for facets - the data column contains
+                // categorical values (bin midpoints for binned, categories for discrete)
+                ScaleTypeKind::Binned
+                | ScaleTypeKind::Discrete
+                | ScaleTypeKind::Ordinal
+                | ScaleTypeKind::Continuous
+                | ScaleTypeKind::Identity => {
+                    field_def["type"] = json!("nominal");
+                    return field_def;
+                }
+            }
+        }
+    }
+
+    // Fall back to column type inference
+    field_def["type"] = json!(infer_field_type(df, col));
+    field_def
+}
+
+/// Apply facet ordering via Vega-Lite's sort property.
+///
+/// For discrete facets: uses input_range (FROM clause) or breaks array order
+/// For binned facets: uses "descending" sort if reversed
+fn apply_facet_ordering(facet_def: &mut Value, scale: Option<&Scale>) {
+    let Some(scale) = scale else {
+        return;
+    };
+
+    let is_reversed = matches!(
+        scale.properties.get("reverse"),
+        Some(ParameterValue::Boolean(true))
+    );
+
+    let is_binned = scale
+        .scale_type
+        .as_ref()
+        .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)
+        .unwrap_or(false);
+
+    if is_binned {
+        // For binned facets: use "descending" sort if reversed
+        if is_reversed {
+            facet_def["sort"] = json!("descending");
+        }
+        // Default is ascending, no need to specify
+    } else {
+        // For discrete facets: use input_range (FROM clause) if present,
+        // otherwise fall back to breaks property
+        let order_values: Vec<ArrayElement> = if let Some(ref input_range) = scale.input_range {
+            // Use explicit input_range from FROM clause
+            input_range.clone()
+        } else if let Some(ParameterValue::Array(arr)) = scale.properties.get("breaks") {
+            // Fall back to breaks if present
+            arr.clone()
+        } else {
+            return;
+        };
+
+        // Convert to JSON values, preserving null
+        let mut sort_values: Vec<Value> = order_values.iter().map(|e| e.to_json()).collect();
+
+        // Apply reverse if specified
+        if is_reversed {
+            sort_values.reverse();
+        }
+
+        facet_def["sort"] = json!(sort_values);
+    }
+}
+
+/// Apply scale resolution to Vega-Lite spec based on facet scales property
+///
+/// Maps ggsql scales property to Vega-Lite resolve.scale configuration:
+/// - "fixed": shared scales (Vega-Lite default, no resolve needed)
+/// - "free": independent scales for both x and y
+/// - "free_x": independent x scale, shared y scale
+/// - "free_y": shared x scale, independent y scale
+fn apply_facet_scale_resolution(vl_spec: &mut Value, properties: &HashMap<String, ParameterValue>) {
+    let scales = properties
+        .get("scales")
+        .and_then(|v| match v {
+            ParameterValue::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .unwrap_or("fixed");
+
+    match scales {
+        "fixed" => {
+            // Vega-Lite default is shared scales, no resolve needed
+        }
+        "free" => {
+            vl_spec["resolve"] = json!({
+                "scale": {"x": "independent", "y": "independent"}
+            });
+        }
+        "free_x" => {
+            vl_spec["resolve"] = json!({
+                "scale": {"x": "independent"}
+            });
+        }
+        "free_y" => {
+            vl_spec["resolve"] = json!({
+                "scale": {"y": "independent"}
+            });
+        }
+        _ => {
+            // Unknown value - resolution should have validated this
+        }
+    }
+}
+
+/// Apply label renaming to a facet definition via header.labelExpr
+///
+/// Uses Vega expression to transform facet labels:
+/// - For discrete facets: 'A' => 'Alpha' becomes datum.value == 'A' ? 'Alpha' : ...
+/// - For binned facets: uses build_symbol_legend_label_mapping for range-style labels
+/// - NULL values suppress labels (maps to empty string)
+///
+/// Note: Wildcard templates are resolved during facet property resolution,
+/// so by this point label_mapping contains all expanded mappings.
+fn apply_facet_label_renaming(
+    facet_def: &mut Value,
+    label_mapping: Option<&HashMap<String, Option<String>>>,
+    scale: Option<&Scale>,
+) {
+    // Only apply if there's a label mapping
+    let has_mapping = label_mapping.is_some_and(|m| !m.is_empty());
+
+    if !has_mapping {
+        return;
+    }
+
+    // Check if this is a binned facet
+    let is_binned = scale
+        .and_then(|s| s.scale_type.as_ref())
+        .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)
+        .unwrap_or(false);
+
+    let label_expr = if is_binned {
+        // For binned facets: reuse build_symbol_legend_label_mapping and build_label_expr
+        build_binned_facet_label_expr(label_mapping, scale)
+    } else {
+        // For discrete facets: compare datum.value against string values
+        build_discrete_facet_label_expr(label_mapping)
+    };
+
+    // Add to facet definition
+    facet_def["header"] = json!({
+        "labelExpr": label_expr
+    });
+}
+
+/// Build labelExpr for binned facet values.
+///
+/// For binned facets, `datum.value` contains the bin midpoint (e.g., 25 for bin [20-30)).
+/// This function maps midpoint values to range-style labels like "Lower – Upper",
+/// using custom labels from label_mapping when available.
+///
+/// Unlike `build_symbol_legend_label_mapping` which maps Vega-Lite's auto-generated
+/// range labels, this function maps numeric midpoints to our range labels.
+fn build_binned_facet_label_expr(
+    label_mapping: Option<&HashMap<String, Option<String>>>,
+    scale: Option<&Scale>,
+) -> String {
+    let Some(scale) = scale else {
+        return "datum.value".to_string();
+    };
+
+    let breaks = match scale.properties.get("breaks") {
+        Some(ParameterValue::Array(arr)) => arr,
+        _ => return "datum.value".to_string(),
+    };
+
+    if breaks.len() < 2 {
+        return "datum.value".to_string();
+    }
+
+    // Get closed property for determining open-format labels
+    let closed = scale
+        .properties
+        .get("closed")
+        .and_then(|v| match v {
+            ParameterValue::String(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .unwrap_or("left");
+
+    let num_bins = breaks.len() - 1;
+
+    // Build mapping from midpoint to range label
+    let mut midpoint_to_range: Vec<(String, Option<String>)> = Vec::new();
+
+    for i in 0..num_bins {
+        let lower = &breaks[i];
+        let upper = &breaks[i + 1];
+
+        // Calculate midpoint for comparison
+        let midpoint_str = calculate_midpoint_string(lower, upper, scale.transform.as_ref());
+        let Some(midpoint_str) = midpoint_str else {
+            continue;
+        };
+
+        // Get break values as strings (for default labels)
+        let lower_str = lower.to_key_string();
+        let upper_str = upper.to_key_string();
+
+        // Build the range label
+        let range_label = if let Some(label_mapping) = label_mapping {
+            // Check if terminals are suppressed
+            let lower_suppressed = label_mapping.get(&lower_str) == Some(&None);
+            let upper_suppressed = label_mapping.get(&upper_str) == Some(&None);
+
+            // Get custom labels (fall back to break values)
+            let lower_label = label_mapping
+                .get(&lower_str)
+                .cloned()
+                .flatten()
+                .unwrap_or_else(|| lower_str.clone());
+            let upper_label = label_mapping
+                .get(&upper_str)
+                .cloned()
+                .flatten()
+                .unwrap_or_else(|| upper_str.clone());
+
+            // Determine label format based on terminal suppression
+            if i == 0 && lower_suppressed {
+                // First bin with suppressed lower terminal → open format
+                let symbol = if closed == "right" { "≤" } else { "<" };
+                Some(format!("{} {}", symbol, upper_label))
+            } else if i == num_bins - 1 && upper_suppressed {
+                // Last bin with suppressed upper terminal → open format
+                let symbol = if closed == "right" { ">" } else { "≥" };
+                Some(format!("{} {}", symbol, lower_label))
+            } else {
+                // Standard range format: "lower – upper"
+                Some(format!("{} – {}", lower_label, upper_label))
+            }
+        } else {
+            // No label mapping - use default range format with break values
+            Some(format!("{} – {}", lower_str, upper_str))
+        };
+
+        midpoint_to_range.push((midpoint_str, range_label));
+    }
+
+    if midpoint_to_range.is_empty() {
+        return "datum.value".to_string();
+    }
+
+    // Build labelExpr comparing datum.value against midpoints
+    build_binned_facet_value_expr(&midpoint_to_range)
+}
+
+/// Build labelExpr comparing datum.value against midpoint values
+fn build_binned_facet_value_expr(mappings: &[(String, Option<String>)]) -> String {
+    let mut expr_parts: Vec<String> = Vec::new();
+
+    for (midpoint, label) in mappings {
+        // Compare as number for numeric midpoints, string for temporal
+        let condition = format!("datum.value == {}", midpoint);
+        let result = match label {
+            Some(l) => format!("'{}'", escape_vega_string(l)),
+            None => "''".to_string(),
+        };
+        expr_parts.push(format!("{} ? {}", condition, result));
+    }
+
+    if expr_parts.is_empty() {
+        return "datum.value".to_string();
+    }
+
+    // Chain: cond1 ? val1 : cond2 ? val2 : datum.value
+    let mut expr = "datum.value".to_string();
+    for part in expr_parts.into_iter().rev() {
+        expr = format!("{} : {}", part, expr);
+    }
+    expr
+}
+
+/// Calculate the midpoint string for a bin
+fn calculate_midpoint_string(
+    lower: &ArrayElement,
+    upper: &ArrayElement,
+    transform: Option<&crate::plot::scale::Transform>,
+) -> Option<String> {
+    match (lower, upper) {
+        (ArrayElement::Number(l), ArrayElement::Number(u)) => {
+            let midpoint = (*l + *u) / 2.0;
+
+            // Check if temporal transform - format as ISO string (quoted for comparison)
+            if let Some(t) = transform {
+                if let Some(iso) = t.format_as_iso(midpoint) {
+                    return Some(format!("'{}'", iso));
+                }
+            }
+
+            // Numeric: format without trailing decimals if whole number
+            Some(if midpoint.fract() == 0.0 {
+                format!("{}", midpoint as i64)
+            } else {
+                format!("{}", midpoint)
+            })
+        }
+        // Temporal ArrayElements - calculate midpoint and format as ISO (quoted)
+        (ArrayElement::Date(l), ArrayElement::Date(u)) => {
+            let midpoint = ((*l as f64) + (*u as f64)) / 2.0;
+            Some(format!("'{}'", ArrayElement::date_to_iso(midpoint as i32)))
+        }
+        (ArrayElement::DateTime(l), ArrayElement::DateTime(u)) => {
+            let midpoint = ((*l as f64) + (*u as f64)) / 2.0;
+            Some(format!(
+                "'{}'",
+                ArrayElement::datetime_to_iso(midpoint as i64)
+            ))
+        }
+        (ArrayElement::Time(l), ArrayElement::Time(u)) => {
+            let midpoint = ((*l as f64) + (*u as f64)) / 2.0;
+            Some(format!("'{}'", ArrayElement::time_to_iso(midpoint as i64)))
+        }
+        _ => None,
+    }
+}
+
+/// Build labelExpr for discrete facet values.
+fn build_discrete_facet_label_expr(
+    label_mapping: Option<&HashMap<String, Option<String>>>,
+) -> String {
+    let Some(mappings) = label_mapping else {
+        return "datum.value".to_string();
+    };
+
+    // Build labelExpr for Vega-Lite
+    let mut expr_parts: Vec<String> = Vec::new();
+
+    // Add explicit mappings
+    for (from, to) in mappings {
+        // Handle null values: 'null' key maps to JSON null comparison
+        let condition = if from == "null" {
+            "datum.value == null".to_string()
+        } else {
+            format!("datum.value == '{}'", escape_vega_string(from))
+        };
+        let result = match to {
+            Some(label) => format!("'{}'", escape_vega_string(label)),
+            None => "''".to_string(), // NULL suppresses label
+        };
+        expr_parts.push(format!("{} ? {}", condition, result));
+    }
+
+    // Default case: show original value
+    let default_expr = "datum.value".to_string();
+
+    // Build the full expression as nested ternary
+    if expr_parts.is_empty() {
+        default_expr
+    } else {
+        // Chain conditions: cond1 ? val1 : cond2 ? val2 : default
+        let mut expr = default_expr;
+        for part in expr_parts.into_iter().rev() {
+            expr = format!("{} : {}", part, expr);
+        }
+        expr
+    }
+}
+
+/// Escape a string for use in Vega expressions
+fn escape_vega_string(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('\'', "\\'")
+}
+
+/// Apply additional facet properties to Vega-Lite spec
+///
+/// Handles:
+/// - ncol: Number of columns for wrap facets (maps to Vega-Lite's "columns")
+///
+/// Note: scales is handled separately by apply_facet_scale_resolution
+fn apply_facet_properties(
+    vl_spec: &mut Value,
+    properties: &HashMap<String, ParameterValue>,
+    is_wrap: bool,
+) {
+    for (name, value) in properties {
+        match name.as_str() {
+            "ncol" if is_wrap => {
+                // ncol maps to Vega-Lite's "columns" property
+                if let ParameterValue::Number(n) = value {
+                    vl_spec["columns"] = json!(*n as i64);
+                }
+            }
+            "scales" => {
+                // Handled by apply_facet_scale_resolution
+            }
+            _ => {
+                // Unknown properties ignored (resolution should have validated)
+            }
         }
     }
 }
@@ -432,7 +912,30 @@ impl Writer for VegaLiteWriter {
         // 1. Validate spec
         self.validate(spec)?;
 
-        // 2. Determine layer data keys
+        // 2. Determine if facet free scales should omit x/y domains
+        // When using free scales, Vega-Lite computes independent domains per facet panel.
+        // We must not set explicit domains (from SCALE or COORD) as they would override this.
+        let (free_x, free_y) = if let Some(ref facet) = spec.facet {
+            let scales_value = facet
+                .properties
+                .get("scales")
+                .and_then(|v| match v {
+                    ParameterValue::String(s) => Some(s.as_str()),
+                    _ => None,
+                })
+                .unwrap_or("fixed");
+
+            match scales_value {
+                "free" => (true, true),
+                "free_x" => (true, false),
+                "free_y" => (false, true),
+                _ => (false, false), // "fixed" or unknown
+            }
+        } else {
+            (false, false)
+        };
+
+        // 3. Determine layer data keys
         let layer_data_keys: Vec<String> = spec
             .layers
             .iter()
@@ -445,7 +948,7 @@ impl Writer for VegaLiteWriter {
             })
             .collect();
 
-        // 3. Validate columns for each layer
+        // 4. Validate columns for each layer
         for (layer_idx, (layer, key)) in spec.layers.iter().zip(layer_data_keys.iter()).enumerate()
         {
             let df = data.get(key).ok_or_else(|| {
@@ -458,7 +961,7 @@ impl Writer for VegaLiteWriter {
             validate_layer_columns(layer, df, layer_idx)?;
         }
 
-        // 4. Build base Vega-Lite spec
+        // 5. Build base Vega-Lite spec
         let mut vl_spec = json!({
             "$schema": self.schema
         });
@@ -471,40 +974,42 @@ impl Writer for VegaLiteWriter {
             }
         }
 
-        // 5. Collect binned columns
+        // 6. Collect binned columns
         let binned_columns = collect_binned_columns(spec);
 
-        // 6. Prepare layer data
+        // 7. Prepare layer data
         let prep = prepare_layer_data(spec, data, &layer_data_keys, &binned_columns)?;
 
-        // 7. Unify datasets
+        // 8. Unify datasets
         let unified_data = unify_datasets(&prep.datasets)?;
         vl_spec["data"] = json!({"values": unified_data});
 
-        // 8. Build layers
+        // 9. Build layers (pass free scale flags for domain handling)
         let layers = build_layers(
             spec,
             data,
             &layer_data_keys,
             &prep.renderers,
             &prep.prepared,
+            free_x,
+            free_y,
         )?;
         vl_spec["layer"] = json!(layers);
 
-        // 9. Apply coordinate transforms
+        // 10. Apply coordinate transforms (pass free scale flags for domain handling)
         let first_df = data.get(&layer_data_keys[0]).unwrap();
-        apply_coord_transforms(spec, first_df, &mut vl_spec)?;
+        apply_coord_transforms(spec, first_df, &mut vl_spec, free_x, free_y)?;
 
-        // 10. Apply faceting
+        // 11. Apply faceting
         if let Some(facet) = &spec.facet {
             let facet_df = data.get(&layer_data_keys[0]).unwrap();
-            apply_faceting(&mut vl_spec, facet, facet_df);
+            apply_faceting(&mut vl_spec, facet, facet_df, &spec.scales);
         }
 
-        // 11. Add default theme config (ggplot2-like gray theme)
+        // 12. Add default theme config (ggplot2-like gray theme)
         vl_spec["config"] = self.default_theme_config();
 
-        // 12. Serialize
+        // 13. Serialize
         serde_json::to_string_pretty(&vl_spec).map_err(|e| {
             GgsqlError::WriterError(format!("Failed to serialize Vega-Lite JSON: {}", e))
         })
@@ -1036,6 +1541,501 @@ mod tests {
             result_right.get("≥ 75"),
             Some(&Some("> Very High".to_string())),
             "Last bin with closed='right' should use '> lower' format"
+        );
+    }
+
+    #[test]
+    fn test_facet_ordering_uses_input_range() {
+        // Test that apply_facet_ordering uses input_range (FROM clause) for discrete scales
+        use crate::plot::scale::Scale;
+
+        let mut facet_def = json!({"field": "__ggsql_aes_panel__", "type": "nominal"});
+
+        // Create a scale with input_range (simulating SCALE panel FROM ['A', 'B', 'C'])
+        let mut scale = Scale::new("panel");
+        scale.input_range = Some(vec![
+            ArrayElement::String("A".to_string()),
+            ArrayElement::String("B".to_string()),
+            ArrayElement::String("C".to_string()),
+        ]);
+
+        apply_facet_ordering(&mut facet_def, Some(&scale));
+
+        // Verify sort order matches input_range
+        assert_eq!(
+            facet_def["sort"],
+            json!(["A", "B", "C"]),
+            "Facet sort should use input_range order"
+        );
+    }
+
+    #[test]
+    fn test_facet_ordering_with_null_in_input_range() {
+        // Test that apply_facet_ordering preserves null values in input_range
+        // This is the fix for the bug where null panels appear first
+        use crate::plot::scale::Scale;
+
+        let mut facet_def = json!({"field": "__ggsql_aes_panel__", "type": "nominal"});
+
+        // Create a scale with input_range including null at the end
+        // (simulating SCALE panel FROM ['Adelie', 'Gentoo', null])
+        let mut scale = Scale::new("panel");
+        scale.input_range = Some(vec![
+            ArrayElement::String("Adelie".to_string()),
+            ArrayElement::String("Gentoo".to_string()),
+            ArrayElement::Null,
+        ]);
+
+        apply_facet_ordering(&mut facet_def, Some(&scale));
+
+        // Verify sort order preserves null at the end
+        assert_eq!(
+            facet_def["sort"],
+            json!(["Adelie", "Gentoo", null]),
+            "Facet sort should preserve null position from input_range"
+        );
+    }
+
+    #[test]
+    fn test_facet_ordering_with_null_first_in_input_range() {
+        // Test that null at the beginning of input_range produces null first in sort
+        use crate::plot::scale::Scale;
+
+        let mut facet_def = json!({"field": "__ggsql_aes_panel__", "type": "nominal"});
+
+        // Create a scale with null at the beginning
+        let mut scale = Scale::new("panel");
+        scale.input_range = Some(vec![
+            ArrayElement::Null,
+            ArrayElement::String("Adelie".to_string()),
+            ArrayElement::String("Gentoo".to_string()),
+        ]);
+
+        apply_facet_ordering(&mut facet_def, Some(&scale));
+
+        // Verify null is first in sort order
+        assert_eq!(
+            facet_def["sort"],
+            json!([null, "Adelie", "Gentoo"]),
+            "Facet sort should preserve null at beginning"
+        );
+    }
+
+    #[test]
+    fn test_discrete_facet_label_expr_renames_null() {
+        // Test that 'null' key in label_mapping generates correct Vega expression
+        // for comparing against JSON null (not string 'null')
+        let mut mappings = HashMap::new();
+        mappings.insert("Adelie".to_string(), Some("Adelie Penguin".to_string()));
+        mappings.insert("null".to_string(), Some("Missing".to_string()));
+
+        let expr = build_discrete_facet_label_expr(Some(&mappings));
+
+        // Should contain null comparison without quotes
+        assert!(
+            expr.contains("datum.value == null"),
+            "Label expr should use 'datum.value == null' (not string), got: {}",
+            expr
+        );
+        // Should map null to 'Missing'
+        assert!(
+            expr.contains("'Missing'"),
+            "Label expr should contain 'Missing', got: {}",
+            expr
+        );
+        // Should still use string comparison for non-null values
+        assert!(
+            expr.contains("datum.value == 'Adelie'"),
+            "Label expr should use string comparison for Adelie, got: {}",
+            expr
+        );
+    }
+
+    #[test]
+    fn test_binned_facet_label_expr_uses_range_labels() {
+        // Test that binned facet labelExpr uses range-style labels "Lower – Upper"
+        use crate::plot::scale::Scale;
+        use crate::plot::{ParameterValue, ScaleType};
+
+        // Create a binned scale with breaks [0, 20, 40, 60]
+        let mut scale = Scale::new("panel");
+        scale.scale_type = Some(ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(20.0),
+                ArrayElement::Number(40.0),
+                ArrayElement::Number(60.0),
+            ]),
+        );
+
+        // Create label mapping keyed by lower bound
+        let mut label_mapping = HashMap::new();
+        label_mapping.insert("0".to_string(), Some("Low".to_string()));
+        label_mapping.insert("20".to_string(), Some("Medium".to_string()));
+        label_mapping.insert("40".to_string(), Some("High".to_string()));
+        label_mapping.insert("60".to_string(), Some("Very High".to_string()));
+
+        let expr = build_binned_facet_label_expr(Some(&label_mapping), Some(&scale));
+
+        // Should contain midpoint comparisons:
+        // Bin [0, 20) -> midpoint 10
+        // Bin [20, 40) -> midpoint 30
+        // Bin [40, 60] -> midpoint 50
+        assert!(
+            expr.contains("datum.value == 10"),
+            "labelExpr should compare against midpoint 10, got: {}",
+            expr
+        );
+        assert!(
+            expr.contains("datum.value == 30"),
+            "labelExpr should compare against midpoint 30, got: {}",
+            expr
+        );
+        assert!(
+            expr.contains("datum.value == 50"),
+            "labelExpr should compare against midpoint 50, got: {}",
+            expr
+        );
+
+        // Should map to range-style labels using custom label names
+        assert!(
+            expr.contains("'Low – Medium'"),
+            "labelExpr should contain range label 'Low – Medium', got: {}",
+            expr
+        );
+        assert!(
+            expr.contains("'Medium – High'"),
+            "labelExpr should contain range label 'Medium – High', got: {}",
+            expr
+        );
+        assert!(
+            expr.contains("'High – Very High'"),
+            "labelExpr should contain range label 'High – Very High', got: {}",
+            expr
+        );
+    }
+
+    #[test]
+    fn test_binned_facet_label_expr_with_suppressed_lower_terminal() {
+        // Test that suppressed lower terminal creates open-format label "< Upper"
+        use crate::plot::scale::Scale;
+        use crate::plot::{ParameterValue, ScaleType};
+
+        let mut scale = Scale::new("panel");
+        scale.scale_type = Some(ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+
+        // Create label mapping with suppressed first terminal (oob='squish' behavior)
+        let mut label_mapping = HashMap::new();
+        label_mapping.insert("0".to_string(), None); // Suppress lower terminal
+        label_mapping.insert("50".to_string(), Some("High".to_string()));
+        label_mapping.insert("100".to_string(), Some("Max".to_string()));
+
+        let expr = build_binned_facet_label_expr(Some(&label_mapping), Some(&scale));
+
+        // First bin with suppressed lower terminal → open format "< 50" or "< High"
+        // (uses upper bound label since lower is suppressed)
+        assert!(
+            expr.contains("'< High'"),
+            "First bin with suppressed lower should use '< Upper' format, got: {}",
+            expr
+        );
+        // Second bin should use range format
+        assert!(
+            expr.contains("'High – Max'"),
+            "Second bin should use range format 'High – Max', got: {}",
+            expr
+        );
+    }
+
+    #[test]
+    fn test_binned_facet_label_expr_default_range_format() {
+        // Test that binned facet without label_mapping uses default range format
+        use crate::plot::scale::Scale;
+        use crate::plot::{ParameterValue, ScaleType};
+
+        let mut scale = Scale::new("panel");
+        scale.scale_type = Some(ScaleType::binned());
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(25.0),
+                ArrayElement::Number(50.0),
+            ]),
+        );
+
+        // No label_mapping - should use break values in range format
+        let expr = build_binned_facet_label_expr(None, Some(&scale));
+
+        // Should use default range format with break values
+        assert!(
+            expr.contains("'0 – 25'"),
+            "Should use default range format '0 – 25', got: {}",
+            expr
+        );
+        assert!(
+            expr.contains("'25 – 50'"),
+            "Should use default range format '25 – 50', got: {}",
+            expr
+        );
+    }
+
+    #[test]
+    fn test_facet_free_scales_omits_domain() {
+        // Test that FACET with scales => 'free' does not set explicit domains
+        // This allows Vega-Lite to compute independent domains per facet panel
+        use crate::plot::scale::Scale;
+        use crate::plot::{Facet, FacetLayout, ParameterValue};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add facet with free scales
+        let mut facet_properties = HashMap::new();
+        facet_properties.insert(
+            "scales".to_string(),
+            ParameterValue::String("free".to_string()),
+        );
+        spec.facet = Some(Facet {
+            layout: FacetLayout::Wrap {
+                variables: vec!["category".to_string()],
+            },
+            properties: facet_properties,
+            label_mapping: None,
+            label_template: "{}".to_string(),
+            resolved: true,
+        });
+
+        // Add scale with explicit domain that should be skipped
+        let mut x_scale = Scale::new("x");
+        x_scale.input_range = Some(vec![
+            crate::plot::ArrayElement::Number(0.0),
+            crate::plot::ArrayElement::Number(100.0),
+        ]);
+        spec.scales.push(x_scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[4, 5, 6],
+            "category" => &["A", "A", "B"],
+            "__ggsql_aes_panel__" => &["A", "A", "B"],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Verify resolve.scale is set to independent for both axes
+        assert_eq!(
+            vl_spec["resolve"]["scale"]["x"], "independent",
+            "x scale should be independent"
+        );
+        assert_eq!(
+            vl_spec["resolve"]["scale"]["y"], "independent",
+            "y scale should be independent"
+        );
+
+        // Verify NO explicit domain is set on x encoding (would override free scales)
+        // The encoding should exist but scale.domain should not be present
+        let x_encoding = &vl_spec["spec"]["layer"][0]["encoding"]["x"];
+        let has_domain = x_encoding
+            .get("scale")
+            .and_then(|s| s.get("domain"))
+            .is_some();
+        assert!(
+            !has_domain,
+            "x encoding should NOT have explicit domain when using free scales, got: {}",
+            serde_json::to_string_pretty(&x_encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_facet_free_y_only_omits_y_domain() {
+        // Test that FACET with scales => 'free_y' omits y domain but keeps x domain
+        use crate::plot::scale::Scale;
+        use crate::plot::{Facet, FacetLayout, ParameterValue};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add facet with free_y scales
+        let mut facet_properties = HashMap::new();
+        facet_properties.insert(
+            "scales".to_string(),
+            ParameterValue::String("free_y".to_string()),
+        );
+        spec.facet = Some(Facet {
+            layout: FacetLayout::Wrap {
+                variables: vec!["category".to_string()],
+            },
+            properties: facet_properties,
+            label_mapping: None,
+            label_template: "{}".to_string(),
+            resolved: true,
+        });
+
+        // Add scales with explicit domains
+        let mut x_scale = Scale::new("x");
+        x_scale.input_range = Some(vec![
+            crate::plot::ArrayElement::Number(0.0),
+            crate::plot::ArrayElement::Number(100.0),
+        ]);
+        spec.scales.push(x_scale);
+
+        let mut y_scale = Scale::new("y");
+        y_scale.input_range = Some(vec![
+            crate::plot::ArrayElement::Number(0.0),
+            crate::plot::ArrayElement::Number(50.0),
+        ]);
+        spec.scales.push(y_scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[4, 5, 6],
+            "category" => &["A", "A", "B"],
+            "__ggsql_aes_panel__" => &["A", "A", "B"],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Verify only y scale is independent
+        assert!(
+            vl_spec["resolve"]["scale"].get("x").is_none(),
+            "x scale should not be in resolve (shared)"
+        );
+        assert_eq!(
+            vl_spec["resolve"]["scale"]["y"], "independent",
+            "y scale should be independent"
+        );
+
+        // x encoding SHOULD have domain (not free)
+        let x_encoding = &vl_spec["spec"]["layer"][0]["encoding"]["x"];
+        let x_has_domain = x_encoding
+            .get("scale")
+            .and_then(|s| s.get("domain"))
+            .is_some();
+        assert!(
+            x_has_domain,
+            "x encoding SHOULD have domain when using free_y scales"
+        );
+
+        // y encoding should NOT have domain (free)
+        let y_encoding = &vl_spec["spec"]["layer"][0]["encoding"]["y"];
+        let y_has_domain = y_encoding
+            .get("scale")
+            .and_then(|s| s.get("domain"))
+            .is_some();
+        assert!(
+            !y_has_domain,
+            "y encoding should NOT have domain when using free_y scales, got: {}",
+            serde_json::to_string_pretty(&y_encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_facet_fixed_scales_keeps_domain() {
+        // Test that FACET with scales => 'fixed' (default) keeps explicit domains
+        use crate::plot::scale::Scale;
+        use crate::plot::{Facet, FacetLayout, ParameterValue};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add facet with fixed scales (default)
+        let mut facet_properties = HashMap::new();
+        facet_properties.insert(
+            "scales".to_string(),
+            ParameterValue::String("fixed".to_string()),
+        );
+        spec.facet = Some(Facet {
+            layout: FacetLayout::Wrap {
+                variables: vec!["category".to_string()],
+            },
+            properties: facet_properties,
+            label_mapping: None,
+            label_template: "{}".to_string(),
+            resolved: true,
+        });
+
+        // Add scale with explicit domain
+        let mut x_scale = Scale::new("x");
+        x_scale.input_range = Some(vec![
+            crate::plot::ArrayElement::Number(0.0),
+            crate::plot::ArrayElement::Number(100.0),
+        ]);
+        spec.scales.push(x_scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[4, 5, 6],
+            "category" => &["A", "A", "B"],
+            "__ggsql_aes_panel__" => &["A", "A", "B"],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Verify NO resolve.scale (fixed scales don't need it)
+        assert!(
+            vl_spec.get("resolve").is_none(),
+            "Fixed scales should not have resolve property"
+        );
+
+        // x encoding SHOULD have domain (fixed scales keep explicit domains)
+        let x_encoding = &vl_spec["spec"]["layer"][0]["encoding"]["x"];
+        let has_domain = x_encoding
+            .get("scale")
+            .and_then(|s| s.get("domain"))
+            .is_some();
+        assert!(
+            has_domain,
+            "x encoding SHOULD have domain when using fixed scales"
         );
     }
 }

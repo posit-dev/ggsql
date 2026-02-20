@@ -275,7 +275,7 @@ class TestRenderAltairChartTypeDetection:
         assert isinstance(recreated, altair.LayerChart)
 
     def test_faceted_chart_returns_facet_chart(self):
-        """FACET WRAP specs produce FacetChart."""
+        """FACET specs produce FacetChart."""
         df = pl.DataFrame(
             {
                 "x": [1, 2, 3, 4, 5, 6],
@@ -285,7 +285,7 @@ class TestRenderAltairChartTypeDetection:
         )
         # Need validate=False because ggsql produces v6 specs
         chart = ggsql.render_altair(
-            df, "VISUALISE x, y FACET WRAP group DRAW point", validate=False
+            df, "VISUALISE x, y FACET group DRAW point", validate=False
         )
         assert isinstance(chart, altair.FacetChart)
 
@@ -299,7 +299,7 @@ class TestRenderAltairChartTypeDetection:
             }
         )
         chart = ggsql.render_altair(
-            df, "VISUALISE x, y FACET WRAP group DRAW point", validate=False
+            df, "VISUALISE x, y FACET group DRAW point", validate=False
         )
 
         # Convert to dict (skip validation for ggsql specs)
