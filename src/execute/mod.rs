@@ -34,6 +34,71 @@ use crate::reader::Reader;
 use crate::reader::DuckDBReader;
 
 // =============================================================================
+// Column Name Normalization
+// =============================================================================
+
+/// Normalize aesthetic column references to match the actual schema column names.
+///
+/// DuckDB lowercases unquoted identifiers, but users may write column names in
+/// any case in VISUALISE/MAPPING clauses. Since ggsql quotes column names in
+/// generated SQL (making them case-sensitive), we must normalize references to
+/// match the actual column names returned by the database.
+///
+/// This function walks all aesthetic mappings (global and per-layer) and replaces
+/// column names with the matching schema column name (matched case-insensitively).
+fn normalize_column_names(specs: &mut [Plot], layer_schemas: &[Schema]) {
+    for spec in specs {
+        // Normalize global mappings using the first layer's schema (global mappings
+        // are merged into all layers, so any layer's schema suffices for normalization)
+        if let Some(schema) = layer_schemas.first() {
+            let schema_names: Vec<&str> = schema.iter().map(|c| c.name.as_str()).collect();
+            for value in spec.global_mappings.aesthetics.values_mut() {
+                normalize_aesthetic_value(value, &schema_names);
+            }
+        }
+
+        // Normalize per-layer mappings and partition_by using each layer's own schema
+        for (layer, schema) in spec.layers.iter_mut().zip(layer_schemas.iter()) {
+            let schema_names: Vec<&str> = schema.iter().map(|c| c.name.as_str()).collect();
+            for value in layer.mappings.aesthetics.values_mut() {
+                normalize_aesthetic_value(value, &schema_names);
+            }
+            for col in &mut layer.partition_by {
+                normalize_column_ref(col, &schema_names);
+            }
+        }
+    }
+}
+
+/// Resolve a column name to match actual schema casing (case-insensitive).
+///
+/// Only normalizes when there is no exact match and exactly one case-insensitive
+/// match exists. This preserves correct behavior when the schema contains columns
+/// that differ only by case (e.g., via quoted identifiers like `"Foo"` and `"foo"`).
+fn normalize_column_ref(name: &mut String, schema_names: &[&str]) {
+    if schema_names.contains(&name.as_str()) {
+        return;
+    }
+
+    let name_lower = name.to_lowercase();
+    let matches: Vec<&&str> = schema_names
+        .iter()
+        .filter(|s| s.to_lowercase() == name_lower)
+        .collect();
+
+    if matches.len() == 1 {
+        *name = matches[0].to_string();
+    }
+}
+
+/// Normalize a single aesthetic value's column name to match schema casing.
+fn normalize_aesthetic_value(value: &mut AestheticValue, schema_names: &[&str]) {
+    if let AestheticValue::Column { name, .. } = value {
+        normalize_column_ref(name, schema_names);
+    }
+}
+
+// =============================================================================
 // Validation
 // =============================================================================
 
@@ -569,6 +634,12 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         .iter()
         .map(|ti| schema::type_info_to_schema(ti))
         .collect();
+
+    // Normalize column names in aesthetic references to match actual schema casing.
+    // DuckDB lowercases unquoted identifiers, but users may write them in any case
+    // in VISUALISE/MAPPING. Since generated SQL quotes column names (case-sensitive),
+    // we must normalize before merging or building queries.
+    normalize_column_names(&mut specs, &layer_schemas);
 
     // Merge global mappings into layer aesthetics and expand wildcards
     // Smart wildcard expansion only creates mappings for columns that exist in schema
@@ -1242,5 +1313,73 @@ mod tests {
 
         // Should have fewer rows than original (binned)
         assert!(layer_df.height() < 100);
+    }
+
+    /// Test that VISUALISE column references are matched case-insensitively.
+    ///
+    /// DuckDB lowercases unquoted identifiers, so `SELECT UPPER_COL` returns a
+    /// column named `upper_col`. VISUALISE references like `UPPER_COL AS x` must
+    /// be normalized to match the actual schema column name before validation
+    /// and query building.
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_case_insensitive_column_references() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create a table with uppercase column names via aliasing
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE case_test AS SELECT 'A' AS category, 10 AS value UNION ALL SELECT 'B', 20",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // VISUALISE references use UPPERCASE but DuckDB stores them as lowercase
+        let query = r#"
+            SELECT category, value FROM case_test
+            VISUALISE CATEGORY AS x, VALUE AS y
+            DRAW bar
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Case-insensitive column references should work: {:?}",
+            result.err()
+        );
+
+        let result = result.unwrap();
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
+        assert_eq!(layer_df.height(), 2);
+    }
+
+    /// Mixed-case VISUALISE references (e.g., `CaTeGoRy`) should normalize
+    /// to the actual schema column name.
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_mixed_case_column_references() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE mixed_case AS SELECT 'A' AS category, 10 AS value UNION ALL SELECT 'B', 20",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT category, value FROM mixed_case
+            VISUALISE CaTeGoRy AS x, VaLuE AS y
+            DRAW bar
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Mixed-case column references should be normalized: {:?}",
+            result.err()
+        );
     }
 }
