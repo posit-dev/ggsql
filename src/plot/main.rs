@@ -30,7 +30,7 @@ pub use super::types::{
 
 // Re-export Geom and related types from the layer::geom module
 pub use super::layer::geom::{
-    DefaultParam, DefaultParamValue, Geom, GeomAesthetics, GeomTrait, GeomType, StatResult,
+    DefaultAesthetics, DefaultParam, DefaultParamValue, Geom, GeomTrait, GeomType, StatResult,
 };
 
 use super::aesthetic::primary_aesthetic;
@@ -381,56 +381,58 @@ mod tests {
     fn test_geom_aesthetics() {
         // Point geom
         let point = Geom::point().aesthetics();
-        assert!(point.supported.contains(&"x"));
-        assert!(point.supported.contains(&"size"));
-        assert!(point.supported.contains(&"shape"));
-        assert!(!point.supported.contains(&"linetype"));
-        assert_eq!(point.required, &["x", "y"]);
+        assert!(point.is_supported("x"));
+        assert!(point.is_supported("size"));
+        assert!(point.is_supported("shape"));
+        assert!(!point.is_supported("linetype"));
+        assert_eq!(point.required(), &["x", "y"]);
 
         // Line geom
         let line = Geom::line().aesthetics();
-        assert!(line.supported.contains(&"linetype"));
-        assert!(line.supported.contains(&"linewidth"));
-        assert!(!line.supported.contains(&"size"));
-        assert_eq!(line.required, &["x", "y"]);
+        assert!(line.is_supported("linetype"));
+        assert!(line.is_supported("linewidth"));
+        assert!(!line.is_supported("size"));
+        assert_eq!(line.required(), &["x", "y"]);
 
         // Bar geom - optional x and y (stat decides aggregation)
         let bar = Geom::bar().aesthetics();
-        assert!(bar.supported.contains(&"fill"));
-        assert!(bar.supported.contains(&"width"));
-        assert!(bar.supported.contains(&"y")); // Bar accepts optional y
-        assert!(bar.supported.contains(&"x")); // Bar accepts optional x
-        assert_eq!(bar.required, &[] as &[&str]); // No required aesthetics
+        assert!(bar.is_supported("fill"));
+        assert!(bar.is_supported("y")); // Bar accepts optional y
+        assert!(bar.is_supported("x")); // Bar accepts optional x
+        assert_eq!(bar.required(), &[] as &[&str]); // No required aesthetics
 
         // Text geom
         let text = Geom::text().aesthetics();
-        assert!(text.supported.contains(&"label"));
-        assert!(text.supported.contains(&"family"));
-        assert_eq!(text.required, &["x", "y"]);
+        assert!(text.is_supported("label"));
+        assert!(text.is_supported("family"));
+        assert_eq!(text.required(), &["x", "y"]);
 
         // Statistical geoms only require x
-        assert_eq!(Geom::histogram().aesthetics().required, &["x"]);
-        assert_eq!(Geom::density().aesthetics().required, &["x"]);
+        assert_eq!(Geom::histogram().aesthetics().required(), &["x"]);
+        assert_eq!(Geom::density().aesthetics().required(), &["x"]);
 
         // Ribbon requires ymin/ymax
-        assert_eq!(Geom::ribbon().aesthetics().required, &["x", "ymin", "ymax"]);
+        assert_eq!(
+            Geom::ribbon().aesthetics().required(),
+            &["x", "ymin", "ymax"]
+        );
 
         // Segment/arrow require endpoints
         assert_eq!(
-            Geom::segment().aesthetics().required,
+            Geom::segment().aesthetics().required(),
             &["x", "y", "xend", "yend"]
         );
 
         // Reference lines
-        assert_eq!(Geom::hline().aesthetics().required, &["yintercept"]);
-        assert_eq!(Geom::vline().aesthetics().required, &["xintercept"]);
+        assert_eq!(Geom::hline().aesthetics().required(), &["yintercept"]);
+        assert_eq!(Geom::vline().aesthetics().required(), &["xintercept"]);
         assert_eq!(
-            Geom::abline().aesthetics().required,
+            Geom::abline().aesthetics().required(),
             &["slope", "intercept"]
         );
 
         // ErrorBar has no strict requirements
-        assert_eq!(Geom::errorbar().aesthetics().required, &[] as &[&str]);
+        assert_eq!(Geom::errorbar().aesthetics().required(), &[] as &[&str]);
     }
 
     #[test]

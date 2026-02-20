@@ -1,6 +1,7 @@
 //! Smooth geom implementation
 
-use super::{GeomAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
+use crate::plot::types::DefaultAestheticValue;
 use crate::Mappings;
 
 /// Smooth geom - smoothed conditional means (regression, LOESS, etc.)
@@ -12,11 +13,16 @@ impl GeomTrait for Smooth {
         GeomType::Smooth
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
-            supported: &["x", "y", "stroke", "linetype", "opacity"],
-            required: &["x", "y"],
-            hidden: &[],
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("x", DefaultAestheticValue::Required),
+                ("y", DefaultAestheticValue::Required),
+                ("stroke", DefaultAestheticValue::String("#3366FF")),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("opacity", DefaultAestheticValue::Number(1.0)),
+                ("linetype", DefaultAestheticValue::String("solid")),
+            ],
         }
     }
 

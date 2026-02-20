@@ -1,6 +1,6 @@
 //! Density geom implementation
 
-use super::{GeomAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::{
     naming,
     plot::{
@@ -24,19 +24,18 @@ impl GeomTrait for Density {
         GeomType::Density
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
-            supported: &[
-                "x",
-                "weight",
-                "fill",
-                "stroke",
-                "opacity",
-                "linewidth",
-                "linetype",
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("x", DefaultAestheticValue::Required),
+                ("weight", DefaultAestheticValue::Null),
+                ("fill", DefaultAestheticValue::String("black")),
+                ("stroke", DefaultAestheticValue::String("#000000B2")),
+                ("opacity", DefaultAestheticValue::Number(0.8)),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("linetype", DefaultAestheticValue::String("solid")),
+                ("y", DefaultAestheticValue::Delayed), // Computed by stat
             ],
-            required: &["x"],
-            hidden: &["y"],
         }
     }
 

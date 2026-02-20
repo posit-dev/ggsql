@@ -1,6 +1,7 @@
 //! Ribbon geom implementation
 
-use super::{GeomAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
+use crate::plot::types::DefaultAestheticValue;
 
 /// Ribbon geom - confidence bands and ranges
 #[derive(Debug, Clone, Copy)]
@@ -11,20 +12,18 @@ impl GeomTrait for Ribbon {
         GeomType::Ribbon
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
-            supported: &[
-                "x",
-                "ymin",
-                "ymax",
-                "fill",
-                "stroke",
-                "opacity",
-                "linewidth",
-                // "linetype" // vegalite doesn't support strokeDash
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("x", DefaultAestheticValue::Required),
+                ("ymin", DefaultAestheticValue::Required),
+                ("ymax", DefaultAestheticValue::Required),
+                ("fill", DefaultAestheticValue::String("#000000B2")),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("opacity", DefaultAestheticValue::Number(1.0)),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("linetype", DefaultAestheticValue::String("solid")),
             ],
-            required: &["x", "ymin", "ymax"],
-            hidden: &[],
         }
     }
 }

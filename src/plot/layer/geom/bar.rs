@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use super::types::get_column_name;
-use super::{DefaultParam, DefaultParamValue, GeomAesthetics, GeomTrait, GeomType, StatResult};
+use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, StatResult};
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
 use crate::{DataFrame, GgsqlError, Mappings, Result};
@@ -20,15 +20,23 @@ impl GeomTrait for Bar {
         GeomType::Bar
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
             // Bar supports optional x and y - stat decides aggregation
             // If x is missing: single bar showing total
             // If y is missing: stat computes COUNT or SUM(weight)
             // weight: optional, if mapped uses SUM(weight) instead of COUNT(*)
-            supported: &["x", "y", "weight", "fill", "stroke", "width", "opacity"],
-            required: &[],
-            hidden: &[],
+            // width is a parameter, not an aesthetic.
+            // if we ever want to make 'width' an aesthetic, we'd probably need to
+            // translate it to 'size'.
+            defaults: &[
+                ("x", DefaultAestheticValue::Null), // Optional - stat may provide
+                ("y", DefaultAestheticValue::Null), // Optional - stat may compute
+                ("weight", DefaultAestheticValue::Null),
+                ("fill", DefaultAestheticValue::String("#000000B2")),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("opacity", DefaultAestheticValue::Number(1.0)),
+            ],
         }
     }
 

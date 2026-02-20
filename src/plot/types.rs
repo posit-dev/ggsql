@@ -255,16 +255,35 @@ pub enum DefaultAestheticValue {
     Number(f64),
     /// Literal boolean value
     Boolean(bool),
+    /// Supported but no default value (optional aesthetic)
+    Null,
+    /// Required aesthetic (must be provided via MAPPING)
+    Required,
+    /// Delayed aesthetic (produced by stat transform, valid for REMAPPING only, not MAPPING)
+    Delayed,
 }
 
 impl DefaultAestheticValue {
+    /// Convert to ParameterValue
+    ///
+    /// Returns String/Number/Boolean for literal defaults.
+    /// Returns Null for Column/Null/Required/Delayed (non-literal variants).
+    /// Use this to extract SETTING-compatible values from defaults.
+    pub fn to_parameter_value(&self) -> ParameterValue {
+        match self {
+            Self::String(s) => ParameterValue::String(s.to_string()),
+            Self::Number(n) => ParameterValue::Number(*n),
+            Self::Boolean(b) => ParameterValue::Boolean(*b),
+            Self::Column(_) | Self::Null | Self::Required | Self::Delayed => ParameterValue::Null,
+        }
+    }
+
     /// Convert to owned AestheticValue
     pub fn to_aesthetic_value(&self) -> AestheticValue {
         match self {
             Self::Column(name) => AestheticValue::standard_column(name.to_string()),
-            Self::String(s) => AestheticValue::Literal(ParameterValue::String(s.to_string())),
-            Self::Number(n) => AestheticValue::Literal(ParameterValue::Number(*n)),
-            Self::Boolean(b) => AestheticValue::Literal(ParameterValue::Boolean(*b)),
+            // All literal variants (String/Number/Boolean) and non-literals (Null/Required/Delayed)
+            _ => AestheticValue::Literal(self.to_parameter_value()),
         }
     }
 }

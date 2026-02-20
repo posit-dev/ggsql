@@ -1,6 +1,7 @@
 //! Line geom implementation
 
-use super::{GeomAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
+use crate::plot::types::DefaultAestheticValue;
 
 /// Line geom - line charts with connected points
 #[derive(Debug, Clone, Copy)]
@@ -11,11 +12,16 @@ impl GeomTrait for Line {
         GeomType::Line
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
-            supported: &["x", "y", "stroke", "linetype", "linewidth", "opacity"],
-            required: &["x", "y"],
-            hidden: &[],
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("x", DefaultAestheticValue::Required),
+                ("y", DefaultAestheticValue::Required),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("linewidth", DefaultAestheticValue::Number(1.5)),
+                ("opacity", DefaultAestheticValue::Number(1.0)),
+                ("linetype", DefaultAestheticValue::String("solid")),
+            ],
         }
     }
 }

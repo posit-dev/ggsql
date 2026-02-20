@@ -1,6 +1,7 @@
 //! Point geom implementation
 
-use super::{GeomAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
+use crate::plot::types::DefaultAestheticValue;
 
 /// Point geom - scatter plots and similar
 #[derive(Debug, Clone, Copy)]
@@ -11,20 +12,18 @@ impl GeomTrait for Point {
         GeomType::Point
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
-            supported: &[
-                "x",
-                "y",
-                "fill",
-                "stroke",
-                "size",
-                "shape",
-                "opacity",
-                "linewidth",
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("x", DefaultAestheticValue::Required),
+                ("y", DefaultAestheticValue::Required),
+                ("size", DefaultAestheticValue::Number(3.0)),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("fill", DefaultAestheticValue::String("#000000B2")),
+                ("opacity", DefaultAestheticValue::Number(1.0)),
+                ("shape", DefaultAestheticValue::String("circle")),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
             ],
-            required: &["x", "y"],
-            hidden: &[],
         }
     }
 }

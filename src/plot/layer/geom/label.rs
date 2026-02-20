@@ -1,6 +1,7 @@
 //! Label geom implementation
 
-use super::{GeomAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
+use crate::plot::types::DefaultAestheticValue;
 
 /// Label geom - text labels with background
 #[derive(Debug, Clone, Copy)]
@@ -11,14 +12,21 @@ impl GeomTrait for Label {
         GeomType::Label
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
-            supported: &[
-                "x", "y", "label", "fill", "stroke", "size", "opacity", "family", "fontface",
-                "hjust", "vjust",
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("x", DefaultAestheticValue::Required),
+                ("y", DefaultAestheticValue::Required),
+                ("label", DefaultAestheticValue::Null),
+                ("fill", DefaultAestheticValue::Null),
+                ("stroke", DefaultAestheticValue::Null),
+                ("size", DefaultAestheticValue::Number(11.0)),
+                ("opacity", DefaultAestheticValue::Number(1.0)),
+                ("family", DefaultAestheticValue::Null),
+                ("fontface", DefaultAestheticValue::Null),
+                ("hjust", DefaultAestheticValue::Null),
+                ("vjust", DefaultAestheticValue::Null),
             ],
-            required: &["x", "y"],
-            hidden: &[],
         }
     }
 }

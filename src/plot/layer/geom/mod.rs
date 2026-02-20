@@ -17,7 +17,7 @@
 //!
 //! let point = Geom::point();
 //! assert_eq!(point.geom_type(), GeomType::Point);
-//! assert!(point.aesthetics().required.contains(&"x"));
+//! assert!(point.aesthetics().is_required("x"));
 //! ```
 
 use crate::{DataFrame, Mappings, Result};
@@ -51,7 +51,7 @@ mod violin;
 mod vline;
 
 // Re-export types
-pub use types::{DefaultParam, DefaultParamValue, GeomAesthetics, StatResult};
+pub use types::{DefaultAesthetics, DefaultParam, DefaultParamValue, StatResult};
 
 // Re-export aesthetic family utilities from the central module
 pub use crate::plot::aesthetic::{get_aesthetic_family, AESTHETIC_FAMILIES};
@@ -146,7 +146,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     fn geom_type(&self) -> GeomType;
 
     /// Returns aesthetic information (REQUIRED - each geom is different)
-    fn aesthetics(&self) -> GeomAesthetics;
+    fn aesthetics(&self) -> DefaultAesthetics;
 
     /// Returns default remappings for stat-computed columns and literals to aesthetics.
     ///
@@ -213,7 +213,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     ///
     /// Combines supported aesthetics with non-aesthetic parameters.
     fn valid_settings(&self) -> Vec<&'static str> {
-        let mut valid: Vec<&'static str> = self.aesthetics().supported.to_vec();
+        let mut valid: Vec<&'static str> = self.aesthetics().supported();
         for param in self.default_params() {
             valid.push(param.name);
         }
@@ -367,7 +367,7 @@ impl Geom {
     }
 
     /// Get aesthetics information
-    pub fn aesthetics(&self) -> GeomAesthetics {
+    pub fn aesthetics(&self) -> DefaultAesthetics {
         self.0.aesthetics()
     }
 
@@ -506,8 +506,8 @@ mod tests {
     fn test_geom_aesthetics() {
         let point = Geom::point();
         let aes = point.aesthetics();
-        assert!(aes.required.contains(&"x"));
-        assert!(aes.required.contains(&"y"));
+        assert!(aes.is_required("x"));
+        assert!(aes.is_required("y"));
     }
 
     #[test]

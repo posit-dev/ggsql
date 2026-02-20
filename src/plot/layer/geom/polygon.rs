@@ -1,6 +1,7 @@
 //! Polygon geom implementation
 
-use super::{GeomAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
+use crate::plot::types::DefaultAestheticValue;
 
 /// Polygon geom - arbitrary polygons
 #[derive(Debug, Clone, Copy)]
@@ -11,19 +12,17 @@ impl GeomTrait for Polygon {
         GeomType::Polygon
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
-            supported: &[
-                "x",
-                "y",
-                "fill",
-                "stroke",
-                "opacity",
-                "linewidth",
-                "linetype",
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("x", DefaultAestheticValue::Required),
+                ("y", DefaultAestheticValue::Required),
+                ("fill", DefaultAestheticValue::String("#000000B2")),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("opacity", DefaultAestheticValue::Number(1.0)),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("linetype", DefaultAestheticValue::String("solid")),
             ],
-            required: &["x", "y"],
-            hidden: &[],
         }
     }
 }

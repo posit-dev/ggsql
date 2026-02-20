@@ -1,6 +1,7 @@
 //! VLine geom implementation
 
-use super::{GeomAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
+use crate::plot::types::DefaultAestheticValue;
 
 /// VLine geom - vertical reference lines
 #[derive(Debug, Clone, Copy)]
@@ -11,11 +12,15 @@ impl GeomTrait for VLine {
         GeomType::VLine
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
-            supported: &["xintercept", "stroke", "linetype", "linewidth", "opacity"],
-            required: &["xintercept"],
-            hidden: &[],
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("xintercept", DefaultAestheticValue::Required),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("opacity", DefaultAestheticValue::Number(1.0)),
+                ("linetype", DefaultAestheticValue::String("solid")),
+            ],
         }
     }
 }

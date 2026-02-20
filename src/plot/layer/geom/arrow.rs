@@ -1,6 +1,7 @@
 //! Arrow geom implementation
 
-use super::{GeomAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
+use crate::plot::types::DefaultAestheticValue;
 
 /// Arrow geom - line segments with arrowheads
 #[derive(Debug, Clone, Copy)]
@@ -11,20 +12,19 @@ impl GeomTrait for Arrow {
         GeomType::Arrow
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
-            supported: &[
-                "x",
-                "y",
-                "xend",
-                "yend",
-                "stroke",
-                "linetype",
-                "linewidth",
-                "opacity",
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("x", DefaultAestheticValue::Required),
+                ("y", DefaultAestheticValue::Required),
+                ("xend", DefaultAestheticValue::Required),
+                ("yend", DefaultAestheticValue::Required),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("opacity", DefaultAestheticValue::Number(1.0)),
+                ("linetype", DefaultAestheticValue::String("solid")),
+                ("fill", DefaultAestheticValue::Null),
             ],
-            required: &["x", "y", "xend", "yend"],
-            hidden: &[],
         }
     }
 }

@@ -35,7 +35,6 @@ Create a classic scatterplot
 VISUALISE FROM ggsql:penguins
 DRAW point
     MAPPING bill_len AS x, bill_dep AS y, species AS fill
-    SETTING size => 30
 ```
 
 Map to size to create a bubble chart
@@ -52,6 +51,5 @@ Use filter to only plot a subset of the data
 VISUALISE FROM ggsql:penguins
 DRAW point
     MAPPING bill_len AS x, bill_dep AS y, species AS fill
-    SETTING size => 30
     FILTER sex = 'female'
 ```
