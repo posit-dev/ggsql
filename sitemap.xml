@@ -2,134 +2,134 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://ggsql.org/installation.html</loc>
-    <lastmod>2026-02-20T09:19:11.246Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.192Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/scale/aesthetic/shape.html</loc>
-    <lastmod>2026-02-20T09:19:11.252Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.198Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/scale/aesthetic/0_position.html</loc>
-    <lastmod>2026-02-20T09:19:11.248Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/scale/aesthetic/1_color.html</loc>
-    <lastmod>2026-02-20T09:19:11.248Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.194Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/scale/aesthetic/linetype.html</loc>
-    <lastmod>2026-02-20T09:19:11.251Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.197Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/scale/type/discrete.html</loc>
-    <lastmod>2026-02-20T09:19:11.252Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.198Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/scale/type/binned.html</loc>
-    <lastmod>2026-02-20T09:19:11.252Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.198Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/clause/facet.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/clause/label.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/clause/scale.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/layer/line.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/layer/density.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/layer/path.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/layer/point.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/layer/violin.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/layer/ribbon.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/index.html</loc>
-    <lastmod>2026-02-20T09:19:11.246Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.192Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/index.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/layer/boxplot.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/layer/area.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/layer/polygon.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/layer/bar.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/layer/histogram.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/clause/project.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/clause/draw.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/clause/visualise.html</loc>
-    <lastmod>2026-02-20T09:19:11.247Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.193Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/scale/type/ordinal.html</loc>
-    <lastmod>2026-02-20T09:19:11.252Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.198Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/scale/type/continuous.html</loc>
-    <lastmod>2026-02-20T09:19:11.252Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.198Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/scale/type/identity.html</loc>
-    <lastmod>2026-02-20T09:19:11.252Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.198Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/scale/aesthetic/size.html</loc>
-    <lastmod>2026-02-20T09:19:11.252Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.198Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/scale/aesthetic/2_opacity.html</loc>
-    <lastmod>2026-02-20T09:19:11.248Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.194Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/syntax/scale/aesthetic/linewidth.html</loc>
-    <lastmod>2026-02-20T09:19:11.252Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.197Z</lastmod>
   </url>
   <url>
     <loc>https://ggsql.org/examples.html</loc>
-    <lastmod>2026-02-20T09:19:11.246Z</lastmod>
+    <lastmod>2026-02-20T15:06:25.192Z</lastmod>
   </url>
 </urlset>
