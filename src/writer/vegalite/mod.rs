@@ -309,7 +309,7 @@ fn build_layer_encoding(
 /// - Respects scale types (Binned facets use bin: "binned")
 /// - Scale resolution (scales property)
 /// - Label renaming (RENAMING clause)
-/// - Additional properties (ncol, spacing, etc.)
+/// - Additional properties (ncol, etc.)
 fn apply_faceting(
     vl_spec: &mut Value,
     facet: &crate::plot::Facet,
@@ -796,7 +796,6 @@ fn escape_vega_string(s: &str) -> String {
 ///
 /// Handles:
 /// - ncol: Number of columns for wrap facets (maps to Vega-Lite's "columns")
-/// - spacing: Space between facets
 ///
 /// Note: scales is handled separately by apply_facet_scale_resolution
 fn apply_facet_properties(
@@ -810,12 +809,6 @@ fn apply_facet_properties(
                 // ncol maps to Vega-Lite's "columns" property
                 if let ParameterValue::Number(n) = value {
                     vl_spec["columns"] = json!(*n as i64);
-                }
-            }
-            "spacing" => {
-                // spacing property for all facets
-                if let ParameterValue::Number(n) = value {
-                    vl_spec["spacing"] = json!(*n);
                 }
             }
             "scales" => {

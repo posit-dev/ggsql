@@ -53,10 +53,10 @@ impl FacetDataContext {
 }
 
 /// Allowed properties for wrap facets
-const WRAP_ALLOWED: &[&str] = &["scales", "ncol", "spacing", "missing"];
+const WRAP_ALLOWED: &[&str] = &["scales", "ncol", "missing"];
 
 /// Allowed properties for grid facets
-const GRID_ALLOWED: &[&str] = &["scales", "spacing", "missing"];
+const GRID_ALLOWED: &[&str] = &["scales", "missing"];
 
 /// Valid values for the missing property
 const MISSING_VALUES: &[&str] = &["repeat", "null"];
@@ -91,10 +91,8 @@ fn compute_default_ncol(num_levels: usize) -> i64 {
 /// 3. Validates property values:
 ///    - `scales`: must be fixed/free/free_x/free_y
 ///    - `ncol`: positive integer
-///    - `spacing`: non-negative number
 /// 4. Applies defaults for missing properties:
 ///    - `scales`: "fixed"
-///    - `spacing`: 10
 ///    - `ncol` (wrap only): computed from `context.num_levels`
 /// 5. Resolves label mappings by applying wildcard template to unique values
 /// 6. Sets `resolved = true`
@@ -126,7 +124,6 @@ pub fn resolve_properties(facet: &mut Facet, context: &FacetDataContext) -> Resu
     // Step 2: Validate property values
     validate_scales_property(facet)?;
     validate_ncol_property(facet)?;
-    validate_spacing_property(facet)?;
     validate_missing_property(facet)?;
 
     // Step 3: Apply defaults for missing properties
@@ -219,23 +216,6 @@ fn validate_ncol_property(facet: &Facet) -> Result<(), String> {
     Ok(())
 }
 
-/// Validate spacing property value
-fn validate_spacing_property(facet: &Facet) -> Result<(), String> {
-    if let Some(value) = facet.properties.get("spacing") {
-        match value {
-            ParameterValue::Number(n) => {
-                if *n < 0.0 {
-                    return Err(format!("'spacing' must be non-negative, got {}", n));
-                }
-            }
-            _ => {
-                return Err("'spacing' must be a number".to_string());
-            }
-        }
-    }
-    Ok(())
-}
-
 /// Validate missing property value
 fn validate_missing_property(facet: &Facet) -> Result<(), String> {
     if let Some(value) = facet.properties.get("missing") {
@@ -265,13 +245,6 @@ fn apply_defaults(facet: &mut Facet, context: &FacetDataContext) {
             "scales".to_string(),
             ParameterValue::String("fixed".to_string()),
         );
-    }
-
-    // Default spacing to 10
-    if !facet.properties.contains_key("spacing") {
-        facet
-            .properties
-            .insert("spacing".to_string(), ParameterValue::Number(10.0));
     }
 
     // Default ncol for wrap facets (computed from data)
@@ -348,10 +321,6 @@ mod tests {
             Some(&ParameterValue::String("fixed".to_string()))
         );
         assert_eq!(
-            facet.properties.get("spacing"),
-            Some(&ParameterValue::Number(10.0))
-        );
-        assert_eq!(
             facet.properties.get("ncol"),
             Some(&ParameterValue::Number(3.0))
         );
@@ -367,9 +336,6 @@ mod tests {
         facet
             .properties
             .insert("ncol".to_string(), ParameterValue::Number(2.0));
-        facet
-            .properties
-            .insert("spacing".to_string(), ParameterValue::Number(20.0));
 
         let context = make_context(10);
         resolve_properties(&mut facet, &context).unwrap();
@@ -381,10 +347,6 @@ mod tests {
         assert_eq!(
             facet.properties.get("ncol"),
             Some(&ParameterValue::Number(2.0))
-        );
-        assert_eq!(
-            facet.properties.get("spacing"),
-            Some(&ParameterValue::Number(20.0))
         );
     }
 
@@ -498,22 +460,6 @@ mod tests {
     }
 
     #[test]
-    fn test_error_negative_spacing() {
-        let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("spacing".to_string(), ParameterValue::Number(-5.0));
-
-        let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
-
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("spacing"));
-        assert!(err.contains("non-negative"));
-    }
-
-    #[test]
     fn test_grid_no_ncol_default() {
         let mut facet = make_grid_facet();
         let context = make_context(10);
@@ -522,9 +468,8 @@ mod tests {
 
         // Grid facets should not get ncol default
         assert!(!facet.properties.contains_key("ncol"));
-        // But should still get scales and spacing defaults
+        // But should still get scales default
         assert!(facet.properties.contains_key("scales"));
-        assert!(facet.properties.contains_key("spacing"));
     }
 
     #[test]

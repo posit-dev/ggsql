@@ -7,7 +7,7 @@ use crate::plot::{
     AestheticValue, DefaultAestheticValue, Layer, ParameterValue, Scale, Schema, SqlTypeNames,
     StatResult,
 };
-use crate::{naming, DataFrame, Facet, GgsqlError, Result};
+use crate::{naming, DataFrame, GgsqlError, Result};
 use polars::prelude::DataType;
 use std::collections::{HashMap, HashSet};
 
@@ -323,7 +323,7 @@ pub fn build_layer_base_query(
 /// 1. Builds the aesthetic-named schema for stat transforms
 /// 2. Updates layer mappings to use prefixed aesthetic names
 /// 3. Applies pre-stat transforms (e.g., binning, discrete censoring)
-/// 4. Builds group_by columns from partition_by and facet
+/// 4. Builds group_by columns from partition_by
 /// 5. Applies statistical transformation
 /// 6. Applies ORDER BY
 ///
@@ -335,7 +335,6 @@ pub fn build_layer_base_query(
 /// * `layer` - The layer to transform (modified by stat transforms)
 /// * `base_query` - The base query from build_layer_base_query
 /// * `schema` - The layer's schema (with min/max from base_query)
-/// * `facet` - Optional facet configuration (needed for group_by columns)
 /// * `scales` - All resolved scales
 /// * `type_names` - SQL type names for the database backend
 /// * `execute_query` - Function to execute queries (needed for some stat transforms)
@@ -347,7 +346,6 @@ pub fn apply_layer_transforms<F>(
     layer: &mut Layer,
     base_query: &str,
     schema: &Schema,
-    facet: Option<&Facet>,
     scales: &[Scale],
     type_names: &SqlTypeNames,
     execute_query: &F,
@@ -392,17 +390,13 @@ where
         type_names,
     );
 
-    // Build group_by columns from partition_by and facet variables
+    // Build group_by columns from partition_by
+    // Note: Facet aesthetics are already in partition_by via add_discrete_columns_to_partition_by,
+    // so we don't add facet.get_variables() here (which would add original column names
+    // instead of aesthetic column names, breaking pre-stat transforms like domain censoring).
     let mut group_by: Vec<String> = Vec::new();
     for col in &layer.partition_by {
         group_by.push(col.clone());
-    }
-    if let Some(f) = facet {
-        for var in f.get_variables() {
-            if !group_by.contains(&var) {
-                group_by.push(var);
-            }
-        }
     }
 
     // Add literal aesthetic columns to group_by so they survive stat transforms.

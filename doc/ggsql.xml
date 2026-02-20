@@ -606,8 +606,7 @@
         <!-- Facet properties -->
         <WordDetect attribute="Attribute" context="#stay" String="scales" insensitive="true"/>
         <WordDetect attribute="Attribute" context="#stay" String="ncol" insensitive="true"/>
-        <WordDetect attribute="Attribute" context="#stay" String="columns" insensitive="true"/>
-        <WordDetect attribute="Attribute" context="#stay" String="spacing" insensitive="true"/>
+        <WordDetect attribute="Attribute" context="#stay" String="missing" insensitive="true"/>
 
         <!-- Wildcard for RENAMING -->
         <DetectChar char="*" attribute="Operator" context="#stay"/>

@@ -16,7 +16,7 @@ fn default_label_template() -> String {
 pub struct Facet {
     /// Layout type: wrap or grid
     pub layout: FacetLayout,
-    /// Properties from SETTING clause (e.g., scales, columns, spacing)
+    /// Properties from SETTING clause (e.g., scales, ncol, missing)
     /// After resolution, includes validated and defaulted values
     #[serde(default)]
     pub properties: HashMap<String, ParameterValue>,

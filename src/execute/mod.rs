@@ -1025,9 +1025,6 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         })
         .collect();
 
-    // Clone facet for apply_layer_transforms
-    let facet = specs[0].facet.clone();
-
     // Complete schemas with min/max from base queries (Phase 2: ranges from cast data)
     // Base queries include casting via build_layer_select_list, so min/max reflect cast types
     for (idx, base_query) in layer_base_queries.iter().enumerate() {
@@ -1068,7 +1065,6 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
             l,
             &layer_base_queries[idx],
             &layer_schemas[idx],
-            facet.as_ref(),
             &scales,
             &type_names,
             &execute_query,
@@ -1166,7 +1162,15 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
             let facet_df = data_map.get(&naming::layer_key(0)).ok_or_else(|| {
                 GgsqlError::InternalError("Missing layer 0 data for facet resolution".to_string())
             })?;
-            let context = FacetDataContext::from_dataframe(facet_df, &facet.get_variables());
+            // Use aesthetic column names (e.g., __ggsql_aes_panel__) since the DataFrame
+            // has been transformed to use aesthetic columns at this point
+            let aesthetic_cols: Vec<String> = facet
+                .layout
+                .get_aesthetics()
+                .iter()
+                .map(|aes| naming::aesthetic_column(aes))
+                .collect();
+            let context = FacetDataContext::from_dataframe(facet_df, &aesthetic_cols);
             resolve_facet_properties(facet, &context)
                 .map_err(|e| GgsqlError::ValidationError(format!("Facet: {}", e)))?;
         }

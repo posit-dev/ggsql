@@ -338,7 +338,7 @@
         },
         {
           "name": "support.type.property.ggsql",
-          "match": "\\b(scales|ncol|columns|spacing|missing)\\b"
+          "match": "\\b(scales|ncol|columns|missing)\\b"
         },
         {
           "name": "keyword.operator.wildcard.ggsql",
