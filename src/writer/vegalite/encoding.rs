@@ -873,10 +873,7 @@ fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value
                 _ => json!(n),
             }
         }
-        ParameterValue::Boolean(b) => json!(b),
-        ParameterValue::Array(_) | ParameterValue::Null => {
-            unreachable!("Grammar prevents arrays and null in literal aesthetic mappings")
-        }
+        _ => lit.to_json(),
     };
     Ok(json!({"value": val}))
 }
