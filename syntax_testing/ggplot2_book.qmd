@@ -1,0 +1,3204 @@
+---
+title: "ggplot2 Examples from ggplot2: Elegant Graphics for Data Analysis"
+format: html
+---
+
+# Introduction
+
+This document contains a curated collection of ggplot2 examples extracted from the
+[ggplot2: Elegant Graphics for Data Analysis (3e)](https://ggplot2-book.org/) book by Hadley Wickham,
+Danielle Navarro, and Thomas Lin Pedersen.
+
+All code blocks have been expanded to be self-contained and semantic duplicates have been removed.
+
+```{r}
+library(tidyverse)
+library(patchwork)
+```
+
+## annotations.qmd
+
+```{r}
+#| label: guide-names-helper
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point(aes(colour = factor(cyl))) + 
+  labs(
+    x = "Engine displacement (litres)", 
+    y = "Highway miles per gallon", 
+    colour = "Number of cylinders",
+    title = "Mileage by engine size and cylinders",
+    subtitle = "Source: https://fueleconomy.gov"
+  )
+```
+
+```{r}
+#| label: guide-names
+values <- seq(from = -2, to = 2, by = .01)
+df <- data.frame(x = values, y = values ^ 3)
+ggplot(df, aes(x, y)) + 
+  geom_path() + 
+  labs(y = quote(f(x) == x^3))
+```
+
+```{r}
+#| label: markdown-with-ggtext
+#| layout-ncol: 2
+#| fig-width: 4
+df <- data.frame(x = 1:3, y = 1:3)
+base <- ggplot(df, aes(x, y)) + 
+  geom_point() + 
+  labs(x = "Axis title with *italics* and **boldface**")
+
+base 
+base + theme(axis.title.x = ggtext::element_markdown())
+```
+
+```{r}
+#| label: label
+label <- data.frame(
+  waiting = c(55, 80), 
+  eruptions = c(2, 4.3), 
+  label = c("peak one", "peak two")
+)
+
+ggplot(faithfuld, aes(waiting, eruptions)) +
+  geom_tile(aes(fill = density)) + 
+  geom_label(data = label, aes(label = label))
+```
+
+```{r}
+#| label: umep
+ggplot(economics, aes(date, unemploy)) + 
+  geom_line()
+```
+
+```{r}
+#| label: unemp-pres
+presidential <- subset(presidential, start > economics$date[1])
+
+ggplot(economics) + 
+  geom_rect(
+    aes(xmin = start, xmax = end, fill = party), 
+    ymin = -Inf, ymax = Inf, alpha = 0.2, 
+    data = presidential
+  ) + 
+  geom_vline(
+    aes(xintercept = as.numeric(start)), 
+    data = presidential,
+    colour = "grey50", alpha = 0.5
+  ) + 
+  geom_text(
+    aes(x = start, y = 2500, label = name), 
+    data = presidential, 
+    size = 3, vjust = 0, hjust = 0, nudge_x = 50
+  ) + 
+  geom_line(aes(date, unemploy)) + 
+  scale_fill_manual(values = c("blue", "red")) +
+  xlab("date") + 
+  ylab("unemployment")
+```
+
+```{r}
+#| label: annotate_hardway
+#| fig.show: hide
+yrng <- range(economics$unemploy)
+xrng <- range(economics$date)
+caption <- paste(strwrap("Unemployment rates in the US have 
+  varied a lot over the years", 40), collapse = "\n")
+
+ggplot(economics, aes(date, unemploy)) + 
+  geom_line() + 
+  geom_text(
+    aes(x, y, label = caption), 
+    data = data.frame(x = xrng[1], y = yrng[2], caption = caption), 
+    hjust = 0, vjust = 1, size = 4
+  )
+```
+
+```{r}
+#| label: annotate_easyway
+ggplot(economics, aes(date, unemploy)) + 
+  geom_line() + 
+  annotate(
+    geom = "text", x = xrng[1], y = yrng[2], 
+    label = caption, hjust = 0, vjust = 1, size = 4
+  )
+```
+
+```{r}
+#| label: underplot_noshow
+p <- ggplot(mpg, aes(displ, hwy)) +
+  geom_point(
+    data = filter(mpg, manufacturer == "subaru"), 
+    colour = "orange",
+    size = 3
+  ) +
+  geom_point() 
+```
+
+```{r}
+#| label: directlabels
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(mpg, aes(displ, hwy, colour = class)) + 
+  geom_point()
+
+ggplot(mpg, aes(displ, hwy, colour = class)) + 
+  geom_point(show.legend = FALSE) +
+  directlabels::geom_dl(aes(label = class), method = "smart.grid")
+```
+
+```{r}
+#| label: geom_mark_ellipse
+ggplot(mpg, aes(displ, hwy)) +
+  geom_point() + 
+  ggforce::geom_mark_ellipse(aes(label = cyl, group = cyl))
+```
+
+```{r}
+#| label: gghighlight
+data(Oxboys, package = "nlme")
+
+data(Oxboys, package = "nlme")
+ggplot(Oxboys, aes(age, height, group = Subject)) + 
+  geom_line() + 
+  geom_point() + 
+  gghighlight::gghighlight(Subject %in% 1:3)
+```
+
+```{r}
+#| label: faceted_noline
+ggplot(diamonds, aes(log10(carat), log10(price))) + 
+  geom_bin2d() + 
+  facet_wrap(vars(cut), nrow = 1)
+```
+
+```{r}
+#| label: faceted_line
+mod_coef <- coef(lm(log10(price) ~ log10(carat), data = diamonds))
+ggplot(diamonds, aes(log10(carat), log10(price))) + 
+  geom_bin2d() + 
+  geom_abline(intercept = mod_coef[1], slope = mod_coef[2], 
+    colour = "white", linewidth = 1) + 
+  facet_wrap(vars(cut), nrow = 1)
+```
+
+```{r}
+#| label: gghighlight_facet
+ggplot(mpg, aes(displ, hwy, colour = factor(cyl))) +
+  geom_point() + 
+  gghighlight::gghighlight() + 
+  facet_wrap(vars(cyl))
+```
+
+
+## arranging-plots.qmd
+
+```{r}
+p1 <- ggplot(mpg) + 
+  geom_point(aes(x = displ, y = hwy))
+
+p2 <- ggplot(mpg) + 
+  geom_bar(aes(x = as.character(year), fill = drv), position = "dodge") + 
+  labs(x = "year")
+
+p3 <- ggplot(mpg) + 
+  geom_density(aes(x = hwy, fill = drv), colour = NA) + 
+  facet_grid(rows = vars(drv))
+
+p4 <- ggplot(mpg) + 
+  stat_summary(aes(x = drv, y = hwy, fill = drv), geom = "col", fun.data = mean_se) +
+  stat_summary(aes(x = drv, y = hwy), geom = "errorbar", fun.data = mean_se, width = 0.5)
+```
+
+```{r}
+p1 <- ggplot(mpg) + 
+  geom_point(aes(x = displ, y = hwy))
+
+p2 <- ggplot(mpg) + 
+  geom_bar(aes(x = as.character(year), fill = drv), position = "dodge") + 
+  labs(x = "year")
+
+p3 <- ggplot(mpg) + 
+  geom_density(aes(x = hwy, fill = drv), colour = NA) + 
+  facet_grid(rows = vars(drv))
+
+p4 <- ggplot(mpg) + 
+  stat_summary(aes(x = drv, y = hwy, fill = drv), geom = "col", fun.data = mean_se) +
+  stat_summary(aes(x = drv, y = hwy), geom = "errorbar", fun.data = mean_se, width = 0.5)
+
+p1 + p4 & scale_y_continuous(limits = c(0, 45))
+```
+
+```{r}
+p1 <- ggplot(mpg) + 
+  geom_point(aes(x = displ, y = hwy))
+
+p2 <- ggplot(mpg) + 
+  geom_bar(aes(x = as.character(year), fill = drv), position = "dodge") + 
+  labs(x = "year")
+
+p3 <- ggplot(mpg) + 
+  geom_density(aes(x = hwy, fill = drv), colour = NA) + 
+  facet_grid(rows = vars(drv))
+
+p4 <- ggplot(mpg) + 
+  stat_summary(aes(x = drv, y = hwy, fill = drv), geom = "col", fun.data = mean_se) +
+  stat_summary(aes(x = drv, y = hwy), geom = "errorbar", fun.data = mean_se, width = 0.5)
+
+p12 <- p1 + inset_element(p2, left = 0.5, bottom = 0.5, right = 0.9, top = 0.95)
+p12 & theme_bw()
+```
+
+
+## collective-geoms.qmd
+
+```{r}
+#| label: oxboys-line
+data(Oxboys, package = "nlme")
+
+ggplot(Oxboys, aes(age, height, group = Subject)) + 
+  geom_point() + 
+  geom_line()
+```
+
+```{r}
+#| label: oxboys-line-bad
+data(Oxboys, package = "nlme")
+
+ggplot(Oxboys, aes(age, height)) + 
+  geom_point() + 
+  geom_line()
+```
+
+```{r}
+#| label: layer18
+data(Oxboys, package = "nlme")
+
+ggplot(Oxboys, aes(age, height, group = Subject)) + 
+  geom_line() + 
+  geom_smooth(method = "lm", se = FALSE)
+```
+
+```{r}
+#| label: oxbox
+data(Oxboys, package = "nlme")
+
+ggplot(Oxboys, aes(Occasion, height)) + 
+  geom_boxplot()
+```
+
+```{r}
+#| label: oxbox-line-bad
+data(Oxboys, package = "nlme")
+
+ggplot(Oxboys, aes(Occasion, height)) + 
+  geom_boxplot() +
+  geom_line(colour = "#3366FF", alpha = 0.5)
+```
+
+```{r}
+#| label: oxbox-line
+data(Oxboys, package = "nlme")
+
+ggplot(Oxboys, aes(Occasion, height)) + 
+  geom_boxplot() +
+  geom_line(aes(group = Subject), colour = "#3366FF", alpha = 0.5)
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+df <- data.frame(x = 1:3, y = 1:3, colour = c(1, 3, 5))
+
+ggplot(df, aes(x, y, colour = factor(colour))) + 
+  geom_line(aes(group = 1), linewidth = 2) +
+  geom_point(size = 5)
+
+ggplot(df, aes(x, y, colour = colour)) + 
+  geom_line(aes(group = 1), linewidth = 2) +
+  geom_point(size = 5)
+```
+
+```{r}
+#| label: matching-lines2
+xgrid <- with(df, seq(min(x), max(x), length = 50))
+interp <- data.frame(
+  x = xgrid,
+  y = approx(df$x, df$y, xout = xgrid)$y,
+  colour = approx(df$x, df$colour, xout = xgrid)$y  
+)
+ggplot(interp, aes(x, y, colour = colour)) + 
+  geom_line(linewidth = 2) +
+  geom_point(data = df, size = 5)
+```
+
+```{r}
+#| label: bar-split-disc
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(mpg, aes(class)) + 
+  geom_bar()
+ggplot(mpg, aes(class, fill = drv)) + 
+  geom_bar()
+```
+
+```{r}
+#| label: bar-split-cont
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(mpg, aes(class, fill = hwy)) + 
+  geom_bar()
+ggplot(mpg, aes(class, fill = hwy, group = hwy)) + 
+  geom_bar()
+```
+
+
+## coord.qmd
+
+```{r}
+#| label: limits-smooth
+#| layout-ncol: 3
+#| fig-width: 3
+base <- ggplot(mpg, aes(displ, hwy)) + 
+  geom_point() + 
+  geom_smooth()
+
+# Full dataset
+base
+# Scaling to 4--6 throws away data outside that range
+base + scale_x_continuous(limits = c(4, 6))
+# Zooming to 4--6 keeps all the data but only shows some of it
+base + coord_cartesian(xlim = c(4, 6))
+```
+
+```{r}
+#| label: coord-flip
+#| layout-ncol: 3
+#| fig-width: 3
+ggplot(mpg, aes(displ, cty)) + 
+  geom_point() + 
+  geom_smooth()
+# Exchanging cty and displ rotates the plot 90 degrees, but the smooth 
+# is fit to the rotated data.
+ggplot(mpg, aes(cty, displ)) + 
+  geom_point() + 
+  geom_smooth()
+# coord_flip() fits the smooth to the original data, and then rotates 
+# the output
+ggplot(mpg, aes(displ, cty)) + 
+  geom_point() + 
+  geom_smooth() + 
+  coord_flip()
+```
+
+```{r}
+#| label: coord-trans-ex
+#| layout-ncol: 3
+#| fig-width: 3
+rect <- data.frame(x = 50, y = 50)
+line <- data.frame(x = c(1, 200), y = c(100, 1))
+base <- ggplot(mapping = aes(x, y)) + 
+  geom_tile(data = rect, aes(width = 50, height = 50)) + 
+  geom_line(data = line) + 
+  xlab(NULL) + ylab(NULL)
+base
+base + coord_polar("x")
+base + coord_polar("y")
+```
+
+```{r}
+#| label: backtrans
+#| warning: false
+#| layout-ncol: 3
+#| fig-width: 3
+# Linear model on original scale is poor fit
+base <- ggplot(diamonds, aes(carat, price)) + 
+  stat_bin2d() + 
+  geom_smooth(method = "lm") + 
+  xlab(NULL) + 
+  ylab(NULL) + 
+  theme(legend.position = "none")
+base
+
+# Better fit on log scale, but harder to interpret
+base +
+  scale_x_log10() + 
+  scale_y_log10()
+
+# Fit on log scale, then backtransform to original.
+# Highlights lack of expensive diamonds with large carats
+pow10 <- scales::exp_trans(10)
+base +
+  scale_x_log10() + 
+  scale_y_log10() + 
+  coord_trans(x = pow10, y = pow10)
+```
+
+```{r}
+#| label: polar
+#| layout-ncol: 3
+#| fig-width: 3
+base <- ggplot(mtcars, aes(factor(1), fill = factor(cyl))) +
+  geom_bar(width = 1) + 
+  theme(legend.position = "none") + 
+  scale_x_discrete(NULL, expand = c(0, 0)) +
+  scale_y_continuous(NULL, expand = c(0, 0))
+
+# Stacked barchart
+base
+
+# Pie chart
+base + coord_polar(theta = "y")
+
+# The bullseye chart
+base + coord_polar()
+```
+
+## facet.qmd
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+mpg2 <- subset(mpg, cyl != 5 & drv %in% c("4", "f") & class != "2seater")
+
+base <- ggplot(mpg2, aes(displ, hwy)) + 
+  geom_blank() + 
+  xlab(NULL) + 
+  ylab(NULL)
+
+base + facet_wrap(~class, ncol = 3)
+base + facet_wrap(~class, ncol = 3, as.table = FALSE)
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+mpg2 <- subset(mpg, cyl != 5 & drv %in% c("4", "f") & class != "2seater")
+
+base <- ggplot(mpg2, aes(displ, hwy)) + 
+  geom_blank() + 
+  xlab(NULL) + 
+  ylab(NULL)
+
+base + facet_wrap(~class, ncol = 3)
+base + facet_wrap(~class, ncol = 3, as.table = FALSE)
+
+#| layout-ncol: 2
+#| fig-width: 4
+base + facet_wrap(~class, nrow = 3)
+base + facet_wrap(~class, nrow = 3, dir = "v")
+```
+
+```{r}
+#| label: fixed-vs-free
+#| layout-ncol: 2
+#| fig-width: 4
+mpg2 <- subset(mpg, cyl != 5 & drv %in% c("4", "f") & class != "2seater")
+
+p <- ggplot(mpg2, aes(cty, hwy)) + 
+  geom_abline() +
+  geom_jitter(width = 0.1, height = 0.1)
+
+p + facet_wrap(~cyl)
+p + facet_wrap(~cyl, scales = "free")
+```
+
+```{r}
+#| label: time
+economics_long
+ggplot(economics_long, aes(date, value)) + 
+  geom_line() + 
+  facet_wrap(~variable, scales = "free_y", ncol = 1)
+```
+
+```{r}
+#| label: discrete-free
+mpg2 <- subset(mpg, cyl != 5 & drv %in% c("4", "f") & class != "2seater")
+
+mpg2$model <- reorder(mpg2$model, mpg2$cty)
+mpg2$manufacturer <- reorder(mpg2$manufacturer, -mpg2$cty)
+
+ggplot(mpg2, aes(cty, model)) + 
+  geom_point() + 
+  facet_grid(manufacturer ~ ., scales = "free", space = "free") +
+  theme(strip.text.y = element_text(angle = 0))
+```
+
+```{r}
+df1 <- data.frame(x = 1:3, y = 1:3, gender = c("f", "f", "m"))
+df2 <- data.frame(x = 2, y = 2)
+
+ggplot(df1, aes(x, y)) + 
+  geom_point(data = df2, colour = "red", size = 2) + 
+  geom_point() + 
+  facet_wrap(~gender)
+```
+
+```{r}
+df <- data.frame(
+  x = rnorm(120, c(0, 2, 4)),
+  y = rnorm(120, c(1, 2, 1)),
+  z = letters[1:3]
+)
+
+ggplot(df, aes(x, y)) + 
+  geom_point(aes(colour = z))
+```
+
+```{r}
+ggplot(df, aes(x, y)) + 
+  geom_point() + 
+  facet_wrap(~z)
+```
+
+```{r}
+df_sum <- df %>% 
+  group_by(z) %>% 
+  summarise(x = mean(x), y = mean(y)) %>%
+  rename(z2 = z)
+
+ggplot(df, aes(x, y)) + 
+  geom_point() + 
+  geom_point(data = df_sum, aes(colour = z2), size = 4) + 
+  facet_wrap(~z)
+```
+
+```{r}
+df2 <- dplyr::select(df, -z)
+
+ggplot(df, aes(x, y)) + 
+  geom_point(data = df2, colour = "grey70") +
+  geom_point(aes(colour = z)) + 
+  facet_wrap(~z)
+```
+
+```{r}
+#| label: discretising
+#| layout-ncol: 3
+#| fig-width: 3
+mpg2 <- subset(mpg, cyl != 5 & drv %in% c("4", "f") & class != "2seater")
+
+# Bins of width 1
+mpg2$disp_w <- cut_width(mpg2$displ, 1)
+# Six bins of equal length
+mpg2$disp_i <- cut_interval(mpg2$displ, 6)
+# Six bins containing equal numbers of points
+mpg2$disp_n <- cut_number(mpg2$displ, 6)
+
+plot <- ggplot(mpg2, aes(cty, hwy)) +
+  geom_point() +
+  labs(x = NULL, y = NULL)
+plot + facet_wrap(~disp_w, nrow = 1)
+plot + facet_wrap(~disp_i, nrow = 1)
+plot + facet_wrap(~disp_n, nrow = 1)
+```
+
+
+## getting-started.qmd
+
+```{r}
+#| eval: false
+ggplot(mpg, aes(displ, hwy)) +
+  geom_point()
+```
+
+```{r}
+#| label: qplot-aesthetics
+ggplot(mpg, aes(displ, hwy, colour = class)) + 
+  geom_point()
+```
+
+```{r}
+#| label: facet
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point() + 
+  facet_wrap(~class)
+```
+
+```{r}
+#| label: qplot-smooth
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point() + 
+  geom_smooth()
+```
+
+```{r}
+ggplot(mpg, aes(drv, hwy)) + 
+  geom_point()
+```
+
+```{r}
+#| label: jitter-boxplot
+#| layout-ncol: 3
+#| fig-width: 3
+ggplot(mpg, aes(drv, hwy)) + geom_jitter()
+ggplot(mpg, aes(drv, hwy)) + geom_boxplot()
+ggplot(mpg, aes(drv, hwy)) + geom_violin()
+```
+
+```{r}
+#| label: dist
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(mpg, aes(hwy)) + geom_histogram()
+ggplot(mpg, aes(hwy)) + geom_freqpoly()
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(mpg, aes(hwy)) + 
+  geom_freqpoly(binwidth = 2.5)
+ggplot(mpg, aes(hwy)) + 
+  geom_freqpoly(binwidth = 1)
+```
+
+```{r}
+#| label: dist-fill
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(mpg, aes(displ, colour = drv)) + 
+  geom_freqpoly(binwidth = 0.5)
+ggplot(mpg, aes(displ, fill = drv)) + 
+  geom_histogram(binwidth = 0.5) + 
+  facet_wrap(~drv, ncol = 1)
+```
+
+```{r}
+#| label: dist-bar
+ggplot(mpg, aes(manufacturer)) + 
+  geom_bar()
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+drugs <- data.frame(
+  drug = c("a", "b", "c"),
+  effect = c(4.2, 9.7, 6.1)
+)
+
+ggplot(drugs, aes(drug, effect)) + geom_bar(stat = "identity")
+ggplot(drugs, aes(drug, effect)) + geom_point()
+```
+
+```{r}
+#| label: line-employment
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(economics, aes(date, unemploy / pop)) +
+  geom_line()
+ggplot(economics, aes(date, uempmed)) +
+  geom_line()
+```
+
+```{r}
+#| label: path-employ
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(economics, aes(unemploy / pop, uempmed)) + 
+  geom_path() +
+  geom_point()
+
+year <- function(x) as.POSIXlt(x)$year + 1900
+ggplot(economics, aes(unemploy / pop, uempmed)) + 
+  geom_path(colour = "grey50") +
+  geom_point(aes(colour = year(date)))
+```
+
+```{r}
+#| layout-ncol: 3
+#| fig-width: 3
+ggplot(mpg, aes(cty, hwy)) +
+  geom_point(alpha = 1 / 3)
+
+ggplot(mpg, aes(cty, hwy)) +
+  geom_point(alpha = 1 / 3) + 
+  xlab("city driving (mpg)") + 
+  ylab("highway driving (mpg)")
+
+# Remove the axis labels with NULL
+ggplot(mpg, aes(cty, hwy)) +
+  geom_point(alpha = 1 / 3) + 
+  xlab(NULL) + 
+  ylab(NULL)
+```
+
+```{r}
+#| layout-ncol: 3
+#| fig-width: 3
+ggplot(mpg, aes(drv, hwy)) +
+  geom_jitter(width = 0.25)
+
+ggplot(mpg, aes(drv, hwy)) +
+  geom_jitter(width = 0.25) + 
+  xlim("f", "r") + 
+  ylim(20, 30)
+  
+# For continuous scales, use NA to set only one limit
+ggplot(mpg, aes(drv, hwy)) +
+  geom_jitter(width = 0.25, na.rm = TRUE) + 
+  ylim(NA, 30)
+```
+
+```{r}
+#| label: variable
+p <- ggplot(mpg, aes(displ, hwy, colour = factor(cyl))) +
+  geom_point()
+```
+
+
+## individual-geoms.qmd
+
+```{r}
+#| label: geom-basic
+#| layout-ncol: 4
+#| fig-width: 2.5
+df <- data.frame(
+  x = c(3, 1, 5), 
+  y = c(2, 4, 6), 
+  label = c("a","b","c")
+)
+p <- ggplot(df, aes(x, y, label = label)) + 
+  labs(x = NULL, y = NULL) + # Hide axis label
+  theme(plot.title = element_text(size = 12)) # Shrink plot title
+p + geom_point() + ggtitle("point")
+p + geom_text() + ggtitle("text")
+p + geom_bar(stat = "identity") + ggtitle("bar")
+p + geom_tile() + ggtitle("raster")
+```
+
+```{r}
+#| label: geom-basic2
+#| layout-ncol: 4
+#| fig-width: 2.5
+df <- data.frame(
+  x = c(3, 1, 5), 
+  y = c(2, 4, 6), 
+  label = c("a","b","c")
+)
+p <- ggplot(df, aes(x, y, label = label)) + 
+  labs(x = NULL, y = NULL) + # Hide axis label
+  theme(plot.title = element_text(size = 12)) # Shrink plot title
+p + geom_point() + ggtitle("point")
+p + geom_text() + ggtitle("text")
+p + geom_bar(stat = "identity") + ggtitle("bar")
+p + geom_tile() + ggtitle("raster")
+
+#| layout-ncol: 4
+#| fig-width: 2.5
+p + geom_line() + ggtitle("line")
+p + geom_area() + ggtitle("area")
+p + geom_path() + ggtitle("path")
+p + geom_polygon() + ggtitle("polygon")
+```
+
+## layers.qmd
+
+```{r}
+#| label: layer1
+p <- ggplot(mpg, aes(displ, hwy))
+p
+```
+
+```{r}
+mod <- loess(hwy ~ displ, data = mpg)
+grid <- tibble(displ = seq(min(mpg$displ), max(mpg$displ), length = 50))
+grid$hwy <- predict(mod, newdata = grid)
+mod <- loess(hwy ~ displ, data = mpg)
+std_resid <- resid(mod) / mod$s
+outlier <- filter(mpg, abs(std_resid) > 2)
+
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point() + 
+  geom_line(data = grid, colour = "blue", linewidth = 1.5) +
+  geom_text(data = outlier, aes(label = model))
+```
+
+```{r}
+#| eval: false
+mod <- loess(hwy ~ displ, data = mpg)
+grid <- tibble(displ = seq(min(mpg$displ), max(mpg$displ), length = 50))
+grid$hwy <- predict(mod, newdata = grid)
+mod <- loess(hwy ~ displ, data = mpg)
+std_resid <- resid(mod) / mod$s
+outlier <- filter(mpg, abs(std_resid) > 2)
+
+ggplot(mapping = aes(displ, hwy)) + 
+  geom_point(data = mpg) + 
+  geom_line(data = grid) + 
+  geom_text(data = outlier, aes(label = model))
+```
+
+```{r}
+#| eval: false
+ggplot(mpg, aes(displ, hwy, colour = class)) + 
+  geom_point()
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point(aes(colour = class))
+ggplot(mpg, aes(displ)) + 
+  geom_point(aes(y = hwy, colour = class))
+ggplot(mpg) + 
+  geom_point(aes(displ, hwy, colour = class))
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(mpg, aes(displ, hwy, colour = class)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = FALSE) +
+  theme(legend.position = "none")
+
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point(aes(colour = class)) + 
+  geom_smooth(method = "lm", se = FALSE) + 
+  theme(legend.position = "none")
+```
+
+```{r}
+#| label: layer15
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(mpg, aes(cty, hwy)) + 
+  geom_point(colour = "darkblue") 
+
+ggplot(mpg, aes(cty, hwy)) + 
+  geom_point(aes(colour = "darkblue"))
+```
+
+```{r}
+ggplot(mpg, aes(cty, hwy)) + 
+  geom_point(aes(colour = "darkblue")) + 
+  scale_colour_identity()
+```
+
+```{r}
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point() +
+  geom_smooth(aes(colour = "loess"), method = "loess", se = FALSE) + 
+  geom_smooth(aes(colour = "lm"), method = "lm", se = FALSE) +
+  labs(colour = "Method")
+```
+
+```{r}
+#| fig.keep: last
+ggplot(mpg, aes(trans, cty)) + 
+  geom_point() + 
+  stat_summary(geom = "point", fun = "mean", colour = "red", size = 4)
+
+ggplot(mpg, aes(trans, cty)) + 
+  geom_point() + 
+  geom_point(stat = "summary", fun = "mean", colour = "red", size = 4)
+```
+
+```{r}
+#| label: hist
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(diamonds, aes(price)) + 
+  geom_histogram(binwidth = 500)
+
+ggplot(diamonds, aes(price)) + 
+  geom_histogram(aes(y = after_stat(density)), binwidth = 500)
+```
+
+```{r}
+#| label: freqpoly
+#| message: false
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(diamonds, aes(price, colour = cut)) + 
+  geom_freqpoly(binwidth = 500) +
+  theme(legend.position = "none")
+
+ggplot(diamonds, aes(price, colour = cut)) + 
+  geom_freqpoly(aes(y = after_stat(density)), binwidth = 500) + 
+  theme(legend.position = "none")
+```
+
+```{r}
+#| label: position-bar
+#| layout-ncol: 3
+#| fig-width: 3
+dplot <- ggplot(diamonds, aes(color, fill = cut)) + 
+  xlab(NULL) + ylab(NULL) + theme(legend.position = "none")
+# position stack is the default for bars, so `geom_bar()` 
+# is equivalent to `geom_bar(position = "stack")`.
+dplot + geom_bar()
+dplot + geom_bar(position = "fill")
+dplot + geom_bar(position = "dodge")
+```
+
+```{r}
+#| label: position-identity
+#| layout-ncol: 2
+#| fig-width: 4
+dplot + geom_bar(position = "identity", alpha = 1 / 2, colour = "grey50")
+
+ggplot(diamonds, aes(color, colour = cut)) + 
+  geom_line(aes(group = cut), stat = "count") + 
+  xlab(NULL) + ylab(NULL) + 
+  theme(legend.position = "none")
+```
+
+```{r}
+#| label: position-point
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point(position = "jitter")
+
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point(position = position_jitter(width = 0.05, height = 0.5))
+```
+
+```{r}
+#| eval: false
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_jitter(width = 0.05, height = 0.5)
+```
+
+
+## maps.qmd
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+mi_counties <- map_data("county", "michigan") %>%
+  select(lon = long, lat, group, id = subregion)
+
+ggplot(mi_counties, aes(lon, lat)) + 
+  geom_point(size = .25, show.legend = FALSE) +
+  coord_quickmap()
+
+ggplot(mi_counties, aes(lon, lat, group = group)) +
+  geom_polygon(fill = "white", colour = "grey50") + 
+  coord_quickmap()
+```
+
+```{r}
+library(ozmaps)
+oz_states <- ozmaps::ozmap_states %>% filter(NAME != "Other Territories")
+ggplot(oz_states) + 
+  geom_sf() + 
+  coord_sf()
+```
+
+```{r}
+library(ozmaps)
+oz_states <- ozmaps::ozmap_states %>% filter(NAME != "Other Territories")
+library(sf)
+library(rmapshaper)
+oz_votes <- rmapshaper::ms_simplify(ozmaps::abs_ced)
+
+ggplot() + 
+  geom_sf(data = oz_states, mapping = aes(fill = NAME), show.legend = FALSE) +
+  geom_sf(data = oz_votes, fill = NA) + 
+  coord_sf()
+```
+
+```{r}
+# Filter electorates in the Sydney metropolitan region
+sydney_map <- ozmaps::abs_ced %>% filter(NAME %in% c(
+  "Sydney", "Wentworth", "Warringah", "Kingsford Smith", "Grayndler", "Lowe", 
+  "North Sydney", "Barton", "Bradfield", "Banks", "Blaxland", "Reid", 
+  "Watson", "Fowler", "Werriwa", "Prospect", "Parramatta", "Bennelong", 
+  "Mackellar", "Greenway", "Mitchell", "Chifley", "McMahon"
+))
+
+# Draw the electoral map of Sydney
+ggplot(sydney_map) + 
+  geom_sf(aes(fill = NAME), show.legend = FALSE) + 
+  coord_sf(xlim = c(150.97, 151.3), ylim = c(-33.98, -33.79)) + 
+  geom_sf_label(aes(label = NAME), label.padding = unit(1, "mm"))
+```
+
+```{r}
+oz_capitals <- tibble::tribble(
+  ~city,           ~lat,     ~lon,
+  "Sydney",    -33.8688, 151.2093,
+  "Melbourne", -37.8136, 144.9631,
+  "Brisbane",  -27.4698, 153.0251,
+  "Adelaide",  -34.9285, 138.6007,
+  "Perth",     -31.9505, 115.8605,
+  "Hobart",    -42.8821, 147.3272,
+  "Canberra",  -35.2809, 149.1300,
+  "Darwin",    -12.4634, 130.8456,
+)
+library(ozmaps)
+library(sf)
+oz_states <- ozmaps::ozmap_states %>% filter(NAME != "Other Territories")
+library(ozmaps)
+library(rmapshaper)
+oz_votes <- rmapshaper::ms_simplify(ozmaps::abs_ced)
+
+oz_capitals <- tibble::tribble( 
+  ~city,           ~lat,     ~lon,
+  "Sydney",    -33.8688, 151.2093,  
+  "Melbourne", -37.8136, 144.9631, 
+  "Brisbane",  -27.4698, 153.0251, 
+  "Adelaide",  -34.9285, 138.6007, 
+  "Perth",     -31.9505, 115.8605, 
+  "Hobart",    -42.8821, 147.3272, 
+  "Canberra",  -35.2809, 149.1300, 
+  "Darwin",    -12.4634, 130.8456, 
+)
+
+ggplot() + 
+  geom_sf(data = oz_votes) + 
+  geom_sf(data = oz_states, colour = "black", fill = NA) + 
+  geom_point(data = oz_capitals, mapping = aes(x = lon, y = lat), colour = "red") + 
+  coord_sf()
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-height: 4
+ggplot(oz_votes) + geom_sf()
+ggplot(oz_votes) + geom_sf() + coord_sf(crs = st_crs(3112))
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+edenmonaro <- ozmaps::abs_ced %>% filter(NAME == "Eden-Monaro")
+
+p <- ggplot(edenmonaro) + geom_sf()
+p + coord_sf(xlim = c(147.75, 150.25), ylim = c(-37.5, -34.5)) 
+p + coord_sf(xlim = c(150, 150.25), ylim = c(-36.3, -36)) 
+```
+
+```{r}
+#| output.lines: !expr -(3:6)
+dawson <- ozmaps::abs_ced %>% 
+  filter(NAME == "Dawson") %>% 
+  pull(geometry)
+dawson
+
+ggplot(dawson) + 
+  geom_sf() +
+  coord_sf()
+```
+
+```{r}
+ggplot(dawson[-69]) + 
+  geom_sf() + 
+  coord_sf()
+```
+
+## mastery.qmd
+
+```{r}
+#| label: other-geoms
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(mpg, aes(displ, hwy, colour = factor(cyl))) +
+  geom_line() + 
+  theme(legend.position = "none")
+
+ggplot(mpg, aes(displ, hwy, colour = factor(cyl))) +
+  geom_bar(stat = "identity", position = "identity", fill = NA) + 
+  theme(legend.position = "none")
+```
+
+```{r}
+#| label: complex-plot
+ggplot(mpg, aes(displ, hwy, colour = factor(cyl))) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+```
+
+```{r}
+#| label: scaled
+#| echo: false
+rescale01 <- function(x) (x - min(x)) / (max(x) - min(x))
+
+p <- ggplot(mpg, aes(displ, hwy, colour = factor(cyl))) + 
+  geom_point()
+b <- ggplot_build(p)
+scaled <- b$data[[1]][c("x", "y", "colour")]
+scaled$x <- rescale01(scaled$x)
+scaled$y <- rescale01(scaled$y)
+scaled$size <- 1
+scaled$shape <- 19
+
+knitr::kable(head(scaled, 8), digits = 3, align = "l")
+```
+
+```{r}
+#| label: complex
+#| message: false
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point() +
+  geom_smooth() + 
+  facet_wrap(~year)
+```
+
+```{r}
+#| label: coord
+#| echo: false
+#| layout-ncol: 3
+#| fig-width: 3
+df <- data.frame(x1 = c(1, 10), y1 = c(1, 5))
+p <- ggplot(df, aes(x1, y1)) +
+  scale_x_continuous(NULL) + 
+  scale_y_continuous(NULL) +
+  theme_linedraw()
+p 
+p + coord_trans(y = "log10")
+p + coord_polar()
+```
+
+
+## programming.qmd
+
+```{r}
+#| label: layer9
+#| layout-ncol: 2
+#| fig-width: 4
+bestfit <- geom_smooth(
+  method = "lm", 
+  se = FALSE, 
+  colour = alpha("steelblue", 0.5),
+  linewidth = 2
+)
+ggplot(mpg, aes(cty, hwy)) + 
+  geom_point() + 
+  bestfit
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point() + 
+  bestfit
+```
+
+```{r}
+#| label: geom-lm
+#| layout-ncol: 2
+#| fig-width: 4
+geom_lm <- function(formula = y ~ x, colour = alpha("steelblue", 0.5), 
+                    linewidth = 2, ...)  {
+  geom_smooth(formula = formula, se = FALSE, method = "lm", colour = colour,
+    linewidth = linewidth, ...)
+}
+ggplot(mpg, aes(displ, 1 / hwy)) + 
+  geom_point() + 
+  geom_lm()
+ggplot(mpg, aes(displ, 1 / hwy)) + 
+  geom_point() + 
+  geom_lm(y ~ poly(x, 2), linewidth = 1, colour = "red")
+```
+
+```{r}
+#| label: geom-mean-1
+#| warning: false
+#| layout-ncol: 2
+#| fig-width: 4
+geom_mean <- function() {
+  list(
+    stat_summary(fun = "mean", geom = "bar", fill = "grey70"),
+    stat_summary(fun.data = "mean_cl_normal", geom = "errorbar", width = 0.4)
+  )
+}
+ggplot(mpg, aes(class, cty)) + geom_mean()
+ggplot(mpg, aes(drv, cty)) + geom_mean()
+```
+
+```{r}
+#| label: geom-mean-2
+#| warning: false
+#| layout-ncol: 2
+#| fig-width: 4
+geom_mean <- function(se = TRUE) {
+  list(
+    stat_summary(fun = "mean", geom = "bar", fill = "grey70"),
+    if (se) 
+      stat_summary(fun.data = "mean_cl_normal", geom = "errorbar", width = 0.4)
+  )
+}
+
+ggplot(mpg, aes(drv, cty)) + geom_mean()
+ggplot(mpg, aes(drv, cty)) + geom_mean(se = FALSE)
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+geom_mean <- function(..., bar.params = list(), errorbar.params = list()) {
+  params <- list(...)
+  bar.params <- modifyList(params, bar.params)
+  errorbar.params  <- modifyList(params, errorbar.params)
+  
+  bar <- do.call("stat_summary", modifyList(
+    list(fun = "mean", geom = "bar", fill = "grey70"),
+    bar.params)
+  )
+  errorbar <- do.call("stat_summary", modifyList(
+    list(fun.data = "mean_cl_normal", geom = "errorbar", width = 0.4),
+    errorbar.params)
+  )
+
+  list(bar, errorbar)
+}
+
+ggplot(mpg, aes(class, cty)) + 
+  geom_mean(
+    colour = "steelblue",
+    errorbar.params = list(width = 0.5, linewidth = 1)
+  )
+ggplot(mpg, aes(class, cty)) + 
+  geom_mean(
+    bar.params = list(fill = "steelblue"),
+    errorbar.params = list(colour = "blue")
+  )
+```
+
+```{r}
+piechart <- function(data, mapping) {
+  ggplot(data, mapping) +
+    geom_bar(width = 1) + 
+    coord_polar(theta = "y") + 
+    xlab(NULL) + 
+    ylab(NULL)
+}
+piechart(mpg, aes(factor(1), fill = class))
+```
+
+```{r}
+#| label: pcp_data
+#| layout-ncol: 2
+#| fig-width: 4
+pcp_data <- function(df) {
+  is_numeric <- vapply(df, is.numeric, logical(1))
+
+  # Rescale numeric columns
+  rescale01 <- function(x) {
+    rng <- range(x, na.rm = TRUE)
+    (x - rng[1]) / (rng[2] - rng[1])
+  }
+  df[is_numeric] <- lapply(df[is_numeric], rescale01)
+  
+  # Add row identifier
+  df$.row <- rownames(df)
+  
+  # Treat numerics as value (aka measure) variables
+  # gather_ is the standard-evaluation version of gather, and
+  # is usually easier to program with.
+  tidyr::gather_(df, "variable", "value", names(df)[is_numeric])
+}
+pcp <- function(df, ...) {
+  df <- pcp_data(df)
+  ggplot(df, aes(variable, value, group = .row)) + geom_line(...)
+}
+pcp(mpg)
+pcp(mpg, aes(colour = drv))
+```
+
+```{r}
+#| layout-ncol: 3
+#| fig-width: 3
+geoms <- list(
+  geom_point(),
+  geom_boxplot(aes(group = cut_width(displ, 1))),
+  list(geom_point(), geom_smooth())
+)
+
+p <- ggplot(mpg, aes(displ, hwy))
+lapply(geoms, function(g) p + g)
+```
+
+
+## scales-colour.qmd
+
+```{r}
+erupt <- ggplot(faithfuld, aes(waiting, eruptions, fill = density)) +
+  geom_raster() +
+  scale_x_continuous(NULL, expand = c(0, 0)) + 
+  scale_y_continuous(NULL, expand = c(0, 0)) + 
+  theme(legend.position = "none")
+```
+
+```{r}
+erupt <- ggplot(faithfuld, aes(waiting, eruptions, fill = density)) +
+  geom_raster() +
+  scale_x_continuous(NULL, expand = c(0, 0)) + 
+  scale_y_continuous(NULL, expand = c(0, 0)) + 
+  theme(legend.position = "none")
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 3
+erupt
+erupt + scale_fill_viridis_c()
+erupt + scale_fill_viridis_c(option = "magma")
+```
+
+```{r}
+erupt <- ggplot(faithfuld, aes(waiting, eruptions, fill = density)) +
+  geom_raster() +
+  scale_x_continuous(NULL, expand = c(0, 0)) + 
+  scale_y_continuous(NULL, expand = c(0, 0)) + 
+  theme(legend.position = "none")
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 3
+erupt + scale_fill_distiller()
+erupt + scale_fill_distiller(palette = "RdPu")
+erupt + scale_fill_distiller(palette = "YlOrBr")
+```
+
+```{r}
+erupt <- ggplot(faithfuld, aes(waiting, eruptions, fill = density)) +
+  geom_raster() +
+  scale_x_continuous(NULL, expand = c(0, 0)) + 
+  scale_y_continuous(NULL, expand = c(0, 0)) + 
+  theme(legend.position = "none")
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 3
+erupt + scico::scale_fill_scico(palette = "bilbao") # the default
+erupt + scico::scale_fill_scico(palette = "vik")
+erupt + scico::scale_fill_scico(palette = "lajolla")
+```
+
+```{r}
+erupt <- ggplot(faithfuld, aes(waiting, eruptions, fill = density)) +
+  geom_raster() +
+  scale_x_continuous(NULL, expand = c(0, 0)) + 
+  scale_y_continuous(NULL, expand = c(0, 0)) + 
+  theme(legend.position = "none")
+
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-height: 4
+erupt + paletteer::scale_fill_paletteer_c("viridis::plasma")
+erupt + paletteer::scale_fill_paletteer_c("scico::tokyo")
+```
+
+```{r}
+erupt <- ggplot(faithfuld, aes(waiting, eruptions, fill = density)) +
+  geom_raster() +
+  scale_x_continuous(NULL, expand = c(0, 0)) + 
+  scale_y_continuous(NULL, expand = c(0, 0)) + 
+  theme(legend.position = "none")
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 3
+erupt
+erupt + scale_fill_continuous()
+erupt + scale_fill_gradient()
+```
+
+```{r}
+erupt <- ggplot(faithfuld, aes(waiting, eruptions, fill = density)) +
+  geom_raster() +
+  scale_x_continuous(NULL, expand = c(0, 0)) + 
+  scale_y_continuous(NULL, expand = c(0, 0)) + 
+  theme(legend.position = "none")
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 3
+erupt + scale_fill_gradient(low = "grey", high = "brown")
+erupt + 
+  scale_fill_gradient2(
+    low = "grey", 
+    mid = "white", 
+    high = "brown", 
+    midpoint = .02
+  )
+erupt + scale_fill_gradientn(colours = terrain.colors(7))
+```
+
+```{r}
+erupt <- ggplot(faithfuld, aes(waiting, eruptions, fill = density)) +
+  geom_raster() +
+  scale_x_continuous(NULL, expand = c(0, 0)) + 
+  scale_y_continuous(NULL, expand = c(0, 0)) + 
+  theme(legend.position = "none")
+
+#| layout-ncol: 2
+#| fig-width: 4
+munsell::hue_slice("5P") +  # Generate a ggplot with hue_slice()
+  annotate(                 # Add arrows for annotation 
+    geom = "segment", 
+    x = c(7, 7), 
+    y = c(1, 10), 
+    xend = c(7, 7), 
+    yend = c(2, 9), 
+    arrow = arrow(length = unit(2, "mm"))
+  ) 
+
+# Construct scale
+erupt + scale_fill_gradient(
+  low = munsell::mnsl("5P 2/12"), 
+  high = munsell::mnsl("5P 7/12")
+)
+```
+
+```{r}
+erupt <- ggplot(faithfuld, aes(waiting, eruptions, fill = density)) +
+  geom_raster() +
+  scale_x_continuous(NULL, expand = c(0, 0)) + 
+  scale_y_continuous(NULL, expand = c(0, 0)) + 
+  theme(legend.position = "none")
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 3
+# munsell example
+erupt + scale_fill_gradient2(
+  low = munsell::mnsl("5B 7/8"),
+  high = munsell::mnsl("5Y 7/8"),
+  mid = munsell::mnsl("N 7/0"),
+  midpoint = .02
+) 
+
+# colorspace examples
+erupt + scale_fill_gradientn(colours = colorspace::heat_hcl(7))
+erupt + scale_fill_gradientn(colours = colorspace::diverge_hcl(7))
+```
+
+```{r}
+#| layout-ncol: 3
+#| fig-width: 3
+df <- data.frame(x = 1, y = 1:5, z = c(1, 3, 2, NA, 5))
+base <- ggplot(df, aes(x, y)) + 
+  geom_tile(aes(fill = z), linewidth = 5) + 
+  labs(x = NULL, y = NULL) +
+  scale_x_continuous(labels = NULL)
+
+base
+base + scale_fill_gradient(na.value = NA)
+base + scale_fill_gradient(na.value = "yellow")
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-height: 3
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+base <- ggplot(toy, aes(up, up, fill = big)) + 
+  geom_tile() + 
+  labs(x = NULL, y = NULL) 
+
+base 
+base + scale_fill_continuous(limits = c(0, 10000))
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-height: 3
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+base <- ggplot(toy, aes(up, up, fill = big)) + 
+  geom_tile() + 
+  labs(x = NULL, y = NULL) 
+
+base 
+base + scale_fill_continuous(limits = c(0, 10000))
+
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-height: 3
+base + scale_fill_continuous(breaks = c(1000, 2000, 4000))
+base + scale_fill_continuous(labels = scales::label_dollar())
+```
+
+```{r}
+#| fig-height: 3
+base <- ggplot(mpg, aes(cyl, displ, colour = hwy)) +
+  geom_point(size = 2)
+
+base
+```
+
+```{r}
+#| fig-height: 3
+base <- ggplot(mpg, aes(cyl, displ, colour = hwy)) +
+  geom_point(size = 2)
+
+base
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 3
+base + guides(colour = guide_colourbar(reverse = TRUE))
+base + guides(colour = guide_colourbar(barheight = unit(2, "cm")))
+base + guides(colour = guide_colourbar(direction = "horizontal"))
+```
+
+```{r}
+#| fig-height: 3
+base <- ggplot(mpg, aes(cyl, displ, colour = hwy)) +
+  geom_point(size = 2)
+
+base
+
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-height: 3
+base + guides(colour = guide_colourbar(reverse = TRUE))
+base + scale_colour_continuous(guide = guide_colourbar(reverse = TRUE))
+```
+
+```{r}
+df <- data.frame(x = c("a", "b", "c", "d"), y = c(3, 4, 1, 2))
+bars <- ggplot(df, aes(x, y, fill = x)) + 
+  geom_bar(stat = "identity") + 
+  labs(x = NULL, y = NULL) +
+  theme(legend.position = "none")
+```
+
+```{r}
+df <- data.frame(x = c("a", "b", "c", "d"), y = c(3, 4, 1, 2))
+bars <- ggplot(df, aes(x, y, fill = x)) + 
+  geom_bar(stat = "identity") + 
+  labs(x = NULL, y = NULL) +
+  theme(legend.position = "none")
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 4
+bars
+bars + scale_fill_discrete()
+bars + scale_fill_hue()
+```
+
+```{r}
+df <- data.frame(x = c("a", "b", "c", "d"), y = c(3, 4, 1, 2))
+bars <- ggplot(df, aes(x, y, fill = x)) + 
+  geom_bar(stat = "identity") + 
+  labs(x = NULL, y = NULL) +
+  theme(legend.position = "none")
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 4
+bars + scale_fill_brewer(palette = "Set1")
+bars + scale_fill_brewer(palette = "Set2")
+bars + scale_fill_brewer(palette = "Accent")
+```
+
+```{r}
+#| label: brewer-pal
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 4
+# scatter plot
+df <- data.frame(
+  x = 1:3 + runif(30), 
+  y = runif(30), 
+  z = c("a", "b", "c")
+)
+point <- ggplot(df, aes(x, y)) +
+  geom_point(aes(colour = z))  + 
+  theme(legend.position = "none") +
+  labs(x = NULL, y = NULL)
+
+# three palettes
+point + scale_colour_brewer(palette = "Set1")
+point + scale_colour_brewer(palette = "Set2")  
+point + scale_colour_brewer(palette = "Pastel1")
+```
+
+```{r}
+df <- data.frame(x = c("a", "b", "c", "d"), y = c(3, 4, 1, 2))
+bars <- ggplot(df, aes(x, y, fill = x)) + 
+  geom_bar(stat = "identity") + 
+  labs(x = NULL, y = NULL) +
+  theme(legend.position = "none")
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 4
+bars
+bars + scale_fill_hue(c = 40)
+bars + scale_fill_hue(h = c(180, 300))
+```
+
+```{r}
+df <- data.frame(x = c("a", "b", "c", "d"), y = c(3, 4, 1, 2))
+bars <- ggplot(df, aes(x, y, fill = x)) + 
+  geom_bar(stat = "identity") + 
+  labs(x = NULL, y = NULL) +
+  theme(legend.position = "none")
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 4
+bars + scale_fill_grey()
+bars + scale_fill_grey(start = 0.5, end = 1)
+bars + scale_fill_grey(start = 0, end = 0.5)
+```
+
+```{r}
+df <- data.frame(x = c("a", "b", "c", "d"), y = c(3, 4, 1, 2))
+bars <- ggplot(df, aes(x, y, fill = x)) + 
+  geom_bar(stat = "identity") + 
+  labs(x = NULL, y = NULL) +
+  theme(legend.position = "none")
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 4
+bars + paletteer::scale_fill_paletteer_d("rtist::vangogh")
+bars + paletteer::scale_fill_paletteer_d("colorBlindness::paletteMartin")
+bars + paletteer::scale_fill_paletteer_d("wesanderson::FantasticFox1")
+```
+
+```{r}
+df <- data.frame(x = c("a", "b", "c", "d"), y = c(3, 4, 1, 2))
+bars <- ggplot(df, aes(x, y, fill = x)) + 
+  geom_bar(stat = "identity") + 
+  labs(x = NULL, y = NULL) +
+  theme(legend.position = "none")
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 4
+bars + 
+  scale_fill_manual(
+    values = c("sienna1", "sienna4", "hotpink1", "hotpink4")
+  )
+
+bars + 
+  scale_fill_manual(
+    values = c("tomato1", "tomato2", "tomato3", "tomato4")
+  )
+
+bars + 
+  scale_fill_manual(
+    values = c("grey", "black", "grey", "grey")
+  )
+```
+
+```{r}
+df <- data.frame(x = c("a", "b", "c", "d"), y = c(3, 4, 1, 2))
+bars <- ggplot(df, aes(x, y, fill = x)) + 
+  geom_bar(stat = "identity") + 
+  labs(x = NULL, y = NULL) +
+  theme(legend.position = "none")
+
+#| fig-height: 4
+bars + 
+  scale_fill_manual(
+    values = c(
+      "d" = "grey",
+      "c" = "grey",
+      "b" = "black",
+      "a" = "grey"
+    )
+  )
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+mpg_99 <- mpg %>% filter(year == 1999)
+mpg_08 <- mpg %>% filter(year == 2008)
+
+base_99 <- ggplot(mpg_99, aes(displ, hwy, colour = fl)) + geom_point() 
+base_08 <- ggplot(mpg_08, aes(displ, hwy, colour = fl)) + geom_point() 
+
+base_99
+base_08
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+mpg_99 <- mpg %>% filter(year == 1999)
+mpg_08 <- mpg %>% filter(year == 2008)
+
+base_99 <- ggplot(mpg_99, aes(displ, hwy, colour = fl)) + geom_point() 
+base_08 <- ggplot(mpg_08, aes(displ, hwy, colour = fl)) + geom_point() 
+
+base_99
+base_08
+
+base_99 + 
+  scale_color_discrete(
+    limits = c("c", "d", "e", "p", "r"), 
+    breaks = c("d", "p", "r"),
+    labels = c("diesel", "premium", "regular")
+  )
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+mpg_99 <- mpg %>% filter(year == 1999)
+mpg_08 <- mpg %>% filter(year == 2008)
+
+base_99 <- ggplot(mpg_99, aes(displ, hwy, colour = fl)) + geom_point() 
+base_08 <- ggplot(mpg_08, aes(displ, hwy, colour = fl)) + geom_point() 
+
+base_99
+base_08
+
+#| layout-ncol: 2
+#| fig-width: 4
+base_99 + 
+  lims(x = c(1, 7), y = c(10, 45)) +
+  scale_color_discrete(
+    limits = c("c", "d", "e", "p", "r"), 
+    breaks = c("d", "p", "r"),
+    labels = c("diesel", "premium", "regular")
+  )
+
+base_08 + 
+  lims(x = c(1, 7), y = c(10, 45)) +
+  scale_color_discrete(
+    limits = c("c", "d", "e", "p", "r"), 
+    labels = c("compressed", "diesel", "ethanol", "premium", "regular")
+  )
+```
+
+```{r}
+erupt <- ggplot(faithfuld, aes(waiting, eruptions, fill = density)) +
+  geom_raster() +
+  scale_x_continuous(NULL, expand = c(0, 0)) + 
+  scale_y_continuous(NULL, expand = c(0, 0)) + 
+  theme(legend.position = "none")
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 3
+erupt + scale_fill_binned()
+erupt + scale_fill_steps()
+erupt + scale_fill_steps(n.breaks = 8)
+```
+
+```{r}
+erupt <- ggplot(faithfuld, aes(waiting, eruptions, fill = density)) +
+  geom_raster() +
+  scale_x_continuous(NULL, expand = c(0, 0)) + 
+  scale_y_continuous(NULL, expand = c(0, 0)) + 
+  theme(legend.position = "none")
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 3
+erupt + scale_fill_steps(low = "grey", high = "brown")
+erupt + 
+  scale_fill_steps2(
+    low = "grey", 
+    mid = "white", 
+    high = "brown", 
+    midpoint = .02
+  )
+erupt + scale_fill_stepsn(n.breaks = 12, colours = terrain.colors(12))
+```
+
+```{r}
+erupt <- ggplot(faithfuld, aes(waiting, eruptions, fill = density)) +
+  geom_raster() +
+  scale_x_continuous(NULL, expand = c(0, 0)) + 
+  scale_y_continuous(NULL, expand = c(0, 0)) + 
+  theme(legend.position = "none")
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 3
+erupt + scale_fill_stepsn(n.breaks = 9, colours = viridis::viridis(9))
+erupt + scale_fill_stepsn(n.breaks = 9, colours = viridis::magma(9))
+erupt + scale_fill_stepsn(n.breaks = 9, colours = viridis::inferno(9))
+```
+
+```{r}
+erupt <- ggplot(faithfuld, aes(waiting, eruptions, fill = density)) +
+  geom_raster() +
+  scale_x_continuous(NULL, expand = c(0, 0)) + 
+  scale_y_continuous(NULL, expand = c(0, 0)) + 
+  theme(legend.position = "none")
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 3
+erupt + scale_fill_fermenter(n.breaks = 9)
+erupt + scale_fill_fermenter(n.breaks = 9, palette = "Oranges")
+erupt + scale_fill_fermenter(n.breaks = 9, palette = "PuOr")
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+base <- ggplot(economics, aes(psavert, uempmed, colour = date)) + 
+  geom_point() 
+
+base
+base + 
+  scale_colour_date(
+    date_breaks = "142 months", 
+    date_labels = "%b %Y"
+  )
+```
+
+```{r}
+ggplot(faithfuld, aes(waiting, eruptions, alpha = density)) +
+  geom_raster(fill = "maroon") +
+  scale_x_continuous(expand = c(0, 0)) + 
+  scale_y_continuous(expand = c(0, 0))
+```
+
+```{r}
+#| label: legend-position
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-height: 4
+#| layout-nrow: 2
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+base <- ggplot(toy, aes(up, up)) + 
+  geom_point(aes(colour = txt), size = 3) + 
+  xlab(NULL) + 
+  ylab(NULL)
+
+base + theme(legend.position = "left")
+base + theme(legend.position = "right") # the default 
+base + theme(legend.position = "bottom")
+base + theme(legend.position = "none")
+```
+
+```{r}
+#| label: legend-position-man
+#| layout-ncol: 3
+#| fig-width: 3
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+base <- ggplot(toy, aes(up, up)) + 
+  geom_point(aes(colour = txt), size = 3)
+
+base + 
+  theme(
+    legend.position = c(0, 1), 
+    legend.justification = c(0, 1)
+  )
+
+base + 
+  theme(
+    legend.position = c(0.5, 0.5), 
+    legend.justification = c(0.5, 0.5)
+  )
+
+base + 
+  theme(
+    legend.position = c(1, 0), 
+    legend.justification = c(1, 0)
+  )
+```
+
+
+## scales-guides.qmd
+
+```{r}
+#| fig.show: hide
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point(aes(colour = class)) +
+  scale_x_continuous() + 
+  scale_y_continuous() + 
+  scale_colour_discrete()
+```
+
+```{r}
+#| fig.show: hide
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point(aes(colour = class)) + 
+  scale_x_continuous(name = "A really awesome x axis label") +
+  scale_y_continuous(name = "An amazingly great y axis label")
+```
+
+```{r}
+#| label: multiple-scales
+#| fig.show: hide
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point() + 
+  scale_x_continuous(name = "Label 1") +
+  scale_x_continuous(name = "Label 2")
+
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point() + 
+  scale_x_continuous(name = "Label 2")
+```
+
+```{r}
+#| fig.show: hide
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point(aes(colour = class)) +
+  scale_x_sqrt() + 
+  scale_colour_brewer()
+```
+
+```{r}
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 4
+df <- data.frame(x = 1:6, y = 8:13)
+base <- ggplot(df, aes(x, y)) + 
+  geom_col(aes(fill = x)) +                    # bar chart
+  geom_vline(xintercept = 3.5, colour = "red") # for visual clarity only
+
+base
+base + scale_fill_gradient(limits = c(1, 3))
+base + scale_fill_gradient(limits = c(1, 3), oob = scales::squish)
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-height: 4
+base <- ggplot(faithfuld, aes(waiting, eruptions)) + 
+  geom_raster(aes(fill = density)) + 
+  scale_x_continuous(NULL, NULL, expand = c(0, 0)) +
+  scale_y_continuous(NULL, NULL, expand = c(0, 0))
+  
+base
+base + scale_fill_continuous(trans = "sqrt")
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-height: 4
+df <- data.frame(x = runif(20), y = runif(20), z = sample(20))
+base <- ggplot(df, aes(x, y, size = z)) + geom_point()
+
+base 
+base + scale_size(trans = "reverse")
+```
+
+```{r}
+base <- ggplot(mpg, aes(hwy)) + geom_bar()
+
+p1 <- base + scale_x_binned(breaks = seq(-50,50,10), limits = c(-50, 50))
+p2 <- base + scale_x_binned(breaks = seq(-50,50,10), limits = c(-50, 50), trans = "reverse")
+```
+
+```{r}
+df <- data.frame(val = runif(10000, 1, 20000))
+ggplot(df, aes(log10(val))) + geom_bar() + scale_x_binned()
+```
+
+```{r}
+ggplot(df, aes(val)) + geom_bar() + scale_x_binned(trans="log10") 
+```
+
+```{r}
+ggplot(df, aes(val)) + geom_bar() + 
+  scale_x_binned(trans="log10", breaks = 3^(0:9))  
+```
+
+```{r}
+#| label: legend-geom
+#| echo: false
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 3
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+base <- ggplot(toy, aes(const, up, colour = txt))
+base + geom_point()
+base + geom_point() + geom_path(aes(group = 1))
+base + geom_raster(aes(fill = txt))
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-height: 4
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+ggplot(toy, aes(up, up)) + 
+  geom_point(size = 4, colour = "grey20") +
+  geom_point(aes(colour = txt), size = 2) 
+
+ggplot(toy, aes(up, up)) + 
+  geom_point(size = 4, colour = "grey20", show.legend = TRUE) +
+  geom_point(aes(colour = txt), size = 2) 
+```
+
+```{r}
+#| label: legend-merge
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 4
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+base <- ggplot(toy, aes(const, up)) +
+  scale_x_continuous(NULL, breaks = NULL)
+base + geom_point(aes(colour = txt))
+base + geom_point(aes(shape = txt))
+base + geom_point(aes(shape = txt, colour = txt))
+```
+
+```{r}
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 4
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+base <- ggplot(toy, aes(const, up)) + 
+  geom_point(aes(shape = txt, colour = txt)) + 
+  scale_x_continuous(NULL, breaks = NULL)
+
+base
+base + labs(shape = "Split legend")
+base + labs(shape = "Merged legend", colour = "Merged legend")
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+base <- ggplot(mpg, aes(displ, hwy)) + 
+  geom_point(aes(colour = factor(year)), size = 5) + 
+  scale_colour_brewer("year", type = "qual", palette = 5) 
+
+base
+base + 
+  ggnewscale::new_scale_colour() + 
+  geom_point(aes(colour = cyl == 4), size = 1, fill = NA) + 
+  scale_colour_manual("4 cylinder", values = c("grey60", "black"))
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-height: 3
+base <- ggplot(economics, aes(date, psavert, color = "savings"))
+
+base + geom_line()
+base + geom_line(key_glyph = "timeseries")
+```
+
+
+## scales-other.qmd
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+base <- ggplot(mpg, aes(displ, hwy, size = cyl)) +
+  geom_point()
+
+base
+base + scale_size(range = c(1, 2))
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+planets <- data.frame(
+  name = c("Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"),
+  type = c(rep("Inner", 4), rep("Outer", 4)),
+  position = 1:8,
+  radius = c(2440, 6052, 6378, 3390, 71400, 60330, 25559, 24764),
+  orbit = c(57900000, 108200000, 149600000, 227900000, 778300000,
+            1427000000, 2871000000, 4497100000)
+)
+planets$name <- with(planets, factor(name, name))
+
+base <- ggplot(planets, aes(1, name, size = radius)) +
+  geom_point() +
+  scale_x_continuous(breaks = NULL) +
+  labs(x = NULL, y = NULL, size = NULL)
+
+base + ggtitle("not to scale")
+base +
+  scale_radius(limits = c(0, NA), range = c(0, 10)) +
+  ggtitle("to scale")
+```
+
+```{r}
+base <- ggplot(mpg, aes(displ, manufacturer, size = hwy)) +
+  geom_point(alpha = .2) +
+  scale_size_binned()
+
+base
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+base <- ggplot(mpg, aes(displ, hwy, shape = factor(cyl))) +
+  geom_point()
+
+base
+base + scale_shape(solid = FALSE)
+```
+
+```{r}
+#| echo: false
+df <- data.frame(
+  shape = 1:25,
+  x = (0:24) %% 13,
+  y = 2 - floor((0:24) / 13)
+)
+ggplot(df, aes(x, y, shape = shape)) +
+  geom_point(size = 4) +
+  geom_text(aes(label = shape), nudge_y = .3) +
+  theme_void() +
+  scale_shape_identity() +
+  ylim(.8, 2.5)
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+base <- ggplot(mpg, aes(displ, hwy, shape = factor(cyl))) +
+  geom_point()
+
+base
+base + scale_shape(solid = FALSE)
+
+base +
+  scale_shape_manual(
+    values = c("4" = 16, "5" = 17, "6" = 1, "8" = 2)
+  )
+```
+
+```{r}
+#| layout-ncol: 3
+#| fig-width: 3
+base <- ggplot(airquality, aes(x = factor(Month), y = Temp))
+
+base + geom_pointrange(stat = "summary", fun.data = "median_hilow")
+base +
+  geom_pointrange(
+    stat = "summary",
+    fun.data = "median_hilow",
+    size = 2
+  )
+base +
+  geom_pointrange(
+    stat = "summary",
+    fun.data = "median_hilow",
+    linewidth = 2
+  )
+```
+
+```{r}
+ggplot(airquality, aes(Day, Temp, group = Month)) +
+  geom_line(aes(linewidth = Month)) +
+  scale_linewidth(range = c(0.5, 3))
+```
+
+```{r}
+ggplot(economics_long, aes(date, value01, linetype = variable)) +
+  geom_line()
+```
+
+```{r}
+df <- data.frame(value = letters[1:13])
+base <- ggplot(df, aes(linetype = value)) +
+  geom_segment(
+    mapping = aes(x = 0, xend = 1, y = value, yend = value),
+    show.legend = FALSE
+  ) +
+  theme(panel.grid = element_blank()) +
+  scale_x_continuous(NULL, NULL)
+
+base
+```
+
+```{r}
+#| label: huron
+huron <- data.frame(year = 1875:1972, level = as.numeric(LakeHuron))
+ggplot(huron, aes(year)) +
+  geom_line(aes(y = level + 5), colour = "red") +
+  geom_line(aes(y = level - 5), colour = "blue")
+```
+
+```{r}
+#| label: huron2
+ggplot(huron, aes(year)) +
+  geom_line(aes(y = level + 5, colour = "above")) +
+  geom_line(aes(y = level - 5, colour = "below"))
+```
+
+```{r}
+#| label: huron3
+ggplot(huron, aes(year)) +
+  geom_line(aes(y = level + 5, colour = "above")) +
+  geom_line(aes(y = level - 5, colour = "below")) +
+  scale_colour_manual(
+    "Direction",
+    values = c("above" = "red", "below" = "blue")
+  )
+```
+
+```{r}
+#| label: scale-identity
+head(luv_colours)
+
+ggplot(luv_colours, aes(u, v)) +
+  geom_point(aes(colour = col), size = 3) +
+  scale_color_identity() +
+  coord_equal()
+```
+
+
+## scales-position.qmd
+
+```{r}
+#| fig.show: hide
+#| message: false
+ggplot(mpg, aes(x = displ)) + geom_histogram()
+```
+
+```{r}
+#| fig.show: hide
+#| message: false
+ggplot(mpg, aes(x = displ, y = after_stat(count))) + geom_histogram()
+```
+
+```{r}
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point() +
+  facet_wrap(vars(year))
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+mpg_99 <- mpg %>% filter(year == 1999)
+mpg_08 <- mpg %>% filter(year == 2008)
+
+base_99 <- ggplot(mpg_99, aes(displ, hwy)) + geom_point() 
+base_08 <- ggplot(mpg_08, aes(displ, hwy)) + geom_point() 
+
+base_99
+base_08
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+mpg_99 <- mpg %>% filter(year == 1999)
+mpg_08 <- mpg %>% filter(year == 2008)
+
+base_99 <- ggplot(mpg_99, aes(displ, hwy)) + geom_point() 
+base_08 <- ggplot(mpg_08, aes(displ, hwy)) + geom_point() 
+
+base_99
+base_08
+
+#| layout-ncol: 2
+#| fig-width: 4
+base_99 + 
+  scale_x_continuous(limits = c(1, 7)) +
+  scale_y_continuous(limits = c(10, 45))
+
+base_08 + 
+  scale_x_continuous(limits = c(1, 7)) +
+  scale_y_continuous(limits = c(10, 45))
+```
+
+```{r}
+#| layout-ncol: 3
+#| fig-width: 3
+base <- ggplot(mpg, aes(drv, hwy)) + 
+  geom_hline(yintercept = 28, colour = "red") + 
+  geom_boxplot() 
+
+base
+base + coord_cartesian(ylim = c(10, 35)) # works as expected
+base + ylim(10, 35) # distorts the boxplot 
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+base <- ggplot(faithfuld, aes(waiting, eruptions)) + 
+  geom_raster(aes(fill = density)) + 
+  theme(legend.position = "none") + 
+  labs(x = NULL, y = NULL)
+
+base 
+base + 
+  scale_x_continuous(expand = expansion(0)) + 
+  scale_y_continuous(expand = expansion(0)) 
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+base <- ggplot(faithfuld, aes(waiting, eruptions)) + 
+  geom_raster(aes(fill = density)) + 
+  theme(legend.position = "none") + 
+  labs(x = NULL, y = NULL)
+
+base 
+base + 
+  scale_x_continuous(expand = expansion(0)) + 
+  scale_y_continuous(expand = expansion(0)) 
+
+#| layout-ncol: 3
+#| fig-width: 3
+# Additive expansion of three units on both axes
+base + 
+  scale_x_continuous(expand = expansion(add = 3)) + 
+  scale_y_continuous(expand = expansion(add = 3))
+
+# Multiplicative expansion of 20% on both axes
+base + 
+  scale_x_continuous(expand = expansion(mult = .2)) + 
+  scale_y_continuous(expand = expansion(mult = .2)) 
+
+# Multiplicative expansion of 5% at the lower end of each axes,
+# and 20% at the upper end; for the y-axis the expansion is 
+# set directly instead of using expansion()
+base + 
+  scale_x_continuous(expand = expansion(mult = c(.05, .2))) + 
+  scale_y_continuous(expand = c(.05, 0, .2, 0))
+```
+
+```{r}
+#| fig-height: 2
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+base <- ggplot(toy, aes(big, const)) + 
+  geom_point() + 
+  labs(x = NULL, y = NULL) +
+  scale_y_continuous(breaks = NULL) 
+
+base
+```
+
+```{r}
+#| fig-height: 2
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+base <- ggplot(toy, aes(big, const)) + 
+  geom_point() + 
+  labs(x = NULL, y = NULL) +
+  scale_y_continuous(breaks = NULL) 
+
+base
+
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-height: 2
+base + scale_x_continuous(breaks = c(1000, 2000, 4000))
+base + scale_x_continuous(breaks = c(1000, 1500, 2000, 4000))
+```
+
+```{r}
+#| fig-height: 2
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+base <- ggplot(toy, aes(big, const)) + 
+  geom_point() + 
+  labs(x = NULL, y = NULL) +
+  scale_y_continuous(breaks = NULL) 
+
+base
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 2
+base 
+base + scale_x_continuous(breaks = scales::breaks_extended())
+base + scale_x_continuous(breaks = scales::breaks_extended(n = 2))
+```
+
+```{r}
+#| fig-height: 2
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+base <- ggplot(toy, aes(big, const)) + 
+  geom_point() + 
+  labs(x = NULL, y = NULL) +
+  scale_y_continuous(breaks = NULL) 
+
+base
+
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 2
+base + 
+  scale_x_continuous(breaks = scales::breaks_width(800))
+base + 
+  scale_x_continuous(breaks = scales::breaks_width(800, offset = 200))
+base + 
+  scale_x_continuous(breaks = scales::breaks_width(800, offset = -200))
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-height: 2
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+base <- ggplot(toy, aes(log, const)) + 
+  geom_point() + 
+  labs(x = NULL, y = NULL) +
+  scale_y_continuous(breaks = NULL) 
+
+base + scale_x_log10()
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-height: 2
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+base <- ggplot(toy, aes(big, const)) + 
+  geom_point() + 
+  labs(x = NULL, y = NULL) +
+  scale_y_continuous(breaks = NULL) 
+
+base
+base + 
+  scale_x_continuous(
+    breaks = c(2000, 4000), 
+    labels = c("2k", "4k")
+  ) 
+```
+
+```{r}
+#| label: breaks-functions
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 3
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+base <- ggplot(toy, aes(big, const)) + 
+  geom_point() + 
+  labs(x = NULL, y = NULL) +
+  scale_x_continuous(breaks = NULL)
+
+base
+base + scale_y_continuous(labels = scales::label_percent())
+base + scale_y_continuous(
+  labels = scales::label_dollar(prefix = "", suffix = "€")
+)
+```
+
+```{r}
+#| label: breaks-functions2
+#| layout-ncol: 3
+#| fig-width: 3
+#| fig-height: 3
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+base <- ggplot(toy, aes(big, const)) + 
+  geom_point() + 
+  labs(x = NULL, y = NULL) +
+  scale_x_continuous(breaks = NULL)
+
+base
+base + scale_y_continuous(labels = scales::label_percent())
+base + scale_y_continuous(
+  labels = scales::label_dollar(prefix = "", suffix = "€")
+)
+
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-height: 2
+base + scale_y_continuous(breaks = NULL)
+base + scale_y_continuous(labels = NULL)
+```
+
+```{r}
+#| layout-ncol: 3
+#| fig-width: 3
+base <- ggplot(mpg, aes(displ, hwy)) + geom_point()
+
+base
+base + scale_x_reverse()
+base + scale_y_reverse()
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+# convert from fuel economy to fuel consumption
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point() + 
+  scale_y_continuous(trans = "reciprocal")
+
+# log transform x and y axes
+ggplot(diamonds, aes(price, carat)) + 
+  geom_bin2d() + 
+  scale_x_continuous(trans = "log10") +
+  scale_y_continuous(trans = "log10")
+```
+
+```{r}
+#| fig.show: hide
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point() + 
+  scale_y_continuous(trans = "reciprocal")
+
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point() + 
+  scale_y_continuous(trans = scales::reciprocal_trans())
+```
+
+```{r}
+#| fig.show: hide
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(diamonds, aes(price, carat)) + 
+  geom_bin2d() + 
+  scale_x_continuous(trans = "log10") +
+  scale_y_continuous(trans = "log10")
+
+ggplot(diamonds, aes(price, carat)) + 
+  geom_bin2d() + 
+  scale_x_log10() +
+  scale_y_log10()
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+# manual transformation
+ggplot(mpg, aes(log10(displ), hwy)) + 
+  geom_point()
+
+# transform using scales
+ggplot(mpg, aes(displ, hwy)) + 
+  geom_point() + 
+  scale_x_log10()
+```
+
+```{r}
+#| label: date-scale
+#| layout-ncol: 2
+#| fig-width: 4
+date_base <- ggplot(economics, aes(date, psavert)) + 
+  geom_line(na.rm = TRUE) +
+  labs(x = NULL, y = NULL)
+
+date_base 
+date_base + scale_x_date(date_breaks = "15 years")
+```
+
+```{r}
+#| label: date-scale-2
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-height: 3
+df <- data.frame(y = as.Date(c("2022-01-01", "2022-04-01")))
+base <- ggplot(df, aes(y = y)) + 
+  labs(y = NULL) + 
+  theme_minimal() + 
+  theme(
+    panel.grid.major = element_line(colour = "black"),
+    panel.grid.minor = element_line(colour = "grey50")
+  )
+
+base + scale_y_date(date_breaks = "1 month")
+base + 
+  scale_y_date(date_breaks = "1 month", date_minor_breaks = "1 week")
+```
+
+```{r}
+#| label: date-scale-3a
+#| layout-ncol: 2
+#| fig-width: 4
+base <- ggplot(economics, aes(date, psavert)) + 
+  geom_line(na.rm = TRUE) +
+  labs(x = NULL, y = NULL)
+
+base + scale_x_date(date_breaks = "5 years")
+base + scale_x_date(date_breaks = "5 years", date_labels = "%y")
+```
+
+```{r}
+#| label: date-scale-3b
+#| layout-ncol: 2
+#| fig-width: 4
+base <- ggplot(economics, aes(date, psavert)) + 
+  geom_line(na.rm = TRUE) +
+  labs(x = NULL, y = NULL)
+
+base + scale_x_date(date_breaks = "5 years")
+base + scale_x_date(date_breaks = "5 years", date_labels = "%y")
+
+#| label: date-scale-4
+#| layout-ncol: 2
+#| fig-width: 4
+#| fig-height: 3
+lim <- as.Date(c("2004-01-01", "2005-01-01"))
+
+base + scale_x_date(limits = lim, date_labels = "%b %y")
+base + scale_x_date(limits = lim, date_labels = "%B\n%Y")
+```
+
+```{r}
+#| label: date-scale-3c
+#| layout-ncol: 2
+#| fig-width: 4
+base <- ggplot(economics, aes(date, psavert)) + 
+  geom_line(na.rm = TRUE) +
+  labs(x = NULL, y = NULL)
+
+base + scale_x_date(date_breaks = "5 years")
+base + scale_x_date(date_breaks = "5 years", date_labels = "%y")
+
+#| label: date-scale-5
+#| fig-height: 3
+base + 
+  scale_x_date(
+    limits = lim, 
+    labels = scales::label_date_short()
+  )
+```
+
+```{r}
+#| label: default-scales-discrete
+#| fig.show: hide
+ggplot(mpg, aes(x = hwy, y = class)) + 
+  geom_point()
+
+ggplot(mpg, aes(x = hwy, y = class)) + 
+  geom_point() + 
+  scale_x_continuous() +
+  scale_y_discrete()
+```
+
+```{r}
+ggplot(mpg, aes(x = hwy, y = class)) + 
+  geom_point() +
+  annotate("text", x = 5, y = 1:7, label = 1:7)
+```
+
+```{r}
+ggplot(mpg, aes(x = hwy, y = class)) + 
+  geom_jitter(width = 0, height = .25) +
+  annotate("text", x = 5, y = 1:7, label = 1:7)
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(mpg, aes(x = drv, y = hwy)) + geom_boxplot()
+ggplot(mpg, aes(x = drv, y = hwy)) + geom_boxplot(width = .4)
+```
+
+```{r}
+#| layout-ncol: 3
+#| fig-width: 3
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+base <- ggplot(toy, aes(const, txt)) + 
+  geom_label(aes(label = txt)) +
+  scale_x_continuous(breaks = NULL) +
+  labs(x = NULL, y = NULL)
+
+base 
+base + scale_y_discrete(limits = c("a", "b", "c", "d", "e"))
+base + scale_y_discrete(limits = c("d", "c", "a", "b"))
+```
+
+```{r}
+#| layout-ncol: 3
+#| fig-width: 3
+toy <- data.frame(
+  const = 1,
+  up = 1:4,
+  txt = letters[1:4],
+  big = (1:4)*1000,
+  log = c(2, 5, 10, 2000)
+)
+
+base <- ggplot(toy, aes(const, txt)) + 
+  geom_label(aes(label = txt)) +
+  scale_x_continuous(breaks = NULL) +
+  labs(x = NULL, y = NULL)
+
+base 
+base + scale_y_discrete(limits = c("a", "b", "c", "d", "e"))
+base + scale_y_discrete(limits = c("d", "c", "a", "b"))
+
+#| layout-ncol: 2
+#| fig-width: 4
+base + scale_y_discrete(breaks = c("b", "c"))
+base + scale_y_discrete(labels = c(c = "carrot", b = "banana")) 
+```
+
+```{r}
+base <- ggplot(mpg, aes(manufacturer, hwy)) + geom_boxplot() 
+base
+```
+
+```{r}
+base <- ggplot(mpg, aes(manufacturer, hwy)) + geom_boxplot() 
+base
+
+#| layout-ncol: 2
+#| fig-width: 4
+base + guides(x = guide_axis(n.dodge = 3))
+base + guides(x = guide_axis(angle = 90))
+```
+
+```{r}
+base <- ggplot(mpg, aes(manufacturer, hwy)) + geom_boxplot() 
+base
+
+#| fig.show: hide
+#| layout-ncol: 2
+#| fig-width: 4
+base + scale_x_discrete(guide = guide_axis(n.dodge = 3))
+base + scale_x_discrete(guide = guide_axis(angle = 90))
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(mpg, aes(hwy)) + geom_histogram(bins = 8)
+ggplot(mpg, aes(hwy)) + 
+  geom_bar() +
+  scale_x_binned() 
+```
+
+```{r}
+base <- ggplot(mpg, aes(displ, hwy)) + 
+  geom_count()
+
+base
+```
+
+```{r}
+base <- ggplot(mpg, aes(displ, hwy)) + 
+  geom_count()
+
+base
+
+base + 
+  scale_x_binned(n.breaks = 15) +
+  scale_y_binned(n.breaks = 15)
+```
+
+
+## statistical-summaries.qmd
+
+```{r}
+#| layout-ncol: 3
+#| fig-width: 3
+y <- c(18, 11, 16)
+df <- data.frame(x = 1:3, y = y, se = c(1.2, 0.5, 1.0))
+
+base <- ggplot(df, aes(x, y, ymin = y - se, ymax = y + se))
+base + geom_crossbar()
+base + geom_pointrange()
+base + geom_smooth(stat = "identity")
+```
+
+```{r}
+#| layout-ncol: 3
+#| fig-width: 3
+y <- c(18, 11, 16)
+df <- data.frame(x = 1:3, y = y, se = c(1.2, 0.5, 1.0))
+
+base <- ggplot(df, aes(x, y, ymin = y - se, ymax = y + se))
+base + geom_crossbar()
+base + geom_pointrange()
+base + geom_smooth(stat = "identity")
+
+#| layout-ncol: 3
+#| fig-width: 3
+base + geom_errorbar()
+base + geom_linerange()
+base + geom_ribbon()
+```
+
+```{r}
+#| label: miss-basic
+#| layout-ncol: 2
+#| fig-width: 4
+# Unweighted
+ggplot(midwest, aes(percwhite, percbelowpoverty)) + 
+  geom_point()
+
+# Weight by population
+ggplot(midwest, aes(percwhite, percbelowpoverty)) + 
+  geom_point(aes(size = poptotal / 1e6)) + 
+  scale_size_area("Population\n(millions)", breaks = c(0.5, 1, 2, 4))
+```
+
+```{r}
+#| label: weight-lm
+#| layout-ncol: 2
+#| fig-width: 4
+# Unweighted
+ggplot(midwest, aes(percwhite, percbelowpoverty)) + 
+  geom_point() + 
+  geom_smooth(method = lm, linewidth = 1)
+
+# Weighted by population
+ggplot(midwest, aes(percwhite, percbelowpoverty)) + 
+  geom_point(aes(size = poptotal / 1e6)) + 
+  geom_smooth(aes(weight = poptotal), method = lm, linewidth = 1) +
+  scale_size_area(guide = "none")
+```
+
+```{r}
+#| label: weight-hist
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(midwest, aes(percbelowpoverty)) +
+  geom_histogram(binwidth = 1) + 
+  ylab("Counties")
+
+ggplot(midwest, aes(percbelowpoverty)) +
+  geom_histogram(aes(weight = poptotal), binwidth = 1) +
+  ylab("Population (1000s)")
+```
+
+```{r}
+#| label: geom-1d-con
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(diamonds, aes(depth)) + 
+  geom_histogram()
+
+ggplot(diamonds, aes(depth)) + 
+  geom_histogram(binwidth = 0.1) + 
+  xlim(55, 70)
+```
+
+```{r}
+#| label: compare-dist
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(diamonds, aes(depth)) + 
+  geom_freqpoly(aes(colour = cut), binwidth = 0.1, na.rm = TRUE) +
+  xlim(58, 68) + 
+  theme(legend.position = "none")
+
+ggplot(diamonds, aes(depth)) + 
+  geom_histogram(aes(fill = cut), binwidth = 0.1, position = "fill",
+    na.rm = TRUE) +
+  xlim(58, 68) + 
+  theme(legend.position = "none")
+```
+
+```{r}
+#| label: geom-density
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(diamonds, aes(depth)) +
+  geom_density(na.rm = TRUE) + 
+  xlim(58, 68) + 
+  theme(legend.position = "none")
+
+ggplot(diamonds, aes(depth, fill = cut, colour = cut)) +
+  geom_density(alpha = 0.2, na.rm = TRUE) + 
+  xlim(58, 68) + 
+  theme(legend.position = "none")
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(diamonds, aes(color)) + 
+  geom_bar()
+
+ggplot(diamonds, aes(color, price)) + 
+  geom_bar(stat = "summary_bin", fun = mean)
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 4
+ggplot(diamonds, aes(table, depth)) + 
+  geom_bin2d(binwidth = 1, na.rm = TRUE) + 
+  xlim(50, 70) + 
+  ylim(50, 70)
+
+ggplot(diamonds, aes(table, depth, z = price)) + 
+  geom_raster(binwidth = 1, stat = "summary_2d", fun = mean, 
+    na.rm = TRUE) + 
+  xlim(50, 70) + 
+  ylim(50, 70)
+```
+
+```{r}
+ggplot(faithfuld, aes(eruptions, waiting)) + 
+  geom_contour(aes(z = density, colour = ..level..))
+```
+
+```{r}
+ggplot(faithfuld, aes(eruptions, waiting)) + 
+  geom_raster(aes(fill = density))
+```
+
+```{r}
+# Bubble plots work better with fewer observations
+small <- faithfuld[seq(1, nrow(faithfuld), by = 10), ]
+ggplot(small, aes(eruptions, waiting)) + 
+  geom_point(aes(size = density), alpha = 1/3) + 
+  scale_size_area()
+```
+
+
+## themes.qmd
+
+```{r}
+#| label: motivation-1a
+base <- ggplot(mpg, aes(cty, hwy, color = factor(cyl))) +
+  geom_jitter() + 
+  geom_abline(colour = "grey50", size = 2)
+base
+```
+
+```{r}
+#| label: motivation-1b
+base <- ggplot(mpg, aes(cty, hwy, color = factor(cyl))) +
+  geom_jitter() + 
+  geom_abline(colour = "grey50", size = 2)
+base
+
+#| label: motivation-2
+labelled <- base +
+  labs(
+    x = "City mileage/gallon",
+    y = "Highway mileage/gallon",
+    colour = "Cylinders",
+    title = "Highway and city mileage are highly correlated"
+  ) +
+  scale_colour_brewer(type = "seq", palette = "Spectral")
+labelled
+```
+
+```{r}
+#| label: built-in-a
+#| layout-ncol: 3
+#| fig-width: 3
+df <- data.frame(x = 1:3, y = 1:3)
+base <- ggplot(df, aes(x, y)) + geom_point()
+base + theme_grey() + ggtitle("theme_grey()")
+base + theme_bw() + ggtitle("theme_bw()")
+base + theme_linedraw() + ggtitle("theme_linedraw()")
+```
+
+```{r}
+#| label: built-in-b
+#| layout-ncol: 3
+#| fig-width: 3
+df <- data.frame(x = 1:3, y = 1:3)
+base <- ggplot(df, aes(x, y)) + geom_point()
+base + theme_grey() + ggtitle("theme_grey()")
+base + theme_bw() + ggtitle("theme_bw()")
+base + theme_linedraw() + ggtitle("theme_linedraw()")
+
+#| label: ggtheme
+#| layout-ncol: 3
+#| fig-width: 3
+#| message: false
+#| warning: false
+library(ggthemes)
+base + theme_tufte() + ggtitle("theme_tufte()")
+base + theme_solarized() + ggtitle("theme_solarized()")
+base + theme_excel() + ggtitle("theme_excel()") # ;)
+```
+
+```{r}
+#| label: axis
+#| layout-ncol: 3
+#| fig-width: 3
+df <- data.frame(x = 1:3, y = 1:3)
+base <- ggplot(df, aes(x, y)) + geom_point()
+
+# Accentuate the axes
+base + theme(axis.line = element_line(colour = "grey50", linewidth = 1))
+# Style both x and y axis labels
+base + theme(axis.text = element_text(color = "blue", size = 12))
+# Useful for long labels
+base + theme(axis.text.x = element_text(angle = -90, vjust = 0.5))
+```
+
+```{r}
+#| label: axis-labels
+#| layout-ncol: 2
+#| fig-width: 4
+df <- data.frame(
+  x = c("label", "a long label", "an even longer label"), 
+  y = 1:3
+)
+base <- ggplot(df, aes(x, y)) + geom_point()
+base
+base + 
+  theme(axis.text.x = element_text(angle = -30, vjust = 1, hjust = 0)) + 
+  xlab(NULL) + 
+  ylab(NULL)
+```
+
+```{r}
+#| label: legend
+#| layout-ncol: 3
+#| fig-width: 3
+df <- data.frame(x = 1:4, y = 1:4, z = rep(c("a", "b"), each = 2))
+base <- ggplot(df, aes(x, y, colour = z)) + geom_point()
+
+base + theme(
+  legend.background = element_rect(
+    fill = "lemonchiffon", 
+    colour = "grey50", 
+    linewidth = 1
+  )
+)
+base + theme(
+  legend.key = element_rect(color = "grey50"),
+  legend.key.width = unit(0.9, "cm"),
+  legend.key.height = unit(0.75, "cm")
+)
+base + theme(
+  legend.text = element_text(size = 15),
+  legend.title = element_text(size = 15, face = "bold")
+)
+```
+
+```{r}
+#| label: panel
+#| layout-ncol: 3
+#| fig-width: 3
+base <- ggplot(df, aes(x, y)) + geom_point()
+# Modify background
+base + theme(panel.background = element_rect(fill = "lightblue"))
+
+# Tweak major grid lines
+base + theme(
+  panel.grid.major = element_line(color = "gray60", linewidth = 0.8)
+)
+# Just in one direction  
+base + theme(
+  panel.grid.major.x = element_line(color = "gray60", linewidth = 0.8)
+)
+```
+
+```{r}
+#| label: faceting
+#| layout-ncol: 3
+#| fig-width: 3
+df <- data.frame(x = 1:4, y = 1:4, z = c("a", "a", "b", "b"))
+base_f <- ggplot(df, aes(x, y)) + geom_point() + facet_wrap(~z)
+
+base_f
+base_f + theme(panel.spacing = unit(0.5, "in"))
+base_f + theme(
+  strip.text = element_text(colour = "white"),
+  strip.background = element_rect(
+    fill = "grey20", 
+    color = "grey80", 
+    linewidth = 1
+  )
+)
+```
+
