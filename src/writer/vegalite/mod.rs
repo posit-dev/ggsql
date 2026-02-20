@@ -137,12 +137,17 @@ fn prepare_layer_data(
 /// - Adds detail encoding for partition_by columns
 /// - Applies geom-specific modifications via renderer
 /// - Finalizes layers (may expand composite geoms into multiple layers)
+///
+/// The `free_x` and `free_y` flags indicate whether facet free scales are enabled.
+/// When true, explicit domains should not be set for that axis.
 fn build_layers(
     spec: &Plot,
     data: &HashMap<String, DataFrame>,
     layer_data_keys: &[String],
     layer_renderers: &[Box<dyn GeomRenderer>],
     prepared_data: &[PreparedData],
+    free_x: bool,
+    free_y: bool,
 ) -> Result<Vec<Value>> {
     let mut layers = Vec::new();
 
@@ -175,8 +180,8 @@ fn build_layers(
         // Set transform array on layer spec
         layer_spec["transform"] = json!(transforms);
 
-        // Build encoding for this layer
-        let encoding = build_layer_encoding(layer, df, spec)?;
+        // Build encoding for this layer (pass free scale flags)
+        let encoding = build_layer_encoding(layer, df, spec, free_x, free_y)?;
         layer_spec["encoding"] = Value::Object(encoding);
 
         // Apply geom-specific spec modifications via renderer
@@ -199,10 +204,15 @@ fn build_layers(
 /// - Aesthetic parameters from SETTING as literal encodings
 /// - Detail encoding for partition_by columns
 /// - Geom-specific encoding modifications via renderer
+///
+/// The `free_x` and `free_y` flags indicate whether facet free scales are enabled.
+/// When true, explicit domains should not be set for that axis.
 fn build_layer_encoding(
     layer: &crate::plot::Layer,
     df: &DataFrame,
     spec: &Plot,
+    free_x: bool,
+    free_y: bool,
 ) -> Result<serde_json::Map<String, Value>> {
     let mut encoding = serde_json::Map::new();
 
@@ -225,6 +235,8 @@ fn build_layer_encoding(
         spec,
         titled_families: &mut titled_families,
         primary_aesthetics: &primary_aesthetics,
+        free_x,
+        free_y,
     };
 
     // Build encoding channels for each aesthetic mapping
@@ -232,7 +244,7 @@ fn build_layer_encoding(
         // Skip facet aesthetics - they are handled via top-level facet structure,
         // not as encoding channels. Adding them to encoding would create row-based
         // faceting instead of the intended wrap/grid layout.
-        if matches!(aesthetic.as_str(), "facet" | "row" | "column") {
+        if matches!(aesthetic.as_str(), "panel" | "row" | "column") {
             continue;
         }
 
@@ -293,7 +305,7 @@ fn build_layer_encoding(
 /// - FACET vars (wrap layout)
 /// - FACET rows BY columns (grid layout)
 /// - Moves layers into nested `spec` object
-/// - Uses aesthetic column names (e.g., __ggsql_aes_facet__)
+/// - Uses aesthetic column names (e.g., __ggsql_aes_panel__)
 /// - Respects scale types (Binned facets use bin: "binned")
 /// - Scale resolution (scales property)
 /// - Label renaming (RENAMING clause)
@@ -308,11 +320,11 @@ fn apply_faceting(
 
     match &facet.layout {
         FacetLayout::Wrap { variables: _ } => {
-            // Use the aesthetic column name for facet
-            let aes_col = naming::aesthetic_column("facet");
+            // Use the aesthetic column name for panel
+            let aes_col = naming::aesthetic_column("panel");
 
-            // Look up scale for "facet" aesthetic
-            let scale = scales.iter().find(|s| s.aesthetic == "facet");
+            // Look up scale for "panel" aesthetic
+            let scale = scales.iter().find(|s| s.aesthetic == "panel");
 
             // Build facet field definition with proper binned support
             let mut facet_def = build_facet_field_def(facet_df, &aes_col, scale);
@@ -905,7 +917,30 @@ impl Writer for VegaLiteWriter {
         // 1. Validate spec
         self.validate(spec)?;
 
-        // 2. Determine layer data keys
+        // 2. Determine if facet free scales should omit x/y domains
+        // When using free scales, Vega-Lite computes independent domains per facet panel.
+        // We must not set explicit domains (from SCALE or COORD) as they would override this.
+        let (free_x, free_y) = if let Some(ref facet) = spec.facet {
+            let scales_value = facet
+                .properties
+                .get("scales")
+                .and_then(|v| match v {
+                    ParameterValue::String(s) => Some(s.as_str()),
+                    _ => None,
+                })
+                .unwrap_or("fixed");
+
+            match scales_value {
+                "free" => (true, true),
+                "free_x" => (true, false),
+                "free_y" => (false, true),
+                _ => (false, false), // "fixed" or unknown
+            }
+        } else {
+            (false, false)
+        };
+
+        // 3. Determine layer data keys
         let layer_data_keys: Vec<String> = spec
             .layers
             .iter()
@@ -918,7 +953,7 @@ impl Writer for VegaLiteWriter {
             })
             .collect();
 
-        // 3. Validate columns for each layer
+        // 4. Validate columns for each layer
         for (layer_idx, (layer, key)) in spec.layers.iter().zip(layer_data_keys.iter()).enumerate()
         {
             let df = data.get(key).ok_or_else(|| {
@@ -931,7 +966,7 @@ impl Writer for VegaLiteWriter {
             validate_layer_columns(layer, df, layer_idx)?;
         }
 
-        // 4. Build base Vega-Lite spec
+        // 5. Build base Vega-Lite spec
         let mut vl_spec = json!({
             "$schema": self.schema
         });
@@ -944,40 +979,42 @@ impl Writer for VegaLiteWriter {
             }
         }
 
-        // 5. Collect binned columns
+        // 6. Collect binned columns
         let binned_columns = collect_binned_columns(spec);
 
-        // 6. Prepare layer data
+        // 7. Prepare layer data
         let prep = prepare_layer_data(spec, data, &layer_data_keys, &binned_columns)?;
 
-        // 7. Unify datasets
+        // 8. Unify datasets
         let unified_data = unify_datasets(&prep.datasets)?;
         vl_spec["data"] = json!({"values": unified_data});
 
-        // 8. Build layers
+        // 9. Build layers (pass free scale flags for domain handling)
         let layers = build_layers(
             spec,
             data,
             &layer_data_keys,
             &prep.renderers,
             &prep.prepared,
+            free_x,
+            free_y,
         )?;
         vl_spec["layer"] = json!(layers);
 
-        // 9. Apply coordinate transforms
+        // 10. Apply coordinate transforms (pass free scale flags for domain handling)
         let first_df = data.get(&layer_data_keys[0]).unwrap();
-        apply_coord_transforms(spec, first_df, &mut vl_spec)?;
+        apply_coord_transforms(spec, first_df, &mut vl_spec, free_x, free_y)?;
 
-        // 10. Apply faceting
+        // 11. Apply faceting
         if let Some(facet) = &spec.facet {
             let facet_df = data.get(&layer_data_keys[0]).unwrap();
             apply_faceting(&mut vl_spec, facet, facet_df, &spec.scales);
         }
 
-        // 11. Add default theme config (ggplot2-like gray theme)
+        // 12. Add default theme config (ggplot2-like gray theme)
         vl_spec["config"] = self.default_theme_config();
 
-        // 12. Serialize
+        // 13. Serialize
         serde_json::to_string_pretty(&vl_spec).map_err(|e| {
             GgsqlError::WriterError(format!("Failed to serialize Vega-Lite JSON: {}", e))
         })
@@ -1517,10 +1554,10 @@ mod tests {
         // Test that apply_facet_ordering uses input_range (FROM clause) for discrete scales
         use crate::plot::scale::Scale;
 
-        let mut facet_def = json!({"field": "__ggsql_aes_facet__", "type": "nominal"});
+        let mut facet_def = json!({"field": "__ggsql_aes_panel__", "type": "nominal"});
 
-        // Create a scale with input_range (simulating SCALE facet FROM ['A', 'B', 'C'])
-        let mut scale = Scale::new("facet");
+        // Create a scale with input_range (simulating SCALE panel FROM ['A', 'B', 'C'])
+        let mut scale = Scale::new("panel");
         scale.input_range = Some(vec![
             ArrayElement::String("A".to_string()),
             ArrayElement::String("B".to_string()),
@@ -1543,11 +1580,11 @@ mod tests {
         // This is the fix for the bug where null panels appear first
         use crate::plot::scale::Scale;
 
-        let mut facet_def = json!({"field": "__ggsql_aes_facet__", "type": "nominal"});
+        let mut facet_def = json!({"field": "__ggsql_aes_panel__", "type": "nominal"});
 
         // Create a scale with input_range including null at the end
-        // (simulating SCALE facet FROM ['Adelie', 'Gentoo', null])
-        let mut scale = Scale::new("facet");
+        // (simulating SCALE panel FROM ['Adelie', 'Gentoo', null])
+        let mut scale = Scale::new("panel");
         scale.input_range = Some(vec![
             ArrayElement::String("Adelie".to_string()),
             ArrayElement::String("Gentoo".to_string()),
@@ -1569,10 +1606,10 @@ mod tests {
         // Test that null at the beginning of input_range produces null first in sort
         use crate::plot::scale::Scale;
 
-        let mut facet_def = json!({"field": "__ggsql_aes_facet__", "type": "nominal"});
+        let mut facet_def = json!({"field": "__ggsql_aes_panel__", "type": "nominal"});
 
         // Create a scale with null at the beginning
-        let mut scale = Scale::new("facet");
+        let mut scale = Scale::new("panel");
         scale.input_range = Some(vec![
             ArrayElement::Null,
             ArrayElement::String("Adelie".to_string()),
@@ -1626,7 +1663,7 @@ mod tests {
         use crate::plot::{ParameterValue, ScaleType};
 
         // Create a binned scale with breaks [0, 20, 40, 60]
-        let mut scale = Scale::new("facet");
+        let mut scale = Scale::new("panel");
         scale.scale_type = Some(ScaleType::binned());
         scale.properties.insert(
             "breaks".to_string(),
@@ -1691,7 +1728,7 @@ mod tests {
         use crate::plot::scale::Scale;
         use crate::plot::{ParameterValue, ScaleType};
 
-        let mut scale = Scale::new("facet");
+        let mut scale = Scale::new("panel");
         scale.scale_type = Some(ScaleType::binned());
         scale.properties.insert(
             "breaks".to_string(),
@@ -1731,7 +1768,7 @@ mod tests {
         use crate::plot::scale::Scale;
         use crate::plot::{ParameterValue, ScaleType};
 
-        let mut scale = Scale::new("facet");
+        let mut scale = Scale::new("panel");
         scale.scale_type = Some(ScaleType::binned());
         scale.properties.insert(
             "breaks".to_string(),
@@ -1755,6 +1792,246 @@ mod tests {
             expr.contains("'25 – 50'"),
             "Should use default range format '25 – 50', got: {}",
             expr
+        );
+    }
+
+    #[test]
+    fn test_facet_free_scales_omits_domain() {
+        // Test that FACET with scales => 'free' does not set explicit domains
+        // This allows Vega-Lite to compute independent domains per facet panel
+        use crate::plot::scale::Scale;
+        use crate::plot::{Facet, FacetLayout, ParameterValue};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add facet with free scales
+        let mut facet_properties = HashMap::new();
+        facet_properties.insert("scales".to_string(), ParameterValue::String("free".to_string()));
+        spec.facet = Some(Facet {
+            layout: FacetLayout::Wrap {
+                variables: vec!["category".to_string()],
+            },
+            properties: facet_properties,
+            label_mapping: None,
+            label_template: "{}".to_string(),
+            resolved: true,
+        });
+
+        // Add scale with explicit domain that should be skipped
+        let mut x_scale = Scale::new("x");
+        x_scale.input_range = Some(vec![
+            crate::plot::ArrayElement::Number(0.0),
+            crate::plot::ArrayElement::Number(100.0),
+        ]);
+        spec.scales.push(x_scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[4, 5, 6],
+            "category" => &["A", "A", "B"],
+            "__ggsql_aes_panel__" => &["A", "A", "B"],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Verify resolve.scale is set to independent for both axes
+        assert_eq!(
+            vl_spec["resolve"]["scale"]["x"], "independent",
+            "x scale should be independent"
+        );
+        assert_eq!(
+            vl_spec["resolve"]["scale"]["y"], "independent",
+            "y scale should be independent"
+        );
+
+        // Verify NO explicit domain is set on x encoding (would override free scales)
+        // The encoding should exist but scale.domain should not be present
+        let x_encoding = &vl_spec["spec"]["layer"][0]["encoding"]["x"];
+        let has_domain = x_encoding
+            .get("scale")
+            .and_then(|s| s.get("domain"))
+            .is_some();
+        assert!(
+            !has_domain,
+            "x encoding should NOT have explicit domain when using free scales, got: {}",
+            serde_json::to_string_pretty(&x_encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_facet_free_y_only_omits_y_domain() {
+        // Test that FACET with scales => 'free_y' omits y domain but keeps x domain
+        use crate::plot::scale::Scale;
+        use crate::plot::{Facet, FacetLayout, ParameterValue};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add facet with free_y scales
+        let mut facet_properties = HashMap::new();
+        facet_properties.insert("scales".to_string(), ParameterValue::String("free_y".to_string()));
+        spec.facet = Some(Facet {
+            layout: FacetLayout::Wrap {
+                variables: vec!["category".to_string()],
+            },
+            properties: facet_properties,
+            label_mapping: None,
+            label_template: "{}".to_string(),
+            resolved: true,
+        });
+
+        // Add scales with explicit domains
+        let mut x_scale = Scale::new("x");
+        x_scale.input_range = Some(vec![
+            crate::plot::ArrayElement::Number(0.0),
+            crate::plot::ArrayElement::Number(100.0),
+        ]);
+        spec.scales.push(x_scale);
+
+        let mut y_scale = Scale::new("y");
+        y_scale.input_range = Some(vec![
+            crate::plot::ArrayElement::Number(0.0),
+            crate::plot::ArrayElement::Number(50.0),
+        ]);
+        spec.scales.push(y_scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[4, 5, 6],
+            "category" => &["A", "A", "B"],
+            "__ggsql_aes_panel__" => &["A", "A", "B"],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Verify only y scale is independent
+        assert!(
+            vl_spec["resolve"]["scale"].get("x").is_none(),
+            "x scale should not be in resolve (shared)"
+        );
+        assert_eq!(
+            vl_spec["resolve"]["scale"]["y"], "independent",
+            "y scale should be independent"
+        );
+
+        // x encoding SHOULD have domain (not free)
+        let x_encoding = &vl_spec["spec"]["layer"][0]["encoding"]["x"];
+        let x_has_domain = x_encoding
+            .get("scale")
+            .and_then(|s| s.get("domain"))
+            .is_some();
+        assert!(
+            x_has_domain,
+            "x encoding SHOULD have domain when using free_y scales"
+        );
+
+        // y encoding should NOT have domain (free)
+        let y_encoding = &vl_spec["spec"]["layer"][0]["encoding"]["y"];
+        let y_has_domain = y_encoding
+            .get("scale")
+            .and_then(|s| s.get("domain"))
+            .is_some();
+        assert!(
+            !y_has_domain,
+            "y encoding should NOT have domain when using free_y scales, got: {}",
+            serde_json::to_string_pretty(&y_encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_facet_fixed_scales_keeps_domain() {
+        // Test that FACET with scales => 'fixed' (default) keeps explicit domains
+        use crate::plot::scale::Scale;
+        use crate::plot::{Facet, FacetLayout, ParameterValue};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add facet with fixed scales (default)
+        let mut facet_properties = HashMap::new();
+        facet_properties.insert("scales".to_string(), ParameterValue::String("fixed".to_string()));
+        spec.facet = Some(Facet {
+            layout: FacetLayout::Wrap {
+                variables: vec!["category".to_string()],
+            },
+            properties: facet_properties,
+            label_mapping: None,
+            label_template: "{}".to_string(),
+            resolved: true,
+        });
+
+        // Add scale with explicit domain
+        let mut x_scale = Scale::new("x");
+        x_scale.input_range = Some(vec![
+            crate::plot::ArrayElement::Number(0.0),
+            crate::plot::ArrayElement::Number(100.0),
+        ]);
+        spec.scales.push(x_scale);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[4, 5, 6],
+            "category" => &["A", "A", "B"],
+            "__ggsql_aes_panel__" => &["A", "A", "B"],
+        }
+        .unwrap();
+
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Verify NO resolve.scale (fixed scales don't need it)
+        assert!(
+            vl_spec.get("resolve").is_none(),
+            "Fixed scales should not have resolve property"
+        );
+
+        // x encoding SHOULD have domain (fixed scales keep explicit domains)
+        let x_encoding = &vl_spec["spec"]["layer"][0]["encoding"]["x"];
+        let has_domain = x_encoding
+            .get("scale")
+            .and_then(|s| s.get("domain"))
+            .is_some();
+        assert!(
+            has_domain,
+            "x encoding SHOULD have domain when using fixed scales"
         );
     }
 }

@@ -53,7 +53,7 @@ pub fn gets_default_scale(aesthetic: &str) -> bool {
         // Other visual aesthetics
         | "opacity" | "shape" | "linetype"
         // Facet aesthetics (need Discrete/Binned, not Identity)
-        | "facet" | "row" | "column"
+        | "panel" | "row" | "column"
     )
 }
 

@@ -109,12 +109,12 @@ impl FacetLayout {
     /// Get variable names mapped to their aesthetic names.
     ///
     /// Returns tuples of (column_name, aesthetic_name):
-    /// - Wrap: [("region", "facet")]
+    /// - Wrap: [("region", "panel")]
     /// - Grid: [("region", "row"), ("year", "column")]
     pub fn get_aesthetic_mappings(&self) -> Vec<(&str, &'static str)> {
         match self {
             FacetLayout::Wrap { variables } => {
-                variables.iter().map(|v| (v.as_str(), "facet")).collect()
+                variables.iter().map(|v| (v.as_str(), "panel")).collect()
             }
             FacetLayout::Grid { row, column } => {
                 let mut result: Vec<(&str, &'static str)> =
@@ -127,11 +127,11 @@ impl FacetLayout {
 
     /// Get the aesthetic names used by this layout.
     ///
-    /// - Wrap: ["facet"]
+    /// - Wrap: ["panel"]
     /// - Grid: ["row", "column"]
     pub fn get_aesthetics(&self) -> Vec<&'static str> {
         match self {
-            FacetLayout::Wrap { .. } => vec!["facet"],
+            FacetLayout::Wrap { .. } => vec!["panel"],
             FacetLayout::Grid { .. } => vec!["row", "column"],
         }
     }

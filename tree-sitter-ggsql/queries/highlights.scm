@@ -57,7 +57,7 @@
   "fontface"
   "hjust"
   "vjust"
-  "facet"
+  "panel"
   "row"
   "column"
 ] @attribute

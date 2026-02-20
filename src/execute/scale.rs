@@ -1175,11 +1175,28 @@ pub fn apply_oob_to_column_numeric(
                 .map(|opt| opt.map(|v| v.clamp(range_min, range_max)))
                 .collect();
 
+            // Restore temporal type if original column was temporal
+            // This ensures Date/DateTime/Time values serialize to ISO strings in JSON
+            let original_dtype = series.dtype().clone();
+            let clamped_series = clamped.into_series();
+
+            let restored_series = match &original_dtype {
+                DataType::Date | DataType::Datetime(_, _) | DataType::Time => {
+                    clamped_series.cast(&original_dtype).map_err(|e| {
+                        GgsqlError::InternalError(format!(
+                            "Failed to restore temporal type for '{}': {}",
+                            col_name, e
+                        ))
+                    })?
+                }
+                _ => clamped_series,
+            };
+
             // Replace column with clamped values, maintaining original name
-            let clamped_series = clamped.into_series().with_name(col_name.into());
+            let named_series = restored_series.with_name(col_name.into());
 
             df.clone()
-                .with_column(clamped_series)
+                .with_column(named_series)
                 .map(|df| df.clone())
                 .map_err(|e| GgsqlError::InternalError(format!("Failed to replace column: {}", e)))
         }

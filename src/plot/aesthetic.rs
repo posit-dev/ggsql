@@ -39,10 +39,10 @@ pub const AESTHETIC_FAMILIES: &[(&str, &str)] = &[
 /// Facet aesthetics (for creating small multiples)
 ///
 /// These aesthetics control faceting layout:
-/// - `facet`: Single variable faceting (wrap layout)
+/// - `panel`: Single variable faceting (wrap layout)
 /// - `row`: Row variable for grid faceting
 /// - `column`: Column variable for grid faceting
-pub const FACET_AESTHETICS: &[&str] = &["facet", "row", "column"];
+pub const FACET_AESTHETICS: &[&str] = &["panel", "row", "column"];
 
 /// Non-positional aesthetics (visual properties shown in legends or applied to marks)
 ///
@@ -76,7 +76,7 @@ pub fn is_primary_positional(aesthetic: &str) -> bool {
     PRIMARY_POSITIONAL.contains(&aesthetic)
 }
 
-/// Check if aesthetic is a facet aesthetic (facet, row, column)
+/// Check if aesthetic is a facet aesthetic (panel, row, column)
 ///
 /// Facet aesthetics control the creation of small multiples (faceted plots).
 /// They only support Discrete and Binned scale types, and cannot have output ranges (TO clause).
@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn test_facet_aesthetic() {
-        assert!(is_facet_aesthetic("facet"));
+        assert!(is_facet_aesthetic("panel"));
         assert!(is_facet_aesthetic("row"));
         assert!(is_facet_aesthetic("column"));
         assert!(!is_facet_aesthetic("x"));

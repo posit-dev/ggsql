@@ -649,7 +649,7 @@ module.exports = grammar({
       // Text aesthetics
       'label', 'family', 'fontface', 'hjust', 'vjust',
       // Facet aesthetics
-      'facet', 'row', 'column',
+      'panel', 'row', 'column',
       // Computed variables
       'offset'
     ),

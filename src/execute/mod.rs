@@ -163,7 +163,7 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             // 1. First merge explicit global aesthetics (layer overrides global)
             // Note: "color"/"colour" are accepted even though not in supported,
             // because split_color_aesthetic will convert them to fill/stroke later
-            // Note: facet aesthetics (facet, row, column) are also accepted,
+            // Note: facet aesthetics (panel, row, column) are also accepted,
             // as they apply to all layers regardless of geom support
             for (aesthetic, value) in &spec.global_mappings.aesthetics {
                 let is_color_alias = matches!(aesthetic.as_str(), "color" | "colour");
@@ -539,7 +539,7 @@ fn handle_missing_facet_columns(
 ///
 /// Logic:
 /// 1. Collect all facet aesthetic mappings from layers (after global merge)
-/// 2. Validate no conflicting layout types (cannot mix 'facet' with 'row'/'column')
+/// 2. Validate no conflicting layout types (cannot mix 'panel' with 'row'/'column')
 /// 3. Validate Grid layout has both 'row' and 'column' if either is used
 /// 4. If FACET clause exists:
 ///    - Validate layer mappings are compatible with layout type
@@ -566,7 +566,7 @@ fn resolve_facet(
         for aesthetic in layer.mappings.aesthetics.keys() {
             if is_facet_aesthetic(aesthetic) {
                 match aesthetic.as_str() {
-                    "facet" => has_facet = true,
+                    "panel" => has_facet = true,
                     "row" => has_row = true,
                     "column" => has_column = true,
                     _ => {}
@@ -575,11 +575,11 @@ fn resolve_facet(
         }
     }
 
-    // Validate: cannot mix Wrap (facet) with Grid (row/column)
+    // Validate: cannot mix Wrap (panel) with Grid (row/column)
     if has_facet && (has_row || has_column) {
         return Err(GgsqlError::ValidationError(
-            "Cannot mix 'facet' aesthetic (Wrap layout) with 'row'/'column' aesthetics (Grid layout). \
-             Use either 'facet' for Wrap or 'row'/'column' for Grid.".to_string()
+            "Cannot mix 'panel' aesthetic (Wrap layout) with 'row'/'column' aesthetics (Grid layout). \
+             Use either 'panel' for Wrap or 'row'/'column' for Grid.".to_string()
         ));
     }
 
@@ -618,13 +618,13 @@ fn resolve_facet(
         if is_wrap && (has_row || has_column) {
             return Err(GgsqlError::ValidationError(
                 "FACET clause uses Wrap layout, but layer mappings use 'row'/'column' (Grid layout). \
-                 Remove FACET clause to infer Grid layout, or use 'facet' aesthetic instead.".to_string()
+                 Remove FACET clause to infer Grid layout, or use 'panel' aesthetic instead.".to_string()
             ));
         }
 
         if !is_wrap && has_facet {
             return Err(GgsqlError::ValidationError(
-                "FACET clause uses Grid layout, but layer mappings use 'facet' aesthetic (Wrap layout). \
+                "FACET clause uses Grid layout, but layer mappings use 'panel' aesthetic (Wrap layout). \
                  Remove FACET clause to infer Wrap layout, or use 'row'/'column' aesthetics instead.".to_string()
             ));
         }
@@ -764,7 +764,7 @@ fn collect_layer_required_columns(layer: &Layer, spec: &Plot) -> HashSet<String>
     // Facet aesthetic columns (shared across all layers)
     // Only the aesthetic-prefixed columns are needed for Vega-Lite output.
     // The original variable names (e.g., "species") are not needed after
-    // the aesthetic columns (e.g., "__ggsql_aes_facet__") have been created.
+    // the aesthetic columns (e.g., "__ggsql_aes_panel__") have been created.
     if let Some(ref facet) = spec.facet {
         for aesthetic in facet.layout.get_aesthetics() {
             required.insert(naming::aesthetic_column(aesthetic));
@@ -978,7 +978,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     specs[0].facet = resolve_facet(&specs[0].layers, specs[0].facet.clone())?;
 
     // Inject facet variable mappings into layers (only for missing aesthetics)
-    // This allows facet aesthetics (facet, row, column) to flow through the same
+    // This allows facet aesthetics (panel, row, column) to flow through the same
     // code paths as regular aesthetics - scale creation, type resolution, etc.
     if let Some(facet) = specs[0].facet.clone() {
         add_facet_mappings_to_layers(&mut specs[0].layers, &facet, &layer_type_info);
@@ -1686,7 +1686,7 @@ mod tests {
 
         #[test]
         fn test_resolve_facet_infers_wrap_from_layer_mapping() {
-            let layers = vec![make_layer_with_mapping("facet", "region")];
+            let layers = vec![make_layer_with_mapping("panel", "region")];
 
             let result = resolve_facet(&layers, None).unwrap();
 
@@ -1723,7 +1723,7 @@ mod tests {
         fn test_resolve_facet_error_mixed_wrap_and_grid() {
             let mut layer = Layer::new(Geom::point());
             layer.mappings.aesthetics.insert(
-                "facet".to_string(),
+                "panel".to_string(),
                 AestheticValue::standard_column("region"),
             );
             layer
@@ -1737,7 +1737,7 @@ mod tests {
             assert!(result.is_err());
             let err = result.unwrap_err().to_string();
             assert!(err.contains("Cannot mix"));
-            assert!(err.contains("facet"));
+            assert!(err.contains("panel"));
             assert!(err.contains("row"));
         }
 
@@ -1797,7 +1797,7 @@ mod tests {
 
         #[test]
         fn test_resolve_facet_error_grid_clause_with_wrap_mapping() {
-            let layers = vec![make_layer_with_mapping("facet", "region")];
+            let layers = vec![make_layer_with_mapping("panel", "region")];
 
             let existing_facet = Facet::new(FacetLayout::Grid {
                 row: vec!["region".to_string()],
@@ -1809,7 +1809,7 @@ mod tests {
             assert!(result.is_err());
             let err = result.unwrap_err().to_string();
             assert!(err.contains("Grid layout"));
-            assert!(err.contains("facet"));
+            assert!(err.contains("panel"));
         }
 
         #[test]
@@ -1823,8 +1823,8 @@ mod tests {
 
         #[test]
         fn test_resolve_facet_layer_override_compatible_with_clause() {
-            // Layer has facet mapping, FACET clause is Wrap - compatible
-            let layers = vec![make_layer_with_mapping("facet", "category")];
+            // Layer has panel mapping, FACET clause is Wrap - compatible
+            let layers = vec![make_layer_with_mapping("panel", "category")];
 
             let existing_facet = Facet::new(FacetLayout::Wrap {
                 variables: vec!["region".to_string()],
@@ -1852,11 +1852,11 @@ mod tests {
             )
             .unwrap();
 
-        // Use facet aesthetic in layer mapping (not FACET clause)
+        // Use panel aesthetic in layer mapping (not FACET clause)
         let query = r#"
             SELECT * FROM facet_test
             VISUALISE
-            DRAW point MAPPING x AS x, y AS y, region AS facet
+            DRAW point MAPPING x AS x, y AS y, region AS panel
         "#;
 
         let result = prepare_data_with_reader(query, &reader).unwrap();
@@ -1866,9 +1866,9 @@ mod tests {
         let facet = result.specs[0].facet.as_ref().unwrap();
         assert!(facet.is_wrap());
 
-        // Data should have facet aesthetic column
+        // Data should have panel aesthetic column
         let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
-        let facet_col = naming::aesthetic_column("facet");
+        let facet_col = naming::aesthetic_column("panel");
         assert!(
             layer_df.column(&facet_col).is_ok(),
             "Should have '{}' column: {:?}",
@@ -1938,10 +1938,10 @@ mod tests {
             )
             .unwrap();
 
-        // Use facet aesthetic in global VISUALISE mapping
+        // Use panel aesthetic in global VISUALISE mapping
         let query = r#"
             SELECT * FROM global_facet_test
-            VISUALISE region AS facet
+            VISUALISE region AS panel
             DRAW point MAPPING x AS x, y AS y
         "#;
 
@@ -1972,14 +1972,14 @@ mod tests {
             SELECT * FROM override_test
             VISUALISE
             FACET region
-            DRAW point MAPPING x AS x, y AS y, category AS facet
+            DRAW point MAPPING x AS x, y AS y, category AS panel
         "#;
 
         let result = prepare_data_with_reader(query, &reader).unwrap();
 
         // Should succeed - layer mapping overrides FACET clause
         let layer = &result.specs[0].layers[0];
-        let facet_mapping = layer.mappings.aesthetics.get("facet").unwrap();
+        let facet_mapping = layer.mappings.aesthetics.get("panel").unwrap();
         // Use label_name() which returns original column name before internal renaming
         assert_eq!(
             facet_mapping.label_name(),
@@ -2047,11 +2047,11 @@ mod tests {
             "ref layer should be repeated for each facet panel (A and B)"
         );
 
-        // The facet column should exist in the ref_data
-        let facet_col = naming::aesthetic_column("facet");
+        // The panel column should exist in the ref_data
+        let facet_col = naming::aesthetic_column("panel");
         assert!(
             ref_df.column(&facet_col).is_ok(),
-            "ref data should have facet column after broadcast"
+            "ref data should have panel column after broadcast"
         );
     }
 

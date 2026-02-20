@@ -10,15 +10,20 @@ use serde_json::{json, Value};
 
 /// Apply coordinate transformations to the spec and data
 /// Returns (possibly transformed DataFrame, possibly modified spec)
+///
+/// The `free_x` and `free_y` flags indicate whether facet free scales are enabled.
+/// When true, axis limits (xlim/ylim) should not be applied for that axis.
 pub(super) fn apply_coord_transforms(
     spec: &Plot,
     data: &DataFrame,
     vl_spec: &mut Value,
+    free_x: bool,
+    free_y: bool,
 ) -> Result<Option<DataFrame>> {
     if let Some(ref coord) = spec.coord {
         match coord.coord_type {
             CoordType::Cartesian => {
-                apply_cartesian_coord(coord, vl_spec)?;
+                apply_cartesian_coord(coord, vl_spec, free_x, free_y)?;
                 Ok(None) // No DataFrame transformation needed
             }
             CoordType::Flip => {
@@ -41,18 +46,32 @@ pub(super) fn apply_coord_transforms(
 }
 
 /// Apply Cartesian coordinate properties (xlim, ylim, aesthetic domains)
-fn apply_cartesian_coord(coord: &Coord, vl_spec: &mut Value) -> Result<()> {
+///
+/// The `free_x` and `free_y` flags indicate whether facet free scales are enabled.
+/// When true, axis limits (xlim/ylim) should not be applied for that axis.
+fn apply_cartesian_coord(
+    coord: &Coord,
+    vl_spec: &mut Value,
+    free_x: bool,
+    free_y: bool,
+) -> Result<()> {
     // Apply xlim/ylim to scale domains
     for (prop_name, prop_value) in &coord.properties {
         match prop_name.as_str() {
             "xlim" => {
-                if let Some(limits) = extract_limits(prop_value)? {
-                    apply_axis_limits(vl_spec, "x", limits)?;
+                // Skip if facet has free x scale - let Vega-Lite compute independent domains
+                if !free_x {
+                    if let Some(limits) = extract_limits(prop_value)? {
+                        apply_axis_limits(vl_spec, "x", limits)?;
+                    }
                 }
             }
             "ylim" => {
-                if let Some(limits) = extract_limits(prop_value)? {
-                    apply_axis_limits(vl_spec, "y", limits)?;
+                // Skip if facet has free y scale - let Vega-Lite compute independent domains
+                if !free_y {
+                    if let Some(limits) = extract_limits(prop_value)? {
+                        apply_axis_limits(vl_spec, "y", limits)?;
+                    }
                 }
             }
             _ if is_aesthetic_name(prop_name) => {
