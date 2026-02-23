@@ -385,22 +385,6 @@ impl TextRenderer {
             .map_err(|e| GgsqlError::WriterError(e.to_string()))
     }
 
-    /// Finalize layers from font groups (handles both single and multi-group cases)
-    fn finalize_layers(
-        &self,
-        prototype: Value,
-        data_key: &str,
-        font_groups: &[(FontKey, Vec<usize>)],
-    ) -> Result<Vec<Value>> {
-        // Single group: return as-is with full encoding
-        if font_groups.len() == 1 {
-            return self.finalize_single_layer(prototype, data_key, &font_groups[0]);
-        }
-
-        // Multiple groups: wrap in nested layer with shared encoding
-        self.finalize_nested_layers(prototype, data_key, font_groups)
-    }
-
     /// Apply font properties to mark object
     fn apply_font_properties(mark_obj: &mut Map<String, Value>, font_key: &FontKey) {
         let (family_val, font_weight_val, font_style_val, hjust_val, vjust_val) = font_key;
@@ -437,29 +421,7 @@ impl TextRenderer {
         new_transforms
     }
 
-    /// Finalize a single layer (no nesting needed)
-    fn finalize_single_layer(
-        &self,
-        prototype: Value,
-        data_key: &str,
-        (font_key, _indices): &(FontKey, Vec<usize>),
-    ) -> Result<Vec<Value>> {
-        let mut layer_spec = prototype.clone();
-
-        // Apply font properties to mark
-        if let Some(mark) = layer_spec.get_mut("mark") {
-            if let Some(mark_obj) = mark.as_object_mut() {
-                Self::apply_font_properties(mark_obj, font_key);
-            }
-        }
-
-        // Add source filter
-        layer_spec["transform"] = json!(Self::build_transform_with_filter(&prototype, data_key));
-
-        Ok(vec![layer_spec])
-    }
-
-    /// Finalize multiple layers as nested layer with shared encoding
+    /// Finalize layers as nested layer with shared encoding (works for single or multiple groups)
     fn finalize_nested_layers(
         &self,
         prototype: Value,
@@ -470,30 +432,27 @@ impl TextRenderer {
         let shared_encoding = prototype.get("encoding").cloned();
 
         // Build individual layers without encoding (mark + transform only)
-        let mut layer_tuples: Vec<(usize, Value)> = Vec::new();
+        // font_groups is already sorted by first occurrence, so no need to re-sort
+        let nested_layers: Vec<Value> = font_groups
+            .iter()
+            .enumerate()
+            .map(|(group_idx, (font_key, _indices))| {
+                let suffix = format!("_font_{}", group_idx);
+                let source_key = format!("{}{}", data_key, suffix);
 
-        for (group_idx, (font_key, indices)) in font_groups.iter().enumerate() {
-            let suffix = format!("_font_{}", group_idx);
-            let source_key = format!("{}{}", data_key, suffix);
+                // Create mark object with font properties
+                let mut mark_obj = json!({"type": "text"});
+                if let Some(mark_map) = mark_obj.as_object_mut() {
+                    Self::apply_font_properties(mark_map, font_key);
+                }
 
-            // Create mark object with font properties
-            let mut mark_obj = json!({"type": "text"});
-            if let Some(mark_map) = mark_obj.as_object_mut() {
-                Self::apply_font_properties(mark_map, font_key);
-            }
-
-            // Create layer with mark and transform (no encoding)
-            let layer = json!({
-                "mark": mark_obj,
-                "transform": Self::build_transform_with_filter(&prototype, &source_key)
-            });
-
-            layer_tuples.push((indices[0], layer));
-        }
-
-        // Sort by first index
-        layer_tuples.sort_by_key(|(idx, _)| *idx);
-        let nested_layers: Vec<Value> = layer_tuples.into_iter().map(|(_, spec)| spec).collect();
+                // Create layer with mark and transform (no encoding)
+                json!({
+                    "mark": mark_obj,
+                    "transform": Self::build_transform_with_filter(&prototype, &source_key)
+                })
+            })
+            .collect();
 
         // Wrap in parent spec with shared encoding
         let mut parent_spec = json!({"layer": nested_layers});
@@ -520,13 +479,7 @@ impl GeomRenderer for TextRenderer {
         let mut components: HashMap<String, Vec<Value>> = HashMap::new();
 
         for (group_idx, (_font_key, row_indices)) in font_groups.iter().enumerate() {
-            // For single-group case (all constant), use empty suffix
-            // For multi-group case, use _font_N suffix
-            let suffix = if font_groups.len() == 1 {
-                String::new()
-            } else {
-                format!("_font_{}", group_idx)
-            };
+            let suffix = format!("_font_{}", group_idx);
 
             let filtered = Self::filter_by_indices(df, row_indices)?;
             let values = if binned_columns.is_empty() {
@@ -586,8 +539,8 @@ impl GeomRenderer for TextRenderer {
                 GgsqlError::InternalError("Failed to downcast font groups".to_string())
             })?;
 
-        // Generate layers from font groups
-        self.finalize_layers(prototype, data_key, font_groups)
+        // Generate nested layers from font groups (works for single or multiple groups)
+        self.finalize_nested_layers(prototype, data_key, font_groups)
     }
 }
 
@@ -1298,14 +1251,14 @@ mod tests {
         }
         .unwrap();
 
-        // Prepare data - should result in single layer with empty component key
+        // Prepare data - should result in single layer with _font_0 component key
         let prepared = renderer.prepare_data(&df, "test", &HashMap::new()).unwrap();
 
         match prepared {
             PreparedData::Composite { components, .. } => {
-                // Should have single component with empty key
+                // Should have single component with _font_0 key
                 assert_eq!(components.len(), 1);
-                assert!(components.contains_key(""));
+                assert!(components.contains_key("_font_0"));
             }
             _ => panic!("Expected Composite"),
         }
