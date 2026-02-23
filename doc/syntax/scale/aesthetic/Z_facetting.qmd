@@ -16,7 +16,7 @@ Since panels are discrete by nature it is not possible to have a continuous scal
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 FACET Date 
-    SETTING scales => 'free_x'
+    SETTING free => 'x'
 SCALE panel
     SETTING breaks => 'month'
 SCALE x 
