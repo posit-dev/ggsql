@@ -493,6 +493,15 @@ impl GeomRenderer for TextRenderer {
         for &aesthetic in &["family", "fontface", "hjust", "vjust"] {
             encoding.remove(aesthetic);
         }
+
+        // Suppress legend and scale for text encoding
+        if let Some(text_encoding) = encoding.get_mut("text") {
+            if let Some(text_obj) = text_encoding.as_object_mut() {
+                text_obj.insert("legend".to_string(), Value::Null);
+                text_obj.insert("scale".to_string(), Value::Null);
+            }
+        }
+
         Ok(())
     }
 
