@@ -228,16 +228,8 @@ impl GeomRenderer for PathRenderer {
 
 /// Strategy for handling font properties in text layers
 struct FontStrategy {
-    groups: Vec<FontGroup>,
-    common_properties: HashMap<String, Value>,
-}
-
-/// A group of rows with identical font property values
-struct FontGroup {
-    /// Mark properties for this group
-    properties: HashMap<String, Value>,
-    /// Row indices belonging to this group
-    row_indices: Vec<usize>,
+    /// Each group is (properties, row_indices). Properties include both constant and varying values.
+    groups: Vec<(HashMap<String, Value>, Vec<usize>)>,
 }
 
 /// Renderer for text geom - handles font properties via data splitting
@@ -278,21 +270,12 @@ impl TextRenderer {
         if varying_columns.is_empty() {
             // All constant or not present → single group with all rows
             let all_indices: Vec<usize> = (0..df.height()).collect();
-            let groups = vec![FontGroup {
-                properties: constant_values.clone(),
-                row_indices: all_indices,
-            }];
-            Ok(FontStrategy {
-                groups,
-                common_properties: HashMap::new(), // All properties in the group
-            })
+            let groups = vec![(constant_values.clone(), all_indices)];
+            Ok(FontStrategy { groups })
         } else {
             // Some varying → multi-layer
             let groups = Self::build_font_groups_from_df(df, &varying_columns, &constant_values)?;
-            Ok(FontStrategy {
-                groups,
-                common_properties: constant_values,
-            })
+            Ok(FontStrategy { groups })
         }
     }
 
@@ -301,12 +284,11 @@ impl TextRenderer {
         data: &DataFrame,
         varying: &[(String, String)], // (aesthetic, column_name)
         constant: &HashMap<String, Value>,
-    ) -> Result<Vec<FontGroup>> {
+    ) -> Result<Vec<(HashMap<String, Value>, Vec<usize>)>> {
         use polars::prelude::{ChunkedArray, StringType};
 
         let nrows = data.height();
-        let mut groups: Vec<FontGroup> = Vec::new();
-        let mut signature_to_idx: HashMap<String, usize> = HashMap::new();
+        let mut groups_map: HashMap<String, (HashMap<String, Value>, Vec<usize>)> = HashMap::new();
 
         // Pre-fetch all varying font columns
         let font_columns: Vec<(String, ChunkedArray<StringType>)> = varying
@@ -323,7 +305,7 @@ impl TextRenderer {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        // Iterate rows and assign to groups
+        // Iterate rows and build groups
         for row_idx in 0..nrows {
             // Build signature for this row
             let mut sig_parts: Vec<String> = Vec::new();
@@ -340,18 +322,20 @@ impl TextRenderer {
 
             let signature = sig_parts.join("|");
 
-            // Add to existing group or create new group
-            if let Some(&group_idx) = signature_to_idx.get(&signature) {
-                groups[group_idx].row_indices.push(row_idx);
-            } else {
-                let group_idx = groups.len();
-                signature_to_idx.insert(signature.clone(), group_idx);
-                groups.push(FontGroup {
-                    properties,
-                    row_indices: vec![row_idx],
-                });
-            }
+            // Add to existing group or create new entry
+            groups_map
+                .entry(signature)
+                .or_insert_with(|| (properties.clone(), Vec::new()))
+                .1
+                .push(row_idx);
         }
+
+        // Convert to Vec and sort by first occurrence
+        let mut groups: Vec<(HashMap<String, Value>, Vec<usize>)> = groups_map
+            .into_values()
+            .collect();
+
+        groups.sort_by_key(|(_, indices)| indices[0]);
 
         Ok(groups)
     }
@@ -450,12 +434,11 @@ impl TextRenderer {
         &self,
         prototype: Value,
         data_key: &str,
-        groups: &[FontGroup],
-        common_properties: &HashMap<String, Value>,
+        groups: &[(HashMap<String, Value>, Vec<usize>)],
     ) -> Result<Vec<Value>> {
         let mut layers = Vec::new();
 
-        for (group_idx, group) in groups.iter().enumerate() {
+        for (group_idx, (properties, _indices)) in groups.iter().enumerate() {
             let mut layer_spec = prototype.clone();
             // For single-group case (all constant), use empty suffix
             // For multi-group case, use _font_N suffix
@@ -466,17 +449,10 @@ impl TextRenderer {
             };
             let source_key = format!("{}{}", data_key, suffix);
 
-            // Apply mark properties (common + group-specific)
+            // Apply mark properties
             if let Some(mark) = layer_spec.get_mut("mark") {
                 if let Some(mark_obj) = mark.as_object_mut() {
-                    // Apply common properties first
-                    for (aesthetic, value) in common_properties {
-                        let vl_key = Self::map_aesthetic_to_mark_property(aesthetic);
-                        Self::apply_mark_property(mark_obj, vl_key, value);
-                    }
-
-                    // Apply group-specific properties (override common if needed)
-                    for (aesthetic, value) in &group.properties {
+                    for (aesthetic, value) in properties {
                         let vl_key = Self::map_aesthetic_to_mark_property(aesthetic);
                         Self::apply_mark_property(mark_obj, vl_key, value);
                     }
@@ -521,7 +497,7 @@ impl GeomRenderer for TextRenderer {
         // Split data by groups (even if just 1 group for constant fonts)
         let mut components: HashMap<String, Vec<Value>> = HashMap::new();
 
-        for (group_idx, group) in strategy.groups.iter().enumerate() {
+        for (group_idx, (_properties, row_indices)) in strategy.groups.iter().enumerate() {
             // For single-group case (all constant), use empty suffix
             // For multi-group case, use _font_N suffix
             let suffix = if strategy.groups.len() == 1 {
@@ -530,7 +506,7 @@ impl GeomRenderer for TextRenderer {
                 format!("_font_{}", group_idx)
             };
 
-            let filtered = Self::filter_by_indices(df, &group.row_indices)?;
+            let filtered = Self::filter_by_indices(df, row_indices)?;
             let values = if binned_columns.is_empty() {
                 dataframe_to_values(&filtered)?
             } else {
@@ -578,7 +554,7 @@ impl GeomRenderer for TextRenderer {
         })?;
 
         // Generate layers from groups (1 group = single layer, N groups = N layers)
-        self.finalize_layers(prototype, data_key, &strategy.groups, &strategy.common_properties)
+        self.finalize_layers(prototype, data_key, &strategy.groups)
     }
 }
 
