@@ -4,7 +4,7 @@
 //! that modify the Vega-Lite spec structure based on the PROJECT clause.
 
 use crate::plot::aesthetic::is_aesthetic_name;
-use crate::plot::{ParameterValue, Project, ProjectType};
+use crate::plot::{Coord, ParameterValue, Projection};
 use crate::{DataFrame, GgsqlError, Plot, Result};
 use serde_json::{json, Value};
 
@@ -16,22 +16,22 @@ pub(super) fn apply_project_transforms(
     vl_spec: &mut Value,
 ) -> Result<Option<DataFrame>> {
     if let Some(ref project) = spec.project {
-        match project.project_type {
-            ProjectType::Cartesian => {
+        match project.coord {
+            Coord::Cartesian => {
                 apply_cartesian_project(project, vl_spec)?;
                 Ok(None) // No DataFrame transformation needed
             }
-            ProjectType::Flip => {
+            Coord::Flip => {
                 apply_flip_project(vl_spec)?;
                 Ok(None) // No DataFrame transformation needed
             }
-            ProjectType::Polar => {
+            Coord::Polar => {
                 // Polar requires DataFrame transformation for percentages
                 let transformed_df = apply_polar_project(project, spec, data, vl_spec)?;
                 Ok(Some(transformed_df))
             }
             _ => {
-                // Other project types not yet implemented
+                // Other coord types not yet implemented
                 Ok(None)
             }
         }
@@ -41,7 +41,7 @@ pub(super) fn apply_project_transforms(
 }
 
 /// Apply Cartesian projection properties (xlim, ylim, aesthetic domains)
-fn apply_cartesian_project(project: &Project, vl_spec: &mut Value) -> Result<()> {
+fn apply_cartesian_project(project: &Projection, vl_spec: &mut Value) -> Result<()> {
     // Apply xlim/ylim to scale domains
     for (prop_name, prop_value) in &project.properties {
         match prop_name.as_str() {
@@ -92,7 +92,7 @@ fn apply_flip_project(vl_spec: &mut Value) -> Result<()> {
 
 /// Apply Polar projection transformation (bar->arc, point->arc with radius)
 fn apply_polar_project(
-    project: &Project,
+    project: &Projection,
     spec: &Plot,
     data: &DataFrame,
     vl_spec: &mut Value,

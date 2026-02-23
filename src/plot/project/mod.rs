@@ -4,4 +4,4 @@
 
 mod types;
 
-pub use types::{Project, ProjectType};
+pub use types::{Coord, Projection};

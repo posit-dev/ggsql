@@ -649,7 +649,9 @@ module.exports = grammar({
       // Text aesthetics
       'label', 'family', 'fontface', 'hjust', 'vjust',
       // Computed variables
-      'offset'
+      'offset',
+      // Facet aesthetics
+      'panel'
     ),
 
     column_reference: $ => $.identifier,
@@ -691,7 +693,8 @@ module.exports = grammar({
       field('name', choice(
         '*',                              // Wildcard for template
         $.string,
-        $.number
+        $.number,
+        $.null_literal                    // NULL for renaming null values
       )),
       '=>',
       field('value', choice($.string, $.null_literal))  // String label or NULL to suppress
@@ -741,6 +744,12 @@ module.exports = grammar({
       seq(
         caseInsensitive('FACET'),
         alias(caseInsensitive('WRAP'), $.facet_wrap),
+        $.facet_vars,
+        optional(seq(caseInsensitive('SETTING'), caseInsensitive('scales'), '=>', $.facet_scales))
+      ),
+      // FACET vars (shorthand for FACET WRAP vars)
+      seq(
+        caseInsensitive('FACET'),
         $.facet_vars,
         optional(seq(caseInsensitive('SETTING'), caseInsensitive('scales'), '=>', $.facet_scales))
       )

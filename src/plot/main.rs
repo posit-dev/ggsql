@@ -13,7 +13,7 @@
 //! ├─ layers: Vec<Layer>             (1+ LayerNode, one per DRAW clause)
 //! ├─ scales: Vec<Scale>             (0+ ScaleNode, one per SCALE clause)
 //! ├─ facet: Option<Facet>           (optional, from FACET clause)
-//! ├─ project: Option<Project>       (optional, from PROJECT clause)
+//! ├─ project: Option<Projection>    (optional, from PROJECT clause)
 //! ├─ labels: Option<Labels>         (optional, merged from LABEL clauses)
 //! └─ theme: Option<Theme>           (optional, from THEME clause)
 //! ```
@@ -41,8 +41,8 @@ pub use super::layer::Layer;
 // Re-export Scale types from the scale module
 pub use super::scale::{Scale, ScaleType};
 
-// Re-export Project types from the project module
-pub use super::project::{Project, ProjectType};
+// Re-export Projection types from the project module
+pub use super::project::{Coord, Projection};
 
 // Re-export Facet types from the facet module
 pub use super::facet::{Facet, FacetScales};
@@ -61,7 +61,7 @@ pub struct Plot {
     /// Faceting specification (from FACET clause)
     pub facet: Option<Facet>,
     /// Projection (from PROJECT clause)
-    pub project: Option<Project>,
+    pub project: Option<Projection>,
     /// Text labels (merged from all LABEL clauses)
     pub labels: Option<Labels>,
     /// Theme styling (from THEME clause)

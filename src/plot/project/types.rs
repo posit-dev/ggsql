@@ -9,16 +9,16 @@ use super::super::types::ParameterValue;
 
 /// Projection (from PROJECT clause)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Project {
-    /// Projection type
-    pub project_type: ProjectType,
+pub struct Projection {
+    /// Coordinate system type
+    pub coord: Coord,
     /// Projection-specific options
     pub properties: HashMap<String, ParameterValue>,
 }
 
-/// Projection types
+/// Coordinate system types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ProjectType {
+pub enum Coord {
     Cartesian,
     Polar,
     Flip,

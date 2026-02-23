@@ -778,6 +778,7 @@ fn parse_scale_renaming_clause(
             "*" => "*".to_string(),
             "string" => parse_string_node(&name_node, source),
             "number" => source.get_text(&name_node),
+            "null_literal" => "null".to_string(), // null key for renaming null values
             _ => {
                 return Err(GgsqlError::ParseError(format!(
                     "Invalid 'from' type in scale renaming: {}",
@@ -892,9 +893,9 @@ fn parse_facet_scales(node: &Node, source: &SourceTree) -> Result<FacetScales> {
 // Project Building
 // ============================================================================
 
-/// Build a Project from a project_clause node
-fn build_project(node: &Node, source: &SourceTree) -> Result<Project> {
-    let mut project_type = ProjectType::Cartesian;
+/// Build a Projection from a project_clause node
+fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
+    let mut coord = Coord::Cartesian;
     let mut properties = HashMap::new();
 
     let mut cursor = node.walk();
@@ -902,7 +903,7 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Project> {
         match child.kind() {
             "PROJECT" | "SETTING" | "=>" | "," => continue,
             "project_type" => {
-                project_type = parse_project_type(&child, source)?;
+                coord = parse_coord(&child, source)?;
             }
             "project_properties" => {
                 // Find all project_property nodes
@@ -918,11 +919,11 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Project> {
         }
     }
 
-    // Validate properties for this project type
-    validate_project_properties(&project_type, &properties)?;
+    // Validate properties for this coord type
+    validate_project_properties(&coord, &properties)?;
 
-    Ok(Project {
-        project_type,
+    Ok(Projection {
+        coord,
         properties,
     })
 }
@@ -958,44 +959,44 @@ fn parse_single_project_property(
     Ok((prop_name, prop_value))
 }
 
-/// Validate that properties are valid for the given project type
+/// Validate that properties are valid for the given coord type
 fn validate_project_properties(
-    project_type: &ProjectType,
+    coord: &Coord,
     properties: &HashMap<String, ParameterValue>,
 ) -> Result<()> {
     for prop_name in properties.keys() {
-        let valid = match project_type {
-            ProjectType::Cartesian => {
+        let valid = match coord {
+            Coord::Cartesian => {
                 // Cartesian allows: xlim, ylim, aesthetic names
                 // Not allowed: theta
                 prop_name == "xlim" || prop_name == "ylim" || is_aesthetic_name(prop_name)
             }
-            ProjectType::Flip => {
+            Coord::Flip => {
                 // Flip allows: aesthetic names only
                 // Not allowed: xlim, ylim, theta
                 is_aesthetic_name(prop_name)
             }
-            ProjectType::Polar => {
+            Coord::Polar => {
                 // Polar allows: theta, aesthetic names
                 // Not allowed: xlim, ylim
                 prop_name == "theta" || is_aesthetic_name(prop_name)
             }
             _ => {
-                // Other project types: allow all for now (future implementation)
+                // Other coord types: allow all for now (future implementation)
                 true
             }
         };
 
         if !valid {
-            let valid_props = match project_type {
-                ProjectType::Cartesian => "xlim, ylim, <aesthetics>",
-                ProjectType::Flip => "<aesthetics>",
-                ProjectType::Polar => "theta, <aesthetics>",
+            let valid_props = match coord {
+                Coord::Cartesian => "xlim, ylim, <aesthetics>",
+                Coord::Flip => "<aesthetics>",
+                Coord::Polar => "theta, <aesthetics>",
                 _ => "<varies>",
             };
             return Err(GgsqlError::ParseError(format!(
                 "Property '{}' not valid for {:?} projection. Valid properties: {}",
-                prop_name, project_type, valid_props
+                prop_name, coord, valid_props
             )));
         }
     }
@@ -1003,19 +1004,19 @@ fn validate_project_properties(
     Ok(())
 }
 
-/// Parse project type from a project_type node
-fn parse_project_type(node: &Node, source: &SourceTree) -> Result<ProjectType> {
+/// Parse coord type from a project_type node
+fn parse_coord(node: &Node, source: &SourceTree) -> Result<Coord> {
     let text = source.get_text(node);
     match text.to_lowercase().as_str() {
-        "cartesian" => Ok(ProjectType::Cartesian),
-        "polar" => Ok(ProjectType::Polar),
-        "flip" => Ok(ProjectType::Flip),
-        "fixed" => Ok(ProjectType::Fixed),
-        "trans" => Ok(ProjectType::Trans),
-        "map" => Ok(ProjectType::Map),
-        "quickmap" => Ok(ProjectType::QuickMap),
+        "cartesian" => Ok(Coord::Cartesian),
+        "polar" => Ok(Coord::Polar),
+        "flip" => Ok(Coord::Flip),
+        "fixed" => Ok(Coord::Fixed),
+        "trans" => Ok(Coord::Trans),
+        "map" => Ok(Coord::Map),
+        "quickmap" => Ok(Coord::QuickMap),
         _ => Err(GgsqlError::ParseError(format!(
-            "Unknown project type: {}",
+            "Unknown coord type: {}",
             text
         ))),
     }
@@ -1220,7 +1221,7 @@ mod tests {
         assert_eq!(specs.len(), 1);
 
         let project = specs[0].project.as_ref().unwrap();
-        assert_eq!(project.project_type, ProjectType::Cartesian);
+        assert_eq!(project.coord, Coord::Cartesian);
         assert!(project.properties.contains_key("xlim"));
     }
 
@@ -1285,7 +1286,7 @@ mod tests {
         let specs = result.unwrap();
 
         let project = specs[0].project.as_ref().unwrap();
-        assert_eq!(project.project_type, ProjectType::Flip);
+        assert_eq!(project.coord, Coord::Flip);
         assert!(project.properties.contains_key("color"));
     }
 
@@ -1350,7 +1351,7 @@ mod tests {
         let specs = result.unwrap();
 
         let project = specs[0].project.as_ref().unwrap();
-        assert_eq!(project.project_type, ProjectType::Polar);
+        assert_eq!(project.coord, Coord::Polar);
         assert!(project.properties.contains_key("theta"));
     }
 
