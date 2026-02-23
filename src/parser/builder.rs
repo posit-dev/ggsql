@@ -786,6 +786,7 @@ fn parse_scale_renaming_clause(
             "*" => "*".to_string(),
             "string" => parse_string_node(&name_node, source),
             "number" => source.get_text(&name_node),
+            "null_literal" => "null".to_string(), // null key for renaming null values
             _ => {
                 return Err(GgsqlError::ParseError(format!(
                     "Invalid 'from' type in scale renaming: {}",

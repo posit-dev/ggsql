@@ -522,12 +522,12 @@ fn apply_facet_scale_resolution(vl_spec: &mut Value, properties: &HashMap<String
         },
         ParameterValue::Array(arr) => {
             // Array means both x and y are free (already validated to be ['x', 'y'])
-            let has_x = arr.iter().any(|e| {
-                matches!(e, crate::plot::ArrayElement::String(s) if s == "x")
-            });
-            let has_y = arr.iter().any(|e| {
-                matches!(e, crate::plot::ArrayElement::String(s) if s == "y")
-            });
+            let has_x = arr
+                .iter()
+                .any(|e| matches!(e, crate::plot::ArrayElement::String(s) if s == "x"));
+            let has_y = arr
+                .iter()
+                .any(|e| matches!(e, crate::plot::ArrayElement::String(s) if s == "y"));
 
             if has_x && has_y {
                 vl_spec["resolve"] = json!({
@@ -937,12 +937,12 @@ impl Writer for VegaLiteWriter {
                     _ => (false, false),
                 },
                 Some(ParameterValue::Array(arr)) => {
-                    let has_x = arr.iter().any(|e| {
-                        matches!(e, crate::plot::ArrayElement::String(s) if s == "x")
-                    });
-                    let has_y = arr.iter().any(|e| {
-                        matches!(e, crate::plot::ArrayElement::String(s) if s == "y")
-                    });
+                    let has_x = arr
+                        .iter()
+                        .any(|e| matches!(e, crate::plot::ArrayElement::String(s) if s == "x"));
+                    let has_y = arr
+                        .iter()
+                        .any(|e| matches!(e, crate::plot::ArrayElement::String(s) if s == "y"));
                     (has_x, has_y)
                 }
                 // null or absent means fixed/shared scales
@@ -1847,10 +1847,7 @@ mod tests {
 
         // Add scale with explicit domain that should be skipped
         let mut x_scale = Scale::new("x");
-        x_scale.input_range = Some(vec![
-            ArrayElement::Number(0.0),
-            ArrayElement::Number(100.0),
-        ]);
+        x_scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         spec.scales.push(x_scale);
 
         let df = df! {
@@ -1910,10 +1907,7 @@ mod tests {
 
         // Add facet with free => 'y'
         let mut facet_properties = HashMap::new();
-        facet_properties.insert(
-            "free".to_string(),
-            ParameterValue::String("y".to_string()),
-        );
+        facet_properties.insert("free".to_string(), ParameterValue::String("y".to_string()));
         spec.facet = Some(Facet {
             layout: FacetLayout::Wrap {
                 variables: vec!["category".to_string()],
@@ -1924,17 +1918,11 @@ mod tests {
 
         // Add scales with explicit domains
         let mut x_scale = Scale::new("x");
-        x_scale.input_range = Some(vec![
-            ArrayElement::Number(0.0),
-            ArrayElement::Number(100.0),
-        ]);
+        x_scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         spec.scales.push(x_scale);
 
         let mut y_scale = Scale::new("y");
-        y_scale.input_range = Some(vec![
-            ArrayElement::Number(0.0),
-            ArrayElement::Number(50.0),
-        ]);
+        y_scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(50.0)]);
         spec.scales.push(y_scale);
 
         let df = df! {
@@ -2013,10 +2001,7 @@ mod tests {
 
         // Add scale with explicit domain
         let mut x_scale = Scale::new("x");
-        x_scale.input_range = Some(vec![
-            ArrayElement::Number(0.0),
-            ArrayElement::Number(100.0),
-        ]);
+        x_scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         spec.scales.push(x_scale);
 
         let df = df! {

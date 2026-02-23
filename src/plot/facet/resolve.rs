@@ -182,7 +182,9 @@ fn validate_free_property(facet: &Facet) -> Result<(), String> {
                 }
                 Ok(())
             }
-            _ => Err("'free' must be null, a string ('x' or 'y'), or an array ['x', 'y']".to_string()),
+            _ => Err(
+                "'free' must be null, a string ('x' or 'y'), or an array ['x', 'y']".to_string(),
+            ),
         }
     } else {
         Ok(())
@@ -562,10 +564,9 @@ mod tests {
     #[test]
     fn test_free_property_x_valid() {
         let mut facet = make_wrap_facet();
-        facet.properties.insert(
-            "free".to_string(),
-            ParameterValue::String("x".to_string()),
-        );
+        facet
+            .properties
+            .insert("free".to_string(), ParameterValue::String("x".to_string()));
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context);
@@ -575,10 +576,9 @@ mod tests {
     #[test]
     fn test_free_property_y_valid() {
         let mut facet = make_wrap_facet();
-        facet.properties.insert(
-            "free".to_string(),
-            ParameterValue::String("y".to_string()),
-        );
+        facet
+            .properties
+            .insert("free".to_string(), ParameterValue::String("y".to_string()));
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context);

@@ -693,7 +693,8 @@ module.exports = grammar({
       field('name', choice(
         '*',                              // Wildcard for template
         $.string,
-        $.number
+        $.number,
+        $.null_literal                    // NULL for renaming null values
       )),
       '=>',
       field('value', choice($.string, $.null_literal))  // String label or NULL to suppress
