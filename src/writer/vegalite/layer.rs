@@ -1341,4 +1341,78 @@ mod tests {
             _ => panic!("Expected Composite"),
         }
     }
+
+    #[test]
+    fn test_text_nested_layers_structure() {
+        use crate::naming;
+        use polars::prelude::*;
+
+        let renderer = TextRenderer;
+
+        // Create DataFrame with different fonts
+        let df = df! {
+            naming::aesthetic_column("x").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("y").as_str() => &[10.0, 20.0, 30.0],
+            naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
+            naming::aesthetic_column("family").as_str() => &["Arial", "Courier", "Arial"],
+            naming::aesthetic_column("fontface").as_str() => &["bold", "italic", "bold"],
+        }
+        .unwrap();
+
+        // Prepare data
+        let prepared = renderer.prepare_data(&df, "test", &HashMap::new()).unwrap();
+
+        // Get the components
+        let components = match &prepared {
+            PreparedData::Composite { components, .. } => components,
+            _ => panic!("Expected Composite"),
+        };
+
+        // Should have 3 components due to non-contiguous indices
+        // (Arial+bold at index 0, Courier+italic at index 1, Arial+bold at index 2)
+        assert_eq!(components.len(), 3);
+
+        // Build prototype spec
+        let prototype = json!({
+            "mark": {"type": "text"},
+            "encoding": {
+                "x": {"field": naming::aesthetic_column("x"), "type": "quantitative"},
+                "y": {"field": naming::aesthetic_column("y"), "type": "quantitative"},
+                "text": {"field": naming::aesthetic_column("label"), "type": "nominal"}
+            }
+        });
+
+        // Create a dummy layer
+        let layer = crate::plot::Layer::new(crate::plot::Geom::text());
+
+        // Call finalize to get layers
+        let layers = renderer.finalize(prototype.clone(), &layer, "test", &prepared).unwrap();
+
+        // For multiple font groups, should return single parent spec with nested layers
+        assert_eq!(layers.len(), 1);
+
+        let parent_spec = &layers[0];
+
+        // Parent should have "layer" array
+        assert!(parent_spec.get("layer").is_some());
+        let nested_layers = parent_spec["layer"].as_array().unwrap();
+
+        // Should have 3 nested layers (one per component)
+        assert_eq!(nested_layers.len(), 3);
+
+        // Parent should have shared encoding
+        assert!(parent_spec.get("encoding").is_some());
+
+        // Each nested layer should have mark and transform, but not encoding
+        for nested_layer in nested_layers {
+            assert!(nested_layer.get("mark").is_some());
+            assert!(nested_layer.get("transform").is_some());
+            assert!(nested_layer.get("encoding").is_none());
+
+            // Mark should have font properties
+            let mark = nested_layer["mark"].as_object().unwrap();
+            assert!(mark.contains_key("fontWeight"));
+            assert!(mark.contains_key("fontStyle"));
+        }
+    }
 }
