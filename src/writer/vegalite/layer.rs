@@ -226,11 +226,6 @@ impl GeomRenderer for PathRenderer {
 // Text Renderer
 // =============================================================================
 
-/// Metadata for text rendering
-struct TextMetadata {
-    strategy: FontStrategy,
-}
-
 /// Strategy for handling font properties in text layers
 struct FontStrategy {
     groups: Vec<FontGroup>,
@@ -552,7 +547,7 @@ impl GeomRenderer for TextRenderer {
 
         Ok(PreparedData::Composite {
             components,
-            metadata: Box::new(TextMetadata { strategy }),
+            metadata: Box::new(strategy),
         })
     }
 
@@ -582,13 +577,13 @@ impl GeomRenderer for TextRenderer {
             ));
         };
 
-        // Downcast metadata to TextMetadata
-        let info = metadata.downcast_ref::<TextMetadata>().ok_or_else(|| {
-            GgsqlError::InternalError("Failed to downcast text metadata".to_string())
+        // Downcast metadata to FontStrategy
+        let strategy = metadata.downcast_ref::<FontStrategy>().ok_or_else(|| {
+            GgsqlError::InternalError("Failed to downcast font strategy".to_string())
         })?;
 
         // Generate layers from groups (1 group = single layer, N groups = N layers)
-        self.finalize_layers(prototype, data_key, &info.strategy.groups, &info.strategy.common_properties)
+        self.finalize_layers(prototype, data_key, &strategy.groups, &strategy.common_properties)
     }
 }
 
