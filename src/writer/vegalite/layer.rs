@@ -226,18 +226,13 @@ impl GeomRenderer for PathRenderer {
 // Text Renderer
 // =============================================================================
 
-/// Strategy for handling font properties in text layers
-struct FontStrategy {
-    /// Each group is (properties, row_indices). Properties include both constant and varying values.
-    groups: Vec<(HashMap<String, Value>, Vec<usize>)>,
-}
-
 /// Renderer for text geom - handles font properties via data splitting
 pub struct TextRenderer;
 
 impl TextRenderer {
-    /// Analyze DataFrame columns to find font aesthetics
-    fn analyze_font_columns(df: &DataFrame) -> Result<FontStrategy> {
+    /// Analyze DataFrame columns to find font aesthetics.
+    /// Returns groups: Vec<(properties, row_indices)> where each group has identical font values.
+    fn analyze_font_columns(df: &DataFrame) -> Result<Vec<(HashMap<String, Value>, Vec<usize>)>> {
 
         let mut varying_columns: Vec<(String, String)> = Vec::new(); // (aesthetic, column_name)
         let mut constant_values: HashMap<String, Value> = HashMap::new();
@@ -270,12 +265,10 @@ impl TextRenderer {
         if varying_columns.is_empty() {
             // All constant or not present → single group with all rows
             let all_indices: Vec<usize> = (0..df.height()).collect();
-            let groups = vec![(constant_values.clone(), all_indices)];
-            Ok(FontStrategy { groups })
+            Ok(vec![(constant_values, all_indices)])
         } else {
             // Some varying → multi-layer
-            let groups = Self::build_font_groups_from_df(df, &varying_columns, &constant_values)?;
-            Ok(FontStrategy { groups })
+            Self::build_font_groups_from_df(df, &varying_columns, &constant_values)
         }
     }
 
@@ -491,16 +484,16 @@ impl GeomRenderer for TextRenderer {
         _data_key: &str,
         binned_columns: &HashMap<String, Vec<f64>>,
     ) -> Result<PreparedData> {
-        // Analyze font columns to determine strategy
-        let strategy = Self::analyze_font_columns(df)?;
+        // Analyze font columns to get groups
+        let groups = Self::analyze_font_columns(df)?;
 
         // Split data by groups (even if just 1 group for constant fonts)
         let mut components: HashMap<String, Vec<Value>> = HashMap::new();
 
-        for (group_idx, (_properties, row_indices)) in strategy.groups.iter().enumerate() {
+        for (group_idx, (_properties, row_indices)) in groups.iter().enumerate() {
             // For single-group case (all constant), use empty suffix
             // For multi-group case, use _font_N suffix
-            let suffix = if strategy.groups.len() == 1 {
+            let suffix = if groups.len() == 1 {
                 String::new()
             } else {
                 format!("_font_{}", group_idx)
@@ -518,7 +511,7 @@ impl GeomRenderer for TextRenderer {
 
         Ok(PreparedData::Composite {
             components,
-            metadata: Box::new(strategy),
+            metadata: Box::new(groups),
         })
     }
 
@@ -548,13 +541,13 @@ impl GeomRenderer for TextRenderer {
             ));
         };
 
-        // Downcast metadata to FontStrategy
-        let strategy = metadata.downcast_ref::<FontStrategy>().ok_or_else(|| {
-            GgsqlError::InternalError("Failed to downcast font strategy".to_string())
+        // Downcast metadata to groups
+        let groups = metadata.downcast_ref::<Vec<(HashMap<String, Value>, Vec<usize>)>>().ok_or_else(|| {
+            GgsqlError::InternalError("Failed to downcast font groups".to_string())
         })?;
 
         // Generate layers from groups (1 group = single layer, N groups = N layers)
-        self.finalize_layers(prototype, data_key, &strategy.groups)
+        self.finalize_layers(prototype, data_key, groups)
     }
 }
 
