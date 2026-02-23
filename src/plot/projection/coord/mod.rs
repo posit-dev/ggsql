@@ -24,7 +24,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::plot::aesthetic::is_aesthetic_name;
 use crate::plot::ParameterValue;
 
 // Coord type implementations
@@ -85,39 +84,23 @@ pub trait CoordTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         &[]
     }
 
-    /// Returns whether this coord type allows aesthetic names as properties.
-    /// Default: false.
-    fn allows_aesthetic_properties(&self) -> bool {
-        false
-    }
-
     /// Returns default value for a property, if any.
     fn get_property_default(&self, _name: &str) -> Option<ParameterValue> {
         None
     }
 
     /// Resolve and validate properties.
-    /// Default implementation validates against allowed_properties + aesthetics.
+    /// Default implementation validates against allowed_properties.
     fn resolve_properties(
         &self,
         properties: &HashMap<String, ParameterValue>,
     ) -> Result<HashMap<String, ParameterValue>, String> {
         let allowed = self.allowed_properties();
-        let allows_aesthetics = self.allows_aesthetic_properties();
 
         // Check for unknown properties
         for key in properties.keys() {
-            let is_allowed =
-                allowed.contains(&key.as_str()) || (allows_aesthetics && is_aesthetic_name(key));
-
-            if !is_allowed {
-                let valid_props = if allows_aesthetics {
-                    if allowed.is_empty() {
-                        "<aesthetics>".to_string()
-                    } else {
-                        format!("{}, <aesthetics>", allowed.join(", "))
-                    }
-                } else if allowed.is_empty() {
+            if !allowed.contains(&key.as_str()) {
+                let valid_props = if allowed.is_empty() {
                     "none".to_string()
                 } else {
                     allowed.join(", ")
@@ -194,11 +177,6 @@ impl Coord {
     /// Returns list of allowed property names for SETTING clause.
     pub fn allowed_properties(&self) -> &'static [&'static str] {
         self.0.allowed_properties()
-    }
-
-    /// Returns whether this coord type allows aesthetic names as properties.
-    pub fn allows_aesthetic_properties(&self) -> bool {
-        self.0.allows_aesthetic_properties()
     }
 
     /// Returns default value for a property, if any.

@@ -1348,8 +1348,6 @@ SCALE color FROM ['A', 'B'] TO ['red', 'blue']
 SCALE color TO viridis
 ```
 
-**Note**: Cannot specify range in both SCALE and PROJECT for the same aesthetic (will error).
-
 **Examples**:
 
 ```sql
@@ -1448,26 +1446,24 @@ PROJECT SETTING <properties>
 
 **Cartesian**:
 
-- `ratio => <number>` - Set aspect ratio
-- `<aesthetic> => [values...]` - Set range for any aesthetic (color, fill, size, etc.)
+- `ratio => <number>` - Set aspect ratio (not yet implemented)
 
-Note: For axis limits, use `SCALE x FROM [min, max]` or `SCALE y FROM [min, max]` instead.
+Note: For axis limits, use `SCALE x FROM [min, max]` or `SCALE y FROM [min, max]`.
 
 **Flip**:
 
-- `<aesthetic> => [values...]` - Set range for any aesthetic
+- No SETTING properties (just transforms the coordinate system)
 
 **Polar**:
 
 - `theta => <aesthetic>` - Which aesthetic maps to angle (defaults to `y`)
-- `<aesthetic> => [values...]` - Set range for any aesthetic
 
 **Important Notes**:
 
-1. **Axis limits**: Use `SCALE x/y FROM [min, max]` to set axis limits (not PROJECT)
-2. **ggplot2 compatibility**: `project_flip` preserves axis label names (labels stay with aesthetic names, not visual position)
-3. **Range conflicts**: Error if same aesthetic has input range in both SCALE and PROJECT
-4. **Multi-layer support**: All projectinate transforms apply to all layers
+1. **Axis limits**: Use `SCALE x/y FROM [min, max]` to set axis limits
+2. **Aesthetic domains**: Use `SCALE <aesthetic> FROM [...]` to set aesthetic domains
+3. **ggplot2 compatibility**: `project_flip` preserves axis label names (labels stay with aesthetic names, not visual position)
+4. **Multi-layer support**: All projection transforms apply to all layers
 
 **Status**:
 
@@ -1479,29 +1475,20 @@ Note: For axis limits, use `SCALE x FROM [min, max]` or `SCALE y FROM [min, max]
 **Examples**:
 
 ```sql
--- Cartesian with axis limits (use SCALE, not PROJECT)
-SCALE x FROM [0, 100]
-SCALE y FROM [0, 50]
-
--- Cartesian with aesthetic range
-PROJECT cartesian SETTING color => ['red', 'green', 'blue']
-
--- Flip projectinates for horizontal bar chart
+-- Flip projection for horizontal bar chart
 PROJECT flip
-
--- Flip with aesthetic range
-PROJECT flip SETTING color => ['A', 'B', 'C']
 
 -- Polar for pie chart (theta defaults to y)
 PROJECT polar
 
--- Polar for rose plot (x maps to radius)
-PROJECT polar SETTING theta => y
+-- Polar with explicit theta mapping
+PROJECT polar SETTING theta => x
 
 -- Combined with other clauses
 DRAW bar MAPPING category AS x, value AS y
 SCALE x FROM [0, 100]
 SCALE y FROM [0, 200]
+PROJECT flip
 LABEL x => 'Category', y => 'Count'
 ```
 

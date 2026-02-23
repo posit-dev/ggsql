@@ -3,7 +3,6 @@
 //! Takes a tree-sitter parse tree and builds a typed Plot,
 //! handling all the node types defined in the grammar.
 
-use crate::plot::aesthetic::is_aesthetic_name;
 use crate::plot::layer::geom::Geom;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_facet_aesthetic, Transform};
 use crate::plot::*;
@@ -270,9 +269,6 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
             }
         }
     }
-
-    // Validate no conflicts between SCALE and PROJECT input range specifications
-    validate_scale_project_conflicts(&spec)?;
 
     Ok(spec)
 }
@@ -1065,34 +1061,6 @@ fn build_theme(node: &Node, source: &SourceTree) -> Result<Theme> {
 // Validation & Utilities
 // ============================================================================
 
-/// Check for conflicts between SCALE input range and PROJECT aesthetic input range specifications
-fn validate_scale_project_conflicts(spec: &Plot) -> Result<()> {
-    if let Some(ref project) = spec.project {
-        // Get all aesthetic names that have input ranges in PROJECT
-        let project_aesthetics: Vec<String> = project
-            .properties
-            .keys()
-            .filter(|k| is_aesthetic_name(k))
-            .cloned()
-            .collect();
-
-        // Check if any of these also have input range in SCALE
-        for aesthetic in project_aesthetics {
-            for scale in &spec.scales {
-                if scale.aesthetic == aesthetic && scale.input_range.is_some() {
-                    return Err(GgsqlError::ParseError(format!(
-                        "Input range for '{}' specified in both SCALE and PROJECT clauses. \
-                        Please specify input range in only one location.",
-                        aesthetic
-                    )));
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
 /// Check if the last SQL statement in sql_portion is a SELECT statement
 fn check_last_statement_is_select(sql_portion_node: &Node, source: &SourceTree) -> bool {
     // Find all sql_statement nodes and get the last one (can use query for this)
@@ -1165,22 +1133,6 @@ mod tests {
     // ========================================
 
     #[test]
-    fn test_project_cartesian_valid_aesthetic_input_range() {
-        let query = r#"
-            VISUALISE
-            DRAW point MAPPING x AS x, y AS y, category AS color
-            PROJECT cartesian SETTING color => ['red', 'green', 'blue']
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-        let specs = result.unwrap();
-
-        let project = specs[0].project.as_ref().unwrap();
-        assert!(project.properties.contains_key("color"));
-    }
-
-    #[test]
     fn test_project_cartesian_invalid_property_theta() {
         let query = r#"
             VISUALISE
@@ -1195,26 +1147,6 @@ mod tests {
             .to_string()
             .contains("Property 'theta' not valid for cartesian"));
     }
-
-    #[test]
-    fn test_project_flip_valid_aesthetic_input_range() {
-        let query = r#"
-            VISUALISE
-            DRAW bar MAPPING category AS x, value AS y, region AS color
-            PROJECT flip SETTING color => ['A', 'B', 'C']
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-        let specs = result.unwrap();
-
-        let project = specs[0].project.as_ref().unwrap();
-        assert_eq!(project.coord.coord_kind(), CoordKind::Flip);
-        assert!(project.properties.contains_key("color"));
-    }
-
-    // xlim/ylim tests removed - these are no longer valid grammar tokens
-    // Use SCALE x/y FROM instead to set axis limits
 
     #[test]
     fn test_project_flip_invalid_property_theta() {
@@ -1247,128 +1179,6 @@ mod tests {
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(project.coord.coord_kind(), CoordKind::Polar);
         assert!(project.properties.contains_key("theta"));
-    }
-
-    #[test]
-    fn test_project_polar_valid_aesthetic_input_range() {
-        let query = r#"
-            VISUALISE
-            DRAW bar MAPPING category AS x, value AS y, region AS color
-            PROJECT polar SETTING color => ['North', 'South', 'East', 'West']
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-        let specs = result.unwrap();
-
-        let project = specs[0].project.as_ref().unwrap();
-        assert!(project.properties.contains_key("color"));
-    }
-
-    // xlim/ylim polar rejection tests removed - these are no longer valid grammar tokens
-
-    // ========================================
-    // SCALE/PROJECT Input Range Conflict Tests
-    // ========================================
-
-    #[test]
-    fn test_scale_project_conflict_x_input_range() {
-        let query = r#"
-            VISUALISE
-            DRAW point MAPPING x AS x, y AS y
-            SCALE x FROM [0, 100]
-            PROJECT cartesian SETTING x => [0, 50]
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("Input range for 'x' specified in both SCALE and PROJECT"));
-    }
-
-    #[test]
-    fn test_scale_project_conflict_color_input_range() {
-        let query = r#"
-            VISUALISE
-            DRAW point MAPPING x AS x, y AS y, category AS color
-            SCALE color FROM ['A', 'B']
-            PROJECT cartesian SETTING color => ['A', 'B', 'C']
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("Input range for 'color' specified in both SCALE and PROJECT"));
-    }
-
-    #[test]
-    fn test_scale_project_no_conflict_different_aesthetics() {
-        let query = r#"
-            VISUALISE
-            DRAW point MAPPING x AS x, y AS y, category AS color, region AS size
-            SCALE color FROM ['A', 'B']
-            PROJECT cartesian SETTING size => [5, 20]
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_scale_project_no_conflict_scale_without_input_range() {
-        let query = r#"
-            VISUALISE
-            DRAW point MAPPING x AS x, y AS y
-            SCALE CONTINUOUS x
-            PROJECT cartesian SETTING x => [0, 100]
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-    }
-
-    // ========================================
-    // Multiple Properties Tests
-    // ========================================
-
-    #[test]
-    fn test_project_cartesian_multiple_properties() {
-        let query = r#"
-            VISUALISE
-            DRAW point MAPPING x AS x, y AS y, category AS color
-            PROJECT cartesian SETTING color => ['A', 'B']
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-        let specs = result.unwrap();
-
-        let project = specs[0].project.as_ref().unwrap();
-        // xlim/ylim removed - use SCALE x/y FROM instead
-        assert!(!project.properties.contains_key("xlim"));
-        assert!(!project.properties.contains_key("ylim"));
-        assert!(project.properties.contains_key("color"));
-    }
-
-    #[test]
-    fn test_project_polar_theta_with_aesthetic() {
-        let query = r#"
-            VISUALISE
-            DRAW bar MAPPING category AS x, value AS y, region AS color
-            PROJECT polar SETTING theta => y, color => ['North', 'South']
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-        let specs = result.unwrap();
-
-        let project = specs[0].project.as_ref().unwrap();
-        assert!(project.properties.contains_key("theta"));
-        assert!(project.properties.contains_key("color"));
     }
 
     // ========================================

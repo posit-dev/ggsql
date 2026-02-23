@@ -489,8 +489,9 @@ ORDER BY total_revenue DESC
 LIMIT 10
 VISUALISE product_name AS x, total_revenue AS y, product_name AS fill
 DRAW bar
-PROJECT flip SETTING color => ['red', 'orange', 'yellow', 'green', 'blue',
-                          'indigo', 'violet', 'pink', 'brown', 'gray']
+PROJECT flip
+SCALE fill TO ['red', 'orange', 'yellow', 'green', 'blue',
+               'indigo', 'violet', 'pink', 'brown', 'gray']
 LABEL title => 'Top 10 Products by Revenue',
       x => 'Product',
       y => 'Revenue ($)'
@@ -642,7 +643,7 @@ Draw Line
 
 8. **Labels**: Always provide meaningful titles and axis labels for clarity.
 
-9. **Range Specification**: Use either SCALE or PROJECT for range/limit specification, but not both for the same aesthetic.
+9. **Range Specification**: Use SCALE for all axis limits and aesthetic domain specifications.
 
 ---
 

@@ -20,10 +20,6 @@ impl CoordTrait for Polar {
         &["theta"]
     }
 
-    fn allows_aesthetic_properties(&self) -> bool {
-        true
-    }
-
     fn get_property_default(&self, name: &str) -> Option<ParameterValue> {
         match name {
             "theta" => Some(ParameterValue::String("y".to_string())),
@@ -41,7 +37,6 @@ impl std::fmt::Display for Polar {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::ArrayElement;
     use std::collections::HashMap;
 
     #[test]
@@ -49,7 +44,6 @@ mod tests {
         let polar = Polar;
         assert_eq!(polar.coord_kind(), CoordKind::Polar);
         assert_eq!(polar.name(), "polar");
-        assert!(polar.allows_aesthetic_properties());
     }
 
     #[test]
@@ -99,50 +93,15 @@ mod tests {
     }
 
     #[test]
-    fn test_polar_accepts_aesthetic_properties() {
+    fn test_polar_rejects_unknown_property() {
         let polar = Polar;
         let mut props = HashMap::new();
-        props.insert(
-            "color".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::String("red".to_string()),
-                ArrayElement::String("blue".to_string()),
-            ]),
-        );
-
-        let resolved = polar.resolve_properties(&props);
-        assert!(resolved.is_ok());
-    }
-
-    #[test]
-    fn test_polar_rejects_xlim() {
-        let polar = Polar;
-        let mut props = HashMap::new();
-        props.insert(
-            "xlim".to_string(),
-            ParameterValue::Array(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]),
-        );
+        props.insert("unknown".to_string(), ParameterValue::String("value".to_string()));
 
         let resolved = polar.resolve_properties(&props);
         assert!(resolved.is_err());
         let err = resolved.unwrap_err();
-        assert!(err.contains("xlim"));
-        assert!(err.contains("not valid"));
-    }
-
-    #[test]
-    fn test_polar_rejects_ylim() {
-        let polar = Polar;
-        let mut props = HashMap::new();
-        props.insert(
-            "ylim".to_string(),
-            ParameterValue::Array(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]),
-        );
-
-        let resolved = polar.resolve_properties(&props);
-        assert!(resolved.is_err());
-        let err = resolved.unwrap_err();
-        assert!(err.contains("ylim"));
+        assert!(err.contains("unknown"));
         assert!(err.contains("not valid"));
     }
 }

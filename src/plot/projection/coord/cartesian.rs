@@ -18,10 +18,6 @@ impl CoordTrait for Cartesian {
     fn allowed_properties(&self) -> &'static [&'static str] {
         &["ratio"]
     }
-
-    fn allows_aesthetic_properties(&self) -> bool {
-        true
-    }
 }
 
 impl std::fmt::Display for Cartesian {
@@ -33,7 +29,7 @@ impl std::fmt::Display for Cartesian {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::{ArrayElement, ParameterValue};
+    use crate::plot::ParameterValue;
     use std::collections::HashMap;
 
     #[test]
@@ -41,7 +37,6 @@ mod tests {
         let cartesian = Cartesian;
         assert_eq!(cartesian.coord_kind(), CoordKind::Cartesian);
         assert_eq!(cartesian.name(), "cartesian");
-        assert!(cartesian.allows_aesthetic_properties());
     }
 
     #[test]
@@ -49,9 +44,6 @@ mod tests {
         let cartesian = Cartesian;
         let allowed = cartesian.allowed_properties();
         assert!(allowed.contains(&"ratio"));
-        // xlim/ylim removed - use SCALE x/y FROM instead
-        assert!(!allowed.contains(&"xlim"));
-        assert!(!allowed.contains(&"ylim"));
     }
 
     #[test]
@@ -64,51 +56,16 @@ mod tests {
     }
 
     #[test]
-    fn test_cartesian_rejects_xlim() {
+    fn test_cartesian_rejects_unknown_property() {
         let cartesian = Cartesian;
         let mut props = HashMap::new();
-        props.insert(
-            "xlim".to_string(),
-            ParameterValue::Array(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]),
-        );
+        props.insert("unknown".to_string(), ParameterValue::String("value".to_string()));
 
         let resolved = cartesian.resolve_properties(&props);
         assert!(resolved.is_err());
         let err = resolved.unwrap_err();
-        assert!(err.contains("xlim"));
+        assert!(err.contains("unknown"));
         assert!(err.contains("not valid"));
-    }
-
-    #[test]
-    fn test_cartesian_rejects_ylim() {
-        let cartesian = Cartesian;
-        let mut props = HashMap::new();
-        props.insert(
-            "ylim".to_string(),
-            ParameterValue::Array(vec![ArrayElement::Number(0.0), ArrayElement::Number(50.0)]),
-        );
-
-        let resolved = cartesian.resolve_properties(&props);
-        assert!(resolved.is_err());
-        let err = resolved.unwrap_err();
-        assert!(err.contains("ylim"));
-        assert!(err.contains("not valid"));
-    }
-
-    #[test]
-    fn test_cartesian_accepts_aesthetic_properties() {
-        let cartesian = Cartesian;
-        let mut props = HashMap::new();
-        props.insert(
-            "color".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::String("red".to_string()),
-                ArrayElement::String("blue".to_string()),
-            ]),
-        );
-
-        let resolved = cartesian.resolve_properties(&props);
-        assert!(resolved.is_ok());
     }
 
     #[test]

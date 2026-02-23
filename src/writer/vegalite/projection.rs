@@ -3,7 +3,6 @@
 //! This module handles projection transformations (cartesian, flip, polar)
 //! that modify the Vega-Lite spec structure based on the PROJECT clause.
 
-use crate::plot::aesthetic::is_aesthetic_name;
 use crate::plot::{CoordKind, ParameterValue, Projection};
 use crate::{DataFrame, GgsqlError, Plot, Result};
 use serde_json::{json, Value};
@@ -39,24 +38,15 @@ pub(super) fn apply_project_transforms(
     }
 }
 
-/// Apply Cartesian projection properties (aesthetic domains)
-/// Note: xlim/ylim removed - use SCALE x/y FROM instead
+/// Apply Cartesian projection properties
+/// Currently only ratio is supported (not yet implemented)
 fn apply_cartesian_project(
-    project: &Projection,
-    vl_spec: &mut Value,
+    _project: &Projection,
+    _vl_spec: &mut Value,
     _free_x: bool,
     _free_y: bool,
 ) -> Result<()> {
-    for (prop_name, prop_value) in &project.properties {
-        if is_aesthetic_name(prop_name) {
-            // Aesthetic domain specification
-            if let Some(domain) = extract_input_range(prop_value)? {
-                apply_aesthetic_input_range(vl_spec, prop_name, domain)?;
-            }
-        }
-        // ratio, clip - not yet implemented
-    }
-
+    // ratio, clip - not yet implemented
     Ok(())
 }
 
@@ -203,36 +193,3 @@ fn update_encoding_for_polar(encoding: &mut Value, theta_aesthetic: &str) -> Res
     Ok(())
 }
 
-// Helper methods
-
-fn extract_input_range(value: &ParameterValue) -> Result<Option<Vec<Value>>> {
-    match value {
-        ParameterValue::Array(arr) => {
-            let domain: Vec<Value> = arr.iter().map(|elem| elem.to_json()).collect();
-            Ok(Some(domain))
-        }
-        _ => Ok(None),
-    }
-}
-
-fn apply_aesthetic_input_range(
-    vl_spec: &mut Value,
-    aesthetic: &str,
-    domain: Vec<Value>,
-) -> Result<()> {
-    let domain_json = json!(domain);
-
-    if let Some(layers) = vl_spec.get_mut("layer") {
-        if let Some(layers_arr) = layers.as_array_mut() {
-            for layer in layers_arr {
-                if let Some(encoding) = layer.get_mut("encoding") {
-                    if let Some(aes_enc) = encoding.get_mut(aesthetic) {
-                        aes_enc["scale"] = json!({"domain": domain_json});
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
-}

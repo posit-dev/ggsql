@@ -15,13 +15,7 @@ impl CoordTrait for Flip {
         "flip"
     }
 
-    fn allowed_properties(&self) -> &'static [&'static str] {
-        &[] // Flip only allows aesthetic properties
-    }
-
-    fn allows_aesthetic_properties(&self) -> bool {
-        true
-    }
+    // Flip has no SETTING properties
 }
 
 impl std::fmt::Display for Flip {
@@ -33,7 +27,7 @@ impl std::fmt::Display for Flip {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::{ArrayElement, ParameterValue};
+    use crate::plot::ParameterValue;
     use std::collections::HashMap;
 
     #[test]
@@ -41,65 +35,16 @@ mod tests {
         let flip = Flip;
         assert_eq!(flip.coord_kind(), CoordKind::Flip);
         assert_eq!(flip.name(), "flip");
-        assert!(flip.allows_aesthetic_properties());
     }
 
     #[test]
-    fn test_flip_no_specific_properties() {
+    fn test_flip_no_properties() {
         let flip = Flip;
         assert!(flip.allowed_properties().is_empty());
     }
 
     #[test]
-    fn test_flip_accepts_aesthetic_properties() {
-        let flip = Flip;
-        let mut props = HashMap::new();
-        props.insert(
-            "color".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::String("red".to_string()),
-                ArrayElement::String("blue".to_string()),
-            ]),
-        );
-
-        let resolved = flip.resolve_properties(&props);
-        assert!(resolved.is_ok());
-    }
-
-    #[test]
-    fn test_flip_rejects_xlim() {
-        let flip = Flip;
-        let mut props = HashMap::new();
-        props.insert(
-            "xlim".to_string(),
-            ParameterValue::Array(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]),
-        );
-
-        let resolved = flip.resolve_properties(&props);
-        assert!(resolved.is_err());
-        let err = resolved.unwrap_err();
-        assert!(err.contains("xlim"));
-        assert!(err.contains("not valid"));
-    }
-
-    #[test]
-    fn test_flip_rejects_ylim() {
-        let flip = Flip;
-        let mut props = HashMap::new();
-        props.insert(
-            "ylim".to_string(),
-            ParameterValue::Array(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]),
-        );
-
-        let resolved = flip.resolve_properties(&props);
-        assert!(resolved.is_err());
-        let err = resolved.unwrap_err();
-        assert!(err.contains("ylim"));
-        assert!(err.contains("not valid"));
-    }
-
-    #[test]
-    fn test_flip_rejects_theta() {
+    fn test_flip_rejects_any_property() {
         let flip = Flip;
         let mut props = HashMap::new();
         props.insert("theta".to_string(), ParameterValue::String("y".to_string()));

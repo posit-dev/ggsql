@@ -776,9 +776,7 @@ module.exports = grammar({
     ),
 
     project_property_name: $ => choice(
-      'ratio', 'theta', 'clip',
-      // Also allow aesthetic names as properties (for range specification)
-      $.aesthetic_name
+      'ratio', 'theta', 'clip'
     ),
 
     // LABEL clause (repeatable)
