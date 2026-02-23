@@ -16,7 +16,7 @@ impl CoordTrait for Cartesian {
     }
 
     fn allowed_properties(&self) -> &'static [&'static str] {
-        &["ratio"]
+        &["ratio", "clip"]
     }
 }
 
@@ -44,6 +44,7 @@ mod tests {
         let cartesian = Cartesian;
         let allowed = cartesian.allowed_properties();
         assert!(allowed.contains(&"ratio"));
+        assert!(allowed.contains(&"clip"));
     }
 
     #[test]

@@ -15,7 +15,9 @@ impl CoordTrait for Flip {
         "flip"
     }
 
-    // Flip has no SETTING properties
+    fn allowed_properties(&self) -> &'static [&'static str] {
+        &["clip"]
+    }
 }
 
 impl std::fmt::Display for Flip {
@@ -38,13 +40,24 @@ mod tests {
     }
 
     #[test]
-    fn test_flip_no_properties() {
+    fn test_flip_allowed_properties() {
         let flip = Flip;
-        assert!(flip.allowed_properties().is_empty());
+        let allowed = flip.allowed_properties();
+        assert!(allowed.contains(&"clip"));
     }
 
     #[test]
-    fn test_flip_rejects_any_property() {
+    fn test_flip_accepts_clip() {
+        let flip = Flip;
+        let mut props = HashMap::new();
+        props.insert("clip".to_string(), ParameterValue::Boolean(true));
+
+        let resolved = flip.resolve_properties(&props);
+        assert!(resolved.is_ok());
+    }
+
+    #[test]
+    fn test_flip_rejects_theta() {
         let flip = Flip;
         let mut props = HashMap::new();
         props.insert("theta".to_string(), ParameterValue::String("y".to_string()));

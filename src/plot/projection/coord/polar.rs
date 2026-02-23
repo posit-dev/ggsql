@@ -17,7 +17,7 @@ impl CoordTrait for Polar {
     }
 
     fn allowed_properties(&self) -> &'static [&'static str] {
-        &["theta"]
+        &["theta", "clip"]
     }
 
     fn get_property_default(&self, name: &str) -> Option<ParameterValue> {
@@ -51,7 +51,8 @@ mod tests {
         let polar = Polar;
         let allowed = polar.allowed_properties();
         assert!(allowed.contains(&"theta"));
-        assert_eq!(allowed.len(), 1);
+        assert!(allowed.contains(&"clip"));
+        assert_eq!(allowed.len(), 2);
     }
 
     #[test]

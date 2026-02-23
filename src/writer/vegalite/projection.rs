@@ -18,35 +18,59 @@ pub(super) fn apply_project_transforms(
     free_y: bool,
 ) -> Result<Option<DataFrame>> {
     if let Some(ref project) = spec.project {
-        match project.coord.coord_kind() {
+        // Apply coord-specific transformations
+        let result = match project.coord.coord_kind() {
             CoordKind::Cartesian => {
                 apply_cartesian_project(project, vl_spec, free_x, free_y)?;
-                Ok(None) // No DataFrame transformation needed
+                None
             }
             CoordKind::Flip => {
                 apply_flip_project(vl_spec)?;
-                Ok(None) // No DataFrame transformation needed
+                None
             }
             CoordKind::Polar => {
-                // Polar requires DataFrame transformation for percentages
-                let transformed_df = apply_polar_project(project, spec, data, vl_spec)?;
-                Ok(Some(transformed_df))
+                Some(apply_polar_project(project, spec, data, vl_spec)?)
             }
+        };
+
+        // Apply clip setting (applies to all projection types)
+        if let Some(ParameterValue::Boolean(clip)) = project.properties.get("clip") {
+            apply_clip_to_layers(vl_spec, *clip);
         }
+
+        Ok(result)
     } else {
         Ok(None)
     }
 }
 
+/// Apply clip setting to all layers
+fn apply_clip_to_layers(vl_spec: &mut Value, clip: bool) {
+    if let Some(layers) = vl_spec.get_mut("layer") {
+        if let Some(layers_arr) = layers.as_array_mut() {
+            for layer in layers_arr {
+                if let Some(mark) = layer.get_mut("mark") {
+                    if mark.is_string() {
+                        // Convert "point" to {"type": "point", "clip": ...}
+                        let mark_type = mark.as_str().unwrap().to_string();
+                        *mark = json!({"type": mark_type, "clip": clip});
+                    } else if let Some(obj) = mark.as_object_mut() {
+                        obj.insert("clip".to_string(), json!(clip));
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Apply Cartesian projection properties
-/// Currently only ratio is supported (not yet implemented)
 fn apply_cartesian_project(
     _project: &Projection,
     _vl_spec: &mut Value,
     _free_x: bool,
     _free_y: bool,
 ) -> Result<()> {
-    // ratio, clip - not yet implemented
+    // ratio - not yet implemented
     Ok(())
 }
 
@@ -118,7 +142,6 @@ fn convert_geoms_to_polar(spec: &Plot, vl_spec: &mut Value, theta_field: &str) -
 }
 
 /// Convert a mark type to its polar equivalent
-/// Preserves `clip: true` to ensure marks don't render outside plot bounds
 fn convert_mark_to_polar(mark: &Value, _spec: &Plot) -> Result<Value> {
     let mark_str = if mark.is_string() {
         mark.as_str().unwrap()
@@ -153,10 +176,7 @@ fn convert_mark_to_polar(mark: &Value, _spec: &Plot) -> Result<Value> {
         }
     };
 
-    Ok(json!({
-        "type": polar_mark,
-        "clip": true
-    }))
+    Ok(json!(polar_mark))
 }
 
 /// Update encoding channels for polar projection

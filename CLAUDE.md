@@ -1442,7 +1442,11 @@ PROJECT SETTING <properties>
 - **`map`** - Map projections
 - **`quickmap`** - Quick approximation for maps
 
-**Properties by Type**:
+**Common Properties** (all projection types):
+
+- `clip => <boolean>` - Whether to clip marks outside the plot area (default: unset)
+
+**Type-Specific Properties**:
 
 **Cartesian**:
 
@@ -1452,7 +1456,7 @@ Note: For axis limits, use `SCALE x FROM [min, max]` or `SCALE y FROM [min, max]
 
 **Flip**:
 
-- No SETTING properties (just transforms the coordinate system)
+- No additional properties
 
 **Polar**:
 
@@ -1484,11 +1488,14 @@ PROJECT polar
 -- Polar with explicit theta mapping
 PROJECT polar SETTING theta => x
 
+-- Clip marks to plot area
+PROJECT cartesian SETTING clip => true
+
 -- Combined with other clauses
 DRAW bar MAPPING category AS x, value AS y
 SCALE x FROM [0, 100]
 SCALE y FROM [0, 200]
-PROJECT flip
+PROJECT flip SETTING clip => true
 LABEL x => 'Category', y => 'Count'
 ```
 
