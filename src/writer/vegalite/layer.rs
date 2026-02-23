@@ -392,61 +392,117 @@ impl TextRenderer {
         data_key: &str,
         font_groups: &[(FontKey, Vec<usize>)],
     ) -> Result<Vec<Value>> {
-        // Build layers
-        let mut layer_tuples: Vec<(usize, Value)> = Vec::new(); // (first_index, layer_spec)
-
-        for (group_idx, (font_key, indices)) in font_groups.iter().enumerate() {
-            let (family_val, font_weight_val, font_style_val, hjust_val, vjust_val) = font_key;
-
-            // Component key suffix (matches prepare_data assignment)
-            let suffix = if font_groups.len() == 1 {
-                String::new()
-            } else {
-                format!("_font_{}", group_idx)
-            };
-            let source_key = format!("{}{}", data_key, suffix);
-
-            // Create layer spec with font properties
-            let mut layer_spec = prototype.clone();
-            if let Some(mark) = layer_spec.get_mut("mark") {
-                if let Some(mark_obj) = mark.as_object_mut() {
-                    // Apply font properties
-                    if let Some(family_val) = family_val {
-                        mark_obj.insert("font".to_string(), family_val.clone());
-                    }
-                    mark_obj.insert("fontWeight".to_string(), font_weight_val.clone());
-                    mark_obj.insert("fontStyle".to_string(), font_style_val.clone());
-                    mark_obj.insert("align".to_string(), hjust_val.clone());
-                    mark_obj.insert("baseline".to_string(), vjust_val.clone());
-                }
-            }
-
-            // Add source filter
-            let source_filter = json!({
-                "filter": {
-                    "field": naming::SOURCE_COLUMN,
-                    "equal": source_key
-                }
-            });
-
-            let existing_transforms = layer_spec
-                .get("transform")
-                .and_then(|t| t.as_array())
-                .cloned()
-                .unwrap_or_default();
-
-            let mut new_transforms = vec![source_filter];
-            new_transforms.extend(existing_transforms);
-            layer_spec["transform"] = json!(new_transforms);
-
-            layer_tuples.push((indices[0], layer_spec));
+        // Single group: return as-is with full encoding
+        if font_groups.len() == 1 {
+            return self.finalize_single_layer(prototype, data_key, &font_groups[0]);
         }
 
-        // Sort by first index (already sorted, but explicit for clarity)
-        layer_tuples.sort_by_key(|(idx, _)| *idx);
-        let layers = layer_tuples.into_iter().map(|(_, spec)| spec).collect();
+        // Multiple groups: wrap in nested layer with shared encoding
+        self.finalize_nested_layers(prototype, data_key, font_groups)
+    }
 
-        Ok(layers)
+    /// Apply font properties to mark object
+    fn apply_font_properties(mark_obj: &mut Map<String, Value>, font_key: &FontKey) {
+        let (family_val, font_weight_val, font_style_val, hjust_val, vjust_val) = font_key;
+
+        if let Some(family_val) = family_val {
+            mark_obj.insert("font".to_string(), family_val.clone());
+        }
+        mark_obj.insert("fontWeight".to_string(), font_weight_val.clone());
+        mark_obj.insert("fontStyle".to_string(), font_style_val.clone());
+        mark_obj.insert("align".to_string(), hjust_val.clone());
+        mark_obj.insert("baseline".to_string(), vjust_val.clone());
+    }
+
+    /// Build transform with source filter
+    fn build_transform_with_filter(
+        prototype: &Value,
+        source_key: &str,
+    ) -> Vec<Value> {
+        let source_filter = json!({
+            "filter": {
+                "field": naming::SOURCE_COLUMN,
+                "equal": source_key
+            }
+        });
+
+        let existing_transforms = prototype
+            .get("transform")
+            .and_then(|t| t.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut new_transforms = vec![source_filter];
+        new_transforms.extend(existing_transforms);
+        new_transforms
+    }
+
+    /// Finalize a single layer (no nesting needed)
+    fn finalize_single_layer(
+        &self,
+        prototype: Value,
+        data_key: &str,
+        (font_key, _indices): &(FontKey, Vec<usize>),
+    ) -> Result<Vec<Value>> {
+        let mut layer_spec = prototype.clone();
+
+        // Apply font properties to mark
+        if let Some(mark) = layer_spec.get_mut("mark") {
+            if let Some(mark_obj) = mark.as_object_mut() {
+                Self::apply_font_properties(mark_obj, font_key);
+            }
+        }
+
+        // Add source filter
+        layer_spec["transform"] = json!(Self::build_transform_with_filter(&prototype, data_key));
+
+        Ok(vec![layer_spec])
+    }
+
+    /// Finalize multiple layers as nested layer with shared encoding
+    fn finalize_nested_layers(
+        &self,
+        prototype: Value,
+        data_key: &str,
+        font_groups: &[(FontKey, Vec<usize>)],
+    ) -> Result<Vec<Value>> {
+        // Extract shared encoding from prototype
+        let shared_encoding = prototype.get("encoding").cloned();
+
+        // Build individual layers without encoding (mark + transform only)
+        let mut layer_tuples: Vec<(usize, Value)> = Vec::new();
+
+        for (group_idx, (font_key, indices)) in font_groups.iter().enumerate() {
+            let suffix = format!("_font_{}", group_idx);
+            let source_key = format!("{}{}", data_key, suffix);
+
+            // Create mark object with font properties
+            let mut mark_obj = json!({"type": "text"});
+            if let Some(mark_map) = mark_obj.as_object_mut() {
+                Self::apply_font_properties(mark_map, font_key);
+            }
+
+            // Create layer with mark and transform (no encoding)
+            let layer = json!({
+                "mark": mark_obj,
+                "transform": Self::build_transform_with_filter(&prototype, &source_key)
+            });
+
+            layer_tuples.push((indices[0], layer));
+        }
+
+        // Sort by first index
+        layer_tuples.sort_by_key(|(idx, _)| *idx);
+        let nested_layers: Vec<Value> = layer_tuples.into_iter().map(|(_, spec)| spec).collect();
+
+        // Wrap in parent spec with shared encoding
+        let mut parent_spec = json!({"layer": nested_layers});
+
+        if let Some(encoding) = shared_encoding {
+            parent_spec["encoding"] = encoding;
+        }
+
+        Ok(vec![parent_spec])
     }
 }
 
