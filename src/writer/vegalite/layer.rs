@@ -232,16 +232,9 @@ struct TextMetadata {
 }
 
 /// Strategy for handling font properties in text layers
-enum FontStrategy {
-    /// All font properties are constant - use single layer with mark properties
-    SingleLayer {
-        mark_properties: HashMap<String, Value>,
-    },
-    /// Font properties vary - split into multiple layers, one per unique combination
-    MultiLayer {
-        groups: Vec<FontGroup>,
-        common_properties: HashMap<String, Value>,
-    },
+struct FontStrategy {
+    groups: Vec<FontGroup>,
+    common_properties: HashMap<String, Value>,
 }
 
 /// A group of rows with identical font property values
@@ -291,14 +284,21 @@ impl TextRenderer {
         }
 
         if varying_columns.is_empty() {
-            // All constant or not present → single layer
-            Ok(FontStrategy::SingleLayer {
-                mark_properties: constant_values,
+            // All constant or not present → single group with all rows
+            let all_indices: Vec<usize> = (0..df.height()).collect();
+            let groups = vec![FontGroup {
+                signature: String::new(),
+                properties: constant_values.clone(),
+                row_indices: all_indices,
+            }];
+            Ok(FontStrategy {
+                groups,
+                common_properties: HashMap::new(), // All properties in the group
             })
         } else {
             // Some varying → multi-layer
             let groups = Self::build_font_groups_from_df(df, &varying_columns, &constant_values)?;
-            Ok(FontStrategy::MultiLayer {
+            Ok(FontStrategy {
                 groups,
                 common_properties: constant_values,
             })
@@ -455,46 +455,8 @@ impl TextRenderer {
     }
 
     /// Finalize single layer case
-    fn finalize_single_layer(
-        &self,
-        mut prototype: Value,
-        data_key: &str,
-        mark_properties: &HashMap<String, Value>,
-    ) -> Result<Vec<Value>> {
-        // Apply mark properties
-        if let Some(mark) = prototype.get_mut("mark") {
-            if let Some(mark_obj) = mark.as_object_mut() {
-                for (aesthetic, value) in mark_properties {
-                    let vl_key = Self::map_aesthetic_to_mark_property(aesthetic);
-                    Self::apply_mark_property(mark_obj, vl_key, value);
-                }
-            }
-        }
-
-        // Add source filter (matching BoxplotRenderer pattern)
-        let source_filter = json!({
-            "filter": {
-                "field": naming::SOURCE_COLUMN,
-                "equal": data_key
-            }
-        });
-
-        // Prepend source filter to any existing transforms
-        let existing_transforms = prototype
-            .get("transform")
-            .and_then(|t| t.as_array())
-            .cloned()
-            .unwrap_or_default();
-
-        let mut new_transforms = vec![source_filter];
-        new_transforms.extend(existing_transforms);
-        prototype["transform"] = json!(new_transforms);
-
-        Ok(vec![prototype])
-    }
-
-    /// Finalize multi-layer case
-    fn finalize_multi_layer(
+    /// Finalize layers from font groups (handles both single and multi-group cases)
+    fn finalize_layers(
         &self,
         prototype: Value,
         data_key: &str,
@@ -505,7 +467,13 @@ impl TextRenderer {
 
         for (group_idx, group) in groups.iter().enumerate() {
             let mut layer_spec = prototype.clone();
-            let suffix = format!("_font_{}", group_idx);
+            // For single-group case (all constant), use empty suffix
+            // For multi-group case, use _font_N suffix
+            let suffix = if groups.len() == 1 {
+                String::new()
+            } else {
+                format!("_font_{}", group_idx)
+            };
             let source_key = format!("{}{}", data_key, suffix);
 
             // Apply mark properties (common + group-specific)
@@ -554,51 +522,38 @@ impl GeomRenderer for TextRenderer {
     fn prepare_data(
         &self,
         df: &DataFrame,
-        data_key: &str,
+        _data_key: &str,
         binned_columns: &HashMap<String, Vec<f64>>,
     ) -> Result<PreparedData> {
         // Analyze font columns to determine strategy
         let strategy = Self::analyze_font_columns(df)?;
 
-        match strategy {
-            FontStrategy::SingleLayer { .. } => {
-                // Single layer - use empty string as component key
-                // The writer will prepend data_key, so empty string results in just data_key
-                let values = if binned_columns.is_empty() {
-                    dataframe_to_values(df)?
-                } else {
-                    dataframe_to_values_with_bins(df, binned_columns)?
-                };
+        // Split data by groups (even if just 1 group for constant fonts)
+        let mut components: HashMap<String, Vec<Value>> = HashMap::new();
 
-                Ok(PreparedData::Composite {
-                    components: HashMap::from([(String::new(), values)]),
-                    metadata: Box::new(TextMetadata { strategy }),
-                })
-            }
-            FontStrategy::MultiLayer { ref groups, .. } => {
-                // Multi-layer - split data by groups
-                let mut components: HashMap<String, Vec<Value>> = HashMap::new();
+        for (group_idx, group) in strategy.groups.iter().enumerate() {
+            // For single-group case (all constant), use empty suffix
+            // For multi-group case, use _font_N suffix
+            let suffix = if strategy.groups.len() == 1 {
+                String::new()
+            } else {
+                format!("_font_{}", group_idx)
+            };
 
-                for (group_idx, group) in groups.iter().enumerate() {
-                    let suffix = format!("_font_{}", group_idx);
-                    // Use just the suffix as component key - writer will prepend data_key
+            let filtered = Self::filter_by_indices(df, &group.row_indices)?;
+            let values = if binned_columns.is_empty() {
+                dataframe_to_values(&filtered)?
+            } else {
+                dataframe_to_values_with_bins(&filtered, binned_columns)?
+            };
 
-                    let filtered = Self::filter_by_indices(df, &group.row_indices)?;
-                    let values = if binned_columns.is_empty() {
-                        dataframe_to_values(&filtered)?
-                    } else {
-                        dataframe_to_values_with_bins(&filtered, binned_columns)?
-                    };
-
-                    components.insert(suffix, values);
-                }
-
-                Ok(PreparedData::Composite {
-                    components,
-                    metadata: Box::new(TextMetadata { strategy }),
-                })
-            }
+            components.insert(suffix, values);
         }
+
+        Ok(PreparedData::Composite {
+            components,
+            metadata: Box::new(TextMetadata { strategy }),
+        })
     }
 
     fn modify_encoding(&self, encoding: &mut Map<String, Value>, _layer: &Layer) -> Result<()> {
@@ -632,15 +587,8 @@ impl GeomRenderer for TextRenderer {
             GgsqlError::InternalError("Failed to downcast text metadata".to_string())
         })?;
 
-        match &info.strategy {
-            FontStrategy::SingleLayer { mark_properties } => {
-                self.finalize_single_layer(prototype, data_key, mark_properties)
-            }
-            FontStrategy::MultiLayer {
-                groups,
-                common_properties,
-            } => self.finalize_multi_layer(prototype, data_key, groups, common_properties),
-        }
+        // Generate layers from groups (1 group = single layer, N groups = N layers)
+        self.finalize_layers(prototype, data_key, &info.strategy.groups, &info.strategy.common_properties)
     }
 }
 
