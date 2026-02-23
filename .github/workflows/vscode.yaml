@@ -1,0 +1,41 @@
+name: Open VSX Release
+
+on:
+  push:
+    tags:
+      - "vscode/v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Install dependencies
+        working-directory: ggsql-vscode
+        run: npm ci
+
+      - name: Package VSIX
+        working-directory: ggsql-vscode
+        run: vsce package
+
+      - name: Publish to Open VSX Registry
+        uses: HaaLeo/publish-vscode-extension@v2
+        with:
+          pat: ${{ secrets.OPEN_VSX_TOKEN }}
+          skipDuplicate: true
+          packagePath: ggsql-vscode
