@@ -658,9 +658,6 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         // Apply default parameter values (e.g., bins=30 for histogram)
         l.apply_default_params();
 
-        // Resolve aesthetics (single source of truth for writers)
-        l.resolve_aesthetics();
-
         // Apply stat transforms and ORDER BY (Part 2)
         let layer_query = layer::apply_layer_transforms(
             l,
@@ -729,6 +726,11 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
             // Update layer mappings for all layers (even if data shared)
             l.update_mappings_for_remappings();
         }
+
+        // Resolve aesthetics (SETTING/defaults) after all mapping updates
+        // This ensures query literals have been converted to columns, and SETTING/defaults
+        // are added as new Literal entries that remain as constant values
+        l.resolve_aesthetics();
     }
 
     // Validate we have some data (every layer should have its own data)

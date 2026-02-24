@@ -231,6 +231,10 @@ fn build_layer_encoding(
     };
 
     // Build encoding channels for each aesthetic mapping
+    // Mappings contains:
+    // 1. Column references from MAPPING clause (apply scales)
+    // 2. Query literals from MAPPING (converted to columns, apply scales)
+    // 3. Literals from SETTING/defaults (remain as literals, no scales)
     for (aesthetic, value) in &layer.mappings.aesthetics {
         let channel_name = map_aesthetic_name(aesthetic);
         let channel_encoding = build_encoding_channel(aesthetic, value, &mut enc_ctx)?;
@@ -246,24 +250,6 @@ fn build_layer_encoding(
                 encoding.insert(end_channel, json!({"field": end_col}));
             }
         }
-    }
-
-    // Add resolved aesthetic values (from SETTING or geom defaults)
-    // These were computed during execution in Layer::resolve_aesthetics()
-    // Precedence order: MAPPING > SETTING > defaults (already resolved)
-    for (aesthetic_name, param_value) in &layer.resolved_aesthetics {
-        let channel_name = map_aesthetic_name(aesthetic_name);
-
-        // Skip if already set by MAPPING (highest precedence)
-        if encoding.contains_key(&channel_name) {
-            continue;
-        }
-
-        let aesthetic_value = AestheticValue::Literal(param_value.clone());
-        // Build encoding channel with conversions (size, linewidth, linetype)
-        let channel_encoding =
-            build_encoding_channel(aesthetic_name, &aesthetic_value, &mut enc_ctx)?;
-        encoding.insert(channel_name, channel_encoding);
     }
 
     // Add detail encoding for partition_by columns (grouping)
