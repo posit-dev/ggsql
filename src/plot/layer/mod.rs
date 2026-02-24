@@ -192,7 +192,8 @@ impl Layer {
 
             // Check SETTING first (user-specified) and consume from parameters
             if let Some(value) = self.parameters.remove(aesthetic_name) {
-                self.mappings.insert(aesthetic_name, AestheticValue::Literal(value));
+                self.mappings
+                    .insert(aesthetic_name, AestheticValue::Literal(value));
                 continue;
             }
 
@@ -201,7 +202,8 @@ impl Layer {
                 match default_value.to_parameter_value() {
                     ParameterValue::Null => continue,
                     value => {
-                        self.mappings.insert(aesthetic_name, AestheticValue::Literal(value));
+                        self.mappings
+                            .insert(aesthetic_name, AestheticValue::Literal(value));
                     }
                 }
             }
@@ -319,8 +321,12 @@ mod tests {
     fn test_resolve_aesthetics_from_settings() {
         // Test that resolve_aesthetics() moves aesthetic values from parameters to mappings
         let mut layer = Layer::new(Geom::point());
-        layer.parameters.insert("size".to_string(), ParameterValue::Number(5.0));
-        layer.parameters.insert("opacity".to_string(), ParameterValue::Number(0.8));
+        layer
+            .parameters
+            .insert("size".to_string(), ParameterValue::Number(5.0));
+        layer
+            .parameters
+            .insert("opacity".to_string(), ParameterValue::Number(0.8));
 
         layer.resolve_aesthetics();
 
@@ -347,7 +353,9 @@ mod tests {
         // Point geom has default shape = 'circle'
         assert_eq!(
             layer.mappings.get("shape"),
-            Some(&AestheticValue::Literal(ParameterValue::String("circle".to_string())))
+            Some(&AestheticValue::Literal(ParameterValue::String(
+                "circle".to_string()
+            )))
         );
     }
 
@@ -355,8 +363,13 @@ mod tests {
     fn test_resolve_aesthetics_skips_mapped() {
         // Test that resolve_aesthetics() skips aesthetics that are already in MAPPING
         let mut layer = Layer::new(Geom::point());
-        layer.mappings.insert("size", AestheticValue::standard_column("my_size".to_string()));
-        layer.parameters.insert("size".to_string(), ParameterValue::Number(5.0));
+        layer.mappings.insert(
+            "size",
+            AestheticValue::standard_column("my_size".to_string()),
+        );
+        layer
+            .parameters
+            .insert("size".to_string(), ParameterValue::Number(5.0));
 
         layer.resolve_aesthetics();
 
@@ -373,14 +386,19 @@ mod tests {
     fn test_resolve_aesthetics_precedence() {
         // Test that SETTING takes precedence over geom defaults
         let mut layer = Layer::new(Geom::point());
-        layer.parameters.insert("shape".to_string(), ParameterValue::String("square".to_string()));
+        layer.parameters.insert(
+            "shape".to_string(),
+            ParameterValue::String("square".to_string()),
+        );
 
         layer.resolve_aesthetics();
 
         // Should use SETTING value, not default
         assert_eq!(
             layer.mappings.get("shape"),
-            Some(&AestheticValue::Literal(ParameterValue::String("square".to_string())))
+            Some(&AestheticValue::Literal(ParameterValue::String(
+                "square".to_string()
+            )))
         );
     }
 }
