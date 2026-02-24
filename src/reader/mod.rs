@@ -340,7 +340,8 @@ mod tests {
 
         let metadata = spec.metadata();
         assert_eq!(metadata.rows, 3);
-        assert_eq!(metadata.columns.len(), 2);
+        // Columns now includes both user mappings (x, y) and resolved defaults (size, stroke, fill, opacity, shape, linewidth)
+        assert_eq!(metadata.columns.len(), 8);
         assert!(metadata.columns.contains(&"x".to_string()));
         assert!(metadata.columns.contains(&"y".to_string()));
         assert_eq!(metadata.layer_count, 1);
