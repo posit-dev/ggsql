@@ -248,12 +248,10 @@ fn build_layer_encoding(
         }
     }
 
-    // Add aesthetic values from SETTING (higher priority) and defaults (lower priority)
-    // Precedence order: MAPPING > SETTING > defaults
-    // Use Layer::get_aesthetic_value() to centralize precedence logic
-    let supported_aesthetics = layer.geom.aesthetics().supported();
-
-    for aesthetic_name in supported_aesthetics {
+    // Add resolved aesthetic values (from SETTING or geom defaults)
+    // These were computed during execution in Layer::resolve_aesthetics()
+    // Precedence order: MAPPING > SETTING > defaults (already resolved)
+    for (aesthetic_name, param_value) in &layer.resolved_aesthetics {
         let channel_name = map_aesthetic_name(aesthetic_name);
 
         // Skip if already set by MAPPING (highest precedence)
@@ -261,14 +259,11 @@ fn build_layer_encoding(
             continue;
         }
 
-        // Get resolved value (SETTING > defaults, only literal values)
-        if let Some(param_value) = layer.get_aesthetic_value(aesthetic_name) {
-            let aesthetic_value = AestheticValue::Literal(param_value);
-            // Build encoding channel with conversions (size, linewidth, linetype)
-            let channel_encoding =
-                build_encoding_channel(aesthetic_name, &aesthetic_value, &mut enc_ctx)?;
-            encoding.insert(channel_name, channel_encoding);
-        }
+        let aesthetic_value = AestheticValue::Literal(param_value.clone());
+        // Build encoding channel with conversions (size, linewidth, linetype)
+        let channel_encoding =
+            build_encoding_channel(aesthetic_name, &aesthetic_value, &mut enc_ctx)?;
+        encoding.insert(channel_name, channel_encoding);
     }
 
     // Add detail encoding for partition_by columns (grouping)
@@ -594,7 +589,10 @@ mod tests {
     /// ```
     fn build_spec(geom: Geom) -> Plot {
         let mut spec = Plot::new();
-        spec.layers.push(build_layer(geom));
+        let mut layer = build_layer(geom);
+        // Resolve aesthetics (normally done in execution pipeline)
+        layer.resolve_aesthetics();
+        spec.layers.push(layer);
         spec
     }
 
@@ -1112,8 +1110,11 @@ mod tests {
 
         // Point with SETTING opacity => 0.5 should override default (1.0)
         let mut spec = Plot::new();
-        let layer = build_layer(Geom::point())
+        let mut layer = build_layer(Geom::point())
             .with_parameter("opacity".to_string(), ParameterValue::Number(0.5));
+
+        // Resolve aesthetics (normally done in execution pipeline)
+        layer.resolve_aesthetics();
         spec.layers.push(layer);
 
         let result = writer.write(&spec, &wrap_data(simple_df()));
@@ -1133,7 +1134,7 @@ mod tests {
 
         // Point with MAPPING stroke AS stroke should override default
         let mut spec = Plot::new();
-        let layer = Layer::new(Geom::point())
+        let mut layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -1146,6 +1147,9 @@ mod tests {
                 "stroke".to_string(),
                 AestheticValue::standard_column("stroke".to_string()),
             );
+
+        // Resolve aesthetics (normally done in execution pipeline)
+        layer.resolve_aesthetics();
         spec.layers.push(layer);
 
         let df = df! {
@@ -1174,7 +1178,7 @@ mod tests {
 
         // Point has linetype as Null - should not appear in encoding
         let mut spec = Plot::new();
-        let layer = Layer::new(Geom::point())
+        let mut layer = Layer::new(Geom::point())
             .with_aesthetic(
                 "x".to_string(),
                 AestheticValue::standard_column("x".to_string()),
@@ -1183,6 +1187,9 @@ mod tests {
                 "y".to_string(),
                 AestheticValue::standard_column("y".to_string()),
             );
+
+        // Resolve aesthetics (normally done in execution pipeline)
+        layer.resolve_aesthetics();
         spec.layers.push(layer);
 
         let df = df! {
@@ -1206,10 +1213,13 @@ mod tests {
 
         // Line with linetype as SETTING (literal)
         let mut spec = Plot::new();
-        let layer = build_layer(Geom::line()).with_aesthetic(
+        let mut layer = build_layer(Geom::line()).with_aesthetic(
             "linetype".to_string(),
             AestheticValue::Literal(ParameterValue::String("dashed".to_string())),
         );
+
+        // Resolve aesthetics (normally done in execution pipeline)
+        layer.resolve_aesthetics();
         spec.layers.push(layer);
 
         let result = writer.write(&spec, &wrap_data(simple_df()));

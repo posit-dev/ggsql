@@ -658,6 +658,9 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         // Apply default parameter values (e.g., bins=30 for histogram)
         l.apply_default_params();
 
+        // Resolve aesthetics (single source of truth for writers)
+        l.resolve_aesthetics();
+
         // Apply stat transforms and ORDER BY (Part 2)
         let layer_query = layer::apply_layer_transforms(
             l,
