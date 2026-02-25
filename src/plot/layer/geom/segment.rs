@@ -17,8 +17,8 @@ impl GeomTrait for Segment {
             defaults: &[
                 ("x", DefaultAestheticValue::Required),
                 ("y", DefaultAestheticValue::Required),
-                ("xend", DefaultAestheticValue::Required),
-                ("yend", DefaultAestheticValue::Required),
+                ("xend", DefaultAestheticValue::Null),
+                ("yend", DefaultAestheticValue::Null),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),

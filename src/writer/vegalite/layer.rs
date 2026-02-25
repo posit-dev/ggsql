@@ -39,6 +39,7 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Boxplot => "boxplot",
         GeomType::Text => "text",
         GeomType::Label => "text",
+        GeomType::Segment => "rule",
         _ => "point", // Default fallback
     };
     json!({
@@ -218,6 +219,36 @@ impl GeomRenderer for PathRenderer {
     fn modify_encoding(&self, encoding: &mut Map<String, Value>, _layer: &Layer) -> Result<()> {
         // Use the natural data order
         encoding.insert("order".to_string(), json!({"value": Value::Null}));
+        Ok(())
+    }
+}
+
+// =============================================================================
+// Segment Renderer
+// =============================================================================
+
+pub struct SegmentRenderer;
+
+impl GeomRenderer for SegmentRenderer {
+    fn modify_encoding(&self, encoding: &mut Map<String, Value>, _layer: &Layer) -> Result<()> {
+        let has_x2 = encoding.contains_key("x2");
+        let has_y2 = encoding.contains_key("y2");
+        if !has_x2 && !has_y2 {
+            return Err(GgsqlError::ValidationError(
+                "The `segment` layer requires at least one of the `xend` or `yend` aesthetics."
+                    .to_string(),
+            ));
+        }
+        if !has_x2 {
+            if let Some(x) = encoding.get("x").cloned() {
+                encoding.insert("x2".to_string(), x);
+            }
+        }
+        if !has_y2 {
+            if let Some(y) = encoding.get("y").cloned() {
+                encoding.insert("y2".to_string(), y);
+            }
+        }
         Ok(())
     }
 }
@@ -791,6 +822,7 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Boxplot => Box::new(BoxplotRenderer),
         GeomType::Density => Box::new(AreaRenderer),
         GeomType::Violin => Box::new(ViolinRenderer),
+        GeomType::Segment => Box::new(SegmentRenderer),
         // All other geoms (Point, Line, Tile, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }
