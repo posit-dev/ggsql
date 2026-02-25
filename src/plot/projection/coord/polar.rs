@@ -21,7 +21,7 @@ impl CoordTrait for Polar {
     }
 
     fn allowed_properties(&self) -> &'static [&'static str] {
-        &["clip", "start"]
+        &["clip", "start", "end"]
     }
 
     fn get_property_default(&self, name: &str) -> Option<ParameterValue> {
@@ -56,7 +56,8 @@ mod tests {
         let allowed = polar.allowed_properties();
         assert!(allowed.contains(&"clip"));
         assert!(allowed.contains(&"start"));
-        assert_eq!(allowed.len(), 2);
+        assert!(allowed.contains(&"end"));
+        assert_eq!(allowed.len(), 3);
     }
 
     #[test]
@@ -107,6 +108,46 @@ mod tests {
         assert_eq!(
             resolved.get("start").unwrap(),
             &ParameterValue::Number(0.0)
+        );
+    }
+
+    #[test]
+    fn test_polar_resolve_with_explicit_end() {
+        let polar = Polar;
+        let mut props = HashMap::new();
+        props.insert("end".to_string(), ParameterValue::Number(180.0));
+
+        let resolved = polar.resolve_properties(&props);
+        assert!(resolved.is_ok());
+        let resolved = resolved.unwrap();
+        assert_eq!(
+            resolved.get("end").unwrap(),
+            &ParameterValue::Number(180.0)
+        );
+        // start should still get its default
+        assert_eq!(
+            resolved.get("start").unwrap(),
+            &ParameterValue::Number(0.0)
+        );
+    }
+
+    #[test]
+    fn test_polar_resolve_with_start_and_end() {
+        let polar = Polar;
+        let mut props = HashMap::new();
+        props.insert("start".to_string(), ParameterValue::Number(-90.0));
+        props.insert("end".to_string(), ParameterValue::Number(90.0));
+
+        let resolved = polar.resolve_properties(&props);
+        assert!(resolved.is_ok());
+        let resolved = resolved.unwrap();
+        assert_eq!(
+            resolved.get("start").unwrap(),
+            &ParameterValue::Number(-90.0)
+        );
+        assert_eq!(
+            resolved.get("end").unwrap(),
+            &ParameterValue::Number(90.0)
         );
     }
 }

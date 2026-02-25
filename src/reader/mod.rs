@@ -461,6 +461,75 @@ mod tests {
     }
 
     #[test]
+    fn test_polar_project_with_end() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
+            VISUALISE value AS y, category AS fill
+            DRAW bar
+            PROJECT y, x TO polar SETTING start => -90, end => 90
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let theta = &layer["encoding"]["theta"];
+        let range = theta["scale"]["range"].as_array().unwrap();
+
+        // -90° = -π/2 ≈ -1.5708, 90° = π/2 ≈ 1.5708
+        let start = range[0].as_f64().unwrap();
+        let end = range[1].as_f64().unwrap();
+        assert!(
+            (start - (-std::f64::consts::FRAC_PI_2)).abs() < 0.001,
+            "start should be -π/2 (-90 degrees), got {}",
+            start
+        );
+        assert!(
+            (end - std::f64::consts::FRAC_PI_2).abs() < 0.001,
+            "end should be π/2 (90 degrees), got {}",
+            end
+        );
+    }
+
+    #[test]
+    fn test_polar_project_with_end_only() {
+        // Test using end without explicit start (start defaults to 0)
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
+            VISUALISE value AS y, category AS fill
+            DRAW bar
+            PROJECT y, x TO polar SETTING end => 180
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let theta = &layer["encoding"]["theta"];
+        let range = theta["scale"]["range"].as_array().unwrap();
+
+        // start=0 (default), end=180° = π
+        let start = range[0].as_f64().unwrap();
+        let end = range[1].as_f64().unwrap();
+        assert!(
+            start.abs() < 0.001,
+            "start should be 0 (default), got {}",
+            start
+        );
+        assert!(
+            (end - std::f64::consts::PI).abs() < 0.001,
+            "end should be π (180 degrees), got {}",
+            end
+        );
+    }
+
+    #[test]
     fn test_polar_encoding_keys_independent_of_user_names() {
         // This test verifies that polar projections always produce theta/radius encoding keys
         // in Vega-Lite output, regardless of what positional names the user specified in PROJECT.
