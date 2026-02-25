@@ -796,7 +796,7 @@ module.exports = grammar({
     ),
 
     project_property_name: $ => choice(
-      'ratio', 'clip', 'start', 'end'
+      'ratio', 'clip', 'start', 'end', 'inner'
     ),
 
     // LABEL clause (repeatable)
