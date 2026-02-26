@@ -1,0 +1,63 @@
+---
+title: "AB Line"
+---
+
+> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+
+The abline layer is used to draw diagonal reference lines based on a slope and intercept. This is useful for adding regression lines, diagonal guides, or mathematical functions to plots. The lines extend across the full extent of the x-axis, regardless of the data range. 
+The layer is named for the following formula:
+
+$$
+y = a + bx
+$$
+
+Where $a$ is the `intercept` and $b$ is the `slope`.
+
+## Aesthetics
+The following aesthetics are recognised by the abline layer.
+
+### Required
+* `slope`: The slope of the line i.e. the amount $y$ increases for every unit of $x$.
+* `intercept`: The intercept where the line crosses the y-axis at $x = 0$.
+
+### Optional
+* `colour`/`stroke`: The colour of the line
+* `opacity`: The opacity of the line
+* `linewidth`: The width of the line
+* `linetype`: The type of the line, i.e. the dashing pattern
+
+## Settings
+The abline layer has no additional settings.
+
+## Data transformation
+The abline layer does not transform its data but passes it through unchanged.
+
+## Examples
+
+Add a simple reference line to a scatterplot:
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+  DRAW point MAPPING bill_len AS x, bill_dep AS y
+  DRAW abline MAPPING 0.4 AS slope, -1 AS intercept
+```
+
+Add multiple reference lines with different colors from a separate dataset:
+
+```{ggsql}
+WITH lines AS (
+    SELECT * FROM (VALUES
+        (0.4, -1, 'Line A'),
+        (0.2, 8, 'Line B'),
+        (0.8, -19, 'Line C')
+    ) AS t(slope, intercept, label)
+)
+VISUALISE FROM ggsql:penguins
+  DRAW point MAPPING bill_len AS x, bill_dep AS y
+  DRAW abline
+    MAPPING 
+      slope AS slope, 
+      intercept AS intercept, 
+      label AS colour
+    FROM lines
+```
