@@ -152,11 +152,10 @@ impl<'a> RenderContext<'a> {
         // Extract continuous range from input_range
         if let Some(range) = &scale.input_range {
             if range.len() >= 2 {
-                match (&range[0], &range[1]) {
-                    (ArrayElement::Number(min), ArrayElement::Number(max)) => {
-                        return Ok((*min, *max));
-                    }
-                    _ => {}
+                if let (ArrayElement::Number(min), ArrayElement::Number(max)) =
+                    (&range[0], &range[1])
+                {
+                    return Ok((*min, *max));
                 }
             }
         }
@@ -1293,8 +1292,7 @@ mod tests {
 
         // Verify it's a rule mark
         assert_eq!(
-            abline_layer["mark"]["type"],
-            "rule",
+            abline_layer["mark"]["type"], "rule",
             "ABLine should use rule mark"
         );
 
