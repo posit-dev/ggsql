@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use super::{GeomAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::{
     naming,
     plot::{
@@ -21,22 +21,22 @@ impl GeomTrait for Boxplot {
         GeomType::Boxplot
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
-            supported: &[
-                "pos1",
-                "pos2",
-                "fill",
-                "stroke",
-                "opacity",
-                "linetype",
-                "linewidth",
-                "size",
-                "shape",
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("pos1", DefaultAestheticValue::Required),
+                ("pos2", DefaultAestheticValue::Required),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("fill", DefaultAestheticValue::String("white")),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("opacity", DefaultAestheticValue::Number(0.8)),
+                ("linetype", DefaultAestheticValue::String("solid")),
+                ("size", DefaultAestheticValue::Number(3.0)),
+                ("shape", DefaultAestheticValue::String("circle")),
+                // Internal aesthetics produced by stat transform
+                ("type", DefaultAestheticValue::Delayed),
+                ("pos2end", DefaultAestheticValue::Delayed),
             ],
-            required: &["pos1", "pos2"],
-            // Internal aesthetics produced by stat transform
-            hidden: &["type", "pos2", "pos2end"],
         }
     }
 
@@ -547,9 +547,9 @@ mod tests {
         let boxplot = Boxplot;
         let aes = boxplot.aesthetics();
 
-        assert!(aes.required.contains(&"pos1"));
-        assert!(aes.required.contains(&"pos2"));
-        assert_eq!(aes.required.len(), 2);
+        assert!(aes.is_required("pos1"));
+        assert!(aes.is_required("pos2"));
+        assert_eq!(aes.required().len(), 2);
     }
 
     #[test]
@@ -557,11 +557,11 @@ mod tests {
         let boxplot = Boxplot;
         let aes = boxplot.aesthetics();
 
-        assert!(aes.supported.contains(&"pos1"));
-        assert!(aes.supported.contains(&"pos2"));
-        assert!(aes.supported.contains(&"fill"));
-        assert!(aes.supported.contains(&"stroke"));
-        assert!(aes.supported.contains(&"opacity"));
+        assert!(aes.is_supported("pos1"));
+        assert!(aes.is_supported("pos2"));
+        assert!(aes.is_supported("fill"));
+        assert!(aes.is_supported("stroke"));
+        assert!(aes.is_supported("opacity"));
     }
 
     #[test]

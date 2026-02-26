@@ -1,6 +1,7 @@
 //! HLine geom implementation
 
-use super::{GeomAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
+use crate::plot::types::DefaultAestheticValue;
 
 /// HLine geom - horizontal reference lines
 #[derive(Debug, Clone, Copy)]
@@ -11,17 +12,15 @@ impl GeomTrait for HLine {
         GeomType::HLine
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
-            supported: &[
-                "pos2intercept",
-                "stroke",
-                "linetype",
-                "linewidth",
-                "opacity",
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("pos2intercept", DefaultAestheticValue::Required),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("opacity", DefaultAestheticValue::Number(1.0)),
+                ("linetype", DefaultAestheticValue::String("solid")),
             ],
-            required: &["pos2intercept"],
-            hidden: &[],
         }
     }
 }

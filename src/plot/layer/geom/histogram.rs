@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use super::types::get_column_name;
-use super::{DefaultParam, DefaultParamValue, GeomAesthetics, GeomTrait, GeomType, StatResult};
+use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, StatResult};
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
 use crate::{DataFrame, GgsqlError, Mappings, Result};
@@ -19,12 +19,18 @@ impl GeomTrait for Histogram {
         GeomType::Histogram
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
-            supported: &["pos1", "weight", "fill", "stroke", "opacity"],
-            required: &["pos1"],
-            // y and xend are produced by stat_histogram but not valid for manual MAPPING
-            hidden: &["pos2", "pos1end"],
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("pos1", DefaultAestheticValue::Required),
+                ("weight", DefaultAestheticValue::Null),
+                ("fill", DefaultAestheticValue::String("black")),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("opacity", DefaultAestheticValue::Number(0.8)),
+                // pos2 and pos1end are produced by stat_histogram but not valid for manual MAPPING
+                ("pos2", DefaultAestheticValue::Delayed),
+                ("pos1end", DefaultAestheticValue::Delayed),
+            ],
         }
     }
 

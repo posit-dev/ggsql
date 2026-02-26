@@ -50,7 +50,7 @@ use crate::reader::DuckDBReader;
 fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
     for (idx, (layer, schema)) in layers.iter().zip(layer_schemas.iter()).enumerate() {
         let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
-        let supported = layer.geom.aesthetics().supported;
+        let supported = layer.geom.aesthetics().supported();
 
         // Validate required aesthetics for this geom
         layer
@@ -97,14 +97,10 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
         }
 
         // Validate remapping target aesthetics are supported by geom
-        // Target can be in supported OR hidden (hidden = valid REMAPPING targets but not MAPPING targets)
+        // REMAPPING can target any aesthetic (including Delayed ones from stat transforms)
         let aesthetics_info = layer.geom.aesthetics();
         for target_aesthetic in layer.remappings.aesthetics.keys() {
-            let is_supported = aesthetics_info
-                .supported
-                .contains(&target_aesthetic.as_str());
-            let is_hidden = aesthetics_info.hidden.contains(&target_aesthetic.as_str());
-            if !is_supported && !is_hidden {
+            if !aesthetics_info.contains(target_aesthetic) {
                 return Err(GgsqlError::ValidationError(format!(
                     "Layer {}: REMAPPING targets unsupported aesthetic '{}' for geom '{}'",
                     idx + 1,
@@ -157,7 +153,7 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
 fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema]) {
     for spec in specs {
         for (layer, schema) in spec.layers.iter_mut().zip(layer_schemas.iter()) {
-            let supported = layer.geom.aesthetics().supported;
+            let supported = layer.geom.aesthetics().supported();
             let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
 
             // 1. First merge explicit global aesthetics (layer overrides global)
@@ -180,14 +176,14 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             // 2. Smart wildcard expansion: only expand to columns that exist in schema
             let has_wildcard = layer.mappings.wildcard || spec.global_mappings.wildcard;
             if has_wildcard {
-                for &aes in supported {
+                for aes in &supported {
                     // Only create mapping if column exists in the schema
-                    if schema_columns.contains(aes) {
+                    if schema_columns.contains(*aes) {
                         layer
                             .mappings
                             .aesthetics
                             .entry(crate::parser::builder::normalise_aes_name(aes))
-                            .or_insert(AestheticValue::standard_column(aes));
+                            .or_insert(AestheticValue::standard_column(*aes));
                     }
                 }
             }
@@ -228,10 +224,10 @@ fn split_color_aesthetic(spec: &mut Plot) {
     // 2. Split color mapping to fill/stroke in layers, then remove color
     for layer in &mut spec.layers {
         if let Some(color_value) = layer.mappings.aesthetics.get("color").cloned() {
-            let supported = layer.geom.aesthetics().supported;
+            let aesthetics = layer.geom.aesthetics();
 
             for &aes in &["stroke", "fill"] {
-                if supported.contains(&aes) {
+                if aesthetics.is_supported(aes) {
                     layer
                         .mappings
                         .aesthetics
@@ -248,10 +244,10 @@ fn split_color_aesthetic(spec: &mut Plot) {
     // 3. Split color parameter (SETTING) to fill/stroke in layers
     for layer in &mut spec.layers {
         if let Some(color_value) = layer.parameters.get("color").cloned() {
-            let supported = layer.geom.aesthetics().supported;
+            let aesthetics = layer.geom.aesthetics();
 
             for &aes in &["stroke", "fill"] {
-                if supported.contains(&aes) {
+                if aesthetics.is_supported(aes) {
                     layer
                         .parameters
                         .entry(aes.to_string())
@@ -1126,6 +1122,11 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
             // Update layer mappings for all layers (even if data shared)
             l.update_mappings_for_remappings();
         }
+
+        // Resolve aesthetics (SETTING/defaults) after all mapping updates
+        // This ensures query literals have been converted to columns, and SETTING/defaults
+        // are added as new Literal entries that remain as constant values
+        l.resolve_aesthetics();
     }
 
     // Validate we have some data (every layer should have its own data)

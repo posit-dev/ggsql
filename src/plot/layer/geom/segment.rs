@@ -1,6 +1,7 @@
 //! Segment geom implementation
 
-use super::{GeomAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
+use crate::plot::types::DefaultAestheticValue;
 
 /// Segment geom - line segments between two points
 #[derive(Debug, Clone, Copy)]
@@ -11,20 +12,18 @@ impl GeomTrait for Segment {
         GeomType::Segment
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
-            supported: &[
-                "pos1",
-                "pos2",
-                "pos1end",
-                "pos2end",
-                "stroke",
-                "linetype",
-                "linewidth",
-                "opacity",
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("pos1", DefaultAestheticValue::Required),
+                ("pos2", DefaultAestheticValue::Required),
+                ("pos1end", DefaultAestheticValue::Required),
+                ("pos2end", DefaultAestheticValue::Required),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("opacity", DefaultAestheticValue::Number(1.0)),
+                ("linetype", DefaultAestheticValue::String("solid")),
             ],
-            required: &["pos1", "pos2", "pos1end", "pos2end"],
-            hidden: &[],
         }
     }
 }

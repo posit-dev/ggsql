@@ -340,7 +340,7 @@ mod tests {
 
         let metadata = spec.metadata();
         assert_eq!(metadata.rows, 3);
-        assert_eq!(metadata.columns.len(), 2);
+        // Columns now includes both user mappings (pos1, pos2) and resolved defaults (size, stroke, fill, opacity, shape, linewidth)
         // Aesthetics are transformed to internal names (x -> pos1, y -> pos2)
         assert!(metadata.columns.contains(&"pos1".to_string()));
         assert!(metadata.columns.contains(&"pos2".to_string()));

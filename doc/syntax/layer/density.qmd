@@ -73,14 +73,14 @@ A typical KDE computation with different groups:
 
 ```{ggsql}
 VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
-  DRAW density SETTING opacity => 0.8
+  DRAW density
 ```
 
 Changing the relative bandwidth through the `adjust` setting.
 
 ```{ggsql}
 VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
-  DRAW density SETTING opacity => 0.8, adjust => 0.1
+  DRAW density SETTING adjust => 0.1
 ```
 
 Stacking the different groups instead of overlaying them.
@@ -94,9 +94,7 @@ Using weighted estimates by mapping a column to the optional weight aesthetic. N
 
 ```{ggsql}
 VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
-  DRAW density 
-    MAPPING body_mass AS weight
-    SETTING opacity => 0.8
+  DRAW density MAPPING body_mass AS weight
 ```
 
 If you want to compare a histogram and a density layer, you can use the `intensity` computed variable to match the histogram scale.
@@ -114,8 +112,6 @@ Note the relative height of the groups.
 
 ```{ggsql}
 VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
-  DRAW density 
-    REMAPPING intensity AS y
-    SETTING opacity => 0.8
+  DRAW density REMAPPING intensity AS y
 ```
 

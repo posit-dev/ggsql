@@ -1,6 +1,7 @@
 //! Tile geom implementation
 
-use super::{GeomAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
+use crate::plot::types::DefaultAestheticValue;
 
 /// Tile geom - heatmaps and tile-based visualizations
 #[derive(Debug, Clone, Copy)]
@@ -11,13 +12,17 @@ impl GeomTrait for Tile {
         GeomType::Tile
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
-            supported: &[
-                "pos1", "pos2", "fill", "stroke", "width", "height", "opacity",
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("pos1", DefaultAestheticValue::Required),
+                ("pos2", DefaultAestheticValue::Required),
+                ("fill", DefaultAestheticValue::String("black")),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("width", DefaultAestheticValue::Null),
+                ("height", DefaultAestheticValue::Null),
+                ("opacity", DefaultAestheticValue::Number(1.0)),
             ],
-            required: &["pos1", "pos2"],
-            hidden: &[],
         }
     }
 }

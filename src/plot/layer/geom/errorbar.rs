@@ -1,6 +1,7 @@
 //! ErrorBar geom implementation
 
-use super::{GeomAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
+use crate::plot::types::DefaultAestheticValue;
 
 /// ErrorBar geom - error bars (confidence intervals)
 #[derive(Debug, Clone, Copy)]
@@ -11,21 +12,19 @@ impl GeomTrait for ErrorBar {
         GeomType::ErrorBar
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
-            supported: &[
-                "pos1",
-                "pos2",
-                "pos2min",
-                "pos2max",
-                "pos1min",
-                "pos1max",
-                "stroke",
-                "linewidth",
-                "opacity",
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("pos1", DefaultAestheticValue::Null),
+                ("pos2", DefaultAestheticValue::Null),
+                ("pos2min", DefaultAestheticValue::Null),
+                ("pos2max", DefaultAestheticValue::Null),
+                ("pos1min", DefaultAestheticValue::Null),
+                ("pos1max", DefaultAestheticValue::Null),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("opacity", DefaultAestheticValue::Number(1.0)),
             ],
-            required: &[],
-            hidden: &[],
         }
     }
 }

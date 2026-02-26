@@ -1,6 +1,6 @@
 //! Violin geom implementation
 
-use super::{GeomAesthetics, GeomTrait, GeomType, StatResult};
+use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::{
     plot::{
         geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
@@ -19,20 +19,19 @@ impl GeomTrait for Violin {
         GeomType::Violin
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
-            supported: &[
-                "pos1",
-                "pos2",
-                "weight",
-                "fill",
-                "stroke",
-                "opacity",
-                "linewidth",
-                "linetype",
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("pos1", DefaultAestheticValue::Required),
+                ("pos2", DefaultAestheticValue::Required),
+                ("weight", DefaultAestheticValue::Null),
+                ("fill", DefaultAestheticValue::String("black")),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("opacity", DefaultAestheticValue::Number(0.8)),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("linetype", DefaultAestheticValue::String("solid")),
+                ("offset", DefaultAestheticValue::Delayed), // Computed by stat
             ],
-            required: &["pos1", "pos2"],
-            hidden: &["offset"],
         }
     }
 

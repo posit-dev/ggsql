@@ -1,6 +1,7 @@
 //! AbLine geom implementation
 
-use super::{GeomAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
+use crate::plot::types::DefaultAestheticValue;
 
 /// AbLine geom - lines with slope and intercept
 #[derive(Debug, Clone, Copy)]
@@ -11,18 +12,16 @@ impl GeomTrait for AbLine {
         GeomType::AbLine
     }
 
-    fn aesthetics(&self) -> GeomAesthetics {
-        GeomAesthetics {
-            supported: &[
-                "slope",
-                "intercept",
-                "stroke",
-                "linetype",
-                "linewidth",
-                "opacity",
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("slope", DefaultAestheticValue::Required),
+                ("intercept", DefaultAestheticValue::Required),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("opacity", DefaultAestheticValue::Number(1.0)),
+                ("linetype", DefaultAestheticValue::String("solid")),
             ],
-            required: &["slope", "intercept"],
-            hidden: &[],
         }
     }
 }

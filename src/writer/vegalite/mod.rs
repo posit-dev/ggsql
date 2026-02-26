@@ -247,6 +247,10 @@ fn build_layer_encoding(
     let aesthetic_ctx = spec.get_aesthetic_context();
 
     // Build encoding channels for each aesthetic mapping
+    // Mappings contains:
+    // 1. Column references from MAPPING clause (apply scales)
+    // 2. Query literals from MAPPING (converted to columns, apply scales)
+    // 3. Literals from SETTING/defaults (remain as literals, no scales)
     for (aesthetic, value) in &layer.mappings.aesthetics {
         // Skip facet aesthetics - they are handled via top-level facet structure,
         // not as encoding channels. Adding them to encoding would create row-based
@@ -256,7 +260,12 @@ fn build_layer_encoding(
             continue;
         }
 
-        let channel_name = map_aesthetic_name(aesthetic, &aesthetic_ctx, coord_kind);
+        let mut channel_name = map_aesthetic_name(aesthetic, &aesthetic_ctx, coord_kind);
+        // Opacity is retargeted to the fill when fill is supported
+        if channel_name == "opacity" && layer.mappings.contains_key("fill") {
+            channel_name = "fillOpacity".to_string();
+        }
+
         let channel_encoding = build_encoding_channel(aesthetic, value, &mut enc_ctx)?;
         encoding.insert(channel_name, channel_encoding);
 
@@ -268,29 +277,6 @@ fn build_layer_encoding(
                 let end_aesthetic = format!("{}end", aesthetic); // "pos1end" or "pos2end"
                 let end_channel = map_aesthetic_name(&end_aesthetic, &aesthetic_ctx, coord_kind); // maps to "x2" or "y2" (or theta2/radius2 for polar)
                 encoding.insert(end_channel, json!({"field": end_col}));
-            }
-        }
-    }
-
-    // Add aesthetic parameters from SETTING as literal encodings
-    // (e.g., SETTING color => 'red' becomes {"color": {"value": "red"}})
-    // Only parameters that are supported aesthetics for this geom type are included
-    let supported_aesthetics = layer.geom.aesthetics().supported;
-    for (param_name, param_value) in &layer.parameters {
-        if supported_aesthetics.contains(&param_name.as_str()) {
-            let channel_name = map_aesthetic_name(param_name, &aesthetic_ctx, coord_kind);
-            // Only add if not already set by MAPPING (MAPPING takes precedence)
-            if !encoding.contains_key(&channel_name) {
-                // Convert size and linewidth from points to Vega-Lite units
-                let converted_value = match (param_name.as_str(), param_value) {
-                    // Size: interpret as radius in points, convert to area in pixels^2
-                    ("size", ParameterValue::Number(n)) => json!(n * n * POINTS_TO_AREA),
-                    // Linewidth: interpret as width in points, convert to pixels
-                    ("linewidth", ParameterValue::Number(n)) => json!(n * POINTS_TO_PIXELS),
-                    // Other aesthetics: pass through unchanged
-                    _ => param_value.to_json(),
-                };
-                encoding.insert(channel_name, json!({"value": converted_value}));
             }
         }
     }
@@ -1096,6 +1082,55 @@ mod tests {
         spec.transform_aesthetics_to_internal();
     }
 
+    /// Helper to build a layer with pos1 and pos2 aesthetics already set up
+    ///
+    /// By default, maps "x" column to pos1 aesthetic and "y" column to pos2 aesthetic.
+    /// Additional aesthetics and parameters can be added via builder methods.
+    ///
+    /// # Example
+    /// ```
+    /// let layer = build_layer(Geom::point())
+    ///     .with_aesthetic("color".to_string(), AestheticValue::standard_column("category".to_string()));
+    /// ```
+    fn build_layer(geom: Geom) -> Layer {
+        Layer::new(geom)
+            .with_aesthetic(
+                "pos1".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "pos2".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+    }
+
+    /// Helper to build a complete spec with a single layer
+    ///
+    /// Creates a Plot with one layer that has pos1 and pos2 aesthetics mapped to "x" and "y" columns.
+    /// Additional aesthetics and parameters can be added to the layer before calling this.
+    ///
+    /// # Example
+    /// ```
+    /// let spec = build_spec(Geom::line());
+    /// ```
+    fn build_spec(geom: Geom) -> Plot {
+        let mut spec = Plot::new();
+        let mut layer = build_layer(geom);
+        // Resolve aesthetics (normally done in execution pipeline)
+        layer.resolve_aesthetics();
+        spec.layers.push(layer);
+        spec
+    }
+
+    /// Helper to create a simple DataFrame with x and y columns for testing
+    fn simple_df() -> DataFrame {
+        df! {
+            "x" => &[1, 2, 3],
+            "y" => &[4, 5, 6],
+        }
+        .unwrap()
+    }
+
     #[test]
     fn test_geom_to_mark_mapping() {
         // All marks should be objects with type and clip: true
@@ -1649,6 +1684,178 @@ mod tests {
             Some(&Some("> Very High".to_string())),
             "Last bin with closed='right' should use '> lower' format"
         );
+    }
+
+    #[test]
+    fn test_default_aesthetics_applied() {
+        let writer = VegaLiteWriter::new();
+
+        // Point geom without explicit size/stroke - should use defaults
+        let spec = build_spec(Geom::point());
+
+        let result = writer.write(&spec, &wrap_data(simple_df()));
+        assert!(result.is_ok());
+        let json_str = result.unwrap();
+        let json: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Single-layer spec uses layer array structure
+        let encoding = &json["layer"][0]["encoding"];
+
+        // Point default stroke = "black"
+        assert_eq!(encoding["stroke"]["value"], "black");
+
+        // Point default opacity = 0.8 (retargeted to fillOpacity when fill is present)
+        assert_eq!(encoding["fillOpacity"]["value"], 0.8);
+    }
+
+    #[test]
+    fn test_setting_overrides_default() {
+        let writer = VegaLiteWriter::new();
+
+        // Point with SETTING opacity => 0.5 should override default (1.0)
+        let mut spec = Plot::new();
+        let mut layer = build_layer(Geom::point())
+            .with_parameter("opacity".to_string(), ParameterValue::Number(0.5));
+
+        // Resolve aesthetics (normally done in execution pipeline)
+        layer.resolve_aesthetics();
+        spec.layers.push(layer);
+
+        let result = writer.write(&spec, &wrap_data(simple_df()));
+        assert!(result.is_ok());
+        let json_str = result.unwrap();
+        let json: Value = serde_json::from_str(&json_str).unwrap();
+
+        let encoding = &json["layer"][0]["encoding"];
+
+        // Should use SETTING value (0.5), not default (0.8)
+        // Opacity is retargeted to fillOpacity when fill is present
+        assert_eq!(encoding["fillOpacity"]["value"], 0.5);
+    }
+
+    #[test]
+    fn test_mapping_overrides_default() {
+        let writer = VegaLiteWriter::new();
+
+        // Point with MAPPING stroke AS stroke should override default
+        let mut spec = Plot::new();
+        let mut layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "pos1".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "pos2".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "stroke".to_string(),
+                AestheticValue::standard_column("stroke".to_string()),
+            );
+
+        // Resolve aesthetics (normally done in execution pipeline)
+        layer.resolve_aesthetics();
+        spec.layers.push(layer);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[4, 5, 6],
+            "stroke" => &["red", "blue", "green"],
+        }
+        .unwrap();
+
+        let result = writer.write(&spec, &wrap_data(df));
+        assert!(result.is_ok());
+        let json_str = result.unwrap();
+        let json: Value = serde_json::from_str(&json_str).unwrap();
+
+        let encoding = &json["layer"][0]["encoding"];
+
+        // Should have field encoding, not value encoding
+        assert!(encoding["stroke"]["field"].is_string());
+        assert_eq!(encoding["stroke"]["field"], "stroke");
+        assert!(encoding["stroke"]["value"].is_null());
+    }
+
+    #[test]
+    fn test_null_defaults_not_applied() {
+        let writer = VegaLiteWriter::new();
+
+        // Point has linetype as Null - should not appear in encoding
+        let mut spec = Plot::new();
+        let mut layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "pos1".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "pos2".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+
+        // Resolve aesthetics (normally done in execution pipeline)
+        layer.resolve_aesthetics();
+        spec.layers.push(layer);
+
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[4, 5, 6],
+        }
+        .unwrap();
+
+        let result = writer.write(&spec, &wrap_data(df));
+        assert!(result.is_ok());
+        let json_str = result.unwrap();
+        let json: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Point has linetype => Null, should not appear in encoding
+        assert!(json["encoding"]["strokeDash"].is_null());
+    }
+
+    #[test]
+    fn test_linetype_translated_to_stroke_dash() {
+        let writer = VegaLiteWriter::new();
+
+        // Line with linetype as SETTING (literal)
+        let mut spec = Plot::new();
+        let mut layer = build_layer(Geom::line()).with_aesthetic(
+            "linetype".to_string(),
+            AestheticValue::Literal(ParameterValue::String("dashed".to_string())),
+        );
+
+        // Resolve aesthetics (normally done in execution pipeline)
+        layer.resolve_aesthetics();
+        spec.layers.push(layer);
+
+        let result = writer.write(&spec, &wrap_data(simple_df()));
+        assert!(result.is_ok());
+        let json_str = result.unwrap();
+        let json: Value = serde_json::from_str(&json_str).unwrap();
+
+        let encoding = &json["layer"][0]["encoding"];
+
+        // "dashed" should translate to [6, 4]
+        assert!(encoding["strokeDash"]["value"].is_array());
+        assert_eq!(encoding["strokeDash"]["value"], json!([6, 4]));
+    }
+
+    #[test]
+    fn test_linetype_default_translated_to_stroke_dash() {
+        let writer = VegaLiteWriter::new();
+
+        // Line geom has linetype default of "solid"
+        let spec = build_spec(Geom::line());
+
+        let result = writer.write(&spec, &wrap_data(simple_df()));
+        assert!(result.is_ok());
+        let json_str = result.unwrap();
+        let json: Value = serde_json::from_str(&json_str).unwrap();
+
+        let encoding = &json["layer"][0]["encoding"];
+
+        // "solid" should translate to empty array []
+        assert!(encoding["strokeDash"]["value"].is_array());
+        assert_eq!(encoding["strokeDash"]["value"], json!([]));
     }
 
     #[test]

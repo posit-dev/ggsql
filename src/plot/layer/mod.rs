@@ -11,7 +11,7 @@ pub mod geom;
 
 // Re-export geom types for convenience
 pub use geom::{
-    DefaultParam, DefaultParamValue, Geom, GeomAesthetics, GeomTrait, GeomType, StatResult,
+    DefaultAesthetics, DefaultParam, DefaultParamValue, Geom, GeomTrait, GeomType, StatResult,
 };
 
 use crate::plot::types::{AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression};
@@ -21,7 +21,26 @@ use crate::plot::types::{AestheticValue, DataSource, Mappings, ParameterValue, S
 pub struct Layer {
     /// Geometric object type
     pub geom: Geom,
-    /// Aesthetic mappings (from MAPPING clause)
+    /// All aesthetic mappings combined from multiple sources:
+    ///
+    /// 1. **MAPPING clause** (from query, highest precedence):
+    ///    - Column references: `date AS x` → `AestheticValue::Column`
+    ///    - Literals: `'foo' AS color` → `AestheticValue::Literal` (converted to Column during execution)
+    ///
+    /// 2. **SETTING clause** (from query, second precedence):
+    ///    - Added during execution via `resolve_aesthetics()`
+    ///    - Stored as `AestheticValue::Literal`
+    ///
+    /// 3. **Geom defaults** (lowest precedence):
+    ///    - Added during execution via `resolve_aesthetics()`
+    ///    - Stored as `AestheticValue::Literal`
+    ///
+    /// **Important distinction for scale application**:
+    /// - Query literals (`MAPPING 'foo' AS color`) are converted to columns during query execution
+    ///   via `build_layer_select_list()`, becoming `AestheticValue::Column` before reaching writers.
+    ///   These columns can have scales applied.
+    /// - SETTING/defaults remain as `AestheticValue::Literal` and render as constant values
+    ///   without scale transformations.
     pub mappings: Mappings,
     /// Stat remappings (from REMAPPING clause): stat_name → aesthetic
     /// Maps stat-computed columns (e.g., "count") to aesthetic channels (e.g., "y")
@@ -119,7 +138,7 @@ impl Layer {
 
     /// Check if this layer has the required aesthetics for its geom
     pub fn validate_required_aesthetics(&self) -> std::result::Result<(), String> {
-        for aesthetic in self.geom.aesthetics().required {
+        for aesthetic in self.geom.aesthetics().required() {
             if !self.mappings.contains_key(aesthetic) {
                 return Err(format!(
                     "Geom '{}' requires aesthetic '{}' but it was not provided",
@@ -144,6 +163,49 @@ impl Layer {
                     DefaultParamValue::Null => continue, // Don't insert null defaults
                 };
                 self.parameters.insert(param.name.to_string(), value);
+            }
+        }
+    }
+
+    /// Resolve aesthetics for all supported aesthetics not in MAPPING.
+    ///
+    /// For each supported aesthetic that's not already mapped in MAPPING:
+    /// - Check SETTING parameters first (user-specified, highest priority) and consume from parameters
+    /// - Fall back to geom defaults (lower priority)
+    /// - Insert into mappings as `AestheticValue::Literal`
+    ///
+    /// Precedence: MAPPING > SETTING > geom defaults
+    ///
+    /// **Important**: Query literals from MAPPING (`'foo' AS color`) have already been converted
+    /// to columns during query execution, so this only adds SETTING/default literals which
+    /// remain as `AestheticValue::Literal` and render without scale transformations.
+    ///
+    /// Call this during execution to provide a single source of truth for writers.
+    pub fn resolve_aesthetics(&mut self) {
+        let supported_aesthetics = self.geom.aesthetics().supported();
+
+        for aesthetic_name in supported_aesthetics {
+            // Skip if already in MAPPING (highest precedence)
+            if self.mappings.contains_key(aesthetic_name) {
+                continue;
+            }
+
+            // Check SETTING first (user-specified) and consume from parameters
+            if let Some(value) = self.parameters.remove(aesthetic_name) {
+                self.mappings
+                    .insert(aesthetic_name, AestheticValue::Literal(value));
+                continue;
+            }
+
+            // Fall back to geom default (filter out Null = non-literal defaults)
+            if let Some(default_value) = self.geom.aesthetics().get(aesthetic_name) {
+                match default_value.to_parameter_value() {
+                    ParameterValue::Null => continue,
+                    value => {
+                        self.mappings
+                            .insert(aesthetic_name, AestheticValue::Literal(value));
+                    }
+                }
             }
         }
     }
@@ -248,5 +310,95 @@ impl Layer {
                 .aesthetics
                 .insert(target_aesthetic.clone(), new_value);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_aesthetics_from_settings() {
+        // Test that resolve_aesthetics() moves aesthetic values from parameters to mappings
+        let mut layer = Layer::new(Geom::point());
+        layer
+            .parameters
+            .insert("size".to_string(), ParameterValue::Number(5.0));
+        layer
+            .parameters
+            .insert("opacity".to_string(), ParameterValue::Number(0.8));
+
+        layer.resolve_aesthetics();
+
+        // Values should be moved from parameters to mappings as Literal
+        assert!(!layer.parameters.contains_key("size"));
+        assert!(!layer.parameters.contains_key("opacity"));
+        assert_eq!(
+            layer.mappings.get("size"),
+            Some(&AestheticValue::Literal(ParameterValue::Number(5.0)))
+        );
+        assert_eq!(
+            layer.mappings.get("opacity"),
+            Some(&AestheticValue::Literal(ParameterValue::Number(0.8)))
+        );
+    }
+
+    #[test]
+    fn test_resolve_aesthetics_from_defaults() {
+        // Test that resolve_aesthetics() includes geom default values
+        let mut layer = Layer::new(Geom::point());
+
+        layer.resolve_aesthetics();
+
+        // Point geom has default shape = 'circle'
+        assert_eq!(
+            layer.mappings.get("shape"),
+            Some(&AestheticValue::Literal(ParameterValue::String(
+                "circle".to_string()
+            )))
+        );
+    }
+
+    #[test]
+    fn test_resolve_aesthetics_skips_mapped() {
+        // Test that resolve_aesthetics() skips aesthetics that are already in MAPPING
+        let mut layer = Layer::new(Geom::point());
+        layer.mappings.insert(
+            "size",
+            AestheticValue::standard_column("my_size".to_string()),
+        );
+        layer
+            .parameters
+            .insert("size".to_string(), ParameterValue::Number(5.0));
+
+        layer.resolve_aesthetics();
+
+        // size should stay in parameters (not moved to mappings) because it's already in MAPPING
+        assert!(layer.parameters.contains_key("size"));
+        // The mapping should still be the Column, not replaced with Literal
+        assert!(matches!(
+            layer.mappings.get("size"),
+            Some(AestheticValue::Column { .. })
+        ));
+    }
+
+    #[test]
+    fn test_resolve_aesthetics_precedence() {
+        // Test that SETTING takes precedence over geom defaults
+        let mut layer = Layer::new(Geom::point());
+        layer.parameters.insert(
+            "shape".to_string(),
+            ParameterValue::String("square".to_string()),
+        );
+
+        layer.resolve_aesthetics();
+
+        // Should use SETTING value, not default
+        assert_eq!(
+            layer.mappings.get("shape"),
+            Some(&AestheticValue::Literal(ParameterValue::String(
+                "square".to_string()
+            )))
+        );
     }
 }

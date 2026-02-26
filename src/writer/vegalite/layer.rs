@@ -297,9 +297,7 @@ impl GeomRenderer for PolygonRenderer {
     fn modify_spec(&self, layer_spec: &mut Value, _layer: &Layer) -> Result<()> {
         layer_spec["mark"] = json!({
             "type": "line",
-            "interpolate": "linear-closed",
-            "fill": "#888888",
-            "stroke": "#888888"
+            "interpolate": "linear-closed"
         });
         Ok(())
     }
@@ -583,11 +581,6 @@ impl BoxplotRenderer {
             width = *num;
         }
 
-        // Default styling
-        let default_stroke = "black";
-        let default_fill = "#FFFFFF00";
-        let default_linewidth = 1.0;
-
         // Helper to create filter transform for source selection
         let make_source_filter = |type_suffix: &str| -> Value {
             let source_key = format!("{}{}", base_key, type_suffix);
@@ -620,9 +613,7 @@ impl BoxplotRenderer {
                 &prototype,
                 "outlier",
                 json!({
-                    "type": "point",
-                    "stroke": default_stroke,
-                    "strokeWidth": default_linewidth
+                    "type": "point"
                 }),
             );
             if points["encoding"].get("color").is_some() {
@@ -656,9 +647,7 @@ impl BoxplotRenderer {
             &summary_prototype,
             "lower_whisker",
             json!({
-                "type": "rule",
-                "stroke": default_stroke,
-                "size": default_linewidth
+                "type": "rule"
             }),
         );
 
@@ -678,9 +667,7 @@ impl BoxplotRenderer {
             &summary_prototype,
             "upper_whisker",
             json!({
-                "type": "rule",
-                "stroke": default_stroke,
-                "size": default_linewidth
+                "type": "rule"
             }),
         );
 
@@ -702,10 +689,7 @@ impl BoxplotRenderer {
             json!({
                 "type": "bar",
                 "width": {"band": width},
-                "align": "center",
-                "stroke": default_stroke,
-                "color": default_fill,
-                "strokeWidth": default_linewidth
+                "align": "center"
             }),
         );
         box_part["encoding"][value_var1] = y_encoding.clone();
@@ -717,10 +701,8 @@ impl BoxplotRenderer {
             "median",
             json!({
                 "type": "tick",
-                "stroke": default_stroke,
                 "width": {"band": width},
-                "align": "center",
-                "strokeWidth": default_linewidth
+                "align": "center"
             }),
         );
         median_line["encoding"][value_var1] = y_encoding;

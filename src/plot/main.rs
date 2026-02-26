@@ -32,7 +32,7 @@ pub use super::types::{
 
 // Re-export Geom and related types from the layer::geom module
 pub use super::layer::geom::{
-    DefaultParam, DefaultParamValue, Geom, GeomAesthetics, GeomTrait, GeomType, StatResult,
+    DefaultAesthetics, DefaultParam, DefaultParamValue, Geom, GeomTrait, GeomType, StatResult,
 };
 
 use super::aesthetic::primary_aesthetic;
@@ -478,59 +478,58 @@ mod tests {
     fn test_geom_aesthetics() {
         // Point geom
         let point = Geom::point().aesthetics();
-        assert!(point.supported.contains(&"pos1"));
-        assert!(point.supported.contains(&"size"));
-        assert!(point.supported.contains(&"shape"));
-        assert!(!point.supported.contains(&"linetype"));
-        assert_eq!(point.required, &["pos1", "pos2"]);
+        assert!(point.is_supported("pos1"));
+        assert!(point.is_supported("size"));
+        assert!(point.is_supported("shape"));
+        assert!(!point.is_supported("linetype"));
+        assert_eq!(point.required(), &["pos1", "pos2"]);
 
         // Line geom
         let line = Geom::line().aesthetics();
-        assert!(line.supported.contains(&"linetype"));
-        assert!(line.supported.contains(&"linewidth"));
-        assert!(!line.supported.contains(&"size"));
-        assert_eq!(line.required, &["pos1", "pos2"]);
+        assert!(line.is_supported("linetype"));
+        assert!(line.is_supported("linewidth"));
+        assert!(!line.is_supported("size"));
+        assert_eq!(line.required(), &["pos1", "pos2"]);
 
         // Bar geom - optional pos1 and pos2 (stat decides aggregation)
         let bar = Geom::bar().aesthetics();
-        assert!(bar.supported.contains(&"fill"));
-        assert!(bar.supported.contains(&"width"));
-        assert!(bar.supported.contains(&"pos2")); // Bar accepts optional pos2
-        assert!(bar.supported.contains(&"pos1")); // Bar accepts optional pos1
-        assert_eq!(bar.required, &[] as &[&str]); // No required aesthetics
+        assert!(bar.is_supported("fill"));
+        assert!(bar.is_supported("pos2")); // Bar accepts optional pos2
+        assert!(bar.is_supported("pos1")); // Bar accepts optional pos1
+        assert_eq!(bar.required(), &[] as &[&str]); // No required aesthetics
 
         // Text geom
         let text = Geom::text().aesthetics();
-        assert!(text.supported.contains(&"label"));
-        assert!(text.supported.contains(&"family"));
-        assert_eq!(text.required, &["pos1", "pos2"]);
+        assert!(text.is_supported("label"));
+        assert!(text.is_supported("family"));
+        assert_eq!(text.required(), &["pos1", "pos2"]);
 
         // Statistical geoms only require pos1
-        assert_eq!(Geom::histogram().aesthetics().required, &["pos1"]);
-        assert_eq!(Geom::density().aesthetics().required, &["pos1"]);
+        assert_eq!(Geom::histogram().aesthetics().required(), &["pos1"]);
+        assert_eq!(Geom::density().aesthetics().required(), &["pos1"]);
 
         // Ribbon requires pos2min/pos2max
         assert_eq!(
-            Geom::ribbon().aesthetics().required,
+            Geom::ribbon().aesthetics().required(),
             &["pos1", "pos2min", "pos2max"]
         );
 
         // Segment/arrow require endpoints
         assert_eq!(
-            Geom::segment().aesthetics().required,
+            Geom::segment().aesthetics().required(),
             &["pos1", "pos2", "pos1end", "pos2end"]
         );
 
         // Reference lines (these are special - they use intercept aesthetics, not positional)
-        assert_eq!(Geom::hline().aesthetics().required, &["pos2intercept"]);
-        assert_eq!(Geom::vline().aesthetics().required, &["pos1intercept"]);
+        assert_eq!(Geom::hline().aesthetics().required(), &["pos2intercept"]);
+        assert_eq!(Geom::vline().aesthetics().required(), &["pos1intercept"]);
         assert_eq!(
-            Geom::abline().aesthetics().required,
+            Geom::abline().aesthetics().required(),
             &["slope", "intercept"]
         );
 
         // ErrorBar has no strict requirements
-        assert_eq!(Geom::errorbar().aesthetics().required, &[] as &[&str]);
+        assert_eq!(Geom::errorbar().aesthetics().required(), &[] as &[&str]);
     }
 
     #[test]
