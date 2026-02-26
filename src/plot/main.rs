@@ -142,8 +142,7 @@ impl Plot {
         } else {
             // Create default based on project (use aesthetics if set, else defaults)
             // If no project clause, use default cartesian names ["x", "y"]
-            let default_positional: Vec<String> =
-                vec!["x".to_string(), "y".to_string()];
+            let default_positional: Vec<String> = vec!["x".to_string(), "y".to_string()];
             let positional_names: &[String] = self
                 .project
                 .as_ref()
@@ -162,8 +161,7 @@ impl Plot {
     pub fn initialize_aesthetic_context(&mut self) {
         // Get positional names from project (already resolved at build time)
         // If no project clause, use default ["x", "y"]
-        let default_positional: Vec<String> =
-            vec!["x".to_string(), "y".to_string()];
+        let default_positional: Vec<String> = vec!["x".to_string(), "y".to_string()];
         let positional_names: &[String] = self
             .project
             .as_ref()
@@ -369,8 +367,14 @@ mod tests {
 
         let valid_ribbon = Layer::new(Geom::ribbon())
             .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"))
-            .with_aesthetic("pos2min".to_string(), AestheticValue::standard_column("ymin"))
-            .with_aesthetic("pos2max".to_string(), AestheticValue::standard_column("ymax"));
+            .with_aesthetic(
+                "pos2min".to_string(),
+                AestheticValue::standard_column("ymin"),
+            )
+            .with_aesthetic(
+                "pos2max".to_string(),
+                AestheticValue::standard_column("ymax"),
+            );
 
         assert!(valid_ribbon.validate_required_aesthetics().is_ok());
     }
@@ -651,8 +655,14 @@ mod tests {
         // Add a second layer with pos1min
         let layer2 = Layer::new(Geom::ribbon())
             .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("date"))
-            .with_aesthetic("pos1min".to_string(), AestheticValue::standard_column("lower"))
-            .with_aesthetic("pos1max".to_string(), AestheticValue::standard_column("upper"))
+            .with_aesthetic(
+                "pos1min".to_string(),
+                AestheticValue::standard_column("lower"),
+            )
+            .with_aesthetic(
+                "pos1max".to_string(),
+                AestheticValue::standard_column("upper"),
+            )
             .with_aesthetic(
                 "pos2min".to_string(),
                 AestheticValue::standard_column("y_lower"),

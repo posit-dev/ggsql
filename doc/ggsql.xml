@@ -222,14 +222,6 @@
       <item>void</item>
     </list>
 
-    <!-- Facet Scales (only in FACET context) -->
-    <list name="facet_scales">
-      <item>fixed</item>
-      <item>free</item>
-      <item>free_x</item>
-      <item>free_y</item>
-    </list>
-
     <!-- Scale Properties -->
     <list name="scale_properties">
       <item>type</item>

@@ -581,7 +581,8 @@ fn resolve_facet(
     // Having only facet2 is an error (column without row)
     if has_facet2 && !has_facet1 {
         return Err(GgsqlError::ValidationError(
-            "Grid facet layout requires both 'row' and 'column' aesthetics. Missing: 'row'".to_string()
+            "Grid facet layout requires both 'row' and 'column' aesthetics. Missing: 'row'"
+                .to_string(),
         ));
     }
 
@@ -1157,8 +1158,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     for spec in &mut specs {
         // Get positional aesthetic names from the aesthetic context (coord-specific)
         // This must be done before mutably borrowing facet
-        let positional_names: Vec<String> =
-            spec.get_aesthetic_context().user_positional().to_vec();
+        let positional_names: Vec<String> = spec.get_aesthetic_context().user_positional().to_vec();
         // Convert to &str slice for resolve_facet_properties
         let positional_refs: Vec<&str> = positional_names.iter().map(|s| s.as_str()).collect();
 
@@ -1712,10 +1712,10 @@ mod tests {
         fn test_resolve_facet_infers_grid_from_layer_mappings() {
             // Use internal names "facet1" and "facet2" since resolve_facet is called after transformation
             let mut layer = Layer::new(Geom::point());
-            layer
-                .mappings
-                .aesthetics
-                .insert("facet1".to_string(), AestheticValue::standard_column("region"));
+            layer.mappings.aesthetics.insert(
+                "facet1".to_string(),
+                AestheticValue::standard_column("region"),
+            );
             layer.mappings.aesthetics.insert(
                 "facet2".to_string(),
                 AestheticValue::standard_column("year"),

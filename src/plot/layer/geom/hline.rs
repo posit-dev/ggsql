@@ -13,7 +13,13 @@ impl GeomTrait for HLine {
 
     fn aesthetics(&self) -> GeomAesthetics {
         GeomAesthetics {
-            supported: &["pos2intercept", "stroke", "linetype", "linewidth", "opacity"],
+            supported: &[
+                "pos2intercept",
+                "stroke",
+                "linetype",
+                "linewidth",
+                "opacity",
+            ],
             required: &["pos2intercept"],
             hidden: &[],
         }

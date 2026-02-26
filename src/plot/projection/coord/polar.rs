@@ -73,7 +73,10 @@ mod tests {
     fn test_polar_rejects_unknown_property() {
         let polar = Polar;
         let mut props = HashMap::new();
-        props.insert("unknown".to_string(), ParameterValue::String("value".to_string()));
+        props.insert(
+            "unknown".to_string(),
+            ParameterValue::String("value".to_string()),
+        );
 
         let resolved = polar.resolve_properties(&props);
         assert!(resolved.is_err());
@@ -106,10 +109,7 @@ mod tests {
         assert!(resolved.is_ok());
         let resolved = resolved.unwrap();
         assert!(resolved.contains_key("start"));
-        assert_eq!(
-            resolved.get("start").unwrap(),
-            &ParameterValue::Number(0.0)
-        );
+        assert_eq!(resolved.get("start").unwrap(), &ParameterValue::Number(0.0));
     }
 
     #[test]
@@ -121,15 +121,9 @@ mod tests {
         let resolved = polar.resolve_properties(&props);
         assert!(resolved.is_ok());
         let resolved = resolved.unwrap();
-        assert_eq!(
-            resolved.get("end").unwrap(),
-            &ParameterValue::Number(180.0)
-        );
+        assert_eq!(resolved.get("end").unwrap(), &ParameterValue::Number(180.0));
         // start should still get its default
-        assert_eq!(
-            resolved.get("start").unwrap(),
-            &ParameterValue::Number(0.0)
-        );
+        assert_eq!(resolved.get("start").unwrap(), &ParameterValue::Number(0.0));
     }
 
     #[test]
@@ -146,10 +140,7 @@ mod tests {
             resolved.get("start").unwrap(),
             &ParameterValue::Number(-90.0)
         );
-        assert_eq!(
-            resolved.get("end").unwrap(),
-            &ParameterValue::Number(90.0)
-        );
+        assert_eq!(resolved.get("end").unwrap(), &ParameterValue::Number(90.0));
     }
 
     #[test]
@@ -161,9 +152,6 @@ mod tests {
         let resolved = polar.resolve_properties(&props);
         assert!(resolved.is_ok());
         let resolved = resolved.unwrap();
-        assert_eq!(
-            resolved.get("inner").unwrap(),
-            &ParameterValue::Number(0.5)
-        );
+        assert_eq!(resolved.get("inner").unwrap(), &ParameterValue::Number(0.5));
     }
 }

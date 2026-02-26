@@ -1267,7 +1267,10 @@ mod tests {
         let specs = result.unwrap();
 
         let project = specs[0].project.as_ref().unwrap();
-        assert_eq!(project.aesthetics, vec!["myX".to_string(), "myY".to_string()]);
+        assert_eq!(
+            project.aesthetics,
+            vec!["myX".to_string(), "myY".to_string()]
+        );
     }
 
     #[test]
@@ -1299,7 +1302,10 @@ mod tests {
         let specs = result.unwrap();
 
         let project = specs[0].project.as_ref().unwrap();
-        assert_eq!(project.aesthetics, vec!["theta".to_string(), "radius".to_string()]);
+        assert_eq!(
+            project.aesthetics,
+            vec!["theta".to_string(), "radius".to_string()]
+        );
     }
 
     #[test]
@@ -1327,7 +1333,9 @@ mod tests {
         let result = parse_test_query(query);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("conflicts with non-positional aesthetic"));
+        assert!(err
+            .to_string()
+            .contains("conflicts with non-positional aesthetic"));
     }
 
     // ========================================

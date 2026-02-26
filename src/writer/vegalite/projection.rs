@@ -9,19 +9,16 @@ use serde_json::{json, Value};
 
 /// Apply projection transformations to the spec and data
 /// Returns (possibly transformed DataFrame, possibly modified spec)
-/// free_x/free_y indicate whether facets have independent scales (affects domain application)
 pub(super) fn apply_project_transforms(
     spec: &Plot,
     data: &DataFrame,
     vl_spec: &mut Value,
-    free_x: bool,
-    free_y: bool,
 ) -> Result<Option<DataFrame>> {
     if let Some(ref project) = spec.project {
         // Apply coord-specific transformations
         let result = match project.coord.coord_kind() {
             CoordKind::Cartesian => {
-                apply_cartesian_project(project, vl_spec, free_x, free_y)?;
+                apply_cartesian_project(project, vl_spec)?;
                 None
             }
             CoordKind::Polar => Some(apply_polar_project(project, spec, data, vl_spec)?),
@@ -58,12 +55,7 @@ fn apply_clip_to_layers(vl_spec: &mut Value, clip: bool) {
 }
 
 /// Apply Cartesian projection properties
-fn apply_cartesian_project(
-    _project: &Projection,
-    _vl_spec: &mut Value,
-    _free_x: bool,
-    _free_y: bool,
-) -> Result<()> {
+fn apply_cartesian_project(_project: &Projection, _vl_spec: &mut Value) -> Result<()> {
     // ratio - not yet implemented
     Ok(())
 }
@@ -279,4 +271,3 @@ fn apply_polar_radius_range(encoding: &mut Value, inner: f64) -> Result<()> {
 
     Ok(())
 }
-

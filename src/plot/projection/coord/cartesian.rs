@@ -64,7 +64,10 @@ mod tests {
     fn test_cartesian_rejects_unknown_property() {
         let cartesian = Cartesian;
         let mut props = HashMap::new();
-        props.insert("unknown".to_string(), ParameterValue::String("value".to_string()));
+        props.insert(
+            "unknown".to_string(),
+            ParameterValue::String("value".to_string()),
+        );
 
         let resolved = cartesian.resolve_properties(&props);
         assert!(resolved.is_err());
@@ -72,5 +75,4 @@ mod tests {
         assert!(err.contains("unknown"));
         assert!(err.contains("not valid"));
     }
-
 }

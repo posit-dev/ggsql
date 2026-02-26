@@ -543,7 +543,9 @@ mod tests {
                 layer["encoding"].get("theta").is_some(),
                 "{} should produce theta encoding, got keys: {:?}",
                 test_name,
-                layer["encoding"].as_object().map(|o| o.keys().collect::<Vec<_>>())
+                layer["encoding"]
+                    .as_object()
+                    .map(|o| o.keys().collect::<Vec<_>>())
             );
             // Also verify no x or y keys exist (they should be mapped to theta/radius)
             assert!(
@@ -620,7 +622,9 @@ mod tests {
                 layer["encoding"].get("x").is_some(),
                 "{} should produce x encoding, got keys: {:?}",
                 test_name,
-                layer["encoding"].as_object().map(|o| o.keys().collect::<Vec<_>>())
+                layer["encoding"]
+                    .as_object()
+                    .map(|o| o.keys().collect::<Vec<_>>())
             );
             // Verify no theta/radius keys exist
             assert!(
@@ -888,7 +892,10 @@ mod tests {
 
         // Second element should be the outer radius expression
         assert!(
-            range[1]["expr"].as_str().unwrap().contains("min(width,height)/2"),
+            range[1]["expr"]
+                .as_str()
+                .unwrap()
+                .contains("min(width,height)/2"),
             "Outer radius expression should be min(width,height)/2, got: {:?}",
             range[1]
         );

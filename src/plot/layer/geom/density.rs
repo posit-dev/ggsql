@@ -89,7 +89,14 @@ impl GeomTrait for Density {
         parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
     ) -> crate::Result<super::StatResult> {
-        stat_density(query, aesthetics, "pos1", group_by, parameters, execute_query)
+        stat_density(
+            query,
+            aesthetics,
+            "pos1",
+            group_by,
+            parameters,
+            execute_query,
+        )
     }
 }
 
@@ -948,7 +955,9 @@ mod tests {
         assert!(df.height() > 0);
 
         // Verify pos2 values (from intensity) are non-negative
-        let y_col = df.column("__ggsql_aes_pos2__").expect("pos2 aesthetic exists");
+        let y_col = df
+            .column("__ggsql_aes_pos2__")
+            .expect("pos2 aesthetic exists");
         let all_non_negative = y_col
             .f64()
             .expect("y is f64")

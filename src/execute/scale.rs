@@ -1442,8 +1442,14 @@ mod tests {
         spec.scales.push(scale);
         // Simulate post-transformation state: mappings use internal names
         let layer = Layer::new(Geom::errorbar())
-            .with_aesthetic("pos2min".to_string(), AestheticValue::standard_column("low"))
-            .with_aesthetic("pos2max".to_string(), AestheticValue::standard_column("high"));
+            .with_aesthetic(
+                "pos2min".to_string(),
+                AestheticValue::standard_column("low"),
+            )
+            .with_aesthetic(
+                "pos2max".to_string(),
+                AestheticValue::standard_column("high"),
+            );
         spec.layers.push(layer);
 
         // Create data where pos2min/pos2max columns have different ranges

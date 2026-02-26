@@ -321,7 +321,7 @@ mod tests {
         // After parsing, aesthetics are transformed to internal names
         assert!(mapping.aesthetics.contains_key("pos1")); // x -> pos1
         assert!(mapping.aesthetics.contains_key("pos2")); // y -> pos2
-        // Column names remain unchanged
+                                                          // Column names remain unchanged
         assert_eq!(
             mapping.aesthetics.get("pos1").unwrap().column_name(),
             Some("date")

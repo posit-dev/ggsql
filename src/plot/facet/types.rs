@@ -103,12 +103,10 @@ impl FacetLayout {
     pub fn get_aesthetic_mappings(&self) -> Vec<(&str, &'static str)> {
         let user_names = self.user_facet_names();
         match self {
-            FacetLayout::Wrap { variables } => {
-                variables
-                    .iter()
-                    .map(|v| (v.as_str(), user_names[0]))
-                    .collect()
-            }
+            FacetLayout::Wrap { variables } => variables
+                .iter()
+                .map(|v| (v.as_str(), user_names[0]))
+                .collect(),
             FacetLayout::Grid { row, column } => {
                 let mut result: Vec<(&str, &'static str)> =
                     row.iter().map(|v| (v.as_str(), user_names[0])).collect();
@@ -160,7 +158,11 @@ impl FacetLayout {
                     .iter()
                     .map(|v| (v.as_str(), internal_names[0].clone()))
                     .collect();
-                result.extend(column.iter().map(|v| (v.as_str(), internal_names[1].clone())));
+                result.extend(
+                    column
+                        .iter()
+                        .map(|v| (v.as_str(), internal_names[1].clone())),
+                );
                 result
             }
         }

@@ -13,6 +13,39 @@ use std::collections::{HashMap, HashSet};
 
 use super::{POINTS_TO_AREA, POINTS_TO_PIXELS};
 
+/// Check if a positional aesthetic has free scales enabled.
+///
+/// Maps aesthetic names to position indices:
+/// - pos1, pos1min, pos1max, pos1end -> index 0
+/// - pos2, pos2min, pos2max, pos2end -> index 1
+/// - etc.
+///
+/// Returns false for non-positional aesthetics or if no free_scales array is provided.
+fn is_position_free_for_aesthetic(
+    aesthetic: &str,
+    free_scales: Option<&[crate::plot::ArrayElement]>,
+) -> bool {
+    let Some(free_arr) = free_scales else {
+        return false;
+    };
+
+    // Extract position index from aesthetic name (pos1 -> 0, pos2 -> 1, etc.)
+    let pos_index = if aesthetic.starts_with("pos1") {
+        Some(0)
+    } else if aesthetic.starts_with("pos2") {
+        Some(1)
+    } else if aesthetic.starts_with("pos3") {
+        Some(2)
+    } else {
+        None
+    };
+
+    pos_index
+        .and_then(|idx| free_arr.get(idx))
+        .map(|e| matches!(e, crate::plot::ArrayElement::Boolean(true)))
+        .unwrap_or(false)
+}
+
 /// Build a Vega-Lite labelExpr from label mappings
 ///
 /// Generates a conditional expression that renames or suppresses labels:
@@ -400,10 +433,8 @@ struct ScaleContext<'a> {
     is_binned_legend: bool,
     #[allow(dead_code)]
     spec: &'a Plot, // Reserved for future use (e.g., multi-scale legend decisions)
-    /// Whether to skip domain for x axis (facet free scales)
-    free_x: bool,
-    /// Whether to skip domain for y axis (facet free scales)
-    free_y: bool,
+    /// Free scales array from facet (position-indexed booleans)
+    free_scales: Option<&'a [crate::plot::ArrayElement]>,
 }
 
 /// Build scale properties from SCALE clause
@@ -422,8 +453,7 @@ fn build_scale_properties(
     // When using free scales, Vega-Lite computes independent domains per facet panel.
     // Setting an explicit domain would override this behavior.
     // Note: aesthetics are in internal format (pos1, pos2) at this stage
-    let skip_domain =
-        (ctx.aesthetic == "pos1" && ctx.free_x) || (ctx.aesthetic == "pos2" && ctx.free_y);
+    let skip_domain = is_position_free_for_aesthetic(ctx.aesthetic, ctx.free_scales);
 
     // Apply domain from input_range (FROM clause)
     // Skip for threshold scales - they use internal breaks as domain instead
@@ -742,10 +772,8 @@ pub(super) struct EncodingContext<'a> {
     pub spec: &'a Plot,
     pub titled_families: &'a mut HashSet<String>,
     pub primary_aesthetics: &'a HashSet<String>,
-    /// Whether facet has free x scale (independent domains per panel)
-    pub free_x: bool,
-    /// Whether facet has free y scale (independent domains per panel)
-    pub free_y: bool,
+    /// Free scales array from facet (position-indexed booleans)
+    pub free_scales: Option<&'a [crate::plot::ArrayElement]>,
 }
 
 /// Build encoding channel from aesthetic mapping
@@ -823,8 +851,7 @@ fn build_column_encoding(
             aesthetic,
             spec: ctx.spec,
             is_binned_legend,
-            free_x: ctx.free_x,
-            free_y: ctx.free_y,
+            free_scales: ctx.free_scales,
         };
         let (scale_obj, needs_gradient) = build_scale_properties(scale, &scale_ctx);
 

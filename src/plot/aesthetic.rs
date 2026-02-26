@@ -189,7 +189,8 @@ impl AestheticContext {
     ///
     /// Convenience method for creating context from static string slices (e.g., from coord defaults).
     pub fn from_static(positional_names: &[&'static str], facet_names: &[&'static str]) -> Self {
-        let owned_positional: Vec<String> = positional_names.iter().map(|s| s.to_string()).collect();
+        let owned_positional: Vec<String> =
+            positional_names.iter().map(|s| s.to_string()).collect();
         Self::new(&owned_positional, facet_names)
     }
 
@@ -213,11 +214,7 @@ impl AestheticContext {
         }
 
         // Check active facet (from FACET clause)
-        if let Some(idx) = self
-            .all_user_facet
-            .iter()
-            .position(|u| u == user_aesthetic)
-        {
+        if let Some(idx) = self.all_user_facet.iter().position(|u| u == user_aesthetic) {
             return Some(self.all_internal_facet[idx].as_str());
         }
 
@@ -514,9 +511,8 @@ pub fn primary_aesthetic(aesthetic: &str) -> &str {
     // Handle internal positional variants (pos1min -> pos1, pos2end -> pos2, etc.)
     if aesthetic.starts_with("pos") {
         for suffix in POSITIONAL_SUFFIXES {
-            if aesthetic.ends_with(suffix) {
+            if let Some(base) = aesthetic.strip_suffix(suffix) {
                 // Extract the base: pos1min -> pos1, pos2end -> pos2
-                let base = &aesthetic[..aesthetic.len() - suffix.len()];
                 // Verify it's a valid positional (pos followed by digits)
                 if base.len() > 3 && base[3..].chars().all(|c| c.is_ascii_digit()) {
                     // Return static str by leaking - this is acceptable for a small fixed set
@@ -556,7 +552,10 @@ pub fn get_aesthetic_family(aesthetic: &str) -> Vec<String> {
     }
 
     // Check if this is an internal positional (pos1, pos2, etc.)
-    if primary.starts_with("pos") && primary.len() > 3 && primary[3..].chars().all(|c| c.is_ascii_digit()) {
+    if primary.starts_with("pos")
+        && primary.len() > 3
+        && primary[3..].chars().all(|c| c.is_ascii_digit())
+    {
         // Build the internal family: pos1 -> [pos1, pos1min, pos1max, pos1end, pos1intercept]
         let mut family = vec![primary.to_string()];
         for suffix in POSITIONAL_SUFFIXES {
@@ -793,7 +792,11 @@ mod tests {
         assert_eq!(ctx.user_positional(), &["x", "y"]);
 
         // All user positional (with suffixes)
-        let all_user: Vec<&str> = ctx.all_user_positional().iter().map(|s| s.as_str()).collect();
+        let all_user: Vec<&str> = ctx
+            .all_user_positional()
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
         assert!(all_user.contains(&"x"));
         assert!(all_user.contains(&"xmin"));
         assert!(all_user.contains(&"xmax"));
@@ -818,7 +821,11 @@ mod tests {
         assert_eq!(ctx.user_positional(), &["theta", "radius"]);
 
         // All user positional (with suffixes)
-        let all_user: Vec<&str> = ctx.all_user_positional().iter().map(|s| s.as_str()).collect();
+        let all_user: Vec<&str> = ctx
+            .all_user_positional()
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
         assert!(all_user.contains(&"theta"));
         assert!(all_user.contains(&"thetamin"));
         assert!(all_user.contains(&"thetamax"));
@@ -982,7 +989,10 @@ mod tests {
         assert_eq!(ctx.primary_internal_aesthetic("pos1"), Some("pos1"));
         assert_eq!(ctx.primary_internal_aesthetic("pos1min"), Some("pos1"));
         assert_eq!(ctx.primary_internal_aesthetic("pos2end"), Some("pos2"));
-        assert_eq!(ctx.primary_internal_aesthetic("pos1intercept"), Some("pos1"));
+        assert_eq!(
+            ctx.primary_internal_aesthetic("pos1intercept"),
+            Some("pos1")
+        );
         assert_eq!(ctx.primary_internal_aesthetic("color"), Some("color"));
     }
 
@@ -1026,7 +1036,13 @@ mod tests {
         let theta_strs: Vec<&str> = theta_family.iter().map(|s| s.as_str()).collect();
         assert_eq!(
             theta_strs,
-            vec!["theta", "thetamin", "thetamax", "thetaend", "thetaintercept"]
+            vec![
+                "theta",
+                "thetamin",
+                "thetamax",
+                "thetaend",
+                "thetaintercept"
+            ]
         );
 
         // Get user family for radius
@@ -1034,7 +1050,13 @@ mod tests {
         let radius_strs: Vec<&str> = radius_family.iter().map(|s| s.as_str()).collect();
         assert_eq!(
             radius_strs,
-            vec!["radius", "radiusmin", "radiusmax", "radiusend", "radiusintercept"]
+            vec![
+                "radius",
+                "radiusmin",
+                "radiusmax",
+                "radiusend",
+                "radiusintercept"
+            ]
         );
 
         // But internal families are the same for all coords

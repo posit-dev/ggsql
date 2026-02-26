@@ -333,12 +333,8 @@
       "end": "(?i)(?=\\b(DRAW|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
-          "name": "constant.language.facet-scales.ggsql",
-          "match": "\\b(fixed|free|free_x|free_y)\\b"
-        },
-        {
           "name": "support.type.property.ggsql",
-          "match": "\\b(scales|ncol|columns|missing)\\b"
+          "match": "\\b(free|ncol|missing)\\b"
         },
         {
           "name": "keyword.operator.wildcard.ggsql",
