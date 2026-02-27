@@ -2293,8 +2293,6 @@ mod tests {
 
     #[test]
     fn test_resolve_properties_defaults() {
-        // NOTE: After transformation, positional aesthetics use internal names (pos1, pos2, etc.)
-
         // Continuous positional: default expand
         let props = HashMap::new();
         let resolved = ScaleType::continuous()
@@ -2332,8 +2330,6 @@ mod tests {
 
     #[test]
     fn test_resolve_properties_user_values_preserved() {
-        // NOTE: After transformation, positional aesthetics use internal names (pos1, pos2, etc.)
-
         let mut props = HashMap::new();
         props.insert("expand".to_string(), ParameterValue::Number(0.1));
         let resolved = ScaleType::continuous()

@@ -59,8 +59,6 @@ const GRID_ALLOWED: &[&str] = &["free", "missing"];
 /// Valid values for the missing property
 const MISSING_VALUES: &[&str] = &["repeat", "null"];
 
-// Note: FREE_STRING_VALUES was removed - free property now accepts dynamic positional names
-
 /// Compute smart default ncol for wrap facets based on number of levels
 ///
 /// Returns an optimal column count that creates a balanced grid:

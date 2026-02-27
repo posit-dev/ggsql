@@ -1283,8 +1283,8 @@ mod tests {
 
     #[test]
     fn test_get_aesthetic_family() {
-        // NOTE: get_aesthetic_family() now only handles internal names (pos1, pos2, etc.)
-        // and non-positional aesthetics. For user-facing families, use AestheticContext.
+        // Handles internal names (pos1, pos2, etc.) and non-positional aesthetics.
+        // For user-facing families, use AestheticContext.
 
         // Test internal primary aesthetics include all family members
         let pos1_family = get_aesthetic_family("pos1");
@@ -1435,7 +1435,6 @@ mod tests {
         use polars::prelude::*;
 
         // Create a Plot where "pos2" scale should get range from pos2min and pos2max columns
-        // NOTE: After aesthetic transformation, all positional aesthetics use internal names
         let mut spec = Plot::new();
 
         let scale = crate::plot::Scale::new("pos2");

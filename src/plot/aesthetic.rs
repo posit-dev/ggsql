@@ -124,8 +124,6 @@ pub struct AestheticContext {
     all_internal_positional: Vec<String>,
     /// User-facing facet names: ["panel"] or ["row", "column"]
     user_facet: Vec<&'static str>,
-    /// All user facet names: ["panel"] or ["row", "column"]
-    all_user_facet: Vec<String>,
     /// All internal facet names: ["facet1"] or ["facet1", "facet2"]
     all_internal_facet: Vec<String>,
     /// Non-positional aesthetics (static list)
@@ -162,16 +160,11 @@ impl AestheticContext {
             }
         }
 
-        // Build facet mappings for active facets (from FACET clause or layer mappings)
+        // Build internal facet names for active facets (from FACET clause or layer mappings)
         // These are used for internal→user mapping (to know which user name to show)
-        let mut all_user_facet = Vec::new();
-        let mut all_internal_facet = Vec::new();
-
-        for (i, facet_name) in facet_names.iter().enumerate() {
-            let facet_num = i + 1;
-            all_user_facet.push((*facet_name).to_string());
-            all_internal_facet.push(format!("facet{}", facet_num));
-        }
+        let all_internal_facet: Vec<String> = (1..=facet_names.len())
+            .map(|i| format!("facet{}", i))
+            .collect();
 
         Self {
             user_positional: positional_names.to_vec(),
@@ -179,7 +172,6 @@ impl AestheticContext {
             primary_internal,
             all_internal_positional: all_internal,
             user_facet: facet_names.to_vec(),
-            all_user_facet,
             all_internal_facet,
             non_positional: NON_POSITIONAL,
         }
@@ -214,7 +206,7 @@ impl AestheticContext {
         }
 
         // Check active facet (from FACET clause)
-        if let Some(idx) = self.all_user_facet.iter().position(|u| u == user_aesthetic) {
+        if let Some(idx) = self.user_facet.iter().position(|u| *u == user_aesthetic) {
             return Some(self.all_internal_facet[idx].as_str());
         }
 
@@ -251,7 +243,7 @@ impl AestheticContext {
             .iter()
             .position(|i| i == internal_aesthetic)
         {
-            return Some(self.all_user_facet[idx].as_str());
+            return Some(self.user_facet[idx]);
         }
         None
     }
@@ -280,7 +272,7 @@ impl AestheticContext {
 
     /// Check if name is a user-facing facet aesthetic (panel, row, column)
     pub fn is_user_facet(&self, name: &str) -> bool {
-        self.all_user_facet.iter().any(|f| f == name)
+        self.user_facet.contains(&name)
     }
 
     /// Check if name is an internal facet aesthetic (facet1, facet2)
@@ -396,11 +388,6 @@ impl AestheticContext {
         &self.user_facet
     }
 
-    /// Get all user facet aesthetics as Strings
-    pub fn all_user_facet(&self) -> &[String] {
-        &self.all_user_facet
-    }
-
     /// Get all internal facet aesthetics (facet1, facet2)
     pub fn all_internal_facet(&self) -> &[String] {
         &self.all_internal_facet
@@ -483,19 +470,6 @@ pub fn is_positional_aesthetic(name: &str) -> bool {
     false
 }
 
-/// Check if name is a recognized aesthetic (internal or non-positional)
-///
-/// This function works with **internal** aesthetic names (pos1, pos2, facet1, etc.) and non-positional
-/// aesthetics. For validating user-facing aesthetic names before transformation, use
-/// `AestheticContext::is_user_positional()` or check against the grammar's aesthetic_name rule.
-#[inline]
-pub fn is_aesthetic_name(name: &str) -> bool {
-    is_positional_aesthetic(name)
-        || is_facet_aesthetic(name)
-        || NON_POSITIONAL.contains(&name)
-        || USER_FACET_AESTHETICS.contains(&name)
-}
-
 /// Get the primary aesthetic for a given aesthetic name.
 ///
 /// This function works with **internal** aesthetic names (pos1, pos2, etc.) and non-positional
@@ -574,7 +548,7 @@ mod tests {
 
     #[test]
     fn test_primary_positional() {
-        // NOTE: is_primary_positional() now checks for internal names (pos1, pos2, etc.)
+        // is_primary_positional() checks for internal names (pos1, pos2, etc.)
         assert!(is_primary_positional("pos1"));
         assert!(is_primary_positional("pos2"));
         assert!(is_primary_positional("pos10")); // supports any number
@@ -633,7 +607,7 @@ mod tests {
 
     #[test]
     fn test_positional_aesthetic() {
-        // NOTE: is_positional_aesthetic() now checks for internal names (pos1, pos2, etc.)
+        // Checks internal positional names (pos1, pos2, etc. and variants)
         // For user-facing checks, use AestheticContext::is_user_positional()
 
         // Primary internal
@@ -668,53 +642,9 @@ mod tests {
     }
 
     #[test]
-    fn test_is_aesthetic_name() {
-        // NOTE: is_aesthetic_name() works with internal names and non-positional aesthetics
-        // For user-facing validation, use AestheticContext::is_user_positional()
-
-        // Internal positional
-        assert!(is_aesthetic_name("pos1"));
-        assert!(is_aesthetic_name("pos2"));
-        assert!(is_aesthetic_name("pos1min"));
-        assert!(is_aesthetic_name("pos2end"));
-
-        // Visual (non-positional)
-        assert!(is_aesthetic_name("color"));
-        assert!(is_aesthetic_name("colour"));
-        assert!(is_aesthetic_name("fill"));
-        assert!(is_aesthetic_name("stroke"));
-        assert!(is_aesthetic_name("opacity"));
-        assert!(is_aesthetic_name("size"));
-        assert!(is_aesthetic_name("shape"));
-        assert!(is_aesthetic_name("linetype"));
-        assert!(is_aesthetic_name("linewidth"));
-
-        // Text
-        assert!(is_aesthetic_name("label"));
-        assert!(is_aesthetic_name("family"));
-        assert!(is_aesthetic_name("fontface"));
-        assert!(is_aesthetic_name("hjust"));
-        assert!(is_aesthetic_name("vjust"));
-
-        // Facet (both user-facing and internal)
-        assert!(is_aesthetic_name("panel"));
-        assert!(is_aesthetic_name("row"));
-        assert!(is_aesthetic_name("column"));
-        assert!(is_aesthetic_name("facet1"));
-        assert!(is_aesthetic_name("facet2"));
-
-        // Not aesthetics (user-facing positional names are not recognized by this function)
-        assert!(!is_aesthetic_name("x"));
-        assert!(!is_aesthetic_name("y"));
-        assert!(!is_aesthetic_name("theta"));
-        assert!(!is_aesthetic_name("foo"));
-        assert!(!is_aesthetic_name("data"));
-    }
-
-    #[test]
     fn test_primary_aesthetic() {
-        // NOTE: primary_aesthetic() now only handles internal names (pos1, pos2, etc.)
-        // and non-positional aesthetics. For user-facing families, use AestheticContext.
+        // Handles internal names (pos1, pos2, etc.) and non-positional aesthetics.
+        // For user-facing families, use AestheticContext.
 
         // Internal positional primaries return themselves
         assert_eq!(primary_aesthetic("pos1"), "pos1");
@@ -745,8 +675,8 @@ mod tests {
 
     #[test]
     fn test_get_aesthetic_family() {
-        // NOTE: get_aesthetic_family() now only handles internal names (pos1, pos2, etc.)
-        // and non-positional aesthetics. For user-facing families, use AestheticContext.
+        // Handles internal names (pos1, pos2, etc.) and non-positional aesthetics.
+        // For user-facing families, use AestheticContext.
 
         // Internal positional primary returns full family
         let pos1_family = get_aesthetic_family("pos1");

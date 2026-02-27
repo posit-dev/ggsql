@@ -1732,11 +1732,6 @@ mod tests {
             assert!(facet.get_variables().is_empty());
         }
 
-        // Note: With internal naming (facet1, facet2), mixing wrap and grid is no longer detectable
-        // at this level because panel→facet1 and row→facet1 map to the same internal name.
-        // The validation happens at the user-facing level during parsing, not here.
-        // This test is no longer applicable with internal naming.
-
         #[test]
         fn test_resolve_facet_error_incomplete_grid() {
             // Only facet2 without facet1 is an error (column without row)
@@ -1792,10 +1787,6 @@ mod tests {
             assert!(err.contains("Wrap layout"));
             assert!(err.contains("row")); // mentions the user-facing name in error
         }
-
-        // Note: With internal naming, grid clause with wrap mapping is allowed
-        // because facet1 (from panel) is compatible with grid layout (uses row only).
-        // The original test is no longer valid.
 
         #[test]
         fn test_resolve_facet_no_mappings_no_clause() {

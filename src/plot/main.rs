@@ -135,32 +135,8 @@ impl Plot {
         }
     }
 
-    /// Get the aesthetic context, creating a default one if not set
-    pub fn get_aesthetic_context(&self) -> AestheticContext {
-        if let Some(ref ctx) = self.aesthetic_context {
-            ctx.clone()
-        } else {
-            // Create default based on project (use aesthetics if set, else defaults)
-            // If no project clause, use default cartesian names ["x", "y"]
-            let default_positional: Vec<String> = vec!["x".to_string(), "y".to_string()];
-            let positional_names: &[String] = self
-                .project
-                .as_ref()
-                .map(|p| p.aesthetics.as_slice())
-                .unwrap_or(&default_positional);
-            let facet_names: &[&'static str] = self
-                .facet
-                .as_ref()
-                .map(|f| f.layout.user_facet_names())
-                .unwrap_or(&[]);
-            AestheticContext::new(positional_names, facet_names)
-        }
-    }
-
-    /// Set the aesthetic context based on the current coord and facet
-    pub fn initialize_aesthetic_context(&mut self) {
-        // Get positional names from project (already resolved at build time)
-        // If no project clause, use default ["x", "y"]
+    /// Build an aesthetic context from current project and facet settings
+    fn build_aesthetic_context(&self) -> AestheticContext {
         let default_positional: Vec<String> = vec!["x".to_string(), "y".to_string()];
         let positional_names: &[String] = self
             .project
@@ -172,7 +148,19 @@ impl Plot {
             .as_ref()
             .map(|f| f.layout.user_facet_names())
             .unwrap_or(&[]);
-        self.aesthetic_context = Some(AestheticContext::new(positional_names, facet_names));
+        AestheticContext::new(positional_names, facet_names)
+    }
+
+    /// Get the aesthetic context, creating a default one if not set
+    pub fn get_aesthetic_context(&self) -> AestheticContext {
+        self.aesthetic_context
+            .clone()
+            .unwrap_or_else(|| self.build_aesthetic_context())
+    }
+
+    /// Set the aesthetic context based on the current coord and facet
+    pub fn initialize_aesthetic_context(&mut self) {
+        self.aesthetic_context = Some(self.build_aesthetic_context());
     }
 
     /// Transform all aesthetic keys from user-facing to internal names.
@@ -534,8 +522,8 @@ mod tests {
 
     #[test]
     fn test_aesthetic_family_primary_lookup() {
-        // NOTE: primary_aesthetic() now only handles internal names (pos1, pos2, etc.)
-        // and non-positional aesthetics. For user-facing families, use AestheticContext.
+        // Handles internal names (pos1, pos2, etc.) and non-positional aesthetics.
+        // For user-facing families, use AestheticContext.
 
         // Test that internal variant aesthetics map to their primary
         assert_eq!(primary_aesthetic("pos1"), "pos1");
@@ -560,7 +548,6 @@ mod tests {
     #[test]
     fn test_compute_labels_from_variant_aesthetics() {
         // Test that variant aesthetics (pos1min, pos1max) can contribute to primary aesthetic labels
-        // NOTE: After aesthetic transformation, all positional aesthetics use internal names
         let mut spec = Plot::new();
         let layer = Layer::new(Geom::ribbon())
             .with_aesthetic(
@@ -599,7 +586,6 @@ mod tests {
     #[test]
     fn test_user_label_overrides_computed() {
         // Test that user-specified labels take precedence over computed labels
-        // NOTE: After aesthetic transformation, all positional aesthetics use internal names
         let mut spec = Plot::new();
         let layer = Layer::new(Geom::ribbon())
             .with_aesthetic(
@@ -644,7 +630,6 @@ mod tests {
     #[test]
     fn test_primary_aesthetic_sets_label_before_variants() {
         // Test that if both primary and variant are mapped, primary takes precedence
-        // NOTE: After aesthetic transformation, all positional aesthetics use internal names
         let mut spec = Plot::new();
         let layer = Layer::new(Geom::point())
             .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("date"))
