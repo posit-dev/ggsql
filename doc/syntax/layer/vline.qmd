@@ -1,0 +1,50 @@
+---
+title: "V Line"
+---
+
+> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+
+The vline layer is used to draw vertical reference lines at specified x-values. This is useful for adding event markers, cutoff dates, or other vertical guides to plots. The lines extend across the full extent of the y-axis, regardless of the data range.
+
+## Aesthetics
+The following aesthetics are recognised by the vline layer.
+
+### Required
+* `x`: The x-coordinate for the vertical line
+
+### Optional
+* `colour`/`stroke`: The colour of the line
+* `opacity`: The opacity of the line
+* `linewidth`: The width of the line
+* `linetype`: The type of the line, i.e. the dashing pattern
+
+## Settings
+The vline layer has no additional settings.
+
+## Data transformation
+The hline layer does not transform its data but passes it through unchanged.
+
+## Examples
+
+Add a vertical line to mark a specific value:
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+  DRAW point MAPPING bill_len AS x, bill_dep AS y
+  DRAW vline MAPPING 45 AS x
+```
+
+Add multiple reference lines with different colors:
+
+```{ggsql}
+WITH markers AS (
+    SELECT * FROM (VALUES
+        (40, 'Threshold 1'),
+        (45, 'Threshold 2'),
+        (50, 'Threshold 3')
+    ) AS t(position, label)
+)
+VISUALISE FROM ggsql:penguins
+  DRAW point MAPPING bill_len AS x, bill_dep AS y
+  DRAW vline MAPPING position AS x, label AS colour FROM markers
+```

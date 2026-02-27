@@ -417,15 +417,12 @@ mod tests {
             &["x", "ymin", "ymax"]
         );
 
-        // Segment/arrow require endpoints
-        assert_eq!(
-            Geom::segment().aesthetics().required(),
-            &["x", "y", "xend", "yend"]
-        );
+        // Segment requires x and y (xend/yend optional, default to x/y)
+        assert_eq!(Geom::segment().aesthetics().required(), &["x", "y"]);
 
         // Reference lines
-        assert_eq!(Geom::hline().aesthetics().required(), &["yintercept"]);
-        assert_eq!(Geom::vline().aesthetics().required(), &["xintercept"]);
+        assert_eq!(Geom::hline().aesthetics().required(), &["y"]);
+        assert_eq!(Geom::vline().aesthetics().required(), &["x"]);
         assert_eq!(
             Geom::abline().aesthetics().required(),
             &["slope", "intercept"]

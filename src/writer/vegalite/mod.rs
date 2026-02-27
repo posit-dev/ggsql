@@ -86,6 +86,9 @@ fn prepare_layer_data(
     let mut layer_renderers: Vec<Box<dyn GeomRenderer>> = Vec::new();
     let mut prepared_data: Vec<PreparedData> = Vec::new();
 
+    // Build context once for all layers
+    let context = layer::RenderContext::new(&spec.scales);
+
     for (layer_idx, layer) in spec.layers.iter().enumerate() {
         let data_key = &layer_data_keys[layer_idx];
         let df = data.get(data_key).ok_or_else(|| {
@@ -100,7 +103,7 @@ fn prepare_layer_data(
         let renderer = get_renderer(&layer.geom);
 
         // Prepare data using the renderer (handles both standard and composite cases)
-        let prepared = renderer.prepare_data(df, data_key, binned_columns)?;
+        let prepared = renderer.prepare_data(df, data_key, binned_columns, &context)?;
 
         // Add data to individual datasets based on prepared type
         match &prepared {
@@ -153,6 +156,9 @@ fn build_layers(
 ) -> Result<Vec<Value>> {
     let mut layers = Vec::new();
 
+    // Build context once for all layers
+    let context = layer::RenderContext::new(&spec.scales);
+
     for (layer_idx, layer) in spec.layers.iter().enumerate() {
         let data_key = &layer_data_keys[layer_idx];
         let df = data.get(data_key).unwrap();
@@ -187,7 +193,7 @@ fn build_layers(
         layer_spec["encoding"] = Value::Object(encoding);
 
         // Apply geom-specific spec modifications via renderer
-        renderer.modify_spec(&mut layer_spec, layer)?;
+        renderer.modify_spec(&mut layer_spec, layer, &context)?;
 
         // Finalize the layer (may expand into multiple layers for composite geoms)
         let final_layers = renderer.finalize(layer_spec, layer, data_key, prepared)?;
@@ -282,7 +288,8 @@ fn build_layer_encoding(
 
     // Apply geom-specific encoding modifications via renderer
     let renderer = get_renderer(&layer.geom);
-    renderer.modify_encoding(&mut encoding, layer)?;
+    let context = layer::RenderContext::new(&spec.scales);
+    renderer.modify_encoding(&mut encoding, layer, &context)?;
 
     Ok(encoding)
 }

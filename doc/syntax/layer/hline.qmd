@@ -1,0 +1,58 @@
+---
+title: "H Line"
+---
+
+> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+
+The hline layer is used to draw horizontal reference lines at specified y-values. This is useful for adding thresholds, means, medians, or other horizontal guides to plots. The lines extend across the full extent of the x-axis, regardless of the data range.
+
+## Aesthetics
+The following aesthetics are recognised by the hline layer.
+
+### Required
+* `y`: The y-coordinate for the horizontal line
+
+### Optional
+* `colour`/`stroke`: The colour of the line
+* `opacity`: The opacity of the line
+* `linewidth`: The width of the line
+* `linetype`: The type of the line, i.e. the dashing pattern
+
+## Settings
+The hline layer has no additional settings.
+
+## Data transformation
+The hline layer does not transform its data but passes it through unchanged.
+
+## Examples
+
+Add a horizontal threshold line to a time series plot:
+
+```{ggsql}
+SELECT Date AS date, temp AS temperature
+FROM ggsql:airquality
+WHERE Month = 5
+
+VISUALISE date AS x, temperature AS y
+  DRAW line
+  DRAW hline MAPPING 70 AS y
+```
+
+Add multiple threshold lines with different colors:
+
+```{ggsql}
+WITH thresholds AS (
+    SELECT * FROM (VALUES
+        (70, 'Target'),
+        (80, 'Warning'),
+        (90, 'Critical')
+    ) AS t(value, label)
+)
+SELECT Date AS date, temp AS temperature
+FROM ggsql:airquality
+WHERE Month = 5
+
+VISUALISE date AS x, temperature AS y
+  DRAW line
+  DRAW hline MAPPING value AS y, label AS colour FROM thresholds
+```

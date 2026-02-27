@@ -1,0 +1,71 @@
+---
+title: "Errorbar"
+---
+
+> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+
+Errorbars are used to display paired metrics, typically some interval, for a variable. It is displayed as a line between the two values, often with hinges at the ends.
+
+## Aesthetics
+The following aesthetics are recognised by the errorbar layer.
+
+### Required
+* `x` or `y`: Position on the x- or y-axis. These are mutually exclusive.
+* `xmin` or `ymin`: Position of one of the interval ends orthogonal to the main position. These are also mutually exclusive.
+* `xmax` or `ymax`: Position of the other interval end orthogonal to the main position. These are also mutually exclusive.
+
+Note that the required aesthetics is either a set of {`x`, `ymin`, `ymax`} or {`y`, `xmin`, `xmax`} and *not* a combination of the two.
+
+### Optional
+* `stroke`/`colour`: The colour of the lines in the errorbar.
+* `opacity`: The opacity of the colour.
+* `linewidth`: The width of the lines in the errorbar.
+* `linetype`: The dash pattern of the lines in the errorbar.
+
+## Settings
+* `width`: The width of the hinges in points. Can be set to `null` to not display hinges.
+
+## Data transformation
+The errorbar layer does not transform its data but passes it through unchanged.
+
+## Examples
+
+```{ggsql}
+#| code-fold: true
+#| code-summary: "Create example data"
+CREATE TABLE penguin_summary AS
+SELECT
+  species,
+  MEAN(bill_dep) - STDDEV(bill_dep) AS low,
+  MEAN(bill_dep) AS mean,
+  MEAN(bill_dep) + STDDEV(bill_dep) AS high
+FROM ggsql:penguins
+GROUP BY species
+```
+
+Classic errorbar with point at centre.
+
+```{ggsql}
+VISUALISE species AS x FROM penguin_summary
+  DRAW errorbar MAPPING low AS ymax, high AS ymin
+  DRAW point MAPPING mean AS y
+```
+
+Dynamite plot using bars instead of points, using extra wide hinges.
+
+```{ggsql}
+VISUALISE species AS x FROM penguin_summary
+  DRAW errorbar 
+    MAPPING low AS ymax, high AS ymin
+    SETTING width => 40
+  DRAW bar MAPPING mean AS y
+```
+
+The hinges can be omitted by setting `null` as width.
+
+```{ggsql}
+VISUALISE species AS x FROM penguin_summary
+  DRAW errorbar 
+    MAPPING low AS ymax, high AS ymin
+    SETTING width => null
+```

@@ -15,17 +15,22 @@ ggsql augments the standard SQL syntax with a number of new clauses to describe 
 ## Layers
 There are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the `DRAW` clause
 
-- [`point`](layer/point.qmd) is used to create a scatterplot layer
-- [`line`](layer/line.qmd) is used to produce lineplots with the data sorted along the x axis
-- [`path`](layer/path.qmd) is like `line` above but does not sort the data but plot it according to its own order
+- [`point`](layer/point.qmd) is used to create a scatterplot layer.
+- [`line`](layer/line.qmd) is used to produce lineplots with the data sorted along the x axis.
+- [`path`](layer/path.qmd) is like `line` above but does not sort the data but plot it according to its own order.
+- [`segment`](layer/segment.qmd) connects two points with a line segment.
+- [`abline`](layer/abline.qmd) draws a long line parameterised by slope and intercept.
+- [`hline`](layer/hline.qmd) draws a long horizontal line.
+- [`vline`](layer/vline.qmd) draws a long vertical line.
 - [`area`](layer/area.qmd) is used to display series as an area chart.
 - [`ribbon`](layer/ribbon.qmd) is used to display series extrema.
 - [`polygon`](layer/polygon.qmd) is used to display arbitrary shapes as polygons.
-- [`bar`](layer/bar.qmd) creates a bar chart, optionally calculating y from the number of records in each bar
-- [`density`](layer/density.qmd) creates univariate kernel density estimates, showing the distribution of a variable
-- [`violin`](layer/violin.qmd) displays a rotated kernel density estimate
-- [`histogram`](layer/histogram.qmd) bins the data along the x axis and produces a bar for each bin showing the number of records in it
-- [`boxplot`](layer/boxplot.qmd) displays continuous variables as 5-number summaries
+- [`bar`](layer/bar.qmd) creates a bar chart, optionally calculating y from the number of records in each bar.
+- [`density`](layer/density.qmd) creates univariate kernel density estimates, showing the distribution of a variable.
+- [`violin`](layer/violin.qmd) displays a rotated kernel density estimate.
+- [`histogram`](layer/histogram.qmd) bins the data along the x axis and produces a bar for each bin showing the number of records in it.
+- [`boxplot`](layer/boxplot.qmd) displays continuous variables as 5-number summaries.
+- [`errorbar`](layer/errorbar.qmd) a line segment with hinges at the endpoints.
 
 ## Scales
 

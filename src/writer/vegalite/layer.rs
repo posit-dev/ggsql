@@ -9,6 +9,7 @@
 
 use crate::plot::layer::geom::GeomType;
 use crate::plot::ParameterValue;
+use crate::writer::vegalite::POINTS_TO_PIXELS;
 use crate::{naming, AestheticValue, DataFrame, Geom, GgsqlError, Layer, Result};
 use polars::prelude::ChunkCompareEq;
 use serde_json::{json, Map, Value};
@@ -39,6 +40,11 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Boxplot => "boxplot",
         GeomType::Text => "text",
         GeomType::Label => "text",
+        GeomType::Segment => "rule",
+        GeomType::HLine => "rule",
+        GeomType::VLine => "rule",
+        GeomType::AbLine => "rule",
+        GeomType::ErrorBar => "rule",
         _ => "point", // Default fallback
     };
     json!({
@@ -112,6 +118,61 @@ pub enum PreparedData {
     },
 }
 
+// =============================================================================
+// RenderContext
+// =============================================================================
+
+/// Context information available to renderers during layer preparation
+pub struct RenderContext<'a> {
+    /// Scale definitions (for extent and properties)
+    pub scales: &'a [crate::Scale],
+}
+
+impl<'a> RenderContext<'a> {
+    /// Create a new render context
+    pub fn new(scales: &'a [crate::Scale]) -> Self {
+        Self { scales }
+    }
+
+    /// Find a scale by aesthetic name
+    pub fn find_scale(&self, aesthetic: &str) -> Option<&crate::Scale> {
+        self.scales.iter().find(|s| s.aesthetic == aesthetic)
+    }
+
+    /// Get the numeric extent (min, max) for a given aesthetic from its scale
+    pub fn get_extent(&self, aesthetic: &str) -> Result<(f64, f64)> {
+        use crate::plot::ArrayElement;
+
+        // Find the scale for this aesthetic
+        let scale = self.find_scale(aesthetic).ok_or_else(|| {
+            GgsqlError::ValidationError(format!(
+                "Cannot determine extent for aesthetic '{}': no scale found",
+                aesthetic
+            ))
+        })?;
+
+        // Extract continuous range from input_range
+        if let Some(range) = &scale.input_range {
+            if range.len() >= 2 {
+                if let (ArrayElement::Number(min), ArrayElement::Number(max)) =
+                    (&range[0], &range[1])
+                {
+                    return Ok((*min, *max));
+                }
+            }
+        }
+
+        Err(GgsqlError::ValidationError(format!(
+            "Cannot determine extent for aesthetic '{}': scale has no valid numeric range",
+            aesthetic
+        )))
+    }
+}
+
+// =============================================================================
+// GeomRenderer Trait System
+// =============================================================================
+
 /// Trait for rendering ggsql geoms to Vega-Lite layers
 ///
 /// Provides a three-phase rendering pipeline:
@@ -131,6 +192,7 @@ pub trait GeomRenderer: Send + Sync {
         df: &DataFrame,
         _data_key: &str,
         binned_columns: &HashMap<String, Vec<f64>>,
+        _context: &RenderContext,
     ) -> Result<PreparedData> {
         let values = if binned_columns.is_empty() {
             dataframe_to_values(df)?
@@ -144,13 +206,23 @@ pub trait GeomRenderer: Send + Sync {
 
     /// Modify the encoding map for this geom.
     /// Default: no modifications
-    fn modify_encoding(&self, _encoding: &mut Map<String, Value>, _layer: &Layer) -> Result<()> {
+    fn modify_encoding(
+        &self,
+        _encoding: &mut Map<String, Value>,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
         Ok(())
     }
 
     /// Modify the mark/layer spec for this geom.
     /// Default: no modifications
-    fn modify_spec(&self, _layer_spec: &mut Value, _layer: &Layer) -> Result<()> {
+    fn modify_spec(
+        &self,
+        _layer_spec: &mut Value,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
         Ok(())
     }
 
@@ -193,7 +265,12 @@ impl GeomRenderer for DefaultRenderer {}
 pub struct BarRenderer;
 
 impl GeomRenderer for BarRenderer {
-    fn modify_spec(&self, layer_spec: &mut Value, layer: &Layer) -> Result<()> {
+    fn modify_spec(
+        &self,
+        layer_spec: &mut Value,
+        layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
         let width = match layer.parameters.get("width") {
             Some(ParameterValue::Number(w)) => *w,
             _ => 0.9,
@@ -215,9 +292,162 @@ impl GeomRenderer for BarRenderer {
 pub struct PathRenderer;
 
 impl GeomRenderer for PathRenderer {
-    fn modify_encoding(&self, encoding: &mut Map<String, Value>, _layer: &Layer) -> Result<()> {
+    fn modify_encoding(
+        &self,
+        encoding: &mut Map<String, Value>,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
         // Use the natural data order
         encoding.insert("order".to_string(), json!({"value": Value::Null}));
+        Ok(())
+    }
+}
+
+// =============================================================================
+// Segment Renderer
+// =============================================================================
+
+pub struct SegmentRenderer;
+
+impl GeomRenderer for SegmentRenderer {
+    fn modify_encoding(
+        &self,
+        encoding: &mut Map<String, Value>,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
+        let has_x2 = encoding.contains_key("x2");
+        let has_y2 = encoding.contains_key("y2");
+        if !has_x2 && !has_y2 {
+            return Err(GgsqlError::ValidationError(
+                "The `segment` layer requires at least one of the `xend` or `yend` aesthetics."
+                    .to_string(),
+            ));
+        }
+        if !has_x2 {
+            if let Some(x) = encoding.get("x").cloned() {
+                encoding.insert("x2".to_string(), x);
+            }
+        }
+        if !has_y2 {
+            if let Some(y) = encoding.get("y").cloned() {
+                encoding.insert("y2".to_string(), y);
+            }
+        }
+        Ok(())
+    }
+}
+
+// =============================================================================
+// ABLine Renderer
+// =============================================================================
+
+/// Renderer for abline geom - draws lines based on slope and intercept
+pub struct ABLineRenderer;
+
+impl GeomRenderer for ABLineRenderer {
+    fn prepare_data(
+        &self,
+        df: &DataFrame,
+        _data_key: &str,
+        _binned_columns: &HashMap<String, Vec<f64>>,
+        _context: &RenderContext,
+    ) -> Result<PreparedData> {
+        // Just convert DataFrame to JSON values
+        // No need to add xmin/xmax - they'll be encoded as literal values
+        let values = dataframe_to_values(df)?;
+        Ok(PreparedData::Single { values })
+    }
+
+    fn modify_encoding(
+        &self,
+        encoding: &mut Map<String, Value>,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
+        // Remove slope and intercept from encoding - they're only used in transforms
+        encoding.remove("slope");
+        encoding.remove("intercept");
+
+        // Add x/x2/y/y2 encodings for rule mark
+        // All are fields - x_min/x_max are created by transforms, y_min/y_max are computed
+        encoding.insert(
+            "x".to_string(),
+            json!({
+                "field": "x_min",
+                "type": "quantitative"
+            }),
+        );
+        encoding.insert(
+            "x2".to_string(),
+            json!({
+                "field": "x_max"
+            }),
+        );
+        encoding.insert(
+            "y".to_string(),
+            json!({
+                "field": "y_min",
+                "type": "quantitative"
+            }),
+        );
+        encoding.insert(
+            "y2".to_string(),
+            json!({
+                "field": "y_max"
+            }),
+        );
+
+        Ok(())
+    }
+
+    fn modify_spec(
+        &self,
+        layer_spec: &mut Value,
+        _layer: &Layer,
+        context: &RenderContext,
+    ) -> Result<()> {
+        // Field names for slope and intercept (with aesthetic column prefix)
+        let slope_field = naming::aesthetic_column("slope");
+        let intercept_field = naming::aesthetic_column("intercept");
+
+        // Get x extent from scale
+        let (x_min, x_max) = context.get_extent("x")?;
+
+        // Add transforms:
+        // 1. Create constant x_min/x_max fields
+        // 2. Compute y values at those x positions
+        let transforms = json!([
+            {
+                "calculate": x_min.to_string(),
+                "as": "x_min"
+            },
+            {
+                "calculate": x_max.to_string(),
+                "as": "x_max"
+            },
+            {
+                "calculate": format!("datum.{} * datum.x_min + datum.{}", slope_field, intercept_field),
+                "as": "y_min"
+            },
+            {
+                "calculate": format!("datum.{} * datum.x_max + datum.{}", slope_field, intercept_field),
+                "as": "y_max"
+            }
+        ]);
+
+        // Prepend to existing transforms (if any)
+        if let Some(existing) = layer_spec.get("transform") {
+            if let Some(arr) = existing.as_array() {
+                let mut new_transforms = transforms.as_array().unwrap().clone();
+                new_transforms.extend_from_slice(arr);
+                layer_spec["transform"] = json!(new_transforms);
+            }
+        } else {
+            layer_spec["transform"] = transforms;
+        }
+
         Ok(())
     }
 }
@@ -230,7 +460,12 @@ impl GeomRenderer for PathRenderer {
 pub struct RibbonRenderer;
 
 impl GeomRenderer for RibbonRenderer {
-    fn modify_encoding(&self, encoding: &mut Map<String, Value>, _layer: &Layer) -> Result<()> {
+    fn modify_encoding(
+        &self,
+        encoding: &mut Map<String, Value>,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
         if let Some(ymax) = encoding.remove("ymax") {
             encoding.insert("y".to_string(), ymax);
         }
@@ -249,7 +484,12 @@ impl GeomRenderer for RibbonRenderer {
 pub struct AreaRenderer;
 
 impl GeomRenderer for AreaRenderer {
-    fn modify_encoding(&self, encoding: &mut Map<String, Value>, layer: &Layer) -> Result<()> {
+    fn modify_encoding(
+        &self,
+        encoding: &mut Map<String, Value>,
+        layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
         if let Some(mut y) = encoding.remove("y") {
             let stack_value;
             if let Some(ParameterValue::String(stack)) = layer.parameters.get("stacking") {
@@ -282,7 +522,12 @@ impl GeomRenderer for AreaRenderer {
 pub struct PolygonRenderer;
 
 impl GeomRenderer for PolygonRenderer {
-    fn modify_encoding(&self, encoding: &mut Map<String, Value>, _layer: &Layer) -> Result<()> {
+    fn modify_encoding(
+        &self,
+        encoding: &mut Map<String, Value>,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
         // Polygon needs both `fill` and `stroke` independently, but map_aesthetic_name()
         // converts fill -> color (which works for most geoms). For closed line marks,
         // we need actual `fill` and `stroke` channels, so we undo the mapping here.
@@ -294,7 +539,12 @@ impl GeomRenderer for PolygonRenderer {
         Ok(())
     }
 
-    fn modify_spec(&self, layer_spec: &mut Value, _layer: &Layer) -> Result<()> {
+    fn modify_spec(
+        &self,
+        layer_spec: &mut Value,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
         layer_spec["mark"] = json!({
             "type": "line",
             "interpolate": "linear-closed"
@@ -311,7 +561,12 @@ impl GeomRenderer for PolygonRenderer {
 pub struct ViolinRenderer;
 
 impl GeomRenderer for ViolinRenderer {
-    fn modify_spec(&self, layer_spec: &mut Value, _layer: &Layer) -> Result<()> {
+    fn modify_spec(
+        &self,
+        layer_spec: &mut Value,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
         layer_spec["mark"] = json!({
             "type": "line",
             "filled": true
@@ -366,7 +621,12 @@ impl GeomRenderer for ViolinRenderer {
         Ok(())
     }
 
-    fn modify_encoding(&self, encoding: &mut Map<String, Value>, _layer: &Layer) -> Result<()> {
+    fn modify_encoding(
+        &self,
+        encoding: &mut Map<String, Value>,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
         // Ensure x is in detail encoding to create separate violins per x category
         // This is needed because line marks with filled:true require detail to create separate paths
         let x_field = encoding
@@ -444,6 +704,113 @@ impl GeomRenderer for ViolinRenderer {
             }),
         );
         Ok(())
+    }
+}
+
+// =============================================================================
+// Errorbar Renderer
+// =============================================================================
+
+struct ErrorBarRenderer;
+
+impl GeomRenderer for ErrorBarRenderer {
+    fn modify_encoding(
+        &self,
+        encoding: &mut Map<String, Value>,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
+        // Check combinations of aesthetics
+        let has_x = encoding.contains_key("x");
+        let has_y = encoding.contains_key("y");
+        if has_x && has_y {
+            Err(GgsqlError::ValidationError(
+                "In errorbar layer, the `x` and `y` aesthetics are mutually exclusive".to_string(),
+            ))
+        } else if has_x && (encoding.contains_key("xmin") || encoding.contains_key("xmax")) {
+            Err(GgsqlError::ValidationError("In errorbar layer, cannot use `x` aesthetic with `xmin` and `xmax`. `x` must be used with `ymin` and `ymax`.".to_string()))
+        } else if has_y && (encoding.contains_key("ymin") || encoding.contains_key("ymax")) {
+            Err(GgsqlError::ValidationError("In errorbar layer, cannot use `y` aesthetic with `ymin` and `ymax`. `y` must be used with `xmin` and `xmax`.".to_string()))
+        } else if has_x {
+            if let Some(ymax) = encoding.remove("ymax") {
+                encoding.insert("y".to_string(), ymax);
+            }
+            if let Some(ymin) = encoding.remove("ymin") {
+                encoding.insert("y2".to_string(), ymin);
+            }
+            Ok(())
+        } else if has_y {
+            if let Some(xmax) = encoding.remove("xmax") {
+                encoding.insert("x".to_string(), xmax);
+            }
+            if let Some(xmin) = encoding.remove("xmin") {
+                encoding.insert("x2".to_string(), xmin);
+            }
+            Ok(())
+        } else {
+            Err(GgsqlError::ValidationError(
+                "In errorbar layer, aesthetics are incomplete. Either use `x`/`ymin`/`ymax` or `y`/`xmin`/`xmax` combinations.".to_string()
+            ))
+        }
+    }
+
+    fn finalize(
+        &self,
+        layer_spec: Value,
+        layer: &Layer,
+        _data_key: &str,
+        _prepared: &PreparedData,
+    ) -> Result<Vec<Value>> {
+        // Get width parameter (in points)
+        let width = if let Some(ParameterValue::Number(num)) = layer.parameters.get("width") {
+            (*num) * POINTS_TO_PIXELS
+        } else {
+            // If no width specified, return just the main error bar without hinges
+            return Ok(vec![layer_spec]);
+        };
+
+        let mut layers = vec![layer_spec.clone()];
+
+        // Determine if this is a vertical or horizontal error bar and set up parameters
+        let is_vertical = layer_spec["encoding"]["x2"].is_null();
+        let (orient, position, min_field, max_field) = if is_vertical {
+            (
+                "horizontal",
+                "y",
+                naming::aesthetic_column("ymin"),
+                naming::aesthetic_column("ymax"),
+            )
+        } else {
+            (
+                "vertical",
+                "x",
+                naming::aesthetic_column("xmin"),
+                naming::aesthetic_column("xmax"),
+            )
+        };
+
+        // First hinge (at min position)
+        let mut hinge = layer_spec.clone();
+        hinge["mark"] = json!({
+            "type": "tick",
+            "orient": orient,
+            "size": width,
+            "thickness": 0,
+            "clip": true
+        });
+        hinge["encoding"][position]["field"] = json!(min_field);
+        // Remove x2 and y2 (not needed for tick mark)
+        if let Some(e) = hinge["encoding"].as_object_mut() {
+            e.remove("x2");
+            e.remove("y2");
+        }
+        layers.push(hinge.clone());
+
+        // Second hinge (at max position) - reuse first hinge and only change position field
+        hinge["encoding"][position]["field"] = json!(max_field);
+        layers.push(hinge);
+
+        Ok(layers)
     }
 }
 
@@ -731,6 +1098,7 @@ impl GeomRenderer for BoxplotRenderer {
         df: &DataFrame,
         _data_key: &str,
         binned_columns: &HashMap<String, Vec<f64>>,
+        _context: &RenderContext,
     ) -> Result<PreparedData> {
         let (components, grouping_cols, has_outliers) =
             self.prepare_components(df, binned_columns)?;
@@ -791,6 +1159,9 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Boxplot => Box::new(BoxplotRenderer),
         GeomType::Density => Box::new(AreaRenderer),
         GeomType::Violin => Box::new(ViolinRenderer),
+        GeomType::Segment => Box::new(SegmentRenderer),
+        GeomType::AbLine => Box::new(ABLineRenderer),
+        GeomType::ErrorBar => Box::new(ErrorBarRenderer),
         // All other geoms (Point, Line, Tile, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }
@@ -811,7 +1182,10 @@ mod tests {
             "x".to_string(),
             json!({"field": "species", "type": "nominal"}),
         );
-        renderer.modify_encoding(&mut encoding, &layer).unwrap();
+        let context = RenderContext::new(&[]);
+        renderer
+            .modify_encoding(&mut encoding, &layer, &context)
+            .unwrap();
         assert_eq!(
             encoding.get("detail"),
             Some(&json!({"field": "species", "type": "nominal"}))
@@ -827,7 +1201,10 @@ mod tests {
             "detail".to_string(),
             json!({"field": "island", "type": "nominal"}),
         );
-        renderer.modify_encoding(&mut encoding, &layer).unwrap();
+        let context = RenderContext::new(&[]);
+        renderer
+            .modify_encoding(&mut encoding, &layer, &context)
+            .unwrap();
         assert_eq!(
             encoding.get("detail"),
             Some(&json!([
@@ -846,7 +1223,10 @@ mod tests {
             "detail".to_string(),
             json!({"field": "species", "type": "nominal"}),
         );
-        renderer.modify_encoding(&mut encoding, &layer).unwrap();
+        let context = RenderContext::new(&[]);
+        renderer
+            .modify_encoding(&mut encoding, &layer, &context)
+            .unwrap();
         assert_eq!(
             encoding.get("detail"),
             Some(&json!({"field": "species", "type": "nominal"}))
@@ -862,7 +1242,10 @@ mod tests {
             "detail".to_string(),
             json!([{"field": "island", "type": "nominal"}]),
         );
-        renderer.modify_encoding(&mut encoding, &layer).unwrap();
+        let context = RenderContext::new(&[]);
+        renderer
+            .modify_encoding(&mut encoding, &layer, &context)
+            .unwrap();
         assert_eq!(
             encoding.get("detail"),
             Some(&json!([
@@ -884,13 +1267,460 @@ mod tests {
                 {"field": "species", "type": "nominal"}
             ]),
         );
-        renderer.modify_encoding(&mut encoding, &layer).unwrap();
+        let context = RenderContext::new(&[]);
+        renderer
+            .modify_encoding(&mut encoding, &layer, &context)
+            .unwrap();
         assert_eq!(
             encoding.get("detail"),
             Some(&json!([
                 {"field": "island", "type": "nominal"},
                 {"field": "species", "type": "nominal"}
             ]))
+        );
+    }
+
+    #[test]
+    fn test_render_context_get_extent() {
+        use crate::plot::{ArrayElement, Scale};
+
+        // Test success case: continuous scale with numeric range
+        let scales = vec![Scale {
+            aesthetic: "x".to_string(),
+            scale_type: None,
+            input_range: Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(10.0)]),
+            explicit_input_range: false,
+            output_range: None,
+            transform: None,
+            explicit_transform: false,
+            properties: std::collections::HashMap::new(),
+            resolved: false,
+            label_mapping: None,
+            label_template: "{}".to_string(),
+        }];
+        let context = RenderContext::new(&scales);
+        let result = context.get_extent("x");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), (0.0, 10.0));
+
+        // Test error case: scale not found
+        let context = RenderContext::new(&scales);
+        let result = context.get_extent("y");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("no scale found"));
+
+        // Test error case: scale with no range
+        let scales = vec![Scale {
+            aesthetic: "x".to_string(),
+            scale_type: None,
+            input_range: None,
+            explicit_input_range: false,
+            output_range: None,
+            transform: None,
+            explicit_transform: false,
+            properties: std::collections::HashMap::new(),
+            resolved: false,
+            label_mapping: None,
+            label_template: "{}".to_string(),
+        }];
+        let context = RenderContext::new(&scales);
+        let result = context.get_extent("x");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("no valid numeric range"));
+
+        // Test error case: scale with non-numeric range
+        let scales = vec![Scale {
+            aesthetic: "x".to_string(),
+            scale_type: None,
+            input_range: Some(vec![
+                ArrayElement::String("A".to_string()),
+                ArrayElement::String("B".to_string()),
+            ]),
+            explicit_input_range: false,
+            output_range: None,
+            transform: None,
+            explicit_transform: false,
+            properties: std::collections::HashMap::new(),
+            resolved: false,
+            label_mapping: None,
+            label_template: "{}".to_string(),
+        }];
+        let context = RenderContext::new(&scales);
+        let result = context.get_extent("x");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("no valid numeric range"));
+    }
+
+    #[test]
+    fn test_abline_renderer_multiple_lines() {
+        use crate::reader::{DuckDBReader, Reader};
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        // Test that abline with 3 different slopes renders 3 separate lines
+        let query = r#"
+            WITH points AS (
+                SELECT * FROM (VALUES (0, 5), (5, 15), (10, 25)) AS t(x, y)
+            ),
+            lines AS (
+                SELECT * FROM (VALUES
+                    (2, 5, 'A'),
+                    (1, 10, 'B'),
+                    (3, 0, 'C')
+                ) AS t(slope, intercept, line_id)
+            )
+            SELECT * FROM points
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            DRAW abline MAPPING slope AS slope, intercept AS intercept, line_id AS color FROM lines
+        "#;
+
+        // Execute query
+        let reader = DuckDBReader::from_connection_string("duckdb://memory")
+            .expect("Failed to create reader");
+        let spec = reader.execute(query).expect("Failed to execute query");
+
+        // Render to Vega-Lite
+        let writer = VegaLiteWriter::new();
+        let vl_json = writer.render(&spec).expect("Failed to render spec");
+
+        // Parse JSON
+        let vl_spec: serde_json::Value =
+            serde_json::from_str(&vl_json).expect("Failed to parse Vega-Lite JSON");
+
+        // Verify we have 2 layers (point + abline)
+        let layers = vl_spec["layer"].as_array().expect("No layers found");
+        assert_eq!(layers.len(), 2, "Should have 2 layers (point + abline)");
+
+        // Get the abline layer (second layer)
+        let abline_layer = &layers[1];
+
+        // Verify it's a rule mark
+        assert_eq!(
+            abline_layer["mark"]["type"], "rule",
+            "ABLine should use rule mark"
+        );
+
+        // Verify transforms exist
+        let transforms = abline_layer["transform"]
+            .as_array()
+            .expect("No transforms found");
+
+        // Should have 4 calculate transforms + 1 filter = 5 total
+        assert_eq!(
+            transforms.len(),
+            5,
+            "Should have 5 transforms (x_min, x_max, y_min, y_max, filter)"
+        );
+
+        // Verify x_min/x_max transforms exist with consistent naming
+        let x_min_transform = transforms
+            .iter()
+            .find(|t| t["as"] == "x_min")
+            .expect("x_min transform not found");
+        let x_max_transform = transforms
+            .iter()
+            .find(|t| t["as"] == "x_max")
+            .expect("x_max transform not found");
+
+        assert!(
+            x_min_transform["calculate"].is_string(),
+            "x_min should have calculate expression"
+        );
+        assert!(
+            x_max_transform["calculate"].is_string(),
+            "x_max should have calculate expression"
+        );
+
+        // Verify y_min and y_max transforms use slope and intercept with x_min/x_max
+        let y_min_transform = transforms
+            .iter()
+            .find(|t| t["as"] == "y_min")
+            .expect("y_min transform not found");
+        let y_max_transform = transforms
+            .iter()
+            .find(|t| t["as"] == "y_max")
+            .expect("y_max transform not found");
+
+        let y_min_calc = y_min_transform["calculate"]
+            .as_str()
+            .expect("y_min calculate should be string");
+        let y_max_calc = y_max_transform["calculate"]
+            .as_str()
+            .expect("y_max calculate should be string");
+
+        // Should reference slope, intercept, and x_min/x_max
+        assert!(
+            y_min_calc.contains("__ggsql_aes_slope__"),
+            "y_min should reference slope"
+        );
+        assert!(
+            y_min_calc.contains("__ggsql_aes_intercept__"),
+            "y_min should reference intercept"
+        );
+        assert!(
+            y_min_calc.contains("datum.x_min"),
+            "y_min should reference datum.x_min"
+        );
+        assert!(
+            y_max_calc.contains("__ggsql_aes_slope__"),
+            "y_max should reference slope"
+        );
+        assert!(
+            y_max_calc.contains("__ggsql_aes_intercept__"),
+            "y_max should reference intercept"
+        );
+        assert!(
+            y_max_calc.contains("datum.x_max"),
+            "y_max should reference datum.x_max"
+        );
+
+        // Verify encoding has x, x2, y, y2 with consistent field names
+        let encoding = abline_layer["encoding"]
+            .as_object()
+            .expect("No encoding found");
+
+        assert!(encoding.contains_key("x"), "Should have x encoding");
+        assert!(encoding.contains_key("x2"), "Should have x2 encoding");
+        assert!(encoding.contains_key("y"), "Should have y encoding");
+        assert!(encoding.contains_key("y2"), "Should have y2 encoding");
+
+        // Verify consistent naming: x_min, x_max, y_min, y_max
+        assert_eq!(
+            encoding["x"]["field"], "x_min",
+            "x should reference x_min field"
+        );
+        assert_eq!(
+            encoding["x2"]["field"], "x_max",
+            "x2 should reference x_max field"
+        );
+        assert_eq!(
+            encoding["y"]["field"], "y_min",
+            "y should reference y_min field"
+        );
+        assert_eq!(
+            encoding["y2"]["field"], "y_max",
+            "y2 should reference y_max field"
+        );
+
+        // Verify stroke encoding exists for line_id (color aesthetic becomes stroke for rule mark)
+        assert!(
+            encoding.contains_key("stroke"),
+            "Should have stroke encoding for line_id"
+        );
+
+        // Verify data has 3 abline rows (one per slope)
+        let data_values = vl_spec["data"]["values"]
+            .as_array()
+            .expect("No data values found");
+
+        let abline_rows: Vec<_> = data_values
+            .iter()
+            .filter(|row| {
+                row["__ggsql_source__"] == "__ggsql_layer_1__"
+                    && row["__ggsql_aes_slope__"].is_number()
+            })
+            .collect();
+
+        assert_eq!(
+            abline_rows.len(),
+            3,
+            "Should have 3 abline rows (3 different slopes)"
+        );
+
+        // Verify we have slopes 1, 2, 3
+        let mut slopes: Vec<f64> = abline_rows
+            .iter()
+            .map(|row| row["__ggsql_aes_slope__"].as_f64().unwrap())
+            .collect();
+        slopes.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+        assert_eq!(
+            slopes,
+            vec![1.0, 2.0, 3.0],
+            "Should have slopes 1, 2, and 3"
+        );
+    }
+
+    #[test]
+    fn test_errorbar_encoding() {
+        let renderer = ErrorBarRenderer;
+        let layer = Layer::new(crate::plot::Geom::errorbar());
+        let context = RenderContext::new(&[]);
+
+        // Case 1: Vertical errorbar (x + ymin + ymax)
+        // Should map ymax → y and ymin → y2
+        let mut encoding = serde_json::Map::new();
+        encoding.insert(
+            "x".to_string(),
+            json!({"field": "species", "type": "nominal"}),
+        );
+        encoding.insert(
+            "ymin".to_string(),
+            json!({"field": "low", "type": "quantitative"}),
+        );
+        encoding.insert(
+            "ymax".to_string(),
+            json!({"field": "high", "type": "quantitative"}),
+        );
+
+        renderer
+            .modify_encoding(&mut encoding, &layer, &context)
+            .unwrap();
+
+        assert_eq!(
+            encoding.get("y"),
+            Some(&json!({"field": "high", "type": "quantitative"})),
+            "ymax should be mapped to y"
+        );
+        assert_eq!(
+            encoding.get("y2"),
+            Some(&json!({"field": "low", "type": "quantitative"})),
+            "ymin should be mapped to y2"
+        );
+        assert!(!encoding.contains_key("ymin"), "ymin should be removed");
+        assert!(!encoding.contains_key("ymax"), "ymax should be removed");
+
+        // Case 2: Horizontal errorbar (y + xmin + xmax)
+        // Should map xmax → x and xmin → x2
+        let mut encoding = serde_json::Map::new();
+        encoding.insert(
+            "y".to_string(),
+            json!({"field": "species", "type": "nominal"}),
+        );
+        encoding.insert(
+            "xmin".to_string(),
+            json!({"field": "low", "type": "quantitative"}),
+        );
+        encoding.insert(
+            "xmax".to_string(),
+            json!({"field": "high", "type": "quantitative"}),
+        );
+
+        renderer
+            .modify_encoding(&mut encoding, &layer, &context)
+            .unwrap();
+
+        assert_eq!(
+            encoding.get("x"),
+            Some(&json!({"field": "high", "type": "quantitative"})),
+            "xmax should be mapped to x"
+        );
+        assert_eq!(
+            encoding.get("x2"),
+            Some(&json!({"field": "low", "type": "quantitative"})),
+            "xmin should be mapped to x2"
+        );
+        assert!(!encoding.contains_key("xmin"), "xmin should be removed");
+        assert!(!encoding.contains_key("xmax"), "xmax should be removed");
+
+        // Case 3: Error - neither x nor y is present
+        let mut encoding = serde_json::Map::new();
+        encoding.insert(
+            "xmin".to_string(),
+            json!({"field": "low", "type": "quantitative"}),
+        );
+        encoding.insert(
+            "xmax".to_string(),
+            json!({"field": "high", "type": "quantitative"}),
+        );
+
+        let result = renderer.modify_encoding(&mut encoding, &layer, &context);
+        assert!(
+            result.is_err(),
+            "Should error when neither x nor y is present"
+        );
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("aesthetics are incomplete"),
+            "Error message should mention incomplete aesthetics"
+        );
+
+        // Case 4: Error - both x and y present
+        let mut encoding = serde_json::Map::new();
+        encoding.insert(
+            "x".to_string(),
+            json!({"field": "x_col", "type": "quantitative"}),
+        );
+        encoding.insert(
+            "y".to_string(),
+            json!({"field": "y_col", "type": "quantitative"}),
+        );
+
+        let result = renderer.modify_encoding(&mut encoding, &layer, &context);
+        assert!(
+            result.is_err(),
+            "Should error when both x and y are present"
+        );
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("mutually exclusive"),
+            "Error message should mention mutual exclusivity"
+        );
+
+        // Case 5: Error - x with xmin/xmax
+        let mut encoding = serde_json::Map::new();
+        encoding.insert(
+            "x".to_string(),
+            json!({"field": "species", "type": "nominal"}),
+        );
+        encoding.insert(
+            "xmin".to_string(),
+            json!({"field": "low", "type": "quantitative"}),
+        );
+        encoding.insert(
+            "xmax".to_string(),
+            json!({"field": "high", "type": "quantitative"}),
+        );
+
+        let result = renderer.modify_encoding(&mut encoding, &layer, &context);
+        assert!(
+            result.is_err(),
+            "Should error when x is used with xmin/xmax"
+        );
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("cannot use `x` aesthetic with `xmin` and `xmax`"),
+            "Error message should mention conflicting aesthetics"
+        );
+
+        // Case 6: Error - y with ymin/ymax
+        let mut encoding = serde_json::Map::new();
+        encoding.insert(
+            "y".to_string(),
+            json!({"field": "species", "type": "nominal"}),
+        );
+        encoding.insert(
+            "ymin".to_string(),
+            json!({"field": "low", "type": "quantitative"}),
+        );
+        encoding.insert(
+            "ymax".to_string(),
+            json!({"field": "high", "type": "quantitative"}),
+        );
+
+        let result = renderer.modify_encoding(&mut encoding, &layer, &context);
+        assert!(
+            result.is_err(),
+            "Should error when y is used with ymin/ymax"
+        );
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("cannot use `y` aesthetic with `ymin` and `ymax`"),
+            "Error message should mention conflicting aesthetics"
         );
     }
 }
