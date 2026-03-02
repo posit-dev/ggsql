@@ -532,6 +532,53 @@ class TestCustomReader:
         assert "point" in json_output
 
 
+class TestExceptions:
+    """Tests for typed exception classes."""
+
+    def test_parse_error_on_invalid_syntax(self):
+        """Invalid syntax raises ParseError when executing."""
+        with pytest.raises(ggsql.ParseError):
+            reader = ggsql.DuckDBReader("duckdb://memory")
+            reader.execute("SELECT 1 AS x VISUALISE DRAW not_a_geom")
+
+    def test_parse_error_is_value_error(self):
+        """ParseError is a subclass of ValueError for backwards compat."""
+        assert issubclass(ggsql.ParseError, ValueError)
+
+    def test_validation_error_on_missing_aesthetic(self):
+        """Missing required aesthetic raises ValidationError."""
+        with pytest.raises(ggsql.ValidationError):
+            reader = ggsql.DuckDBReader("duckdb://memory")
+            reader.execute("SELECT 1 AS x VISUALISE DRAW point MAPPING x AS x")
+
+    def test_validation_error_is_value_error(self):
+        """ValidationError is a subclass of ValueError for backwards compat."""
+        assert issubclass(ggsql.ValidationError, ValueError)
+
+    def test_reader_error_on_bad_sql(self):
+        """Bad SQL raises ReaderError."""
+        with pytest.raises(ggsql.ReaderError):
+            reader = ggsql.DuckDBReader("duckdb://memory")
+            reader.execute(
+                "SELECT * FROM nonexistent_table VISUALISE DRAW point MAPPING x AS x, y AS y"
+            )
+
+    def test_reader_error_is_value_error(self):
+        """ReaderError is a subclass of ValueError for backwards compat."""
+        assert issubclass(ggsql.ReaderError, ValueError)
+
+    def test_writer_error_is_value_error(self):
+        """WriterError is a subclass of ValueError for backwards compat."""
+        assert issubclass(ggsql.WriterError, ValueError)
+
+    def test_all_exceptions_exported(self):
+        """All exception classes are accessible from ggsql module."""
+        assert hasattr(ggsql, "ParseError")
+        assert hasattr(ggsql, "ValidationError")
+        assert hasattr(ggsql, "ReaderError")
+        assert hasattr(ggsql, "WriterError")
+
+
 class TestReaderProtocol:
     """Tests for Reader protocol."""
 

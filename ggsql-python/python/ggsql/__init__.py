@@ -15,6 +15,10 @@ from ggsql._ggsql import (
     Spec,
     validate,
     execute,
+    ParseError,
+    ValidationError,
+    ReaderError,
+    WriterError,
 )
 
 __all__ = [
@@ -28,6 +32,11 @@ __all__ = [
     "validate",
     "execute",
     "render_altair",
+    # Exceptions
+    "ParseError",
+    "ValidationError",
+    "ReaderError",
+    "WriterError",
 ]
 __version__ = "0.1.4"
 
