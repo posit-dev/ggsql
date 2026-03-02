@@ -352,6 +352,9 @@ impl PyDuckDBReader {
     /// ----------
     /// query : str
     ///     The ggsql query (SQL + VISUALISE clause).
+    /// data : dict[str, polars.DataFrame] | None
+    ///     Optional dictionary mapping table names to DataFrames. Tables are
+    ///     registered before execution and unregistered afterward (even on error).
     ///
     /// Returns
     /// -------
@@ -369,11 +372,48 @@ impl PyDuckDBReader {
     /// >>> spec = reader.execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
     /// >>> writer = VegaLiteWriter()
     /// >>> json_output = writer.render(spec)
-    fn execute(&self, query: &str) -> PyResult<PySpec> {
-        self.inner
+    #[pyo3(signature = (query, *, data=None))]
+    fn execute(&self, py: Python<'_>, query: &str, data: Option<&Bound<'_, PyDict>>) -> PyResult<PySpec> {
+        // Register DataFrames from data dict
+        let registered_names = if let Some(data_dict) = data {
+            self.register_data_dict(py, data_dict)?
+        } else {
+            vec![]
+        };
+
+        // Execute query (capture result, don't return early)
+        let result = self.inner
             .execute(query)
             .map(|s| PySpec { inner: s })
-            .map_err(ggsql_err_to_py)
+            .map_err(ggsql_err_to_py);
+
+        // Cleanup: unregister temporary tables (even on error)
+        for name in &registered_names {
+            let _ = self.inner.unregister(name);
+        }
+
+        result
+    }
+}
+
+impl PyDuckDBReader {
+    /// Register DataFrames from a Python dict. Returns list of registered names for cleanup.
+    /// This is a private Rust helper, not exposed to Python.
+    fn register_data_dict(
+        &self,
+        py: Python<'_>,
+        data: &Bound<'_, PyDict>,
+    ) -> PyResult<Vec<String>> {
+        let mut names = Vec::new();
+        for (key, value) in data.iter() {
+            let name: String = key.extract()?;
+            let df = py_to_polars(py, &value)?;
+            self.inner
+                .register(&name, df, true)
+                .map_err(ggsql_err_to_py)?;
+            names.push(name);
+        }
+        Ok(names)
     }
 }
 
@@ -741,6 +781,9 @@ fn validate(query: &str) -> PyResult<PyValidated> {
 ///     The database reader to execute SQL against. Can be a native Reader
 ///     for optimal performance, or any Python object with an
 ///     `execute_sql(sql: str) -> polars.DataFrame` method.
+/// data : dict[str, polars.DataFrame] | None
+///     Optional dictionary mapping table names to DataFrames. Tables are
+///     registered before execution and unregistered afterward (even on error).
 ///
 /// Returns
 /// -------
@@ -767,19 +810,80 @@ fn validate(query: &str) -> PyResult<PyValidated> {
 /// >>> reader = MyReader()
 /// >>> spec = execute("SELECT * FROM data VISUALISE x, y DRAW point", reader)
 #[pyfunction]
-fn execute(query: &str, reader: &Bound<'_, PyAny>) -> PyResult<PySpec> {
-    // Fast path: try all known native reader types
-    // Add new native readers to this list as they're implemented
-    try_native_readers!(query, reader, PyDuckDBReader);
+#[pyo3(signature = (query, reader, *, data=None))]
+fn execute(py: Python<'_>, query: &str, reader: &Bound<'_, PyAny>, data: Option<&Bound<'_, PyDict>>) -> PyResult<PySpec> {
+    // Native reader fast path: DuckDBReader
+    // Note: we can't use the try_native_readers! macro here because it uses `return`
+    // which would skip cleanup of registered tables.
+    if let Ok(native) = reader.downcast::<PyDuckDBReader>() {
+        // Register DataFrames if provided
+        let registered_names = if let Some(data_dict) = data {
+            native.borrow().register_data_dict(py, data_dict)?
+        } else {
+            vec![]
+        };
+
+        // Execute (capture result for cleanup)
+        let result = native.borrow().inner.execute(query)
+            .map(|s| PySpec { inner: s })
+            .map_err(ggsql_err_to_py);
+
+        // Cleanup: unregister temporary tables (even on error)
+        for name in &registered_names {
+            let _ = native.borrow().inner.unregister(name);
+        }
+
+        return result;
+    }
 
     // Bridge path: wrap Python object as Reader
+    // Register DataFrames if provided
+    let registered_names = if let Some(data_dict) = data {
+        register_data_on_reader(py, reader, data_dict)?
+    } else {
+        vec![]
+    };
+
     let bridge = PyReaderBridge {
         obj: reader.clone().unbind(),
     };
-    bridge
+    let result = bridge
         .execute(query)
         .map(|s| PySpec { inner: s })
-        .map_err(ggsql_err_to_py)
+        .map_err(ggsql_err_to_py);
+
+    // Cleanup for bridge path
+    for name in &registered_names {
+        let _ = call_unregister(py, reader, name);
+    }
+
+    result
+}
+
+/// Register DataFrames from a Python dict onto a Python reader object.
+/// Returns list of registered names for cleanup.
+fn register_data_on_reader(
+    py: Python<'_>,
+    reader: &Bound<'_, PyAny>,
+    data: &Bound<'_, PyDict>,
+) -> PyResult<Vec<String>> {
+    let mut names = Vec::new();
+    for (key, value) in data.iter() {
+        let name: String = key.extract()?;
+        let df = py_to_polars(py, &value)?;
+        let py_df = polars_to_py(py, &df)?;
+        reader.call_method("register", (&name, py_df, true), None)?;
+        names.push(name);
+    }
+    Ok(names)
+}
+
+/// Call unregister on a reader if the method exists.
+fn call_unregister(_py: Python<'_>, reader: &Bound<'_, PyAny>, name: &str) -> PyResult<()> {
+    if reader.hasattr("unregister")? {
+        reader.call_method1("unregister", (name,))?;
+    }
+    Ok(())
 }
 
 // ============================================================================

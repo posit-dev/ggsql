@@ -94,7 +94,12 @@ class DuckDBReader:
         """
         ...
 
-    def execute(self, query: str) -> Spec:
+    def execute(
+        self,
+        query: str,
+        *,
+        data: dict[str, pl.DataFrame] | None = None,
+    ) -> Spec:
         """Execute a ggsql query and return the visualization specification.
 
         This is the main entry point for creating visualizations. It parses
@@ -105,6 +110,10 @@ class DuckDBReader:
         ----------
         query
             The ggsql query (SQL + VISUALISE clause).
+        data
+            Optional dictionary mapping table names to DataFrames. Tables are
+            registered before execution and unregistered afterward (even on
+            error).
 
         Returns
         -------
@@ -385,7 +394,12 @@ def validate(query: str) -> Validated:
     """
     ...
 
-def execute(query: str, reader: object) -> Spec:
+def execute(
+    query: str,
+    reader: object,
+    *,
+    data: dict[str, pl.DataFrame] | None = None,
+) -> Spec:
     """Execute a ggsql query with a reader (native or custom Python object).
 
     This is a convenience function for custom readers. For native readers,
@@ -399,6 +413,10 @@ def execute(query: str, reader: object) -> Spec:
         The database reader to execute SQL against. Can be a native
         ``DuckDBReader`` for optimal performance, or any Python object with
         an ``execute_sql(sql: str) -> polars.DataFrame`` method.
+    data
+        Optional dictionary mapping table names to DataFrames. Tables are
+        registered before execution and unregistered afterward (even on
+        error).
 
     Returns
     -------
