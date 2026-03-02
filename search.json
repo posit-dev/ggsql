@@ -14,42 +14,42 @@
     "text": "If you prefer to build from source or need the latest development version:\n\nClone the repository:\ngit clone https://github.com/posit-dev/ggsql\ncd ggsql\nInstall tree-sitter CLI:\nnpm install -g tree-sitter-cli\nBuild the project:\ncd tree-sitter-ggsql && tree-sitter generate && cd ..\ncargo build --release\nInstall the CLI:\ncargo install --path src\nInstall the Jupyter kernel (optional):\ncargo install --path ggsql-jupyter\nggsql-jupyter --install"
   },
   {
-    "objectID": "syntax/scale/aesthetic/shape.html",
-    "href": "syntax/scale/aesthetic/shape.html",
-    "title": "Shape",
+    "objectID": "syntax/scale/aesthetic/2_opacity.html",
+    "href": "syntax/scale/aesthetic/2_opacity.html",
+    "title": "Opacity",
     "section": "",
-    "text": "The shape aesthetic governs how points look. Shape can be used instead of color to differentiate between categories of points (or even better, in concert with color). Shape is only meaningful in relation to discrete data.",
+    "text": "The opacity aesthetic governs how opaque objects are (or, conversely, how transparent they are). Depending on the layer it controls the opacity of the fill or stroke (if a layer has a natural fill then that is what receives the opacity). Opacity goes from 0 (fully transparent) to 1 (fully opaque).\nColor values (fill or stroke aesthetics) may contain opacity information embedded, e.g. by using hex values with an alpha channel. How such colors are merged with the opacity aesthetic is writer-dependent and can’t be relied on. Even if the behavior was consistent, mixing the two is never a good idea because it leads to hard-to-decode graphics.",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Shape"
+      "Opacity"
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/shape.html#literal-values",
-    "href": "syntax/scale/aesthetic/shape.html#literal-values",
-    "title": "Shape",
+    "objectID": "syntax/scale/aesthetic/2_opacity.html#literal-values",
+    "href": "syntax/scale/aesthetic/2_opacity.html#literal-values",
+    "title": "Opacity",
     "section": "Literal values",
-    "text": "Literal values\nShapes are given by name from the following list of 15 possible shapes\n\n\n\n\n\n\n\n\nName\nShape\nDescription\n\n\n\n\ncircle\n\nCircular point (default)\n\n\nsquare\n\nSquare point\n\n\ndiamond\n\nDiamond/rhombus\n\n\ntriangle-up\n\nUpward-pointing triangle\n\n\ntriangle-down\n\nDownward-pointing triangle\n\n\nstar\n\n5-pointed star\n\n\nsquare-cross\n\nSquare with X cutout\n\n\ncircle-plus\n\nCircle with + cutout\n\n\nsquare-plus\n\nSquare with + cutout\n\n\ncross\n\nX shape\n\n\nplus\n\n+ shape\n\n\nasterisk\n\n6-pointed asterisk\n\n\nbowtie\n\nBowtie/hourglass\n\n\nhline\n\nHorizontal line\n\n\nvline\n\nVertical line\n\n\n\nYou can use these names directly when setting the shape of a point:\nDRAW point\n    SETTING shape =&gt; 'star'",
+    "text": "Literal values\nOpacity has no unit and goes from 0 (fully transparent) to 1 (fully opaque). You can set the opacity of points to a low value to combat overplotting like so:\nDRAW point\n    SETTING opacity =&gt; 0.2",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Shape"
+      "Opacity"
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/shape.html#palettes",
-    "href": "syntax/scale/aesthetic/shape.html#palettes",
-    "title": "Shape",
+    "objectID": "syntax/scale/aesthetic/2_opacity.html#palettes",
+    "href": "syntax/scale/aesthetic/2_opacity.html#palettes",
+    "title": "Opacity",
     "section": "Palettes",
-    "text": "Palettes\nggsql provides three built-in shape palettes, which is often all you need.\nPalettes are used by giving them as names in the TO clause:\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_dep AS x, body_mass AS y, species AS shape\n    SETTING linewidth =&gt; 1, size =&gt; 5\nSCALE shape TO open\n\n\n\n\n\nInstead of using a named palette you can create one on the fly using an array of shape names:\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_dep AS x, body_mass AS y, species AS shape\n    SETTING linewidth =&gt; 1, size =&gt; 5\nSCALE shape TO ['star', 'bowtie', 'square-plus']\n\n\n\n\n\n\nDefault Palette (closed)\nThe default palette contains the 9 closed shapes (first nine in the table above). This is the recommended palette for most use cases, as closed shapes are more visually prominent and easier to distinguish at small sizes.\nWhile the closed shapes are most often used filled, you can also turn if fill and only draw the stroke for a lighter look.\n\n\nOpen Palette (open)\nThe open palette contains the last 6 shapes in the table. None of these have a fill. You may use this palette when you want transparent shapes that don’t obscure data.\n\n\nAll Shapes Palette (shapes)\nThis palette combines the two palettes above to provide all the possible shapes. Since not all shapes have a fill you should not map fill to anything if using this palette, and you should also be aware that differentiating 15 different shapes in the same plot will require a lot of mental effort from the viewer.\n\n\nAccessibility considerations\n\nLimit to 6-7 distinct shapes for readability\nCombine with color for redundant encoding\nUse larger point sizes when using complex shapes\nClosed shapes are more visible than open shapes",
+    "text": "Palettes\nOpacity can only be used for sequential data and has no named palettes. The default for continuous, binned, and ordinal scales is to use the range from 0.1 to 1 and interpolate between them. This can be overwritten by providing a manual output range specification like below where we use the complete range opacity",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Shape"
+      "Opacity"
     ]
   },
   {
@@ -92,81 +92,172 @@
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/2_opacity.html",
-    "href": "syntax/scale/aesthetic/2_opacity.html",
-    "title": "Opacity",
+    "objectID": "syntax/scale/aesthetic/shape.html",
+    "href": "syntax/scale/aesthetic/shape.html",
+    "title": "Shape",
     "section": "",
-    "text": "The opacity aesthetic governs how opaque objects are (or, conversely, how transparent they are). Depending on the layer it controls the opacity of the fill or stroke (if a layer has a natural fill then that is what receives the opacity). Opacity goes from 0 (fully transparent) to 1 (fully opaque).\nColor values (fill or stroke aesthetics) may contain opacity information embedded, e.g. by using hex values with an alpha channel. How such colors are merged with the opacity aesthetic is writer-dependent and can’t be relied on. Even if the behavior was consistent, mixing the two is never a good idea because it leads to hard-to-decode graphics.",
+    "text": "The shape aesthetic governs how points look. Shape can be used instead of color to differentiate between categories of points (or even better, in concert with color). Shape is only meaningful in relation to discrete data.",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Opacity"
+      "Shape"
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/2_opacity.html#literal-values",
-    "href": "syntax/scale/aesthetic/2_opacity.html#literal-values",
-    "title": "Opacity",
+    "objectID": "syntax/scale/aesthetic/shape.html#literal-values",
+    "href": "syntax/scale/aesthetic/shape.html#literal-values",
+    "title": "Shape",
     "section": "Literal values",
-    "text": "Literal values\nOpacity has no unit and goes from 0 (fully transparent) to 1 (fully opaque). You can set the opacity of points to a low value to combat overplotting like so:\nDRAW point\n    SETTING opacity =&gt; 0.2",
+    "text": "Literal values\nShapes are given by name from the following list of 15 possible shapes\n\n\n\n\n\n\n\n\nName\nShape\nDescription\n\n\n\n\ncircle\n\nCircular point (default)\n\n\nsquare\n\nSquare point\n\n\ndiamond\n\nDiamond/rhombus\n\n\ntriangle-up\n\nUpward-pointing triangle\n\n\ntriangle-down\n\nDownward-pointing triangle\n\n\nstar\n\n5-pointed star\n\n\nsquare-cross\n\nSquare with X cutout\n\n\ncircle-plus\n\nCircle with + cutout\n\n\nsquare-plus\n\nSquare with + cutout\n\n\ncross\n\nX shape\n\n\nplus\n\n+ shape\n\n\nasterisk\n\n6-pointed asterisk\n\n\nbowtie\n\nBowtie/hourglass\n\n\nhline\n\nHorizontal line\n\n\nvline\n\nVertical line\n\n\n\nYou can use these names directly when setting the shape of a point:\nDRAW point\n    SETTING shape =&gt; 'star'",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Opacity"
+      "Shape"
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/2_opacity.html#palettes",
-    "href": "syntax/scale/aesthetic/2_opacity.html#palettes",
-    "title": "Opacity",
+    "objectID": "syntax/scale/aesthetic/shape.html#palettes",
+    "href": "syntax/scale/aesthetic/shape.html#palettes",
+    "title": "Shape",
     "section": "Palettes",
-    "text": "Palettes\nOpacity can only be used for sequential data and has no named palettes. The default for continuous, binned, and ordinal scales is to use the range from 0.1 to 1 and interpolate between them. This can be overwritten by providing a manual output range specification like below where we use the complete range opacity",
+    "text": "Palettes\nggsql provides three built-in shape palettes, which is often all you need.\nPalettes are used by giving them as names in the TO clause:\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_dep AS x, body_mass AS y, species AS shape\n    SETTING linewidth =&gt; 1, size =&gt; 5\nSCALE shape TO open\n\n\n\n\n\nInstead of using a named palette you can create one on the fly using an array of shape names:\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_dep AS x, body_mass AS y, species AS shape\n    SETTING linewidth =&gt; 1, size =&gt; 5\nSCALE shape TO ['star', 'bowtie', 'square-plus']\n\n\n\n\n\n\nDefault Palette (closed)\nThe default palette contains the 9 closed shapes (first nine in the table above). This is the recommended palette for most use cases, as closed shapes are more visually prominent and easier to distinguish at small sizes.\nWhile the closed shapes are most often used filled, you can also turn if fill and only draw the stroke for a lighter look.\n\n\nOpen Palette (open)\nThe open palette contains the last 6 shapes in the table. None of these have a fill. You may use this palette when you want transparent shapes that don’t obscure data.\n\n\nAll Shapes Palette (shapes)\nThis palette combines the two palettes above to provide all the possible shapes. Since not all shapes have a fill you should not map fill to anything if using this palette, and you should also be aware that differentiating 15 different shapes in the same plot will require a lot of mental effort from the viewer.\n\n\nAccessibility considerations\n\nLimit to 6-7 distinct shapes for readability\nCombine with color for redundant encoding\nUse larger point sizes when using complex shapes\nClosed shapes are more visible than open shapes",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Opacity"
+      "Shape"
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/size.html",
-    "href": "syntax/scale/aesthetic/size.html",
-    "title": "Size",
+    "objectID": "syntax/scale/aesthetic/linetype.html",
+    "href": "syntax/scale/aesthetic/linetype.html",
+    "title": "Linetype",
     "section": "",
-    "text": "The size aesthetic defines the size of points (of any shape). It is measured as radius in points (1pt = 1/72 inch) of an idealized circle. Size is most often used to create a bubble chart, which is a variant of a scatter plot where a continuous value is mapped to the size of the points.\nsize is scaled by area rather than radius. This means it has an implicit square root transform applied on top of any other transform you may add. This ensures that steps in data value correspond to equal steps in perceived size (which is proportional to area).",
+    "text": "The linetype aesthetic defines the stroke pattern of lines: a succession of “on” and “off” parts of the line to make different stipple patterns. Linetype is most useful for line and path layers as a colorless way to differentiate between categories.\nWhile linetypes are most useful for differentiating between discrete data, ggsql also comes with a sequential palette that gradually increases the amount of ink used for the pattern.",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Size"
+      "Linetype"
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/size.html#literal-values",
-    "href": "syntax/scale/aesthetic/size.html#literal-values",
-    "title": "Size",
+    "objectID": "syntax/scale/aesthetic/linetype.html#literal-values",
+    "href": "syntax/scale/aesthetic/linetype.html#literal-values",
+    "title": "Linetype",
     "section": "Literal values",
-    "text": "Literal values\nSizes are given as bare numbers and measured in points. The following code will e.g. set the radius of points to 3pt (~28pt²):\nDRAW point\n    SETTING size =&gt; 3",
+    "text": "Literal values\nLinetypes can be specified in two different ways. A couple of patterns are named and can be referred to as such:\n\n\n\n\n\n\n\n\n\nName\nPattern\nStroke-dasharray\nDescription\n\n\n\n\nsolid\n\n(none)\nContinuous solid line\n\n\ndashed\n\n6 4\nStandard dashed line\n\n\ndotted\n\n1 2\nDotted line\n\n\ndotdash\n\n1 2 6 2\nAlternating dot and dash\n\n\nlongdash\n\n10 4\nLong dashes\n\n\ntwodash\n\n6 2 2 2\nTwo different dash lengths\n\n\n\nYou can e.g. use these names when defining a manual palette for the scale:\nSCALE linetype TO ['dashed', 'dotted', 'twodash']\nYou can alternatively specify a custom pattern using hex strings:\nSCALE linetype TO ['44', '1343', '3c6c9c']\nEach pair of hex digits represents on/off lengths:\n\n'44' = 4 on, 4 off (50% ink, similar to dashed)\n'1343' = 1 on, 3 off, 4 on, 3 off (dot-dash pattern)\n'3c6c9c' = 3 on, 12 off, 6 on, 12 off, 9 on, 12 off\n\nValid hex patterns:\n\nMust have 2, 4, 6, or 8 hex digits\nDigits can be 1-9 or a-f (0 is not allowed)\nDigits represent line lengths as multiples of the linewidth",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Size"
+      "Linetype"
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/size.html#palettes",
-    "href": "syntax/scale/aesthetic/size.html#palettes",
-    "title": "Size",
+    "objectID": "syntax/scale/aesthetic/linetype.html#palettes",
+    "href": "syntax/scale/aesthetic/linetype.html#palettes",
+    "title": "Linetype",
     "section": "Palettes",
-    "text": "Palettes\nSize can only be used for sequential data and has no named palettes. The default for continuous, binned, and ordinal scales is to use the range from 1pt to 6 pt and interpolate between them. This can be overwritten by providing a manual output range specification\nSCALE size TO [3, 9]",
+    "text": "Palettes\nggsql provides two linetype palettes which are generally enough for every need\nThe categorical palette is the default palette for discrete linetype scales. It consists of the 6 named patterns shown above in the same order. Since it is the only palette for discrete linetypes, there is rarely a need to specify it. The categorical palette is the default palette for discrete linetype scales. It consists of the 6 named patterns shown above in the same order. Since it is the only palette for discrete linetypes there is rarely a need to specify it.\n\nSequential palette\nThe sequential palette is the default for binned and ordinal linetype scales. It consists of up to 15 patterns with increasing amount of “on” and decreasing amount of “off”. This creates a visual progression from sparse (low ink) to solid (100% ink).\n\nExample: 5-Level Sequential\n\n\n\n\n\n\n\n\n\nLevel\nPattern\nInk Density\nDescription\n\n\n\n\n1\n\n~6%\nSparse dots\n\n\n2\n\n~29%\nShort dashes\n\n\n3\n\n~52%\nMedium dashes\n\n\n4\n\n~75%\nLong dashes\n\n\n5\n\n100%\nSolid",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Size"
+      "Linetype"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/aesthetic/linetype.html#accessibility",
+    "href": "syntax/scale/aesthetic/linetype.html#accessibility",
+    "title": "Linetype",
+    "section": "Accessibility",
+    "text": "Accessibility\n\nLinetypes work well for colorblind viewers\nCombine with color for redundant encoding\nLimit to 4-6 distinct linetypes for readability\nSolid lines are most visible; use for primary data",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Aesthetics",
+      "Linetype"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/type/discrete.html",
+    "href": "syntax/scale/type/discrete.html",
+    "title": "Discrete",
+    "section": "",
+    "text": "Scales are declared with the SCALE clause. Read the documentation for this clause for a thorough description of its syntax.\nThe discrete scale type maps various categorical data types into a discrete output domain. The two categorical data types in ggsql are strings and booleans with strings being the most common. However, you can force a numeric data type into being discrete by explicitly using a discrete scale (e.g. SCALE DISCRETE x)",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Types",
+      "Discrete"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/type/discrete.html#input-range",
+    "href": "syntax/scale/type/discrete.html#input-range",
+    "title": "Discrete",
+    "section": "Input range",
+    "text": "Input range\nThe input range for discrete scales consists of all the unique values that the scale understands. Their ordering in the input range will determine their ordering in the display, either in the legend or the axis. Values in the data that do not exist in the input range will be set to null.\n\nExamples\n\nSet order of bars using input range\n\nVISUALISE species AS x FROM ggsql:penguins\nDRAW bar\nSCALE x FROM ['Chinstrap', 'Gentoo', 'Adelie']\nSCALE y FROM [0, null]\n\n\n\n\n\n\n\nRemove a category by omitting it\n\nVISUALISE species AS x FROM ggsql:penguins\nDRAW bar\nSCALE x FROM ['Adelie', 'Chinstrap']\nSCALE y FROM [0, null]\n\n\n\n\n\n\n\nExplicitly include null in range to show removed data\n\nVISUALISE island AS x FROM ggsql:penguins\nDRAW bar\nSCALE x FROM ['Torgersen', 'Biscoe', null]\nSCALE y FROM [0, null]",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Types",
+      "Discrete"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/type/discrete.html#output-range",
+    "href": "syntax/scale/type/discrete.html#output-range",
+    "title": "Discrete",
+    "section": "Output range",
+    "text": "Output range\nThe output range can either be given as an array of values or a named palette. For both of these, the requirement is that they contain at least the number of values as is present in the input range. There are discrete palettes for both color, linetype, and shape.\nAll aesthetics has a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:\n\nx/y: Ignored (values used directly)\nstroke/fill: The ggsql palette\nlinetype: The default palette\nshape: The shapes palette\n\nThe remaining aesthetics don’t have a meaningful discrete output domain and don’t work with discrete scales. Consider using an ordinal scale for these if necessary.\n\nExamples\n\nChoose a different color palette\n\nVISUALISE bill_len AS x, bill_dep AS y, island AS color FROM ggsql:penguins\nDRAW point\nSCALE color TO tableau\n\n\n\n\n\n\n\nConstruct a manual output range\n\nVISUALISE bill_len AS x, bill_dep AS y, island AS shape FROM ggsql:penguins\nDRAW point\nSCALE shape TO ['star', 'circle', 'diamond']",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Types",
+      "Discrete"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/type/discrete.html#transform",
+    "href": "syntax/scale/type/discrete.html#transform",
+    "title": "Discrete",
+    "section": "Transform",
+    "text": "Transform\nThere are two transforms relevant to discrete scales and they are only used for casting the data. The string transform converts all data mapped to the scale into strings, and the bool transform will cast all mapped data into a booleans. Apart from this, they have no effect.",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Types",
+      "Discrete"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/type/discrete.html#settings",
+    "href": "syntax/scale/type/discrete.html#settings",
+    "title": "Discrete",
+    "section": "Settings",
+    "text": "Settings\nThere is only one setting relevant for discrete scales:\n\nreverse: Reverses the order of the scale. Defaults to false\n\n\nExamples\n\nReverse the color legend\n\nVISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins\nDRAW point\nSCALE color FROM ['Adelie', 'Chinstrap', 'Gentoo']\n    SETTING reverse =&gt; true",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Types",
+      "Discrete"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/type/discrete.html#renaming",
+    "href": "syntax/scale/type/discrete.html#renaming",
+    "title": "Discrete",
+    "section": "Renaming",
+    "text": "Renaming\nBreaks are generally named by their value. However, you may wish to rename one, several, or all of these. The RENAMING clause allows you to do that both by directly renaming a specific break or by providing a formatting function.\n\nDirect renaming\nWhen you provide a break value on the left and a break exist at that value then it will take on the label specified on the right. For examples adding RENAMING ‘Adelie’ =&gt; ‘Adélie’ will ensure that the species name will get the correct diacrit in the label.\n\n\nLabel formatting\nBesides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is RENAMING * =&gt; '... {} ...'. The current label will be inserted into the {} to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to discrete scales are the :Title, :lower, and :UPPER formatters which lets you control the casing of strings. You can read more about these formatters in the break formatting section of the SCALE documentation\nYou can combine formatting with direct renaming in which case the direct renaming has priority over the formatting.\n\n\nExamples\n\nRename null\n\nVISUALISE sex AS x FROM ggsql:penguins\nDRAW bar\nSCALE x\n    RENAMING 'null' =&gt; 'missing'\nSCALE y FROM [0, null]\n\n\n\n\n\n\n\nAdd prefix\n\nVISUALISE species AS x FROM ggsql:penguins\nDRAW bar\nSCALE x \n    RENAMING * =&gt; 'Species: {}'\nSCALE y FROM [0, null]\n\n\n\n\n\n\n\nApply formatting\n\nVISUALISE bill_len AS x, bill_dep AS y, sex AS color FROM ggsql:penguins\nDRAW point\nSCALE color\n    RENAMING * =&gt; '{:Title}'",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Types",
+      "Discrete"
     ]
   },
   {
@@ -183,159 +274,81 @@
     ]
   },
   {
-    "objectID": "syntax/scale/type/continuous.html",
-    "href": "syntax/scale/type/continuous.html",
-    "title": "Continuous",
+    "objectID": "syntax/scale/type/binned.html",
+    "href": "syntax/scale/type/binned.html",
+    "title": "Binned",
     "section": "",
-    "text": "Scales are declared with the SCALE clause. Read the documentation for this clause for a thorough description of its syntax.\nThe continuous scale type maps various continuous data types into a continuous output domain. The most common of these are basic numbers, but also dates in various forms are considered continuous.",
+    "text": "Scales are declared with the SCALE clause. Read the documentation for this clause for a thorough description of its syntax.\nThe binned scale type maps continuous data types into a discrete output domain. It can either be used to bin continuous data for layers that needs a discrete scale, e.g. the bar layer, or to discretize a continuous output range to make clearer visual separation between the groups. Lastly, while generally not advised, it can also be used to map continuous data to an aesthetic that is otherwise only meaningful for discrete data (e.g. shape).\nThe binned scale is never chosen automatically so it must be selected explicitly if needed using SCALE BINNED ...",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Continuous"
+      "Binned"
     ]
   },
   {
-    "objectID": "syntax/scale/type/continuous.html#input-range",
-    "href": "syntax/scale/type/continuous.html#input-range",
-    "title": "Continuous",
+    "objectID": "syntax/scale/type/binned.html#input-range",
+    "href": "syntax/scale/type/binned.html#input-range",
+    "title": "Binned",
     "section": "Input range",
-    "text": "Input range\nThe input range for continuous scales are defined by their minimum and maximum values. These can be given explicitly or deduced from the mapped data. If FROM is omitted then the range of the mapped data is used. If provided as an array of length 2 then the first element will set the minimum and the second element will set the maximum. If either of these elements are null then that part of the range will be deduced from the data. As an example SCALE x FROM [0, null] will set the minimum part of the range to 0 and the maximum part to the maximal value of the mapped data.\nPositional aesthetics (x and y) will have their range expanded based on the expand setting. If values in the mapped data falls outside of the input domain the values will be changed based on the oob setting.\nThe input range is converted to the type defined by the transform. This means that a time range can both be given as a %H:%M:%S string or as a numeric giving the number of nanoseconds since midnight.\n\nExamples\n\nExplicit setting the full range\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x FROM [40, 50]\n\n\n\n\n\n\n\nAllow one end of the range to be imputed\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x FROM [0, null]",
+    "text": "Input range\nThe input range for binned scales are defined by their minimum and maximum values. These can be given explicitly or deduced from the mapped data. If FROM is omitted then the range will be given as the minimum and maximum break values, whether provided directly or calculated. If provided as an array of length 2 then the first element will set the minimum and the second element will set the maximum. If either of these elements are null then that part of the range will be deduced from the data. As an example SCALE BINNED x FROM [0, null] will set the minimum part of the range to 0 and the maximum part to the maximal value of the mapped data. However, if neither input range nor explicit breaks are provided then the input range will be modified so that the calculated bins are even sized and include all data. This means that the range in most cases will expand past the minimum and maximum data values.\nPositional aesthetics (x and y) will have their range expanded based on the expand setting. If values in the mapped data falls outside of the input domain the values will be changed based on the oob setting.\nThe input range is converted to the type defined by the transform. This means that a time range can both be given as a %H:%M:%S string or as a numeric giving the number of nanoseconds since midnight.\nIf your data is discrete in nature but does have ordering, consider using the ordinal scale type.\n\nExamples\n\nNot providing input range will ensure even bin size\n\nVISUALISE body_mass AS x FROM ggsql:penguins\nDRAW bar\nSCALE BINNED x\n\n\n\n\n\n\n\nSetting input range will force boundary of terminal bins\n\nVISUALISE body_mass AS x FROM ggsql:penguins\nDRAW bar\nSCALE BINNED x FROM [2700, 6300]",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Continuous"
+      "Binned"
     ]
   },
   {
-    "objectID": "syntax/scale/type/continuous.html#output-range",
-    "href": "syntax/scale/type/continuous.html#output-range",
-    "title": "Continuous",
+    "objectID": "syntax/scale/type/binned.html#output-range",
+    "href": "syntax/scale/type/binned.html#output-range",
+    "title": "Binned",
     "section": "Output range",
-    "text": "Output range\nThe output range can either be given as an array of values or a named palette. For continuous scales the only palettes of relevance are those for color. Values will, after transformation, be mapped onto the range by interpolating between the provided values. For colors the interpolation will happen in oklab space. Colors can be specified either as hex values, CSS color name or a valid CSS color function (e.g. hsl(300, 76%, 72%))\nAll aesthetics have a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:\n\nx/y: Ignored (values used directly)\nstroke/fill: The navia palette\nsize/linewidth: [1, 6] (points)\nopacity: [0.1, 1.0] (0 being fully transparent and 1 being fully opaque)\n\nThe remaining aesthetics doesn’t have a meaningful continuous output domain and doesn’t work with continuous scales. Consider using a binned scale for these if necessary.\n\nExamples\n\nChoose a different palette\n\nVISUALISE bill_len AS x, bill_dep AS y, body_mass AS color FROM ggsql:penguins\nDRAW point\nSCALE color TO batlow\n\n\n\n\n\n\n\nDefine a palette manually\n\nVISUALISE bill_len AS x, bill_dep AS y, body_mass AS color FROM ggsql:penguins\nDRAW point\nSCALE color TO ['black', 'red', 'white']",
+    "text": "Output range\nThe output range can either be given as an array of values or a named palette. For interpretable aesthetics (color, opacity, size, and linewidth) the value for each bin will be interpolated from the output range based on the central value of the bin. For linetype there is a special sequential palette which is used by default. It will construct linetype patterns that gradually increase in ink-density for the number of bins needed (up to 15 bins). For shape the values will be selected directly from the output range. If there are fewer values than there are bins an error is emitted.\nAll aesthetics have a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:\n\nx/y: Ignored (values used directly)\nstroke/fill: The navia palette\nsize/linewidth: [1, 6] (points)\nopacity: [0.1, 1.0] (0 being fully transparent and 1 being fully opaque)\nlinetype: The sequential palette\nshape: The shapes palette\n\nWhile it is possible to use a binned scale to map continuous data to linetype and shape you should generally refrain from doing this. Even with the sequential linetype palette it is one of the weakest visual mappings only surpassed by shape which doesn’t show an inherent order in its representation at all.\n\nExamples\n\nSelect a continuous color palette\n\nVISUALISE bill_len AS x, bill_dep AS y, body_mass AS color FROM ggsql:penguins\nDRAW point\nSCALE BINNED color TO viridis",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Continuous"
+      "Binned"
     ]
   },
   {
-    "objectID": "syntax/scale/type/continuous.html#transform",
-    "href": "syntax/scale/type/continuous.html#transform",
-    "title": "Continuous",
+    "objectID": "syntax/scale/type/binned.html#transform",
+    "href": "syntax/scale/type/binned.html#transform",
+    "title": "Binned",
     "section": "Transform",
-    "text": "Transform\nThe transform of the scale both defines how the input data is parsed as well as any mathematical transform applied before it is mapped to the output range. The default transform is deduced from a combination of the mapped data and the aesthetic the scale is applied to.\n\nlinear: The default transform unless stated otherwise. Creates a linear mapping between the input and output range.\nlog/log2/ln: Creates a mapping between the logarithm of the input to the output range.\nexp10/exp2/exp: Inverse of the log transforms\nsqrt: Creates a mapping between the square root of the input to the output range.\nsquare: Inverse of sqrt transform\nasinh: Creates a mapping between the inverse hyperbolic sine of the input to the output range. This approaches the natural logarithm but is well defined for negative values as well, which can make it a good choice for transforming values that exhibit logarithmic growth but span positive and negative values.\npseudo_log/pseudo_log2/pseudo_ln: A slightly different transform that exhibit the same characteristics as asinh but where it is possible to choose the base of the logarithm it should approach.\ninteger: Like linear but will convert input to integer by removing the decimal part.\ndate: Default when mapping a DATE column. Like linear but will cast input to date if not already (for strings this assumes the date is formatted as YYYY-MM-DD, for numbers it will be the number of days since 1970-01-01).\ndatetime: Default when mapping a DATETIME column. Like linear but will cast input to datetime if not already (for strings a range of different permutations of the YYYY-MM-DDTHH:MM:SS.fTZ is tried, for number it will be the number of microseconds since 1970-01-01T00:00:00).\ntime: Default when mapping a TIME column. Like linear but will cast input to time if not already (for strings it assumes the time is formatted as HH:MM:SS.f with both the fractional and second part optional, for number it will be the number of nanoseconds since start of measurement).\n\n\nBreaks\nIf not provided explicitly by the user the breaks for the scales will be calculated for you. The transform will be responsible for the algorithm used to find good break values. It will use the breaks setting and the pretty setting and make a best effort at honouring this.\n\nlinear:\n\npretty =&gt; true: Will use Wilkinsons Extended algorithm to attempt to find nice breaks in the given interval close to the number of breaks requested\npretty =&gt; false: Will produce the requested number of evenly spaced breaks within the scale range\n\nlog/log2/ln:\n\npretty =&gt; true: Will use the 1-2-5 pattern and thin down to approximately the requested number of breaks\npretty =&gt; false: Breaks will be exclusively at the power of the base (e.g. 1, 10, 100, 1000 for log10)\n\nexp10/exp2/exp: Same logic as the log breaks but in the inverse direction\nsqrt/square: Like linear but the range is first converted to sqrt space and the breaks are then converted back\nasinh/pseudo_log/pseudo_log2/pseudo_ln: Like log but includes zero and negates the breaks for the negative part\ninteger: Like linear except disallowing breaks at fractional parts\ndate/datetime/time:\n\nbreaks =&gt; &lt;interval&gt;: If breaks are given as an interval (e.g. week, 30 seconds or 5 years) then the breaks will get that spacing aligned at the interval boundary (Jan 1 for years, etc). This ignores the pretty setting\npretty =&gt; true: An appropriate interval is chosen that approximates the requested number of breaks and then used as above\npretty =&gt; false: Linear spacing in integer space as close to the requested number of breaks\n\n\n\n\nThe size aesthetic\nThe size aesthetic requires special attention. To the user, size is given as radius in points (1/72 inch), but internally the provided values are converted to area, and the scale operates on area transformed values. This means that while you provide the output range in radius, the scaling is proportional to the area, even when using the default linear transform. While this seems somewhat complicated we have chosen this approach to satisfy two opposing needs:\n\nHumans are better at understanding a size when provided as radius/diameter\nWhen making comparison between shape sizes we should compare area\n\nIf you wish to scale by the radius (not advised) you should do so using the square transform (SCALE size VIA square)\n\n\nExamples\n\nAutomatic use of date transform for x axis\n\nVISUALISE Date AS x, Temp AS y FROM ggsql:airquality\nDRAW line\n\n\n\n\n\n\n\nApplying a log transform to the y axis\n\nVISUALISE Date AS x, Temp AS y FROM ggsql:airquality\nDRAW line\nSCALE y VIA log\n\n\n\n\n\n\n\nSetting breaks to exactly dividing the input range\n\nVISUALISE Date AS x, Temp AS y FROM ggsql:airquality\nDRAW line\nSCALE y\n    SETTING breaks =&gt; 5, pretty =&gt; false\n\n\n\n\n\n\n\nUsing an interval size for temporal breaks\n\nVISUALISE Date AS x, Temp AS y FROM ggsql:airquality\nDRAW line\nSCALE x\n    SETTING breaks =&gt; '2 months'",
+    "text": "Transform\nThe transform of the scale both defines how the input data is parsed as well as any mathematical transform applied before it is mapped to the output range. The default transform is deduced from a combination of the mapped data and the aesthetic the scale is applied to.\n\nlinear: The default transform unless stated otherwise. Creates a linear mapping between the input and output range.\nlog/log2/ln: Creates a mapping between the logarithm of the input to the output range.\nexp10/exp2/exp: Inverse of the log transforms\nsqrt: Creates a mapping between the square root of the input to the output range.\nsquare: Inverse of sqrt transform\nasinh: Creates a mapping between the inverse hyperbolic sine of the input to the output range. This approaches the natural logarithm but is well defined for negative values as well, which can make it a good choice for transforming values that exhibit logarithmic growth but span positive and negative values.\npseudo_log/pseudo_log2/pseudo_ln: A slightly different transform that exhibit the same characteristics as asinh but where it is possible to choose the base of the logarithm it should approach.\ninteger: Like linear but will convert input to integer by removing the decimal part.\ndate: Default when mapping a DATE column. Like linear but will cast input to date if not already (for strings this assumes the date is formatted as YYYY-MM-DD, for numbers it will be the number of days since 1970-01-01).\ndatetime: Default when mapping a DATETIME column. Like linear but will cast input to datetime if not already (for strings a range of different permutations of the YYYY-MM-DDTHH:MM:SS.fTZ is tried, for number it will be the number of microseconds since 1970-01-01T00:00:00).\ntime: Default when mapping a TIME column. Like linear but will cast input to time if not already (for strings it assumes the time is formatted as HH:MM:SS.f with both the fractional and second part optional, for number it will be the number of nanoseconds since start of measurement).\n\n\nBreaks\nIf not provided explicitly by the user the breaks for the scales will be calculated for you. The transform will be responsible for the algorithm used to find good break values. It will use the breaks setting and the pretty setting and make a best effort at honouring this.\nSince breaks are not just presentational as it is with continuous scales the choice of transform and break calculation can impact further processing in the pipeline and change its result.\n\nlinear:\n\npretty =&gt; true: Will use Wilkinsons Extended algorithm to attempt to find nice breaks in the given interval close to the number of breaks requested\npretty =&gt; false: Will produce the requested number of evenly spaced breaks within the scale range\n\nlog/log2/ln:\n\npretty =&gt; true: Will use the 1-2-5 pattern and thin down to approximately the requested number of breaks\npretty =&gt; false: Breaks will be exclusively at the power of the base (e.g. 1, 10, 100, 1000 for log10)\n\nexp10/exp2/exp: Same logic as the log breaks but in the inverse direction\nsqrt/square: Like linear but the range is first converted to sqrt space and the breaks are then converted back\nasinh/pseudo_log/pseudo_log2/pseudo_ln: Like log but includes zero and negates the breaks for the negative part\ninteger: Like linear except disallowing breaks at fractional parts\ndate/datetime/time:\n\nbreaks =&gt; &lt;interval&gt;: If breaks are given as an interval (e.g. week, 30 seconds or 5 years) then the breaks will get that spacing aligned at the interval boundary (Jan 1 for years, etc). This ignores the pretty setting\npretty =&gt; true: An appropriate interval is chosen that approximates the requested number of breaks and then used as above\npretty =&gt; false: Linear spacing in integer space as close to the requested number of breaks\n\n\n\n\nThe size aesthetic\nThe size aesthetic requires special attention. To the user, size is given as radius in points (1/72 inch), but internally the provided values are converted to area, and the scale operates on area transformed values. This means that while you provide the output range in radius, the scaling is proportional to the area, even when using the default linear transform. While this seems somewhat complicated we have chosen this approach to satisfy two opposing needs:\n\nHumans are better at understanding a size when provided as radius/diameter\nWhen making comparison between shape sizes we should compare area\n\nIf you wish to scale by the radius (not advised) you should do so using the square transform (SCALE BINNED size VIA square)\n\n\nExamples\n\nTurn off pretty to get exact bins between range\n\nVISUALISE body_mass AS x FROM ggsql:penguins\nDRAW bar\nSCALE BINNED x\n    SETTING pretty =&gt; false\n\n\n\n\n\n\n\nUse a date transform to bin on months\n\nVISUALISE Date AS x, Temp AS y FROM ggsql:airquality\nDRAW boxplot\nSCALE BINNED x VIA date\n    SETTING breaks =&gt; 'month'",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Continuous"
+      "Binned"
     ]
   },
   {
-    "objectID": "syntax/scale/type/continuous.html#settings",
-    "href": "syntax/scale/type/continuous.html#settings",
-    "title": "Continuous",
+    "objectID": "syntax/scale/type/binned.html#settings",
+    "href": "syntax/scale/type/binned.html#settings",
+    "title": "Binned",
     "section": "Settings",
-    "text": "Settings\nThe following settings are recognised by continuous scales:\n\nexpand (only for x/y): Either a scalar number or 2-length array of numbers. Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to 0.05 (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as SCALE x FROM [0, null] expansion will only be applied to the upper range.\noob: How should values outside of the scale input range be treated. One of 'keep' (keep the values as-is), 'censor' (set to null), or 'squish' (set to the nearest values within the range). Default for x/y is 'keep', for the remaining it is 'censor'.\nbreaks: Either a scalar as described in the section on breaks, or an array of values to place breaks at. Defaults to 5.\npretty: A boolean indicating which algorithm to use for automatic calculation of breaks as described in the section on breaks. Defaults to true.\nreverse: A boolean indicating whether the scale direction should be reversed. Defaults to false.\n\n\nExamples\n\nChange expansion of x axis to add a fixed value\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x \n    SETTING expand =&gt; [0.0, 10]\n\n\n\n\n\n\n\nSquish all y values to show them in the margin of the plot\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE y FROM [15, 20]\n    SETTING oob =&gt; 'squish'\n\n\n\n\n\n\n\nSet breaks explicitly\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x \n    SETTING breaks =&gt; [37, 42, 55]\n\n\n\n\n\n\n\nReverse the x axis\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x \n    SETTING reverse =&gt; true",
+    "text": "Settings\nThe following settings are recognised by binned scales:\n\nexpand (only for x/y): Either a scalar number or 2-length array of numbers. Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to 0.05 (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as SCALE x FROM [0, null] expansion will only be applied to the upper range.\noob: How should values outside of the scale input range be treated. One of 'censor' (set to null), or 'squish' (set to the nearest bin). Default is 'censor'. When set to 'squish' the terminal bin labels will be removed to reflect that they extend to -Inf and Inf.\nbreaks: Either a scalar as described in the section on breaks, or an array of values to place breaks at. Defaults to 5.\npretty: A boolean indicating which algorithm to use for automatic calculation of breaks as described in the section on breaks. Defaults to true.\nreverse: A boolean indicating whether the scale direction should be reversed. Defaults to false.\nclosed: Either 'left' or 'right'. Determines which bin a value will be part of when it lies on the boundary. Defaults to 'left'\n\n\nExamples\n\nUse oob =&gt; ‘squish’ to add data outside range to terminal bins\n\nVISUALISE body_mass AS x FROM ggsql:penguins\nDRAW bar\nSCALE BINNED x\n    SETTING \n        oob =&gt; 'squish', \n        breaks =&gt; [4000, 4250, 4500, 4750, 5000, 5250, 5500]",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Continuous"
+      "Binned"
     ]
   },
   {
-    "objectID": "syntax/scale/type/continuous.html#renaming",
-    "href": "syntax/scale/type/continuous.html#renaming",
-    "title": "Continuous",
+    "objectID": "syntax/scale/type/binned.html#renaming",
+    "href": "syntax/scale/type/binned.html#renaming",
+    "title": "Binned",
     "section": "Renaming",
-    "text": "Renaming\nBreaks are generally named by their value. However, you may wish to rename one, several, or all of these. The RENAMING clause allows you to do that both by directly renaming a specific break or by providing a formatting function.\n\nDirect renaming\nWhen you provide a break value on the left and a break exist at that value then it will take on the label specified on the right. For examples adding RENAMING 0 =&gt; 'Nil' will ensure that if there is a break at 0 it will appear as “Nil” on the legend/axis\n\n\nLabel formatting\nBesides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is RENAMING * =&gt; '... {} ...'. The current label will be inserted into the {} to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to continuous scales are the :time and :num formatters which lets you control how temporal and numeric values are presented. You can read more about these formatters in the break formatting section of the SCALE documentation\nYou can combine formatting with direct renaming in which case the direct renaming has priority over the formatting.\n\n\nExamples\n\nRenaming a single value\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x \n    RENAMING 50 =&gt; 'Fifty'\n\n\n\n\n\n\n\nAdding suffix to break labels\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x \n    RENAMING * =&gt; '{} mm'\n\n\n\n\n\n\n\nUsing a formatter to control temporal formats\n\nVISUALISE Date AS x, Temp AS y FROM ggsql:airquality\nDRAW line\nSCALE x\n    RENAMING * =&gt; '{:time %B}'\n\n\n\n\n\n\n\nUsing a formatter to control number formats\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x\n    RENAMING * =&gt; '{:num %.3e}'",
+    "text": "Renaming\nBreaks are generally named by their value. However, you may wish to rename one, several, or all of these. The RENAMING clause allows you to do that both by directly renaming a specific break or by providing a formatting function.\n\nDirect renaming\nWhen you provide a break value on the left and a break exist at that value then it will take on the label specified on the right. For examples adding RENAMING 0 =&gt; 'Nil' will ensure that if there is a break at 0 it will appear as “Nil” on the legend/axis\n\n\nLabel formatting\nBesides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is RENAMING * =&gt; '... {} ...'. The current label will be inserted into the {} to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to binned scales are the :time and :num formatters which lets you control how temporal and numeric values are presented. You can read more about these formatters in the break formatting section of the SCALE documentation\nYou can combine formatting with direct renaming in which case the direct renaming has priority over the formatting.\n\n\nLabels in binned legends\nWith some writers the legend for binned scales looks like the standard legend but with the label showing the range of the bin. In these situations the renaming is applied before the range label is being created. For example, if you have a RENAMING 0 =&gt; 'zero', then the final label will become “zero – 10” (assuming the upper end of the bin is 10). There is currently no way to take control over the format of the range label.\nIf oob =&gt; 'squish' then the terminal labels are formatted as e.g. “≥ 10” to reflect the terminal bins are open-ended. It still applies that the renaming is applied before constructing the final label\n\n\nExamples\n\nRename a select break\n\nVISUALISE bill_dep AS x FROM ggsql:penguins\nDRAW bar\nSCALE BINNED x \n    RENAMING 50 =&gt; 'Fifty'\n\n\n\n\n\n\n\nAdding suffix to break labels\n\nVISUALISE bill_dep AS x FROM ggsql:penguins\nDRAW bar\nSCALE BINNED x \n    RENAMING * =&gt; '{} mm'\n\n\n\n\n\n\n\nUsing a formatter to control number formats\n\nVISUALISE bill_dep AS x FROM ggsql:penguins\nDRAW bar\nSCALE BINNED x\n    RENAMING * =&gt; '{:num %.1f}'",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Continuous"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/type/ordinal.html",
-    "href": "syntax/scale/type/ordinal.html",
-    "title": "Ordinal",
-    "section": "",
-    "text": "Scales are declared with the SCALE clause. Read the documentation for this clause for a thorough description of its syntax.\nThe ordinal scale type maps ordered discrete data types into a discrete output domain. It can be used to apply sequential palettes to discrete data to reflect their ordered nature. In contrast to discrete scales values from palettes are interpolated across the palette rather than being picked directly if possible.\nThe ordinal scale is never chosen automatically so it must be selected explicitly if needed using SCALE ORDINAL ...",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Types",
-      "Ordinal"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/type/ordinal.html#input-range",
-    "href": "syntax/scale/type/ordinal.html#input-range",
-    "title": "Ordinal",
-    "section": "Input range",
-    "text": "Input range\nThe input range for ordinal scales consists of all the unique values that the scale understand. Their ordering in the input range will determine their internal ordering. Values in the data that do not exist in the input range will be set to null.\n\nExamples\n\nUse input range to define an ordering\n\nSELECT *, \nCASE \n    WHEN Wind &lt;= 3 THEN 'Light Air'\n    WHEN Wind &lt;= 7 THEN 'Light Breeze'\n    WHEN Wind &lt;= 12 THEN 'Gentle Breeze'\n    WHEN Wind &lt;= 18 THEN 'Moderate Breeze'\n    WHEN Wind &lt;= 24 THEN 'Fresh Breeze'\n    ELSE 'Hurricane'\nEND AS Wind_Category\nFROM ggsql:airquality\nVISUALISE Month AS x, Wind AS y, Wind_Category AS color\nDRAW point\n    SETTING opacity =&gt; 1\nSCALE ORDINAL color \n    FROM [\n        'Light Air', \n        'Light Breeze', \n        'Gentle Breeze',\n        'Moderate Breeze',\n        'Fresh Breeze'\n    ]",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Types",
-      "Ordinal"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/type/ordinal.html#output-range",
-    "href": "syntax/scale/type/ordinal.html#output-range",
-    "title": "Ordinal",
-    "section": "Output range",
-    "text": "Output range\nThe output range can either be given as an array of values or a named palette. For interpretable aesthetics (color, opacity, size, and linewidth) the value for each value will be interpolated from the output range. For linetype there is a special sequential palette which is used by default. It will construct linetype patterns that gradually increase in ink-density for the number of bins needed (up to 15 bins). For shape the values will be selected directly from the output range. If there are fewer values in the palette than there are in the input range an error is emitted.\nAll aesthetics has a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:\n\nx/y: Ignored (values used directly)\nstroke/fill: The navia palette\nsize/linewidth: [1, 6] (points)\nopacity: [0.1, 1.0] (0 being fully transparent and 1 being fully opaque)\nlinetype: The sequential palette\nshape: The shapes palette\n\nWhile it is possible to use a ordinal scale to map ordered discrete data to linetype and shape you should generally refrain from doing this. Even with the sequential linetype palette it is one of the weakest visual mappings only surpassed by shape which doesn’t show an inherent order in its representation at all.\n\nExamples\n\nUse a continuous color palette with discrete\n\nVISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality\nDRAW point\n    MAPPING Month AS color\nSCALE ORDINAL color TO lapaz\n\n\n\n\n\n\n\nUse linetype for sequential data\n\nVISUALISE Day AS x, Temp AS y FROM ggsql:airquality\nDRAW line\n    MAPPING Month AS linetype\nSCALE ORDINAL linetype",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Types",
-      "Ordinal"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/type/ordinal.html#transform",
-    "href": "syntax/scale/type/ordinal.html#transform",
-    "title": "Ordinal",
-    "section": "Transform",
-    "text": "Transform\nThere are two transforms relevant to ordinal scales and they are only used for casting the data. The string transform converts all data mapped to the scale into strings, and the bool transform will cast all mapped data into a booleans. Apart from this, they have no effect.",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Types",
-      "Ordinal"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/type/ordinal.html#settings",
-    "href": "syntax/scale/type/ordinal.html#settings",
-    "title": "Ordinal",
-    "section": "Settings",
-    "text": "Settings\nThere is only one setting relevant for ordinal scales:\n\nreverse: Reverses the order of the scale. Defaults to false\n\n\nExamples\n\nReverse the scale to swap the color mapping\n\nVISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality\nDRAW point\n    MAPPING Month AS color\nSCALE ORDINAL color\n    SETTING reverse =&gt; true",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Types",
-      "Ordinal"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/type/ordinal.html#renaming",
-    "href": "syntax/scale/type/ordinal.html#renaming",
-    "title": "Ordinal",
-    "section": "Renaming",
-    "text": "Renaming\nBreaks are generally named by their value. However, you may wish to rename one, several, or all of these. The RENAMING clause allows you to do that both by directly renaming a specific break or by providing a formatting function.\n\nDirect renaming\nWhen you provide a break value on the left and a break exist at that value then it will take on the label specified on the right. For examples adding RENAMING 6 =&gt; ‘June’ will ensure that a month given as an integer gets the right name.\n\n\nLabel formatting\nBesides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is RENAMING * =&gt; '... {} ...'. The current label will be inserted into the {} to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to ordinal scales are the :Title, :lower, and :UPPER formatters which lets you control the casing of strings. You can read more about these formatters in the break formatting section of the SCALE documentation\nYou can combine formatting with direct renaming in which case the direct renaming has priority over the formatting.\n\n\nExamples\n\nSelectively rename a label\n\nVISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality\nDRAW point\n    MAPPING Month AS color\nSCALE ORDINAL color\n    RENAMING 6 =&gt; 'June'\n\n\n\n\n\n\n\nUse string interpolation to add a suffix\n\nVISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality\nDRAW point\n    MAPPING Month AS color\nSCALE ORDINAL color\n    RENAMING * =&gt; '{}th month'\n\n\n\n\n\n\n\nUse a formatter to make labels shouty\n\nSELECT *, \nCASE \n    WHEN Wind &lt;= 3 THEN 'Light Air'\n    WHEN Wind &lt;= 7 THEN 'Light Breeze'\n    WHEN Wind &lt;= 12 THEN 'Gentle Breeze'\n    WHEN Wind &lt;= 18 THEN 'Moderate Breeze'\n    WHEN Wind &lt;= 24 THEN 'Fresh Breeze'\n    ELSE 'Hurricane'\nEND AS Wind_Category\nFROM ggsql:airquality\nVISUALISE Month AS x, Wind AS y, Wind_Category AS color\nDRAW point\n    SETTING opacity =&gt; 1\nSCALE ORDINAL color \n    FROM [\n        'Light Air', \n        'Light Breeze', \n        'Gentle Breeze',\n        'Moderate Breeze',\n        'Fresh Breeze'\n    ]\n    RENAMING * =&gt; '{:UPPER}'",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Types",
-      "Ordinal"
+      "Binned"
     ]
   },
   {
@@ -384,186 +397,6 @@
       "Home",
       "Main clauses",
       "`DRAW`"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/histogram.html",
-    "href": "syntax/layer/histogram.html",
-    "title": "Histogram",
-    "section": "",
-    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nVisualise the distribution of a single continuous variable by dividing the x axis into bins and counting the number of observations in each bin. If providing a weight then a weighted histogram is calculated instead.",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Histogram"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/histogram.html#aesthetics",
-    "href": "syntax/layer/histogram.html#aesthetics",
-    "title": "Histogram",
-    "section": "Aesthetics",
-    "text": "Aesthetics\nThe following aesthetics are recognised by the bar layer.\n\nRequired\n\nx: Position on the x-axis\n\n\n\nOptional\n\ncolour: The default colour of each bar\nstroke: The colour of the stroke around each bar. Overrides colour\nfill: The fill colour of each bar. Overrides colour\nopacity: The opacity of the bar fill\nlinewidth: The width of the stroke\nlinetype: The type of stroke, i.e. the dashing pattern",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Histogram"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/histogram.html#settings",
-    "href": "syntax/layer/histogram.html#settings",
-    "title": "Histogram",
-    "section": "Settings",
-    "text": "Settings\n\nbins: The number of bins to calculate. Defaults to 30\nbinwidth: The width of each bin. If provided it will override the binwidth calculated from bins\nclosed: Either 'left' or 'right' (default). Determines whether the bin intervals are closed to the left or right side",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Histogram"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/histogram.html#data-transformation",
-    "href": "syntax/layer/histogram.html#data-transformation",
-    "title": "Histogram",
-    "section": "Data transformation",
-    "text": "Data transformation\nThe histogram layer will bin the records in each group and count them. By default it will map the count to y.\n\nProperties\n\nweight: If mapped, the sum of the weights within each bin is calculated instead of the count in each bin\n\n\n\nCalculated statistics\n\ncount: The count or, if weight have been mapped, sum of weights in each bin.\ndensity: The groupwise density, i.e. the count divided by the sum of count among all bins within each group\n\n\n\nDefault remappings\n\ncount AS y: By default the histogram will show count as the height of the bars",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Histogram"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/histogram.html#examples",
-    "href": "syntax/layer/histogram.html#examples",
-    "title": "Histogram",
-    "section": "Examples",
-    "text": "Examples\nShow the number of each species in the data\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x\n\n\n\n\n\nSplit the histogram in two by mapping sex to fill\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x, sex AS fill\n\n\n\n\n\nMake the two histograms the same scale by remapping to density\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x, sex AS fill\n    REMAPPING density AS y\n\n\n\n\n\nSpecify an exact binwidth if needed\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x\n    SETTING binwidth =&gt; 100",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Histogram"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/bar.html",
-    "href": "syntax/layer/bar.html",
-    "title": "Bar",
-    "section": "",
-    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe bar layer is used to create bar plots. You can either specify the height of the bars directly or let the layer calculate it either as the count of records within the same group or as a weighted sum of the records.",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Bar"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/bar.html#aesthetics",
-    "href": "syntax/layer/bar.html#aesthetics",
-    "title": "Bar",
-    "section": "Aesthetics",
-    "text": "Aesthetics\nThe following aesthetics are recognised by the bar layer.\n\nRequired\nThe bar layer has no required aesthetics\n\n\nOptional\n\nx: Position on the x-axis. If missing all records will be shown in the same bar\ny: The height of the plot. If missing, it will be calculated by the layer\ncolour: The default colour of each bar\nstroke: The colour of the stroke around each bar. Overrides colour\nfill: The fill colour of each bar. Overrides colour\nopacity: The opacity of the bar fill\nlinewidth: The width of the stroke\nlinetype: The type of stroke, i.e. the dashing pattern",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Bar"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/bar.html#settings",
-    "href": "syntax/layer/bar.html#settings",
-    "title": "Bar",
-    "section": "Settings",
-    "text": "Settings\n\nwidth: The width of the bars as a proportion of the available width",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Bar"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/bar.html#data-transformation",
-    "href": "syntax/layer/bar.html#data-transformation",
-    "title": "Bar",
-    "section": "Data transformation",
-    "text": "Data transformation\nIf y has not been mapped the layer will calculate it for you.\n\nProperties\n\nweight: If mapped, the sum of the weights within each group is calculated instead of the count in each group\n\n\n\nCalculated statistics\n\ncount: The count or, if weight have been mapped, sum of weights in each group.\nproportion: The groupwise proportion, i.e. the count divided by the sum of count within each group\n\n\n\nDefault remappings\n\ncount AS y: By default the barplot will show count as the height of the bars",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Bar"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/bar.html#examples",
-    "href": "syntax/layer/bar.html#examples",
-    "title": "Bar",
-    "section": "Examples",
-    "text": "Examples\nShow the number of each species in the data\n\nVISUALISE FROM ggsql:penguins\nDRAW bar\n    MAPPING species AS x\n\n\n\n\n\nUse weight to instead show the collective mass of each species\n\nVISUALISE FROM ggsql:penguins\nDRAW bar\n    MAPPING species AS x, body_mass AS weight\n\n\n\n\n\nMap fill to a discrete value to create a stacked bar chart\n\nVISUALISE FROM ggsql:penguins\nDRAW bar\n    MAPPING species AS x, island AS fill\n\n\n\n\n\nMap to y if the dataset already contains the value you want to show\n\nSELECT species, MAX(body_mass) AS max_mass FROM ggsql:penguins\nGROUP BY species\nVISUALISE\nDRAW bar\n    MAPPING species AS x, max_mass AS y\n\n\n\n\n\nUse together with a binned scale as an alternative to the histogram layer\n\nVISUALISE FROM ggsql:penguins\nDRAW bar\n    MAPPING body_mass AS x\nSCALE BINNED x\n    SETTING breaks =&gt; 10",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Bar"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/polygon.html",
-    "href": "syntax/layer/polygon.html",
-    "title": "Polygon",
-    "section": "",
-    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nPolygons can be used to draw arbitrary closed shapes based on an ordered sequence of x,y-coordinates. They are similar to paths, but close the shapes and fill the interior.",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Polygon"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/polygon.html#aesthetics",
-    "href": "syntax/layer/polygon.html#aesthetics",
-    "title": "Polygon",
-    "section": "Aesthetics",
-    "text": "Aesthetics\nThe following aesthetics are recognised by the polygon layer.\n\nRequired\n\nx Position along the x-axis.\ny Position along the y-axis.\n\n\n\nOptional\n\nstroke The colour of the contour lines.\nfill The colour of the inner area.\ncolour Shorthand for setting stroke and fill simultaneously.\nopacity The opacity of colours.\nlinewidth The width of the contour lines.\nlinetype The dash pattern of the contour line.",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Polygon"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/polygon.html#settings",
-    "href": "syntax/layer/polygon.html#settings",
-    "title": "Polygon",
-    "section": "Settings",
-    "text": "Settings\nThe polygon layer has no additional settings",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Polygon"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/polygon.html#data-transformation",
-    "href": "syntax/layer/polygon.html#data-transformation",
-    "title": "Polygon",
-    "section": "Data transformation",
-    "text": "Data transformation\nThe polygon layer does not transform its data but passes it through unchanged",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Polygon"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/polygon.html#examples",
-    "href": "syntax/layer/polygon.html#examples",
-    "title": "Polygon",
-    "section": "Examples",
-    "text": "Examples\n\n\nCreate example data\nCREATE TABLE df AS\nSELECT * FROM (VALUES\n  (1.0, 1.0, 'A'),\n  (1.0, 3.0, 'A'),\n  (2.0, 1.0, 'A'),\n  (2.0, 3.0, 'B'),\n  (3.0, 1.0, 'B'),\n  (3.0, 3.0, 'B'),\n) AS t(x, y, id)\n\n\n\n\n\n\n\n\nSimple example polygon.\n\nVISUALISE x, y FROM df\n  DRAW polygon\n\n\n\n\n\nGroups of individual polygons can be declared via PARTITION BY.\n\nVISUALISE x, y FROM df\n  DRAW polygon PARTITION BY id\n\n\n\n\n\nInvoking a group through discrete aesthetics works as well.\n\nVISUALISE x, y FROM df\n  DRAW polygon MAPPING id AS colour",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Polygon"
     ]
   },
   {
@@ -627,6 +460,66 @@
     ]
   },
   {
+    "objectID": "syntax/layer/path.html",
+    "href": "syntax/layer/path.html",
+    "title": "Path",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe path layer is used to create lineplots, but contrary to the line layer the data will not be connected along the x-axis. Instead records are connected in the order they appear in the data. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers PARTITION BY.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Path"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/path.html#aesthetics",
+    "href": "syntax/layer/path.html#aesthetics",
+    "title": "Path",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the path layer.\n\nRequired\n\nx: Position along the x-axis\ny: Position along the y-axis\n\n\n\nOptional\n\ncolour/stroke: The colour of the path\nopacity: The opacity of the path\nlinewidth: The width of the path\nlinetype: The type of path, i.e. the dashing pattern",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Path"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/path.html#settings",
+    "href": "syntax/layer/path.html#settings",
+    "title": "Path",
+    "section": "Settings",
+    "text": "Settings\nThe line layer has no additional settings",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Path"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/path.html#data-transformation",
+    "href": "syntax/layer/path.html#data-transformation",
+    "title": "Path",
+    "section": "Data transformation",
+    "text": "Data transformation\nThe line layer does not transform its data but passes it through unchanged",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Path"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/path.html#examples",
+    "href": "syntax/layer/path.html#examples",
+    "title": "Path",
+    "section": "Examples",
+    "text": "Examples\n\n\nCreate example data\nCREATE TABLE df AS\nSELECT * FROM (VALUES\n  (1.0, 1.0, 'A'),\n  (2.0, 1.0, 'A'),\n  (1.0, 3.0, 'A'),\n  (3.0, 1.0, 'B'),\n  (2.0, 3.0, 'B'),\n  (3.0, 3.0, 'B'),\n) AS t(x, y, id)\n\n\n\n\n\n\n\n\nSimple example path.\n\nVISUALISE x, y FROM df\n  DRAW path\n\n\n\n\n\nContrary to line drawings, path is not forced to follow the order along the axis.\n\nVISUALISE x, y FROM df\n  DRAW path MAPPING 'Path' AS colour\n  DRAW line MAPPING 'Line' AS colour\n\n\n\n\n\nGroups of individual paths can be declared via PARTITION BY.\n\nVISUALISE x, y FROM df\n  DRAW path PARTITION BY id\n\n\n\n\n\nInvoking a group through discrete aesthetics works as well.\n\nVISUALISE x, y FROM df\n  DRAW path MAPPING id AS colour\n\n\n\n\n\nCompared to polygons, paths don’t close their shapes and fill their interiors.\n\nVISUALISE x, y FROM df\n  DRAW polygon MAPPING 'Polygon' AS stroke\n  DRAW path MAPPING 'Path' AS stroke",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Path"
+    ]
+  },
+  {
     "objectID": "syntax/layer/boxplot.html",
     "href": "syntax/layer/boxplot.html",
     "title": "Boxplot",
@@ -672,6 +565,126 @@
       "Home",
       "Layers",
       "Boxplot"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/bar.html",
+    "href": "syntax/layer/bar.html",
+    "title": "Bar",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe bar layer is used to create bar plots. You can either specify the height of the bars directly or let the layer calculate it either as the count of records within the same group or as a weighted sum of the records.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Bar"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/bar.html#aesthetics",
+    "href": "syntax/layer/bar.html#aesthetics",
+    "title": "Bar",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the bar layer.\n\nRequired\nThe bar layer has no required aesthetics\n\n\nOptional\n\nx: Position on the x-axis. If missing all records will be shown in the same bar\ny: The height of the plot. If missing, it will be calculated by the layer\ncolour: The default colour of each bar\nstroke: The colour of the stroke around each bar. Overrides colour\nfill: The fill colour of each bar. Overrides colour\nopacity: The opacity of the bar fill\nlinewidth: The width of the stroke\nlinetype: The type of stroke, i.e. the dashing pattern",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Bar"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/bar.html#settings",
+    "href": "syntax/layer/bar.html#settings",
+    "title": "Bar",
+    "section": "Settings",
+    "text": "Settings\n\nwidth: The width of the bars as a proportion of the available width",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Bar"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/bar.html#data-transformation",
+    "href": "syntax/layer/bar.html#data-transformation",
+    "title": "Bar",
+    "section": "Data transformation",
+    "text": "Data transformation\nIf y has not been mapped the layer will calculate it for you.\n\nProperties\n\nweight: If mapped, the sum of the weights within each group is calculated instead of the count in each group\n\n\n\nCalculated statistics\n\ncount: The count or, if weight have been mapped, sum of weights in each group.\nproportion: The groupwise proportion, i.e. the count divided by the sum of count within each group\n\n\n\nDefault remappings\n\ncount AS y: By default the barplot will show count as the height of the bars",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Bar"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/bar.html#examples",
+    "href": "syntax/layer/bar.html#examples",
+    "title": "Bar",
+    "section": "Examples",
+    "text": "Examples\nShow the number of each species in the data\n\nVISUALISE FROM ggsql:penguins\nDRAW bar\n    MAPPING species AS x\n\n\n\n\n\nUse weight to instead show the collective mass of each species\n\nVISUALISE FROM ggsql:penguins\nDRAW bar\n    MAPPING species AS x, body_mass AS weight\n\n\n\n\n\nMap fill to a discrete value to create a stacked bar chart\n\nVISUALISE FROM ggsql:penguins\nDRAW bar\n    MAPPING species AS x, island AS fill\n\n\n\n\n\nMap to y if the dataset already contains the value you want to show\n\nSELECT species, MAX(body_mass) AS max_mass FROM ggsql:penguins\nGROUP BY species\nVISUALISE\nDRAW bar\n    MAPPING species AS x, max_mass AS y\n\n\n\n\n\nUse together with a binned scale as an alternative to the histogram layer\n\nVISUALISE FROM ggsql:penguins\nDRAW bar\n    MAPPING body_mass AS x\nSCALE BINNED x\n    SETTING breaks =&gt; 10",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Bar"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/histogram.html",
+    "href": "syntax/layer/histogram.html",
+    "title": "Histogram",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nVisualise the distribution of a single continuous variable by dividing the x axis into bins and counting the number of observations in each bin. If providing a weight then a weighted histogram is calculated instead.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Histogram"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/histogram.html#aesthetics",
+    "href": "syntax/layer/histogram.html#aesthetics",
+    "title": "Histogram",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the bar layer.\n\nRequired\n\nx: Position on the x-axis\n\n\n\nOptional\n\ncolour: The default colour of each bar\nstroke: The colour of the stroke around each bar. Overrides colour\nfill: The fill colour of each bar. Overrides colour\nopacity: The opacity of the bar fill\nlinewidth: The width of the stroke\nlinetype: The type of stroke, i.e. the dashing pattern",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Histogram"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/histogram.html#settings",
+    "href": "syntax/layer/histogram.html#settings",
+    "title": "Histogram",
+    "section": "Settings",
+    "text": "Settings\n\nbins: The number of bins to calculate. Defaults to 30\nbinwidth: The width of each bin. If provided it will override the binwidth calculated from bins\nclosed: Either 'left' or 'right' (default). Determines whether the bin intervals are closed to the left or right side",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Histogram"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/histogram.html#data-transformation",
+    "href": "syntax/layer/histogram.html#data-transformation",
+    "title": "Histogram",
+    "section": "Data transformation",
+    "text": "Data transformation\nThe histogram layer will bin the records in each group and count them. By default it will map the count to y.\n\nProperties\n\nweight: If mapped, the sum of the weights within each bin is calculated instead of the count in each bin\n\n\n\nCalculated statistics\n\ncount: The count or, if weight have been mapped, sum of weights in each bin.\ndensity: The groupwise density, i.e. the count divided by the sum of count among all bins within each group\n\n\n\nDefault remappings\n\ncount AS y: By default the histogram will show count as the height of the bars",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Histogram"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/histogram.html#examples",
+    "href": "syntax/layer/histogram.html#examples",
+    "title": "Histogram",
+    "section": "Examples",
+    "text": "Examples\nShow the number of each species in the data\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x\n\n\n\n\n\nSplit the histogram in two by mapping sex to fill\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x, sex AS fill\n\n\n\n\n\nMake the two histograms the same scale by remapping to density\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x, sex AS fill\n    REMAPPING density AS y\n\n\n\n\n\nSpecify an exact binwidth if needed\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x\n    SETTING binwidth =&gt; 100",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Histogram"
     ]
   },
   {
@@ -790,66 +803,6 @@
     ]
   },
   {
-    "objectID": "syntax/layer/violin.html",
-    "href": "syntax/layer/violin.html",
-    "title": "Violin",
-    "section": "",
-    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nViolin plots display the distribution of a single continuous variable for multiple groups. The violins are mirrored kernel density estimates, similar to the density layer, but organised as distinct groups.",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Violin"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/violin.html#aesthetics",
-    "href": "syntax/layer/violin.html#aesthetics",
-    "title": "Violin",
-    "section": "Aesthetics",
-    "text": "Aesthetics\nThe following aesthetics are recognised by the violin layer.\n\nRequired\n\nx: Position on the x-axis (categorical).\ny: Value on the y-axis for which to compute density.\n\n\n\nOptional\n\nstroke: The colour of the contour lines.\nfill: The colour of the inner area.\ncolour: Shorthand for setting stroke and fill simultaneously.\nopacity: The opacity of the colours.\nlinewidth: The width of the contour lines.\nlinetype The dash pattern of the contour line.",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Violin"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/violin.html#settings",
-    "href": "syntax/layer/violin.html#settings",
-    "title": "Violin",
-    "section": "Settings",
-    "text": "Settings\n\nbandwidth: A numerical value setting the smoothing bandwidth to use. If absent (default), the bandwidth will be computed using Silverman’s rule of thumb.\nadjust: A numerical value as multiplier for the bandwidth setting, with 1 as default.\nkernel: Determines the smoothing kernel shape. Can be one of the following:\n\n'gaussian' (default)\n'epanechnikov'\n'triangular'\n'rectangular' or 'uniform'\n'biweight' or 'quartic'\n'cosine'",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Violin"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/violin.html#data-transformation",
-    "href": "syntax/layer/violin.html#data-transformation",
-    "title": "Violin",
-    "section": "Data transformation",
-    "text": "Data transformation\nA violin layer uses the same computation as a density layer. See the density data transformation section for details. The major difference between a violin layer and a density layer is just the matter of display.\n\nProperties\n\nweight: If mapped, it sets the relative contribution of an observation to the density estimate.\n\n\n\nCalculated statistics\n\ndensity: The estimated probability density per point on the grid. The total area of a single density curve adds up to 1.\nintensity: Also termed ‘probability intensity estimation’, it is the precursor of the density variable. Specifically it is the same as the density without normalisation. You can use REMAPPING intensity AS offset if you want to reflect differences in group sizes.\n\n\n\nDefault remappings\n\ndensity AS offset: By default the offsets around a centerline reflect the computed density.",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Violin"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/violin.html#examples",
-    "href": "syntax/layer/violin.html#examples",
-    "title": "Violin",
-    "section": "Examples",
-    "text": "Examples\nA typical violin plot.\n\nVISUALISE species AS x, bill_dep AS y FROM ggsql:penguins\n  DRAW violin\n\n\n\n\n\nThe adjust setting controls the smoothing.\n\nVISUALISE species AS x, bill_dep AS y FROM ggsql:penguins\n  DRAW violin SETTING adjust =&gt; 0.1\n\n\n\n\n\nTo more clearly indicate differences in group sizes, you can use the intensity computed variable. Note that we have fewer (n=68) Chinstrap penguins than Adelie (n=152) or Gentoo (n=124) penguins.\n\nVISUALISE species AS x, bill_dep AS y FROM ggsql:penguins\n  DRAW violin REMAPPING intensity AS offset\n\n\n\n\n\nYou can combine groups to expand the categories.\n\n\nSELECT *, species || ' ' || island AS groups FROM ggsql:penguins\nVISUALISE groups AS x, bill_dep AS y, island AS fill\n  DRAW violin",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Violin"
-    ]
-  },
-  {
     "objectID": "syntax/layer/point.html",
     "href": "syntax/layer/point.html",
     "title": "Point",
@@ -910,66 +863,6 @@
     ]
   },
   {
-    "objectID": "syntax/layer/path.html",
-    "href": "syntax/layer/path.html",
-    "title": "Path",
-    "section": "",
-    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe path layer is used to create lineplots, but contrary to the line layer the data will not be connected along the x-axis. Instead records are connected in the order they appear in the data. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers PARTITION BY.",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Path"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/path.html#aesthetics",
-    "href": "syntax/layer/path.html#aesthetics",
-    "title": "Path",
-    "section": "Aesthetics",
-    "text": "Aesthetics\nThe following aesthetics are recognised by the path layer.\n\nRequired\n\nx: Position along the x-axis\ny: Position along the y-axis\n\n\n\nOptional\n\ncolour/stroke: The colour of the path\nopacity: The opacity of the path\nlinewidth: The width of the path\nlinetype: The type of path, i.e. the dashing pattern",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Path"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/path.html#settings",
-    "href": "syntax/layer/path.html#settings",
-    "title": "Path",
-    "section": "Settings",
-    "text": "Settings\nThe line layer has no additional settings",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Path"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/path.html#data-transformation",
-    "href": "syntax/layer/path.html#data-transformation",
-    "title": "Path",
-    "section": "Data transformation",
-    "text": "Data transformation\nThe line layer does not transform its data but passes it through unchanged",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Path"
-    ]
-  },
-  {
-    "objectID": "syntax/layer/path.html#examples",
-    "href": "syntax/layer/path.html#examples",
-    "title": "Path",
-    "section": "Examples",
-    "text": "Examples\n\n\nCreate example data\nCREATE TABLE df AS\nSELECT * FROM (VALUES\n  (1.0, 1.0, 'A'),\n  (2.0, 1.0, 'A'),\n  (1.0, 3.0, 'A'),\n  (3.0, 1.0, 'B'),\n  (2.0, 3.0, 'B'),\n  (3.0, 3.0, 'B'),\n) AS t(x, y, id)\n\n\n\n\n\n\n\n\nSimple example path.\n\nVISUALISE x, y FROM df\n  DRAW path\n\n\n\n\n\nContrary to line drawings, path is not forced to follow the order along the axis.\n\nVISUALISE x, y FROM df\n  DRAW path MAPPING 'Path' AS colour\n  DRAW line MAPPING 'Line' AS colour\n\n\n\n\n\nGroups of individual paths can be declared via PARTITION BY.\n\nVISUALISE x, y FROM df\n  DRAW path PARTITION BY id\n\n\n\n\n\nInvoking a group through discrete aesthetics works as well.\n\nVISUALISE x, y FROM df\n  DRAW path MAPPING id AS colour\n\n\n\n\n\nCompared to polygons, paths don’t close their shapes and fill their interiors.\n\nVISUALISE x, y FROM df\n  DRAW polygon MAPPING 'Polygon' AS stroke\n  DRAW path MAPPING 'Path' AS stroke",
-    "crumbs": [
-      "Home",
-      "Layers",
-      "Path"
-    ]
-  },
-  {
     "objectID": "syntax/layer/density.html",
     "href": "syntax/layer/density.html",
     "title": "Density",
@@ -1027,6 +920,126 @@
       "Home",
       "Layers",
       "Density"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/violin.html",
+    "href": "syntax/layer/violin.html",
+    "title": "Violin",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nViolin plots display the distribution of a single continuous variable for multiple groups. The violins are mirrored kernel density estimates, similar to the density layer, but organised as distinct groups.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Violin"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/violin.html#aesthetics",
+    "href": "syntax/layer/violin.html#aesthetics",
+    "title": "Violin",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the violin layer.\n\nRequired\n\nx: Position on the x-axis (categorical).\ny: Value on the y-axis for which to compute density.\n\n\n\nOptional\n\nstroke: The colour of the contour lines.\nfill: The colour of the inner area.\ncolour: Shorthand for setting stroke and fill simultaneously.\nopacity: The opacity of the colours.\nlinewidth: The width of the contour lines.\nlinetype The dash pattern of the contour line.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Violin"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/violin.html#settings",
+    "href": "syntax/layer/violin.html#settings",
+    "title": "Violin",
+    "section": "Settings",
+    "text": "Settings\n\nbandwidth: A numerical value setting the smoothing bandwidth to use. If absent (default), the bandwidth will be computed using Silverman’s rule of thumb.\nadjust: A numerical value as multiplier for the bandwidth setting, with 1 as default.\nkernel: Determines the smoothing kernel shape. Can be one of the following:\n\n'gaussian' (default)\n'epanechnikov'\n'triangular'\n'rectangular' or 'uniform'\n'biweight' or 'quartic'\n'cosine'",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Violin"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/violin.html#data-transformation",
+    "href": "syntax/layer/violin.html#data-transformation",
+    "title": "Violin",
+    "section": "Data transformation",
+    "text": "Data transformation\nA violin layer uses the same computation as a density layer. See the density data transformation section for details. The major difference between a violin layer and a density layer is just the matter of display.\n\nProperties\n\nweight: If mapped, it sets the relative contribution of an observation to the density estimate.\n\n\n\nCalculated statistics\n\ndensity: The estimated probability density per point on the grid. The total area of a single density curve adds up to 1.\nintensity: Also termed ‘probability intensity estimation’, it is the precursor of the density variable. Specifically it is the same as the density without normalisation. You can use REMAPPING intensity AS offset if you want to reflect differences in group sizes.\n\n\n\nDefault remappings\n\ndensity AS offset: By default the offsets around a centerline reflect the computed density.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Violin"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/violin.html#examples",
+    "href": "syntax/layer/violin.html#examples",
+    "title": "Violin",
+    "section": "Examples",
+    "text": "Examples\nA typical violin plot.\n\nVISUALISE species AS x, bill_dep AS y FROM ggsql:penguins\n  DRAW violin\n\n\n\n\n\nThe adjust setting controls the smoothing.\n\nVISUALISE species AS x, bill_dep AS y FROM ggsql:penguins\n  DRAW violin SETTING adjust =&gt; 0.1\n\n\n\n\n\nTo more clearly indicate differences in group sizes, you can use the intensity computed variable. Note that we have fewer (n=68) Chinstrap penguins than Adelie (n=152) or Gentoo (n=124) penguins.\n\nVISUALISE species AS x, bill_dep AS y FROM ggsql:penguins\n  DRAW violin REMAPPING intensity AS offset\n\n\n\n\n\nYou can combine groups to expand the categories.\n\n\nSELECT *, species || ' ' || island AS groups FROM ggsql:penguins\nVISUALISE groups AS x, bill_dep AS y, island AS fill\n  DRAW violin",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Violin"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/polygon.html",
+    "href": "syntax/layer/polygon.html",
+    "title": "Polygon",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nPolygons can be used to draw arbitrary closed shapes based on an ordered sequence of x,y-coordinates. They are similar to paths, but close the shapes and fill the interior.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Polygon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/polygon.html#aesthetics",
+    "href": "syntax/layer/polygon.html#aesthetics",
+    "title": "Polygon",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the polygon layer.\n\nRequired\n\nx Position along the x-axis.\ny Position along the y-axis.\n\n\n\nOptional\n\nstroke The colour of the contour lines.\nfill The colour of the inner area.\ncolour Shorthand for setting stroke and fill simultaneously.\nopacity The opacity of colours.\nlinewidth The width of the contour lines.\nlinetype The dash pattern of the contour line.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Polygon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/polygon.html#settings",
+    "href": "syntax/layer/polygon.html#settings",
+    "title": "Polygon",
+    "section": "Settings",
+    "text": "Settings\nThe polygon layer has no additional settings",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Polygon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/polygon.html#data-transformation",
+    "href": "syntax/layer/polygon.html#data-transformation",
+    "title": "Polygon",
+    "section": "Data transformation",
+    "text": "Data transformation\nThe polygon layer does not transform its data but passes it through unchanged",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Polygon"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/polygon.html#examples",
+    "href": "syntax/layer/polygon.html#examples",
+    "title": "Polygon",
+    "section": "Examples",
+    "text": "Examples\n\n\nCreate example data\nCREATE TABLE df AS\nSELECT * FROM (VALUES\n  (1.0, 1.0, 'A'),\n  (1.0, 3.0, 'A'),\n  (2.0, 1.0, 'A'),\n  (2.0, 3.0, 'B'),\n  (3.0, 1.0, 'B'),\n  (3.0, 3.0, 'B'),\n) AS t(x, y, id)\n\n\n\n\n\n\n\n\nSimple example polygon.\n\nVISUALISE x, y FROM df\n  DRAW polygon\n\n\n\n\n\nGroups of individual polygons can be declared via PARTITION BY.\n\nVISUALISE x, y FROM df\n  DRAW polygon PARTITION BY id\n\n\n\n\n\nInvoking a group through discrete aesthetics works as well.\n\nVISUALISE x, y FROM df\n  DRAW polygon MAPPING id AS colour",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Polygon"
     ]
   },
   {
@@ -1114,6 +1127,30 @@
     ]
   },
   {
+    "objectID": "syntax/clause/facet.html",
+    "href": "syntax/clause/facet.html",
+    "title": "Create small multiples with FACET",
+    "section": "",
+    "text": "The FACET clause allows you to split your data, by one or two variables, and plot each group as a small version of the plot: a technique called ‘small multiples’. The technique is great for preventing overplotting. Because each small plot shares the same positional scales by default, visual comparisons between groups become easy.",
+    "crumbs": [
+      "Home",
+      "Main clauses",
+      "`FACET`"
+    ]
+  },
+  {
+    "objectID": "syntax/clause/facet.html#clause-syntax",
+    "href": "syntax/clause/facet.html#clause-syntax",
+    "title": "Create small multiples with FACET",
+    "section": "Clause syntax",
+    "text": "Clause syntax\nThe FACET syntax contains a number of subclauses that are all optional\nFACET &lt;column&gt; BY &lt;column&gt;\n    SETTING &lt;parameter&gt; =&gt; &lt;value&gt;, ...\nThe first column is mandatory. It names a column in the layer data that will be used for splitting the data. If the layer data does not contain the column the behavior for that layer depends on the missing parameter of the facet.\n\nBY\nThe optional BY clause is used to define an additional column to split the data by. If it is missing the small multiples are laid out in a grid with the facet panels filling the cells in a row-wise fashion. If BY is present then the categories of the first column defines the rows of the grid and the categories of the second column the columns of the grid. Each multiple is then positioned according to that.\n\n\nSETTING\nThis clause behaves much like the SETTINGS clause in DRAW, in that it allows you to fine-tune specific behavior of the faceting. The following parameters exist:\n\nfree: Controls whether the positional scales are independent across the small multiples. Permissible values are:\n\nnull or omitted (default): Shared/fixed scales across all panels\n'x': Independent x-axis scale, shared y-axis scale\n'y': Shared x-axis scale, independent y-axis scale\n['x', 'y']: Independent scales for both axes\n\nmissing: Determines how layers behave when the faceting column is missing. It can take two values: 'repeat' (default), and 'null'. If 'repeat' is set, then the layer data is repeated in each panel. If 'null', then such layers are only displayed if a null panel is shown, as controlled by the facet scale.\nncol: The number of panel columns to use when faceting by a single variable. Default is 3 when fewer than 6 categories are present, 4 when fewer than 12 categeries are present and otherwise 5. When the BY-clause is used to set a second faceting variable, the ncol setting is not allowed. There is no nrow setting as this is derived from the number of panels and the ncol setting.\n\n\n\nFacet variables as aesthetics\nWhen you apply faceting to a plot you are creating new aesthetics you can control. For 1-dimensional faceting (no BY clause) the aesthetic is called panel and for 2-dimensional faceting the aesthetics are called row and column. You can read more about these aesthetics in their documentation\n\n\nCustomizing facet strip labels\nTo customize facet strip labels (e.g., renaming categories), use the RENAMING clause on the facet scale:\nFACET region\nSCALE panel RENAMING 'N' =&gt; 'North', 'S' =&gt; 'South'\nSee the facet scale documentation for more details on label customization.",
+    "crumbs": [
+      "Home",
+      "Main clauses",
+      "`FACET`"
+    ]
+  },
+  {
     "objectID": "syntax/clause/label.html",
     "href": "syntax/clause/label.html",
     "title": "Define different titles with LABEL",
@@ -1150,235 +1187,237 @@
     ]
   },
   {
-    "objectID": "syntax/clause/facet.html",
-    "href": "syntax/clause/facet.html",
-    "title": "Create small multiples with FACET",
+    "objectID": "syntax/scale/type/ordinal.html",
+    "href": "syntax/scale/type/ordinal.html",
+    "title": "Ordinal",
     "section": "",
-    "text": "The FACET clause allows you to split your data, by one or two variables, and plot each group as a small version of the plot: a technique called ‘small multiples’. The technique is great for preventing overplotting. Because each small plot shares the same positional scales by default, visual comparisons between groups become easy.",
-    "crumbs": [
-      "Home",
-      "Main clauses",
-      "`FACET`"
-    ]
-  },
-  {
-    "objectID": "syntax/clause/facet.html#clause-syntax",
-    "href": "syntax/clause/facet.html#clause-syntax",
-    "title": "Create small multiples with FACET",
-    "section": "Clause syntax",
-    "text": "Clause syntax\nThe FACET syntax contains a number of subclauses that are all optional\nFACET &lt;column&gt; BY &lt;column&gt;\n    SETTING &lt;parameter&gt; =&gt; &lt;value&gt;, ...\nThe first column is mandatory. It names a column in the layer data that will be used for splitting the data. If the layer data does not contain the column the behavior for that layer depends on the missing parameter of the facet.\n\nBY\nThe optional BY clause is used to define an additional column to split the data by. If it is missing the small multiples are laid out in a grid with the facet panels filling the cells in a row-wise fashion. If BY is present then the categories of the first column defines the rows of the grid and the categories of the second column the columns of the grid. Each multiple is then positioned according to that.\n\n\nSETTING\nThis clause behaves much like the SETTINGS clause in DRAW, in that it allows you to fine-tune specific behavior of the faceting. The following parameters exist:\n\nfree: Controls whether the positional scales are independent across the small multiples. Permissible values are:\n\nnull or omitted (default): Shared/fixed scales across all panels\n'x': Independent x-axis scale, shared y-axis scale\n'y': Shared x-axis scale, independent y-axis scale\n['x', 'y']: Independent scales for both axes\n\nmissing: Determines how layers behave when the faceting column is missing. It can take two values: 'repeat' (default), and 'null'. If 'repeat' is set, then the layer data is repeated in each panel. If 'null', then such layers are only displayed if a null panel is shown, as controlled by the facet scale.\nncol: The number of panel columns to use when faceting by a single variable. Default is 3 when fewer than 6 categories are present, 4 when fewer than 12 categeries are present and otherwise 5. When the BY-clause is used to set a second faceting variable, the ncol setting is not allowed. There is no nrow setting as this is derived from the number of panels and the ncol setting.\n\n\n\nFacet variables as aesthetics\nWhen you apply faceting to a plot you are creating new aesthetics you can control. For 1-dimensional faceting (no BY clause) the aesthetic is called panel and for 2-dimensional faceting the aesthetics are called row and column. You can read more about these aesthetics in their documentation\n\n\nCustomizing facet strip labels\nTo customize facet strip labels (e.g., renaming categories), use the RENAMING clause on the facet scale:\nFACET region\nSCALE panel RENAMING 'N' =&gt; 'North', 'S' =&gt; 'South'\nSee the facet scale documentation for more details on label customization.",
-    "crumbs": [
-      "Home",
-      "Main clauses",
-      "`FACET`"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/type/binned.html",
-    "href": "syntax/scale/type/binned.html",
-    "title": "Binned",
-    "section": "",
-    "text": "Scales are declared with the SCALE clause. Read the documentation for this clause for a thorough description of its syntax.\nThe binned scale type maps continuous data types into a discrete output domain. It can either be used to bin continuous data for layers that needs a discrete scale, e.g. the bar layer, or to discretize a continuous output range to make clearer visual separation between the groups. Lastly, while generally not advised, it can also be used to map continuous data to an aesthetic that is otherwise only meaningful for discrete data (e.g. shape).\nThe binned scale is never chosen automatically so it must be selected explicitly if needed using SCALE BINNED ...",
+    "text": "Scales are declared with the SCALE clause. Read the documentation for this clause for a thorough description of its syntax.\nThe ordinal scale type maps ordered discrete data types into a discrete output domain. It can be used to apply sequential palettes to discrete data to reflect their ordered nature. In contrast to discrete scales values from palettes are interpolated across the palette rather than being picked directly if possible.\nThe ordinal scale is never chosen automatically so it must be selected explicitly if needed using SCALE ORDINAL ...",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Binned"
+      "Ordinal"
     ]
   },
   {
-    "objectID": "syntax/scale/type/binned.html#input-range",
-    "href": "syntax/scale/type/binned.html#input-range",
-    "title": "Binned",
+    "objectID": "syntax/scale/type/ordinal.html#input-range",
+    "href": "syntax/scale/type/ordinal.html#input-range",
+    "title": "Ordinal",
     "section": "Input range",
-    "text": "Input range\nThe input range for binned scales are defined by their minimum and maximum values. These can be given explicitly or deduced from the mapped data. If FROM is omitted then the range will be given as the minimum and maximum break values, whether provided directly or calculated. If provided as an array of length 2 then the first element will set the minimum and the second element will set the maximum. If either of these elements are null then that part of the range will be deduced from the data. As an example SCALE BINNED x FROM [0, null] will set the minimum part of the range to 0 and the maximum part to the maximal value of the mapped data. However, if neither input range nor explicit breaks are provided then the input range will be modified so that the calculated bins are even sized and include all data. This means that the range in most cases will expand past the minimum and maximum data values.\nPositional aesthetics (x and y) will have their range expanded based on the expand setting. If values in the mapped data falls outside of the input domain the values will be changed based on the oob setting.\nThe input range is converted to the type defined by the transform. This means that a time range can both be given as a %H:%M:%S string or as a numeric giving the number of nanoseconds since midnight.\nIf your data is discrete in nature but does have ordering, consider using the ordinal scale type.\n\nExamples\n\nNot providing input range will ensure even bin size\n\nVISUALISE body_mass AS x FROM ggsql:penguins\nDRAW bar\nSCALE BINNED x\n\n\n\n\n\n\n\nSetting input range will force boundary of terminal bins\n\nVISUALISE body_mass AS x FROM ggsql:penguins\nDRAW bar\nSCALE BINNED x FROM [2700, 6300]",
+    "text": "Input range\nThe input range for ordinal scales consists of all the unique values that the scale understand. Their ordering in the input range will determine their internal ordering. Values in the data that do not exist in the input range will be set to null.\n\nExamples\n\nUse input range to define an ordering\n\nSELECT *, \nCASE \n    WHEN Wind &lt;= 3 THEN 'Light Air'\n    WHEN Wind &lt;= 7 THEN 'Light Breeze'\n    WHEN Wind &lt;= 12 THEN 'Gentle Breeze'\n    WHEN Wind &lt;= 18 THEN 'Moderate Breeze'\n    WHEN Wind &lt;= 24 THEN 'Fresh Breeze'\n    ELSE 'Hurricane'\nEND AS Wind_Category\nFROM ggsql:airquality\nVISUALISE Month AS x, Wind AS y, Wind_Category AS color\nDRAW point\n    SETTING opacity =&gt; 1\nSCALE ORDINAL color \n    FROM [\n        'Light Air', \n        'Light Breeze', \n        'Gentle Breeze',\n        'Moderate Breeze',\n        'Fresh Breeze'\n    ]",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Binned"
+      "Ordinal"
     ]
   },
   {
-    "objectID": "syntax/scale/type/binned.html#output-range",
-    "href": "syntax/scale/type/binned.html#output-range",
-    "title": "Binned",
+    "objectID": "syntax/scale/type/ordinal.html#output-range",
+    "href": "syntax/scale/type/ordinal.html#output-range",
+    "title": "Ordinal",
     "section": "Output range",
-    "text": "Output range\nThe output range can either be given as an array of values or a named palette. For interpretable aesthetics (color, opacity, size, and linewidth) the value for each bin will be interpolated from the output range based on the central value of the bin. For linetype there is a special sequential palette which is used by default. It will construct linetype patterns that gradually increase in ink-density for the number of bins needed (up to 15 bins). For shape the values will be selected directly from the output range. If there are fewer values than there are bins an error is emitted.\nAll aesthetics have a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:\n\nx/y: Ignored (values used directly)\nstroke/fill: The navia palette\nsize/linewidth: [1, 6] (points)\nopacity: [0.1, 1.0] (0 being fully transparent and 1 being fully opaque)\nlinetype: The sequential palette\nshape: The shapes palette\n\nWhile it is possible to use a binned scale to map continuous data to linetype and shape you should generally refrain from doing this. Even with the sequential linetype palette it is one of the weakest visual mappings only surpassed by shape which doesn’t show an inherent order in its representation at all.\n\nExamples\n\nSelect a continuous color palette\n\nVISUALISE bill_len AS x, bill_dep AS y, body_mass AS color FROM ggsql:penguins\nDRAW point\nSCALE BINNED color TO viridis",
+    "text": "Output range\nThe output range can either be given as an array of values or a named palette. For interpretable aesthetics (color, opacity, size, and linewidth) the value for each value will be interpolated from the output range. For linetype there is a special sequential palette which is used by default. It will construct linetype patterns that gradually increase in ink-density for the number of bins needed (up to 15 bins). For shape the values will be selected directly from the output range. If there are fewer values in the palette than there are in the input range an error is emitted.\nAll aesthetics has a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:\n\nx/y: Ignored (values used directly)\nstroke/fill: The navia palette\nsize/linewidth: [1, 6] (points)\nopacity: [0.1, 1.0] (0 being fully transparent and 1 being fully opaque)\nlinetype: The sequential palette\nshape: The shapes palette\n\nWhile it is possible to use a ordinal scale to map ordered discrete data to linetype and shape you should generally refrain from doing this. Even with the sequential linetype palette it is one of the weakest visual mappings only surpassed by shape which doesn’t show an inherent order in its representation at all.\n\nExamples\n\nUse a continuous color palette with discrete\n\nVISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality\nDRAW point\n    MAPPING Month AS color\nSCALE ORDINAL color TO lapaz\n\n\n\n\n\n\n\nUse linetype for sequential data\n\nVISUALISE Day AS x, Temp AS y FROM ggsql:airquality\nDRAW line\n    MAPPING Month AS linetype\nSCALE ORDINAL linetype",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Binned"
+      "Ordinal"
     ]
   },
   {
-    "objectID": "syntax/scale/type/binned.html#transform",
-    "href": "syntax/scale/type/binned.html#transform",
-    "title": "Binned",
+    "objectID": "syntax/scale/type/ordinal.html#transform",
+    "href": "syntax/scale/type/ordinal.html#transform",
+    "title": "Ordinal",
     "section": "Transform",
-    "text": "Transform\nThe transform of the scale both defines how the input data is parsed as well as any mathematical transform applied before it is mapped to the output range. The default transform is deduced from a combination of the mapped data and the aesthetic the scale is applied to.\n\nlinear: The default transform unless stated otherwise. Creates a linear mapping between the input and output range.\nlog/log2/ln: Creates a mapping between the logarithm of the input to the output range.\nexp10/exp2/exp: Inverse of the log transforms\nsqrt: Creates a mapping between the square root of the input to the output range.\nsquare: Inverse of sqrt transform\nasinh: Creates a mapping between the inverse hyperbolic sine of the input to the output range. This approaches the natural logarithm but is well defined for negative values as well, which can make it a good choice for transforming values that exhibit logarithmic growth but span positive and negative values.\npseudo_log/pseudo_log2/pseudo_ln: A slightly different transform that exhibit the same characteristics as asinh but where it is possible to choose the base of the logarithm it should approach.\ninteger: Like linear but will convert input to integer by removing the decimal part.\ndate: Default when mapping a DATE column. Like linear but will cast input to date if not already (for strings this assumes the date is formatted as YYYY-MM-DD, for numbers it will be the number of days since 1970-01-01).\ndatetime: Default when mapping a DATETIME column. Like linear but will cast input to datetime if not already (for strings a range of different permutations of the YYYY-MM-DDTHH:MM:SS.fTZ is tried, for number it will be the number of microseconds since 1970-01-01T00:00:00).\ntime: Default when mapping a TIME column. Like linear but will cast input to time if not already (for strings it assumes the time is formatted as HH:MM:SS.f with both the fractional and second part optional, for number it will be the number of nanoseconds since start of measurement).\n\n\nBreaks\nIf not provided explicitly by the user the breaks for the scales will be calculated for you. The transform will be responsible for the algorithm used to find good break values. It will use the breaks setting and the pretty setting and make a best effort at honouring this.\nSince breaks are not just presentational as it is with continuous scales the choice of transform and break calculation can impact further processing in the pipeline and change its result.\n\nlinear:\n\npretty =&gt; true: Will use Wilkinsons Extended algorithm to attempt to find nice breaks in the given interval close to the number of breaks requested\npretty =&gt; false: Will produce the requested number of evenly spaced breaks within the scale range\n\nlog/log2/ln:\n\npretty =&gt; true: Will use the 1-2-5 pattern and thin down to approximately the requested number of breaks\npretty =&gt; false: Breaks will be exclusively at the power of the base (e.g. 1, 10, 100, 1000 for log10)\n\nexp10/exp2/exp: Same logic as the log breaks but in the inverse direction\nsqrt/square: Like linear but the range is first converted to sqrt space and the breaks are then converted back\nasinh/pseudo_log/pseudo_log2/pseudo_ln: Like log but includes zero and negates the breaks for the negative part\ninteger: Like linear except disallowing breaks at fractional parts\ndate/datetime/time:\n\nbreaks =&gt; &lt;interval&gt;: If breaks are given as an interval (e.g. week, 30 seconds or 5 years) then the breaks will get that spacing aligned at the interval boundary (Jan 1 for years, etc). This ignores the pretty setting\npretty =&gt; true: An appropriate interval is chosen that approximates the requested number of breaks and then used as above\npretty =&gt; false: Linear spacing in integer space as close to the requested number of breaks\n\n\n\n\nThe size aesthetic\nThe size aesthetic requires special attention. To the user, size is given as radius in points (1/72 inch), but internally the provided values are converted to area, and the scale operates on area transformed values. This means that while you provide the output range in radius, the scaling is proportional to the area, even when using the default linear transform. While this seems somewhat complicated we have chosen this approach to satisfy two opposing needs:\n\nHumans are better at understanding a size when provided as radius/diameter\nWhen making comparison between shape sizes we should compare area\n\nIf you wish to scale by the radius (not advised) you should do so using the square transform (SCALE BINNED size VIA square)\n\n\nExamples\n\nTurn off pretty to get exact bins between range\n\nVISUALISE body_mass AS x FROM ggsql:penguins\nDRAW bar\nSCALE BINNED x\n    SETTING pretty =&gt; false\n\n\n\n\n\n\n\nUse a date transform to bin on months\n\nVISUALISE Date AS x, Temp AS y FROM ggsql:airquality\nDRAW boxplot\nSCALE BINNED x VIA date\n    SETTING breaks =&gt; 'month'",
+    "text": "Transform\nThere are two transforms relevant to ordinal scales and they are only used for casting the data. The string transform converts all data mapped to the scale into strings, and the bool transform will cast all mapped data into a booleans. Apart from this, they have no effect.",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Binned"
+      "Ordinal"
     ]
   },
   {
-    "objectID": "syntax/scale/type/binned.html#settings",
-    "href": "syntax/scale/type/binned.html#settings",
-    "title": "Binned",
+    "objectID": "syntax/scale/type/ordinal.html#settings",
+    "href": "syntax/scale/type/ordinal.html#settings",
+    "title": "Ordinal",
     "section": "Settings",
-    "text": "Settings\nThe following settings are recognised by binned scales:\n\nexpand (only for x/y): Either a scalar number or 2-length array of numbers. Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to 0.05 (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as SCALE x FROM [0, null] expansion will only be applied to the upper range.\noob: How should values outside of the scale input range be treated. One of 'censor' (set to null), or 'squish' (set to the nearest bin). Default is 'censor'. When set to 'squish' the terminal bin labels will be removed to reflect that they extend to -Inf and Inf.\nbreaks: Either a scalar as described in the section on breaks, or an array of values to place breaks at. Defaults to 5.\npretty: A boolean indicating which algorithm to use for automatic calculation of breaks as described in the section on breaks. Defaults to true.\nreverse: A boolean indicating whether the scale direction should be reversed. Defaults to false.\nclosed: Either 'left' or 'right'. Determines which bin a value will be part of when it lies on the boundary. Defaults to 'left'\n\n\nExamples\n\nUse oob =&gt; ‘squish’ to add data outside range to terminal bins\n\nVISUALISE body_mass AS x FROM ggsql:penguins\nDRAW bar\nSCALE BINNED x\n    SETTING \n        oob =&gt; 'squish', \n        breaks =&gt; [4000, 4250, 4500, 4750, 5000, 5250, 5500]",
+    "text": "Settings\nThere is only one setting relevant for ordinal scales:\n\nreverse: Reverses the order of the scale. Defaults to false\n\n\nExamples\n\nReverse the scale to swap the color mapping\n\nVISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality\nDRAW point\n    MAPPING Month AS color\nSCALE ORDINAL color\n    SETTING reverse =&gt; true",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Binned"
+      "Ordinal"
     ]
   },
   {
-    "objectID": "syntax/scale/type/binned.html#renaming",
-    "href": "syntax/scale/type/binned.html#renaming",
-    "title": "Binned",
+    "objectID": "syntax/scale/type/ordinal.html#renaming",
+    "href": "syntax/scale/type/ordinal.html#renaming",
+    "title": "Ordinal",
     "section": "Renaming",
-    "text": "Renaming\nBreaks are generally named by their value. However, you may wish to rename one, several, or all of these. The RENAMING clause allows you to do that both by directly renaming a specific break or by providing a formatting function.\n\nDirect renaming\nWhen you provide a break value on the left and a break exist at that value then it will take on the label specified on the right. For examples adding RENAMING 0 =&gt; 'Nil' will ensure that if there is a break at 0 it will appear as “Nil” on the legend/axis\n\n\nLabel formatting\nBesides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is RENAMING * =&gt; '... {} ...'. The current label will be inserted into the {} to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to binned scales are the :time and :num formatters which lets you control how temporal and numeric values are presented. You can read more about these formatters in the break formatting section of the SCALE documentation\nYou can combine formatting with direct renaming in which case the direct renaming has priority over the formatting.\n\n\nLabels in binned legends\nWith some writers the legend for binned scales looks like the standard legend but with the label showing the range of the bin. In these situations the renaming is applied before the range label is being created. For example, if you have a RENAMING 0 =&gt; 'zero', then the final label will become “zero – 10” (assuming the upper end of the bin is 10). There is currently no way to take control over the format of the range label.\nIf oob =&gt; 'squish' then the terminal labels are formatted as e.g. “≥ 10” to reflect the terminal bins are open-ended. It still applies that the renaming is applied before constructing the final label\n\n\nExamples\n\nRename a select break\n\nVISUALISE bill_dep AS x FROM ggsql:penguins\nDRAW bar\nSCALE BINNED x \n    RENAMING 50 =&gt; 'Fifty'\n\n\n\n\n\n\n\nAdding suffix to break labels\n\nVISUALISE bill_dep AS x FROM ggsql:penguins\nDRAW bar\nSCALE BINNED x \n    RENAMING * =&gt; '{} mm'\n\n\n\n\n\n\n\nUsing a formatter to control number formats\n\nVISUALISE bill_dep AS x FROM ggsql:penguins\nDRAW bar\nSCALE BINNED x\n    RENAMING * =&gt; '{:num %.1f}'",
+    "text": "Renaming\nBreaks are generally named by their value. However, you may wish to rename one, several, or all of these. The RENAMING clause allows you to do that both by directly renaming a specific break or by providing a formatting function.\n\nDirect renaming\nWhen you provide a break value on the left and a break exist at that value then it will take on the label specified on the right. For examples adding RENAMING 6 =&gt; ‘June’ will ensure that a month given as an integer gets the right name.\n\n\nLabel formatting\nBesides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is RENAMING * =&gt; '... {} ...'. The current label will be inserted into the {} to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to ordinal scales are the :Title, :lower, and :UPPER formatters which lets you control the casing of strings. You can read more about these formatters in the break formatting section of the SCALE documentation\nYou can combine formatting with direct renaming in which case the direct renaming has priority over the formatting.\n\n\nExamples\n\nSelectively rename a label\n\nVISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality\nDRAW point\n    MAPPING Month AS color\nSCALE ORDINAL color\n    RENAMING 6 =&gt; 'June'\n\n\n\n\n\n\n\nUse string interpolation to add a suffix\n\nVISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality\nDRAW point\n    MAPPING Month AS color\nSCALE ORDINAL color\n    RENAMING * =&gt; '{}th month'\n\n\n\n\n\n\n\nUse a formatter to make labels shouty\n\nSELECT *, \nCASE \n    WHEN Wind &lt;= 3 THEN 'Light Air'\n    WHEN Wind &lt;= 7 THEN 'Light Breeze'\n    WHEN Wind &lt;= 12 THEN 'Gentle Breeze'\n    WHEN Wind &lt;= 18 THEN 'Moderate Breeze'\n    WHEN Wind &lt;= 24 THEN 'Fresh Breeze'\n    ELSE 'Hurricane'\nEND AS Wind_Category\nFROM ggsql:airquality\nVISUALISE Month AS x, Wind AS y, Wind_Category AS color\nDRAW point\n    SETTING opacity =&gt; 1\nSCALE ORDINAL color \n    FROM [\n        'Light Air', \n        'Light Breeze', \n        'Gentle Breeze',\n        'Moderate Breeze',\n        'Fresh Breeze'\n    ]\n    RENAMING * =&gt; '{:UPPER}'",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Binned"
+      "Ordinal"
     ]
   },
   {
-    "objectID": "syntax/scale/type/discrete.html",
-    "href": "syntax/scale/type/discrete.html",
-    "title": "Discrete",
+    "objectID": "syntax/scale/type/continuous.html",
+    "href": "syntax/scale/type/continuous.html",
+    "title": "Continuous",
     "section": "",
-    "text": "Scales are declared with the SCALE clause. Read the documentation for this clause for a thorough description of its syntax.\nThe discrete scale type maps various categorical data types into a discrete output domain. The two categorical data types in ggsql are strings and booleans with strings being the most common. However, you can force a numeric data type into being discrete by explicitly using a discrete scale (e.g. SCALE DISCRETE x)",
+    "text": "Scales are declared with the SCALE clause. Read the documentation for this clause for a thorough description of its syntax.\nThe continuous scale type maps various continuous data types into a continuous output domain. The most common of these are basic numbers, but also dates in various forms are considered continuous.",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Discrete"
+      "Continuous"
     ]
   },
   {
-    "objectID": "syntax/scale/type/discrete.html#input-range",
-    "href": "syntax/scale/type/discrete.html#input-range",
-    "title": "Discrete",
+    "objectID": "syntax/scale/type/continuous.html#input-range",
+    "href": "syntax/scale/type/continuous.html#input-range",
+    "title": "Continuous",
     "section": "Input range",
-    "text": "Input range\nThe input range for discrete scales consists of all the unique values that the scale understands. Their ordering in the input range will determine their ordering in the display, either in the legend or the axis. Values in the data that do not exist in the input range will be set to null.\n\nExamples\n\nSet order of bars using input range\n\nVISUALISE species AS x FROM ggsql:penguins\nDRAW bar\nSCALE x FROM ['Chinstrap', 'Gentoo', 'Adelie']\nSCALE y FROM [0, null]\n\n\n\n\n\n\n\nRemove a category by omitting it\n\nVISUALISE species AS x FROM ggsql:penguins\nDRAW bar\nSCALE x FROM ['Adelie', 'Chinstrap']\nSCALE y FROM [0, null]\n\n\n\n\n\n\n\nExplicitly include null in range to show removed data\n\nVISUALISE island AS x FROM ggsql:penguins\nDRAW bar\nSCALE x FROM ['Torgersen', 'Biscoe', null]\nSCALE y FROM [0, null]",
+    "text": "Input range\nThe input range for continuous scales are defined by their minimum and maximum values. These can be given explicitly or deduced from the mapped data. If FROM is omitted then the range of the mapped data is used. If provided as an array of length 2 then the first element will set the minimum and the second element will set the maximum. If either of these elements are null then that part of the range will be deduced from the data. As an example SCALE x FROM [0, null] will set the minimum part of the range to 0 and the maximum part to the maximal value of the mapped data.\nPositional aesthetics (x and y) will have their range expanded based on the expand setting. If values in the mapped data falls outside of the input domain the values will be changed based on the oob setting.\nThe input range is converted to the type defined by the transform. This means that a time range can both be given as a %H:%M:%S string or as a numeric giving the number of nanoseconds since midnight.\n\nExamples\n\nExplicit setting the full range\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x FROM [40, 50]\n\n\n\n\n\n\n\nAllow one end of the range to be imputed\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x FROM [0, null]",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Discrete"
+      "Continuous"
     ]
   },
   {
-    "objectID": "syntax/scale/type/discrete.html#output-range",
-    "href": "syntax/scale/type/discrete.html#output-range",
-    "title": "Discrete",
+    "objectID": "syntax/scale/type/continuous.html#output-range",
+    "href": "syntax/scale/type/continuous.html#output-range",
+    "title": "Continuous",
     "section": "Output range",
-    "text": "Output range\nThe output range can either be given as an array of values or a named palette. For both of these, the requirement is that they contain at least the number of values as is present in the input range. There are discrete palettes for both color, linetype, and shape.\nAll aesthetics has a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:\n\nx/y: Ignored (values used directly)\nstroke/fill: The ggsql palette\nlinetype: The default palette\nshape: The shapes palette\n\nThe remaining aesthetics don’t have a meaningful discrete output domain and don’t work with discrete scales. Consider using an ordinal scale for these if necessary.\n\nExamples\n\nChoose a different color palette\n\nVISUALISE bill_len AS x, bill_dep AS y, island AS color FROM ggsql:penguins\nDRAW point\nSCALE color TO tableau\n\n\n\n\n\n\n\nConstruct a manual output range\n\nVISUALISE bill_len AS x, bill_dep AS y, island AS shape FROM ggsql:penguins\nDRAW point\nSCALE shape TO ['star', 'circle', 'diamond']",
+    "text": "Output range\nThe output range can either be given as an array of values or a named palette. For continuous scales the only palettes of relevance are those for color. Values will, after transformation, be mapped onto the range by interpolating between the provided values. For colors the interpolation will happen in oklab space. Colors can be specified either as hex values, CSS color name or a valid CSS color function (e.g. hsl(300, 76%, 72%))\nAll aesthetics have a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:\n\nx/y: Ignored (values used directly)\nstroke/fill: The navia palette\nsize/linewidth: [1, 6] (points)\nopacity: [0.1, 1.0] (0 being fully transparent and 1 being fully opaque)\n\nThe remaining aesthetics doesn’t have a meaningful continuous output domain and doesn’t work with continuous scales. Consider using a binned scale for these if necessary.\n\nExamples\n\nChoose a different palette\n\nVISUALISE bill_len AS x, bill_dep AS y, body_mass AS color FROM ggsql:penguins\nDRAW point\nSCALE color TO batlow\n\n\n\n\n\n\n\nDefine a palette manually\n\nVISUALISE bill_len AS x, bill_dep AS y, body_mass AS color FROM ggsql:penguins\nDRAW point\nSCALE color TO ['black', 'red', 'white']",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Discrete"
+      "Continuous"
     ]
   },
   {
-    "objectID": "syntax/scale/type/discrete.html#transform",
-    "href": "syntax/scale/type/discrete.html#transform",
-    "title": "Discrete",
+    "objectID": "syntax/scale/type/continuous.html#transform",
+    "href": "syntax/scale/type/continuous.html#transform",
+    "title": "Continuous",
     "section": "Transform",
-    "text": "Transform\nThere are two transforms relevant to discrete scales and they are only used for casting the data. The string transform converts all data mapped to the scale into strings, and the bool transform will cast all mapped data into a booleans. Apart from this, they have no effect.",
+    "text": "Transform\nThe transform of the scale both defines how the input data is parsed as well as any mathematical transform applied before it is mapped to the output range. The default transform is deduced from a combination of the mapped data and the aesthetic the scale is applied to.\n\nlinear: The default transform unless stated otherwise. Creates a linear mapping between the input and output range.\nlog/log2/ln: Creates a mapping between the logarithm of the input to the output range.\nexp10/exp2/exp: Inverse of the log transforms\nsqrt: Creates a mapping between the square root of the input to the output range.\nsquare: Inverse of sqrt transform\nasinh: Creates a mapping between the inverse hyperbolic sine of the input to the output range. This approaches the natural logarithm but is well defined for negative values as well, which can make it a good choice for transforming values that exhibit logarithmic growth but span positive and negative values.\npseudo_log/pseudo_log2/pseudo_ln: A slightly different transform that exhibit the same characteristics as asinh but where it is possible to choose the base of the logarithm it should approach.\ninteger: Like linear but will convert input to integer by removing the decimal part.\ndate: Default when mapping a DATE column. Like linear but will cast input to date if not already (for strings this assumes the date is formatted as YYYY-MM-DD, for numbers it will be the number of days since 1970-01-01).\ndatetime: Default when mapping a DATETIME column. Like linear but will cast input to datetime if not already (for strings a range of different permutations of the YYYY-MM-DDTHH:MM:SS.fTZ is tried, for number it will be the number of microseconds since 1970-01-01T00:00:00).\ntime: Default when mapping a TIME column. Like linear but will cast input to time if not already (for strings it assumes the time is formatted as HH:MM:SS.f with both the fractional and second part optional, for number it will be the number of nanoseconds since start of measurement).\n\n\nBreaks\nIf not provided explicitly by the user the breaks for the scales will be calculated for you. The transform will be responsible for the algorithm used to find good break values. It will use the breaks setting and the pretty setting and make a best effort at honouring this.\n\nlinear:\n\npretty =&gt; true: Will use Wilkinsons Extended algorithm to attempt to find nice breaks in the given interval close to the number of breaks requested\npretty =&gt; false: Will produce the requested number of evenly spaced breaks within the scale range\n\nlog/log2/ln:\n\npretty =&gt; true: Will use the 1-2-5 pattern and thin down to approximately the requested number of breaks\npretty =&gt; false: Breaks will be exclusively at the power of the base (e.g. 1, 10, 100, 1000 for log10)\n\nexp10/exp2/exp: Same logic as the log breaks but in the inverse direction\nsqrt/square: Like linear but the range is first converted to sqrt space and the breaks are then converted back\nasinh/pseudo_log/pseudo_log2/pseudo_ln: Like log but includes zero and negates the breaks for the negative part\ninteger: Like linear except disallowing breaks at fractional parts\ndate/datetime/time:\n\nbreaks =&gt; &lt;interval&gt;: If breaks are given as an interval (e.g. week, 30 seconds or 5 years) then the breaks will get that spacing aligned at the interval boundary (Jan 1 for years, etc). This ignores the pretty setting\npretty =&gt; true: An appropriate interval is chosen that approximates the requested number of breaks and then used as above\npretty =&gt; false: Linear spacing in integer space as close to the requested number of breaks\n\n\n\n\nThe size aesthetic\nThe size aesthetic requires special attention. To the user, size is given as radius in points (1/72 inch), but internally the provided values are converted to area, and the scale operates on area transformed values. This means that while you provide the output range in radius, the scaling is proportional to the area, even when using the default linear transform. While this seems somewhat complicated we have chosen this approach to satisfy two opposing needs:\n\nHumans are better at understanding a size when provided as radius/diameter\nWhen making comparison between shape sizes we should compare area\n\nIf you wish to scale by the radius (not advised) you should do so using the square transform (SCALE size VIA square)\n\n\nExamples\n\nAutomatic use of date transform for x axis\n\nVISUALISE Date AS x, Temp AS y FROM ggsql:airquality\nDRAW line\n\n\n\n\n\n\n\nApplying a log transform to the y axis\n\nVISUALISE Date AS x, Temp AS y FROM ggsql:airquality\nDRAW line\nSCALE y VIA log\n\n\n\n\n\n\n\nSetting breaks to exactly dividing the input range\n\nVISUALISE Date AS x, Temp AS y FROM ggsql:airquality\nDRAW line\nSCALE y\n    SETTING breaks =&gt; 5, pretty =&gt; false\n\n\n\n\n\n\n\nUsing an interval size for temporal breaks\n\nVISUALISE Date AS x, Temp AS y FROM ggsql:airquality\nDRAW line\nSCALE x\n    SETTING breaks =&gt; '2 months'",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Discrete"
+      "Continuous"
     ]
   },
   {
-    "objectID": "syntax/scale/type/discrete.html#settings",
-    "href": "syntax/scale/type/discrete.html#settings",
-    "title": "Discrete",
+    "objectID": "syntax/scale/type/continuous.html#settings",
+    "href": "syntax/scale/type/continuous.html#settings",
+    "title": "Continuous",
     "section": "Settings",
-    "text": "Settings\nThere is only one setting relevant for discrete scales:\n\nreverse: Reverses the order of the scale. Defaults to false\n\n\nExamples\n\nReverse the color legend\n\nVISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins\nDRAW point\nSCALE color FROM ['Adelie', 'Chinstrap', 'Gentoo']\n    SETTING reverse =&gt; true",
+    "text": "Settings\nThe following settings are recognised by continuous scales:\n\nexpand (only for x/y): Either a scalar number or 2-length array of numbers. Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to 0.05 (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as SCALE x FROM [0, null] expansion will only be applied to the upper range.\noob: How should values outside of the scale input range be treated. One of 'keep' (keep the values as-is), 'censor' (set to null), or 'squish' (set to the nearest values within the range). Default for x/y is 'keep', for the remaining it is 'censor'.\nbreaks: Either a scalar as described in the section on breaks, or an array of values to place breaks at. Defaults to 5.\npretty: A boolean indicating which algorithm to use for automatic calculation of breaks as described in the section on breaks. Defaults to true.\nreverse: A boolean indicating whether the scale direction should be reversed. Defaults to false.\n\n\nExamples\n\nChange expansion of x axis to add a fixed value\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x \n    SETTING expand =&gt; [0.0, 10]\n\n\n\n\n\n\n\nSquish all y values to show them in the margin of the plot\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE y FROM [15, 20]\n    SETTING oob =&gt; 'squish'\n\n\n\n\n\n\n\nSet breaks explicitly\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x \n    SETTING breaks =&gt; [37, 42, 55]\n\n\n\n\n\n\n\nReverse the x axis\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x \n    SETTING reverse =&gt; true",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Discrete"
+      "Continuous"
     ]
   },
   {
-    "objectID": "syntax/scale/type/discrete.html#renaming",
-    "href": "syntax/scale/type/discrete.html#renaming",
-    "title": "Discrete",
+    "objectID": "syntax/scale/type/continuous.html#renaming",
+    "href": "syntax/scale/type/continuous.html#renaming",
+    "title": "Continuous",
     "section": "Renaming",
-    "text": "Renaming\nBreaks are generally named by their value. However, you may wish to rename one, several, or all of these. The RENAMING clause allows you to do that both by directly renaming a specific break or by providing a formatting function.\n\nDirect renaming\nWhen you provide a break value on the left and a break exist at that value then it will take on the label specified on the right. For examples adding RENAMING ‘Adelie’ =&gt; ‘Adélie’ will ensure that the species name will get the correct diacrit in the label.\n\n\nLabel formatting\nBesides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is RENAMING * =&gt; '... {} ...'. The current label will be inserted into the {} to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to discrete scales are the :Title, :lower, and :UPPER formatters which lets you control the casing of strings. You can read more about these formatters in the break formatting section of the SCALE documentation\nYou can combine formatting with direct renaming in which case the direct renaming has priority over the formatting.\n\n\nExamples\n\nRename null\n\nVISUALISE sex AS x FROM ggsql:penguins\nDRAW bar\nSCALE x\n    RENAMING 'null' =&gt; 'missing'\nSCALE y FROM [0, null]\n\n\n\n\n\n\n\nAdd prefix\n\nVISUALISE species AS x FROM ggsql:penguins\nDRAW bar\nSCALE x \n    RENAMING * =&gt; 'Species: {}'\nSCALE y FROM [0, null]\n\n\n\n\n\n\n\nApply formatting\n\nVISUALISE bill_len AS x, bill_dep AS y, sex AS color FROM ggsql:penguins\nDRAW point\nSCALE color\n    RENAMING * =&gt; '{:Title}'",
+    "text": "Renaming\nBreaks are generally named by their value. However, you may wish to rename one, several, or all of these. The RENAMING clause allows you to do that both by directly renaming a specific break or by providing a formatting function.\n\nDirect renaming\nWhen you provide a break value on the left and a break exist at that value then it will take on the label specified on the right. For examples adding RENAMING 0 =&gt; 'Nil' will ensure that if there is a break at 0 it will appear as “Nil” on the legend/axis\n\n\nLabel formatting\nBesides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is RENAMING * =&gt; '... {} ...'. The current label will be inserted into the {} to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to continuous scales are the :time and :num formatters which lets you control how temporal and numeric values are presented. You can read more about these formatters in the break formatting section of the SCALE documentation\nYou can combine formatting with direct renaming in which case the direct renaming has priority over the formatting.\n\n\nExamples\n\nRenaming a single value\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x \n    RENAMING 50 =&gt; 'Fifty'\n\n\n\n\n\n\n\nAdding suffix to break labels\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x \n    RENAMING * =&gt; '{} mm'\n\n\n\n\n\n\n\nUsing a formatter to control temporal formats\n\nVISUALISE Date AS x, Temp AS y FROM ggsql:airquality\nDRAW line\nSCALE x\n    RENAMING * =&gt; '{:time %B}'\n\n\n\n\n\n\n\nUsing a formatter to control number formats\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nSCALE x\n    RENAMING * =&gt; '{:num %.3e}'",
     "crumbs": [
       "Home",
       "Scales",
       "Types",
-      "Discrete"
+      "Continuous"
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/linetype.html",
-    "href": "syntax/scale/aesthetic/linetype.html",
-    "title": "Linetype",
+    "objectID": "syntax/scale/aesthetic/linewidth.html",
+    "href": "syntax/scale/aesthetic/linewidth.html",
+    "title": "Linewidth",
     "section": "",
-    "text": "The linetype aesthetic defines the stroke pattern of lines: a succession of “on” and “off” parts of the line to make different stipple patterns. Linetype is most useful for line and path layers as a colorless way to differentiate between categories.\nWhile linetypes are most useful for differentiating between discrete data, ggsql also comes with a sequential palette that gradually increases the amount of ink used for the pattern.",
+    "text": "The linewidth aesthetic sets the width of strokes and lines. It is measured in points (1pt = 1/72 inch). Linewidth can be used to represent continuous data. However, care should be taken because the eye is not good at differentiating the relative thinness of thin lines, and using thick lines will often result in severe overplotting.",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Linetype"
+      "Linewidth"
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/linetype.html#literal-values",
-    "href": "syntax/scale/aesthetic/linetype.html#literal-values",
-    "title": "Linetype",
+    "objectID": "syntax/scale/aesthetic/linewidth.html#literal-values",
+    "href": "syntax/scale/aesthetic/linewidth.html#literal-values",
+    "title": "Linewidth",
     "section": "Literal values",
-    "text": "Literal values\nLinetypes can be specified in two different ways. A couple of patterns are named and can be referred to as such:\n\n\n\n\n\n\n\n\n\nName\nPattern\nStroke-dasharray\nDescription\n\n\n\n\nsolid\n\n(none)\nContinuous solid line\n\n\ndashed\n\n6 4\nStandard dashed line\n\n\ndotted\n\n1 2\nDotted line\n\n\ndotdash\n\n1 2 6 2\nAlternating dot and dash\n\n\nlongdash\n\n10 4\nLong dashes\n\n\ntwodash\n\n6 2 2 2\nTwo different dash lengths\n\n\n\nYou can e.g. use these names when defining a manual palette for the scale:\nSCALE linetype TO ['dashed', 'dotted', 'twodash']\nYou can alternatively specify a custom pattern using hex strings:\nSCALE linetype TO ['44', '1343', '3c6c9c']\nEach pair of hex digits represents on/off lengths:\n\n'44' = 4 on, 4 off (50% ink, similar to dashed)\n'1343' = 1 on, 3 off, 4 on, 3 off (dot-dash pattern)\n'3c6c9c' = 3 on, 12 off, 6 on, 12 off, 9 on, 12 off\n\nValid hex patterns:\n\nMust have 2, 4, 6, or 8 hex digits\nDigits can be 1-9 or a-f (0 is not allowed)\nDigits represent line lengths as multiples of the linewidth",
+    "text": "Literal values\nLinewidth are given as bare numbers and measured in points. The following code sets the width of the lines to 3pt:\nDRAW line\n    SETTING linewidth =&gt; 3",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Linetype"
+      "Linewidth"
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/linetype.html#palettes",
-    "href": "syntax/scale/aesthetic/linetype.html#palettes",
-    "title": "Linetype",
+    "objectID": "syntax/scale/aesthetic/linewidth.html#palettes",
+    "href": "syntax/scale/aesthetic/linewidth.html#palettes",
+    "title": "Linewidth",
     "section": "Palettes",
-    "text": "Palettes\nggsql provides two linetype palettes which are generally enough for every need\nThe categorical palette is the default palette for discrete linetype scales. It consists of the 6 named patterns shown above in the same order. Since it is the only palette for discrete linetypes, there is rarely a need to specify it. The categorical palette is the default palette for discrete linetype scales. It consists of the 6 named patterns shown above in the same order. Since it is the only palette for discrete linetypes there is rarely a need to specify it.\n\nSequential palette\nThe sequential palette is the default for binned and ordinal linetype scales. It consists of up to 15 patterns with increasing amount of “on” and decreasing amount of “off”. This creates a visual progression from sparse (low ink) to solid (100% ink).\n\nExample: 5-Level Sequential\n\n\n\n\n\n\n\n\n\nLevel\nPattern\nInk Density\nDescription\n\n\n\n\n1\n\n~6%\nSparse dots\n\n\n2\n\n~29%\nShort dashes\n\n\n3\n\n~52%\nMedium dashes\n\n\n4\n\n~75%\nLong dashes\n\n\n5\n\n100%\nSolid",
+    "text": "Palettes\nLinewidth can only be used for sequential data and has no named palettes. The default for continuous, binned, and ordinal scales is to use the range from 1pt to 6 pt and interpolate between them. This can be overwritten by providing a manual output range specification\nSCALE linewidth TO [3, 9]",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Linetype"
+      "Linewidth"
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/linetype.html#accessibility",
-    "href": "syntax/scale/aesthetic/linetype.html#accessibility",
-    "title": "Linetype",
-    "section": "Accessibility",
-    "text": "Accessibility\n\nLinetypes work well for colorblind viewers\nCombine with color for redundant encoding\nLimit to 4-6 distinct linetypes for readability\nSolid lines are most visible; use for primary data",
+    "objectID": "syntax/scale/aesthetic/size.html",
+    "href": "syntax/scale/aesthetic/size.html",
+    "title": "Size",
+    "section": "",
+    "text": "The size aesthetic defines the size of points (of any shape). It is measured as radius in points (1pt = 1/72 inch) of an idealized circle. Size is most often used to create a bubble chart, which is a variant of a scatter plot where a continuous value is mapped to the size of the points.\nsize is scaled by area rather than radius. This means it has an implicit square root transform applied on top of any other transform you may add. This ensures that steps in data value correspond to equal steps in perceived size (which is proportional to area).",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Linetype"
+      "Size"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/aesthetic/size.html#literal-values",
+    "href": "syntax/scale/aesthetic/size.html#literal-values",
+    "title": "Size",
+    "section": "Literal values",
+    "text": "Literal values\nSizes are given as bare numbers and measured in points. The following code will e.g. set the radius of points to 3pt (~28pt²):\nDRAW point\n    SETTING size =&gt; 3",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Aesthetics",
+      "Size"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/aesthetic/size.html#palettes",
+    "href": "syntax/scale/aesthetic/size.html#palettes",
+    "title": "Size",
+    "section": "Palettes",
+    "text": "Palettes\nSize can only be used for sequential data and has no named palettes. The default for continuous, binned, and ordinal scales is to use the range from 1pt to 6 pt and interpolate between them. This can be overwritten by providing a manual output range specification\nSCALE size TO [3, 9]",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Aesthetics",
+      "Size"
     ]
   },
   {
@@ -1522,45 +1561,6 @@
       "Scales",
       "Aesthetics",
       "Position"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/aesthetic/linewidth.html",
-    "href": "syntax/scale/aesthetic/linewidth.html",
-    "title": "Linewidth",
-    "section": "",
-    "text": "The linewidth aesthetic sets the width of strokes and lines. It is measured in points (1pt = 1/72 inch). Linewidth can be used to represent continuous data. However, care should be taken because the eye is not good at differentiating the relative thinness of thin lines, and using thick lines will often result in severe overplotting.",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Aesthetics",
-      "Linewidth"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/aesthetic/linewidth.html#literal-values",
-    "href": "syntax/scale/aesthetic/linewidth.html#literal-values",
-    "title": "Linewidth",
-    "section": "Literal values",
-    "text": "Literal values\nLinewidth are given as bare numbers and measured in points. The following code sets the width of the lines to 3pt:\nDRAW line\n    SETTING linewidth =&gt; 3",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Aesthetics",
-      "Linewidth"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/aesthetic/linewidth.html#palettes",
-    "href": "syntax/scale/aesthetic/linewidth.html#palettes",
-    "title": "Linewidth",
-    "section": "Palettes",
-    "text": "Palettes\nLinewidth can only be used for sequential data and has no named palettes. The default for continuous, binned, and ordinal scales is to use the range from 1pt to 6 pt and interpolate between them. This can be overwritten by providing a manual output range specification\nSCALE linewidth TO [3, 9]",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Aesthetics",
-      "Linewidth"
     ]
   },
   {
