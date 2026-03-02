@@ -49,16 +49,6 @@ pub enum CoordKind {
     Polar,
 }
 
-impl CoordKind {
-    /// Get the canonical name for this coord kind
-    pub fn name(&self) -> &'static str {
-        match self {
-            CoordKind::Cartesian => "cartesian",
-            CoordKind::Polar => "polar",
-        }
-    }
-}
-
 // =============================================================================
 // Coord Trait
 // =============================================================================
@@ -239,12 +229,6 @@ impl<'de> Deserialize<'de> for Coord {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_coord_kind_name() {
-        assert_eq!(CoordKind::Cartesian.name(), "cartesian");
-        assert_eq!(CoordKind::Polar.name(), "polar");
-    }
 
     #[test]
     fn test_coord_factory_methods() {

@@ -608,7 +608,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                         self.name(),
                         self.allowed_transforms()
                             .iter()
-                            .map(|k| k.name())
+                            .map(|k| k.to_string())
                             .collect::<Vec<_>>()
                             .join(", ")
                     ))

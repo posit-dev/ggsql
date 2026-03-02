@@ -107,9 +107,18 @@ pub enum TransformKind {
 }
 
 impl TransformKind {
-    /// Returns the canonical name for this transform kind
-    pub fn name(&self) -> &'static str {
-        match self {
+    /// Returns true if this is a temporal transform
+    pub fn is_temporal(&self) -> bool {
+        matches!(
+            self,
+            TransformKind::Date | TransformKind::DateTime | TransformKind::Time
+        )
+    }
+}
+
+impl std::fmt::Display for TransformKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
             TransformKind::Identity => "identity",
             TransformKind::Log10 => "log",
             TransformKind::Log2 => "log2",
@@ -127,21 +136,8 @@ impl TransformKind {
             TransformKind::String => "string",
             TransformKind::Bool => "bool",
             TransformKind::Integer => "integer",
-        }
-    }
-
-    /// Returns true if this is a temporal transform
-    pub fn is_temporal(&self) -> bool {
-        matches!(
-            self,
-            TransformKind::Date | TransformKind::DateTime | TransformKind::Time
-        )
-    }
-}
-
-impl std::fmt::Display for TransformKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name())
+        };
+        write!(f, "{}", name)
     }
 }
 

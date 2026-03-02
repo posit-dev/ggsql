@@ -107,7 +107,7 @@ impl ScaleTypeTrait for Discrete {
                     self.name(),
                     self.allowed_transforms()
                         .iter()
-                        .map(|k| k.name())
+                        .map(|k| k.to_string())
                         .collect::<Vec<_>>()
                         .join(", ")
                 ));
