@@ -993,7 +993,10 @@ mod tests {
     fn test_build_label_expr_fallback() {
         let mappings = HashMap::new();
         let expr = build_label_expr(&mappings, Some("%Y-%m-%d"), None);
-        assert_eq!(expr, "datum.label", "empty mappings should fall back to datum.label");
+        assert_eq!(
+            expr, "datum.label",
+            "empty mappings should fall back to datum.label"
+        );
     }
 
     #[test]
