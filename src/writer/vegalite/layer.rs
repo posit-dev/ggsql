@@ -41,8 +41,7 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Text => "text",
         GeomType::Label => "text",
         GeomType::Segment => "rule",
-        GeomType::HLine => "rule",
-        GeomType::VLine => "rule",
+        GeomType::Rule => "rule",
         GeomType::AbLine => "rule",
         GeomType::ErrorBar => "rule",
         _ => "point", // Default fallback
@@ -334,6 +333,36 @@ impl GeomRenderer for SegmentRenderer {
             if let Some(y) = encoding.get("y").cloned() {
                 encoding.insert("y2".to_string(), y);
             }
+        }
+        Ok(())
+    }
+}
+
+// =============================================================================
+// Rule Renderer
+// =============================================================================
+
+pub struct RuleRenderer;
+
+impl GeomRenderer for RuleRenderer {
+    fn modify_encoding(
+        &self,
+        encoding: &mut Map<String, Value>,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
+        let has_x = encoding.contains_key("x");
+        let has_y = encoding.contains_key("y");
+        if !has_x && !has_y {
+            return Err(GgsqlError::ValidationError(
+                "The `rule` layer requires the `x` or `y` aesthetic. It currently has neither."
+                    .to_string(),
+            ));
+        } else if has_x && has_y {
+            return Err(GgsqlError::ValidationError(
+                "The `rule` layer requires exactly one of the `x` or `y` aesthetic, not both."
+                    .to_string(),
+            ));
         }
         Ok(())
     }
@@ -1162,6 +1191,7 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Segment => Box::new(SegmentRenderer),
         GeomType::AbLine => Box::new(ABLineRenderer),
         GeomType::ErrorBar => Box::new(ErrorBarRenderer),
+        GeomType::Rule => Box::new(RuleRenderer),
         // All other geoms (Point, Line, Tile, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }

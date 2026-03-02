@@ -4,13 +4,16 @@ title: "H Line"
 
 > Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
-The hline layer is used to draw horizontal reference lines at specified y-values. This is useful for adding thresholds, means, medians, or other horizontal guides to plots. The lines extend across the full extent of the x-axis, regardless of the data range.
+The rule layer is used to draw horizontal or vertical reference lines at specified values. This is useful for adding thresholds, means, medians, avent markers, cutoff dates or other guides to the plot. The lines span the full width or height of the panels.
 
 ## Aesthetics
 The following aesthetics are recognised by the hline layer.
 
 ### Required
-* `y`: The y-coordinate for the horizontal line
+* `x`\*: The x-coordinate for the vertical line.
+* `y`\*: The y-coordinate for the horizontal line
+
+\* Exactly one of `x` or `y` is required, not both.
 
 ### Optional
 * `colour`/`stroke`: The colour of the line
@@ -19,10 +22,10 @@ The following aesthetics are recognised by the hline layer.
 * `linetype`: The type of the line, i.e. the dashing pattern
 
 ## Settings
-The hline layer has no additional settings.
+The rule layer has no additional settings.
 
 ## Data transformation
-The hline layer does not transform its data but passes it through unchanged.
+The rule layer does not transform its data but passes it through unchanged.
 
 ## Examples
 
@@ -33,9 +36,17 @@ SELECT Date AS date, temp AS temperature
 FROM ggsql:airquality
 WHERE Month = 5
 
-VISUALISE date AS x, temperature AS y
-  DRAW line
-  DRAW hline MAPPING 70 AS y
+VISUALISE 
+  DRAW line MAPPING date AS x, temperature AS y
+  DRAW rule MAPPING 70 AS y
+```
+
+Add a vertical line to mark a specific value:
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+  DRAW point MAPPING bill_len AS x, bill_dep AS y
+  DRAW rule MAPPING 45 AS x
 ```
 
 Add multiple threshold lines with different colors:
@@ -52,7 +63,7 @@ SELECT Date AS date, temp AS temperature
 FROM ggsql:airquality
 WHERE Month = 5
 
-VISUALISE date AS x, temperature AS y
-  DRAW line
-  DRAW hline MAPPING value AS y, label AS colour FROM thresholds
+VISUALISE 
+  DRAW line MAPPING date AS x, temperature AS y
+  DRAW rule MAPPING value AS y, label AS colour FROM thresholds
 ```

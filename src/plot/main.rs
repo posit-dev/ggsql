@@ -421,8 +421,6 @@ mod tests {
         assert_eq!(Geom::segment().aesthetics().required(), &["x", "y"]);
 
         // Reference lines
-        assert_eq!(Geom::hline().aesthetics().required(), &["y"]);
-        assert_eq!(Geom::vline().aesthetics().required(), &["x"]);
         assert_eq!(
             Geom::abline().aesthetics().required(),
             &["slope", "intercept"]

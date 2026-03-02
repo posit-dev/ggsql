@@ -36,19 +36,18 @@ mod boxplot;
 mod density;
 mod errorbar;
 mod histogram;
-mod hline;
 mod label;
 mod line;
 mod path;
 mod point;
 mod polygon;
 mod ribbon;
+mod rule;
 mod segment;
 mod smooth;
 mod text;
 mod tile;
 mod violin;
-mod vline;
 
 // Re-export types
 pub use types::{DefaultAesthetics, DefaultParam, DefaultParamValue, StatResult};
@@ -65,19 +64,18 @@ pub use boxplot::Boxplot;
 pub use density::Density;
 pub use errorbar::ErrorBar;
 pub use histogram::Histogram;
-pub use hline::HLine;
 pub use label::Label;
 pub use line::Line;
 pub use path::Path;
 pub use point::Point;
 pub use polygon::Polygon;
 pub use ribbon::Ribbon;
+pub use rule::Rule;
 pub use segment::Segment;
 pub use smooth::Smooth;
 pub use text::Text;
 pub use tile::Tile;
 pub use violin::Violin;
-pub use vline::VLine;
 
 use crate::plot::types::{DefaultAestheticValue, ParameterValue, Schema};
 
@@ -102,8 +100,7 @@ pub enum GeomType {
     Label,
     Segment,
     Arrow,
-    HLine,
-    VLine,
+    Rule,
     AbLine,
     ErrorBar,
 }
@@ -128,8 +125,7 @@ impl std::fmt::Display for GeomType {
             GeomType::Label => "label",
             GeomType::Segment => "segment",
             GeomType::Arrow => "arrow",
-            GeomType::HLine => "hline",
-            GeomType::VLine => "vline",
+            GeomType::Rule => "rule",
             GeomType::AbLine => "abline",
             GeomType::ErrorBar => "errorbar",
         };
@@ -314,14 +310,9 @@ impl Geom {
         Self(Arc::new(Arrow))
     }
 
-    /// Create an HLine geom
-    pub fn hline() -> Self {
-        Self(Arc::new(HLine))
-    }
-
-    /// Create a VLine geom
-    pub fn vline() -> Self {
-        Self(Arc::new(VLine))
+    /// Create an Rule geom
+    pub fn rule() -> Self {
+        Self(Arc::new(Rule))
     }
 
     /// Create an AbLine geom
@@ -354,8 +345,7 @@ impl Geom {
             GeomType::Label => Self::label(),
             GeomType::Segment => Self::segment(),
             GeomType::Arrow => Self::arrow(),
-            GeomType::HLine => Self::hline(),
-            GeomType::VLine => Self::vline(),
+            GeomType::Rule => Self::rule(),
             GeomType::AbLine => Self::abline(),
             GeomType::ErrorBar => Self::errorbar(),
         }

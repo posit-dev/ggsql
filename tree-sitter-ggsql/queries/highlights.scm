@@ -24,8 +24,7 @@
   "label"
   "segment"
   "arrow"
-  "hline"
-  "vline"
+  "rule"
   "abline"
   "errorbar"
 ] @type.builtin
