@@ -508,9 +508,9 @@ mod tests {
             &["pos1", "pos2", "pos1end", "pos2end"]
         );
 
-        // Reference lines (these are special - they use intercept aesthetics, not positional)
-        assert_eq!(Geom::hline().aesthetics().required(), &["pos2intercept"]);
-        assert_eq!(Geom::vline().aesthetics().required(), &["pos1intercept"]);
+        // Reference lines
+        assert_eq!(Geom::hline().aesthetics().required(), &["pos2"]);
+        assert_eq!(Geom::vline().aesthetics().required(), &["pos1"]);
         assert_eq!(
             Geom::abline().aesthetics().required(),
             &["slope", "intercept"]

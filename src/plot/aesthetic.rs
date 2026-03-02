@@ -28,7 +28,7 @@
 
 /// Positional aesthetic suffixes - applied to primary names to create variant aesthetics
 /// e.g., "x" + "min" = "xmin", "pos1" + "end" = "pos1end"
-pub const POSITIONAL_SUFFIXES: &[&str] = &["min", "max", "end", "intercept"];
+pub const POSITIONAL_SUFFIXES: &[&str] = &["min", "max", "end"];
 
 /// Family size: primary + all suffixes (used for slicing family arrays)
 const FAMILY_SIZE: usize = 1 + POSITIONAL_SUFFIXES.len();
@@ -440,7 +440,7 @@ pub fn is_facet_aesthetic(aesthetic: &str) -> bool {
 /// Check if aesthetic is an internal positional (pos1, pos1min, pos2max, etc.)
 ///
 /// This function works with **internal** aesthetic names after transformation.
-/// Matches patterns like: pos1, pos2, pos1min, pos2max, pos1end, pos2intercept, etc.
+/// Matches patterns like: pos1, pos2, pos1min, pos2max, pos1end, etc.
 ///
 /// For user-facing checks before transformation, use `AestheticContext::is_user_positional()`.
 #[inline]
@@ -506,7 +506,7 @@ pub fn primary_aesthetic(aesthetic: &str) -> &str {
 /// This function works with **internal** aesthetic names (pos1, pos2, etc.) and non-positional
 /// aesthetics. After aesthetic transformation, all positional aesthetics are in internal format.
 ///
-/// For internal positional primary "pos1": returns `["pos1", "pos1min", "pos1max", "pos1end", "pos1intercept"]`
+/// For internal positional primary "pos1": returns `["pos1", "pos1min", "pos1max", "pos1end"]`
 /// For internal positional variant "pos1min": returns just `["pos1min"]` (scales defined on primaries)
 /// For non-positional aesthetics "color": returns just `["color"]`
 ///
@@ -530,7 +530,7 @@ pub fn get_aesthetic_family(aesthetic: &str) -> Vec<String> {
         && primary.len() > 3
         && primary[3..].chars().all(|c| c.is_ascii_digit())
     {
-        // Build the internal family: pos1 -> [pos1, pos1min, pos1max, pos1end, pos1intercept]
+        // Build the internal family: pos1 -> [pos1, pos1min, pos1max, pos1end]
         let mut family = vec![primary.to_string()];
         for suffix in POSITIONAL_SUFFIXES {
             family.push(format!("{}{}", primary, suffix));
@@ -622,8 +622,6 @@ mod tests {
         assert!(is_positional_aesthetic("pos2max"));
         assert!(is_positional_aesthetic("pos1end"));
         assert!(is_positional_aesthetic("pos2end"));
-        assert!(is_positional_aesthetic("pos1intercept"));
-        assert!(is_positional_aesthetic("pos2intercept"));
 
         // User-facing names are NOT positional (handled by AestheticContext)
         assert!(!is_positional_aesthetic("x"));
@@ -654,11 +652,9 @@ mod tests {
         assert_eq!(primary_aesthetic("pos1min"), "pos1");
         assert_eq!(primary_aesthetic("pos1max"), "pos1");
         assert_eq!(primary_aesthetic("pos1end"), "pos1");
-        assert_eq!(primary_aesthetic("pos1intercept"), "pos1");
         assert_eq!(primary_aesthetic("pos2min"), "pos2");
         assert_eq!(primary_aesthetic("pos2max"), "pos2");
         assert_eq!(primary_aesthetic("pos2end"), "pos2");
-        assert_eq!(primary_aesthetic("pos2intercept"), "pos2");
 
         // Non-positional aesthetics return themselves
         assert_eq!(primary_aesthetic("color"), "color");
@@ -684,16 +680,14 @@ mod tests {
         assert!(pos1_family.iter().any(|s| s == "pos1min"));
         assert!(pos1_family.iter().any(|s| s == "pos1max"));
         assert!(pos1_family.iter().any(|s| s == "pos1end"));
-        assert!(pos1_family.iter().any(|s| s == "pos1intercept"));
-        assert_eq!(pos1_family.len(), 5);
+        assert_eq!(pos1_family.len(), 4);
 
         let pos2_family = get_aesthetic_family("pos2");
         assert!(pos2_family.iter().any(|s| s == "pos2"));
         assert!(pos2_family.iter().any(|s| s == "pos2min"));
         assert!(pos2_family.iter().any(|s| s == "pos2max"));
         assert!(pos2_family.iter().any(|s| s == "pos2end"));
-        assert!(pos2_family.iter().any(|s| s == "pos2intercept"));
-        assert_eq!(pos2_family.len(), 5);
+        assert_eq!(pos2_family.len(), 4);
 
         // Internal positional variants return just themselves
         assert_eq!(get_aesthetic_family("pos1min"), vec!["pos1min"]);
@@ -731,12 +725,10 @@ mod tests {
         assert!(all_user.contains(&"xmin"));
         assert!(all_user.contains(&"xmax"));
         assert!(all_user.contains(&"xend"));
-        assert!(all_user.contains(&"xintercept"));
         assert!(all_user.contains(&"y"));
         assert!(all_user.contains(&"ymin"));
         assert!(all_user.contains(&"ymax"));
         assert!(all_user.contains(&"yend"));
-        assert!(all_user.contains(&"yintercept"));
 
         // Primary internal names
         let primary: Vec<&str> = ctx.primary_internal().iter().map(|s| s.as_str()).collect();
@@ -760,12 +752,10 @@ mod tests {
         assert!(all_user.contains(&"thetamin"));
         assert!(all_user.contains(&"thetamax"));
         assert!(all_user.contains(&"thetaend"));
-        assert!(all_user.contains(&"thetaintercept"));
         assert!(all_user.contains(&"radius"));
         assert!(all_user.contains(&"radiusmin"));
         assert!(all_user.contains(&"radiusmax"));
         assert!(all_user.contains(&"radiusend"));
-        assert!(all_user.contains(&"radiusintercept"));
     }
 
     #[test]
@@ -905,24 +895,17 @@ mod tests {
         // Get internal family
         let pos1_family = ctx.get_internal_family("pos1").unwrap();
         let pos1_strs: Vec<&str> = pos1_family.iter().map(|s| s.as_str()).collect();
-        assert_eq!(
-            pos1_strs,
-            vec!["pos1", "pos1min", "pos1max", "pos1end", "pos1intercept"]
-        );
+        assert_eq!(pos1_strs, vec!["pos1", "pos1min", "pos1max", "pos1end"]);
 
         // Get user family
         let x_family = ctx.get_user_family("x").unwrap();
         let x_strs: Vec<&str> = x_family.iter().map(|s| s.as_str()).collect();
-        assert_eq!(x_strs, vec!["x", "xmin", "xmax", "xend", "xintercept"]);
+        assert_eq!(x_strs, vec!["x", "xmin", "xmax", "xend"]);
 
         // Primary internal aesthetic
         assert_eq!(ctx.primary_internal_aesthetic("pos1"), Some("pos1"));
         assert_eq!(ctx.primary_internal_aesthetic("pos1min"), Some("pos1"));
         assert_eq!(ctx.primary_internal_aesthetic("pos2end"), Some("pos2"));
-        assert_eq!(
-            ctx.primary_internal_aesthetic("pos1intercept"),
-            Some("pos1")
-        );
         assert_eq!(ctx.primary_internal_aesthetic("color"), Some("color"));
     }
 
@@ -934,7 +917,6 @@ mod tests {
         assert_eq!(cartesian.primary_user_aesthetic("xmin"), Some("x"));
         assert_eq!(cartesian.primary_user_aesthetic("xmax"), Some("x"));
         assert_eq!(cartesian.primary_user_aesthetic("xend"), Some("x"));
-        assert_eq!(cartesian.primary_user_aesthetic("xintercept"), Some("x"));
         assert_eq!(cartesian.primary_user_aesthetic("y"), Some("y"));
         assert_eq!(cartesian.primary_user_aesthetic("ymin"), Some("y"));
         assert_eq!(cartesian.primary_user_aesthetic("ymax"), Some("y"));
@@ -964,37 +946,19 @@ mod tests {
         // Get user family for theta
         let theta_family = ctx.get_user_family("theta").unwrap();
         let theta_strs: Vec<&str> = theta_family.iter().map(|s| s.as_str()).collect();
-        assert_eq!(
-            theta_strs,
-            vec![
-                "theta",
-                "thetamin",
-                "thetamax",
-                "thetaend",
-                "thetaintercept"
-            ]
-        );
+        assert_eq!(theta_strs, vec!["theta", "thetamin", "thetamax", "thetaend"]);
 
         // Get user family for radius
         let radius_family = ctx.get_user_family("radius").unwrap();
         let radius_strs: Vec<&str> = radius_family.iter().map(|s| s.as_str()).collect();
         assert_eq!(
             radius_strs,
-            vec![
-                "radius",
-                "radiusmin",
-                "radiusmax",
-                "radiusend",
-                "radiusintercept"
-            ]
+            vec!["radius", "radiusmin", "radiusmax", "radiusend"]
         );
 
         // But internal families are the same for all coords
         let pos1_family = ctx.get_internal_family("pos1").unwrap();
         let pos1_strs: Vec<&str> = pos1_family.iter().map(|s| s.as_str()).collect();
-        assert_eq!(
-            pos1_strs,
-            vec!["pos1", "pos1min", "pos1max", "pos1end", "pos1intercept"]
-        );
+        assert_eq!(pos1_strs, vec!["pos1", "pos1min", "pos1max", "pos1end"]);
     }
 }

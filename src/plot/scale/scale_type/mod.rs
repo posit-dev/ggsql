@@ -2382,16 +2382,7 @@ mod tests {
     fn test_expand_positional_vs_non_positional() {
         // Internal positional aesthetics (after transformation)
         let internal_positional = [
-            "pos1",
-            "pos1min",
-            "pos1max",
-            "pos1end",
-            "pos1intercept",
-            "pos2",
-            "pos2min",
-            "pos2max",
-            "pos2end",
-            "pos2intercept",
+            "pos1", "pos1min", "pos1max", "pos1end", "pos2", "pos2min", "pos2max", "pos2end",
         ];
 
         let mut props = HashMap::new();
@@ -2423,16 +2414,7 @@ mod tests {
     fn test_oob_defaults_by_aesthetic_type() {
         // Internal positional aesthetics (after transformation)
         let internal_positional = [
-            "pos1",
-            "pos1min",
-            "pos1max",
-            "pos1end",
-            "pos1intercept",
-            "pos2",
-            "pos2min",
-            "pos2max",
-            "pos2end",
-            "pos2intercept",
+            "pos1", "pos1min", "pos1max", "pos1end", "pos2", "pos2min", "pos2max", "pos2end",
         ];
 
         let props = HashMap::new();

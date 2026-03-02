@@ -981,9 +981,6 @@ fn map_positional_to_vegalite(aesthetic: &str, coord_kind: CoordKind) -> Option<
         "pos1max" => Some(format!("{}max", primary)),
         "pos2min" => Some(format!("{}min", secondary)),
         "pos2max" => Some(format!("{}max", secondary)),
-        // Intercept variants (for reference lines)
-        "pos1intercept" => Some(format!("{}intercept", primary)),
-        "pos2intercept" => Some(format!("{}intercept", secondary)),
         _ => None,
     }
 }

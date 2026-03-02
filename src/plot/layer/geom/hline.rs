@@ -15,7 +15,7 @@ impl GeomTrait for HLine {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("pos2intercept", DefaultAestheticValue::Required),
+                ("pos2", DefaultAestheticValue::Required),  // y position for horizontal line
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),

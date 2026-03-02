@@ -645,8 +645,6 @@ module.exports = grammar({
       // Position aesthetics (polar)
       'theta', 'radius', 'thetamin', 'thetamax', 'radiusmin', 'radiusmax',
       'thetaend', 'radiusend',
-      // Reference line intercepts
-      'xintercept', 'yintercept',
       // Aggregation aesthetic (for bar charts)
       'weight',
       // Color aesthetics

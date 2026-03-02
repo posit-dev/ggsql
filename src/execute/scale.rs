@@ -1292,16 +1292,14 @@ mod tests {
         assert!(pos1_family.iter().any(|s| s == "pos1min"));
         assert!(pos1_family.iter().any(|s| s == "pos1max"));
         assert!(pos1_family.iter().any(|s| s == "pos1end"));
-        assert!(pos1_family.iter().any(|s| s == "pos1intercept"));
-        assert_eq!(pos1_family.len(), 5); // pos1, pos1min, pos1max, pos1end, pos1intercept
+        assert_eq!(pos1_family.len(), 4); // pos1, pos1min, pos1max, pos1end
 
         let pos2_family = get_aesthetic_family("pos2");
         assert!(pos2_family.iter().any(|s| s == "pos2"));
         assert!(pos2_family.iter().any(|s| s == "pos2min"));
         assert!(pos2_family.iter().any(|s| s == "pos2max"));
         assert!(pos2_family.iter().any(|s| s == "pos2end"));
-        assert!(pos2_family.iter().any(|s| s == "pos2intercept"));
-        assert_eq!(pos2_family.len(), 5); // pos2, pos2min, pos2max, pos2end, pos2intercept
+        assert_eq!(pos2_family.len(), 4); // pos2, pos2min, pos2max, pos2end
 
         // Test non-positional aesthetics return just themselves
         let color_family = get_aesthetic_family("color");
