@@ -532,6 +532,45 @@ class TestCustomReader:
         assert "point" in json_output
 
 
+class TestReaderProtocol:
+    """Tests for Reader protocol."""
+
+    def test_duckdb_reader_is_reader(self):
+        """Native DuckDBReader satisfies the Reader protocol."""
+        reader = ggsql.DuckDBReader("duckdb://memory")
+        assert isinstance(reader, ggsql.Reader)
+
+    def test_custom_reader_is_reader(self):
+        """Custom reader with correct methods satisfies the Reader protocol."""
+
+        class MyReader:
+            def execute_sql(self, sql: str) -> pl.DataFrame:
+                return pl.DataFrame({"x": [1]})
+
+            def register(
+                self, name: str, df: pl.DataFrame, replace: bool = False
+            ) -> None:
+                pass
+
+        reader = MyReader()
+        assert isinstance(reader, ggsql.Reader)
+
+    def test_incomplete_reader_is_not_reader(self):
+        """Object missing required methods is not a Reader."""
+
+        class NotAReader:
+            def execute_sql(self, sql: str) -> pl.DataFrame:
+                return pl.DataFrame({"x": [1]})
+            # Missing register()
+
+        obj = NotAReader()
+        assert not isinstance(obj, ggsql.Reader)
+
+    def test_reader_is_exported(self):
+        """Reader is accessible from ggsql module."""
+        assert hasattr(ggsql, "Reader")
+
+
 class TestVegaLiteWriterRenderChart:
     """Tests for VegaLiteWriter.render_chart() method."""
 
@@ -568,4 +607,3 @@ class TestVegaLiteWriterRenderChart:
         writer = ggsql.VegaLiteWriter()
         chart = writer.render_chart(spec, validate=False)
         assert isinstance(chart, altair.FacetChart)
-
