@@ -24,10 +24,10 @@ use super::{POINTS_TO_AREA, POINTS_TO_PIXELS};
 /// - Example: `"datum.label == 'A' ? 'Alpha' : datum.label == 'B' ? 'Beta' : datum.label"`
 ///
 /// For temporal scales:
-/// - Uses `timeFormat(datum.value, 'fmt')` for comparisons
+/// - Uses `utcFormat(datum.value, 'fmt')` for comparisons (UTC to match our ISO date strings)
 /// - This is necessary because `datum.label` contains Vega-Lite's formatted label (e.g., "Jan 1, 2024")
 ///   but our label_mapping keys are ISO format strings (e.g., "2024-01-01")
-/// - Example: `"timeFormat(datum.value, '%Y-%m-%d') == '2024-01-01' ? 'Q1 Start' : datum.label"`
+/// - Example: `"utcFormat(datum.value, '%Y-%m-%d') == '2024-01-01' ? 'Q1 Start' : datum.label"`
 ///
 /// For threshold scales (binned legends):
 /// - The `null_key` parameter specifies which key should use `datum.label == null` instead of
@@ -43,8 +43,11 @@ pub(super) fn build_label_expr(
     }
 
     // Build the comparison expression based on whether this is temporal
+    // Use utcFormat (not timeFormat) because ggsql writes ISO date strings as UTC.
+    // timeFormat uses the browser's local timezone, causing comparison mismatches
+    // (e.g., "2024-01-01" UTC midnight becomes "2023-12-31" in US timezones).
     let comparison_expr = match time_format {
-        Some(fmt) => format!("timeFormat(datum.value, '{}')", fmt),
+        Some(fmt) => format!("utcFormat(datum.value, '{}')", fmt),
         None => "datum.label".to_string(),
     };
 
@@ -668,7 +671,7 @@ fn apply_label_mapping_to_encoding(
         return;
     }
 
-    // For temporal scales, use timeFormat() to compare against ISO keys
+    // For temporal scales, use utcFormat() to compare against ISO keys
     let time_format = scale
         .transform
         .as_ref()
@@ -937,5 +940,75 @@ pub(super) fn build_detail_encoding(partition_by: &[String]) -> Option<Value> {
             })
             .collect();
         Some(json!(details))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_label_expr_temporal_uses_utc_format() {
+        // Temporal label comparisons must use utcFormat (not timeFormat) because
+        // ggsql writes ISO date strings as UTC. timeFormat uses the browser's
+        // local timezone, causing comparisons to fail in non-UTC timezones
+        // (e.g., "2024-01-01" midnight UTC becomes "2023-12-31" in US Central).
+        let mut mappings = HashMap::new();
+        mappings.insert("2024-01-01".to_string(), Some("Jan 2024".to_string()));
+
+        let expr = build_label_expr(&mappings, Some("%Y-%m-%d"), None);
+
+        assert!(
+            expr.contains("utcFormat("),
+            "temporal labelExpr should use utcFormat, got: {expr}"
+        );
+        assert!(
+            !expr.contains("timeFormat("),
+            "temporal labelExpr must not use timeFormat (local tz), got: {expr}"
+        );
+        assert!(
+            expr.contains("utcFormat(datum.value, '%Y-%m-%d') == '2024-01-01' ? 'Jan 2024'"),
+            "expected correct comparison expression, got: {expr}"
+        );
+    }
+
+    #[test]
+    fn test_build_label_expr_non_temporal_uses_datum_label() {
+        let mut mappings = HashMap::new();
+        mappings.insert("A".to_string(), Some("Alpha".to_string()));
+
+        let expr = build_label_expr(&mappings, None, None);
+
+        assert!(
+            expr.contains("datum.label == 'A'"),
+            "non-temporal should use datum.label, got: {expr}"
+        );
+        assert!(
+            !expr.contains("utcFormat("),
+            "non-temporal should not use utcFormat, got: {expr}"
+        );
+    }
+
+    #[test]
+    fn test_build_label_expr_fallback() {
+        let mappings = HashMap::new();
+        let expr = build_label_expr(&mappings, Some("%Y-%m-%d"), None);
+        assert_eq!(
+            expr, "datum.label",
+            "empty mappings should fall back to datum.label"
+        );
+    }
+
+    #[test]
+    fn test_build_label_expr_null_suppression() {
+        let mut mappings = HashMap::new();
+        mappings.insert("2024-06-01".to_string(), None); // suppress label
+
+        let expr = build_label_expr(&mappings, Some("%Y-%m-%d"), None);
+
+        assert!(
+            expr.contains("? ''"),
+            "None mapping should suppress label (empty string), got: {expr}"
+        );
     }
 }
