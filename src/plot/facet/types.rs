@@ -92,33 +92,79 @@ impl FacetLayout {
         matches!(self, FacetLayout::Grid { .. })
     }
 
-    /// Get variable names mapped to their aesthetic names.
+    /// Get variable names mapped to their user-facing aesthetic names.
     ///
     /// Returns tuples of (column_name, aesthetic_name):
     /// - Wrap: [("region", "panel")]
     /// - Grid: [("region", "row"), ("year", "column")]
+    ///
+    /// Note: These are user-facing names. Use AestheticContext to transform
+    /// to internal names (facet1, facet2) after context initialization.
     pub fn get_aesthetic_mappings(&self) -> Vec<(&str, &'static str)> {
+        let user_names = self.user_facet_names();
         match self {
-            FacetLayout::Wrap { variables } => {
-                variables.iter().map(|v| (v.as_str(), "panel")).collect()
-            }
+            FacetLayout::Wrap { variables } => variables
+                .iter()
+                .map(|v| (v.as_str(), user_names[0]))
+                .collect(),
             FacetLayout::Grid { row, column } => {
                 let mut result: Vec<(&str, &'static str)> =
-                    row.iter().map(|v| (v.as_str(), "row")).collect();
-                result.extend(column.iter().map(|v| (v.as_str(), "column")));
+                    row.iter().map(|v| (v.as_str(), user_names[0])).collect();
+                result.extend(column.iter().map(|v| (v.as_str(), user_names[1])));
                 result
             }
         }
     }
 
-    /// Get the aesthetic names used by this layout.
+    /// Get the user-facing facet aesthetic names for this layout.
     ///
-    /// - Wrap: ["panel"]
-    /// - Grid: ["row", "column"]
-    pub fn get_aesthetics(&self) -> Vec<&'static str> {
+    /// Used by AestheticContext for user↔internal mapping:
+    /// - Wrap: ["panel"] → maps to "facet1" internally
+    /// - Grid: ["row", "column"] → maps to "facet1", "facet2" internally
+    pub fn user_facet_names(&self) -> &'static [&'static str] {
         match self {
-            FacetLayout::Wrap { .. } => vec!["panel"],
-            FacetLayout::Grid { .. } => vec!["row", "column"],
+            FacetLayout::Wrap { .. } => &["panel"],
+            FacetLayout::Grid { .. } => &["row", "column"],
+        }
+    }
+
+    /// Get the internal facet aesthetic names for this layout.
+    ///
+    /// Returns: "facet1" for wrap, "facet1" and "facet2" for grid.
+    /// Use this after aesthetic transformation has occurred.
+    pub fn internal_facet_names(&self) -> Vec<String> {
+        match self {
+            FacetLayout::Wrap { .. } => vec!["facet1".to_string()],
+            FacetLayout::Grid { .. } => vec!["facet1".to_string(), "facet2".to_string()],
+        }
+    }
+
+    /// Get variable names mapped to their internal aesthetic names.
+    ///
+    /// Returns tuples of (column_name, internal_aesthetic_name):
+    /// - Wrap: [("region", "facet1")]
+    /// - Grid: [("region", "facet1"), ("year", "facet2")]
+    ///
+    /// Use this after aesthetic transformation has occurred.
+    pub fn get_internal_aesthetic_mappings(&self) -> Vec<(&str, String)> {
+        let internal_names = self.internal_facet_names();
+        match self {
+            FacetLayout::Wrap { variables } => variables
+                .iter()
+                .map(|v| (v.as_str(), internal_names[0].clone()))
+                .collect(),
+            FacetLayout::Grid { row, column } => {
+                let mut result: Vec<(&str, String)> = row
+                    .iter()
+                    .map(|v| (v.as_str(), internal_names[0].clone()))
+                    .collect();
+                result.extend(
+                    column
+                        .iter()
+                        .map(|v| (v.as_str(), internal_names[1].clone())),
+                );
+                result
+            }
         }
     }
 }

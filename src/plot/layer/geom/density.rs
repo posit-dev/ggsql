@@ -27,14 +27,14 @@ impl GeomTrait for Density {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("x", DefaultAestheticValue::Required),
+                ("pos1", DefaultAestheticValue::Required),
                 ("weight", DefaultAestheticValue::Null),
                 ("fill", DefaultAestheticValue::String("black")),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("opacity", DefaultAestheticValue::Number(0.8)),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("linetype", DefaultAestheticValue::String("solid")),
-                ("y", DefaultAestheticValue::Delayed), // Computed by stat
+                ("pos2", DefaultAestheticValue::Delayed), // Computed by stat
             ],
         }
     }
@@ -66,17 +66,17 @@ impl GeomTrait for Density {
 
     fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
         &[
-            ("x", DefaultAestheticValue::Column("x")),
-            ("y", DefaultAestheticValue::Column("density")),
+            ("pos1", DefaultAestheticValue::Column("pos1")),
+            ("pos2", DefaultAestheticValue::Column("density")),
         ]
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {
-        &["x", "density", "intensity"]
+        &["pos1", "density", "intensity"]
     }
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {
-        &["x", "weight"]
+        &["pos1", "weight"]
     }
 
     fn apply_stat_transform(
@@ -88,7 +88,14 @@ impl GeomTrait for Density {
         parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
     ) -> crate::Result<super::StatResult> {
-        stat_density(query, aesthetics, "x", group_by, parameters, execute_query)
+        stat_density(
+            query,
+            aesthetics,
+            "pos1",
+            group_by,
+            parameters,
+            execute_query,
+        )
     }
 }
 
@@ -925,29 +932,31 @@ mod tests {
         println!("Number of rows: {}", df.height());
 
         // After remapping, stat columns are renamed to aesthetic columns
-        // The stat transform produces: x, intensity, density
-        // With REMAPPING intensity AS y, we get: __ggsql_aes_x__, __ggsql_aes_y__
-        // (y is mapped from intensity, not the default density)
+        // The stat transform produces: pos1, intensity, density
+        // With REMAPPING intensity AS y, we get: __ggsql_aes_pos1__, __ggsql_aes_pos2__
+        // (pos2 is mapped from intensity, not the default density)
 
         let col_names: Vec<&str> = df.get_column_names().iter().map(|s| s.as_str()).collect();
 
-        // Should have x and y aesthetics after remapping
+        // Should have pos1 and pos2 aesthetics after remapping (internal names)
         assert!(
-            col_names.contains(&"__ggsql_aes_x__"),
-            "Should have x aesthetic, got: {:?}",
+            col_names.contains(&"__ggsql_aes_pos1__"),
+            "Should have pos1 aesthetic, got: {:?}",
             col_names
         );
         assert!(
-            col_names.contains(&"__ggsql_aes_y__"),
-            "Should have y aesthetic, got: {:?}",
+            col_names.contains(&"__ggsql_aes_pos2__"),
+            "Should have pos2 aesthetic, got: {:?}",
             col_names
         );
 
         // Verify we have data
         assert!(df.height() > 0);
 
-        // Verify y values (from intensity) are non-negative
-        let y_col = df.column("__ggsql_aes_y__").expect("y aesthetic exists");
+        // Verify pos2 values (from intensity) are non-negative
+        let y_col = df
+            .column("__ggsql_aes_pos2__")
+            .expect("pos2 aesthetic exists");
         let all_non_negative = y_col
             .f64()
             .expect("y is f64")

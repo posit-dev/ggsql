@@ -8,10 +8,7 @@ use crate::plot::scale::ScaleTypeKind;
 #[allow(unused_imports)]
 use crate::plot::ArrayElement;
 use crate::plot::ParameterValue;
-use crate::{
-    is_primary_positional, naming, primary_aesthetic, AestheticValue, DataFrame, GgsqlError, Plot,
-    Result,
-};
+use crate::{naming, AestheticValue, DataFrame, GgsqlError, Plot, Result};
 use polars::prelude::*;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
@@ -306,10 +303,11 @@ pub(super) fn format_temporal(value: f64, temporal_type: TemporalType) -> String
 /// in Vega-Lite for representing bin ranges.
 pub(super) fn collect_binned_columns(spec: &Plot) -> HashMap<String, Vec<f64>> {
     let mut binned_columns: HashMap<String, Vec<f64>> = HashMap::new();
+    let aesthetic_ctx = spec.get_aesthetic_context();
 
     for scale in &spec.scales {
         // Only x and y aesthetics support bin ranges (x2/y2) in Vega-Lite
-        if !is_primary_positional(&scale.aesthetic) {
+        if !aesthetic_ctx.is_primary_internal(&scale.aesthetic) {
             continue;
         }
 
@@ -351,7 +349,10 @@ pub(super) fn collect_binned_columns(spec: &Plot) -> HashMap<String, Vec<f64>> {
 
 /// Check if an aesthetic has a binned scale in the spec.
 pub(super) fn is_binned_aesthetic(aesthetic: &str, spec: &Plot) -> bool {
-    let primary = primary_aesthetic(aesthetic);
+    let aesthetic_ctx = spec.get_aesthetic_context();
+    let primary = aesthetic_ctx
+        .primary_internal_positional(aesthetic)
+        .unwrap_or(aesthetic);
     spec.find_scale(primary)
         .and_then(|s| s.scale_type.as_ref())
         .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)

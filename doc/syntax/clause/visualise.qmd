@@ -7,7 +7,7 @@ The `VISUALISE` (or `VISUALIZE`) clause marks the beginning of a ggsql visualisa
 ## Clause syntax
 The `VISUALISE` clause is quite simple and doesn't take any additional required parameters. You can, however, use it to define global mappings and a global data source (if the earlier query didn't end in a `SELECT`).
 
-```sql
+```ggsql
 VISUALISE <mapping>, ... FROM <data-source>
 ```
 
@@ -36,7 +36,12 @@ A `property` is a value used by the statistical transformation done by the layer
 
 Layers only inherit the aesthetics and properties they support from the global mapping. The documentation for each layer type provides an overview of the aesthetics and properties available for them.
 
-When specifying a global data source with `FROM <data-source>` the `data-source` can take one of two different forms:
+### `FROM`
+```ggsql
+FROM <data-source>
+```
+
+When specifying a global data source the `data-source` can take one of two different forms:
 
 * *Table/CTE*: If providing an unquoted identifier it is assumed that the data is available in the backend, either as a CTE defined in the pre-query, or as a proper table in the database.
 * *Filepath*: If a string is provided (single quoted), it is assumed to point to a file that can be read directly by the backend.

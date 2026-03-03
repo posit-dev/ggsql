@@ -7,7 +7,7 @@ The `LABEL` clause is one of the simpler clauses in ggsql an allow you to overri
 ## Clause syntax
 The `LABEL` clause takes one or more labeling settings.
 
-```sql
+```ggsql
 LABEL <aesthetic/title> => <string>, ...
 ```
 

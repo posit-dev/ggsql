@@ -340,10 +340,10 @@ mod tests {
 
         let metadata = spec.metadata();
         assert_eq!(metadata.rows, 3);
-        // Columns now includes both user mappings (x, y) and resolved defaults (size, stroke, fill, opacity, shape, linewidth)
-        assert_eq!(metadata.columns.len(), 8);
-        assert!(metadata.columns.contains(&"x".to_string()));
-        assert!(metadata.columns.contains(&"y".to_string()));
+        // Columns now includes both user mappings (pos1, pos2) and resolved defaults (size, stroke, fill, opacity, shape, linewidth)
+        // Aesthetics are transformed to internal names (x -> pos1, y -> pos2)
+        assert!(metadata.columns.contains(&"pos1".to_string()));
+        assert!(metadata.columns.contains(&"pos2".to_string()));
         assert_eq!(metadata.layer_count, 1);
     }
 
@@ -384,6 +384,271 @@ mod tests {
     }
 
     #[test]
+    fn test_polar_project_with_start() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20), ('C', 30)) AS t(category, value)
+            VISUALISE value AS y, category AS fill
+            DRAW bar
+            PROJECT y, x TO polar SETTING start => 90
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        // Parse the JSON to verify the theta scale range is set correctly
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+
+        // The encoding should have a theta channel with a scale range offset by 90 degrees
+        // 90 degrees = π/2 radians
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let theta = &layer["encoding"]["theta"];
+        assert!(theta.is_object(), "theta encoding should exist");
+
+        // Check that the scale has a range with the start offset
+        let scale = &theta["scale"];
+        let range = scale["range"].as_array().unwrap();
+        assert_eq!(range.len(), 2);
+
+        // π/2 ≈ 1.5707963
+        let start = range[0].as_f64().unwrap();
+        assert!(
+            (start - std::f64::consts::FRAC_PI_2).abs() < 0.001,
+            "start should be π/2 (90 degrees), got {}",
+            start
+        );
+
+        // π/2 + 2π ≈ 7.8539816
+        let end = range[1].as_f64().unwrap();
+        let expected_end = std::f64::consts::FRAC_PI_2 + 2.0 * std::f64::consts::PI;
+        assert!(
+            (end - expected_end).abs() < 0.001,
+            "end should be π/2 + 2π, got {}",
+            end
+        );
+    }
+
+    #[test]
+    fn test_polar_project_default_start() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20), ('C', 30)) AS t(category, value)
+            VISUALISE value AS y, category AS fill
+            DRAW bar
+            PROJECT y, x TO polar
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        // Parse the JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+
+        // The theta encoding should NOT have a scale with range when start is 0 (default)
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let theta = &layer["encoding"]["theta"];
+        assert!(theta.is_object(), "theta encoding should exist");
+
+        // Either no scale, or no range in scale (since default is 0)
+        if let Some(scale) = theta.get("scale") {
+            assert!(
+                scale.get("range").is_none(),
+                "theta scale should not have range when start is 0"
+            );
+        }
+    }
+
+    #[test]
+    fn test_polar_project_with_end() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
+            VISUALISE value AS y, category AS fill
+            DRAW bar
+            PROJECT y, x TO polar SETTING start => -90, end => 90
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let theta = &layer["encoding"]["theta"];
+        let range = theta["scale"]["range"].as_array().unwrap();
+
+        // -90° = -π/2 ≈ -1.5708, 90° = π/2 ≈ 1.5708
+        let start = range[0].as_f64().unwrap();
+        let end = range[1].as_f64().unwrap();
+        assert!(
+            (start - (-std::f64::consts::FRAC_PI_2)).abs() < 0.001,
+            "start should be -π/2 (-90 degrees), got {}",
+            start
+        );
+        assert!(
+            (end - std::f64::consts::FRAC_PI_2).abs() < 0.001,
+            "end should be π/2 (90 degrees), got {}",
+            end
+        );
+    }
+
+    #[test]
+    fn test_polar_project_with_end_only() {
+        // Test using end without explicit start (start defaults to 0)
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
+            VISUALISE value AS y, category AS fill
+            DRAW bar
+            PROJECT y, x TO polar SETTING end => 180
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let theta = &layer["encoding"]["theta"];
+        let range = theta["scale"]["range"].as_array().unwrap();
+
+        // start=0 (default), end=180° = π
+        let start = range[0].as_f64().unwrap();
+        let end = range[1].as_f64().unwrap();
+        assert!(
+            start.abs() < 0.001,
+            "start should be 0 (default), got {}",
+            start
+        );
+        assert!(
+            (end - std::f64::consts::PI).abs() < 0.001,
+            "end should be π (180 degrees), got {}",
+            end
+        );
+    }
+
+    #[test]
+    fn test_polar_encoding_keys_independent_of_user_names() {
+        // This test verifies that polar projections always produce theta/radius encoding keys
+        // in Vega-Lite output, regardless of what positional names the user specified in PROJECT.
+        // This is critical because Vega-Lite expects specific channel names for polar marks.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Helper to check encoding keys
+        fn check_encoding_keys(json: &serde_json::Value, test_name: &str) {
+            let layer = json["layer"].as_array().unwrap().first().unwrap();
+            assert!(
+                layer["encoding"].get("theta").is_some(),
+                "{} should produce theta encoding, got keys: {:?}",
+                test_name,
+                layer["encoding"]
+                    .as_object()
+                    .map(|o| o.keys().collect::<Vec<_>>())
+            );
+            // Also verify no x or y keys exist (they should be mapped to theta/radius)
+            assert!(
+                layer["encoding"].get("x").is_none(),
+                "{} should NOT have x encoding in polar mode",
+                test_name
+            );
+            assert!(
+                layer["encoding"].get("y").is_none(),
+                "{} should NOT have y encoding in polar mode",
+                test_name
+            );
+        }
+
+        // Test case 1: PROJECT y, x TO polar (y as pos1→theta, x as pos2→radius)
+        let query1 = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
+            VISUALISE value AS y, category AS fill
+            DRAW bar
+            PROJECT y, x TO polar
+        "#;
+        let spec1 = reader.execute(query1).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result1 = writer.render(&spec1).unwrap();
+        let json1: serde_json::Value = serde_json::from_str(&result1).unwrap();
+        check_encoding_keys(&json1, "PROJECT y, x TO polar");
+
+        // Test case 2: PROJECT x, y TO polar (x as pos1→theta, y as pos2→radius)
+        let query2 = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
+            VISUALISE value AS x, category AS fill
+            DRAW bar
+            PROJECT x, y TO polar
+        "#;
+        let spec2 = reader.execute(query2).unwrap();
+        let result2 = writer.render(&spec2).unwrap();
+        let json2: serde_json::Value = serde_json::from_str(&result2).unwrap();
+        check_encoding_keys(&json2, "PROJECT x, y TO polar");
+
+        // Test case 3: PROJECT TO polar (default theta/radius names)
+        let query3 = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
+            VISUALISE value AS theta, category AS fill
+            DRAW bar
+            PROJECT TO polar
+        "#;
+        let spec3 = reader.execute(query3).unwrap();
+        let result3 = writer.render(&spec3).unwrap();
+        let json3: serde_json::Value = serde_json::from_str(&result3).unwrap();
+        check_encoding_keys(&json3, "PROJECT TO polar");
+
+        // Test case 4: PROJECT a, b TO polar (custom aesthetic names)
+        let query4 = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
+            VISUALISE value AS a, category AS fill
+            DRAW bar
+            PROJECT a, b TO polar
+        "#;
+        let spec4 = reader.execute(query4).unwrap();
+        let result4 = writer.render(&spec4).unwrap();
+        let json4: serde_json::Value = serde_json::from_str(&result4).unwrap();
+        check_encoding_keys(&json4, "PROJECT a, b TO polar (custom names)");
+    }
+
+    #[test]
+    fn test_cartesian_encoding_keys_with_custom_names() {
+        // This test verifies that cartesian projections produce x/y encoding keys
+        // even when custom positional names are used in PROJECT.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        fn check_cartesian_keys(json: &serde_json::Value, test_name: &str) {
+            let layer = json["layer"].as_array().unwrap().first().unwrap();
+            assert!(
+                layer["encoding"].get("x").is_some(),
+                "{} should produce x encoding, got keys: {:?}",
+                test_name,
+                layer["encoding"]
+                    .as_object()
+                    .map(|o| o.keys().collect::<Vec<_>>())
+            );
+            // Verify no theta/radius keys exist
+            assert!(
+                layer["encoding"].get("theta").is_none(),
+                "{} should NOT have theta encoding in cartesian mode",
+                test_name
+            );
+        }
+
+        // Test case: PROJECT a, b TO cartesian (custom aesthetic names)
+        let query = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
+            VISUALISE category AS a, value AS b
+            DRAW bar
+            PROJECT a, b TO cartesian
+        "#;
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        check_cartesian_keys(&json, "PROJECT a, b TO cartesian (custom names)");
+    }
+
+    #[test]
     fn test_register_and_query() {
         use polars::prelude::*;
 
@@ -401,7 +666,8 @@ mod tests {
         let spec = reader.execute(query).unwrap();
 
         assert_eq!(spec.metadata().rows, 3);
-        assert!(spec.metadata().columns.contains(&"x".to_string()));
+        // Aesthetics are transformed to internal names (x -> pos1)
+        assert!(spec.metadata().columns.contains(&"pos1".to_string()));
 
         let writer = VegaLiteWriter::new();
         let result = writer.render(&spec).unwrap();
@@ -593,5 +859,74 @@ mod tests {
             "labelExpr should contain custom labels, got: {}",
             label_expr
         );
+    }
+
+    #[test]
+    fn test_polar_project_with_inner() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
+            VISUALISE value AS y, category AS fill
+            DRAW bar
+            PROJECT y, x TO polar SETTING inner => 0.5
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+
+        // Check radius scale has range with expressions
+        let radius = &layer["encoding"]["radius"];
+        assert!(radius["scale"]["range"].is_array());
+        let range = radius["scale"]["range"].as_array().unwrap();
+
+        // First element should be inner proportion expression
+        assert!(
+            range[0]["expr"].as_str().unwrap().contains("0.5"),
+            "Inner radius expression should contain 0.5, got: {:?}",
+            range[0]
+        );
+
+        // Second element should be the outer radius expression
+        assert!(
+            range[1]["expr"]
+                .as_str()
+                .unwrap()
+                .contains("min(width,height)/2"),
+            "Outer radius expression should be min(width,height)/2, got: {:?}",
+            range[1]
+        );
+    }
+
+    #[test]
+    fn test_polar_project_inner_default() {
+        // Test that inner=0 (default) doesn't add scale range
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
+            VISUALISE value AS y, category AS fill
+            DRAW bar
+            PROJECT y, x TO polar
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+
+        // Radius encoding should not have scale.range when inner=0
+        let radius = &layer["encoding"]["radius"];
+        if let Some(scale) = radius.get("scale") {
+            assert!(
+                scale.get("range").is_none(),
+                "Radius scale should not have range when inner=0, got: {:?}",
+                scale
+            );
+        }
     }
 }

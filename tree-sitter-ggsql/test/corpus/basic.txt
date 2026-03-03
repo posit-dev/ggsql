@@ -490,7 +490,9 @@ THEME minimal
             (bare_identifier)))))
     (viz_clause
       (theme_clause
-        (theme_name)))))
+        (theme_name
+          (identifier
+            (bare_identifier)))))))
 
 ================================================================================
 Plot with labels
@@ -521,22 +523,28 @@ LABEL title => 'My Plot', x => 'X Axis', y => 'Y Axis'
     (viz_clause
       (label_clause
         (label_assignment
-          (label_type)
+          (label_type
+            (identifier
+              (bare_identifier)))
           (string))
         (label_assignment
-          (label_type)
+          (label_type
+            (identifier
+              (bare_identifier)))
           (string))
         (label_assignment
-          (label_type)
+          (label_type
+            (identifier
+              (bare_identifier)))
           (string))))))
 
 ================================================================================
-COORD cartesian with xlim
+PROJECT TO cartesian (default aesthetics)
 ================================================================================
 
 VISUALISE x, y
 DRAW point
-COORD cartesian SETTING xlim => [0, 100]
+PROJECT TO cartesian
 
 --------------------------------------------------------------------------------
 
@@ -557,24 +565,18 @@ COORD cartesian SETTING xlim => [0, 100]
       (draw_clause
         (geom_type)))
     (viz_clause
-      (coord_clause
-        (coord_type)
-        (coord_properties
-          (coord_property
-            (coord_property_name)
-            (array
-              (array_element
-                (number))
-              (array_element
-                (number)))))))))
+      (project_clause
+        (project_type
+          (identifier
+            (bare_identifier)))))))
 
 ================================================================================
-COORD flip
+PROJECT x, y TO cartesian (explicit aesthetics)
 ================================================================================
 
-VISUALISE category AS x, value AS y
-DRAW bar
-COORD flip
+VISUALISE x, y
+DRAW point
+PROJECT x, y TO cartesian
 
 --------------------------------------------------------------------------------
 
@@ -584,25 +586,171 @@ COORD flip
     (global_mapping
       (mapping_list
         (mapping_element
-          (explicit_mapping
-            value: (mapping_value
-              (column_reference
-                (identifier
-                  (bare_identifier))))
-            name: (aesthetic_name)))
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
         (mapping_element
-          (explicit_mapping
-            value: (mapping_value
-              (column_reference
-                (identifier
-                  (bare_identifier))))
-            name: (aesthetic_name)))))
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
     (viz_clause
       (draw_clause
         (geom_type)))
     (viz_clause
-      (coord_clause
-        (coord_type)))))
+      (project_clause
+        (project_aesthetics
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier)))
+        (project_type
+          (identifier
+            (bare_identifier)))))))
+
+================================================================================
+PROJECT TO cartesian with SETTING
+================================================================================
+
+VISUALISE x, y
+DRAW point
+PROJECT TO cartesian SETTING ratio => 1
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (project_clause
+        (project_type
+          (identifier
+            (bare_identifier)))
+        (project_properties
+          (project_property
+            (project_property_name
+              (identifier
+                (bare_identifier)))
+            (number)))))))
+
+================================================================================
+PROJECT TO polar (default aesthetics)
+================================================================================
+
+VISUALISE theta, radius
+DRAW point
+PROJECT TO polar
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (project_clause
+        (project_type
+          (identifier
+            (bare_identifier)))))))
+
+================================================================================
+PROJECT TO polar with SETTING start
+================================================================================
+
+VISUALISE theta, radius
+DRAW bar
+PROJECT TO polar SETTING start => 90
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (project_clause
+        (project_type
+          (identifier
+            (bare_identifier)))
+        (project_properties
+          (project_property
+            (project_property_name
+              (identifier
+                (bare_identifier)))
+            (number)))))))
+
+================================================================================
+PROJECT custom aesthetics TO cartesian
+================================================================================
+
+VISUALISE a, b
+DRAW point
+PROJECT a, b TO cartesian
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (project_clause
+        (project_aesthetics
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier)))
+        (project_type
+          (identifier
+            (bare_identifier)))))))
 
 ================================================================================
 VISUALISE FROM with CTE

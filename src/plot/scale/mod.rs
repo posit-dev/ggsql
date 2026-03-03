@@ -12,7 +12,9 @@ pub mod transform;
 mod types;
 
 pub use crate::format::apply_label_template;
-pub use crate::plot::aesthetic::is_facet_aesthetic;
+pub use crate::plot::aesthetic::{
+    is_facet_aesthetic, is_positional_aesthetic, is_user_facet_aesthetic,
+};
 pub use crate::plot::types::{CastTargetType, SqlTypeNames};
 pub use colour::{color_to_hex, gradient, interpolate_colors, is_color_aesthetic, ColorSpace};
 pub use linetype::linetype_to_stroke_dash;
@@ -42,18 +44,25 @@ use crate::plot::{ArrayElement, ArrayElementType};
 /// an unmapped aesthetic should get a scale with type inference (Continuous/Discrete)
 /// or an Identity scale (pass-through, no transformation).
 pub fn gets_default_scale(aesthetic: &str) -> bool {
+    // Positional aesthetics (pos1, pos1min, pos2max, etc.) - checked dynamically
+    if is_positional_aesthetic(aesthetic) {
+        return true;
+    }
+
+    // Facet aesthetics (facet1, facet2, etc.) - checked dynamically
+    if is_facet_aesthetic(aesthetic) {
+        return true;
+    }
+
+    // Non-positional visual aesthetics that get default scales
     matches!(
         aesthetic,
-        // Position aesthetics
-        "x" | "y" | "xmin" | "xmax" | "ymin" | "ymax" | "xend" | "yend"
         // Color aesthetics (color/colour/col already split to fill/stroke)
-        | "fill" | "stroke"
+        "fill" | "stroke"
         // Size aesthetics
         | "size" | "linewidth"
         // Other visual aesthetics
         | "opacity" | "shape" | "linetype"
-        // Facet aesthetics (need Discrete/Binned, not Identity)
-        | "panel" | "row" | "column"
     )
 }
 

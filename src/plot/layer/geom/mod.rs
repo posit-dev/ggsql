@@ -17,7 +17,7 @@
 //!
 //! let point = Geom::point();
 //! assert_eq!(point.geom_type(), GeomType::Point);
-//! assert!(point.aesthetics().is_required("x"));
+//! assert!(point.aesthetics().is_required("pos1"));
 //! ```
 
 use crate::{DataFrame, Mappings, Result};
@@ -52,9 +52,6 @@ mod vline;
 
 // Re-export types
 pub use types::{DefaultAesthetics, DefaultParam, DefaultParamValue, StatResult};
-
-// Re-export aesthetic family utilities from the central module
-pub use crate::plot::aesthetic::{get_aesthetic_family, AESTHETIC_FAMILIES};
 
 // Re-export geom structs for direct access if needed
 pub use abline::AbLine;
@@ -506,8 +503,8 @@ mod tests {
     fn test_geom_aesthetics() {
         let point = Geom::point();
         let aes = point.aesthetics();
-        assert!(aes.is_required("x"));
-        assert!(aes.is_required("y"));
+        assert!(aes.is_required("pos1"));
+        assert!(aes.is_required("pos2"));
     }
 
     #[test]

@@ -58,8 +58,7 @@ pub use plot::{
 
 // Re-export aesthetic classification utilities
 pub use plot::aesthetic::{
-    get_aesthetic_family, is_aesthetic_name, is_positional_aesthetic, is_primary_positional,
-    primary_aesthetic, AESTHETIC_FAMILIES, ALL_POSITIONAL, NON_POSITIONAL, PRIMARY_POSITIONAL,
+    is_positional_aesthetic, AestheticContext, NON_POSITIONAL, POSITIONAL_SUFFIXES,
 };
 
 // Future modules - not yet implemented
@@ -148,6 +147,10 @@ mod integration_tests {
             );
         spec.layers.push(layer);
 
+        // Transform aesthetics from user-facing (x, y) to internal (pos1, pos2)
+        spec.initialize_aesthetic_context();
+        spec.transform_aesthetics_to_internal();
+
         // Generate Vega-Lite JSON
         let writer = VegaLiteWriter::new();
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
@@ -204,6 +207,10 @@ mod integration_tests {
             );
         spec.layers.push(layer);
 
+        // Transform aesthetics from user-facing (x, y) to internal (pos1, pos2)
+        spec.initialize_aesthetic_context();
+        spec.transform_aesthetics_to_internal();
+
         // Generate Vega-Lite JSON
         let writer = VegaLiteWriter::new();
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
@@ -258,6 +265,10 @@ mod integration_tests {
             );
         spec.layers.push(layer);
 
+        // Transform aesthetics from user-facing (x, y) to internal (pos1, pos2)
+        spec.initialize_aesthetic_context();
+        spec.transform_aesthetics_to_internal();
+
         // Generate Vega-Lite JSON
         let writer = VegaLiteWriter::new();
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
@@ -310,6 +321,10 @@ mod integration_tests {
             );
         spec.layers.push(layer);
 
+        // Transform aesthetics from user-facing (x, y) to internal (pos1, pos2)
+        spec.initialize_aesthetic_context();
+        spec.transform_aesthetics_to_internal();
+
         let writer = VegaLiteWriter::new();
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
@@ -342,6 +357,10 @@ mod integration_tests {
                 AestheticValue::standard_column("value".to_string()),
             );
         spec.layers.push(layer);
+
+        // Transform aesthetics from user-facing (x, y) to internal (pos1, pos2)
+        spec.initialize_aesthetic_context();
+        spec.transform_aesthetics_to_internal();
 
         let writer = VegaLiteWriter::new();
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
@@ -397,6 +416,10 @@ mod integration_tests {
             );
         spec.layers.push(layer);
 
+        // Transform aesthetics from user-facing (x, y) to internal (pos1, pos2)
+        spec.initialize_aesthetic_context();
+        spec.transform_aesthetics_to_internal();
+
         let writer = VegaLiteWriter::new();
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
@@ -440,6 +463,10 @@ mod integration_tests {
                 AestheticValue::standard_column("medium".to_string()),
             );
         spec.layers.push(layer);
+
+        // Transform aesthetics from user-facing (x, y) to internal (pos1, pos2)
+        spec.initialize_aesthetic_context();
+        spec.transform_aesthetics_to_internal();
 
         let writer = VegaLiteWriter::new();
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
@@ -494,6 +521,10 @@ mod integration_tests {
                 AestheticValue::standard_column("big".to_string()),
             );
         spec.layers.push(layer);
+
+        // Transform aesthetics from user-facing (x, y) to internal (pos1, pos2)
+        spec.initialize_aesthetic_context();
+        spec.transform_aesthetics_to_internal();
 
         let writer = VegaLiteWriter::new();
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
@@ -657,8 +688,9 @@ mod integration_tests {
 
         // With aesthetic-named columns, each layer gets its own data
         // Each layer should have its data with prefixed aesthetic-named columns
-        let x_col = naming::aesthetic_column("x");
-        let y_col = naming::aesthetic_column("y");
+        // Note: x and y are transformed to internal names pos1 and pos2
+        let x_col = naming::aesthetic_column("pos1");
+        let y_col = naming::aesthetic_column("pos2");
         let stroke_col = naming::aesthetic_column("stroke");
         for layer_idx in 0..4 {
             let layer_key = naming::layer_key(layer_idx);
@@ -694,21 +726,22 @@ mod integration_tests {
                 stroke_col,
                 col_names
             );
-            // Facet aesthetic columns should be included (row and column for grid facet)
-            let row_col = naming::aesthetic_column("row");
-            let column_col = naming::aesthetic_column("column");
+            // Facet aesthetic columns should be included (facet1 and facet2 for grid facet)
+            // Note: row→facet1, column→facet2 after internal naming transformation
+            let facet1_col = naming::aesthetic_column("facet1");
+            let facet2_col = naming::aesthetic_column("facet2");
             assert!(
-                col_names.iter().any(|c| c.as_str() == row_col),
+                col_names.iter().any(|c| c.as_str() == facet1_col),
                 "Layer {} should have '{}' facet column: {:?}",
                 layer_idx,
-                row_col,
+                facet1_col,
                 col_names
             );
             assert!(
-                col_names.iter().any(|c| c.as_str() == column_col),
+                col_names.iter().any(|c| c.as_str() == facet2_col),
                 "Layer {} should have '{}' facet column: {:?}",
                 layer_idx,
-                column_col,
+                facet2_col,
                 col_names
             );
         }
@@ -767,8 +800,9 @@ mod integration_tests {
 
         // Both layers have data (may be shared or separate depending on query dedup)
         // Verify layer 0 has the expected columns
-        let x_col = naming::aesthetic_column("x");
-        let y_col = naming::aesthetic_column("y");
+        // Note: x and y are transformed to internal names pos1 and pos2
+        let x_col = naming::aesthetic_column("pos1");
+        let y_col = naming::aesthetic_column("pos2");
         let stroke_col = naming::aesthetic_column("stroke");
 
         let layer_df = prepared.data.get(layer0_key).unwrap();

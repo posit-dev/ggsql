@@ -16,8 +16,8 @@ impl GeomTrait for Smooth {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("x", DefaultAestheticValue::Required),
-                ("y", DefaultAestheticValue::Required),
+                ("pos1", DefaultAestheticValue::Required),
+                ("pos2", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::String("#3366FF")),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),

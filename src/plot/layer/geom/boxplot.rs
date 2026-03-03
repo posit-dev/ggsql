@@ -24,8 +24,8 @@ impl GeomTrait for Boxplot {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("x", DefaultAestheticValue::Required),
-                ("y", DefaultAestheticValue::Required),
+                ("pos1", DefaultAestheticValue::Required),
+                ("pos2", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("fill", DefaultAestheticValue::String("white")),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
@@ -35,13 +35,13 @@ impl GeomTrait for Boxplot {
                 ("shape", DefaultAestheticValue::String("circle")),
                 // Internal aesthetics produced by stat transform
                 ("type", DefaultAestheticValue::Delayed),
-                ("yend", DefaultAestheticValue::Delayed),
+                ("pos2end", DefaultAestheticValue::Delayed),
             ],
         }
     }
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {
-        &["y"]
+        &["pos2"]
     }
 
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
@@ -67,8 +67,8 @@ impl GeomTrait for Boxplot {
 
     fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
         &[
-            ("y", DefaultAestheticValue::Column("value")),
-            ("yend", DefaultAestheticValue::Column("value2")),
+            ("pos2", DefaultAestheticValue::Column("value")),
+            ("pos2end", DefaultAestheticValue::Column("value2")),
             ("type", DefaultAestheticValue::Column("type")),
         ]
     }
@@ -98,10 +98,10 @@ fn stat_boxplot(
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
 ) -> Result<StatResult> {
-    let y = get_column_name(aesthetics, "y").ok_or_else(|| {
+    let y = get_column_name(aesthetics, "pos2").ok_or_else(|| {
         GgsqlError::ValidationError("Boxplot requires 'y' aesthetic mapping".to_string())
     })?;
-    let x = get_column_name(aesthetics, "x").ok_or_else(|| {
+    let x = get_column_name(aesthetics, "pos1").ok_or_else(|| {
         GgsqlError::ValidationError("Boxplot requires 'x' aesthetic mapping".to_string())
     })?;
 
@@ -153,7 +153,7 @@ fn stat_boxplot(
             "value2".to_string(),
         ],
         dummy_columns: vec![],
-        consumed_aesthetics: vec!["y".to_string()],
+        consumed_aesthetics: vec!["pos2".to_string()],
     })
 }
 
@@ -287,11 +287,11 @@ mod tests {
     fn create_basic_aesthetics() -> Mappings {
         let mut aesthetics = Mappings::new();
         aesthetics.insert(
-            "x".to_string(),
+            "pos1".to_string(),
             AestheticValue::standard_column("category".to_string()),
         );
         aesthetics.insert(
-            "y".to_string(),
+            "pos2".to_string(),
             AestheticValue::standard_column("value".to_string()),
         );
         aesthetics
@@ -324,8 +324,8 @@ mod tests {
 
     #[test]
     fn test_sql_compute_summary_custom_coef() {
-        let groups = vec!["x".to_string()];
-        let result = boxplot_sql_compute_summary("q", &groups, "y", &2.5);
+        let groups = vec!["pos1".to_string()];
+        let result = boxplot_sql_compute_summary("q", &groups, "pos2", &2.5);
         assert!(result.contains("2.5"));
         assert!(result.contains("GREATEST(q1 - 2.5 * (q3 - q1), min)"));
         assert!(result.contains("LEAST(   q3 + 2.5 * (q3 - q1), max)"));
@@ -422,10 +422,10 @@ mod tests {
 
     #[test]
     fn test_boxplot_sql_append_outliers_without_outliers() {
-        let groups = vec!["x".to_string()];
+        let groups = vec!["pos1".to_string()];
         let summary = "sum_query";
         let raw = "raw_query";
-        let result = boxplot_sql_append_outliers(summary, &groups, "y", raw, &false);
+        let result = boxplot_sql_append_outliers(summary, &groups, "pos2", raw, &false);
 
         // Should NOT include WITH or outliers CTE
         assert!(!result.contains("WITH"));
@@ -547,8 +547,8 @@ mod tests {
         let boxplot = Boxplot;
         let aes = boxplot.aesthetics();
 
-        assert!(aes.is_required("x"));
-        assert!(aes.is_required("y"));
+        assert!(aes.is_required("pos1"));
+        assert!(aes.is_required("pos2"));
         assert_eq!(aes.required().len(), 2);
     }
 
@@ -557,8 +557,8 @@ mod tests {
         let boxplot = Boxplot;
         let aes = boxplot.aesthetics();
 
-        assert!(aes.is_supported("x"));
-        assert!(aes.is_supported("y"));
+        assert!(aes.is_supported("pos1"));
+        assert!(aes.is_supported("pos2"));
         assert!(aes.is_supported("fill"));
         assert!(aes.is_supported("stroke"));
         assert!(aes.is_supported("opacity"));
@@ -599,8 +599,8 @@ mod tests {
         let remappings = boxplot.default_remappings();
 
         assert_eq!(remappings.len(), 3);
-        assert!(remappings.contains(&("y", DefaultAestheticValue::Column("value"))));
-        assert!(remappings.contains(&("yend", DefaultAestheticValue::Column("value2"))));
+        assert!(remappings.contains(&("pos2", DefaultAestheticValue::Column("value"))));
+        assert!(remappings.contains(&("pos2end", DefaultAestheticValue::Column("value2"))));
         assert!(remappings.contains(&("type", DefaultAestheticValue::Column("type"))));
     }
 
@@ -610,7 +610,7 @@ mod tests {
         let consumed = boxplot.stat_consumed_aesthetics();
 
         assert_eq!(consumed.len(), 1);
-        assert_eq!(consumed[0], "y");
+        assert_eq!(consumed[0], "pos2");
     }
 
     #[test]

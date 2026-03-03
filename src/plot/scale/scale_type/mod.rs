@@ -27,6 +27,7 @@ use std::sync::Arc;
 
 use super::transform::{Transform, TransformKind};
 use crate::plot::aesthetic::{is_facet_aesthetic, is_positional_aesthetic};
+use crate::plot::types::{DefaultParam, DefaultParamValue};
 use crate::plot::{ArrayElement, ColumnInfo, ParameterValue};
 
 // Scale type implementations
@@ -533,18 +534,15 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         Ok(None) // Default implementation: no default range
     }
 
-    /// Returns list of allowed property names for SETTING clause.
-    /// The aesthetic parameter allows different properties for different aesthetics.
+    /// Returns list of allowed properties with their default values.
+    ///
+    /// Properties that vary by aesthetic (like `expand` for positional-only, or `oob`
+    /// with aesthetic-dependent defaults) should use `DefaultParamValue::Null` as their
+    /// default value. The `resolve_properties()` method handles these special cases.
+    ///
     /// Default: empty (no properties allowed).
-    fn allowed_properties(&self, _aesthetic: &str) -> &'static [&'static str] {
+    fn default_properties(&self) -> &'static [DefaultParam] {
         &[]
-    }
-
-    /// Returns default value for a property, if any.
-    /// Called by resolve_properties for allowed properties not in user input.
-    /// The aesthetic parameter allows different defaults for different aesthetics.
-    fn get_property_default(&self, _aesthetic: &str, _name: &str) -> Option<ParameterValue> {
-        None
     }
 
     /// Returns the list of transforms this scale type supports.
@@ -610,7 +608,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                         self.name(),
                         self.allowed_transforms()
                             .iter()
-                            .map(|k| k.name())
+                            .map(|k| k.to_string())
                             .collect::<Vec<_>>()
                             .join(", ")
                     ))
@@ -620,14 +618,22 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     }
 
     /// Resolve and validate properties. NOT meant to be overridden by implementations.
-    /// - Validates all properties are in allowed_properties()
-    /// - Applies defaults via get_property_default()
+    /// - Validates all properties are in default_properties()
+    /// - Applies defaults, with special handling for aesthetic-dependent properties
     fn resolve_properties(
         &self,
         aesthetic: &str,
         properties: &HashMap<String, ParameterValue>,
     ) -> Result<HashMap<String, ParameterValue>, String> {
-        let allowed = self.allowed_properties(aesthetic);
+        let defaults = self.default_properties();
+        let is_positional = is_positional_aesthetic(aesthetic);
+
+        // Build allowed list, excluding "expand" for non-positional aesthetics
+        let allowed: Vec<&str> = defaults
+            .iter()
+            .filter(|p| p.name != "expand" || is_positional)
+            .map(|p| p.name)
+            .collect();
 
         // Check for unknown properties
         for key in properties.keys() {
@@ -649,10 +655,21 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
         // Start with user properties, add defaults for missing ones
         let mut resolved = properties.clone();
-        for &prop_name in allowed {
-            if !resolved.contains_key(prop_name) {
-                if let Some(default) = self.get_property_default(aesthetic, prop_name) {
-                    resolved.insert(prop_name.to_string(), default);
+        for param in defaults {
+            // Skip expand for non-positional aesthetics
+            if param.name == "expand" && !is_positional {
+                continue;
+            }
+
+            if !resolved.contains_key(param.name) {
+                // Special case: oob default varies by aesthetic when marked as Null
+                if param.name == "oob" && matches!(param.default, DefaultParamValue::Null) {
+                    resolved.insert(
+                        "oob".to_string(),
+                        ParameterValue::String(default_oob(aesthetic).to_string()),
+                    );
+                } else if let Some(default) = param.to_parameter_value() {
+                    resolved.insert(param.name.to_string(), default);
                 }
             }
         }
@@ -1113,7 +1130,7 @@ impl ScaleType {
     /// - Numeric/temporal → Continuous
     /// - String/boolean → Discrete
     ///
-    /// For facet aesthetics (panel, row, column):
+    /// For facet aesthetics (facet1, facet2):
     /// - Numeric/temporal → Binned (not Continuous, since facets need discrete categories)
     /// - String/boolean → Discrete
     pub fn infer_for_aesthetic(dtype: &DataType, aesthetic: &str) -> Self {
@@ -2296,7 +2313,7 @@ mod tests {
         // Continuous positional: default expand
         let props = HashMap::new();
         let resolved = ScaleType::continuous()
-            .resolve_properties("x", &props)
+            .resolve_properties("pos1", &props)
             .unwrap();
         assert!(resolved.contains_key("expand"));
         match resolved.get("expand") {
@@ -2312,7 +2329,9 @@ mod tests {
         assert!(resolved.contains_key("oob"));
 
         // Binned: default oob is censor
-        let resolved = ScaleType::binned().resolve_properties("x", &props).unwrap();
+        let resolved = ScaleType::binned()
+            .resolve_properties("pos1", &props)
+            .unwrap();
         match resolved.get("oob") {
             Some(ParameterValue::String(s)) => assert_eq!(s, "censor"),
             _ => panic!("Expected oob to be 'censor'"),
@@ -2331,7 +2350,7 @@ mod tests {
         let mut props = HashMap::new();
         props.insert("expand".to_string(), ParameterValue::Number(0.1));
         let resolved = ScaleType::continuous()
-            .resolve_properties("x", &props)
+            .resolve_properties("pos1", &props)
             .unwrap();
         match resolved.get("expand") {
             Some(ParameterValue::Number(n)) => assert!((n - 0.1).abs() < 1e-10),
@@ -2340,7 +2359,9 @@ mod tests {
 
         // Binned supports expand
         props.insert("expand".to_string(), ParameterValue::Number(0.2));
-        let resolved = ScaleType::binned().resolve_properties("x", &props).unwrap();
+        let resolved = ScaleType::binned()
+            .resolve_properties("pos1", &props)
+            .unwrap();
         match resolved.get("expand") {
             Some(ParameterValue::Number(n)) => assert!((n - 0.2).abs() < 1e-10),
             _ => panic!("Expected Number"),
@@ -2359,13 +2380,16 @@ mod tests {
 
     #[test]
     fn test_expand_positional_vs_non_positional() {
-        use crate::plot::aesthetic::ALL_POSITIONAL;
+        // Internal positional aesthetics (after transformation)
+        let internal_positional = [
+            "pos1", "pos1min", "pos1max", "pos1end", "pos2", "pos2min", "pos2max", "pos2end",
+        ];
 
         let mut props = HashMap::new();
         props.insert("expand".to_string(), ParameterValue::Number(0.1));
 
         // Positional aesthetics should allow expand
-        for aes in ALL_POSITIONAL.iter() {
+        for aes in internal_positional.iter() {
             assert!(
                 ScaleType::continuous()
                     .resolve_properties(aes, &props)
@@ -2388,12 +2412,15 @@ mod tests {
 
     #[test]
     fn test_oob_defaults_by_aesthetic_type() {
-        use crate::plot::aesthetic::ALL_POSITIONAL;
+        // Internal positional aesthetics (after transformation)
+        let internal_positional = [
+            "pos1", "pos1min", "pos1max", "pos1end", "pos2", "pos2min", "pos2max", "pos2end",
+        ];
 
         let props = HashMap::new();
 
         // Positional aesthetics default to 'keep'
-        for aesthetic in ALL_POSITIONAL.iter() {
+        for aesthetic in internal_positional.iter() {
             let resolved = ScaleType::continuous()
                 .resolve_properties(aesthetic, &props)
                 .unwrap();

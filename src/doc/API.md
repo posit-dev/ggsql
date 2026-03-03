@@ -89,7 +89,7 @@ Validate query syntax and semantics without executing SQL. This function combine
 - Syntax (parsing)
 - Required aesthetics for each geom type
 - Valid scale types (linear, log10, date, etc.)
-- Valid coord types and properties
+- Valid project types and properties
 - Valid geom types
 - Valid aesthetic names
 - Valid SETTING parameters

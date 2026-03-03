@@ -6,7 +6,7 @@ Syntax highlighting for ggsql - SQL with declarative visualization based on Gram
 
 - **Complete syntax highlighting** for ggsql queries
 - **SQL keyword support** (SELECT, FROM, WHERE, JOIN, WITH, etc.)
-- **ggsql clause highlighting**: (SCALE, COORD, FACET, LABEL, etc.)
+- **ggsql clause highlighting**: (SCALE, PROJECT, FACET, LABEL, etc.)
 - **Aesthetic highlighting** (x, y, color, size, shape, etc.)
 - **String and number literals**
 - **Comment support** (`--` and `/* */`)

@@ -15,8 +15,8 @@ impl GeomTrait for Line {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("x", DefaultAestheticValue::Required),
-                ("y", DefaultAestheticValue::Required),
+                ("pos1", DefaultAestheticValue::Required),
+                ("pos2", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("linewidth", DefaultAestheticValue::Number(1.5)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),

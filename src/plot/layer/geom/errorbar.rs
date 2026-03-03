@@ -15,12 +15,12 @@ impl GeomTrait for ErrorBar {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("x", DefaultAestheticValue::Null),
-                ("y", DefaultAestheticValue::Null),
-                ("ymin", DefaultAestheticValue::Null),
-                ("ymax", DefaultAestheticValue::Null),
-                ("xmin", DefaultAestheticValue::Null),
-                ("xmax", DefaultAestheticValue::Null),
+                ("pos1", DefaultAestheticValue::Null),
+                ("pos2", DefaultAestheticValue::Null),
+                ("pos2min", DefaultAestheticValue::Null),
+                ("pos2max", DefaultAestheticValue::Null),
+                ("pos1min", DefaultAestheticValue::Null),
+                ("pos1max", DefaultAestheticValue::Null),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),

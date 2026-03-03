@@ -26,18 +26,37 @@ Read more about each type at their dedicated documentation. You do not have to s
 You *must* specify an aesthetic so that the scale knows which mapping it belongs to. For positional aesthetics you will provide the base name (`x` or `y`) even though you are mapping to e.g. `xmin`. Creating a scale for `colour` (or `color`) will create a scale for both fill and stroke colour based on the settings. 
 
 ### `FROM`
+```ggsql
+FROM <input-range>
+```
+
 The `FROM` clause defines the input range of the scale, i.e. the values the scale translates from. If not provided, it will be deduced from the data as the range that covers all mapped data. For discrete scales the input range is defined as an array of all known values to the scale. Values from the data not present in the input range will be `null`'ed by the scale. For continuous and binned scales this is an array with two elements: the lower and upper boundaries of the scale. Either of these can be `null` in which case that value will be determined by the data (e.g. a range of `[0, null]` will go from 0 to the maximum value in the data). Identity scales do not have an input range.
 
 ### `TO`
+```ggsql
+TO <output-range>
+```
 The `TO` clause defines the output range of the scale, i.e. what the data is translated to. It can either be an array of values or the name of a known palette. Read more under the documentation for the specific scales.
 
 ### `VIA`
+```ggsql
+VIA <transform>
+```
+
 The `VIA` clause defines a transform which is applied to the data before mapping it to the output range. While transforms are often understood as mathematical transforms, in ggsql it also defines casting of input data. E.g. the `integer` transform cast all input to integer before mapping. Transforms also takes care of creating breaks that are meaningful for the specific transform, e.g. in the case of the log10 transform where breaks are created to fit the power of 10. Different transforms are available to different scale types. 
 
 ### `SETTING`
+```ggsql
+SETTING <parameter> => <value>, ...
+```
+
 This clause behaves much like the `SETTINGS` clause in `DRAW`, in that it allows you to fine-tune specific behavior of the scale. Permissible settings depends on the scale type and are documented there.
 
 ### `RENAMING`
+```ggsql
+RENAMING <break-value> => <string>, ...
+```
+
 This clause works much like the `LABEL` clause but works on the break names of the scale. The general syntax is that you provide the name of the break on the left and what it should appear as on the right, e.g `'adelie' => 'Pygoscelis adeliae'`. The clause is understood as a look-up table in the sense that if you provide a renaming for a break that doesn't appear in the scale then nothing will happen and if a break exist but doesn't have a renaming defined it will go through unaltered. To suppress the label of a specific break you can rename it to `null`, e.g. `'adelie' => null`. This will not remove the break, only the label.
 
 #### Break formatting

@@ -509,8 +509,7 @@ mod tests {
     #[test]
     fn test_date_interval_selection_airquality() {
         // airquality data: ~150 days, n=7
-        // Previously: selected Week, generated ~22 breaks
-        // Now: should select Month (150/30 ≈ 5 breaks, within 20% of 7)
+        // Should select Month (150/30 ≈ 5 breaks, within 20% of 7)
         let (interval, step) = DateInterval::select(150.0, 7);
         // Month gives ~5 breaks (within tolerance of 7), or
         // Week with step would give ~5 breaks

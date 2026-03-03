@@ -4,7 +4,8 @@ use polars::prelude::DataType;
 
 use super::super::transform::{Transform, TransformKind};
 use super::{ScaleTypeKind, ScaleTypeTrait, SqlTypeNames};
-use crate::plot::{ArrayElement, ParameterValue};
+use crate::plot::types::{DefaultParam, DefaultParamValue};
+use crate::plot::ArrayElement;
 
 /// Discrete scale type - for categorical/discrete data
 #[derive(Debug, Clone, Copy)]
@@ -55,16 +56,12 @@ impl ScaleTypeTrait for Discrete {
         true
     }
 
-    fn allowed_properties(&self, _aesthetic: &str) -> &'static [&'static str] {
+    fn default_properties(&self) -> &'static [DefaultParam] {
         // Discrete scales always censor OOB values (no OOB setting needed)
-        &["reverse"]
-    }
-
-    fn get_property_default(&self, _aesthetic: &str, name: &str) -> Option<ParameterValue> {
-        match name {
-            "reverse" => Some(ParameterValue::Boolean(false)),
-            _ => None,
-        }
+        &[DefaultParam {
+            name: "reverse",
+            default: DefaultParamValue::Boolean(false),
+        }]
     }
 
     fn allowed_transforms(&self) -> &'static [TransformKind] {
@@ -110,7 +107,7 @@ impl ScaleTypeTrait for Discrete {
                     self.name(),
                     self.allowed_transforms()
                         .iter()
-                        .map(|k| k.name())
+                        .map(|k| k.to_string())
                         .collect::<Vec<_>>()
                         .join(", ")
                 ));

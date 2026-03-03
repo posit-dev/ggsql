@@ -13,7 +13,7 @@
   - VISUALISE/VISUALIZE AS statements
   - WITH clause with geom types (point, line, bar, area, histogram, etc.)
   - SCALE clause with scale types (linear, log10, date, viridis, etc.)
-  - COORD clause with coordinate types (cartesian, polar, flip)
+  - PROJECT clause with projection types (cartesian, polar, flip)
   - FACET clause (WRAP, BY with scale options)
   - LABEL clause (title, subtitle, axis labels, caption)
   - THEME clause (minimal, classic, dark, etc.)

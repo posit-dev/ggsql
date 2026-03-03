@@ -358,14 +358,15 @@ mod duckdb_tests {
             "SELECT * FROM ggsql:penguins VISUALISE DRAW point MAPPING bill_len AS x, bill_dep AS y";
         let result = crate::execute::prepare_data_with_reader(query, &reader).unwrap();
         let dataframe = result.data.get(&naming::layer_key(0)).unwrap();
-        assert!(dataframe.column("__ggsql_aes_x__").is_ok());
-        assert!(dataframe.column("__ggsql_aes_y__").is_ok());
+        // Aesthetics are transformed to internal names (x -> pos1, y -> pos2)
+        assert!(dataframe.column("__ggsql_aes_pos1__").is_ok());
+        assert!(dataframe.column("__ggsql_aes_pos2__").is_ok());
 
         let query = "VISUALISE FROM ggsql:airquality DRAW point MAPPING Temp AS x, Ozone AS y";
         let result = crate::execute::prepare_data_with_reader(query, &reader).unwrap();
         let dataframe = result.data.get(&naming::layer_key(0)).unwrap();
-        assert!(dataframe.column("__ggsql_aes_x__").is_ok());
-        assert!(dataframe.column("__ggsql_aes_y__").is_ok());
+        assert!(dataframe.column("__ggsql_aes_pos1__").is_ok());
+        assert!(dataframe.column("__ggsql_aes_pos2__").is_ok());
     }
 }
 
