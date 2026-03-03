@@ -451,12 +451,35 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../syntax/scale/aesthetic/Z_facetting.html" class="sidebar-item-text sidebar-link">
+  <a href="../syntax/scale/aesthetic/Z_faceting.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Faceting</span></a>
   </div>
 </li>
       </ul>
   </li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="true">
+ <span class="menu-text">Coordinate systems</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-6" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../syntax/coord/cartesian.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Cartesian</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../syntax/coord/polar.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Polar</span></a>
+  </div>
+</li>
       </ul>
   </li>
     </ul>
@@ -471,7 +494,11 @@ gradient teal.
   <ul>
   <li><a href="#main-clauses" id="toc-main-clauses" class="nav-link active" data-scroll-target="#main-clauses">Main Clauses</a></li>
   <li><a href="#layers" id="toc-layers" class="nav-link" data-scroll-target="#layers">Layers</a></li>
-  <li><a href="#scales" id="toc-scales" class="nav-link" data-scroll-target="#scales">Scales</a></li>
+  <li><a href="#scales" id="toc-scales" class="nav-link" data-scroll-target="#scales">Scales</a>
+  <ul class="collapse">
+  <li><a href="#aesthetics" id="toc-aesthetics" class="nav-link" data-scroll-target="#aesthetics">Aesthetics</a></li>
+  <li><a href="#scale-types" id="toc-scale-types" class="nav-link" data-scroll-target="#scale-types">Scale types</a></li>
+  </ul></li>
   <li><a href="#coordinate-systems" id="toc-coordinate-systems" class="nav-link" data-scroll-target="#coordinate-systems">Coordinate systems</a></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
@@ -504,10 +531,10 @@ gradient teal.
 <ul>
 <li><a href="../syntax/clause/visualise.html"><code>VISUALISE</code></a> initiates the visualisation part of the query</li>
 <li><a href="../syntax/clause/draw.html"><code>DRAW</code></a> adds a new layer to the visualisation</li>
-<li><code>SCALE</code> specify how an aesthetic should be scaled</li>
-<li><code>FACET</code> describes how data should be split into small multiples</li>
-<li><code>PROJECT</code> is used for selecting the coordinate system to use</li>
-<li><code>LABEL</code> is used to manually add titles to the plot or the various axes and legends</li>
+<li><a href="../syntax/clause/scale.html"><code>SCALE</code></a> specify how an aesthetic should be scaled</li>
+<li><a href="../syntax/clause/facet.html"><code>FACET</code></a> describes how data should be split into small multiples</li>
+<li><a href="../syntax/clause/project.html"><code>PROJECT</code></a> is used for selecting the coordinate system to use</li>
+<li><a href="../syntax/clause/label.html"><code>LABEL</code></a> is used to manually add titles to the plot or the various axes and legends</li>
 </ul>
 </section>
 <section id="layers" class="level2">
@@ -529,9 +556,38 @@ gradient teal.
 </section>
 <section id="scales" class="level2">
 <h2 class="anchored" data-anchor-id="scales">Scales</h2>
+<p>A scale is responsible for translating a data value to an aesthetic literal, e.g.&nbsp;a specific color for the fill aesthetic, or a radius in points for the size aesthetic. A scale is a combination of a specific aesthetic and a scale type</p>
+<section id="aesthetics" class="level3">
+<h3 class="anchored" data-anchor-id="aesthetics">Aesthetics</h3>
+<ul>
+<li><a href="../syntax/scale/aesthetic/0_position.html">Position</a> aesthetics are those aesthetics realted to the spatial location of the data in the coordinate system.</li>
+<li><a href="../syntax/scale/aesthetic/1_color.html">Color</a> aesthetics are related to the color of fill and stroke</li>
+<li><a href="../syntax/scale/aesthetic/2_opacity.html"><code>opacity</code></a> is the aesthetic that determines the opacity of the color</li>
+<li><a href="../syntax/scale/aesthetic/linetype.html"><code>linetype</code></a> governs the stroke pattern of strokes</li>
+<li><a href="../syntax/scale/aesthetic/linewidth.html"><code>linewidth</code></a> determines the width of strokes</li>
+<li><a href="../syntax/scale/aesthetic/shape.html"><code>shape</code></a> determines the shape of points</li>
+<li><a href="../syntax/scale/aesthetic/size.html"><code>size</code></a> governs the radius of points</li>
+<li><a href="../syntax/scale/aesthetic/Z_faceting.html">Faceting</a> aesthetics are used to determine which facet panel the data belongs to</li>
+</ul>
+</section>
+<section id="scale-types" class="level3">
+<h3 class="anchored" data-anchor-id="scale-types">Scale types</h3>
+<ul>
+<li><a href="../syntax/scale/type/continuous.html"><code>continuous</code></a> scales translates a continuous input to a continuous output</li>
+<li><a href="../syntax/scale/type/discrete.html"><code>discrete</code></a> scales translates discrete input to a discrete output</li>
+<li><a href="../syntax/scale/type/binned.html"><code>binned</code></a> scales translate continuous input to an ordered discrete output by binning the data</li>
+<li><a href="../syntax/scale/type/ordinal.html"><code>ordinal</code></a> scales translate discrete input to an ordered discrete output by enforcing an ordering to the input</li>
+<li><a href="../syntax/scale/type/identity.html"><code>identity</code></a> scales passes the data through unchanged</li>
+</ul>
+</section>
 </section>
 <section id="coordinate-systems" class="level2">
 <h2 class="anchored" data-anchor-id="coordinate-systems">Coordinate systems</h2>
+<p>The coordinate system defines how the abstract positional aesthetics are projected onto the screen or paper where the final plot appears. As such, it has great influence over the final look of the plot.</p>
+<ul>
+<li><a href="../syntax/coord/cartesian.html"><code>cartesian</code></a> is the classic coordinate system consisting of two perpendicular axes, one being horizontal and one being vertical</li>
+<li><a href="../syntax/coord/polar.html"><code>polar</code></a> interprets the primary position as the angular location relative to the center and the secondary position as the distance (radius) from the center, and this creates a circular coordinate system</li>
+</ul>
 
 
 </section>

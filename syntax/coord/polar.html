@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Bar – ggsql</title>
+<title>Polar – ggsql</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -114,17 +114,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
 
 
-<meta property="og:title" content="Bar – ggsql">
+<meta property="og:title" content="Polar – ggsql">
 <meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta property="og:image" content="https://ggsql.org/syntax/layer/assets/logo.png">
+<meta property="og:image" content="https://ggsql.org/syntax/coord/assets/logo.png">
 <meta property="og:site_name" content="ggsql">
 <meta property="og:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
 handle is made up of the classic database silo icon and is coloured in a
 gradient teal.
 ">
-<meta name="twitter:title" content="Bar – ggsql">
+<meta name="twitter:title" content="Polar – ggsql">
 <meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta name="twitter:image" content="https://ggsql.org/syntax/layer/assets/logo.png">
+<meta name="twitter:image" content="https://ggsql.org/syntax/coord/assets/logo.png">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
 handle is made up of the classic database silo icon and is coloured in a
@@ -227,7 +227,7 @@ gradient teal.
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/bar.html">Bar</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/coord/cartesian.html">Coordinate systems</a></li><li class="breadcrumb-item"><a href="../../syntax/coord/polar.html">Polar</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -326,7 +326,7 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/bar.html" class="sidebar-item-text sidebar-link active">
+  <a href="../../syntax/layer/bar.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Bar</span></a>
   </div>
 </li>
@@ -514,7 +514,7 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../../syntax/coord/polar.html" class="sidebar-item-text sidebar-link">
+  <a href="../../syntax/coord/polar.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">Polar</span></a>
   </div>
 </li>
@@ -530,28 +530,28 @@ gradient teal.
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#aesthetics" id="toc-aesthetics" class="nav-link active" data-scroll-target="#aesthetics">Aesthetics</a>
-  <ul class="collapse">
-  <li><a href="#required" id="toc-required" class="nav-link" data-scroll-target="#required">Required</a></li>
-  <li><a href="#optional" id="toc-optional" class="nav-link" data-scroll-target="#optional">Optional</a></li>
-  </ul></li>
+  <li><a href="#default-aesthetics" id="toc-default-aesthetics" class="nav-link active" data-scroll-target="#default-aesthetics">Default aesthetics</a></li>
   <li><a href="#settings" id="toc-settings" class="nav-link" data-scroll-target="#settings">Settings</a></li>
-  <li><a href="#data-transformation" id="toc-data-transformation" class="nav-link" data-scroll-target="#data-transformation">Data transformation</a>
+  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a>
   <ul class="collapse">
-  <li><a href="#properties" id="toc-properties" class="nav-link" data-scroll-target="#properties">Properties</a></li>
-  <li><a href="#calculated-statistics" id="toc-calculated-statistics" class="nav-link" data-scroll-target="#calculated-statistics">Calculated statistics</a></li>
-  <li><a href="#default-remappings" id="toc-default-remappings" class="nav-link" data-scroll-target="#default-remappings">Default remappings</a></li>
+  <li><a href="#pie-chart-using-thetaradius-aesthetics" id="toc-pie-chart-using-thetaradius-aesthetics" class="nav-link" data-scroll-target="#pie-chart-using-thetaradius-aesthetics">Pie chart using theta/radius aesthetics</a></li>
+  <li><a href="#pie-chart-starting-at-3-oclock" id="toc-pie-chart-starting-at-3-oclock" class="nav-link" data-scroll-target="#pie-chart-starting-at-3-oclock">Pie chart starting at 3 o’clock</a></li>
+  <li><a href="#pie-chart-starting-at-9-oclock" id="toc-pie-chart-starting-at-9-oclock" class="nav-link" data-scroll-target="#pie-chart-starting-at-9-oclock">Pie chart starting at 9 o’clock</a></li>
+  <li><a href="#half-circle-gauge-chart" id="toc-half-circle-gauge-chart" class="nav-link" data-scroll-target="#half-circle-gauge-chart">Half-circle gauge chart</a></li>
+  <li><a href="#three-quarter-pie-chart" id="toc-three-quarter-pie-chart" class="nav-link" data-scroll-target="#three-quarter-pie-chart">Three-quarter pie chart</a></li>
+  <li><a href="#donut-chart-with-50-hole" id="toc-donut-chart-with-50-hole" class="nav-link" data-scroll-target="#donut-chart-with-50-hole">Donut chart with 50% hole</a></li>
+  <li><a href="#donut-chart-with-30-hole" id="toc-donut-chart-with-30-hole" class="nav-link" data-scroll-target="#donut-chart-with-30-hole">Donut chart with 30% hole</a></li>
+  <li><a href="#half-circle-donut-chart" id="toc-half-circle-donut-chart" class="nav-link" data-scroll-target="#half-circle-donut-chart">Half-circle donut chart</a></li>
   </ul></li>
-  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
     </div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/bar.html">Bar</a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/coord/cartesian.html">Coordinate systems</a></li><li class="breadcrumb-item"><a href="../../syntax/coord/polar.html">Polar</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">Bar</h1>
+<h1 class="title">Polar</h1>
 </div>
 
 
@@ -568,151 +568,52 @@ gradient teal.
 </header>
 
 
-<blockquote class="blockquote">
-<p>Layers are declared with the <a href="../../syntax/clause/draw.html"><code>DRAW</code> clause</a>. Read the documentation for this clause for a thorough description of how to use it.</p>
-</blockquote>
-<p>The bar layer is used to create bar plots. You can either specify the height of the bars directly or let the layer calculate it either as the count of records within the same group or as a weighted sum of the records.</p>
-<section id="aesthetics" class="level2">
-<h2 class="anchored" data-anchor-id="aesthetics">Aesthetics</h2>
-<p>The following aesthetics are recognised by the bar layer.</p>
-<section id="required" class="level3">
-<h3 class="anchored" data-anchor-id="required">Required</h3>
-<p>The bar layer has no required aesthetics</p>
-</section>
-<section id="optional" class="level3">
-<h3 class="anchored" data-anchor-id="optional">Optional</h3>
+<p>The polar coordinate system interprets its primary aesthetic as the angular position relative to the center, and the secondary aesthetic as the distance from the center. It is most often used for pie-charts and radar plots.</p>
+<section id="default-aesthetics" class="level2">
+<h2 class="anchored" data-anchor-id="default-aesthetics">Default aesthetics</h2>
+<p>The polar coordinate system has the following default positional aesthetics which will be used if no others have been provided:</p>
 <ul>
-<li><code>x</code>: Position on the x-axis. If missing all records will be shown in the same bar</li>
-<li><code>y</code>: The height of the plot. If missing, it will be calculated by the layer</li>
-<li><code>colour</code>: The default colour of each bar</li>
-<li><code>stroke</code>: The colour of the stroke around each bar. Overrides <code>colour</code></li>
-<li><code>fill</code>: The fill colour of each bar. Overrides <code>colour</code></li>
-<li><code>opacity</code>: The opacity of the bar fill</li>
-<li><code>linewidth</code>: The width of the stroke</li>
-<li><code>linetype</code>: The type of stroke, i.e.&nbsp;the dashing pattern</li>
+<li><strong>Primary</strong>: <code>theta</code> (angular position)</li>
+<li><strong>Secondary</strong>: <code>radius</code> (distance from center)</li>
 </ul>
-</section>
+<p>Users can provide their own aesthetic names if needed. For example, if using <code>x</code> and <code>y</code> aesthetics:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="at">y</span>, <span class="at">x</span> <span class="kw">TO</span> <span class="dt">polar</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>This maps <code>y</code> to theta (angle) and <code>x</code> to radius. This is useful when converting from a cartesian coordinate system without editing all the mappings.</p>
 </section>
 <section id="settings" class="level2">
 <h2 class="anchored" data-anchor-id="settings">Settings</h2>
 <ul>
-<li><code>width</code>: The width of the bars as a proportion of the available width</li>
-</ul>
-</section>
-<section id="data-transformation" class="level2">
-<h2 class="anchored" data-anchor-id="data-transformation">Data transformation</h2>
-<p>If <code>y</code> has not been mapped the layer will calculate it for you.</p>
-<section id="properties" class="level3">
-<h3 class="anchored" data-anchor-id="properties">Properties</h3>
+<li><code>clip</code>: Should data be removed if it appears outside the bounds of the coordinate system. Defaults to <code>true</code></li>
+<li><code>start</code>: The starting angle in degrees for the theta scale. Controls where “0” on the angular axis begins. Defaults to <code>0</code> (12 o’clock position).
 <ul>
-<li><code>weight</code>: If mapped, the sum of the weights within each group is calculated instead of the count in each group</li>
-</ul>
-</section>
-<section id="calculated-statistics" class="level3">
-<h3 class="anchored" data-anchor-id="calculated-statistics">Calculated statistics</h3>
+<li><code>0</code> = 12 o’clock position (top)</li>
+<li><code>90</code> = 3 o’clock position (right)</li>
+<li><code>-90</code> or <code>270</code> = 9 o’clock position (left)</li>
+<li><code>180</code> = 6 o’clock position (bottom)</li>
+</ul></li>
+<li><code>end</code>: The ending angle in degrees for the theta scale. Defaults to <code>start + 360</code> (a full circle). Use this with <code>start</code> to create partial polar plots like gauge charts or half-circle visualizations.</li>
+<li><code>inner</code>: The inner radius as a proportion (0 to 1) of the outer radius. Defaults to <code>0</code> (no hole). Setting this creates a donut chart where the inner portion is empty.
 <ul>
-<li><code>count</code>: The count or, if <code>weight</code> have been mapped, sum of weights in each group.</li>
-<li><code>proportion</code>: The groupwise proportion, i.e.&nbsp;the <code>count</code> divided by the sum of <code>count</code> within each group</li>
+<li><code>0</code> = full pie (no hole)</li>
+<li><code>0.3</code> = donut with 30% hole</li>
+<li><code>0.5</code> = donut with 50% hole</li>
+</ul></li>
 </ul>
-</section>
-<section id="default-remappings" class="level3">
-<h3 class="anchored" data-anchor-id="default-remappings">Default remappings</h3>
-<ul>
-<li><code>count AS y</code>: By default the barplot will show count as the height of the bars</li>
-</ul>
-</section>
 </section>
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
-<p>Show the number of each species in the data</p>
-<div id="e03b50ab" class="cell" data-execution_count="1">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:penguins</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> species AS <span class="at">x</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="1">
-<div id="vis-1772517338374"></div>
-<script type="text/javascript">
-  (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":68,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":124,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":152,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '150' ? '150' : datum.label == '100' ? '100' : datum.label == '50' ? '50' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-7.6,159.6],"zero":false},"title":"count","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '150' ? '150' : datum.label == '100' ? '100' : datum.label == '50' ? '50' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[-7.6,159.6]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1772517338374';
-    const container = document.getElementById(visId);
-    container.style.width = '100%';
-    container.style.height = '400px';
-
-    // Use full height in Positron's Plots pane
-    if (container.closest('.positron-output-container')) {
-      container.style.height = '100vh';
-    }
-
-    const options = {
-      "actions": true,
-    };
-
-    // Check if we're in a Jupyter environment with require.js
-    if (typeof window.requirejs !== 'undefined') {
-      // Use require.js to load Vega libraries
-      window.requirejs.config({
-        paths: {
-          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
-          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
-          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
-        }
-      });
-
-      function docReady(fn) {
-        if (document.readyState === 'complete') fn();
-        else window.addEventListener("load", () => {
-          fn();
-        });
-      }
-      docReady(function() {
-        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
-            domReady(function () {
-              vegaEmbed('#' + visId, spec, options).catch(console.error);
-            });
-        });
-      });
-    } else {
-      // Fallback for non-Jupyter environments
-      function loadScript(src) {
-        return new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = src;
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
-      }
-
-      Promise.all([
-        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
-      ])
-        .then(() => {
-          vegaEmbed('#' + visId, spec, options)
-            .catch(console.error);
-        })
-        .catch(err => {
-          console.error('Failed to load Vega libraries:', err);
-        });
-    }
-  })();
-</script>
-</div>
-</div>
-<p>Use <code>weight</code> to instead show the collective mass of each species</p>
-<div id="589b7941" class="cell" data-execution_count="2">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<section id="pie-chart-using-thetaradius-aesthetics" class="level3">
+<h3 class="anchored" data-anchor-id="pie-chart-using-thetaradius-aesthetics">Pie chart using theta/radius aesthetics</h3>
+<div id="75fde202" class="cell" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> species AS <span class="at">x</span>, body_mass AS <span class="at">weight</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="2">
-<div id="vis-1772517338395"></div>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="1">
+<div id="vis-1772517362080"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":253850.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":624350.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":558800.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"x":{"axis":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '400000' ? '400000' : datum.label == '200000' ? '200000' : datum.label == '600000' ? '600000' : datum.label","values":[0.0,200000.0,400000.0,600000.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-31217.5,655567.5],"zero":false},"title":"count","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '400000' ? '400000' : datum.label == '200000' ? '200000' : datum.label == '600000' ? '600000' : datum.label","values":[0.0,200000.0,400000.0,600000.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[-31217.5,655567.5]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1772517338395';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":124,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":152,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":68,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F3C300","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"radius":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '100' ? '100' : datum.label == '50' ? '50' : datum.label == '150' ? '150' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-7.6,159.6],"zero":false},"title":"count","type":"quantitative"},"radius2":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '100' ? '100' : datum.label == '50' ? '50' : datum.label == '150' ? '150' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[-7.6,159.6]},"title":null,"type":"quantitative"},"stroke":{"value":"black"},"theta":{"axis":null,"field":"__ggsql_aes_pos1__","scale":{"domain":["__ggsql_stat_dummy"],"zero":false},"title":"pos1","type":"nominal"}},"mark":"arc","transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1772517362080';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -780,17 +681,99 @@ gradient teal.
 </script>
 </div>
 </div>
-<p>Map fill to a discrete value to create a stacked bar chart</p>
-<div id="c79edb87" class="cell" data-execution_count="3">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:penguins</span>
+</section>
+<section id="pie-chart-starting-at-3-oclock" class="level3">
+<h3 class="anchored" data-anchor-id="pie-chart-starting-at-3-oclock">Pie chart starting at 3 o’clock</h3>
+<div id="6bb7c14f" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> species AS <span class="at">x</span>, island AS <span class="at">fill</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span> <span class="kw">SETTING</span> start <span class="op">=&gt;</span> <span class="dv">90</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<div id="vis-1772517362101"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":124,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":152,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":68,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F3C300","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"radius":{"axis":{"labelExpr":"datum.label == '100' ? '100' : datum.label == '0' ? '0' : datum.label == '150' ? '150' : datum.label == '50' ? '50' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-7.6,159.6],"zero":false},"title":"count","type":"quantitative"},"radius2":{"axis":{"labelExpr":"datum.label == '100' ? '100' : datum.label == '0' ? '0' : datum.label == '150' ? '150' : datum.label == '50' ? '50' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[-7.6,159.6]},"title":null,"type":"quantitative"},"stroke":{"value":"black"},"theta":{"axis":null,"field":"__ggsql_aes_pos1__","scale":{"range":[1.5707963267948966,7.853981633974483]},"title":"pos1","type":"nominal"}},"mark":"arc","transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1772517362101';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="pie-chart-starting-at-9-oclock" class="level3">
+<h3 class="anchored" data-anchor-id="pie-chart-starting-at-9-oclock">Pie chart starting at 9 o’clock</h3>
+<div id="6713f472" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span> <span class="kw">SETTING</span> start <span class="op">=&gt;</span> <span class="dv">-90</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
-<div id="vis-1772517338416"></div>
+<div id="vis-1772517362122"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":44,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":124,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":68,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":56,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Torgersen","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":52,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Torgersen' ? 'Torgersen' : datum.label == 'Dream' ? 'Dream' : datum.label == 'Biscoe' ? 'Biscoe' : datum.label"},"scale":{"domain":["Biscoe","Dream","Torgersen"],"range":["#0067A5","#F3C300","#008856"]},"title":"island","type":"nominal"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"x":{"axis":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '0' ? '0' : datum.label == '100' ? '100' : datum.label","values":[0.0,50.0,100.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-6.2,130.2],"zero":false},"title":"count","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '0' ? '0' : datum.label == '100' ? '100' : datum.label","values":[0.0,50.0,100.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[-6.2,130.2]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1772517338416';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":124,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":152,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":68,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F3C300","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"radius":{"axis":{"labelExpr":"datum.label == '100' ? '100' : datum.label == '50' ? '50' : datum.label == '150' ? '150' : datum.label == '0' ? '0' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-7.6,159.6],"zero":false},"title":"count","type":"quantitative"},"radius2":{"axis":{"labelExpr":"datum.label == '100' ? '100' : datum.label == '50' ? '50' : datum.label == '150' ? '150' : datum.label == '0' ? '0' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[-7.6,159.6]},"title":null,"type":"quantitative"},"stroke":{"value":"black"},"theta":{"axis":null,"field":"__ggsql_aes_pos1__","scale":{"range":[-1.5707963267948966,4.71238898038469]},"title":"pos1","type":"nominal"}},"mark":"arc","transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1772517362122';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -858,99 +841,19 @@ gradient teal.
 </script>
 </div>
 </div>
-<p>Map to y if the dataset already contains the value you want to show</p>
-<div id="6863b671" class="cell" data-execution_count="4">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> species, <span class="fu">MAX</span>(body_mass) <span class="kw">AS</span> max_mass <span class="kw">FROM</span> ggsql:penguins</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">GROUP</span> <span class="kw">BY</span> species</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span></span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> species AS <span class="at">x</span>, max_mass AS <span class="at">y</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="4">
-<div id="vis-1772517338432"></div>
-<script type="text/javascript">
-  (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":6300,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":4800,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":4775,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"x":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '4000' ? '4000' : datum.label == '0' ? '0' : datum.label == '2000' ? '2000' : datum.label == '6000' ? '6000' : datum.label","values":[0.0,2000.0,4000.0,6000.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-315.0,6615.0],"zero":false},"title":"max_mass","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '4000' ? '4000' : datum.label == '0' ? '0' : datum.label == '2000' ? '2000' : datum.label == '6000' ? '6000' : datum.label","values":[0.0,2000.0,4000.0,6000.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[-315.0,6615.0]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1772517338432';
-    const container = document.getElementById(visId);
-    container.style.width = '100%';
-    container.style.height = '400px';
-
-    // Use full height in Positron's Plots pane
-    if (container.closest('.positron-output-container')) {
-      container.style.height = '100vh';
-    }
-
-    const options = {
-      "actions": true,
-    };
-
-    // Check if we're in a Jupyter environment with require.js
-    if (typeof window.requirejs !== 'undefined') {
-      // Use require.js to load Vega libraries
-      window.requirejs.config({
-        paths: {
-          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
-          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
-          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
-        }
-      });
-
-      function docReady(fn) {
-        if (document.readyState === 'complete') fn();
-        else window.addEventListener("load", () => {
-          fn();
-        });
-      }
-      docReady(function() {
-        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
-            domReady(function () {
-              vegaEmbed('#' + visId, spec, options).catch(console.error);
-            });
-        });
-      });
-    } else {
-      // Fallback for non-Jupyter environments
-      function loadScript(src) {
-        return new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = src;
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
-      }
-
-      Promise.all([
-        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
-      ])
-        .then(() => {
-          vegaEmbed('#' + visId, spec, options)
-            .catch(console.error);
-        })
-        .catch(err => {
-          console.error('Failed to load Vega libraries:', err);
-        });
-    }
-  })();
-</script>
-</div>
-</div>
-<p>Use together with a binned scale as an alternative to the <a href="../../syntax/layer/histogram.html">histogram layer</a></p>
-<div id="6c58ff8d" class="cell" data-execution_count="5">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:penguins</span>
+</section>
+<section id="half-circle-gauge-chart" class="level3">
+<h3 class="anchored" data-anchor-id="half-circle-gauge-chart">Half-circle gauge chart</h3>
+<div id="8812a4b5" class="cell" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> body_mass AS <span class="at">x</span></span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span></span>
-<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">breaks</span> <span class="op">=&gt;</span> <span class="dv">10</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="5">
-<div id="vis-1772517338454"></div>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span> <span class="kw">SETTING</span> start <span class="op">=&gt;</span> <span class="dv">-90</span>, end <span class="op">=&gt;</span> <span class="dv">90</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<div id="vis-1772517362144"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":4500.0,"__ggsql_aes_pos1end__":5000.0,"__ggsql_aes_pos2__":51,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":5000.0,"__ggsql_aes_pos1end__":5500.0,"__ggsql_aes_pos2__":34,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":null,"__ggsql_aes_pos1end__":null,"__ggsql_aes_pos2__":2,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":2500.0,"__ggsql_aes_pos1end__":3000.0,"__ggsql_aes_pos2__":9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":5500.0,"__ggsql_aes_pos1end__":6000.0,"__ggsql_aes_pos2__":29,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":3000.0,"__ggsql_aes_pos1end__":3500.0,"__ggsql_aes_pos2__":62,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":3500.0,"__ggsql_aes_pos1end__":4000.0,"__ggsql_aes_pos2__":94,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":4000.0,"__ggsql_aes_pos1end__":4500.0,"__ggsql_aes_pos2__":59,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":6000.0,"__ggsql_aes_pos1end__":6500.0,"__ggsql_aes_pos2__":4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"x":{"axis":{"labelExpr":"datum.label == '4000' ? '4000' : datum.label == '3000' ? '3000' : datum.label == '2500' ? '2500' : datum.label == '5000' ? '5000' : datum.label == '6000' ? '6000' : datum.label == '3500' ? '3500' : datum.label == '4500' ? '4500' : datum.label == '6500' ? '6500' : datum.label == '5500' ? '5500' : datum.label","values":[2500.0,3000.0,3500.0,4000.0,4500.0,5000.0,5500.0,6000.0,6500.0]},"bin":"binned","field":"__ggsql_aes_pos1__","scale":{"domain":[2300.0,6700.0],"zero":false},"title":"body_mass","type":"quantitative"},"x2":{"field":"__ggsql_aes_pos1end__"},"y":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '0' ? '0' : datum.label == '20' ? '20' : datum.label == '40' ? '40' : datum.label == '80' ? '80' : datum.label","values":[0.0,20.0,40.0,60.0,80.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-4.7,98.7],"zero":false},"title":"count","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '0' ? '0' : datum.label == '20' ? '20' : datum.label == '40' ? '40' : datum.label == '80' ? '80' : datum.label","values":[0.0,20.0,40.0,60.0,80.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[-4.7,98.7]},"title":null,"type":"quantitative"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1772517338454';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":124,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":152,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":68,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F3C300","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"radius":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '100' ? '100' : datum.label == '50' ? '50' : datum.label == '150' ? '150' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-7.6,159.6],"zero":false},"title":"count","type":"quantitative"},"radius2":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '100' ? '100' : datum.label == '50' ? '50' : datum.label == '150' ? '150' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[-7.6,159.6]},"title":null,"type":"quantitative"},"stroke":{"value":"black"},"theta":{"axis":null,"field":"__ggsql_aes_pos1__","scale":{"range":[-1.5707963267948966,1.5707963267948966]},"title":"pos1","type":"nominal"}},"mark":"arc","transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1772517362144';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -1018,8 +921,334 @@ gradient teal.
 </script>
 </div>
 </div>
+<p>This creates a gauge chart spanning from the 9 o’clock to 3 o’clock position (a 180° arc at the top).</p>
+</section>
+<section id="three-quarter-pie-chart" class="level3">
+<h3 class="anchored" data-anchor-id="three-quarter-pie-chart">Three-quarter pie chart</h3>
+<div id="2c165f7d" class="cell" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span> <span class="kw">SETTING</span> end <span class="op">=&gt;</span> <span class="dv">270</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<div id="vis-1772517362165"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":124,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":152,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":68,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F3C300","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"radius":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '50' ? '50' : datum.label == '150' ? '150' : datum.label == '100' ? '100' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-7.6,159.6],"zero":false},"title":"count","type":"quantitative"},"radius2":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '50' ? '50' : datum.label == '150' ? '150' : datum.label == '100' ? '100' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[-7.6,159.6]},"title":null,"type":"quantitative"},"stroke":{"value":"black"},"theta":{"axis":null,"field":"__ggsql_aes_pos1__","scale":{"range":[0.0,4.71238898038469]},"title":"pos1","type":"nominal"}},"mark":"arc","transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1772517362165';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>This creates a pie chart using only 270° (three-quarters of a circle), starting from 0° (12 o’clock) and ending at 270° (9 o’clock).</p>
+</section>
+<section id="donut-chart-with-50-hole" class="level3">
+<h3 class="anchored" data-anchor-id="donut-chart-with-50-hole">Donut chart with 50% hole</h3>
+<div id="1cabf7be" class="cell" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span> <span class="kw">SETTING</span> inner <span class="op">=&gt;</span> <span class="dv">0.5</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<div id="vis-1772517362186"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":124,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":152,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":68,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F3C300","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"radius":{"axis":{"labelExpr":"datum.label == '100' ? '100' : datum.label == '0' ? '0' : datum.label == '150' ? '150' : datum.label == '50' ? '50' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2__","scale":{"range":[{"expr":"min(width,height)/2*0.5"},{"expr":"min(width,height)/2"}]},"title":"count","type":"quantitative"},"radius2":{"axis":{"labelExpr":"datum.label == '100' ? '100' : datum.label == '0' ? '0' : datum.label == '150' ? '150' : datum.label == '50' ? '50' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2end__","scale":{"range":[{"expr":"min(width,height)/2*0.5"},{"expr":"min(width,height)/2"}]},"title":null,"type":"quantitative"},"stroke":{"value":"black"},"theta":{"axis":null,"field":"__ggsql_aes_pos1__","scale":{"domain":["__ggsql_stat_dummy"],"zero":false},"title":"pos1","type":"nominal"}},"mark":"arc","transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1772517362186';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>This creates a donut chart where the inner 50% of the radius is empty, leaving a ring-shaped visualization.</p>
+</section>
+<section id="donut-chart-with-30-hole" class="level3">
+<h3 class="anchored" data-anchor-id="donut-chart-with-30-hole">Donut chart with 30% hole</h3>
+<div id="ce9bddac" class="cell" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span> <span class="kw">SETTING</span> inner <span class="op">=&gt;</span> <span class="dv">0.3</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<div id="vis-1772517362207"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":124,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":152,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":68,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F3C300","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"radius":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '100' ? '100' : datum.label == '150' ? '150' : datum.label == '50' ? '50' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2__","scale":{"range":[{"expr":"min(width,height)/2*0.3"},{"expr":"min(width,height)/2"}]},"title":"count","type":"quantitative"},"radius2":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '100' ? '100' : datum.label == '150' ? '150' : datum.label == '50' ? '50' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2end__","scale":{"range":[{"expr":"min(width,height)/2*0.3"},{"expr":"min(width,height)/2"}]},"title":null,"type":"quantitative"},"stroke":{"value":"black"},"theta":{"axis":null,"field":"__ggsql_aes_pos1__","scale":{"domain":["__ggsql_stat_dummy"],"zero":false},"title":"pos1","type":"nominal"}},"mark":"arc","transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1772517362207';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>This creates a donut chart with a smaller hole (30% of the radius).</p>
+</section>
+<section id="half-circle-donut-chart" class="level3">
+<h3 class="anchored" data-anchor-id="half-circle-donut-chart">Half-circle donut chart</h3>
+<div id="ce63eee5" class="cell" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span> <span class="kw">SETTING</span> start <span class="op">=&gt;</span> <span class="dv">-90</span>, end <span class="op">=&gt;</span> <span class="dv">90</span>, inner <span class="op">=&gt;</span> <span class="dv">0.5</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<div id="vis-1772517362228"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":152,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":68,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"__ggsql_stat_dummy","__ggsql_aes_pos2__":124,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F3C300","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"radius":{"axis":{"labelExpr":"datum.label == '150' ? '150' : datum.label == '0' ? '0' : datum.label == '50' ? '50' : datum.label == '100' ? '100' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2__","scale":{"range":[{"expr":"min(width,height)/2*0.5"},{"expr":"min(width,height)/2"}]},"title":"count","type":"quantitative"},"radius2":{"axis":{"labelExpr":"datum.label == '150' ? '150' : datum.label == '0' ? '0' : datum.label == '50' ? '50' : datum.label == '100' ? '100' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2end__","scale":{"range":[{"expr":"min(width,height)/2*0.5"},{"expr":"min(width,height)/2"}]},"title":null,"type":"quantitative"},"stroke":{"value":"black"},"theta":{"axis":null,"field":"__ggsql_aes_pos1__","scale":{"range":[-1.5707963267948966,1.5707963267948966]},"title":"pos1","type":"nominal"}},"mark":"arc","transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1772517362228';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>This combines the <code>start</code>, <code>end</code>, and <code>inner</code> settings to create a half-circle donut chart (gauge style) spanning from 9 o’clock to 3 o’clock with a 50% hole.</p>
 
 
+</section>
 </section>
 
 </main> <!-- /main -->

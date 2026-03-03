@@ -486,12 +486,35 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../../syntax/scale/aesthetic/Z_facetting.html" class="sidebar-item-text sidebar-link">
+  <a href="../../syntax/scale/aesthetic/Z_faceting.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Faceting</span></a>
   </div>
 </li>
       </ul>
   </li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="true">
+ <span class="menu-text">Coordinate systems</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-6" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/coord/cartesian.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Cartesian</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/coord/polar.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Polar</span></a>
+  </div>
+</li>
       </ul>
   </li>
     </ul>
@@ -504,7 +527,10 @@ gradient teal.
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#clause-syntax" id="toc-clause-syntax" class="nav-link active" data-scroll-target="#clause-syntax">Clause syntax</a></li>
+  <li><a href="#clause-syntax" id="toc-clause-syntax" class="nav-link active" data-scroll-target="#clause-syntax">Clause syntax</a>
+  <ul class="collapse">
+  <li><a href="#from" id="toc-from" class="nav-link" data-scroll-target="#from"><code>FROM</code></a></li>
+  </ul></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
     </div>
@@ -534,7 +560,7 @@ gradient teal.
 <section id="clause-syntax" class="level2">
 <h2 class="anchored" data-anchor-id="clause-syntax">Clause syntax</h2>
 <p>The <code>VISUALISE</code> clause is quite simple and doesn’t take any additional required parameters. You can, however, use it to define global mappings and a global data source (if the earlier query didn’t end in a <code>SELECT</code>).</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>VISUALISE <span class="op">&lt;</span>mapping<span class="op">&gt;</span>, <span class="op">..</span>. <span class="kw">FROM</span> <span class="op">&lt;</span><span class="kw">data</span><span class="op">-</span><span class="kw">source</span><span class="op">&gt;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="op">&lt;</span>mapping<span class="op">&gt;</span>, ... <span class="kw">FROM</span> <span class="op">&lt;</span>data<span class="op">-</span>source<span class="op">&gt;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Following <code>VISUALISE</code> you can provide a series of global mappings. These will be inherited by the layers created with the <code>DRAW</code> clause but can be overwritten by them. Mappings define how data from the dataset are related to visual aesthetics or statistical properties. Multiple mappings can be provided by separating them with a comma. Mapped aesthetics are always scaled by their respective scale. This means that if you map the value ‘red’ to fill, then fill will not take the color red, but whatever the scale decides should represent the string ‘red’.</p>
 <p><code>VISUALISE</code> may have a <code>FROM</code> clause that defines the source of the global data. If present it overwrites the terminal <code>SELECT</code> clause in the previous query as the global data. Global data is used by layers that do not specify their own data source with <code>MAPPING ... FROM &lt;data-source&gt;</code>.</p>
 <p>The <code>mapping</code> can take one of three forms and all three can be mixed:</p>
@@ -555,13 +581,17 @@ gradient teal.
 <p>Mapped aesthetics are always scaled by their respective scale, whereas properties are not (there are no scales for properties).</p>
 </blockquote>
 <p>Layers only inherit the aesthetics and properties they support from the global mapping. The documentation for each layer type provides an overview of the aesthetics and properties available for them.</p>
-<p>When specifying a global data source with <code>FROM &lt;data-source&gt;</code> the <code>data-source</code> can take one of two different forms:</p>
+<section id="from" class="level3">
+<h3 class="anchored" data-anchor-id="from"><code>FROM</code></h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> <span class="op">&lt;</span>data<span class="op">-</span>source<span class="op">&gt;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>When specifying a global data source the <code>data-source</code> can take one of two different forms:</p>
 <ul>
 <li><em>Table/CTE</em>: If providing an unquoted identifier it is assumed that the data is available in the backend, either as a CTE defined in the pre-query, or as a proper table in the database.</li>
 <li><em>Filepath</em>: If a string is provided (single quoted), it is assumed to point to a file that can be read directly by the backend.</li>
 </ul>
 
 
+</section>
 </section>
 
 </main> <!-- /main -->

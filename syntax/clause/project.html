@@ -20,6 +20,41 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
@@ -77,6 +112,7 @@ ul.task-list li input[type="checkbox"] {
 
 
 <meta property="og:title" content="Control the coordinate system with PROJECT – ggsql">
+<meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
 <meta property="og:image" content="https://ggsql.org/syntax/clause/assets/logo.png">
 <meta property="og:site_name" content="ggsql">
 <meta property="og:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
@@ -84,6 +120,7 @@ handle is made up of the classic database silo icon and is coloured in a
 gradient teal.
 ">
 <meta name="twitter:title" content="Control the coordinate system with PROJECT – ggsql">
+<meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
 <meta name="twitter:image" content="https://ggsql.org/syntax/clause/assets/logo.png">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
@@ -449,7 +486,7 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../../syntax/scale/aesthetic/Z_facetting.html" class="sidebar-item-text sidebar-link">
+  <a href="../../syntax/scale/aesthetic/Z_faceting.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Faceting</span></a>
   </div>
 </li>
@@ -457,13 +494,47 @@ gradient teal.
   </li>
       </ul>
   </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="true">
+ <span class="menu-text">Coordinate systems</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-6" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/coord/cartesian.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Cartesian</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/coord/polar.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Polar</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
     </ul>
     </div>
 </nav>
 <div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
-    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar zindex-bottom">
-        
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#clause-syntax" id="toc-clause-syntax" class="nav-link active" data-scroll-target="#clause-syntax">Clause syntax</a>
+  <ul class="collapse">
+  <li><a href="#to" id="toc-to" class="nav-link" data-scroll-target="#to"><code>TO</code></a></li>
+  <li><a href="#setting" id="toc-setting" class="nav-link" data-scroll-target="#setting"><code>SETTING</code></a></li>
+  </ul></li>
+  <li><a href="#coordinate-system-inference" id="toc-coordinate-system-inference" class="nav-link" data-scroll-target="#coordinate-system-inference">Coordinate system inference</a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
     </div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
@@ -487,8 +558,36 @@ gradient teal.
 </header>
 
 
+<p>The <code>PROJECT</code> clause defines the projection of the plot, that is, how abstract positional aesthetics are translated (projected) onto the plane defined by the screen/paper where the plot is viewed on.</p>
+<section id="clause-syntax" class="level2">
+<h2 class="anchored" data-anchor-id="clause-syntax">Clause syntax</h2>
+<p>The <code>PROJECT</code> syntax contains a number of subclauses</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="op">&lt;</span>aesthetic<span class="op">&gt;</span>, ... <span class="kw">TO</span> <span class="op">&lt;</span>coordinate<span class="op">-</span>system<span class="op">&gt;</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="op">&lt;</span>parameter<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span>value<span class="op">&gt;</span>, ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The comma-separated list of <code>aesthetic</code> names are optional but allows you to define the names of the positional aesthetics in the plot. If omitted, the default aesthetic names of the coordinate system is used. The order given matters as the first name is used for the primary aesthetic, the second name for the secondary aesthetic and so on. For instance, using <code>PROJECT y, x TO cartesian</code> will flip the plot as anything mapped to <code>y</code> will now relate to the horizontal axis, and anything mapped to <code>x</code> will relate to the vertical axis. Note that it is not allowed to use the name of already established aesthetics as positional aesthetics, e.g.&nbsp;<code>PROJECT fill, stroke TO polar</code> is not allowed.</p>
+<section id="to" class="level3">
+<h3 class="anchored" data-anchor-id="to"><code>TO</code></h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TO</span> <span class="op">&lt;</span>coordinate<span class="op">-</span>system<span class="op">&gt;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The <code>TO</code> clause is required and is followed by the name of the <a href="../../syntax/index.html#coordinate-systems">coordinate system</a>. The coordinate system provides default names for the positional aesthetics and is responsible for how to translate values mapped to these onto the plane defined by the screen or paper.</p>
+</section>
+<section id="setting" class="level3">
+<h3 class="anchored" data-anchor-id="setting"><code>SETTING</code></h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SETTING</span> <span class="op">&lt;</span>parameter<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span>value<span class="op">&gt;</span>, ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>This clause behaves much like the <code>SETTINGS</code> clause in <code>DRAW</code>, in that it allows you to fine-tune specific behavior of the projection. The specific coordinate system defines it’s own valid settings. Consult the <a href="../../syntax/index.html#coordinate-systems">coord documentations</a> to read more.</p>
+</section>
+</section>
+<section id="coordinate-system-inference" class="level2">
+<h2 class="anchored" data-anchor-id="coordinate-system-inference">Coordinate system inference</h2>
+<p>If you do not provide a <code>PROJECT</code> clause then the coordinate system will be picked for you based on the mappings in your query. The logic is as follows</p>
+<ul>
+<li>If <code>x</code>, <code>y</code> or any of their variants are mapped to, a Cartesian coordinate system is used</li>
+<li>If <code>theta</code>, <code>radius</code> or any of their variants are mapped to, a polar coordinate system is used</li>
+<li>If none of the above applies, the plot defaults to a Cartesian coordinate system</li>
+<li>If multiple applies (e.g.&nbsp;mapping to both x and theta) an error is thrown</li>
+</ul>
 
 
+</section>
 
 </main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
@@ -896,4 +995,4 @@ gradient teal.
 
 
 
-<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

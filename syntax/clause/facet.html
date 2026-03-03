@@ -486,12 +486,35 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../../syntax/scale/aesthetic/Z_facetting.html" class="sidebar-item-text sidebar-link">
+  <a href="../../syntax/scale/aesthetic/Z_faceting.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Faceting</span></a>
   </div>
 </li>
       </ul>
   </li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="true">
+ <span class="menu-text">Coordinate systems</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-6" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/coord/cartesian.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Cartesian</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/coord/polar.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Polar</span></a>
+  </div>
+</li>
       </ul>
   </li>
     </ul>
@@ -545,10 +568,12 @@ gradient teal.
 <p>The first <code>column</code> is mandatory. It names a column in the layer data that will be used for splitting the data. If the layer data does not contain the column the behavior for that layer depends on the <code>missing</code> parameter of the facet.</p>
 <section id="by" class="level3">
 <h3 class="anchored" data-anchor-id="by"><code>BY</code></h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">BY</span> <span class="op">&lt;</span>column<span class="op">&gt;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>The optional <code>BY</code> clause is used to define an additional column to split the data by. If it is missing the small multiples are laid out in a grid with the facet panels filling the cells in a row-wise fashion. If <code>BY</code> is present then the categories of the first <code>column</code> defines the rows of the grid and the categories of the second <code>column</code> the columns of the grid. Each multiple is then positioned according to that.</p>
 </section>
 <section id="setting" class="level3">
 <h3 class="anchored" data-anchor-id="setting"><code>SETTING</code></h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SETTING</span> <span class="op">&lt;</span>parameter<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span>value<span class="op">&gt;</span>, ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>This clause behaves much like the <code>SETTINGS</code> clause in <code>DRAW</code>, in that it allows you to fine-tune specific behavior of the faceting. The following parameters exist:</p>
 <ul>
 <li><code>free</code>: Controls whether the positional scales are independent across the small multiples. Permissible values are:
@@ -564,14 +589,14 @@ gradient teal.
 </section>
 <section id="facet-variables-as-aesthetics" class="level3">
 <h3 class="anchored" data-anchor-id="facet-variables-as-aesthetics">Facet variables as aesthetics</h3>
-<p>When you apply faceting to a plot you are creating new aesthetics you can control. For 1-dimensional faceting (no <code>BY</code> clause) the aesthetic is called <code>panel</code> and for 2-dimensional faceting the aesthetics are called <code>row</code> and <code>column</code>. You can read more about these aesthetics in <a href="../../syntax/scale/aesthetic/Z_facetting.html">their documentation</a></p>
+<p>When you apply faceting to a plot you are creating new aesthetics you can control. For 1-dimensional faceting (no <code>BY</code> clause) the aesthetic is called <code>panel</code> and for 2-dimensional faceting the aesthetics are called <code>row</code> and <code>column</code>. You can read more about these aesthetics in <a href="../../syntax/scale/aesthetic/Z_faceting.html">their documentation</a></p>
 </section>
 <section id="customizing-facet-strip-labels" class="level3">
 <h3 class="anchored" data-anchor-id="customizing-facet-strip-labels">Customizing facet strip labels</h3>
 <p>To customize facet strip labels (e.g., renaming categories), use the <code>RENAMING</code> clause on the facet scale:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FACET</span> region</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> panel <span class="kw">RENAMING</span> <span class="st">'N'</span> <span class="op">=&gt;</span> <span class="st">'North'</span>, <span class="st">'S'</span> <span class="op">=&gt;</span> <span class="st">'South'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>See the <a href="../../syntax/scale/aesthetic/Z_facetting.html">facet scale documentation</a> for more details on label customization.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FACET</span> region</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> panel <span class="kw">RENAMING</span> <span class="st">'N'</span> <span class="op">=&gt;</span> <span class="st">'North'</span>, <span class="st">'S'</span> <span class="op">=&gt;</span> <span class="st">'South'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>See the <a href="../../syntax/scale/aesthetic/Z_faceting.html">facet scale documentation</a> for more details on label customization.</p>
 
 
 </section>

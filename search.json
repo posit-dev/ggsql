@@ -53,8 +53,125 @@
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/Z_facetting.html",
-    "href": "syntax/scale/aesthetic/Z_facetting.html",
+    "objectID": "syntax/scale/aesthetic/1_color.html",
+    "href": "syntax/scale/aesthetic/1_color.html",
+    "title": "Fill and Stroke",
+    "section": "",
+    "text": "Color values are used in two places in ggsql: When setting stroke color and fill color. Stroke color governs the color of lines, be it the outline of a rectangle (e.g. in a bar layer), or the line of a path (e.g. in a line layer). The fill color determines the color of the inside of a shape. It follows that all layers respond to the stroke aesthetic but only those containing closed shapes respond to the fill aesthetic.",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Aesthetics",
+      "Fill and Stroke"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/aesthetic/1_color.html#the-color-meta-aesthetic",
+    "href": "syntax/scale/aesthetic/1_color.html#the-color-meta-aesthetic",
+    "title": "Fill and Stroke",
+    "section": "The color meta-aesthetic",
+    "text": "The color meta-aesthetic\nIn addition to the fill and stroke aesthetics there is also a color meta-aesthetic. Setting this will set the fill and stroke at the same time unless they are set directly. For instance, the following will set the fill and stroke to red\nDRAW bar\n    SETTING color =&gt; 'red'\nwhereas this will set the fill to red and stroke to black\nDRAW bar\n    SETTING color =&gt; 'red', stroke =&gt; 'black'\nThe same logic applies when defining a scale. Defining a color scale creates two scales, one for fill and one for stroke, with the same settings (unless either are defined explicitly). For instance, the following\nSCALE color TO viridis\ndefines two separate scales for fill and stroke that both use the viridis palette.\nIn general, it is highly advisable to be explicit and directly use the fill and stroke aesthetics. The color meta-aesthetic is a quick shortcut if you need it.",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Aesthetics",
+      "Fill and Stroke"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/aesthetic/1_color.html#literal-values",
+    "href": "syntax/scale/aesthetic/1_color.html#literal-values",
+    "title": "Fill and Stroke",
+    "section": "Literal values",
+    "text": "Literal values\nLiteral color values can be defined in any CSS compatible way 1. The gist of it is that colors can be defined in one of three different ways:\n\nAs a named color, e.g. 'red', or 'lemonchiffon'\nAs a hex color value, e.g. '#FF0000' or '#FFFACD88'\nAs a css color function, e.g. 'rgba(100%, 0%, 0%, 50%)' or 'oklab(98%, -0.012, 0.057)'\n\nLiteral color values are used in three places in ggsql. Either when setting an aesthetic (as opposed to mapping), e.g.\nDRAW line\n    SETTING stroke =&gt; '#FF0000'\nwhen you define the output range of a fill or stroke scale manually, e.g.\nSCALE fill TO ['rgb(100%, 0%, 0%)', 'lemonchiffon']\nor when using an identity scale for color in which case the data values must be parsable as colors.\nNote that all different types of color notation can be mixed in the same place.\nLiteral color values may be translucent, either by providing a fourth channel the the hex-notation, or by using a css color function that includes an alpha level (e.g. rgba()). You should avoid mixing this with the use of the opacity aesthetic to ensure the opacity is predictable.",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Aesthetics",
+      "Fill and Stroke"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/aesthetic/1_color.html#palettes",
+    "href": "syntax/scale/aesthetic/1_color.html#palettes",
+    "title": "Fill and Stroke",
+    "section": "Palettes",
+    "text": "Palettes\nThere are two different types of palettes for fill and stroke — those intended for continuous data and those intended for discrete data. While they both consists of multiple color values, the continuous palettes are meant for interpolation between successive values whereas the discrete palettes are not.\nPalettes are used by giving them as names in the TO clause:\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_dep AS x, body_mass AS y, species AS fill\n    SETTING stroke =&gt; null\nSCALE color TO category10\n\n\n\n\n\nInstead of using a named palette you can create one on the fly using an array of color values:\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_dep AS x, body_mass AS y, flipper_len AS fill\n    SETTING stroke =&gt; null\nSCALE color TO ['antiquewhite', 'firebrick']\n\n\n\n\n\n\nContinuous palettes\n\nSequential\nSequential palettes for numeric data. navia is the default continuous color palette in ggsql.\n\n\n\n\n\n\n\n\n\nName\nGradient\nSource\nDescription\n\n\n\n\nnavia\n\nCrameri\nDefault. Blue-green-cream (alias: sequential)\n\n\nbatlow\n\nCrameri\nBlue-green-yellow-red\n\n\nbatlowk\n\nCrameri\nDark variant of batlow\n\n\nbatloww\n\nCrameri\nLight variant of batlow\n\n\nhawaii\n\nCrameri\nGreen-yellow-orange-magenta\n\n\nlajolla\n\nCrameri\nCream-yellow-orange-brown\n\n\ntokyo\n\nCrameri\nWhite-magenta-dark blue\n\n\nturku\n\nCrameri\nCream-green-dark brown\n\n\nacton\n\nCrameri\nWhite-purple\n\n\nbamako\n\nCrameri\nWhite-brown-dark brown\n\n\nbilbao\n\nCrameri\nWhite-orange-dark brown\n\n\nbuda\n\nCrameri\nWhite-pink-magenta\n\n\ndavos\n\nCrameri\nWhite-blue\n\n\ndevon\n\nCrameri\nWhite-blue-dark blue\n\n\nglasgow\n\nCrameri\nBlue-cream-orange\n\n\ngrayc\n\nCrameri\nWhite-black grayscale\n\n\nimola\n\nCrameri\nBlue-cream-green\n\n\nlapaz\n\nCrameri\nWhite-blue-dark\n\n\nlipari\n\nCrameri\nWhite-orange-dark blue\n\n\nnuuk\n\nCrameri\nWhite-blue-green\n\n\noslo\n\nCrameri\nWhite-blue-black\n\n\nblues\n\nColorBrewer\nLight to dark blue\n\n\ngreens\n\nColorBrewer\nLight to dark green\n\n\noranges\n\nColorBrewer\nLight to dark orange\n\n\nreds\n\nColorBrewer\nLight to dark red\n\n\npurples\n\nColorBrewer\nLight to dark purple\n\n\ngreys\n\nColorBrewer\nLight to dark grey (also grays)\n\n\nylorbr\n\nColorBrewer\nYellow-Orange-Brown\n\n\nylorrd\n\nColorBrewer\nYellow-Orange-Red\n\n\nylgn\n\nColorBrewer\nYellow-Green\n\n\nylgnbu\n\nColorBrewer\nYellow-Green-Blue\n\n\ngnbu\n\nColorBrewer\nGreen-Blue\n\n\nbugn\n\nColorBrewer\nBlue-Green\n\n\nbupu\n\nColorBrewer\nBlue-Purple\n\n\npubu\n\nColorBrewer\nPurple-Blue\n\n\npubugn\n\nColorBrewer\nPurple-Blue-Green\n\n\npurd\n\nColorBrewer\nPurple-Red\n\n\nrdpu\n\nColorBrewer\nRed-Purple\n\n\norrd\n\nColorBrewer\nOrange-Red\n\n\nviridis\n\nMatplotlib\nDark purple through blue and green to yellow\n\n\nplasma\n\nMatplotlib\nDark purple through pink to yellow (higher contrast)\n\n\nmagma\n\nMatplotlib\nBlack through purple and pink to light yellow\n\n\ninferno\n\nMatplotlib\nBlack through red and orange to light yellow\n\n\ncividis\n\nMatplotlib\nDark blue through gray to yellow (colorblind-optimized)\n\n\n\n\n\nDiverging\nDiverging palettes emphasize a critical midpoint with two contrasting hues on either side. Ideal for data with a meaningful center point (e.g., zero, average).\n\n\n\n\n\n\n\n\n\nName\nGradient\nSource\nDescription\n\n\n\n\nvik\n\nCrameri\nBlue-white-red (alias: diverging)\n\n\nberlin\n\nCrameri\nBlue-white-red (different hues)\n\n\nroma\n\nCrameri\nGreen-cream-orange\n\n\nbam\n\nCrameri\nBlue-white-red\n\n\nbroc\n\nCrameri\nBrown-white-green\n\n\ncork\n\nCrameri\nBlue-white-green\n\n\nlisbon\n\nCrameri\nBlue-white-brown\n\n\nmanagua\n\nCrameri\nBlue-white-magenta\n\n\ntofino\n\nCrameri\nBlue-cream-brown\n\n\nvanimo\n\nCrameri\nMagenta-white-green\n\n\nrdbu\n\nColorBrewer\nRed-Blue\n\n\nrdylbu\n\nColorBrewer\nRed-Yellow-Blue\n\n\nrdylgn\n\nColorBrewer\nRed-Yellow-Green\n\n\nspectral\n\nColorBrewer\nSpectral (rainbow-like)\n\n\nbrbg\n\nColorBrewer\nBrown-Blue-Green\n\n\nprgn\n\nColorBrewer\nPurple-Green\n\n\npiyg\n\nColorBrewer\nPink-Yellow-Green\n\n\nrdgy\n\nColorBrewer\nRed-Grey\n\n\npuor\n\nColorBrewer\nPurple-Orange\n\n\n\n\n\nMulti-Sequential\nMulti-sequential palettes have multiple sequential segments, useful for categorical data with ordered subcategories.\n\n\n\n\n\n\n\n\n\nName\nGradient\nSource\nDescription\n\n\n\n\nbukavu\n\nCrameri\nMulti-hue sequential\n\n\nfes\n\nCrameri\nMulti-hue sequential\n\n\noleron\n\nCrameri\nTopographic (land/sea)\n\n\n\n\n\nCyclic\nCyclic palettes wrap around, making them suitable for periodic data like angles, phases, or time of day.\n\n\n\n\n\n\n\n\n\nName\nGradient\nSource\nDescription\n\n\n\n\nromao\n\nCrameri\nCyclic green-orange (alias: cyclic)\n\n\nbamo\n\nCrameri\nCyclic blue-red\n\n\nbroco\n\nCrameri\nCyclic brown-green\n\n\ncorko\n\nCrameri\nCyclic blue-green\n\n\nviko\n\nCrameri\nCyclic blue-red\n\n\n\n\n\n\nDiscrete palettes\n\nQualitative\nQualitative palettes for categorical data where no ordering is implied.\n\n\n\n\n\n\n\n\n\n\nName\nSwatches\nColors\nSource\nDescription\n\n\n\n\nggsql10\n\n10\nggsql\nDefault. Optimized for distinguishability\n\n\ntableau10\n\n10\nTableau\nTableau’s default categorical palette\n\n\ncategory10\n\n10\nD3\nD3’s default categorical palette\n\n\nset1\n\n9\nColorBrewer\nBold, saturated colors\n\n\nset2\n\n8\nColorBrewer\nMuted, softer colors\n\n\nset3\n\n12\nColorBrewer\nPastel-like, lighter colors\n\n\npastel1\n\n9\nColorBrewer\nLight pastel colors\n\n\npastel2\n\n8\nColorBrewer\nSoft pastel colors\n\n\ndark2\n\n8\nColorBrewer\nDark, saturated colors\n\n\npaired\n\n12\nColorBrewer\nLight-dark paired colors\n\n\naccent\n\n8\nColorBrewer\nAccent colors for emphasis\n\n\nkelly22\n\n20\nKelly\nMaximum contrast colors\n\n\n\n\n\n\nReferences\n\nCrameri Scientific Colour Maps\nCrameri, F. (2018). Scientific colour maps. Zenodo. doi:10.5281/zenodo.1243862\nCrameri, F., Shephard, G.E., & Heron, P.J. (2020). The misuse of colour in science communication. Nature Communications, 11, 5444.\n\n\nColorBrewer\nBrewer, C.A. (2002). ColorBrewer: Color Advice for Cartography. colorbrewer2.org\n\n\nMatplotlib\nvan der Walt, S. & Smith, N. (2015). A Better Default Colormap for Matplotlib. SciPy 2015.\n\n\nTableau\nTableau Software. tableau.com\n\n\nD3\nBostock, M. D3.js. d3js.org\n\n\nKelly’s Colors\nKelly, K.L. (1965). Twenty-two colors of maximum contrast. Color Engineering, 3(6), 26-27.\n\n\n\nChoosing a Palette\n\nFor general continuous data\n\nnavia (default) - Good all-purpose choice, perceptually uniform\nviridis - Excellent for print, colorblind-safe, perceptually uniform\nbatlow - Wide perceptual range, good for scientific data\n\n\n\nFor data with a meaningful midpoint\nUse a diverging palette:\n\nvik or berlin - Clear red/blue contrast\nroma - Warm/cool contrast without red/blue\n\n\n\nFor data representing categories with magnitude\nConsider multi-sequential palettes:\n\noleron - Good for topographic data\n\n\n\nFor periodic/cyclic data\nUse a cyclic palette:\n\nromao - Smooth transitions that wrap around\n\n\n\nFor general categorical data\n\nggsql10 (default) - Good all-purpose choice, accessible\ntableau10 - Familiar to many users, well-tested\ncategory10 - Standard web visualization palette\n\n\n\nFor many categories (&gt; 10)\n\nkelly22 - Up to 20 distinguishable colors\nset3 or paired - 12 colors each\n\n\n\nFor subtle/background colors\n\npastel1 or pastel2 - Light, unobtrusive\nset2 - Muted but still distinguishable\n\n\n\nFor bold/emphasis\n\nset1 - Highly saturated, attention-grabbing\ndark2 - Rich, deep colors\n\n\n\nFor paired/related categories\n\npaired - Light-dark pairs show relationships",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Aesthetics",
+      "Fill and Stroke"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/aesthetic/1_color.html#accessibility",
+    "href": "syntax/scale/aesthetic/1_color.html#accessibility",
+    "title": "Fill and Stroke",
+    "section": "Accessibility",
+    "text": "Accessibility\n\nDon’t rely on color alone: Use redundant encoding by combining color with shape, pattern, or direct labels. This ensures information is accessible when color cannot be perceived.\nChoose colorblind-safe palettes: Approximately 8% of men and 0.5% of women have some form of color vision deficiency. Palettes like viridis, cividis, and the Crameri scientific palettes are designed to be distinguishable by colorblind viewers.\nAvoid red-green combinations: Red-green color blindness (deuteranopia/protanopia) is the most common form. Avoid using red and green as the only distinguishing colors between categories.\nEnsure sufficient contrast: Light colors on light backgrounds or dark colors on dark backgrounds can be difficult to perceive. Aim for a contrast ratio of at least 3:1 for graphical elements.\nTest in grayscale: Print or display your visualization in grayscale to verify that information is still distinguishable without color. Palettes like viridis and cividis maintain luminance variation when desaturated.\nLimit the number of colors: Most people can only reliably distinguish 6-8 colors at a glance. For more categories, consider grouping, faceting, or interactive filtering instead of adding more colors.\nUse perceptually uniform palettes: Palettes where equal data differences produce equal perceived color differences prevent visual distortion of your data. The Crameri and matplotlib palettes (viridis, plasma, etc.) are perceptually uniform.\nConsider cultural associations: Colors carry different meanings across cultures (e.g., red can signify danger, luck, or political affiliation). Be mindful of unintended connotations in your audience.\nProvide alternatives: When possible, offer a data table or text description alongside color-encoded visualizations for users who cannot perceive the colors.",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Aesthetics",
+      "Fill and Stroke"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/aesthetic/1_color.html#footnotes",
+    "href": "syntax/scale/aesthetic/1_color.html#footnotes",
+    "title": "Fill and Stroke",
+    "section": "Footnotes",
+    "text": "Footnotes\n\n\nFor a complete overview see the documentation for the csscolorparser crate which is what we use internally.↩︎",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Aesthetics",
+      "Fill and Stroke"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/aesthetic/size.html",
+    "href": "syntax/scale/aesthetic/size.html",
+    "title": "Size",
+    "section": "",
+    "text": "The size aesthetic defines the size of points (of any shape). It is measured as radius in points (1pt = 1/72 inch) of an idealized circle. Size is most often used to create a bubble chart, which is a variant of a scatter plot where a continuous value is mapped to the size of the points.\nsize is scaled by area rather than radius. This means it has an implicit square root transform applied on top of any other transform you may add. This ensures that steps in data value correspond to equal steps in perceived size (which is proportional to area).",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Aesthetics",
+      "Size"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/aesthetic/size.html#literal-values",
+    "href": "syntax/scale/aesthetic/size.html#literal-values",
+    "title": "Size",
+    "section": "Literal values",
+    "text": "Literal values\nSizes are given as bare numbers and measured in points. The following code will e.g. set the radius of points to 3pt (~28pt²):\nDRAW point\n    SETTING size =&gt; 3",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Aesthetics",
+      "Size"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/aesthetic/size.html#palettes",
+    "href": "syntax/scale/aesthetic/size.html#palettes",
+    "title": "Size",
+    "section": "Palettes",
+    "text": "Palettes\nSize can only be used for sequential data and has no named palettes. The default for continuous, binned, and ordinal scales is to use the range from 1pt to 6 pt and interpolate between them. This can be overwritten by providing a manual output range specification\nSCALE size TO [3, 9]",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Aesthetics",
+      "Size"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/aesthetic/Z_faceting.html",
+    "href": "syntax/scale/aesthetic/Z_faceting.html",
     "title": "Faceting",
     "section": "",
     "text": "ggsql provides one or two aesthetics related to faceting. These are special in the sense that they do not alter the display of the single data values, but rather alter in which plot they appear. While it is possible to map to these aesthetics in a layer they are most often applied globally as part of the FACET clause.\nThe aesthetics provided are either panel (for 1-dimensional faceting) or row and column (for 2-dimensional faceting). These aesthetics have to compatible with the facet clause: it is not possible to map to panel in a 2-dimensional faceting plot nor is it possible to map row and column in a 1-dimensional plot.",
@@ -66,8 +183,8 @@
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/Z_facetting.html#literal-values",
-    "href": "syntax/scale/aesthetic/Z_facetting.html#literal-values",
+    "objectID": "syntax/scale/aesthetic/Z_faceting.html#literal-values",
+    "href": "syntax/scale/aesthetic/Z_faceting.html#literal-values",
     "title": "Faceting",
     "section": "Literal values",
     "text": "Literal values\nScales for facet aesthetics never use an output range and always relate to the input range. This means that no concept of literal values applies.",
@@ -79,8 +196,8 @@
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/Z_facetting.html#scale-types",
-    "href": "syntax/scale/aesthetic/Z_facetting.html#scale-types",
+    "objectID": "syntax/scale/aesthetic/Z_faceting.html#scale-types",
+    "href": "syntax/scale/aesthetic/Z_faceting.html#scale-types",
     "title": "Faceting",
     "section": "Scale types",
     "text": "Scale types\nSince panels are discrete by nature it is not possible to have a continuous scale for a facet. If continuous data is mapped to a facet aesthetic, a binned scale will be applied by default.\n\nVISUALISE Date AS x, Temp AS y FROM ggsql:airquality\nDRAW line\nFACET Date \n    SETTING free =&gt; 'x'\nSCALE panel\n    SETTING breaks =&gt; 'month'\nSCALE x \n    SETTING breaks =&gt; 'weeks'\n\n\n\n\n\nIn order to show data where the facet variable is null, it is necessary to explicitly include null in the input range of a facet aesthetic scale. Just like discrete positional aesthetics. You can also use RENAMING on the scale to customize facet strip labels.\n\nVISUALISE sex AS x FROM ggsql:penguins\nDRAW bar\nFACET species\nSCALE panel FROM ['Adelie', null]\n    RENAMING null =&gt; 'The rest'",
@@ -89,97 +206,6 @@
       "Scales",
       "Aesthetics",
       "Faceting"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/aesthetic/shape.html",
-    "href": "syntax/scale/aesthetic/shape.html",
-    "title": "Shape",
-    "section": "",
-    "text": "The shape aesthetic governs how points look. Shape can be used instead of color to differentiate between categories of points (or even better, in concert with color). Shape is only meaningful in relation to discrete data.",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Aesthetics",
-      "Shape"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/aesthetic/shape.html#literal-values",
-    "href": "syntax/scale/aesthetic/shape.html#literal-values",
-    "title": "Shape",
-    "section": "Literal values",
-    "text": "Literal values\nShapes are given by name from the following list of 15 possible shapes\n\n\n\n\n\n\n\n\nName\nShape\nDescription\n\n\n\n\ncircle\n\nCircular point (default)\n\n\nsquare\n\nSquare point\n\n\ndiamond\n\nDiamond/rhombus\n\n\ntriangle-up\n\nUpward-pointing triangle\n\n\ntriangle-down\n\nDownward-pointing triangle\n\n\nstar\n\n5-pointed star\n\n\nsquare-cross\n\nSquare with X cutout\n\n\ncircle-plus\n\nCircle with + cutout\n\n\nsquare-plus\n\nSquare with + cutout\n\n\ncross\n\nX shape\n\n\nplus\n\n+ shape\n\n\nasterisk\n\n6-pointed asterisk\n\n\nbowtie\n\nBowtie/hourglass\n\n\nhline\n\nHorizontal line\n\n\nvline\n\nVertical line\n\n\n\nYou can use these names directly when setting the shape of a point:\nDRAW point\n    SETTING shape =&gt; 'star'",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Aesthetics",
-      "Shape"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/aesthetic/shape.html#palettes",
-    "href": "syntax/scale/aesthetic/shape.html#palettes",
-    "title": "Shape",
-    "section": "Palettes",
-    "text": "Palettes\nggsql provides three built-in shape palettes, which is often all you need.\nPalettes are used by giving them as names in the TO clause:\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_dep AS x, body_mass AS y, species AS shape\n    SETTING linewidth =&gt; 1, size =&gt; 5\nSCALE shape TO open\n\n\n\n\n\nInstead of using a named palette you can create one on the fly using an array of shape names:\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_dep AS x, body_mass AS y, species AS shape\n    SETTING linewidth =&gt; 1, size =&gt; 5\nSCALE shape TO ['star', 'bowtie', 'square-plus']\n\n\n\n\n\n\nDefault Palette (closed)\nThe default palette contains the 9 closed shapes (first nine in the table above). This is the recommended palette for most use cases, as closed shapes are more visually prominent and easier to distinguish at small sizes.\nWhile the closed shapes are most often used filled, you can also turn if fill and only draw the stroke for a lighter look.\n\n\nOpen Palette (open)\nThe open palette contains the last 6 shapes in the table. None of these have a fill. You may use this palette when you want transparent shapes that don’t obscure data.\n\n\nAll Shapes Palette (shapes)\nThis palette combines the two palettes above to provide all the possible shapes. Since not all shapes have a fill you should not map fill to anything if using this palette, and you should also be aware that differentiating 15 different shapes in the same plot will require a lot of mental effort from the viewer.\n\n\nAccessibility considerations\n\nLimit to 6-7 distinct shapes for readability\nCombine with color for redundant encoding\nUse larger point sizes when using complex shapes\nClosed shapes are more visible than open shapes",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Aesthetics",
-      "Shape"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/aesthetic/linetype.html",
-    "href": "syntax/scale/aesthetic/linetype.html",
-    "title": "Linetype",
-    "section": "",
-    "text": "The linetype aesthetic defines the stroke pattern of lines: a succession of “on” and “off” parts of the line to make different stipple patterns. Linetype is most useful for line and path layers as a colorless way to differentiate between categories.\nWhile linetypes are most useful for differentiating between discrete data, ggsql also comes with a sequential palette that gradually increases the amount of ink used for the pattern.",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Aesthetics",
-      "Linetype"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/aesthetic/linetype.html#literal-values",
-    "href": "syntax/scale/aesthetic/linetype.html#literal-values",
-    "title": "Linetype",
-    "section": "Literal values",
-    "text": "Literal values\nLinetypes can be specified in two different ways. A couple of patterns are named and can be referred to as such:\n\n\n\n\n\n\n\n\n\nName\nPattern\nStroke-dasharray\nDescription\n\n\n\n\nsolid\n\n(none)\nContinuous solid line\n\n\ndashed\n\n6 4\nStandard dashed line\n\n\ndotted\n\n1 2\nDotted line\n\n\ndotdash\n\n1 2 6 2\nAlternating dot and dash\n\n\nlongdash\n\n10 4\nLong dashes\n\n\ntwodash\n\n6 2 2 2\nTwo different dash lengths\n\n\n\nYou can e.g. use these names when defining a manual palette for the scale:\nSCALE linetype TO ['dashed', 'dotted', 'twodash']\nYou can alternatively specify a custom pattern using hex strings:\nSCALE linetype TO ['44', '1343', '3c6c9c']\nEach pair of hex digits represents on/off lengths:\n\n'44' = 4 on, 4 off (50% ink, similar to dashed)\n'1343' = 1 on, 3 off, 4 on, 3 off (dot-dash pattern)\n'3c6c9c' = 3 on, 12 off, 6 on, 12 off, 9 on, 12 off\n\nValid hex patterns:\n\nMust have 2, 4, 6, or 8 hex digits\nDigits can be 1-9 or a-f (0 is not allowed)\nDigits represent line lengths as multiples of the linewidth",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Aesthetics",
-      "Linetype"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/aesthetic/linetype.html#palettes",
-    "href": "syntax/scale/aesthetic/linetype.html#palettes",
-    "title": "Linetype",
-    "section": "Palettes",
-    "text": "Palettes\nggsql provides two linetype palettes which are generally enough for every need\nThe categorical palette is the default palette for discrete linetype scales. It consists of the 6 named patterns shown above in the same order. Since it is the only palette for discrete linetypes, there is rarely a need to specify it. The categorical palette is the default palette for discrete linetype scales. It consists of the 6 named patterns shown above in the same order. Since it is the only palette for discrete linetypes there is rarely a need to specify it.\n\nSequential palette\nThe sequential palette is the default for binned and ordinal linetype scales. It consists of up to 15 patterns with increasing amount of “on” and decreasing amount of “off”. This creates a visual progression from sparse (low ink) to solid (100% ink).\n\nExample: 5-Level Sequential\n\n\n\n\n\n\n\n\n\nLevel\nPattern\nInk Density\nDescription\n\n\n\n\n1\n\n~6%\nSparse dots\n\n\n2\n\n~29%\nShort dashes\n\n\n3\n\n~52%\nMedium dashes\n\n\n4\n\n~75%\nLong dashes\n\n\n5\n\n100%\nSolid",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Aesthetics",
-      "Linetype"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/aesthetic/linetype.html#accessibility",
-    "href": "syntax/scale/aesthetic/linetype.html#accessibility",
-    "title": "Linetype",
-    "section": "Accessibility",
-    "text": "Accessibility\n\nLinetypes work well for colorblind viewers\nCombine with color for redundant encoding\nLimit to 4-6 distinct linetypes for readability\nSolid lines are most visible; use for primary data",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Aesthetics",
-      "Linetype"
     ]
   },
   {
@@ -368,11 +394,47 @@
     "href": "syntax/clause/visualise.html#clause-syntax",
     "title": "Initialise a visualisation with VISUALISE",
     "section": "Clause syntax",
-    "text": "Clause syntax\nThe VISUALISE clause is quite simple and doesn’t take any additional required parameters. You can, however, use it to define global mappings and a global data source (if the earlier query didn’t end in a SELECT).\nVISUALISE &lt;mapping&gt;, ... FROM &lt;data-source&gt;\nFollowing VISUALISE you can provide a series of global mappings. These will be inherited by the layers created with the DRAW clause but can be overwritten by them. Mappings define how data from the dataset are related to visual aesthetics or statistical properties. Multiple mappings can be provided by separating them with a comma. Mapped aesthetics are always scaled by their respective scale. This means that if you map the value ‘red’ to fill, then fill will not take the color red, but whatever the scale decides should represent the string ‘red’.\nVISUALISE may have a FROM clause that defines the source of the global data. If present it overwrites the terminal SELECT clause in the previous query as the global data. Global data is used by layers that do not specify their own data source with MAPPING ... FROM &lt;data-source&gt;.\nThe mapping can take one of three forms and all three can be mixed:\n\n&lt;data&gt; AS &lt;aesthetic/property&gt; (explicit mapping)\n&lt;data&gt; (implicit mapping)\n* (wildcard mapping)\n\ndata can be either:\n\nColumn name: If you provide the name of a column in the data then the values in that column are mapped to the aesthetic or property. If the name of the column is the same as the aesthetic or property you can provide it without the following AS &lt;aesthetic/property&gt; (implicit mapping).\nConstant: If you provide a constant like a string, number, or boolean then this value is repeated for every record in the data and mapped to the given aesthetic or property. When mapping a constant you must use the explicit form since the aesthetic/property cannot be derived.\n\nIf an asterisk is given (wildcard mapping) it indicate that every column in the layer data with a name matching a supported aesthetic or property are implicitly mapped to said aesthetic or property. If the aesthetic or property has been mapped elsewhere then that gains precedence (i.e. if writing VISUALISE *, revenue AS y then y will take on the data in the revenue column even if a y column exist in the data)\nAn aesthetic is a visual characteristic of what you are rendering. Different aesthetics are available depending on the layer type since e.g. linetype is not relevant for points and shape are not relevant for lines.\nA property is a value used by the statistical transformation done by the layer, e.g. the weight property in the histogram layer that allows weighted histogram calculation.\n\nMapped aesthetics are always scaled by their respective scale, whereas properties are not (there are no scales for properties).\n\nLayers only inherit the aesthetics and properties they support from the global mapping. The documentation for each layer type provides an overview of the aesthetics and properties available for them.\nWhen specifying a global data source with FROM &lt;data-source&gt; the data-source can take one of two different forms:\n\nTable/CTE: If providing an unquoted identifier it is assumed that the data is available in the backend, either as a CTE defined in the pre-query, or as a proper table in the database.\nFilepath: If a string is provided (single quoted), it is assumed to point to a file that can be read directly by the backend.",
+    "text": "Clause syntax\nThe VISUALISE clause is quite simple and doesn’t take any additional required parameters. You can, however, use it to define global mappings and a global data source (if the earlier query didn’t end in a SELECT).\nVISUALISE &lt;mapping&gt;, ... FROM &lt;data-source&gt;\nFollowing VISUALISE you can provide a series of global mappings. These will be inherited by the layers created with the DRAW clause but can be overwritten by them. Mappings define how data from the dataset are related to visual aesthetics or statistical properties. Multiple mappings can be provided by separating them with a comma. Mapped aesthetics are always scaled by their respective scale. This means that if you map the value ‘red’ to fill, then fill will not take the color red, but whatever the scale decides should represent the string ‘red’.\nVISUALISE may have a FROM clause that defines the source of the global data. If present it overwrites the terminal SELECT clause in the previous query as the global data. Global data is used by layers that do not specify their own data source with MAPPING ... FROM &lt;data-source&gt;.\nThe mapping can take one of three forms and all three can be mixed:\n\n&lt;data&gt; AS &lt;aesthetic/property&gt; (explicit mapping)\n&lt;data&gt; (implicit mapping)\n* (wildcard mapping)\n\ndata can be either:\n\nColumn name: If you provide the name of a column in the data then the values in that column are mapped to the aesthetic or property. If the name of the column is the same as the aesthetic or property you can provide it without the following AS &lt;aesthetic/property&gt; (implicit mapping).\nConstant: If you provide a constant like a string, number, or boolean then this value is repeated for every record in the data and mapped to the given aesthetic or property. When mapping a constant you must use the explicit form since the aesthetic/property cannot be derived.\n\nIf an asterisk is given (wildcard mapping) it indicate that every column in the layer data with a name matching a supported aesthetic or property are implicitly mapped to said aesthetic or property. If the aesthetic or property has been mapped elsewhere then that gains precedence (i.e. if writing VISUALISE *, revenue AS y then y will take on the data in the revenue column even if a y column exist in the data)\nAn aesthetic is a visual characteristic of what you are rendering. Different aesthetics are available depending on the layer type since e.g. linetype is not relevant for points and shape are not relevant for lines.\nA property is a value used by the statistical transformation done by the layer, e.g. the weight property in the histogram layer that allows weighted histogram calculation.\n\nMapped aesthetics are always scaled by their respective scale, whereas properties are not (there are no scales for properties).\n\nLayers only inherit the aesthetics and properties they support from the global mapping. The documentation for each layer type provides an overview of the aesthetics and properties available for them.\n\nFROM\nFROM &lt;data-source&gt;\nWhen specifying a global data source the data-source can take one of two different forms:\n\nTable/CTE: If providing an unquoted identifier it is assumed that the data is available in the backend, either as a CTE defined in the pre-query, or as a proper table in the database.\nFilepath: If a string is provided (single quoted), it is assumed to point to a file that can be read directly by the backend.",
     "crumbs": [
       "Home",
       "Main clauses",
       "`VISUALISE`"
+    ]
+  },
+  {
+    "objectID": "syntax/clause/project.html",
+    "href": "syntax/clause/project.html",
+    "title": "Control the coordinate system with PROJECT",
+    "section": "",
+    "text": "The PROJECT clause defines the projection of the plot, that is, how abstract positional aesthetics are translated (projected) onto the plane defined by the screen/paper where the plot is viewed on.",
+    "crumbs": [
+      "Home",
+      "Main clauses",
+      "`PROJECT`"
+    ]
+  },
+  {
+    "objectID": "syntax/clause/project.html#clause-syntax",
+    "href": "syntax/clause/project.html#clause-syntax",
+    "title": "Control the coordinate system with PROJECT",
+    "section": "Clause syntax",
+    "text": "Clause syntax\nThe PROJECT syntax contains a number of subclauses\nPROJECT &lt;aesthetic&gt;, ... TO &lt;coordinate-system&gt;\n    SETTING &lt;parameter&gt; =&gt; &lt;value&gt;, ...\nThe comma-separated list of aesthetic names are optional but allows you to define the names of the positional aesthetics in the plot. If omitted, the default aesthetic names of the coordinate system is used. The order given matters as the first name is used for the primary aesthetic, the second name for the secondary aesthetic and so on. For instance, using PROJECT y, x TO cartesian will flip the plot as anything mapped to y will now relate to the horizontal axis, and anything mapped to x will relate to the vertical axis. Note that it is not allowed to use the name of already established aesthetics as positional aesthetics, e.g. PROJECT fill, stroke TO polar is not allowed.\n\nTO\nTO &lt;coordinate-system&gt;\nThe TO clause is required and is followed by the name of the coordinate system. The coordinate system provides default names for the positional aesthetics and is responsible for how to translate values mapped to these onto the plane defined by the screen or paper.\n\n\nSETTING\nSETTING &lt;parameter&gt; =&gt; &lt;value&gt;, ...\nThis clause behaves much like the SETTINGS clause in DRAW, in that it allows you to fine-tune specific behavior of the projection. The specific coordinate system defines it’s own valid settings. Consult the coord documentations to read more.",
+    "crumbs": [
+      "Home",
+      "Main clauses",
+      "`PROJECT`"
+    ]
+  },
+  {
+    "objectID": "syntax/clause/project.html#coordinate-system-inference",
+    "href": "syntax/clause/project.html#coordinate-system-inference",
+    "title": "Control the coordinate system with PROJECT",
+    "section": "Coordinate system inference",
+    "text": "Coordinate system inference\nIf you do not provide a PROJECT clause then the coordinate system will be picked for you based on the mappings in your query. The logic is as follows\n\nIf x, y or any of their variants are mapped to, a Cartesian coordinate system is used\nIf theta, radius or any of their variants are mapped to, a polar coordinate system is used\nIf none of the above applies, the plot defaults to a Cartesian coordinate system\nIf multiple applies (e.g. mapping to both x and theta) an error is thrown",
+    "crumbs": [
+      "Home",
+      "Main clauses",
+      "`PROJECT`"
     ]
   },
   {
@@ -397,6 +459,54 @@
       "Home",
       "Main clauses",
       "`DRAW`"
+    ]
+  },
+  {
+    "objectID": "syntax/coord/polar.html",
+    "href": "syntax/coord/polar.html",
+    "title": "Polar",
+    "section": "",
+    "text": "The polar coordinate system interprets its primary aesthetic as the angular position relative to the center, and the secondary aesthetic as the distance from the center. It is most often used for pie-charts and radar plots.",
+    "crumbs": [
+      "Home",
+      "Coordinate systems",
+      "Polar"
+    ]
+  },
+  {
+    "objectID": "syntax/coord/polar.html#default-aesthetics",
+    "href": "syntax/coord/polar.html#default-aesthetics",
+    "title": "Polar",
+    "section": "Default aesthetics",
+    "text": "Default aesthetics\nThe polar coordinate system has the following default positional aesthetics which will be used if no others have been provided:\n\nPrimary: theta (angular position)\nSecondary: radius (distance from center)\n\nUsers can provide their own aesthetic names if needed. For example, if using x and y aesthetics:\nPROJECT y, x TO polar\nThis maps y to theta (angle) and x to radius. This is useful when converting from a cartesian coordinate system without editing all the mappings.",
+    "crumbs": [
+      "Home",
+      "Coordinate systems",
+      "Polar"
+    ]
+  },
+  {
+    "objectID": "syntax/coord/polar.html#settings",
+    "href": "syntax/coord/polar.html#settings",
+    "title": "Polar",
+    "section": "Settings",
+    "text": "Settings\n\nclip: Should data be removed if it appears outside the bounds of the coordinate system. Defaults to true\nstart: The starting angle in degrees for the theta scale. Controls where “0” on the angular axis begins. Defaults to 0 (12 o’clock position).\n\n0 = 12 o’clock position (top)\n90 = 3 o’clock position (right)\n-90 or 270 = 9 o’clock position (left)\n180 = 6 o’clock position (bottom)\n\nend: The ending angle in degrees for the theta scale. Defaults to start + 360 (a full circle). Use this with start to create partial polar plots like gauge charts or half-circle visualizations.\ninner: The inner radius as a proportion (0 to 1) of the outer radius. Defaults to 0 (no hole). Setting this creates a donut chart where the inner portion is empty.\n\n0 = full pie (no hole)\n0.3 = donut with 30% hole\n0.5 = donut with 50% hole",
+    "crumbs": [
+      "Home",
+      "Coordinate systems",
+      "Polar"
+    ]
+  },
+  {
+    "objectID": "syntax/coord/polar.html#examples",
+    "href": "syntax/coord/polar.html#examples",
+    "title": "Polar",
+    "section": "Examples",
+    "text": "Examples\n\nPie chart using theta/radius aesthetics\n\nVISUALISE species AS fill FROM ggsql:penguins\nDRAW bar\nPROJECT TO polar\n\n\n\n\n\n\n\nPie chart starting at 3 o’clock\n\nVISUALISE species AS fill FROM ggsql:penguins\nDRAW bar\nPROJECT TO polar SETTING start =&gt; 90\n\n\n\n\n\n\n\nPie chart starting at 9 o’clock\n\nVISUALISE species AS fill FROM ggsql:penguins\nDRAW bar\nPROJECT TO polar SETTING start =&gt; -90\n\n\n\n\n\n\n\nHalf-circle gauge chart\n\nVISUALISE species AS fill FROM ggsql:penguins\nDRAW bar\nPROJECT TO polar SETTING start =&gt; -90, end =&gt; 90\n\n\n\n\n\nThis creates a gauge chart spanning from the 9 o’clock to 3 o’clock position (a 180° arc at the top).\n\n\nThree-quarter pie chart\n\nVISUALISE species AS fill FROM ggsql:penguins\nDRAW bar\nPROJECT TO polar SETTING end =&gt; 270\n\n\n\n\n\nThis creates a pie chart using only 270° (three-quarters of a circle), starting from 0° (12 o’clock) and ending at 270° (9 o’clock).\n\n\nDonut chart with 50% hole\n\nVISUALISE species AS fill FROM ggsql:penguins\nDRAW bar\nPROJECT TO polar SETTING inner =&gt; 0.5\n\n\n\n\n\nThis creates a donut chart where the inner 50% of the radius is empty, leaving a ring-shaped visualization.\n\n\nDonut chart with 30% hole\n\nVISUALISE species AS fill FROM ggsql:penguins\nDRAW bar\nPROJECT TO polar SETTING inner =&gt; 0.3\n\n\n\n\n\nThis creates a donut chart with a smaller hole (30% of the radius).\n\n\nHalf-circle donut chart\n\nVISUALISE species AS fill FROM ggsql:penguins\nDRAW bar\nPROJECT TO polar SETTING start =&gt; -90, end =&gt; 90, inner =&gt; 0.5\n\n\n\n\n\nThis combines the start, end, and inner settings to create a half-circle donut chart (gauge style) spanning from 9 o’clock to 3 o’clock with a 50% hole.",
+    "crumbs": [
+      "Home",
+      "Coordinate systems",
+      "Polar"
     ]
   },
   {
@@ -725,7 +835,7 @@
     "href": "syntax/index.html#scales",
     "title": "Syntax",
     "section": "Scales",
-    "text": "Scales",
+    "text": "Scales\nA scale is responsible for translating a data value to an aesthetic literal, e.g. a specific color for the fill aesthetic, or a radius in points for the size aesthetic. A scale is a combination of a specific aesthetic and a scale type\n\nAesthetics\n\nPosition aesthetics are those aesthetics realted to the spatial location of the data in the coordinate system.\nColor aesthetics are related to the color of fill and stroke\nopacity is the aesthetic that determines the opacity of the color\nlinetype governs the stroke pattern of strokes\nlinewidth determines the width of strokes\nshape determines the shape of points\nsize governs the radius of points\nFaceting aesthetics are used to determine which facet panel the data belongs to\n\n\n\nScale types\n\ncontinuous scales translates a continuous input to a continuous output\ndiscrete scales translates discrete input to a discrete output\nbinned scales translate continuous input to an ordered discrete output by binning the data\nordinal scales translate discrete input to an ordered discrete output by enforcing an ordering to the input\nidentity scales passes the data through unchanged",
     "crumbs": [
       "Home",
       "Overview"
@@ -736,7 +846,7 @@
     "href": "syntax/index.html#coordinate-systems",
     "title": "Syntax",
     "section": "Coordinate systems",
-    "text": "Coordinate systems",
+    "text": "Coordinate systems\nThe coordinate system defines how the abstract positional aesthetics are projected onto the screen or paper where the final plot appears. As such, it has great influence over the final look of the plot.\n\ncartesian is the classic coordinate system consisting of two perpendicular axes, one being horizontal and one being vertical\npolar interprets the primary position as the angular location relative to the center and the secondary position as the distance (radius) from the center, and this creates a circular coordinate system",
     "crumbs": [
       "Home",
       "Overview"
@@ -1103,6 +1213,54 @@
     ]
   },
   {
+    "objectID": "syntax/coord/cartesian.html",
+    "href": "syntax/coord/cartesian.html",
+    "title": "Cartesian",
+    "section": "",
+    "text": "The Cartesian coordinate system is the most well-known and the default for ggsql. It maps the primary positional aesthetic along a horizontal axis and the secondary along a perpendicular vertical axis.",
+    "crumbs": [
+      "Home",
+      "Coordinate systems",
+      "Cartesian"
+    ]
+  },
+  {
+    "objectID": "syntax/coord/cartesian.html#default-aesthetics",
+    "href": "syntax/coord/cartesian.html#default-aesthetics",
+    "title": "Cartesian",
+    "section": "Default aesthetics",
+    "text": "Default aesthetics\nThe Cartesian coordinate system has the following default positional aesthetics which will be used if no others have been provided:\n\nPrimary: x (horizontal position)\nSecondary: y (vertical position)\n\nUsers can provide their own aesthetic names if needed, e.g.\nPROJECT p, q TO cartesian\nassuming they do not try to use a name that is already being used by any facet or non-positional aesthetics (e.g. PROJECT fill, panel TO cartesian is not allowed).",
+    "crumbs": [
+      "Home",
+      "Coordinate systems",
+      "Cartesian"
+    ]
+  },
+  {
+    "objectID": "syntax/coord/cartesian.html#settings",
+    "href": "syntax/coord/cartesian.html#settings",
+    "title": "Cartesian",
+    "section": "Settings",
+    "text": "Settings\n\nclip: Should data be removed if it appears outside the bounds of the coordinate system. Defaults to true\nratio: The aspect ratio between the steps on the vertical and horizontal axis. Defaults to null (no enforced aspect ratio)",
+    "crumbs": [
+      "Home",
+      "Coordinate systems",
+      "Cartesian"
+    ]
+  },
+  {
+    "objectID": "syntax/coord/cartesian.html#examples",
+    "href": "syntax/coord/cartesian.html#examples",
+    "title": "Cartesian",
+    "section": "Examples",
+    "text": "Examples\n\nUse custom positional aesthetic names\n\nVISUALISE bill_len AS p, bill_dep AS q FROM ggsql:penguins\nDRAW point\nPROJECT p, q TO cartesian\n\n\n\n\n\n\n\nFlip the x and y axes\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nPROJECT y, x TO cartesian",
+    "crumbs": [
+      "Home",
+      "Coordinate systems",
+      "Cartesian"
+    ]
+  },
+  {
     "objectID": "syntax/clause/scale.html",
     "href": "syntax/clause/scale.html",
     "title": "Specify aesthetic scaling with SCALE",
@@ -1119,7 +1277,7 @@
     "href": "syntax/clause/scale.html#clause-syntax",
     "title": "Specify aesthetic scaling with SCALE",
     "section": "Clause syntax",
-    "text": "Clause syntax\nThe SCALE clause takes a number of subclauses, all of them optional:\nSCALE &lt;type&gt; &lt;aesthetic&gt; FROM &lt;input-range&gt; TO &lt;output-range&gt; VIA &lt;transform&gt;\n    SETTING &lt;parameter&gt; =&gt; &lt;value&gt;, ...\n    RENAMING &lt;break-value&gt; =&gt; &lt;string&gt;, ...\nThe type defines the class of scale to use. It can be one of four different types:\n\nCONTINUOUS to interpret and treat data as continuous\nDISCRETE to interpret and treat data as discrete or categorical\nBINNED to bin continuous data into discrete bins\nORDINAL to interpret discrete data as ordered\nIDENTITY to let data pass through unscaled\n\nRead more about each type at their dedicated documentation. You do not have to specify the type as it is deduced from the transform, input range, or data if left blank.\nYou must specify an aesthetic so that the scale knows which mapping it belongs to. For positional aesthetics you will provide the base name (x or y) even though you are mapping to e.g. xmin. Creating a scale for colour (or color) will create a scale for both fill and stroke colour based on the settings.\n\nFROM\nThe FROM clause defines the input range of the scale, i.e. the values the scale translates from. If not provided, it will be deduced from the data as the range that covers all mapped data. For discrete scales the input range is defined as an array of all known values to the scale. Values from the data not present in the input range will be null’ed by the scale. For continuous and binned scales this is an array with two elements: the lower and upper boundaries of the scale. Either of these can be null in which case that value will be determined by the data (e.g. a range of [0, null] will go from 0 to the maximum value in the data). Identity scales do not have an input range.\n\n\nTO\nThe TO clause defines the output range of the scale, i.e. what the data is translated to. It can either be an array of values or the name of a known palette. Read more under the documentation for the specific scales.\n\n\nVIA\nThe VIA clause defines a transform which is applied to the data before mapping it to the output range. While transforms are often understood as mathematical transforms, in ggsql it also defines casting of input data. E.g. the integer transform cast all input to integer before mapping. Transforms also takes care of creating breaks that are meaningful for the specific transform, e.g. in the case of the log10 transform where breaks are created to fit the power of 10. Different transforms are available to different scale types.\n\n\nSETTING\nThis clause behaves much like the SETTINGS clause in DRAW, in that it allows you to fine-tune specific behavior of the scale. Permissible settings depends on the scale type and are documented there.\n\n\nRENAMING\nThis clause works much like the LABEL clause but works on the break names of the scale. The general syntax is that you provide the name of the break on the left and what it should appear as on the right, e.g 'adelie' =&gt; 'Pygoscelis adeliae'. The clause is understood as a look-up table in the sense that if you provide a renaming for a break that doesn’t appear in the scale then nothing will happen and if a break exist but doesn’t have a renaming defined it will go through unaltered. To suppress the label of a specific break you can rename it to null, e.g. 'adelie' =&gt; null. This will not remove the break, only the label.\n\nBreak formatting\nApart from the direct renaming described above it is also possible to provide a formatting function to be applied to all breaks. The syntax for this is * =&gt; '...' with the content of the string on the right being a string interpolation format. The basic syntax for this is that the break value will be inserted into any place where {} appears. This means that e.g. * =&gt; '{} species' will result in the label “adelie species” for the break “adelie”. Besides simply inserting the value as-is, it is also possible to apply a formatter to the label before insertion by naming a formatter inside the curly braces prefixed with :. Known formatters are:\n\n{:Title} will title-case the value (make the first letter in each work upper case) before insertion, e.g. * =&gt; '{:Title} species' will become “Adelie species” for the “adelie” break.\n{:UPPER} will make the value upper-case, e.g. * =&gt; '{:UPPER} species' will become “ADELIE species” for the “adelie” break.\n{:lower} works much like {:UPPER} but changes the value to lower-case instead.\n{:time ...} will format a date/datetime/time value according to the format defined afterwards. The formatting follows strftime format using the Rust chrono library. You can see an overview of the supported syntax at the chrono docs. The basic usage is * =&gt; '{:time %B %Y} which would format a break at 2025-07-04 as “July 2025”.\n{:num ...} will format a numeric according to the format defined afterwards. The format follows the printf format using the Rust sprintf library. The syntax is %[flags][width][.precision]type with the following meaning:\n\nflags: One or more modifiers:\n\n-: left-justify\n+: Force sign for positive numbers\n: (space) Space before positive numbers\n0: Zero-pad\n#: Alternate form (0x prefix for hex, etc)\n\nwidth: The minimum width of characters to render. Depending on the flags the string will be padded to be at least this width\nprecision: The maximum precision of the number. For %g/%G it is the total number of digits whereas for the rest it is the number of digits to the right of the decimal point\ntype: How to present the number. One of:\n\nd/i: Signed decimal integers\nu: Unsigned decimal integers\nf/F: Decimal floating point\ne/E: Scientific notation\ng/G: Shortest form of e and f\no: Unsigned octal\nx/X: Unsigned hexadecimal",
+    "text": "Clause syntax\nThe SCALE clause takes a number of subclauses, all of them optional:\nSCALE &lt;type&gt; &lt;aesthetic&gt; FROM &lt;input-range&gt; TO &lt;output-range&gt; VIA &lt;transform&gt;\n    SETTING &lt;parameter&gt; =&gt; &lt;value&gt;, ...\n    RENAMING &lt;break-value&gt; =&gt; &lt;string&gt;, ...\nThe type defines the class of scale to use. It can be one of four different types:\n\nCONTINUOUS to interpret and treat data as continuous\nDISCRETE to interpret and treat data as discrete or categorical\nBINNED to bin continuous data into discrete bins\nORDINAL to interpret discrete data as ordered\nIDENTITY to let data pass through unscaled\n\nRead more about each type at their dedicated documentation. You do not have to specify the type as it is deduced from the transform, input range, or data if left blank.\nYou must specify an aesthetic so that the scale knows which mapping it belongs to. For positional aesthetics you will provide the base name (x or y) even though you are mapping to e.g. xmin. Creating a scale for colour (or color) will create a scale for both fill and stroke colour based on the settings.\n\nFROM\nFROM &lt;input-range&gt;\nThe FROM clause defines the input range of the scale, i.e. the values the scale translates from. If not provided, it will be deduced from the data as the range that covers all mapped data. For discrete scales the input range is defined as an array of all known values to the scale. Values from the data not present in the input range will be null’ed by the scale. For continuous and binned scales this is an array with two elements: the lower and upper boundaries of the scale. Either of these can be null in which case that value will be determined by the data (e.g. a range of [0, null] will go from 0 to the maximum value in the data). Identity scales do not have an input range.\n\n\nTO\nTO &lt;output-range&gt;\nThe TO clause defines the output range of the scale, i.e. what the data is translated to. It can either be an array of values or the name of a known palette. Read more under the documentation for the specific scales.\n\n\nVIA\nVIA &lt;transform&gt;\nThe VIA clause defines a transform which is applied to the data before mapping it to the output range. While transforms are often understood as mathematical transforms, in ggsql it also defines casting of input data. E.g. the integer transform cast all input to integer before mapping. Transforms also takes care of creating breaks that are meaningful for the specific transform, e.g. in the case of the log10 transform where breaks are created to fit the power of 10. Different transforms are available to different scale types.\n\n\nSETTING\nSETTING &lt;parameter&gt; =&gt; &lt;value&gt;, ...\nThis clause behaves much like the SETTINGS clause in DRAW, in that it allows you to fine-tune specific behavior of the scale. Permissible settings depends on the scale type and are documented there.\n\n\nRENAMING\nRENAMING &lt;break-value&gt; =&gt; &lt;string&gt;, ...\nThis clause works much like the LABEL clause but works on the break names of the scale. The general syntax is that you provide the name of the break on the left and what it should appear as on the right, e.g 'adelie' =&gt; 'Pygoscelis adeliae'. The clause is understood as a look-up table in the sense that if you provide a renaming for a break that doesn’t appear in the scale then nothing will happen and if a break exist but doesn’t have a renaming defined it will go through unaltered. To suppress the label of a specific break you can rename it to null, e.g. 'adelie' =&gt; null. This will not remove the break, only the label.\n\nBreak formatting\nApart from the direct renaming described above it is also possible to provide a formatting function to be applied to all breaks. The syntax for this is * =&gt; '...' with the content of the string on the right being a string interpolation format. The basic syntax for this is that the break value will be inserted into any place where {} appears. This means that e.g. * =&gt; '{} species' will result in the label “adelie species” for the break “adelie”. Besides simply inserting the value as-is, it is also possible to apply a formatter to the label before insertion by naming a formatter inside the curly braces prefixed with :. Known formatters are:\n\n{:Title} will title-case the value (make the first letter in each work upper case) before insertion, e.g. * =&gt; '{:Title} species' will become “Adelie species” for the “adelie” break.\n{:UPPER} will make the value upper-case, e.g. * =&gt; '{:UPPER} species' will become “ADELIE species” for the “adelie” break.\n{:lower} works much like {:UPPER} but changes the value to lower-case instead.\n{:time ...} will format a date/datetime/time value according to the format defined afterwards. The formatting follows strftime format using the Rust chrono library. You can see an overview of the supported syntax at the chrono docs. The basic usage is * =&gt; '{:time %B %Y} which would format a break at 2025-07-04 as “July 2025”.\n{:num ...} will format a numeric according to the format defined afterwards. The format follows the printf format using the Rust sprintf library. The syntax is %[flags][width][.precision]type with the following meaning:\n\nflags: One or more modifiers:\n\n-: left-justify\n+: Force sign for positive numbers\n: (space) Space before positive numbers\n0: Zero-pad\n#: Alternate form (0x prefix for hex, etc)\n\nwidth: The minimum width of characters to render. Depending on the flags the string will be padded to be at least this width\nprecision: The maximum precision of the number. For %g/%G it is the total number of digits whereas for the rest it is the number of digits to the right of the decimal point\ntype: How to present the number. One of:\n\nd/i: Signed decimal integers\nu: Unsigned decimal integers\nf/F: Decimal floating point\ne/E: Scientific notation\ng/G: Shortest form of e and f\no: Unsigned octal\nx/X: Unsigned hexadecimal",
     "crumbs": [
       "Home",
       "Main clauses",
@@ -1143,7 +1301,7 @@
     "href": "syntax/clause/facet.html#clause-syntax",
     "title": "Create small multiples with FACET",
     "section": "Clause syntax",
-    "text": "Clause syntax\nThe FACET syntax contains a number of subclauses that are all optional\nFACET &lt;column&gt; BY &lt;column&gt;\n    SETTING &lt;parameter&gt; =&gt; &lt;value&gt;, ...\nThe first column is mandatory. It names a column in the layer data that will be used for splitting the data. If the layer data does not contain the column the behavior for that layer depends on the missing parameter of the facet.\n\nBY\nThe optional BY clause is used to define an additional column to split the data by. If it is missing the small multiples are laid out in a grid with the facet panels filling the cells in a row-wise fashion. If BY is present then the categories of the first column defines the rows of the grid and the categories of the second column the columns of the grid. Each multiple is then positioned according to that.\n\n\nSETTING\nThis clause behaves much like the SETTINGS clause in DRAW, in that it allows you to fine-tune specific behavior of the faceting. The following parameters exist:\n\nfree: Controls whether the positional scales are independent across the small multiples. Permissible values are:\n\nnull or omitted (default): Shared/fixed scales across all panels\n'x': Independent x-axis scale, shared y-axis scale\n'y': Shared x-axis scale, independent y-axis scale\n['x', 'y']: Independent scales for both axes\n\nmissing: Determines how layers behave when the faceting column is missing. It can take two values: 'repeat' (default), and 'null'. If 'repeat' is set, then the layer data is repeated in each panel. If 'null', then such layers are only displayed if a null panel is shown, as controlled by the facet scale.\nncol: The number of panel columns to use when faceting by a single variable. Default is 3 when fewer than 6 categories are present, 4 when fewer than 12 categeries are present and otherwise 5. When the BY-clause is used to set a second faceting variable, the ncol setting is not allowed. There is no nrow setting as this is derived from the number of panels and the ncol setting.\n\n\n\nFacet variables as aesthetics\nWhen you apply faceting to a plot you are creating new aesthetics you can control. For 1-dimensional faceting (no BY clause) the aesthetic is called panel and for 2-dimensional faceting the aesthetics are called row and column. You can read more about these aesthetics in their documentation\n\n\nCustomizing facet strip labels\nTo customize facet strip labels (e.g., renaming categories), use the RENAMING clause on the facet scale:\nFACET region\nSCALE panel RENAMING 'N' =&gt; 'North', 'S' =&gt; 'South'\nSee the facet scale documentation for more details on label customization.",
+    "text": "Clause syntax\nThe FACET syntax contains a number of subclauses that are all optional\nFACET &lt;column&gt; BY &lt;column&gt;\n    SETTING &lt;parameter&gt; =&gt; &lt;value&gt;, ...\nThe first column is mandatory. It names a column in the layer data that will be used for splitting the data. If the layer data does not contain the column the behavior for that layer depends on the missing parameter of the facet.\n\nBY\nBY &lt;column&gt;\nThe optional BY clause is used to define an additional column to split the data by. If it is missing the small multiples are laid out in a grid with the facet panels filling the cells in a row-wise fashion. If BY is present then the categories of the first column defines the rows of the grid and the categories of the second column the columns of the grid. Each multiple is then positioned according to that.\n\n\nSETTING\nSETTING &lt;parameter&gt; =&gt; &lt;value&gt;, ...\nThis clause behaves much like the SETTINGS clause in DRAW, in that it allows you to fine-tune specific behavior of the faceting. The following parameters exist:\n\nfree: Controls whether the positional scales are independent across the small multiples. Permissible values are:\n\nnull or omitted (default): Shared/fixed scales across all panels\n'x': Independent x-axis scale, shared y-axis scale\n'y': Shared x-axis scale, independent y-axis scale\n['x', 'y']: Independent scales for both axes\n\nmissing: Determines how layers behave when the faceting column is missing. It can take two values: 'repeat' (default), and 'null'. If 'repeat' is set, then the layer data is repeated in each panel. If 'null', then such layers are only displayed if a null panel is shown, as controlled by the facet scale.\nncol: The number of panel columns to use when faceting by a single variable. Default is 3 when fewer than 6 categories are present, 4 when fewer than 12 categeries are present and otherwise 5. When the BY-clause is used to set a second faceting variable, the ncol setting is not allowed. There is no nrow setting as this is derived from the number of panels and the ncol setting.\n\n\n\nFacet variables as aesthetics\nWhen you apply faceting to a plot you are creating new aesthetics you can control. For 1-dimensional faceting (no BY clause) the aesthetic is called panel and for 2-dimensional faceting the aesthetics are called row and column. You can read more about these aesthetics in their documentation\n\n\nCustomizing facet strip labels\nTo customize facet strip labels (e.g., renaming categories), use the RENAMING clause on the facet scale:\nFACET region\nSCALE panel RENAMING 'N' =&gt; 'North', 'S' =&gt; 'South'\nSee the facet scale documentation for more details on label customization.",
     "crumbs": [
       "Home",
       "Main clauses",
@@ -1382,120 +1540,94 @@
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/size.html",
-    "href": "syntax/scale/aesthetic/size.html",
-    "title": "Size",
+    "objectID": "syntax/scale/aesthetic/linetype.html",
+    "href": "syntax/scale/aesthetic/linetype.html",
+    "title": "Linetype",
     "section": "",
-    "text": "The size aesthetic defines the size of points (of any shape). It is measured as radius in points (1pt = 1/72 inch) of an idealized circle. Size is most often used to create a bubble chart, which is a variant of a scatter plot where a continuous value is mapped to the size of the points.\nsize is scaled by area rather than radius. This means it has an implicit square root transform applied on top of any other transform you may add. This ensures that steps in data value correspond to equal steps in perceived size (which is proportional to area).",
+    "text": "The linetype aesthetic defines the stroke pattern of lines: a succession of “on” and “off” parts of the line to make different stipple patterns. Linetype is most useful for line and path layers as a colorless way to differentiate between categories.\nWhile linetypes are most useful for differentiating between discrete data, ggsql also comes with a sequential palette that gradually increases the amount of ink used for the pattern.",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Size"
+      "Linetype"
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/size.html#literal-values",
-    "href": "syntax/scale/aesthetic/size.html#literal-values",
-    "title": "Size",
+    "objectID": "syntax/scale/aesthetic/linetype.html#literal-values",
+    "href": "syntax/scale/aesthetic/linetype.html#literal-values",
+    "title": "Linetype",
     "section": "Literal values",
-    "text": "Literal values\nSizes are given as bare numbers and measured in points. The following code will e.g. set the radius of points to 3pt (~28pt²):\nDRAW point\n    SETTING size =&gt; 3",
+    "text": "Literal values\nLinetypes can be specified in two different ways. A couple of patterns are named and can be referred to as such:\n\n\n\n\n\n\n\n\n\nName\nPattern\nStroke-dasharray\nDescription\n\n\n\n\nsolid\n\n(none)\nContinuous solid line\n\n\ndashed\n\n6 4\nStandard dashed line\n\n\ndotted\n\n1 2\nDotted line\n\n\ndotdash\n\n1 2 6 2\nAlternating dot and dash\n\n\nlongdash\n\n10 4\nLong dashes\n\n\ntwodash\n\n6 2 2 2\nTwo different dash lengths\n\n\n\nYou can e.g. use these names when defining a manual palette for the scale:\nSCALE linetype TO ['dashed', 'dotted', 'twodash']\nYou can alternatively specify a custom pattern using hex strings:\nSCALE linetype TO ['44', '1343', '3c6c9c']\nEach pair of hex digits represents on/off lengths:\n\n'44' = 4 on, 4 off (50% ink, similar to dashed)\n'1343' = 1 on, 3 off, 4 on, 3 off (dot-dash pattern)\n'3c6c9c' = 3 on, 12 off, 6 on, 12 off, 9 on, 12 off\n\nValid hex patterns:\n\nMust have 2, 4, 6, or 8 hex digits\nDigits can be 1-9 or a-f (0 is not allowed)\nDigits represent line lengths as multiples of the linewidth",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Size"
+      "Linetype"
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/size.html#palettes",
-    "href": "syntax/scale/aesthetic/size.html#palettes",
-    "title": "Size",
+    "objectID": "syntax/scale/aesthetic/linetype.html#palettes",
+    "href": "syntax/scale/aesthetic/linetype.html#palettes",
+    "title": "Linetype",
     "section": "Palettes",
-    "text": "Palettes\nSize can only be used for sequential data and has no named palettes. The default for continuous, binned, and ordinal scales is to use the range from 1pt to 6 pt and interpolate between them. This can be overwritten by providing a manual output range specification\nSCALE size TO [3, 9]",
+    "text": "Palettes\nggsql provides two linetype palettes which are generally enough for every need\nThe categorical palette is the default palette for discrete linetype scales. It consists of the 6 named patterns shown above in the same order. Since it is the only palette for discrete linetypes, there is rarely a need to specify it. The categorical palette is the default palette for discrete linetype scales. It consists of the 6 named patterns shown above in the same order. Since it is the only palette for discrete linetypes there is rarely a need to specify it.\n\nSequential palette\nThe sequential palette is the default for binned and ordinal linetype scales. It consists of up to 15 patterns with increasing amount of “on” and decreasing amount of “off”. This creates a visual progression from sparse (low ink) to solid (100% ink).\n\nExample: 5-Level Sequential\n\n\n\n\n\n\n\n\n\nLevel\nPattern\nInk Density\nDescription\n\n\n\n\n1\n\n~6%\nSparse dots\n\n\n2\n\n~29%\nShort dashes\n\n\n3\n\n~52%\nMedium dashes\n\n\n4\n\n~75%\nLong dashes\n\n\n5\n\n100%\nSolid",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Size"
+      "Linetype"
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/1_color.html",
-    "href": "syntax/scale/aesthetic/1_color.html",
-    "title": "Fill and Stroke",
-    "section": "",
-    "text": "Color values are used in two places in ggsql: When setting stroke color and fill color. Stroke color governs the color of lines, be it the outline of a rectangle (e.g. in a bar layer), or the line of a path (e.g. in a line layer). The fill color determines the color of the inside of a shape. It follows that all layers respond to the stroke aesthetic but only those containing closed shapes respond to the fill aesthetic.",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Aesthetics",
-      "Fill and Stroke"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/aesthetic/1_color.html#the-color-meta-aesthetic",
-    "href": "syntax/scale/aesthetic/1_color.html#the-color-meta-aesthetic",
-    "title": "Fill and Stroke",
-    "section": "The color meta-aesthetic",
-    "text": "The color meta-aesthetic\nIn addition to the fill and stroke aesthetics there is also a color meta-aesthetic. Setting this will set the fill and stroke at the same time unless they are set directly. For instance, the following will set the fill and stroke to red\nDRAW bar\n    SETTING color =&gt; 'red'\nwhereas this will set the fill to red and stroke to black\nDRAW bar\n    SETTING color =&gt; 'red', stroke =&gt; 'black'\nThe same logic applies when defining a scale. Defining a color scale creates two scales, one for fill and one for stroke, with the same settings (unless either are defined explicitly). For instance, the following\nSCALE color TO viridis\ndefines two separate scales for fill and stroke that both use the viridis palette.\nIn general, it is highly advisable to be explicit and directly use the fill and stroke aesthetics. The color meta-aesthetic is a quick shortcut if you need it.",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Aesthetics",
-      "Fill and Stroke"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/aesthetic/1_color.html#literal-values",
-    "href": "syntax/scale/aesthetic/1_color.html#literal-values",
-    "title": "Fill and Stroke",
-    "section": "Literal values",
-    "text": "Literal values\nLiteral color values can be defined in any CSS compatible way 1. The gist of it is that colors can be defined in one of three different ways:\n\nAs a named color, e.g. 'red', or 'lemonchiffon'\nAs a hex color value, e.g. '#FF0000' or '#FFFACD88'\nAs a css color function, e.g. 'rgba(100%, 0%, 0%, 50%)' or 'oklab(98%, -0.012, 0.057)'\n\nLiteral color values are used in three places in ggsql. Either when setting an aesthetic (as opposed to mapping), e.g.\nDRAW line\n    SETTING stroke =&gt; '#FF0000'\nwhen you define the output range of a fill or stroke scale manually, e.g.\nSCALE fill TO ['rgb(100%, 0%, 0%)', 'lemonchiffon']\nor when using an identity scale for color in which case the data values must be parsable as colors.\nNote that all different types of color notation can be mixed in the same place.\nLiteral color values may be translucent, either by providing a fourth channel the the hex-notation, or by using a css color function that includes an alpha level (e.g. rgba()). You should avoid mixing this with the use of the opacity aesthetic to ensure the opacity is predictable.",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Aesthetics",
-      "Fill and Stroke"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/aesthetic/1_color.html#palettes",
-    "href": "syntax/scale/aesthetic/1_color.html#palettes",
-    "title": "Fill and Stroke",
-    "section": "Palettes",
-    "text": "Palettes\nThere are two different types of palettes for fill and stroke — those intended for continuous data and those intended for discrete data. While they both consists of multiple color values, the continuous palettes are meant for interpolation between successive values whereas the discrete palettes are not.\nPalettes are used by giving them as names in the TO clause:\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_dep AS x, body_mass AS y, species AS fill\n    SETTING stroke =&gt; null\nSCALE color TO category10\n\n\n\n\n\nInstead of using a named palette you can create one on the fly using an array of color values:\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_dep AS x, body_mass AS y, flipper_len AS fill\n    SETTING stroke =&gt; null\nSCALE color TO ['antiquewhite', 'firebrick']\n\n\n\n\n\n\nContinuous palettes\n\nSequential\nSequential palettes for numeric data. navia is the default continuous color palette in ggsql.\n\n\n\n\n\n\n\n\n\nName\nGradient\nSource\nDescription\n\n\n\n\nnavia\n\nCrameri\nDefault. Blue-green-cream (alias: sequential)\n\n\nbatlow\n\nCrameri\nBlue-green-yellow-red\n\n\nbatlowk\n\nCrameri\nDark variant of batlow\n\n\nbatloww\n\nCrameri\nLight variant of batlow\n\n\nhawaii\n\nCrameri\nGreen-yellow-orange-magenta\n\n\nlajolla\n\nCrameri\nCream-yellow-orange-brown\n\n\ntokyo\n\nCrameri\nWhite-magenta-dark blue\n\n\nturku\n\nCrameri\nCream-green-dark brown\n\n\nacton\n\nCrameri\nWhite-purple\n\n\nbamako\n\nCrameri\nWhite-brown-dark brown\n\n\nbilbao\n\nCrameri\nWhite-orange-dark brown\n\n\nbuda\n\nCrameri\nWhite-pink-magenta\n\n\ndavos\n\nCrameri\nWhite-blue\n\n\ndevon\n\nCrameri\nWhite-blue-dark blue\n\n\nglasgow\n\nCrameri\nBlue-cream-orange\n\n\ngrayc\n\nCrameri\nWhite-black grayscale\n\n\nimola\n\nCrameri\nBlue-cream-green\n\n\nlapaz\n\nCrameri\nWhite-blue-dark\n\n\nlipari\n\nCrameri\nWhite-orange-dark blue\n\n\nnuuk\n\nCrameri\nWhite-blue-green\n\n\noslo\n\nCrameri\nWhite-blue-black\n\n\nblues\n\nColorBrewer\nLight to dark blue\n\n\ngreens\n\nColorBrewer\nLight to dark green\n\n\noranges\n\nColorBrewer\nLight to dark orange\n\n\nreds\n\nColorBrewer\nLight to dark red\n\n\npurples\n\nColorBrewer\nLight to dark purple\n\n\ngreys\n\nColorBrewer\nLight to dark grey (also grays)\n\n\nylorbr\n\nColorBrewer\nYellow-Orange-Brown\n\n\nylorrd\n\nColorBrewer\nYellow-Orange-Red\n\n\nylgn\n\nColorBrewer\nYellow-Green\n\n\nylgnbu\n\nColorBrewer\nYellow-Green-Blue\n\n\ngnbu\n\nColorBrewer\nGreen-Blue\n\n\nbugn\n\nColorBrewer\nBlue-Green\n\n\nbupu\n\nColorBrewer\nBlue-Purple\n\n\npubu\n\nColorBrewer\nPurple-Blue\n\n\npubugn\n\nColorBrewer\nPurple-Blue-Green\n\n\npurd\n\nColorBrewer\nPurple-Red\n\n\nrdpu\n\nColorBrewer\nRed-Purple\n\n\norrd\n\nColorBrewer\nOrange-Red\n\n\nviridis\n\nMatplotlib\nDark purple through blue and green to yellow\n\n\nplasma\n\nMatplotlib\nDark purple through pink to yellow (higher contrast)\n\n\nmagma\n\nMatplotlib\nBlack through purple and pink to light yellow\n\n\ninferno\n\nMatplotlib\nBlack through red and orange to light yellow\n\n\ncividis\n\nMatplotlib\nDark blue through gray to yellow (colorblind-optimized)\n\n\n\n\n\nDiverging\nDiverging palettes emphasize a critical midpoint with two contrasting hues on either side. Ideal for data with a meaningful center point (e.g., zero, average).\n\n\n\n\n\n\n\n\n\nName\nGradient\nSource\nDescription\n\n\n\n\nvik\n\nCrameri\nBlue-white-red (alias: diverging)\n\n\nberlin\n\nCrameri\nBlue-white-red (different hues)\n\n\nroma\n\nCrameri\nGreen-cream-orange\n\n\nbam\n\nCrameri\nBlue-white-red\n\n\nbroc\n\nCrameri\nBrown-white-green\n\n\ncork\n\nCrameri\nBlue-white-green\n\n\nlisbon\n\nCrameri\nBlue-white-brown\n\n\nmanagua\n\nCrameri\nBlue-white-magenta\n\n\ntofino\n\nCrameri\nBlue-cream-brown\n\n\nvanimo\n\nCrameri\nMagenta-white-green\n\n\nrdbu\n\nColorBrewer\nRed-Blue\n\n\nrdylbu\n\nColorBrewer\nRed-Yellow-Blue\n\n\nrdylgn\n\nColorBrewer\nRed-Yellow-Green\n\n\nspectral\n\nColorBrewer\nSpectral (rainbow-like)\n\n\nbrbg\n\nColorBrewer\nBrown-Blue-Green\n\n\nprgn\n\nColorBrewer\nPurple-Green\n\n\npiyg\n\nColorBrewer\nPink-Yellow-Green\n\n\nrdgy\n\nColorBrewer\nRed-Grey\n\n\npuor\n\nColorBrewer\nPurple-Orange\n\n\n\n\n\nMulti-Sequential\nMulti-sequential palettes have multiple sequential segments, useful for categorical data with ordered subcategories.\n\n\n\n\n\n\n\n\n\nName\nGradient\nSource\nDescription\n\n\n\n\nbukavu\n\nCrameri\nMulti-hue sequential\n\n\nfes\n\nCrameri\nMulti-hue sequential\n\n\noleron\n\nCrameri\nTopographic (land/sea)\n\n\n\n\n\nCyclic\nCyclic palettes wrap around, making them suitable for periodic data like angles, phases, or time of day.\n\n\n\n\n\n\n\n\n\nName\nGradient\nSource\nDescription\n\n\n\n\nromao\n\nCrameri\nCyclic green-orange (alias: cyclic)\n\n\nbamo\n\nCrameri\nCyclic blue-red\n\n\nbroco\n\nCrameri\nCyclic brown-green\n\n\ncorko\n\nCrameri\nCyclic blue-green\n\n\nviko\n\nCrameri\nCyclic blue-red\n\n\n\n\n\n\nDiscrete palettes\n\nQualitative\nQualitative palettes for categorical data where no ordering is implied.\n\n\n\n\n\n\n\n\n\n\nName\nSwatches\nColors\nSource\nDescription\n\n\n\n\nggsql10\n\n10\nggsql\nDefault. Optimized for distinguishability\n\n\ntableau10\n\n10\nTableau\nTableau’s default categorical palette\n\n\ncategory10\n\n10\nD3\nD3’s default categorical palette\n\n\nset1\n\n9\nColorBrewer\nBold, saturated colors\n\n\nset2\n\n8\nColorBrewer\nMuted, softer colors\n\n\nset3\n\n12\nColorBrewer\nPastel-like, lighter colors\n\n\npastel1\n\n9\nColorBrewer\nLight pastel colors\n\n\npastel2\n\n8\nColorBrewer\nSoft pastel colors\n\n\ndark2\n\n8\nColorBrewer\nDark, saturated colors\n\n\npaired\n\n12\nColorBrewer\nLight-dark paired colors\n\n\naccent\n\n8\nColorBrewer\nAccent colors for emphasis\n\n\nkelly22\n\n20\nKelly\nMaximum contrast colors\n\n\n\n\n\n\nReferences\n\nCrameri Scientific Colour Maps\nCrameri, F. (2018). Scientific colour maps. Zenodo. doi:10.5281/zenodo.1243862\nCrameri, F., Shephard, G.E., & Heron, P.J. (2020). The misuse of colour in science communication. Nature Communications, 11, 5444.\n\n\nColorBrewer\nBrewer, C.A. (2002). ColorBrewer: Color Advice for Cartography. colorbrewer2.org\n\n\nMatplotlib\nvan der Walt, S. & Smith, N. (2015). A Better Default Colormap for Matplotlib. SciPy 2015.\n\n\nTableau\nTableau Software. tableau.com\n\n\nD3\nBostock, M. D3.js. d3js.org\n\n\nKelly’s Colors\nKelly, K.L. (1965). Twenty-two colors of maximum contrast. Color Engineering, 3(6), 26-27.\n\n\n\nChoosing a Palette\n\nFor general continuous data\n\nnavia (default) - Good all-purpose choice, perceptually uniform\nviridis - Excellent for print, colorblind-safe, perceptually uniform\nbatlow - Wide perceptual range, good for scientific data\n\n\n\nFor data with a meaningful midpoint\nUse a diverging palette:\n\nvik or berlin - Clear red/blue contrast\nroma - Warm/cool contrast without red/blue\n\n\n\nFor data representing categories with magnitude\nConsider multi-sequential palettes:\n\noleron - Good for topographic data\n\n\n\nFor periodic/cyclic data\nUse a cyclic palette:\n\nromao - Smooth transitions that wrap around\n\n\n\nFor general categorical data\n\nggsql10 (default) - Good all-purpose choice, accessible\ntableau10 - Familiar to many users, well-tested\ncategory10 - Standard web visualization palette\n\n\n\nFor many categories (&gt; 10)\n\nkelly22 - Up to 20 distinguishable colors\nset3 or paired - 12 colors each\n\n\n\nFor subtle/background colors\n\npastel1 or pastel2 - Light, unobtrusive\nset2 - Muted but still distinguishable\n\n\n\nFor bold/emphasis\n\nset1 - Highly saturated, attention-grabbing\ndark2 - Rich, deep colors\n\n\n\nFor paired/related categories\n\npaired - Light-dark pairs show relationships",
-    "crumbs": [
-      "Home",
-      "Scales",
-      "Aesthetics",
-      "Fill and Stroke"
-    ]
-  },
-  {
-    "objectID": "syntax/scale/aesthetic/1_color.html#accessibility",
-    "href": "syntax/scale/aesthetic/1_color.html#accessibility",
-    "title": "Fill and Stroke",
+    "objectID": "syntax/scale/aesthetic/linetype.html#accessibility",
+    "href": "syntax/scale/aesthetic/linetype.html#accessibility",
+    "title": "Linetype",
     "section": "Accessibility",
-    "text": "Accessibility\n\nDon’t rely on color alone: Use redundant encoding by combining color with shape, pattern, or direct labels. This ensures information is accessible when color cannot be perceived.\nChoose colorblind-safe palettes: Approximately 8% of men and 0.5% of women have some form of color vision deficiency. Palettes like viridis, cividis, and the Crameri scientific palettes are designed to be distinguishable by colorblind viewers.\nAvoid red-green combinations: Red-green color blindness (deuteranopia/protanopia) is the most common form. Avoid using red and green as the only distinguishing colors between categories.\nEnsure sufficient contrast: Light colors on light backgrounds or dark colors on dark backgrounds can be difficult to perceive. Aim for a contrast ratio of at least 3:1 for graphical elements.\nTest in grayscale: Print or display your visualization in grayscale to verify that information is still distinguishable without color. Palettes like viridis and cividis maintain luminance variation when desaturated.\nLimit the number of colors: Most people can only reliably distinguish 6-8 colors at a glance. For more categories, consider grouping, faceting, or interactive filtering instead of adding more colors.\nUse perceptually uniform palettes: Palettes where equal data differences produce equal perceived color differences prevent visual distortion of your data. The Crameri and matplotlib palettes (viridis, plasma, etc.) are perceptually uniform.\nConsider cultural associations: Colors carry different meanings across cultures (e.g., red can signify danger, luck, or political affiliation). Be mindful of unintended connotations in your audience.\nProvide alternatives: When possible, offer a data table or text description alongside color-encoded visualizations for users who cannot perceive the colors.",
+    "text": "Accessibility\n\nLinetypes work well for colorblind viewers\nCombine with color for redundant encoding\nLimit to 4-6 distinct linetypes for readability\nSolid lines are most visible; use for primary data",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Fill and Stroke"
+      "Linetype"
     ]
   },
   {
-    "objectID": "syntax/scale/aesthetic/1_color.html#footnotes",
-    "href": "syntax/scale/aesthetic/1_color.html#footnotes",
-    "title": "Fill and Stroke",
-    "section": "Footnotes",
-    "text": "Footnotes\n\n\nFor a complete overview see the documentation for the csscolorparser crate which is what we use internally.↩︎",
+    "objectID": "syntax/scale/aesthetic/shape.html",
+    "href": "syntax/scale/aesthetic/shape.html",
+    "title": "Shape",
+    "section": "",
+    "text": "The shape aesthetic governs how points look. Shape can be used instead of color to differentiate between categories of points (or even better, in concert with color). Shape is only meaningful in relation to discrete data.",
     "crumbs": [
       "Home",
       "Scales",
       "Aesthetics",
-      "Fill and Stroke"
+      "Shape"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/aesthetic/shape.html#literal-values",
+    "href": "syntax/scale/aesthetic/shape.html#literal-values",
+    "title": "Shape",
+    "section": "Literal values",
+    "text": "Literal values\nShapes are given by name from the following list of 15 possible shapes\n\n\n\n\n\n\n\n\nName\nShape\nDescription\n\n\n\n\ncircle\n\nCircular point (default)\n\n\nsquare\n\nSquare point\n\n\ndiamond\n\nDiamond/rhombus\n\n\ntriangle-up\n\nUpward-pointing triangle\n\n\ntriangle-down\n\nDownward-pointing triangle\n\n\nstar\n\n5-pointed star\n\n\nsquare-cross\n\nSquare with X cutout\n\n\ncircle-plus\n\nCircle with + cutout\n\n\nsquare-plus\n\nSquare with + cutout\n\n\ncross\n\nX shape\n\n\nplus\n\n+ shape\n\n\nasterisk\n\n6-pointed asterisk\n\n\nbowtie\n\nBowtie/hourglass\n\n\nhline\n\nHorizontal line\n\n\nvline\n\nVertical line\n\n\n\nYou can use these names directly when setting the shape of a point:\nDRAW point\n    SETTING shape =&gt; 'star'",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Aesthetics",
+      "Shape"
+    ]
+  },
+  {
+    "objectID": "syntax/scale/aesthetic/shape.html#palettes",
+    "href": "syntax/scale/aesthetic/shape.html#palettes",
+    "title": "Shape",
+    "section": "Palettes",
+    "text": "Palettes\nggsql provides three built-in shape palettes, which is often all you need.\nPalettes are used by giving them as names in the TO clause:\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_dep AS x, body_mass AS y, species AS shape\n    SETTING linewidth =&gt; 1, size =&gt; 5\nSCALE shape TO open\n\n\n\n\n\nInstead of using a named palette you can create one on the fly using an array of shape names:\n\nVISUALISE FROM ggsql:penguins\nDRAW point\n    MAPPING bill_dep AS x, body_mass AS y, species AS shape\n    SETTING linewidth =&gt; 1, size =&gt; 5\nSCALE shape TO ['star', 'bowtie', 'square-plus']\n\n\n\n\n\n\nDefault Palette (closed)\nThe default palette contains the 9 closed shapes (first nine in the table above). This is the recommended palette for most use cases, as closed shapes are more visually prominent and easier to distinguish at small sizes.\nWhile the closed shapes are most often used filled, you can also turn if fill and only draw the stroke for a lighter look.\n\n\nOpen Palette (open)\nThe open palette contains the last 6 shapes in the table. None of these have a fill. You may use this palette when you want transparent shapes that don’t obscure data.\n\n\nAll Shapes Palette (shapes)\nThis palette combines the two palettes above to provide all the possible shapes. Since not all shapes have a fill you should not map fill to anything if using this palette, and you should also be aware that differentiating 15 different shapes in the same plot will require a lot of mental effort from the viewer.\n\n\nAccessibility considerations\n\nLimit to 6-7 distinct shapes for readability\nCombine with color for redundant encoding\nUse larger point sizes when using complex shapes\nClosed shapes are more visible than open shapes",
+    "crumbs": [
+      "Home",
+      "Scales",
+      "Aesthetics",
+      "Shape"
     ]
   },
   {
@@ -1599,11 +1731,11 @@
     "text": "Faceting\n\nFacet by Region\n\nSELECT sale_date, revenue, region FROM 'sales.csv'\nWHERE category = 'Electronics'\nVISUALISE sale_date AS x, revenue AS y\nDRAW line\nSCALE x VIA date\nFACET region\nLABEL \n    title =&gt; 'Electronics Sales by Region', \n    x =&gt; 'Date', \n    y =&gt; 'Revenue ($)'\n\n\n\n\n\n\n\nFacet Grid\n\nSELECT\n    DATE_TRUNC('month', sale_date) as month,\n    region,\n    category,\n    SUM(revenue) as total_revenue,\n    SUM(quantity) * 100 as total_quantity_scaled\nFROM 'sales.csv'\nGROUP BY DATE_TRUNC('month', sale_date), region, category\nVISUALISE month AS x\nDRAW line \n    MAPPING total_revenue AS y\n    SETTING color =&gt; 'steelblue'\nDRAW point \n    MAPPING total_revenue AS y\n    SETTING size =&gt; 6, color =&gt; 'darkblue'\nDRAW line \n    MAPPING total_quantity_scaled AS y\n    SETTING color =&gt; 'coral'\nDRAW point \n    MAPPING total_quantity_scaled AS y\n    SETTING size =&gt; 6, color =&gt; 'orangered'\nSCALE x VIA date\nFACET region BY category\nLABEL \n    title =&gt; 'Monthly Revenue and Quantity by Region and Category', \n    x =&gt; 'Month', \n    y =&gt; 'Value'"
   },
   {
-    "objectID": "examples.html#coordinate-transformations",
-    "href": "examples.html#coordinate-transformations",
+    "objectID": "examples.html#projections",
+    "href": "examples.html#projections",
     "title": "Examples",
-    "section": "Coordinate Transformations",
-    "text": "Coordinate Transformations\n\nFlipped Coordinates (Horizontal Bar Chart)\n\nSELECT region, SUM(revenue) as total\nFROM 'sales.csv'\nGROUP BY region\nORDER BY total DESC\nVISUALISE region AS x, total AS y, region AS fill\nDRAW bar\nCOORD flip\nLABEL \n    title =&gt; 'Total Revenue by Region', \n    x =&gt; 'Region', \n    y =&gt; 'Total Revenue ($)'\n\n\n\n\n\n\n\nCartesian with Axis Limits\n\nSELECT x, y FROM 'data.csv'\nVISUALISE x, y\nDRAW point \n    SETTING size =&gt; 4, color =&gt; 'blue'\nCOORD cartesian \n    SETTING xlim =&gt; [0, 60], ylim =&gt; [0, 70]\nLABEL \n    title =&gt; 'Scatter Plot with Custom Axis Limits', \n    x =&gt; 'X', \n    y =&gt; 'Y'\n\n\n\n\n\n\n\nPie Chart with Polar Coordinates\n\nSELECT category, SUM(revenue) as total\nFROM 'sales.csv'\nGROUP BY category\nVISUALISE total AS y, category AS fill\nDRAW bar\nCOORD polar\nLABEL \n    title =&gt; 'Revenue Distribution by Category'"
+    "section": "Projections",
+    "text": "Projections\n\nPie Chart with Polar Coordinates\n\nSELECT category, SUM(revenue) as total\nFROM 'sales.csv'\nGROUP BY category\nVISUALISE total AS y, category AS fill\nDRAW bar\nPROJECT y, x TO polar\nLABEL\n    title =&gt; 'Revenue Distribution by Category'"
   },
   {
     "objectID": "examples.html#constant-mappings",
@@ -1631,7 +1763,7 @@
     "href": "examples.html#common-table-expressions-ctes",
     "title": "Examples",
     "section": "Common Table Expressions (CTEs)",
-    "text": "Common Table Expressions (CTEs)\n\nSimple CTE with VISUALISE FROM\n\nWITH monthly_sales AS (\n    SELECT\n        DATE_TRUNC('month', sale_date) as month,\n        SUM(revenue) as total_revenue\n    FROM 'sales.csv'\n    GROUP BY DATE_TRUNC('month', sale_date)\n)\nVISUALISE month AS x, total_revenue AS y FROM monthly_sales\nDRAW line\nDRAW point\nSCALE x VIA date\nLABEL \n    title =&gt; 'Monthly Revenue Trends', \n    x =&gt; 'Month', \n    y =&gt; 'Revenue ($)'\n\n\n\n\n\n\n\nMultiple CTEs\n\nWITH daily_sales AS (\n    SELECT sale_date, region, SUM(revenue) as revenue\n    FROM 'sales.csv'\n    GROUP BY sale_date, region\n),\nregional_totals AS (\n    SELECT region, SUM(revenue) as total\n    FROM daily_sales\n    GROUP BY region\n)\nVISUALISE region AS x, total AS y, region AS fill FROM regional_totals\nDRAW bar\nCOORD flip\nLABEL \n    title =&gt; 'Total Revenue by Region', \n    x =&gt; 'Region', \n    y =&gt; 'Total Revenue ($)'"
+    "text": "Common Table Expressions (CTEs)\n\nSimple CTE with VISUALISE FROM\n\nWITH monthly_sales AS (\n    SELECT\n        DATE_TRUNC('month', sale_date) as month,\n        SUM(revenue) as total_revenue\n    FROM 'sales.csv'\n    GROUP BY DATE_TRUNC('month', sale_date)\n)\nVISUALISE month AS x, total_revenue AS y FROM monthly_sales\nDRAW line\nDRAW point\nSCALE x VIA date\nLABEL \n    title =&gt; 'Monthly Revenue Trends', \n    x =&gt; 'Month', \n    y =&gt; 'Revenue ($)'\n\n\n\n\n\n\n\nMultiple CTEs\n\nWITH daily_sales AS (\n    SELECT sale_date, region, SUM(revenue) as revenue\n    FROM 'sales.csv'\n    GROUP BY sale_date, region\n),\nregional_totals AS (\n    SELECT region, SUM(revenue) as total\n    FROM daily_sales\n    GROUP BY region\n)\nVISUALISE region AS x, total AS y, region AS fill FROM regional_totals\nDRAW bar\nPROJECT y, x TO cartesian\nLABEL \n    title =&gt; 'Total Revenue by Region', \n    x =&gt; 'Region', \n    y =&gt; 'Total Revenue ($)'"
   },
   {
     "objectID": "examples.html#layer-specific-data-sources-mapping-from",

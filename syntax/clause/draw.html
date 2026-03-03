@@ -486,12 +486,35 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../../syntax/scale/aesthetic/Z_facetting.html" class="sidebar-item-text sidebar-link">
+  <a href="../../syntax/scale/aesthetic/Z_faceting.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Faceting</span></a>
   </div>
 </li>
       </ul>
   </li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="true">
+ <span class="menu-text">Coordinate systems</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-6" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/coord/cartesian.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Cartesian</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/coord/polar.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Polar</span></a>
+  </div>
+</li>
       </ul>
   </li>
     </ul>
@@ -542,17 +565,17 @@ gradient teal.
 <section id="clause-syntax" class="level2">
 <h2 class="anchored" data-anchor-id="clause-syntax">Clause syntax</h2>
 <p>The <code>DRAW</code> clause takes a number of subclauses, all of them optional if the <code>VISUALISE</code> clause provides a global mapping and data source.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>DRAW <span class="op">&lt;</span><span class="kw">layer</span><span class="op">-</span><span class="kw">type</span><span class="op">&gt;</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    MAPPING <span class="op">&lt;</span>mapping<span class="op">&gt;</span>, <span class="op">..</span>. <span class="kw">FROM</span> <span class="op">&lt;</span><span class="kw">data</span><span class="op">-</span><span class="kw">source</span><span class="op">&gt;</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    REMAPPING <span class="op">&lt;</span>mapping<span class="op">&gt;</span>, <span class="op">..</span>.</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    SETTING <span class="op">&lt;</span>parameter<span class="op">/</span>aesthetic<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span><span class="fu">value</span><span class="op">&gt;</span>, <span class="op">..</span>.</span>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="op">&lt;</span>layer<span class="op">-</span>type<span class="op">&gt;</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> <span class="op">&lt;</span><span class="kw">mapping</span><span class="op">&gt;</span>, ... <span class="kw">FROM</span> <span class="op">&lt;</span>data<span class="op">-</span>source<span class="op">&gt;</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">REMAPPING</span> <span class="op">&lt;</span><span class="kw">mapping</span><span class="op">&gt;</span>, ...</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="op">&lt;</span>parameter<span class="op">/</span>aesthetic<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span>value<span class="op">&gt;</span>, ...</span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">FILTER</span> <span class="op">&lt;</span>condition<span class="op">&gt;</span></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PARTITION</span> <span class="kw">BY</span> <span class="op">&lt;</span><span class="kw">column</span><span class="op">&gt;</span>, <span class="op">..</span>.</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">ORDER</span> <span class="kw">BY</span> <span class="op">&lt;</span><span class="kw">column</span><span class="op">&gt;</span>, <span class="op">..</span>.</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PARTITION</span> BY <span class="op">&lt;</span>column<span class="op">&gt;</span>, ...</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">ORDER</span> BY <span class="op">&lt;</span>column<span class="op">&gt;</span>, ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>The only required part is the layer type immediately following the <code>DRAW</code> clause, which specifies the type of layer to draw, e.g.&nbsp;<code>point</code> or <code>histogram</code>. It defines how the remaining settings are interpreted. The <a href="../../syntax/index.html#layers">main syntax page</a> has a list of all available layer types</p>
 <section id="mapping" class="level3">
 <h3 class="anchored" data-anchor-id="mapping"><code>MAPPING</code></h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>MAPPING <span class="op">&lt;</span>mapping<span class="op">&gt;</span>, <span class="op">..</span>. <span class="kw">FROM</span> <span class="op">&lt;</span><span class="kw">data</span><span class="op">-</span><span class="kw">source</span><span class="op">&gt;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">MAPPING</span> <span class="op">&lt;</span><span class="kw">mapping</span><span class="op">&gt;</span>, ... <span class="kw">FROM</span> <span class="op">&lt;</span>data<span class="op">-</span>source<span class="op">&gt;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>The <code>MAPPINGS</code> clause define how data from the dataset are related to visual aesthetics or statistical properties. Multiple mappings can be provided by separating them with a comma. Mapped aesthetics are always scaled by their respective scale. This means that if you map the value ‘red’ to fill, then fill will not take the color red, but whatever the scale decides should represent the string ‘red’. Layer mappings are merged with the global mapping from the <code>VISUALISE</code> clause with the one in the layer taking precedence. This means that it is not necessary to provide any mappings in the <code>DRAW</code> clause if sufficient global mappings are provided.</p>
 <p><code>MAPPING</code> may have a <code>FROM</code> clause that defines the source of the data. If this is missing the global data source from <code>VISUALISE</code> is used.</p>
 <p>The <code>mapping</code> can take one of three forms and all three can be mixed in the same <code>MAPPING</code> clause:</p>
@@ -581,13 +604,13 @@ gradient teal.
 </section>
 <section id="remapping" class="level3">
 <h3 class="anchored" data-anchor-id="remapping"><code>REMAPPING</code></h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>REMAPPING <span class="op">&lt;</span>mapping<span class="op">&gt;</span>, <span class="op">..</span>.</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">REMAPPING</span> <span class="op">&lt;</span><span class="kw">mapping</span><span class="op">&gt;</span>, ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Some layer types like histogram runs the data through a statistical transformation in order to arrive at the data that needs to be displayed (e.g.&nbsp;count per bin). During this, one or more columns are added to the data and you can access these in the <code>REMAPPING</code> clause. Layers that perform statistical transformations always have a default remapping (e.g.&nbsp;<code>count AS y</code> in histogram) so it never required to specify a remapping, but you can do so, either to change the default (e.g.&nbsp;<code>density AS y</code>to access the calculated density instead of count), or to use the calculated property for another aesthetic (e.g.&nbsp;<code>count AS fill</code> to also shade the bars according to their height).</p>
 <p>Remappings have to be explicit since the property name never coincide with an aesthetic. Further, remappings must always map to a visual aesthetic since the statistical properties have already been consumed.</p>
 </section>
 <section id="setting" class="level3">
 <h3 class="anchored" data-anchor-id="setting"><code>SETTING</code></h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>SETTING <span class="op">&lt;</span>parameter<span class="op">/</span>aesthetic<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span><span class="fu">value</span><span class="op">&gt;</span>, <span class="op">..</span>.</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SETTING</span> <span class="op">&lt;</span>parameter<span class="op">/</span>aesthetic<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span>value<span class="op">&gt;</span>, ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>The <code>SETTING</code> clause can be used for to different things:</p>
 <ul>
 <li><em>Setting parameters</em>: Some layers take additional arguments that control how they behave. Often, but not always, these modify the statistical transformation in some way. An example would be the binwidth parameter in histogram which controls the width of each bin during histogram calculation. This is not a statistical property since it is not related to each record, but to the calculation as a whole.</li>
@@ -596,18 +619,18 @@ gradient teal.
 </section>
 <section id="filter" class="level3">
 <h3 class="anchored" data-anchor-id="filter"><code>FILTER</code></h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FILTER</span> <span class="op">&lt;</span>condition<span class="op">&gt;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FILTER</span> <span class="op">&lt;</span>condition<span class="op">&gt;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>You may not want to use all data provided from the data source in the layer. You can limit the data to plot with the <code>FILTER</code> clause. The content of <code>condition</code> is used directly in a <code>WHERE</code> clause when querying the backend for the layer data, so whatever type of expression you database backend supports there will work.</p>
 </section>
 <section id="partition-by" class="level3">
 <h3 class="anchored" data-anchor-id="partition-by"><code>PARTITION BY</code></h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">PARTITION</span> <span class="kw">BY</span> <span class="op">&lt;</span><span class="kw">column</span><span class="op">&gt;</span>, <span class="op">..</span>.</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">PARTITION</span> <span class="kw">BY</span> <span class="op">&lt;</span>column<span class="op">&gt;</span>, ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>During drawing the records in the layer data are grouped by all the discrete data that has been mapped. This grouping is not relevant to all layer types but critical for some, e.g.&nbsp;line layers where the grouping defines which records are connected with a line.</p>
 <p>Often the implicit grouping from the aesthetic mapping is enough, e.g.&nbsp;mapping a discrete value to colour will create one line per colour, but sometimes you need a grouping not reflected in the aesthetic mapping. In that case you can use the <code>PARTITION BY</code> clause to define data columns used for grouping in addition to the ones from the mapping.</p>
 </section>
 <section id="order-by" class="level3">
 <h3 class="anchored" data-anchor-id="order-by"><code>ORDER BY</code></h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">ORDER</span> <span class="kw">BY</span> <span class="op">&lt;</span><span class="kw">column</span><span class="op">&gt;</span>, <span class="op">..</span>.</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">ORDER</span> <span class="kw">BY</span> <span class="op">&lt;</span>column<span class="op">&gt;</span>, ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>For some layers the order of records in the data is important, e.g.&nbsp;the path layer which connect records in the order they are provided. Since databases often doesn’t guarantee a specific order of the data, the <code>ORDER BY</code> clause can be used to enforce such and order. Even for layers where the order doesn’t immediately seem to matter it may have an effect, e.g.&nbsp;an overplottet scatterplot where the records in the end of the data are plottet on top of the one in the start.</p>
 
 
