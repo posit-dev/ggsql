@@ -318,14 +318,16 @@ mod tests {
         let mapping = &specs[0].global_mappings;
         assert!(!mapping.wildcard);
         assert_eq!(mapping.aesthetics.len(), 2);
-        assert!(mapping.aesthetics.contains_key("x"));
-        assert!(mapping.aesthetics.contains_key("y"));
+        // After parsing, aesthetics are transformed to internal names
+        assert!(mapping.aesthetics.contains_key("pos1")); // x -> pos1
+        assert!(mapping.aesthetics.contains_key("pos2")); // y -> pos2
+                                                          // Column names remain unchanged
         assert_eq!(
-            mapping.aesthetics.get("x").unwrap().column_name(),
+            mapping.aesthetics.get("pos1").unwrap().column_name(),
             Some("date")
         );
         assert_eq!(
-            mapping.aesthetics.get("y").unwrap().column_name(),
+            mapping.aesthetics.get("pos2").unwrap().column_name(),
             Some("revenue")
         );
     }
@@ -342,13 +344,14 @@ mod tests {
         let mapping = &specs[0].global_mappings;
         assert!(!mapping.wildcard);
         assert_eq!(mapping.aesthetics.len(), 2);
-        // Implicit mappings are resolved at parse time: x -> x, y -> y
+        // Implicit mappings: x maps to column x, y maps to column y
+        // Aesthetic keys are transformed to internal names: x -> pos1, y -> pos2
         assert_eq!(
-            mapping.aesthetics.get("x").unwrap().column_name(),
+            mapping.aesthetics.get("pos1").unwrap().column_name(),
             Some("x")
         );
         assert_eq!(
-            mapping.aesthetics.get("y").unwrap().column_name(),
+            mapping.aesthetics.get("pos2").unwrap().column_name(),
             Some("y")
         );
     }
@@ -365,13 +368,13 @@ mod tests {
         let mapping = &specs[0].global_mappings;
         assert!(!mapping.wildcard);
         assert_eq!(mapping.aesthetics.len(), 3);
-        // Implicit x and y, explicit color
+        // Implicit x and y (transformed to pos1, pos2), explicit color
         assert_eq!(
-            mapping.aesthetics.get("x").unwrap().column_name(),
+            mapping.aesthetics.get("pos1").unwrap().column_name(),
             Some("x")
         );
         assert_eq!(
-            mapping.aesthetics.get("y").unwrap().column_name(),
+            mapping.aesthetics.get("pos2").unwrap().column_name(),
             Some("y")
         );
         assert_eq!(

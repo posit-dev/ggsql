@@ -1,0 +1,95 @@
+---
+title: Polar
+---
+
+The polar coordinate system interprets its primary aesthetic as the angular position relative to the center, and the secondary aesthetic as the distance from the center. It is most often used for pie-charts and radar plots.
+
+## Default aesthetics
+The polar coordinate system has the following default positional aesthetics which will be used if no others have been provided:
+
+* **Primary**: `theta` (angular position)
+* **Secondary**: `radius` (distance from center)
+
+Users can provide their own aesthetic names if needed. For example, if using `x` and `y` aesthetics:
+
+```ggsql
+PROJECT y, x TO polar
+```
+
+This maps `y` to theta (angle) and `x` to radius. This is useful when converting from a cartesian coordinate system without editing all the mappings.
+
+## Settings
+* `clip`: Should data be removed if it appears outside the bounds of the coordinate system. Defaults to `true`
+* `start`: The starting angle in degrees for the theta scale. Controls where "0" on the angular axis begins. Defaults to `0` (12 o'clock position).
+  - `0` = 12 o'clock position (top)
+  - `90` = 3 o'clock position (right)
+  - `-90` or `270` = 9 o'clock position (left)
+  - `180` = 6 o'clock position (bottom)
+* `end`: The ending angle in degrees for the theta scale. Defaults to `start + 360` (a full circle). Use this with `start` to create partial polar plots like gauge charts or half-circle visualizations.
+* `inner`: The inner radius as a proportion (0 to 1) of the outer radius. Defaults to `0` (no hole). Setting this creates a donut chart where the inner portion is empty.
+  - `0` = full pie (no hole)
+  - `0.3` = donut with 30% hole
+  - `0.5` = donut with 50% hole
+
+## Examples
+
+### Pie chart using theta/radius aesthetics
+```{ggsql}
+VISUALISE species AS fill FROM ggsql:penguins
+DRAW bar
+PROJECT TO polar
+```
+
+### Pie chart starting at 3 o'clock
+```{ggsql}
+VISUALISE species AS fill FROM ggsql:penguins
+DRAW bar
+PROJECT TO polar SETTING start => 90
+```
+
+### Pie chart starting at 9 o'clock
+```{ggsql}
+VISUALISE species AS fill FROM ggsql:penguins
+DRAW bar
+PROJECT TO polar SETTING start => -90
+```
+
+### Half-circle gauge chart
+```{ggsql}
+VISUALISE species AS fill FROM ggsql:penguins
+DRAW bar
+PROJECT TO polar SETTING start => -90, end => 90
+```
+This creates a gauge chart spanning from the 9 o'clock to 3 o'clock position (a 180° arc at the top).
+
+### Three-quarter pie chart
+```{ggsql}
+VISUALISE species AS fill FROM ggsql:penguins
+DRAW bar
+PROJECT TO polar SETTING end => 270
+```
+This creates a pie chart using only 270° (three-quarters of a circle), starting from 0° (12 o'clock) and ending at 270° (9 o'clock).
+
+### Donut chart with 50% hole
+```{ggsql}
+VISUALISE species AS fill FROM ggsql:penguins
+DRAW bar
+PROJECT TO polar SETTING inner => 0.5
+```
+This creates a donut chart where the inner 50% of the radius is empty, leaving a ring-shaped visualization.
+
+### Donut chart with 30% hole
+```{ggsql}
+VISUALISE species AS fill FROM ggsql:penguins
+DRAW bar
+PROJECT TO polar SETTING inner => 0.3
+```
+This creates a donut chart with a smaller hole (30% of the radius).
+
+### Half-circle donut chart
+```{ggsql}
+VISUALISE species AS fill FROM ggsql:penguins
+DRAW bar
+PROJECT TO polar SETTING start => -90, end => 90, inner => 0.5
+```
+This combines the `start`, `end`, and `inner` settings to create a half-circle donut chart (gauge style) spanning from 9 o'clock to 3 o'clock with a 50% hole.

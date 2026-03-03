@@ -168,8 +168,7 @@ mod tests {
     fn test_integer_breaks_small_range_linear() {
         let t = Integer;
         // Test the problematic case: range 0-5 with n=5
-        // Previously this would give [0, 1.25, 2.5, 3.75, 5] → rounded [0, 1, 3, 4, 5]
-        // Now it should give evenly spaced integers
+        // Should give evenly spaced integers, not [0, 1, 3, 4, 5] (missing 2)
         let breaks = t.calculate_breaks(0.0, 5.0, 5, false);
         for b in &breaks {
             assert_eq!(*b, b.round(), "Break {} should be integer", b);

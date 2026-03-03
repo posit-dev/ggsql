@@ -88,6 +88,9 @@ website:
           - section: Aesthetics
             contents:
               - auto: syntax/scale/aesthetic/*
+      - section: Coordinate systems
+        contents:
+          - auto: syntax/coord/*
 
 
 format:

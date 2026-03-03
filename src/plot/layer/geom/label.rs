@@ -15,8 +15,8 @@ impl GeomTrait for Label {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("x", DefaultAestheticValue::Required),
-                ("y", DefaultAestheticValue::Required),
+                ("pos1", DefaultAestheticValue::Required),
+                ("pos2", DefaultAestheticValue::Required),
                 ("label", DefaultAestheticValue::Null),
                 ("fill", DefaultAestheticValue::Null),
                 ("stroke", DefaultAestheticValue::Null),

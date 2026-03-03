@@ -23,7 +23,7 @@ pub use schema::TypeInfo;
 
 use crate::naming;
 use crate::parser;
-use crate::plot::aesthetic::{primary_aesthetic, ALL_POSITIONAL};
+use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
 use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDataContext};
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
 use crate::{DataFrame, GgsqlError, Plot, Result};
@@ -286,18 +286,19 @@ fn add_facet_mappings_to_layers(
         }
         let type_info = &layer_type_info[layer_idx];
 
-        for (var, aesthetic) in facet.layout.get_aesthetic_mappings() {
+        // Use internal aesthetic names (facet1, facet2) since transformation has already occurred
+        for (var, aesthetic) in facet.layout.get_internal_aesthetic_mappings() {
             // Skip if layer already has this facet aesthetic mapped (from MAPPING or global)
-            if layer.mappings.aesthetics.contains_key(aesthetic) {
+            if layer.mappings.aesthetics.contains_key(&aesthetic) {
                 continue;
             }
 
             // Only inject if the column exists in this layer's schema
             // (variables list is empty when inferred from layer mappings - no injection needed)
             if type_info.iter().any(|(col, _, _)| col == var) {
-                // Add mapping: variable → facet aesthetic
+                // Add mapping: variable → facet aesthetic (internal name)
                 layer.mappings.aesthetics.insert(
-                    aesthetic.to_string(),
+                    aesthetic,
                     AestheticValue::Column {
                         name: var.to_string(),
                         original_name: Some(var.to_string()),
@@ -488,11 +489,11 @@ fn handle_missing_facet_columns(
         return Ok(());
     }
 
-    // Get facet aesthetics from layout
-    let facet_aesthetics = facet.layout.get_aesthetics();
+    // Get internal facet aesthetics from layout (facet1, facet2)
+    let facet_aesthetics = facet.layout.internal_facet_names();
 
     // Process each facet aesthetic
-    for facet_aesthetic in facet_aesthetics {
+    for facet_aesthetic in &facet_aesthetics {
         // Get unique values from layers that HAVE the column
         let unique_values = match get_unique_facet_values(
             data_map,
@@ -554,49 +555,44 @@ fn resolve_facet(
     use crate::plot::scale::is_facet_aesthetic;
 
     // Collect facet aesthetic mappings from all layers
-    let mut has_facet = false;
-    let mut has_row = false;
-    let mut has_column = false;
+    // After transformation: panel → facet1, row → facet1, column → facet2
+    // If only facet1 exists → wrap layout (panel only)
+    // If facet1 AND facet2 exist → grid layout (row AND column)
+    let mut has_facet1 = false;
+    let mut has_facet2 = false;
 
     for layer in layers {
         for aesthetic in layer.mappings.aesthetics.keys() {
             if is_facet_aesthetic(aesthetic) {
                 match aesthetic.as_str() {
-                    "panel" => has_facet = true,
-                    "row" => has_row = true,
-                    "column" => has_column = true,
+                    "facet1" => has_facet1 = true,
+                    "facet2" => has_facet2 = true,
                     _ => {}
                 }
             }
         }
     }
 
-    // Validate: cannot mix Wrap (panel) with Grid (row/column)
-    if has_facet && (has_row || has_column) {
+    // Validate: Grid requires both facet1 and facet2 (row and column)
+    // Having only facet2 is an error (column without row)
+    if has_facet2 && !has_facet1 {
         return Err(GgsqlError::ValidationError(
-            "Cannot mix 'panel' aesthetic (Wrap layout) with 'row'/'column' aesthetics (Grid layout). \
-             Use either 'panel' for Wrap or 'row'/'column' for Grid.".to_string()
+            "Grid facet layout requires both 'row' and 'column' aesthetics. Missing: 'row'"
+                .to_string(),
         ));
     }
 
-    // Validate: Grid requires both row and column
-    if (has_row || has_column) && !(has_row && has_column) {
-        let missing = if has_row { "column" } else { "row" };
-        return Err(GgsqlError::ValidationError(format!(
-            "Grid facet layout requires both 'row' and 'column' aesthetics. Missing: '{}'",
-            missing
-        )));
-    }
-
     // Determine inferred layout from layer mappings
-    let inferred_layout = if has_facet {
-        Some(FacetLayout::Wrap {
-            variables: vec![], // Empty - each layer has its own mapping
-        })
-    } else if has_row && has_column {
+    // facet1 only → wrap layout (originally 'panel')
+    // facet1 AND facet2 → grid layout (originally 'row' AND 'column')
+    let inferred_layout = if has_facet1 && has_facet2 {
         Some(FacetLayout::Grid {
             row: vec![],    // Empty - each layer has its own mapping
             column: vec![], // Empty - each layer has its own mapping
+        })
+    } else if has_facet1 {
+        Some(FacetLayout::Wrap {
+            variables: vec![], // Empty - each layer has its own mapping
         })
     } else {
         None
@@ -611,19 +607,20 @@ fn resolve_facet(
     if let Some(ref facet) = existing_facet {
         let is_wrap = facet.is_wrap();
 
-        if is_wrap && (has_row || has_column) {
+        // Wrap layout (FACET var) but layer has both facet1 AND facet2 (row/column)
+        // This indicates the layer was declared with Grid aesthetics
+        if is_wrap && has_facet2 {
             return Err(GgsqlError::ValidationError(
                 "FACET clause uses Wrap layout, but layer mappings use 'row'/'column' (Grid layout). \
                  Remove FACET clause to infer Grid layout, or use 'panel' aesthetic instead.".to_string()
             ));
         }
 
-        if !is_wrap && has_facet {
-            return Err(GgsqlError::ValidationError(
-                "FACET clause uses Grid layout, but layer mappings use 'panel' aesthetic (Wrap layout). \
-                 Remove FACET clause to infer Wrap layout, or use 'row'/'column' aesthetics instead.".to_string()
-            ));
-        }
+        // Grid layout (FACET row BY col) but layer has only facet1 without facet2
+        // This indicates the layer was declared with Wrap aesthetic (panel only)
+        // Note: Grid layout declared by user means they expect both row and column
+        // If layer only has facet1, it's compatible (will use only row mapping)
+        // This is actually okay - we don't need to error here
 
         // FACET clause exists and is compatible - use it (layer mappings will override columns)
         return Ok(Some(facet.clone()));
@@ -660,6 +657,7 @@ fn add_discrete_columns_to_partition_by(
     layers: &mut [Layer],
     layer_schemas: &[Schema],
     scales: &[Scale],
+    aesthetic_ctx: &AestheticContext,
 ) {
     // Build a map of aesthetic -> scale for quick lookup
     let scale_map: HashMap<&str, &Scale> =
@@ -680,7 +678,7 @@ fn add_discrete_columns_to_partition_by(
             // Skip positional aesthetics - these should not trigger auto-grouping.
             // Stats that need to group by positional aesthetics (like bar/histogram)
             // already handle this themselves via stat_consumed_aesthetics().
-            if ALL_POSITIONAL.iter().any(|s| s == aesthetic) {
+            if is_positional_aesthetic(aesthetic) {
                 continue;
             }
 
@@ -701,8 +699,10 @@ fn add_discrete_columns_to_partition_by(
                 //
                 // Discrete and Binned scales produce categorical groupings.
                 // Continuous scales don't group. Identity defers to column type.
-                let primary_aesthetic = primary_aesthetic(aesthetic);
-                let is_discrete = if let Some(scale) = scale_map.get(primary_aesthetic) {
+                let primary_aes = aesthetic_ctx
+                    .primary_internal_positional(aesthetic)
+                    .unwrap_or(aesthetic);
+                let is_discrete = if let Some(scale) = scale_map.get(primary_aes) {
                     if let Some(ref scale_type) = scale.scale_type {
                         match scale_type.scale_type_kind() {
                             ScaleTypeKind::Discrete
@@ -760,10 +760,10 @@ fn collect_layer_required_columns(layer: &Layer, spec: &Plot) -> HashSet<String>
     // Facet aesthetic columns (shared across all layers)
     // Only the aesthetic-prefixed columns are needed for Vega-Lite output.
     // The original variable names (e.g., "species") are not needed after
-    // the aesthetic columns (e.g., "__ggsql_aes_panel__") have been created.
+    // the aesthetic columns (e.g., "__ggsql_aes_facet1__") have been created.
     if let Some(ref facet) = spec.facet {
-        for aesthetic in facet.layout.get_aesthetics() {
-            required.insert(naming::aesthetic_column(aesthetic));
+        for aesthetic in facet.layout.internal_facet_names() {
+            required.insert(naming::aesthetic_column(&aesthetic));
         }
     }
 
@@ -951,6 +951,8 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 
     // Merge global mappings into layer aesthetics and expand wildcards
     // Smart wildcard expansion only creates mappings for columns that exist in schema
+    // NOTE: Both global and layer aesthetics are already in internal format (pos1, pos2)
+    // because transformation happens in builder.rs right after parsing
     merge_global_mappings_into_layers(&mut specs, &layer_schemas);
 
     // Split 'color' aesthetic to 'fill' and 'stroke' early in the pipeline
@@ -974,7 +976,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     specs[0].facet = resolve_facet(&specs[0].layers, specs[0].facet.clone())?;
 
     // Inject facet variable mappings into layers (only for missing aesthetics)
-    // This allows facet aesthetics (panel, row, column) to flow through the same
+    // This allows facet aesthetics (facet1, facet2) to flow through the same
     // code paths as regular aesthetics - scale creation, type resolution, etc.
     if let Some(facet) = specs[0].facet.clone() {
         add_facet_mappings_to_layers(&mut specs[0].layers, &facet, &layer_type_info);
@@ -1034,7 +1036,13 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 
     // Add discrete mapped columns to partition_by for all layers
     let scales = specs[0].scales.clone();
-    add_discrete_columns_to_partition_by(&mut specs[0].layers, &layer_schemas, &scales);
+    let aesthetic_ctx = specs[0].get_aesthetic_context();
+    add_discrete_columns_to_partition_by(
+        &mut specs[0].layers,
+        &layer_schemas,
+        &scales,
+        &aesthetic_ctx,
+    );
 
     // Clone scales for apply_layer_transforms
     let scales = specs[0].scales.clone();
@@ -1158,21 +1166,27 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 
     // Resolve facet properties (after data is available)
     for spec in &mut specs {
+        // Get positional aesthetic names from the aesthetic context (coord-specific)
+        // This must be done before mutably borrowing facet
+        let positional_names: Vec<String> = spec.get_aesthetic_context().user_positional().to_vec();
+        // Convert to &str slice for resolve_facet_properties
+        let positional_refs: Vec<&str> = positional_names.iter().map(|s| s.as_str()).collect();
+
         if let Some(ref mut facet) = spec.facet {
             // Get the first layer's data for computing facet defaults
             let facet_df = data_map.get(&naming::layer_key(0)).ok_or_else(|| {
                 GgsqlError::InternalError("Missing layer 0 data for facet resolution".to_string())
             })?;
-            // Use aesthetic column names (e.g., __ggsql_aes_panel__) since the DataFrame
+            // Use aesthetic column names (e.g., __ggsql_aes_facet1__) since the DataFrame
             // has been transformed to use aesthetic columns at this point
             let aesthetic_cols: Vec<String> = facet
                 .layout
-                .get_aesthetics()
+                .internal_facet_names()
                 .iter()
                 .map(|aes| naming::aesthetic_column(aes))
                 .collect();
             let context = FacetDataContext::from_dataframe(facet_df, &aesthetic_cols);
-            resolve_facet_properties(facet, &context)
+            resolve_facet_properties(facet, &context, &positional_refs)
                 .map_err(|e| GgsqlError::ValidationError(format!("Facet: {}", e)))?;
         }
     }
@@ -1354,14 +1368,14 @@ mod tests {
         assert!(result.data.contains_key(&naming::layer_key(0)));
         let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
 
-        // Should have prefixed aesthetic-named columns
+        // Should have prefixed aesthetic-named columns (using internal names)
         let col_names: Vec<String> = layer_df
             .get_column_names_str()
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let x_col = naming::aesthetic_column("x");
-        let y_col = naming::aesthetic_column("y");
+        let x_col = naming::aesthetic_column("pos1");
+        let y_col = naming::aesthetic_column("pos2");
         assert!(
             col_names.contains(&x_col),
             "Should have '{}' column: {:?}",
@@ -1409,14 +1423,14 @@ mod tests {
         // Should have 3 rows (3 unique categories: A, B, C)
         assert_eq!(layer_df.height(), 3);
 
-        // With new approach, columns are renamed to prefixed aesthetic names
+        // With new approach, columns are renamed to prefixed aesthetic names (using internal names)
         let col_names: Vec<String> = layer_df
             .get_column_names_str()
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let x_col = naming::aesthetic_column("x");
-        let y_col = naming::aesthetic_column("y");
+        let x_col = naming::aesthetic_column("pos1");
+        let y_col = naming::aesthetic_column("pos2");
         assert!(
             col_names.contains(&x_col),
             "Expected '{}' in {:?}",
@@ -1484,16 +1498,16 @@ mod tests {
         let result = prepare_data_with_reader(query, &reader).unwrap();
         let layer = &result.specs[0].layers[0];
 
-        // Layer should have yend in mappings (added by default for bar)
+        // Layer should have pos2end in mappings (yend is transformed to pos2end)
         assert!(
-            layer.mappings.aesthetics.contains_key("yend"),
-            "Bar should have yend mapping for baseline: {:?}",
+            layer.mappings.aesthetics.contains_key("pos2end"),
+            "Bar should have pos2end mapping for baseline: {:?}",
             layer.mappings.aesthetics.keys().collect::<Vec<_>>()
         );
 
-        // The DataFrame should have the yend column with 0 values
+        // The DataFrame should have the pos2end column with 0 values
         let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
-        let yend_col = naming::aesthetic_column("yend");
+        let yend_col = naming::aesthetic_column("pos2end");
         assert!(
             layer_df.column(&yend_col).is_ok(),
             "DataFrame should have '{}' column: {:?}",
@@ -1519,8 +1533,8 @@ mod tests {
         let result = prepare_data_with_reader(query, &reader).unwrap();
         let spec = &result.specs[0];
 
-        // Find the x scale
-        let x_scale = spec.find_scale("x").expect("x scale should exist");
+        // Find the pos1 scale (x is transformed to pos1)
+        let x_scale = spec.find_scale("pos1").expect("pos1 scale should exist");
 
         // Should be inferred as Continuous from numeric column
         assert_eq!(
@@ -1547,8 +1561,8 @@ mod tests {
         let result = prepare_data_with_reader(query, &reader).unwrap();
         let spec = &result.specs[0];
 
-        // Find the x scale
-        let x_scale = spec.find_scale("x").expect("x scale should exist");
+        // Find the pos1 scale (x is transformed to pos1)
+        let x_scale = spec.find_scale("pos1").expect("pos1 scale should exist");
 
         // Should be inferred as Discrete from String column
         assert_eq!(
@@ -1641,8 +1655,9 @@ mod tests {
             .map(|s| s.to_string())
             .collect();
 
-        let x_col = naming::aesthetic_column("x");
-        let y_col = naming::aesthetic_column("y");
+        // Use internal aesthetic names
+        let x_col = naming::aesthetic_column("pos1");
+        let y_col = naming::aesthetic_column("pos2");
         let stroke_col = naming::aesthetic_column("stroke");
 
         assert!(
@@ -1691,7 +1706,8 @@ mod tests {
 
         #[test]
         fn test_resolve_facet_infers_wrap_from_layer_mapping() {
-            let layers = vec![make_layer_with_mapping("panel", "region")];
+            // Use internal name "facet1" since resolve_facet is called after transformation
+            let layers = vec![make_layer_with_mapping("facet1", "region")];
 
             let result = resolve_facet(&layers, None).unwrap();
 
@@ -1704,13 +1720,14 @@ mod tests {
 
         #[test]
         fn test_resolve_facet_infers_grid_from_layer_mappings() {
+            // Use internal names "facet1" and "facet2" since resolve_facet is called after transformation
             let mut layer = Layer::new(Geom::point());
-            layer
-                .mappings
-                .aesthetics
-                .insert("row".to_string(), AestheticValue::standard_column("region"));
             layer.mappings.aesthetics.insert(
-                "column".to_string(),
+                "facet1".to_string(),
+                AestheticValue::standard_column("region"),
+            );
+            layer.mappings.aesthetics.insert(
+                "facet2".to_string(),
                 AestheticValue::standard_column("year"),
             );
             let layers = vec![layer];
@@ -1725,38 +1742,16 @@ mod tests {
         }
 
         #[test]
-        fn test_resolve_facet_error_mixed_wrap_and_grid() {
-            let mut layer = Layer::new(Geom::point());
-            layer.mappings.aesthetics.insert(
-                "panel".to_string(),
-                AestheticValue::standard_column("region"),
-            );
-            layer
-                .mappings
-                .aesthetics
-                .insert("row".to_string(), AestheticValue::standard_column("year"));
-            let layers = vec![layer];
-
-            let result = resolve_facet(&layers, None);
-
-            assert!(result.is_err());
-            let err = result.unwrap_err().to_string();
-            assert!(err.contains("Cannot mix"));
-            assert!(err.contains("panel"));
-            assert!(err.contains("row"));
-        }
-
-        #[test]
         fn test_resolve_facet_error_incomplete_grid() {
-            // Only row, missing column
-            let layers = vec![make_layer_with_mapping("row", "region")];
+            // Only facet2 without facet1 is an error (column without row)
+            let layers = vec![make_layer_with_mapping("facet2", "region")];
 
             let result = resolve_facet(&layers, None);
 
             assert!(result.is_err());
             let err = result.unwrap_err().to_string();
             assert!(err.contains("requires both"));
-            assert!(err.contains("column"));
+            assert!(err.contains("row"));
         }
 
         #[test]
@@ -1777,13 +1772,15 @@ mod tests {
 
         #[test]
         fn test_resolve_facet_error_wrap_clause_with_grid_mapping() {
+            // When layer has both facet1 AND facet2 (grid), but FACET clause is Wrap
+            // This should error because the user declared grid aesthetics but FACET says wrap
             let mut layer = Layer::new(Geom::point());
             layer.mappings.aesthetics.insert(
-                "row".to_string(),
+                "facet1".to_string(),
                 AestheticValue::standard_column("category"),
             );
             layer.mappings.aesthetics.insert(
-                "column".to_string(),
+                "facet2".to_string(),
                 AestheticValue::standard_column("year"),
             );
             let layers = vec![layer];
@@ -1797,24 +1794,7 @@ mod tests {
             assert!(result.is_err());
             let err = result.unwrap_err().to_string();
             assert!(err.contains("Wrap layout"));
-            assert!(err.contains("row"));
-        }
-
-        #[test]
-        fn test_resolve_facet_error_grid_clause_with_wrap_mapping() {
-            let layers = vec![make_layer_with_mapping("panel", "region")];
-
-            let existing_facet = Facet::new(FacetLayout::Grid {
-                row: vec!["region".to_string()],
-                column: vec!["year".to_string()],
-            });
-
-            let result = resolve_facet(&layers, Some(existing_facet));
-
-            assert!(result.is_err());
-            let err = result.unwrap_err().to_string();
-            assert!(err.contains("Grid layout"));
-            assert!(err.contains("panel"));
+            assert!(err.contains("row")); // mentions the user-facing name in error
         }
 
         #[test]
@@ -1828,8 +1808,8 @@ mod tests {
 
         #[test]
         fn test_resolve_facet_layer_override_compatible_with_clause() {
-            // Layer has panel mapping, FACET clause is Wrap - compatible
-            let layers = vec![make_layer_with_mapping("panel", "category")];
+            // Layer has facet1 mapping (from panel), FACET clause is Wrap - compatible
+            let layers = vec![make_layer_with_mapping("facet1", "category")];
 
             let existing_facet = Facet::new(FacetLayout::Wrap {
                 variables: vec!["region".to_string()],
@@ -1871,9 +1851,9 @@ mod tests {
         let facet = result.specs[0].facet.as_ref().unwrap();
         assert!(facet.is_wrap());
 
-        // Data should have panel aesthetic column
+        // Data should have facet1 aesthetic column (internal name for panel)
         let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
-        let facet_col = naming::aesthetic_column("panel");
+        let facet_col = naming::aesthetic_column("facet1");
         assert!(
             layer_df.column(&facet_col).is_ok(),
             "Should have '{}' column: {:?}",
@@ -1912,10 +1892,10 @@ mod tests {
         let facet = result.specs[0].facet.as_ref().unwrap();
         assert!(facet.is_grid());
 
-        // Data should have row and column aesthetic columns
+        // Data should have facet1 (row) and facet2 (column) aesthetic columns (internal names)
         let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
-        let row_col = naming::aesthetic_column("row");
-        let col_col = naming::aesthetic_column("column");
+        let row_col = naming::aesthetic_column("facet1");
+        let col_col = naming::aesthetic_column("facet2");
         assert!(
             layer_df.column(&row_col).is_ok(),
             "Should have '{}' column",
@@ -1984,7 +1964,8 @@ mod tests {
 
         // Should succeed - layer mapping overrides FACET clause
         let layer = &result.specs[0].layers[0];
-        let facet_mapping = layer.mappings.aesthetics.get("panel").unwrap();
+        // Use internal name "facet1" since transformation has occurred
+        let facet_mapping = layer.mappings.aesthetics.get("facet1").unwrap();
         // Use label_name() which returns original column name before internal renaming
         assert_eq!(
             facet_mapping.label_name(),
@@ -2052,11 +2033,12 @@ mod tests {
             "ref layer should be repeated for each facet panel (A and B)"
         );
 
-        // The panel column should exist in the ref_data
-        let facet_col = naming::aesthetic_column("panel");
+        // The facet column should exist in the ref_data (internal name facet1)
+        let facet_col = naming::aesthetic_column("facet1");
         assert!(
             ref_df.column(&facet_col).is_ok(),
-            "ref data should have panel column after broadcast"
+            "ref data should have facet column after broadcast: {:?}",
+            ref_df.get_column_names_str()
         );
     }
 

@@ -108,6 +108,22 @@ impl Mappings {
     pub fn len(&self) -> usize {
         self.aesthetics.len()
     }
+
+    /// Transform aesthetic keys from user-facing to internal names.
+    ///
+    /// Uses the provided AestheticContext to map user-facing positional aesthetic names
+    /// (e.g., "x", "y", "theta", "radius") to internal names (e.g., "pos1", "pos2").
+    /// Non-positional aesthetics (e.g., "color", "size") are left unchanged.
+    pub fn transform_to_internal(&mut self, ctx: &super::AestheticContext) {
+        let original_aesthetics = std::mem::take(&mut self.aesthetics);
+        for (aesthetic, value) in original_aesthetics {
+            let internal_name = ctx
+                .map_user_to_internal(&aesthetic)
+                .map(|s| s.to_string())
+                .unwrap_or(aesthetic);
+            self.aesthetics.insert(internal_name, value);
+        }
+    }
 }
 
 // =============================================================================
@@ -872,6 +888,45 @@ impl SqlExpression {
     /// Consume and return the raw SQL text
     pub fn into_string(self) -> String {
         self.0
+    }
+}
+
+// =============================================================================
+// Default Property Types (Shared by Coord, Scale, and Geom traits)
+// =============================================================================
+
+/// Default value for a property parameter
+///
+/// Used by traits to declare both allowed property names and their default values
+/// in a single declaration, avoiding the need to keep two separate implementations
+/// in sync.
+#[derive(Debug, Clone)]
+pub enum DefaultParamValue {
+    String(&'static str),
+    Number(f64),
+    Boolean(bool),
+    Null,
+}
+
+/// Property definition: name and default value
+///
+/// Used by `CoordTrait`, `ScaleTypeTrait`, and `GeomTrait` to declare their
+/// allowed properties and default values in a single place.
+#[derive(Debug, Clone)]
+pub struct DefaultParam {
+    pub name: &'static str,
+    pub default: DefaultParamValue,
+}
+
+impl DefaultParam {
+    /// Convert the default value to a ParameterValue, if not Null
+    pub fn to_parameter_value(&self) -> Option<ParameterValue> {
+        match &self.default {
+            DefaultParamValue::String(s) => Some(ParameterValue::String(s.to_string())),
+            DefaultParamValue::Number(n) => Some(ParameterValue::Number(*n)),
+            DefaultParamValue::Boolean(b) => Some(ParameterValue::Boolean(*b)),
+            DefaultParamValue::Null => None,
+        }
     }
 }
 

@@ -81,7 +81,7 @@
 (scale_type_identifier) @type.builtin
 
 ; Property names
-(coord_property_name) @property
+(project_property_name) @property
 (theme_property_name) @property
 (label_type) @property
 

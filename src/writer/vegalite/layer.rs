@@ -327,7 +327,7 @@ impl GeomRenderer for ViolinRenderer {
         // Left side (- offset), sort by +y (bottom -> top)
         let calc_order = format!(
             "datum.__violin_offset > 0 ? -datum.{y} : datum.{y}",
-            y = naming::aesthetic_column("y")
+            y = naming::aesthetic_column("pos2")
         );
 
         // Filter threshold to trim very low density regions (removes thin tails)
@@ -475,9 +475,9 @@ impl BoxplotRenderer {
     ) -> Result<(HashMap<String, Vec<Value>>, Vec<String>, bool)> {
         let type_col = naming::aesthetic_column("type");
         let type_col = type_col.as_str();
-        let value_col = naming::aesthetic_column("y");
+        let value_col = naming::aesthetic_column("pos2");
         let value_col = value_col.as_str();
-        let value2_col = naming::aesthetic_column("yend");
+        let value2_col = naming::aesthetic_column("pos2end");
         let value2_col = value2_col.as_str();
 
         // Find grouping columns (all columns except type, value, value2)
@@ -543,22 +543,22 @@ impl BoxplotRenderer {
     ) -> Result<Vec<Value>> {
         let mut layers: Vec<Value> = Vec::new();
 
-        let value_col = naming::aesthetic_column("y");
-        let value2_col = naming::aesthetic_column("yend");
+        let value_col = naming::aesthetic_column("pos2");
+        let value2_col = naming::aesthetic_column("pos2end");
 
         let x_col = layer
             .mappings
-            .get("x")
+            .get("pos1")
             .and_then(|x| x.column_name())
             .ok_or_else(|| {
-                GgsqlError::WriterError("Failed to find column for 'x' aesthetic".to_string())
+                GgsqlError::WriterError("Boxplot requires 'x' aesthetic mapping".to_string())
             })?;
         let y_col = layer
             .mappings
-            .get("y")
+            .get("pos2")
             .and_then(|y| y.column_name())
             .ok_or_else(|| {
-                GgsqlError::WriterError("Failed to find column for 'y' aesthetic".to_string())
+                GgsqlError::WriterError("Boxplot requires 'y' aesthetic mapping".to_string())
             })?;
 
         // Set orientation

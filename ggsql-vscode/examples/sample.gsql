@@ -37,7 +37,7 @@ LABEL title => 'Sales Trends by Region',
 THEME classic
 
 -- ============================================================================
--- Example 3: Bar Chart with Coordinate Transformation
+-- Example 3: Bar Chart with Projection
 -- ============================================================================
 SELECT category, SUM(value) as total
 FROM products
@@ -47,21 +47,21 @@ ORDER BY total DESC
 LIMIT 10
 VISUALISE category AS x, total AS y, category AS fill
 DRAW bar
-COORD flip
+PROJECT y, x TO cartesian
 LABEL title => 'Top 10 Product Categories',
       x => 'Category',
       y => 'Total Sales'
 THEME dark
 
 -- ============================================================================
--- Example 4: Polar Coordinates (Pie Chart)
+-- Example 4: Polar Projection (Pie Chart)
 -- ============================================================================
 SELECT region, COUNT(*) as count
 FROM customers
 GROUP BY region
 VISUALISE region AS x, count AS y, region AS fill
 DRAW bar
-COORD polar SETTING theta => y
+PROJECT TO polar
 LABEL title => 'Customer Distribution by Region'
 
 -- ============================================================================
@@ -101,8 +101,8 @@ DRAW line
     MAPPING avg_temp AS y
     SETTING size => 2, color => 'blue'
 SCALE x SETTING type => 'date'
+SCALE x FROM ['2024-01-01', '2024-12-31']
 SCALE y SETTING type => 'linear', limits => [0, 100]
-COORD cartesian SETTING xlim => ['2024-01-01', '2024-12-31']
 LABEL title => 'Temperature Range (Last 30 Days)',
       x => 'Date',
       y => 'Temperature (°C)',
@@ -166,7 +166,7 @@ WHERE rating IS NOT NULL
 VISUALISE category AS x, price AS y
 DRAW boxplot
 DRAW violin SETTING opacity => 0.3
-COORD cartesian SETTING ylim => [0, 500]
+SCALE y FROM [0, 500]
 LABEL title => 'Price Distribution by Category',
       x => 'Product Category',
       y => 'Price ($)'
@@ -190,7 +190,8 @@ DRAW text
     MAPPING product_name AS label
 SCALE color TO viridis
 SCALE size SETTING limits => [0, 10000]
-COORD cartesian SETTING xlim => [0, 1000], ylim => [0, 5]
+SCALE x FROM [0, 1000]
+SCALE y FROM [0, 5]
 LABEL title => 'Featured Products: Price vs Rating',
       x => 'Price ($)',
       y => 'Customer Rating',
@@ -211,7 +212,7 @@ LABEL title => 'Sales by Region'
 -- Second visualization: by category
 VISUALISE category AS x, total AS y, category AS fill FROM sales_summary
 DRAW bar
-COORD flip
+PROJECT y, x TO cartesian
 LABEL title => 'Sales by Category'
 
 -- ============================================================================

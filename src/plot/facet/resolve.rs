@@ -59,9 +59,6 @@ const GRID_ALLOWED: &[&str] = &["free", "missing"];
 /// Valid values for the missing property
 const MISSING_VALUES: &[&str] = &["repeat", "null"];
 
-/// Valid string values for the free property
-const FREE_STRING_VALUES: &[&str] = &["x", "y"];
-
 /// Compute smart default ncol for wrap facets based on number of levels
 ///
 /// Returns an optimal column count that creates a balanced grid:
@@ -87,12 +84,23 @@ fn compute_default_ncol(num_levels: usize) -> i64 {
 /// 1. Skips if already resolved
 /// 2. Validates all properties are allowed for this layout
 /// 3. Validates property values:
-///    - `free`: must be null, 'x', 'y', or ['x', 'y']
+///    - `free`: must be null, a valid positional aesthetic, or an array of them
 ///    - `ncol`: positive integer
-/// 4. Applies defaults for missing properties:
+/// 4. Normalizes the `free` property to a boolean vector (position-indexed)
+/// 5. Applies defaults for missing properties:
 ///    - `ncol` (wrap only): computed from `context.num_levels`
-/// 5. Sets `resolved = true`
-pub fn resolve_properties(facet: &mut Facet, context: &FacetDataContext) -> Result<(), String> {
+/// 6. Sets `resolved = true`
+///
+/// # Arguments
+///
+/// * `facet` - The facet to resolve
+/// * `context` - Data context with unique values
+/// * `positional_names` - Valid positional aesthetic names (e.g., ["x", "y"] or ["theta", "radius"])
+pub fn resolve_properties(
+    facet: &mut Facet,
+    context: &FacetDataContext,
+    positional_names: &[&str],
+) -> Result<(), String> {
     // Skip if already resolved
     if facet.resolved {
         return Ok(());
@@ -118,11 +126,14 @@ pub fn resolve_properties(facet: &mut Facet, context: &FacetDataContext) -> Resu
     }
 
     // Step 2: Validate property values
-    validate_free_property(facet)?;
+    validate_free_property(facet, positional_names)?;
     validate_ncol_property(facet)?;
     validate_missing_property(facet)?;
 
-    // Step 3: Apply defaults for missing properties
+    // Step 3: Normalize free property to boolean vector
+    normalize_free_property(facet, positional_names);
+
+    // Step 4: Apply defaults for missing properties
     apply_defaults(facet, context);
 
     // Mark as resolved
@@ -135,9 +146,14 @@ pub fn resolve_properties(facet: &mut Facet, context: &FacetDataContext) -> Resu
 ///
 /// Accepts:
 /// - `null` (ParameterValue::Null) - shared scales (default when absent)
-/// - `'x'` or `'y'` (strings) - independent scale for that axis only
-/// - `['x', 'y']` or `['y', 'x']` (arrays) - independent scales for both axes
-fn validate_free_property(facet: &Facet) -> Result<(), String> {
+/// - A valid positional aesthetic name (string) - independent scale for that axis only
+/// - An array of valid positional aesthetic names - independent scales for specified axes
+///
+/// # Arguments
+///
+/// * `facet` - The facet to validate
+/// * `positional_names` - Valid positional aesthetic names (e.g., ["x", "y"] or ["theta", "radius"])
+fn validate_free_property(facet: &Facet, positional_names: &[&str]) -> Result<(), String> {
     if let Some(value) = facet.properties.get("free") {
         match value {
             ParameterValue::Null => {
@@ -145,50 +161,122 @@ fn validate_free_property(facet: &Facet) -> Result<(), String> {
                 Ok(())
             }
             ParameterValue::String(s) => {
-                if !FREE_STRING_VALUES.contains(&s.as_str()) {
+                if !positional_names.contains(&s.as_str()) {
                     return Err(format!(
-                        "invalid 'free' value '{}'. Expected 'x', 'y', ['x', 'y'], or null",
-                        s
+                        "invalid 'free' value '{}'. Expected one of: {}, or null",
+                        s,
+                        format_options(positional_names)
                     ));
                 }
                 Ok(())
             }
             ParameterValue::Array(arr) => {
-                // Must be exactly ['x', 'y'] or ['y', 'x']
-                if arr.len() != 2 {
+                // Validate each element is a valid positional name
+                if arr.is_empty() {
+                    return Err("invalid 'free' array: cannot be empty".to_string());
+                }
+                if arr.len() > positional_names.len() {
                     return Err(format!(
-                        "invalid 'free' array: expected ['x', 'y'], got {} elements",
-                        arr.len()
+                        "invalid 'free' array: too many elements ({} given, max {})",
+                        arr.len(),
+                        positional_names.len()
                     ));
                 }
-                let mut has_x = false;
-                let mut has_y = false;
+
+                let mut seen = std::collections::HashSet::new();
                 for elem in arr {
                     match elem {
-                        crate::plot::ArrayElement::String(s) if s == "x" => has_x = true,
-                        crate::plot::ArrayElement::String(s) if s == "y" => has_y = true,
+                        crate::plot::ArrayElement::String(s) => {
+                            if !positional_names.contains(&s.as_str()) {
+                                return Err(format!(
+                                    "invalid 'free' array element '{}'. Expected one of: {}",
+                                    s,
+                                    format_options(positional_names)
+                                ));
+                            }
+                            if !seen.insert(s.clone()) {
+                                return Err(format!(
+                                    "invalid 'free' array: duplicate element '{}'",
+                                    s
+                                ));
+                            }
+                        }
                         _ => {
-                            return Err(
-                                "invalid 'free' array: elements must be 'x' or 'y'".to_string()
-                            );
+                            return Err(format!(
+                                "invalid 'free' array: elements must be strings. Expected: {}",
+                                format_options(positional_names)
+                            ));
                         }
                     }
                 }
-                if !has_x || !has_y {
-                    return Err(
-                        "invalid 'free' array: expected ['x', 'y'] with both 'x' and 'y'"
-                            .to_string(),
-                    );
-                }
                 Ok(())
             }
-            _ => Err(
-                "'free' must be null, a string ('x' or 'y'), or an array ['x', 'y']".to_string(),
-            ),
+            _ => Err(format!(
+                "'free' must be null, a string ({}), or an array of positional names",
+                format_options(positional_names)
+            )),
         }
     } else {
         Ok(())
     }
+}
+
+/// Format positional names for error messages
+fn format_options(names: &[&str]) -> String {
+    names
+        .iter()
+        .map(|n| format!("'{}'", n))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Normalize free property to a boolean vector
+///
+/// Transforms user-provided values to a boolean vector (position-indexed):
+/// - User writes: `free => 'x'` → stored as: `free => [true, false]`
+/// - User writes: `free => 'theta'` → stored as: `free => [true, false]`
+/// - User writes: `free => ['x', 'y']` → stored as: `free => [true, true]`
+/// - User writes: `free => null` or absent → stored as: `free => [false, false]`
+///
+/// This allows the writer to use the vector directly without any parsing.
+fn normalize_free_property(facet: &mut Facet, positional_names: &[&str]) {
+    let mut free_vec = vec![false; positional_names.len()];
+
+    if let Some(value) = facet.properties.get("free") {
+        match value {
+            ParameterValue::String(s) => {
+                // Single string -> set that position to true
+                if let Some(idx) = positional_names.iter().position(|n| *n == s.as_str()) {
+                    free_vec[idx] = true;
+                }
+            }
+            ParameterValue::Array(arr) => {
+                // Array -> set each position to true
+                for elem in arr {
+                    if let crate::plot::ArrayElement::String(s) = elem {
+                        if let Some(idx) = positional_names.iter().position(|n| *n == s.as_str()) {
+                            free_vec[idx] = true;
+                        }
+                    }
+                }
+            }
+            ParameterValue::Null => {
+                // Explicit null -> all false (already initialized)
+            }
+            _ => {
+                // Invalid type - should have been caught by validation
+            }
+        }
+    }
+
+    // Store as boolean array
+    let bool_array: Vec<crate::plot::ArrayElement> = free_vec
+        .iter()
+        .map(|&b| crate::plot::ArrayElement::Boolean(b))
+        .collect();
+    facet
+        .properties
+        .insert("free".to_string(), ParameterValue::Array(bool_array));
 }
 
 /// Validate ncol property value
@@ -250,6 +338,11 @@ mod tests {
     use crate::plot::facet::FacetLayout;
     use polars::prelude::*;
 
+    /// Default positional names for cartesian coords
+    const CARTESIAN: &[&str] = &["x", "y"];
+    /// Positional names for polar coords
+    const POLAR: &[&str] = &["theta", "radius"];
+
     fn make_wrap_facet() -> Facet {
         Facet::new(FacetLayout::Wrap {
             variables: vec!["category".to_string()],
@@ -270,6 +363,21 @@ mod tests {
         }
     }
 
+    /// Helper to extract boolean values from normalized free property
+    fn get_free_bools(facet: &Facet) -> Option<Vec<bool>> {
+        facet.properties.get("free").and_then(|v| {
+            if let ParameterValue::Array(arr) = v {
+                Some(
+                    arr.iter()
+                        .map(|e| matches!(e, crate::plot::ArrayElement::Boolean(true)))
+                        .collect(),
+                )
+            } else {
+                None
+            }
+        })
+    }
+
     #[test]
     fn test_compute_default_ncol() {
         assert_eq!(compute_default_ncol(1), 1);
@@ -288,11 +396,11 @@ mod tests {
         let mut facet = make_wrap_facet();
         let context = make_context(5);
 
-        resolve_properties(&mut facet, &context).unwrap();
+        resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
 
         assert!(facet.resolved);
-        // Note: absence of 'free' means fixed scales (no default inserted)
-        assert!(!facet.properties.contains_key("free"));
+        // After resolution, free is normalized to boolean array (all false = fixed)
+        assert_eq!(get_free_bools(&facet), Some(vec![false, false]));
         assert_eq!(
             facet.properties.get("ncol"),
             Some(&ParameterValue::Number(3.0))
@@ -314,10 +422,10 @@ mod tests {
             .insert("ncol".to_string(), ParameterValue::Number(2.0));
 
         let context = make_context(10);
-        resolve_properties(&mut facet, &context).unwrap();
+        resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
 
-        // free => ['x', 'y'] preserved
-        assert!(facet.properties.contains_key("free"));
+        // free => ['x', 'y'] is normalized to [true, true]
+        assert_eq!(get_free_bools(&facet), Some(vec![true, true]));
         assert_eq!(
             facet.properties.get("ncol"),
             Some(&ParameterValue::Number(2.0))
@@ -330,7 +438,7 @@ mod tests {
         facet.resolved = true;
 
         let context = make_context(5);
-        resolve_properties(&mut facet, &context).unwrap();
+        resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
 
         // Should not have applied defaults since it was already resolved
         assert!(!facet.properties.contains_key("ncol"));
@@ -345,7 +453,7 @@ mod tests {
             .insert("columns".to_string(), ParameterValue::Number(4.0));
 
         let context = make_context(10);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -361,7 +469,7 @@ mod tests {
             .insert("ncol".to_string(), ParameterValue::Number(3.0));
 
         let context = make_context(10);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -377,7 +485,7 @@ mod tests {
             .insert("unknown".to_string(), ParameterValue::Number(1.0));
 
         let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -393,7 +501,7 @@ mod tests {
         );
 
         let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -409,7 +517,7 @@ mod tests {
             .insert("ncol".to_string(), ParameterValue::Number(-1.0));
 
         let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -425,7 +533,7 @@ mod tests {
             .insert("ncol".to_string(), ParameterValue::Number(2.5));
 
         let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -438,12 +546,12 @@ mod tests {
         let mut facet = make_grid_facet();
         let context = make_context(10);
 
-        resolve_properties(&mut facet, &context).unwrap();
+        resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
 
         // Grid facets should not get ncol default
         assert!(!facet.properties.contains_key("ncol"));
-        // No free property by default (means fixed/shared scales)
-        assert!(!facet.properties.contains_key("free"));
+        // After resolution, free is normalized to boolean array (all false = fixed)
+        assert_eq!(get_free_bools(&facet), Some(vec![false, false]));
         assert!(facet.resolved);
     }
 
@@ -494,7 +602,7 @@ mod tests {
         );
 
         let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
         assert!(result.is_ok());
     }
 
@@ -507,7 +615,7 @@ mod tests {
         );
 
         let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
         assert!(result.is_ok());
     }
 
@@ -520,7 +628,7 @@ mod tests {
         );
 
         let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -536,7 +644,7 @@ mod tests {
             .insert("missing".to_string(), ParameterValue::Number(1.0));
 
         let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -553,12 +661,12 @@ mod tests {
         );
 
         let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
         assert!(result.is_ok());
     }
 
     // ========================================
-    // Free Property Tests
+    // Free Property Tests - Cartesian
     // ========================================
 
     #[test]
@@ -569,8 +677,10 @@ mod tests {
             .insert("free".to_string(), ParameterValue::String("x".to_string()));
 
         let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
         assert!(result.is_ok());
+        // x is first positional -> [true, false]
+        assert_eq!(get_free_bools(&facet), Some(vec![true, false]));
     }
 
     #[test]
@@ -581,8 +691,10 @@ mod tests {
             .insert("free".to_string(), ParameterValue::String("y".to_string()));
 
         let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
         assert!(result.is_ok());
+        // y is second positional -> [false, true]
+        assert_eq!(get_free_bools(&facet), Some(vec![false, true]));
     }
 
     #[test]
@@ -597,8 +709,10 @@ mod tests {
         );
 
         let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
         assert!(result.is_ok());
+        // Both -> [true, true]
+        assert_eq!(get_free_bools(&facet), Some(vec![true, true]));
     }
 
     #[test]
@@ -613,8 +727,10 @@ mod tests {
         );
 
         let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
         assert!(result.is_ok());
+        // Order doesn't matter, both are set -> [true, true]
+        assert_eq!(get_free_bools(&facet), Some(vec![true, true]));
     }
 
     #[test]
@@ -625,12 +741,15 @@ mod tests {
             .insert("free".to_string(), ParameterValue::Null);
 
         let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
         assert!(result.is_ok());
+        // Explicit null -> [false, false]
+        assert_eq!(get_free_bools(&facet), Some(vec![false, false]));
     }
 
     #[test]
-    fn test_error_free_array_single_element() {
+    fn test_free_property_single_element_array_valid() {
+        // Single element arrays are now valid (e.g., free => ['x'])
         let mut facet = make_wrap_facet();
         facet.properties.insert(
             "free".to_string(),
@@ -638,17 +757,10 @@ mod tests {
         );
 
         let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
-
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("free"));
-        // Single element fails both the length check (1 != 2) and the "both x and y" check
-        assert!(
-            err.contains("1 elements") || err.contains("both 'x' and 'y'"),
-            "Expected error about array length or missing elements, got: {}",
-            err
-        );
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
+        assert!(result.is_ok());
+        // Single element -> [true, false]
+        assert_eq!(get_free_bools(&facet), Some(vec![true, false]));
     }
 
     #[test]
@@ -663,12 +775,12 @@ mod tests {
         );
 
         let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("free"));
-        assert!(err.contains("'x' or 'y'"));
+        assert!(err.contains("'z'"));
     }
 
     #[test]
@@ -679,10 +791,116 @@ mod tests {
             .insert("free".to_string(), ParameterValue::Number(1.0));
 
         let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("free"));
+    }
+
+    #[test]
+    fn test_error_free_duplicate_element() {
+        let mut facet = make_wrap_facet();
+        facet.properties.insert(
+            "free".to_string(),
+            ParameterValue::Array(vec![
+                crate::plot::ArrayElement::String("x".to_string()),
+                crate::plot::ArrayElement::String("x".to_string()),
+            ]),
+        );
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("duplicate"));
+    }
+
+    // ========================================
+    // Free Property Tests - Polar
+    // ========================================
+
+    #[test]
+    fn test_free_property_theta_valid() {
+        let mut facet = make_wrap_facet();
+        facet.properties.insert(
+            "free".to_string(),
+            ParameterValue::String("theta".to_string()),
+        );
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context, POLAR);
+        assert!(result.is_ok());
+        // theta is first positional -> [true, false]
+        assert_eq!(get_free_bools(&facet), Some(vec![true, false]));
+    }
+
+    #[test]
+    fn test_free_property_radius_valid() {
+        let mut facet = make_wrap_facet();
+        facet.properties.insert(
+            "free".to_string(),
+            ParameterValue::String("radius".to_string()),
+        );
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context, POLAR);
+        assert!(result.is_ok());
+        // radius is second positional -> [false, true]
+        assert_eq!(get_free_bools(&facet), Some(vec![false, true]));
+    }
+
+    #[test]
+    fn test_free_property_polar_array_valid() {
+        let mut facet = make_wrap_facet();
+        facet.properties.insert(
+            "free".to_string(),
+            ParameterValue::Array(vec![
+                crate::plot::ArrayElement::String("theta".to_string()),
+                crate::plot::ArrayElement::String("radius".to_string()),
+            ]),
+        );
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context, POLAR);
+        assert!(result.is_ok());
+        // Both -> [true, true]
+        assert_eq!(get_free_bools(&facet), Some(vec![true, true]));
+    }
+
+    #[test]
+    fn test_error_cartesian_names_in_polar() {
+        // x/y should not be valid for polar coords
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("free".to_string(), ParameterValue::String("x".to_string()));
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context, POLAR);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("'x'"));
+        assert!(err.contains("theta") || err.contains("radius"));
+    }
+
+    #[test]
+    fn test_error_polar_names_in_cartesian() {
+        // theta/radius should not be valid for cartesian coords
+        let mut facet = make_wrap_facet();
+        facet.properties.insert(
+            "free".to_string(),
+            ParameterValue::String("theta".to_string()),
+        );
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("'theta'"));
+        assert!(err.contains("'x'") || err.contains("'y'"));
     }
 }

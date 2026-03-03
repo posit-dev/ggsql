@@ -218,7 +218,7 @@ Key grammar elements:
 - `DRAW <geom> [MAPPING] [SETTING] [FILTER]` - Define geometric layers (point, line, bar, etc.)
 - `SCALE <aesthetic> SETTING` - Configure data-to-visual mappings
 - `FACET` - Create small multiples (WRAP for flowing layout, BY for grid)
-- `COORD` - Coordinate transformations (cartesian, flip, polar)
+- `PROJECT` - Coordinate transformations (cartesian, flip, polar)
 - `LABEL`, `THEME` - Styling and annotation
 
 ## Jupyter Kernel
@@ -288,7 +288,7 @@ cargo run --package ggsql-jupyter -- --install
 The extension uses a TextMate grammar that highlights:
 
 - SQL keywords (SELECT, FROM, WHERE, JOIN, etc.)
-- ggsql clauses (VISUALISE, DRAW, SCALE, COORD, FACET, etc.)
+- ggsql clauses (VISUALISE, DRAW, SCALE, PROJECT, FACET, etc.)
 - Geometric objects (point, line, bar, area, etc.)
 - Aesthetics (x, y, color, size, shape, etc.)
 - Scale types (linear, log10, date, viridis, etc.)

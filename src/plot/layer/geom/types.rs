@@ -4,6 +4,9 @@
 
 use crate::{plot::types::DefaultAestheticValue, Mappings};
 
+// Re-export shared types from the central location
+pub use crate::plot::types::{DefaultParam, DefaultParamValue};
+
 /// Default aesthetic values for a geom type
 ///
 /// This struct describes which aesthetics a geom supports, requires, and their default values.
@@ -79,22 +82,6 @@ impl DefaultAesthetics {
     }
 }
 
-/// Default value for a layer parameter
-#[derive(Debug, Clone)]
-pub enum DefaultParamValue {
-    String(&'static str),
-    Number(f64),
-    Boolean(bool),
-    Null,
-}
-
-/// Layer parameter definition: name and default value
-#[derive(Debug, Clone)]
-pub struct DefaultParam {
-    pub name: &'static str,
-    pub default: DefaultParamValue,
-}
-
 /// Result of a statistical transformation
 ///
 /// Stat transforms like histogram and bar count produce new columns with computed values.
@@ -108,12 +95,12 @@ pub enum StatResult {
     Transformed {
         /// The transformed SQL query that produces the stat-computed columns
         query: String,
-        /// Names of stat-computed columns (e.g., ["count", "bin", "x"])
+        /// Names of stat-computed columns (e.g., ["count", "bin", "pos1"])
         /// These are semantic names that will be prefixed with __ggsql_stat__
         /// and mapped to aesthetics via default_remappings or REMAPPING clause
         stat_columns: Vec<String>,
         /// Names of stat columns that are dummy/placeholder values
-        /// (e.g., "x" when bar chart has no x mapped - produces a constant value)
+        /// (e.g., "pos1" when bar chart has no x mapped - produces a constant value)
         dummy_columns: Vec<String>,
         /// Names of aesthetics consumed by this stat transform
         /// These aesthetics were used as input to the stat and should be removed

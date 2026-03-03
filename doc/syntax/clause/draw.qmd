@@ -7,7 +7,7 @@ title: "Create layers with `DRAW`"
 ## Clause syntax
 The `DRAW` clause takes a number of subclauses, all of them optional if the `VISUALISE` clause provides a global mapping and data source.
 
-```sql
+```ggsql
 DRAW <layer-type>
     MAPPING <mapping>, ... FROM <data-source>
     REMAPPING <mapping>, ...
@@ -20,7 +20,7 @@ DRAW <layer-type>
 The only required part is the layer type immediately following the `DRAW` clause, which specifies the type of layer to draw, e.g. `point` or `histogram`. It defines how the remaining settings are interpreted. The [main syntax page](../index.qmd#layers) has a list of all available layer types
 
 ### `MAPPING`
-```sql
+```ggsql
 MAPPING <mapping>, ... FROM <data-source>
 ```
 The `MAPPINGS` clause define how data from the dataset are related to visual aesthetics or statistical properties. Multiple mappings can be provided by separating them with a comma. Mapped aesthetics are always scaled by their respective scale. This means that if you map the value 'red' to fill, then fill will not take the color red, but whatever the scale decides should represent the string 'red'. Layer mappings are merged with the global mapping from the `VISUALISE` clause with the one in the layer taking precedence. This means that it is not necessary to provide any mappings in the `DRAW` clause if sufficient global mappings are provided.
@@ -54,7 +54,7 @@ A layer may use a data source different than the global data by appending a `FRO
 * *Filepath*: If a string is provided (single quoted), it is assumed to point to a file that can be read directly by the backend.
 
 ### `REMAPPING`
-```sql
+```ggsql
 REMAPPING <mapping>, ...
 ```
 
@@ -63,7 +63,7 @@ Some layer types like histogram runs the data through a statistical transformati
 Remappings have to be explicit since the property name never coincide with an aesthetic. Further, remappings must always map to a visual aesthetic since the statistical properties have already been consumed.
 
 ### `SETTING`
-```sql
+```ggsql
 SETTING <parameter/aesthetic> => <value>, ...
 ```
 
@@ -73,14 +73,14 @@ The `SETTING` clause can be used for to different things:
 * *Setting aesthetics*: If you wish to set a specific aesthetic to a literal value, e.g. 'red' (as in the color red) then you can do so in the `SETTING` clause. Aesthetics that are set will not go through a scale but will use the provided value as-is. You cannot set an aesthetic to a column, only to a scalar literal value.
 
 ### `FILTER`
-```sql
+```ggsql
 FILTER <condition>
 ```
 
 You may not want to use all data provided from the data source in the layer. You can limit the data to plot with the `FILTER` clause. The content of `condition` is used directly in a `WHERE` clause when querying the backend for the layer data, so whatever type of expression you database backend supports there will work.
 
 ### `PARTITION BY`
-```sql
+```ggsql
 PARTITION BY <column>, ...
 ```
 
@@ -89,7 +89,7 @@ During drawing the records in the layer data are grouped by all the discrete dat
 Often the implicit grouping from the aesthetic mapping is enough, e.g. mapping a discrete value to colour will create one line per colour, but sometimes you need a grouping not reflected in the aesthetic mapping. In that case you can use the `PARTITION BY` clause to define data columns used for grouping in addition to the ones from the mapping.
 
 ### `ORDER BY`
-```sql
+```ggsql
 ORDER BY <column>, ...
 ```
 

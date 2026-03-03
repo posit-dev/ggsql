@@ -15,9 +15,9 @@ impl GeomTrait for Ribbon {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("x", DefaultAestheticValue::Required),
-                ("ymin", DefaultAestheticValue::Required),
-                ("ymax", DefaultAestheticValue::Required),
+                ("pos1", DefaultAestheticValue::Required),
+                ("pos2min", DefaultAestheticValue::Required),
+                ("pos2max", DefaultAestheticValue::Required),
                 ("fill", DefaultAestheticValue::String("black")),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("opacity", DefaultAestheticValue::Number(0.8)),

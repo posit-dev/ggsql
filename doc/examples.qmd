@@ -434,38 +434,7 @@ LABEL
     y => 'Value'
 ```
 
-## Coordinate Transformations
-
-### Flipped Coordinates (Horizontal Bar Chart)
-
-```{ggsql}
-SELECT region, SUM(revenue) as total
-FROM 'sales.csv'
-GROUP BY region
-ORDER BY total DESC
-VISUALISE region AS x, total AS y, region AS fill
-DRAW bar
-COORD flip
-LABEL 
-    title => 'Total Revenue by Region', 
-    x => 'Region', 
-    y => 'Total Revenue ($)'
-```
-
-### Cartesian with Axis Limits
-
-```{ggsql}
-SELECT x, y FROM 'data.csv'
-VISUALISE x, y
-DRAW point 
-    SETTING size => 4, color => 'blue'
-COORD cartesian 
-    SETTING xlim => [0, 60], ylim => [0, 70]
-LABEL 
-    title => 'Scatter Plot with Custom Axis Limits', 
-    x => 'X', 
-    y => 'Y'
-```
+## Projections
 
 ### Pie Chart with Polar Coordinates
 
@@ -475,8 +444,8 @@ FROM 'sales.csv'
 GROUP BY category
 VISUALISE total AS y, category AS fill
 DRAW bar
-COORD polar
-LABEL 
+PROJECT y, x TO polar
+LABEL
     title => 'Revenue Distribution by Category'
 ```
 
@@ -656,7 +625,7 @@ regional_totals AS (
 )
 VISUALISE region AS x, total AS y, region AS fill FROM regional_totals
 DRAW bar
-COORD flip
+PROJECT y, x TO cartesian
 LABEL 
     title => 'Total Revenue by Region', 
     x => 'Region', 

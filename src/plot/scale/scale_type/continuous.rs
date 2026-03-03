@@ -3,6 +3,7 @@
 use polars::prelude::DataType;
 
 use super::{ScaleTypeKind, ScaleTypeTrait, SqlTypeNames, TransformKind, OOB_CENSOR, OOB_SQUISH};
+use crate::plot::types::{DefaultParam, DefaultParamValue};
 use crate::plot::{ArrayElement, ParameterValue};
 
 /// Continuous scale type - for continuous numeric data
@@ -90,29 +91,31 @@ impl ScaleTypeTrait for Continuous {
         TransformKind::Identity
     }
 
-    fn allowed_properties(&self, aesthetic: &str) -> &'static [&'static str] {
-        if super::is_positional_aesthetic(aesthetic) {
-            &["expand", "oob", "reverse", "breaks", "pretty"]
-        } else {
-            &["oob", "reverse", "breaks", "pretty"]
-        }
-    }
-
-    fn get_property_default(&self, aesthetic: &str, name: &str) -> Option<ParameterValue> {
-        match name {
-            "expand" if super::is_positional_aesthetic(aesthetic) => {
-                Some(ParameterValue::Number(super::DEFAULT_EXPAND_MULT))
-            }
-            "oob" => Some(ParameterValue::String(
-                super::default_oob(aesthetic).to_string(),
-            )),
-            "reverse" => Some(ParameterValue::Boolean(false)),
-            "breaks" => Some(ParameterValue::Number(
-                super::super::breaks::DEFAULT_BREAK_COUNT as f64,
-            )),
-            "pretty" => Some(ParameterValue::Boolean(true)),
-            _ => None,
-        }
+    fn default_properties(&self) -> &'static [DefaultParam] {
+        &[
+            DefaultParam {
+                name: "expand",
+                default: DefaultParamValue::Number(super::DEFAULT_EXPAND_MULT),
+            },
+            DefaultParam {
+                name: "oob",
+                default: DefaultParamValue::Null, // varies by aesthetic
+            },
+            DefaultParam {
+                name: "reverse",
+                default: DefaultParamValue::Boolean(false),
+            },
+            DefaultParam {
+                name: "breaks",
+                default: DefaultParamValue::Number(
+                    super::super::breaks::DEFAULT_BREAK_COUNT as f64,
+                ),
+            },
+            DefaultParam {
+                name: "pretty",
+                default: DefaultParamValue::Boolean(true),
+            },
+        ]
     }
 
     fn default_output_range(
@@ -313,8 +316,9 @@ mod tests {
 
     #[test]
     fn test_pre_stat_transform_sql_default_oob_for_positional() {
+        // NOTE: After transformation, positional aesthetics use internal names (pos1, pos2, etc.)
         let continuous = Continuous;
-        let mut scale = Scale::new("x"); // positional aesthetic
+        let mut scale = Scale::new("pos1"); // positional aesthetic (internal name)
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
         // No oob property - should use default (keep for positional)

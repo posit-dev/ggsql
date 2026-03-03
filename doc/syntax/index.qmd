@@ -7,10 +7,10 @@ ggsql augments the standard SQL syntax with a number of new clauses to describe 
 
 - [`VISUALISE`](clause/visualise.qmd) initiates the visualisation part of the query
 - [`DRAW`](clause/draw.qmd) adds a new layer to the visualisation
-- `SCALE` specify how an aesthetic should be scaled
-- `FACET` describes how data should be split into small multiples
-- `PROJECT` is used for selecting the coordinate system to use
-- `LABEL` is used to manually add titles to the plot or the various axes and legends
+- [`SCALE`](clause/scale.qmd) specify how an aesthetic should be scaled
+- [`FACET`](clause/facet.qmd) describes how data should be split into small multiples
+- [`PROJECT`](clause/project.qmd) is used for selecting the coordinate system to use
+- [`LABEL`](clause/label.qmd) is used to manually add titles to the plot or the various axes and legends
 
 ## Layers
 There are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the `DRAW` clause
@@ -28,5 +28,27 @@ There are many different layers to choose from when visualising your data. Some 
 - [`boxplot`](layer/boxplot.qmd) displays continuous variables as 5-number summaries
 
 ## Scales
+A scale is responsible for translating a data value to an aesthetic literal, e.g. a specific color for the fill aesthetic, or a radius in points for the size aesthetic. A scale is a combination of a specific aesthetic and a scale type
+
+### Aesthetics
+- [Position](scale/aesthetic/0_position.qmd) aesthetics are those aesthetics realted to the spatial location of the data in the coordinate system.
+- [Color](scale/aesthetic/1_color.qmd) aesthetics are related to the color of fill and stroke
+- [`opacity`](scale/aesthetic/2_opacity.qmd) is the aesthetic that determines the opacity of the color
+- [`linetype`](scale/aesthetic/linetype.qmd) governs the stroke pattern of strokes
+- [`linewidth`](scale/aesthetic/linewidth.qmd) determines the width of strokes
+- [`shape`](scale/aesthetic/shape.qmd) determines the shape of points
+- [`size`](scale/aesthetic/size.qmd) governs the radius of points
+- [Faceting](scale/aesthetic/Z_faceting.qmd) aesthetics are used to determine which facet panel the data belongs to
+
+### Scale types
+- [`continuous`](scale/type/continuous.qmd) scales translates a continuous input to a continuous output
+- [`discrete`](scale/type/discrete.qmd) scales translates discrete input to a discrete output
+- [`binned`](scale/type/binned.qmd) scales translate continuous input to an ordered discrete output by binning the data
+- [`ordinal`](scale/type/ordinal.qmd) scales translate discrete input to an ordered discrete output by enforcing an ordering to the input
+- [`identity`](scale/type/identity.qmd) scales passes the data through unchanged
 
 ## Coordinate systems
+The coordinate system defines how the abstract positional aesthetics are projected onto the screen or paper where the final plot appears. As such, it has great influence over the final look of the plot.
+
+- [`cartesian`](coord/cartesian.qmd) is the classic coordinate system consisting of two perpendicular axes, one being horizontal and one being vertical
+- [`polar`](coord/polar.qmd) interprets the primary position as the angular location relative to the center and the secondary position as the distance (radius) from the center, and this creates a circular coordinate system

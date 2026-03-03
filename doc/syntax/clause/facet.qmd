@@ -15,9 +15,17 @@ FACET <column> BY <column>
 The first `column` is mandatory. It names a column in the layer data that will be used for splitting the data. If the layer data does not contain the column the behavior for that layer depends on the `missing` parameter of the facet.
 
 ### `BY`
+```ggsql
+BY <column>
+```
+
 The optional `BY` clause is used to define an additional column to split the data by. If it is missing the small multiples are laid out in a grid with the facet panels filling the cells in a row-wise fashion. If `BY` is present then the categories of the first `column` defines the rows of the grid and the categories of the second `column` the columns of the grid. Each multiple is then positioned according to that.
 
 ### `SETTING`
+```ggsql
+SETTING <parameter> => <value>, ...
+```
+
 This clause behaves much like the `SETTINGS` clause in `DRAW`, in that it allows you to fine-tune specific behavior of the faceting. The following parameters exist:
 
 * `free`: Controls whether the positional scales are independent across the small multiples. Permissible values are:
@@ -29,7 +37,7 @@ This clause behaves much like the `SETTINGS` clause in `DRAW`, in that it allows
 * `ncol`: The number of panel columns to use when faceting by a single variable. Default is 3 when fewer than 6 categories are present, 4 when fewer than 12 categeries are present and otherwise 5. When the `BY`-clause is used to set a second faceting variable, the `ncol` setting is not allowed. There is no `nrow` setting as this is derived from the number of panels and the `ncol` setting.
 
 ### Facet variables as aesthetics
-When you apply faceting to a plot you are creating new aesthetics you can control. For 1-dimensional faceting (no `BY` clause) the aesthetic is called `panel` and for 2-dimensional faceting the aesthetics are called `row` and `column`. You can read more about these aesthetics in [their documentation](../scale/aesthetic/Z_facetting.qmd)
+When you apply faceting to a plot you are creating new aesthetics you can control. For 1-dimensional faceting (no `BY` clause) the aesthetic is called `panel` and for 2-dimensional faceting the aesthetics are called `row` and `column`. You can read more about these aesthetics in [their documentation](../scale/aesthetic/Z_faceting.qmd)
 
 ### Customizing facet strip labels
 To customize facet strip labels (e.g., renaming categories), use the `RENAMING` clause on the facet scale:
@@ -39,4 +47,4 @@ FACET region
 SCALE panel RENAMING 'N' => 'North', 'S' => 'South'
 ```
 
-See the [facet scale documentation](../scale/aesthetic/Z_facetting.qmd) for more details on label customization.
+See the [facet scale documentation](../scale/aesthetic/Z_faceting.qmd) for more details on label customization.

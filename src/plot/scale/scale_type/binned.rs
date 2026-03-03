@@ -6,8 +6,9 @@ use polars::prelude::DataType;
 
 use super::{
     expand_numeric_range, resolve_common_steps, ScaleDataContext, ScaleTypeKind, ScaleTypeTrait,
-    TransformKind, OOB_SQUISH,
+    TransformKind, OOB_CENSOR, OOB_SQUISH,
 };
+use crate::plot::types::{DefaultParam, DefaultParamValue};
 use crate::plot::{ArrayElement, ParameterValue};
 
 use super::InputRange;
@@ -145,30 +146,37 @@ impl ScaleTypeTrait for Binned {
         TransformKind::Identity
     }
 
-    fn allowed_properties(&self, aesthetic: &str) -> &'static [&'static str] {
-        if super::is_positional_aesthetic(aesthetic) {
-            &["expand", "oob", "reverse", "breaks", "pretty", "closed"]
-        } else {
-            &["oob", "reverse", "breaks", "pretty", "closed"]
-        }
-    }
-
-    fn get_property_default(&self, aesthetic: &str, name: &str) -> Option<ParameterValue> {
-        match name {
-            "expand" if super::is_positional_aesthetic(aesthetic) => {
-                Some(ParameterValue::Number(super::DEFAULT_EXPAND_MULT))
-            }
-            // Binned scales default to "censor" - "keep" is not valid for binned
-            "oob" => Some(ParameterValue::String(super::OOB_CENSOR.to_string())),
-            "reverse" => Some(ParameterValue::Boolean(false)),
-            "breaks" => Some(ParameterValue::Number(
-                super::super::breaks::DEFAULT_BREAK_COUNT as f64,
-            )),
-            "pretty" => Some(ParameterValue::Boolean(true)),
+    fn default_properties(&self) -> &'static [DefaultParam] {
+        &[
+            DefaultParam {
+                name: "expand",
+                default: DefaultParamValue::Number(super::DEFAULT_EXPAND_MULT),
+            },
+            // Binned scales always use "censor" - "keep" is not valid for binned
+            DefaultParam {
+                name: "oob",
+                default: DefaultParamValue::String(OOB_CENSOR),
+            },
+            DefaultParam {
+                name: "reverse",
+                default: DefaultParamValue::Boolean(false),
+            },
+            DefaultParam {
+                name: "breaks",
+                default: DefaultParamValue::Number(
+                    super::super::breaks::DEFAULT_BREAK_COUNT as f64,
+                ),
+            },
+            DefaultParam {
+                name: "pretty",
+                default: DefaultParamValue::Boolean(true),
+            },
             // "left" means bins are [lower, upper), "right" means (lower, upper]
-            "closed" => Some(ParameterValue::String("left".to_string())),
-            _ => None,
-        }
+            DefaultParam {
+                name: "closed",
+                default: DefaultParamValue::String("left"),
+            },
+        ]
     }
 
     fn default_output_range(
@@ -944,15 +952,20 @@ mod tests {
     #[test]
     fn test_closed_property_default() {
         let binned = Binned;
-        let default = binned.get_property_default("x", "closed");
-        assert_eq!(default, Some(ParameterValue::String("left".to_string())));
+        let defaults = binned.default_properties();
+        let closed_param = defaults.iter().find(|p| p.name == "closed").unwrap();
+        assert!(matches!(
+            closed_param.default,
+            crate::plot::types::DefaultParamValue::String("left")
+        ));
     }
 
     #[test]
     fn test_closed_property_allowed() {
         let binned = Binned;
-        let allowed = binned.allowed_properties("x");
-        assert!(allowed.contains(&"closed"));
+        let defaults = binned.default_properties();
+        let names: Vec<&str> = defaults.iter().map(|p| p.name).collect();
+        assert!(names.contains(&"closed"));
     }
 
     #[test]

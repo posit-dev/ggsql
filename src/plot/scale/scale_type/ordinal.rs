@@ -8,7 +8,8 @@ use polars::prelude::DataType;
 
 use super::super::transform::{Transform, TransformKind};
 use super::{ScaleTypeKind, ScaleTypeTrait, SqlTypeNames};
-use crate::plot::{ArrayElement, ParameterValue};
+use crate::plot::types::{DefaultParam, DefaultParamValue};
+use crate::plot::ArrayElement;
 
 /// Ordinal scale type - for ordered categorical data with interpolated output
 #[derive(Debug, Clone, Copy)]
@@ -117,7 +118,7 @@ impl ScaleTypeTrait for Ordinal {
                     self.name(),
                     self.allowed_transforms()
                         .iter()
-                        .map(|k| k.name())
+                        .map(|k| k.to_string())
                         .collect::<Vec<_>>()
                         .join(", ")
                 ));
@@ -137,16 +138,12 @@ impl ScaleTypeTrait for Ordinal {
         ))
     }
 
-    fn allowed_properties(&self, _aesthetic: &str) -> &'static [&'static str] {
+    fn default_properties(&self) -> &'static [DefaultParam] {
         // Ordinal scales always censor OOB values (no OOB setting needed)
-        &["reverse"]
-    }
-
-    fn get_property_default(&self, _aesthetic: &str, name: &str) -> Option<ParameterValue> {
-        match name {
-            "reverse" => Some(ParameterValue::Boolean(false)),
-            _ => None,
-        }
+        &[DefaultParam {
+            name: "reverse",
+            default: DefaultParamValue::Boolean(false),
+        }]
     }
 
     fn default_output_range(

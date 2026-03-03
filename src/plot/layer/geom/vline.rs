@@ -15,7 +15,7 @@ impl GeomTrait for VLine {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("xintercept", DefaultAestheticValue::Required),
+                ("pos1", DefaultAestheticValue::Required), // x position for vertical line
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
