@@ -304,3 +304,383 @@ fn generate_position_expressions(
         ))),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plot::types::{AestheticValue, ColumnInfo};
+    use polars::prelude::DataType;
+
+    // ==================== Helper Functions ====================
+
+    fn create_schema(discrete_cols: &[&str]) -> Schema {
+        vec![
+            ColumnInfo {
+                name: "__ggsql_aes_pos1__".to_string(),
+                dtype: if discrete_cols.contains(&"pos1") {
+                    DataType::String
+                } else {
+                    DataType::Float64
+                },
+                is_discrete: discrete_cols.contains(&"pos1"),
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "__ggsql_aes_pos1min__".to_string(),
+                dtype: DataType::Float64,
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "__ggsql_aes_pos1max__".to_string(),
+                dtype: DataType::Float64,
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "__ggsql_aes_width__".to_string(),
+                dtype: DataType::Float64,
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "__ggsql_aes_pos2__".to_string(),
+                dtype: if discrete_cols.contains(&"pos2") {
+                    DataType::String
+                } else {
+                    DataType::Float64
+                },
+                is_discrete: discrete_cols.contains(&"pos2"),
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "__ggsql_aes_pos2min__".to_string(),
+                dtype: DataType::Float64,
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "__ggsql_aes_pos2max__".to_string(),
+                dtype: DataType::Float64,
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "__ggsql_aes_height__".to_string(),
+                dtype: DataType::Float64,
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+        ]
+    }
+
+    fn create_aesthetics(mappings: &[&str]) -> Mappings {
+        let mut aesthetics = Mappings::new();
+        for aesthetic in mappings {
+            // Use aesthetic column naming convention
+            let col_name = naming::aesthetic_column(aesthetic);
+            aesthetics.insert(
+                aesthetic.to_string(),
+                AestheticValue::standard_column(col_name),
+            );
+        }
+        aesthetics
+    }
+
+    // ==================== X-Direction Parameter Combinations (Continuous) ====================
+
+    #[test]
+    fn test_continuous_x_all_combinations() {
+        let test_cases = vec![
+            // (name, x_aesthetics, expected_min_expr, expected_max_expr)
+            (
+                "xmin + xmax",
+                vec!["pos1min", "pos1max"],
+                "__ggsql_aes_pos1min__",
+                "__ggsql_aes_pos1max__",
+            ),
+            (
+                "x + width",
+                vec!["pos1", "width"],
+                "(__ggsql_aes_pos1__ - __ggsql_aes_width__ / 2.0)",
+                "(__ggsql_aes_pos1__ + __ggsql_aes_width__ / 2.0)",
+            ),
+            (
+                "x + xmin",
+                vec!["pos1", "pos1min"],
+                "__ggsql_aes_pos1min__",
+                "(2 * __ggsql_aes_pos1__ - __ggsql_aes_pos1min__)",
+            ),
+            (
+                "x + xmax",
+                vec!["pos1", "pos1max"],
+                "(2 * __ggsql_aes_pos1__ - __ggsql_aes_pos1max__)",
+                "__ggsql_aes_pos1max__",
+            ),
+            (
+                "xmin + width",
+                vec!["pos1min", "width"],
+                "__ggsql_aes_pos1min__",
+                "(__ggsql_aes_pos1min__ + __ggsql_aes_width__)",
+            ),
+            (
+                "xmax + width",
+                vec!["pos1max", "width"],
+                "(__ggsql_aes_pos1max__ - __ggsql_aes_width__)",
+                "__ggsql_aes_pos1max__",
+            ),
+        ];
+
+        for (name, x_aesthetics, expected_min, expected_max) in test_cases {
+            // Combine x aesthetics with fixed y mappings (ymin + ymax)
+            let mut all_mappings = x_aesthetics.clone();
+            all_mappings.extend_from_slice(&["pos2min", "pos2max"]);
+
+            let aesthetics = create_aesthetics(&all_mappings);
+            let schema = create_schema(&[]);
+            let group_by = vec![];
+            let parameters = HashMap::new();
+
+            let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+
+            assert!(result.is_ok(), "{}: stat_rect failed: {:?}", name, result.err());
+            let stat_result = result.unwrap();
+
+            if let StatResult::Transformed { query, stat_columns, .. } = stat_result {
+                let stat_pos1min = naming::stat_column("pos1min");
+                let stat_pos1max = naming::stat_column("pos1max");
+                assert!(query.contains(&format!("{} AS {}", expected_min, stat_pos1min)),
+                    "{}: Expected '{} AS {}' in query, got: {}", name, expected_min, stat_pos1min, query);
+                assert!(query.contains(&format!("{} AS {}", expected_max, stat_pos1max)),
+                    "{}: Expected '{} AS {}' in query, got: {}", name, expected_max, stat_pos1max, query);
+                assert!(stat_columns.contains(&"pos1min".to_string()), "{}: Missing pos1min in stat_columns", name);
+                assert!(stat_columns.contains(&"pos1max".to_string()), "{}: Missing pos1max in stat_columns", name);
+            } else {
+                panic!("{}: Expected Transformed result", name);
+            }
+        }
+    }
+
+    // ==================== Y-Direction Parameter Combinations (Continuous) ====================
+
+    #[test]
+    fn test_continuous_y_all_combinations() {
+        let test_cases = vec![
+            // (name, y_aesthetics, expected_min_expr, expected_max_expr)
+            (
+                "ymin + ymax",
+                vec!["pos2min", "pos2max"],
+                "__ggsql_aes_pos2min__",
+                "__ggsql_aes_pos2max__",
+            ),
+            (
+                "y + height",
+                vec!["pos2", "height"],
+                "(__ggsql_aes_pos2__ - __ggsql_aes_height__ / 2.0)",
+                "(__ggsql_aes_pos2__ + __ggsql_aes_height__ / 2.0)",
+            ),
+            (
+                "y + ymin",
+                vec!["pos2", "pos2min"],
+                "__ggsql_aes_pos2min__",
+                "(2 * __ggsql_aes_pos2__ - __ggsql_aes_pos2min__)",
+            ),
+            (
+                "y + ymax",
+                vec!["pos2", "pos2max"],
+                "(2 * __ggsql_aes_pos2__ - __ggsql_aes_pos2max__)",
+                "__ggsql_aes_pos2max__",
+            ),
+            (
+                "ymin + height",
+                vec!["pos2min", "height"],
+                "__ggsql_aes_pos2min__",
+                "(__ggsql_aes_pos2min__ + __ggsql_aes_height__)",
+            ),
+            (
+                "ymax + height",
+                vec!["pos2max", "height"],
+                "(__ggsql_aes_pos2max__ - __ggsql_aes_height__)",
+                "__ggsql_aes_pos2max__",
+            ),
+        ];
+
+        for (name, y_aesthetics, expected_min, expected_max) in test_cases {
+            // Combine y aesthetics with fixed x mappings (xmin + xmax)
+            let mut all_mappings = vec!["pos1min", "pos1max"];
+            all_mappings.extend_from_slice(&y_aesthetics);
+
+            let aesthetics = create_aesthetics(&all_mappings);
+            let schema = create_schema(&[]);
+            let group_by = vec![];
+            let parameters = HashMap::new();
+
+            let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+
+            assert!(result.is_ok(), "{}: stat_rect failed: {:?}", name, result.err());
+            let stat_result = result.unwrap();
+
+            if let StatResult::Transformed { query, stat_columns, .. } = stat_result {
+                let stat_pos2min = naming::stat_column("pos2min");
+                let stat_pos2max = naming::stat_column("pos2max");
+                assert!(query.contains(&format!("{} AS {}", expected_min, stat_pos2min)),
+                    "{}: Expected '{} AS {}' in query, got: {}", name, expected_min, stat_pos2min, query);
+                assert!(query.contains(&format!("{} AS {}", expected_max, stat_pos2max)),
+                    "{}: Expected '{} AS {}' in query, got: {}", name, expected_max, stat_pos2max, query);
+                assert!(stat_columns.contains(&"pos2min".to_string()), "{}: Missing pos2min in stat_columns", name);
+                assert!(stat_columns.contains(&"pos2max".to_string()), "{}: Missing pos2max in stat_columns", name);
+            } else {
+                panic!("{}: Expected Transformed result", name);
+            }
+        }
+    }
+
+    // ==================== Discrete Scale Tests ====================
+
+    #[test]
+    fn test_discrete_x_with_width() {
+        let aesthetics = create_aesthetics(&["pos1", "width", "pos2min", "pos2max"]);
+        let schema = create_schema(&["pos1"]);
+        let group_by = vec![];
+        let parameters = HashMap::new();
+
+        let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+        assert!(result.is_ok());
+
+        if let Ok(StatResult::Transformed { query, stat_columns, .. }) = result {
+            assert!(query.contains("__ggsql_aes_pos1__ AS __ggsql_stat_pos1"));
+            assert!(query.contains("__ggsql_aes_width__ AS __ggsql_stat_width"));
+            assert!(stat_columns.contains(&"pos1".to_string()));
+            assert!(stat_columns.contains(&"width".to_string()));
+            assert!(stat_columns.contains(&"pos2min".to_string()));
+            assert!(stat_columns.contains(&"pos2max".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_discrete_y_with_height() {
+        let aesthetics = create_aesthetics(&["pos1min", "pos1max", "pos2", "height"]);
+        let schema = create_schema(&["pos2"]);
+        let group_by = vec![];
+        let parameters = HashMap::new();
+
+        let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+        assert!(result.is_ok());
+
+        if let Ok(StatResult::Transformed { query, stat_columns, .. }) = result {
+            assert!(query.contains("__ggsql_aes_pos2__ AS __ggsql_stat_pos2"));
+            assert!(query.contains("__ggsql_aes_height__ AS __ggsql_stat_height"));
+            assert!(stat_columns.contains(&"pos1min".to_string()));
+            assert!(stat_columns.contains(&"pos1max".to_string()));
+            assert!(stat_columns.contains(&"pos2".to_string()));
+            assert!(stat_columns.contains(&"height".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_discrete_both_directions() {
+        let aesthetics = create_aesthetics(&["pos1", "width", "pos2", "height"]);
+        let schema = create_schema(&["pos1", "pos2"]);
+        let group_by = vec![];
+        let parameters = HashMap::new();
+
+        let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+        assert!(result.is_ok());
+
+        if let Ok(StatResult::Transformed { query, stat_columns, .. }) = result {
+            assert!(query.contains("__ggsql_aes_pos1__ AS __ggsql_stat_pos1"));
+            assert!(query.contains("__ggsql_aes_width__ AS __ggsql_stat_width"));
+            assert!(query.contains("__ggsql_aes_pos2__ AS __ggsql_stat_pos2"));
+            assert!(query.contains("__ggsql_aes_height__ AS __ggsql_stat_height"));
+            assert_eq!(stat_columns.len(), 4);
+        }
+    }
+
+    // ==================== Validation Error Tests ====================
+
+    #[test]
+    fn test_error_too_few_x_params() {
+        let aesthetics = create_aesthetics(&["pos1", "pos2min", "pos2max"]);
+        let schema = create_schema(&[]);
+        let group_by = vec![];
+        let parameters = HashMap::new();
+
+        let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("exactly 2 x-direction parameters"));
+    }
+
+    #[test]
+    fn test_error_too_many_x_params() {
+        let aesthetics = create_aesthetics(&["pos1", "pos1min", "pos1max", "pos2min", "pos2max"]);
+        let schema = create_schema(&[]);
+        let group_by = vec![];
+        let parameters = HashMap::new();
+
+        let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("exactly 2 x-direction parameters"));
+    }
+
+    #[test]
+    fn test_error_discrete_with_min_max() {
+        let aesthetics = create_aesthetics(&["pos1", "pos1min", "pos2min", "pos2max"]);
+        let schema = create_schema(&["pos1"]);
+        let group_by = vec![];
+        let parameters = HashMap::new();
+
+        let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Cannot use xmin/xmax with discrete x"));
+    }
+
+    #[test]
+    fn test_error_discrete_requires_width() {
+        let aesthetics = create_aesthetics(&["pos1", "pos2min", "pos2max"]);
+        let schema = create_schema(&["pos1"]);
+        let group_by = vec![];
+        let parameters = HashMap::new();
+
+        let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Discrete x requires x and width"));
+    }
+
+    // ==================== Group By Tests ====================
+
+    #[test]
+    fn test_width_height_filtered_from_group_by() {
+        let aesthetics = create_aesthetics(&["pos1", "width", "pos2", "height"]);
+        let schema = create_schema(&["pos1", "pos2"]);
+        // width and height in group_by should be filtered out
+        let group_by = vec![
+            "__ggsql_aes_width__".to_string(),
+            "__ggsql_aes_height__".to_string(),
+            "__ggsql_aes_fill__".to_string(),
+        ];
+        let parameters = HashMap::new();
+
+        let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+        assert!(result.is_ok());
+
+        if let Ok(StatResult::Transformed { query, .. }) = result {
+            // Should only have fill in group by, not width or height
+            assert!(query.contains("SELECT __ggsql_aes_fill__,"));
+            // width and height should appear as stat columns, not group by
+            assert!(query.contains("__ggsql_aes_width__ AS __ggsql_stat_width"));
+            assert!(query.contains("__ggsql_aes_height__ AS __ggsql_stat_height"));
+        }
+    }
+}
