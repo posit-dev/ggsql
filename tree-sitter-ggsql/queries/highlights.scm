@@ -12,7 +12,7 @@
   "path"
   "bar"
   "area"
-  "tile"
+  "rect"
   "polygon"
   "ribbon"
   "histogram"

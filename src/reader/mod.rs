@@ -733,7 +733,7 @@ mod tests {
                 (4, 40, 85.0)
             ) AS t(x, y, value)
             VISUALISE
-            DRAW tile MAPPING x AS x, y AS y, value AS fill
+            DRAW point MAPPING x AS x, y AS y, value AS fill
             SCALE BINNED fill FROM [0, 100] TO viridis SETTING breaks => [0, 25, 50, 75, 100]
         "#;
 

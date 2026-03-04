@@ -146,12 +146,12 @@ mod tests {
         let query = r#"
             SELECT x, y FROM data
             VISUALIZE x, y
-            DRAW tile
+            DRAW point
         "#;
 
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 1);
-        assert_eq!(specs[0].layers[0].geom, Geom::tile());
+        assert_eq!(specs[0].layers[0].geom, Geom::point());
     }
 
     #[test]
@@ -163,7 +163,7 @@ mod tests {
             VISUALIZE
             DRAW bar MAPPING x AS x, y AS y
             VISUALISE z AS x, y AS y
-            DRAW tile
+            DRAW point
         "#;
 
         let specs = parse_query(query).unwrap();
@@ -219,7 +219,7 @@ mod tests {
             VISUALISE x, y
             DRAW line
             VISUALIZE
-            DRAW tile MAPPING x AS x, y AS y
+            DRAW point MAPPING x AS x, y AS y
             VISUALISE
             DRAW bar MAPPING x AS x, y AS y
         "#;
@@ -227,7 +227,7 @@ mod tests {
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 3);
         assert_eq!(specs[0].layers[0].geom, Geom::line());
-        assert_eq!(specs[1].layers[0].geom, Geom::tile());
+        assert_eq!(specs[1].layers[0].geom, Geom::point());
         assert_eq!(specs[2].layers[0].geom, Geom::bar());
     }
 
@@ -245,7 +245,7 @@ mod tests {
             VISUALIZE
             DRAW bar MAPPING date AS x, revenue AS y
             VISUALISE
-            DRAW tile MAPPING date AS x, revenue AS y
+            DRAW point MAPPING date AS x, revenue AS y
         "#;
 
         let specs = parse_query(query).unwrap();

@@ -30,7 +30,6 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Path => "line",
         GeomType::Bar => "bar",
         GeomType::Area => "area",
-        GeomType::Tile => "rect",
         GeomType::Rect => "rect",
         GeomType::Ribbon => "area",
         GeomType::Polygon => "line",
@@ -931,7 +930,7 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Boxplot => Box::new(BoxplotRenderer),
         GeomType::Density => Box::new(AreaRenderer),
         GeomType::Violin => Box::new(ViolinRenderer),
-        // All other geoms (Point, Line, Tile, etc.) use the default renderer
+        // All other geoms (Point, Line, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }
 }
@@ -1066,9 +1065,7 @@ mod tests {
     }
 
     /// Helper to run rect rendering pipeline (modify_encoding + modify_spec)
-    fn render_rect(
-        encoding: &mut Map<String, Value>,
-    ) -> Result<Value> {
+    fn render_rect(encoding: &mut Map<String, Value>) -> Result<Value> {
         let renderer = RectRenderer;
         let layer = Layer::new(crate::plot::Geom::rect());
 
@@ -1212,7 +1209,9 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Discrete x scale"));
-        assert!(err.to_string().contains("does not support variable width columns"));
+        assert!(err
+            .to_string()
+            .contains("does not support variable width columns"));
     }
 
     #[test]
@@ -1220,11 +1219,14 @@ mod tests {
         // Test that missing domain in scale produces an error
         let mut encoding = serde_json::Map::new();
         encoding.insert("x".to_string(), nominal("day"));
-        encoding.insert("width".to_string(), json!({
-            "field": "width_col",
-            "type": "quantitative",
-            "scale": {}  // missing domain
-        }));
+        encoding.insert(
+            "width".to_string(),
+            json!({
+                "field": "width_col",
+                "type": "quantitative",
+                "scale": {}  // missing domain
+            }),
+        );
 
         let result = render_rect(&mut encoding);
         assert!(result.is_err());

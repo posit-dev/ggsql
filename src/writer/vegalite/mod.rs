@@ -1155,10 +1155,6 @@ mod tests {
             geom_to_mark(&Geom::area()),
             json!({"type": "area", "clip": true})
         );
-        assert_eq!(
-            geom_to_mark(&Geom::tile()),
-            json!({"type": "rect", "clip": true})
-        );
     }
 
     #[test]
