@@ -42,7 +42,7 @@ impl GeomTrait for Rect {
                 // Visual aesthetics
                 ("fill", DefaultAestheticValue::String("black")),
                 ("stroke", DefaultAestheticValue::String("black")),
-                ("opacity", DefaultAestheticValue::Number(0.5)),
+                ("opacity", DefaultAestheticValue::Number(0.8)),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("linetype", DefaultAestheticValue::String("solid")),
             ],
@@ -66,7 +66,9 @@ impl GeomTrait for Rect {
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {
-        &["pos1", "pos2", "pos1min", "pos1max", "pos2min", "pos2max", "width", "height"]
+        &[
+            "pos1", "pos2", "pos1min", "pos1max", "pos2min", "pos2max", "width", "height",
+        ]
     }
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {
@@ -104,7 +106,7 @@ fn stat_rect(
     query: &str,
     schema: &Schema,
     aesthetics: &Mappings,
-    group_by: &[String],
+    _group_by: &[String],
     _parameters: &HashMap<String, ParameterValue>,
 ) -> Result<StatResult> {
     // Get aesthetic column names for SQL (at stat time, all aesthetics are columns)
@@ -117,16 +119,6 @@ fn stat_rect(
     let ymin = get_column_name(aesthetics, "pos2min");
     let ymax = get_column_name(aesthetics, "pos2max");
     let height = get_column_name(aesthetics, "height");
-
-    // Filter out width/height from group_by (they're position aesthetics, not grouping)
-    let group_by: Vec<String> = group_by
-        .iter()
-        .filter(|col| {
-            !width.as_ref().map_or(false, |w| col == &w)
-                && !height.as_ref().map_or(false, |h| col == &h)
-        })
-        .cloned()
-        .collect();
 
     // Detect if x and y are discrete by checking schema
     let is_x_discrete = x
@@ -159,13 +151,26 @@ fn stat_rect(
         "y",
     )?;
 
+    // Define consumed aesthetics (these will be transformed, not passed through)
+    // This list determines both what columns to exclude from pass-through
+    // and what to report in StatResult.consumed_aesthetics
+    let consumed_aesthetic_names = ["pos1", "pos1min", "pos1max", "width", "pos2", "pos2min", "pos2max", "height"];
+
+    // Convert aesthetic names to column names for filtering
+    let consumed_columns: Vec<String> = consumed_aesthetic_names
+        .iter()
+        .filter_map(|aes| get_column_name(aesthetics, aes))
+        .collect();
+
     // Build SELECT list and stat_columns based on discrete vs continuous
     let mut select_parts = vec![];
     let mut stat_columns = vec![];
 
-    // Add group_by columns first
-    if !group_by.is_empty() {
-        select_parts.push(group_by.join(", "));
+    // Add non-consumed columns from schema (pass through all non-positional aesthetics)
+    for col_info in schema {
+        if !consumed_columns.contains(&col_info.name) {
+            select_parts.push(col_info.name.clone());
+        }
     }
 
     // X direction
@@ -178,8 +183,16 @@ fn stat_rect(
             stat_columns.push("width".to_string());
         }
     } else {
-        select_parts.push(format!("{} AS {}", x_expr_min, naming::stat_column("pos1min")));
-        select_parts.push(format!("{} AS {}", x_expr_max, naming::stat_column("pos1max")));
+        select_parts.push(format!(
+            "{} AS {}",
+            x_expr_min,
+            naming::stat_column("pos1min")
+        ));
+        select_parts.push(format!(
+            "{} AS {}",
+            x_expr_max,
+            naming::stat_column("pos1max")
+        ));
         stat_columns.push("pos1min".to_string());
         stat_columns.push("pos1max".to_string());
     }
@@ -190,12 +203,24 @@ fn stat_rect(
         stat_columns.push("pos2".to_string());
         // For discrete, pass through height if mapped (for scale training)
         if let Some(ref height_col) = height {
-            select_parts.push(format!("{} AS {}", height_col, naming::stat_column("height")));
+            select_parts.push(format!(
+                "{} AS {}",
+                height_col,
+                naming::stat_column("height")
+            ));
             stat_columns.push("height".to_string());
         }
     } else {
-        select_parts.push(format!("{} AS {}", y_expr_min, naming::stat_column("pos2min")));
-        select_parts.push(format!("{} AS {}", y_expr_max, naming::stat_column("pos2max")));
+        select_parts.push(format!(
+            "{} AS {}",
+            y_expr_min,
+            naming::stat_column("pos2min")
+        ));
+        select_parts.push(format!(
+            "{} AS {}",
+            y_expr_max,
+            naming::stat_column("pos2max")
+        ));
         stat_columns.push("pos2min".to_string());
         stat_columns.push("pos2max".to_string());
     }
@@ -208,20 +233,12 @@ fn stat_rect(
         select_list, query
     );
 
-    // Build consumed aesthetics - all potentially mapped positional aesthetics
-    let mut consumed = vec!["pos1", "pos1min", "pos1max", "pos2", "pos2min", "pos2max"];
-    if width.is_some() {
-        consumed.push("width");
-    }
-    if height.is_some() {
-        consumed.push("height");
-    }
-
+    // Use the same consumed aesthetic names for StatResult
     Ok(StatResult::Transformed {
         query: transformed_query,
         stat_columns,
         dummy_columns: vec![],
-        consumed_aesthetics: consumed.iter().map(|s| s.to_string()).collect(),
+        consumed_aesthetics: consumed_aesthetic_names.iter().map(|s| s.to_string()).collect(),
     })
 }
 
@@ -314,7 +331,11 @@ mod tests {
     // ==================== Helper Functions ====================
 
     fn create_schema(discrete_cols: &[&str]) -> Schema {
-        vec![
+        create_schema_with_extra(discrete_cols, &[])
+    }
+
+    fn create_schema_with_extra(discrete_cols: &[&str], extra_cols: &[&str]) -> Schema {
+        let mut schema = vec![
             ColumnInfo {
                 name: "__ggsql_aes_pos1__".to_string(),
                 dtype: if discrete_cols.contains(&"pos1") {
@@ -379,7 +400,20 @@ mod tests {
                 min: None,
                 max: None,
             },
-        ]
+        ];
+
+        // Add extra columns (e.g., fill, color, etc.)
+        for col_name in extra_cols {
+            schema.push(ColumnInfo {
+                name: col_name.to_string(),
+                dtype: DataType::String,
+                is_discrete: true,
+                min: None,
+                max: None,
+            });
+        }
+
+        schema
     }
 
     fn create_aesthetics(mappings: &[&str]) -> Mappings {
@@ -449,20 +483,56 @@ mod tests {
             let group_by = vec![];
             let parameters = HashMap::new();
 
-            let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+            let result = stat_rect(
+                "SELECT * FROM data",
+                &schema,
+                &aesthetics,
+                &group_by,
+                &parameters,
+            );
 
-            assert!(result.is_ok(), "{}: stat_rect failed: {:?}", name, result.err());
+            assert!(
+                result.is_ok(),
+                "{}: stat_rect failed: {:?}",
+                name,
+                result.err()
+            );
             let stat_result = result.unwrap();
 
-            if let StatResult::Transformed { query, stat_columns, .. } = stat_result {
+            if let StatResult::Transformed {
+                query,
+                stat_columns,
+                ..
+            } = stat_result
+            {
                 let stat_pos1min = naming::stat_column("pos1min");
                 let stat_pos1max = naming::stat_column("pos1max");
-                assert!(query.contains(&format!("{} AS {}", expected_min, stat_pos1min)),
-                    "{}: Expected '{} AS {}' in query, got: {}", name, expected_min, stat_pos1min, query);
-                assert!(query.contains(&format!("{} AS {}", expected_max, stat_pos1max)),
-                    "{}: Expected '{} AS {}' in query, got: {}", name, expected_max, stat_pos1max, query);
-                assert!(stat_columns.contains(&"pos1min".to_string()), "{}: Missing pos1min in stat_columns", name);
-                assert!(stat_columns.contains(&"pos1max".to_string()), "{}: Missing pos1max in stat_columns", name);
+                assert!(
+                    query.contains(&format!("{} AS {}", expected_min, stat_pos1min)),
+                    "{}: Expected '{} AS {}' in query, got: {}",
+                    name,
+                    expected_min,
+                    stat_pos1min,
+                    query
+                );
+                assert!(
+                    query.contains(&format!("{} AS {}", expected_max, stat_pos1max)),
+                    "{}: Expected '{} AS {}' in query, got: {}",
+                    name,
+                    expected_max,
+                    stat_pos1max,
+                    query
+                );
+                assert!(
+                    stat_columns.contains(&"pos1min".to_string()),
+                    "{}: Missing pos1min in stat_columns",
+                    name
+                );
+                assert!(
+                    stat_columns.contains(&"pos1max".to_string()),
+                    "{}: Missing pos1max in stat_columns",
+                    name
+                );
             } else {
                 panic!("{}: Expected Transformed result", name);
             }
@@ -523,20 +593,56 @@ mod tests {
             let group_by = vec![];
             let parameters = HashMap::new();
 
-            let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+            let result = stat_rect(
+                "SELECT * FROM data",
+                &schema,
+                &aesthetics,
+                &group_by,
+                &parameters,
+            );
 
-            assert!(result.is_ok(), "{}: stat_rect failed: {:?}", name, result.err());
+            assert!(
+                result.is_ok(),
+                "{}: stat_rect failed: {:?}",
+                name,
+                result.err()
+            );
             let stat_result = result.unwrap();
 
-            if let StatResult::Transformed { query, stat_columns, .. } = stat_result {
+            if let StatResult::Transformed {
+                query,
+                stat_columns,
+                ..
+            } = stat_result
+            {
                 let stat_pos2min = naming::stat_column("pos2min");
                 let stat_pos2max = naming::stat_column("pos2max");
-                assert!(query.contains(&format!("{} AS {}", expected_min, stat_pos2min)),
-                    "{}: Expected '{} AS {}' in query, got: {}", name, expected_min, stat_pos2min, query);
-                assert!(query.contains(&format!("{} AS {}", expected_max, stat_pos2max)),
-                    "{}: Expected '{} AS {}' in query, got: {}", name, expected_max, stat_pos2max, query);
-                assert!(stat_columns.contains(&"pos2min".to_string()), "{}: Missing pos2min in stat_columns", name);
-                assert!(stat_columns.contains(&"pos2max".to_string()), "{}: Missing pos2max in stat_columns", name);
+                assert!(
+                    query.contains(&format!("{} AS {}", expected_min, stat_pos2min)),
+                    "{}: Expected '{} AS {}' in query, got: {}",
+                    name,
+                    expected_min,
+                    stat_pos2min,
+                    query
+                );
+                assert!(
+                    query.contains(&format!("{} AS {}", expected_max, stat_pos2max)),
+                    "{}: Expected '{} AS {}' in query, got: {}",
+                    name,
+                    expected_max,
+                    stat_pos2max,
+                    query
+                );
+                assert!(
+                    stat_columns.contains(&"pos2min".to_string()),
+                    "{}: Missing pos2min in stat_columns",
+                    name
+                );
+                assert!(
+                    stat_columns.contains(&"pos2max".to_string()),
+                    "{}: Missing pos2max in stat_columns",
+                    name
+                );
             } else {
                 panic!("{}: Expected Transformed result", name);
             }
@@ -552,10 +658,21 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
-        let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+        let result = stat_rect(
+            "SELECT * FROM data",
+            &schema,
+            &aesthetics,
+            &group_by,
+            &parameters,
+        );
         assert!(result.is_ok());
 
-        if let Ok(StatResult::Transformed { query, stat_columns, .. }) = result {
+        if let Ok(StatResult::Transformed {
+            query,
+            stat_columns,
+            ..
+        }) = result
+        {
             assert!(query.contains("__ggsql_aes_pos1__ AS __ggsql_stat_pos1"));
             assert!(query.contains("__ggsql_aes_width__ AS __ggsql_stat_width"));
             assert!(stat_columns.contains(&"pos1".to_string()));
@@ -572,10 +689,21 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
-        let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+        let result = stat_rect(
+            "SELECT * FROM data",
+            &schema,
+            &aesthetics,
+            &group_by,
+            &parameters,
+        );
         assert!(result.is_ok());
 
-        if let Ok(StatResult::Transformed { query, stat_columns, .. }) = result {
+        if let Ok(StatResult::Transformed {
+            query,
+            stat_columns,
+            ..
+        }) = result
+        {
             assert!(query.contains("__ggsql_aes_pos2__ AS __ggsql_stat_pos2"));
             assert!(query.contains("__ggsql_aes_height__ AS __ggsql_stat_height"));
             assert!(stat_columns.contains(&"pos1min".to_string()));
@@ -592,10 +720,21 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
-        let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+        let result = stat_rect(
+            "SELECT * FROM data",
+            &schema,
+            &aesthetics,
+            &group_by,
+            &parameters,
+        );
         assert!(result.is_ok());
 
-        if let Ok(StatResult::Transformed { query, stat_columns, .. }) = result {
+        if let Ok(StatResult::Transformed {
+            query,
+            stat_columns,
+            ..
+        }) = result
+        {
             assert!(query.contains("__ggsql_aes_pos1__ AS __ggsql_stat_pos1"));
             assert!(query.contains("__ggsql_aes_width__ AS __ggsql_stat_width"));
             assert!(query.contains("__ggsql_aes_pos2__ AS __ggsql_stat_pos2"));
@@ -613,7 +752,13 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
-        let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+        let result = stat_rect(
+            "SELECT * FROM data",
+            &schema,
+            &aesthetics,
+            &group_by,
+            &parameters,
+        );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("exactly 2 x-direction parameters"));
@@ -626,7 +771,13 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
-        let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+        let result = stat_rect(
+            "SELECT * FROM data",
+            &schema,
+            &aesthetics,
+            &group_by,
+            &parameters,
+        );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("exactly 2 x-direction parameters"));
@@ -639,7 +790,13 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
-        let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+        let result = stat_rect(
+            "SELECT * FROM data",
+            &schema,
+            &aesthetics,
+            &group_by,
+            &parameters,
+        );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Cannot use xmin/xmax with discrete x"));
@@ -652,33 +809,42 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
-        let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+        let result = stat_rect(
+            "SELECT * FROM data",
+            &schema,
+            &aesthetics,
+            &group_by,
+            &parameters,
+        );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Discrete x requires x and width"));
     }
 
-    // ==================== Group By Tests ====================
+    // ==================== Non-Consumed Aesthetic Tests ====================
 
     #[test]
-    fn test_width_height_filtered_from_group_by() {
+    fn test_non_consumed_aesthetics_passed_through() {
         let aesthetics = create_aesthetics(&["pos1", "width", "pos2", "height"]);
-        let schema = create_schema(&["pos1", "pos2"]);
-        // width and height in group_by should be filtered out
-        let group_by = vec![
-            "__ggsql_aes_width__".to_string(),
-            "__ggsql_aes_height__".to_string(),
-            "__ggsql_aes_fill__".to_string(),
-        ];
+        // Include fill in schema (it's a non-consumed aesthetic)
+        let schema = create_schema_with_extra(&["pos1", "pos2"], &["__ggsql_aes_fill__"]);
+        let group_by = vec![];
         let parameters = HashMap::new();
 
-        let result = stat_rect("SELECT * FROM data", &schema, &aesthetics, &group_by, &parameters);
+        let result = stat_rect(
+            "SELECT * FROM data",
+            &schema,
+            &aesthetics,
+            &group_by,
+            &parameters,
+        );
         assert!(result.is_ok());
 
         if let Ok(StatResult::Transformed { query, .. }) = result {
-            // Should only have fill in group by, not width or height
-            assert!(query.contains("SELECT __ggsql_aes_fill__,"));
-            // width and height should appear as stat columns, not group by
+            // Should include fill column (non-consumed aesthetic from schema)
+            assert!(query.contains("__ggsql_aes_fill__"));
+            // Should NOT include width/height as pass-through (they're consumed)
+            // They should only appear as stat columns
             assert!(query.contains("__ggsql_aes_width__ AS __ggsql_stat_width"));
             assert!(query.contains("__ggsql_aes_height__ AS __ggsql_stat_height"));
         }
