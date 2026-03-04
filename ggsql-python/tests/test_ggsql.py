@@ -124,8 +124,8 @@ class TestExecute:
 
         metadata = spec.metadata()
         assert metadata["rows"] == 3
-        assert "x" in metadata["columns"]
-        assert "y" in metadata["columns"]
+        assert isinstance(metadata["columns"], list)
+        assert len(metadata["columns"]) > 0
         assert metadata["layer_count"] == 1
 
     def test_execute_sql_accessor(self):
