@@ -293,6 +293,10 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
     // since geom definitions use internal names for their supported/required aesthetics
     spec.transform_aesthetics_to_internal();
 
+    // Process annotation layers: move positional/required parameters to mappings
+    // This must happen AFTER transform_aesthetics_to_internal() so parameter keys are in internal space
+    spec.process_annotation_layers();
+
     Ok(spec)
 }
 
@@ -306,9 +310,7 @@ fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Resu
                 spec.layers.push(layer);
             }
             "place_clause" => {
-                let mut layer = build_layer(&child, source)?;
-                // Mark as annotation layer with dummy data source
-                layer.source = Some(DataSource::Annotation);
+                let layer = build_place_layer(&child, source)?;
                 spec.layers.push(layer);
             }
             "scale_clause" => {
@@ -491,6 +493,22 @@ fn build_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
     layer.filter = filter;
     layer.order_by = order_by;
     layer.source = layer_source;
+
+    Ok(layer)
+}
+
+/// Build an annotation Layer from a place_clause node
+/// This is similar to build_layer but marks it as an annotation layer.
+/// The transformation of positional/required aesthetics from SETTING to mappings
+/// happens later in Plot::transform_aesthetics_to_internal().
+/// Syntax: PLACE geom [MAPPING col AS x, ...] [SETTING param => val, ...] [FILTER condition]
+fn build_place_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
+    // Build the layer using standard logic
+    let mut layer = build_layer(node, source)?;
+
+    // Mark as annotation layer with dummy data source
+    // This triggers special handling in transform_aesthetics_to_internal()
+    layer.source = Some(DataSource::Annotation);
 
     Ok(layer)
 }

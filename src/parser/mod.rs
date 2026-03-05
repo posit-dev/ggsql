@@ -442,18 +442,22 @@ mod tests {
             "PLACE layer should have Annotation source"
         );
 
-        // Verify SETTING parameters are preserved
-        assert_eq!(
-            specs[0].layers[1].parameters.get("x"),
-            Some(&ParameterValue::Number(5.0))
+        // Verify positional aesthetics moved to mappings with internal names
+        // (transform_aesthetics_to_internal runs as part of parse_query)
+        assert!(
+            specs[0].layers[1].mappings.contains_key("pos1"),
+            "x should be transformed to pos1 and moved to mappings"
         );
-        assert_eq!(
-            specs[0].layers[1].parameters.get("y"),
-            Some(&ParameterValue::Number(10.0))
+        assert!(
+            specs[0].layers[1].mappings.contains_key("pos2"),
+            "y should be transformed to pos2 and moved to mappings"
         );
+
+        // Verify non-positional parameter (label) stays in parameters (with internal name = same)
         assert_eq!(
             specs[0].layers[1].parameters.get("label"),
-            Some(&ParameterValue::String("Hello".to_string()))
+            Some(&ParameterValue::String("Hello".to_string())),
+            "Non-positional parameters remain in parameters"
         );
     }
 }

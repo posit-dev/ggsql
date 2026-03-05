@@ -759,6 +759,71 @@ mod integration_tests {
     }
 
     #[test]
+    fn test_end_to_end_place_field_vs_value_encoding() {
+        // Test that PLACE annotation layers render correctly:
+        // - Positional aesthetics (x, y) as field encodings (reference columns)
+        // - Non-positional aesthetics (size, stroke) as value encodings (datum values)
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            SELECT 1 AS x, 10 AS y UNION ALL SELECT 2 AS x, 20 AS y
+            VISUALISE x, y
+            DRAW point
+            PLACE text SETTING x => 5, y => 30, label => 'Annotation', size => 16, stroke => 'red'
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+
+        // Render to Vega-Lite
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        // Find the text layer (should be second layer)
+        let text_layer = &vl_spec["layer"][1];
+
+        // Mark can be either a string or an object with type
+        let mark_type = if text_layer["mark"].is_string() {
+            text_layer["mark"].as_str().unwrap()
+        } else {
+            text_layer["mark"]["type"].as_str().unwrap()
+        };
+        assert_eq!(mark_type, "text", "Second layer should be text");
+
+        let encoding = &text_layer["encoding"];
+
+        // Positional aesthetics should be field encodings (have "field" key)
+        assert!(
+            encoding["x"]["field"].is_string(),
+            "x should be a field encoding: {:?}",
+            encoding["x"]
+        );
+        assert!(
+            encoding["y"]["field"].is_string(),
+            "y should be a field encoding: {:?}",
+            encoding["y"]
+        );
+
+        // Non-positional aesthetics should be value encodings (have "value" key)
+        // Note: size may be scaled/transformed, so just check it's present as a value
+        assert!(
+            encoding["size"]["value"].is_number(),
+            "size should be a value encoding with numeric value: {:?}",
+            encoding["size"]
+        );
+
+        // Note: stroke color goes through resolve_aesthetics and may be in different location
+        // Just verify it's present somewhere as a literal
+        let text_mark = &text_layer["mark"];
+        let has_stroke_value = encoding.get("stroke")
+            .and_then(|s| s.get("value"))
+            .is_some()
+            || text_mark.get("stroke").is_some();
+        assert!(has_stroke_value, "stroke should be present as a value");
+    }
+
+    #[test]
     fn test_end_to_end_global_constant_in_visualise() {
         // Test that global constants in VISUALISE clause work correctly
         // e.g., VISUALISE date AS x, value AS y, 'value' AS stroke

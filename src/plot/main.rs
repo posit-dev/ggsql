@@ -168,6 +168,7 @@ impl Plot {
     /// - Global mappings
     /// - Layer aesthetics
     /// - Layer remappings
+    /// - Layer parameters (SETTING aesthetics)
     /// - Scale aesthetics
     pub fn transform_aesthetics_to_internal(&mut self) {
         let ctx = self.get_aesthetic_context();
@@ -175,16 +176,68 @@ impl Plot {
         // Transform global mappings
         self.global_mappings.transform_to_internal(&ctx);
 
-        // Transform layer aesthetics and remappings
+        // Transform layer aesthetics, remappings, and parameters
         for layer in &mut self.layers {
             layer.mappings.transform_to_internal(&ctx);
             layer.remappings.transform_to_internal(&ctx);
+
+            // Transform parameter keys from user-facing to internal names
+            // This ensures position aesthetics in SETTING (e.g., x => 5) become internal (pos1 => 5)
+            let original_parameters = std::mem::take(&mut layer.parameters);
+            for (param_name, value) in original_parameters {
+                let internal_name = ctx
+                    .map_user_to_internal(&param_name)
+                    .map(|s| s.to_string())
+                    .unwrap_or(param_name);
+                layer.parameters.insert(internal_name, value);
+            }
         }
 
         // Transform scale aesthetics
         for scale in &mut self.scales {
             if let Some(internal) = ctx.map_user_to_internal(&scale.aesthetic) {
                 scale.aesthetic = internal.to_string();
+            }
+        }
+    }
+
+    /// Process annotation layers by moving positional and required aesthetics
+    /// from parameters to mappings.
+    ///
+    /// This must be called AFTER transform_aesthetics_to_internal() so that
+    /// parameter keys are already in internal space (pos1, pos2, etc.).
+    ///
+    /// Positional aesthetics need to be in mappings so they go through the same
+    /// transformation pipeline (internal→user space) as data-mapped aesthetics,
+    /// enabling them to participate in scale training and coordinate transformations.
+    pub fn process_annotation_layers(&mut self) {
+        for layer in &mut self.layers {
+            if !matches!(layer.source, Some(crate::DataSource::Annotation)) {
+                continue;
+            }
+
+            let required_aesthetics = layer.geom.aesthetics().required();
+            // Collect parameter keys first to avoid borrow checker issues
+            let param_keys: Vec<String> = layer.parameters.keys().cloned().collect();
+
+            for param_name in param_keys {
+                // Check if this is a positional aesthetic OR a required aesthetic
+                let is_positional = crate::plot::aesthetic::is_positional_aesthetic(&param_name);
+                let is_required = required_aesthetics.contains(&param_name.as_str());
+
+                if is_positional || is_required {
+                    // Skip if already in mappings
+                    if layer.mappings.contains_key(&param_name) {
+                        continue;
+                    }
+
+                    // Move from parameters to mappings (both now use internal names)
+                    if let Some(value) = layer.parameters.remove(&param_name) {
+                        layer
+                            .mappings
+                            .insert(&param_name, crate::AestheticValue::Literal(value));
+                    }
+                }
             }
         }
     }
