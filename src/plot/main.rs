@@ -791,4 +791,125 @@ mod tests {
             "Non-color aesthetic should keep its name"
         );
     }
+
+    #[test]
+    fn test_process_annotation_layers_moves_positional_aesthetics() {
+        let mut plot = Plot::new();
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer.parameters.insert("pos1".to_string(), ParameterValue::Number(5.0));
+        layer.parameters.insert("pos2".to_string(), ParameterValue::Number(10.0));
+        layer.parameters.insert("size".to_string(), ParameterValue::Number(14.0));
+        plot.layers.push(layer);
+
+        plot.process_annotation_layers().unwrap();
+
+        // Positional aesthetics should be moved to mappings
+        assert!(plot.layers[0].mappings.contains_key("pos1"));
+        assert!(plot.layers[0].mappings.contains_key("pos2"));
+        // Non-positional should stay in parameters
+        assert!(plot.layers[0].parameters.contains_key("size"));
+        assert!(!plot.layers[0].mappings.contains_key("size"));
+    }
+
+    #[test]
+    fn test_process_annotation_layers_moves_required_aesthetics() {
+        let mut plot = Plot::new();
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer.parameters.insert("pos1".to_string(), ParameterValue::Number(5.0));
+        layer.parameters.insert("pos2".to_string(), ParameterValue::Number(10.0));
+        layer.parameters.insert("label".to_string(), ParameterValue::String("Text".to_string()));
+        plot.layers.push(layer);
+
+        plot.process_annotation_layers().unwrap();
+
+        // pos1 and pos2 are required and positional - should be moved to mappings
+        assert!(plot.layers[0].mappings.contains_key("pos1"));
+        assert!(plot.layers[0].mappings.contains_key("pos2"));
+        // label is optional (not required) - should stay in parameters
+        assert!(!plot.layers[0].mappings.contains_key("label"));
+        assert!(plot.layers[0].parameters.contains_key("label"));
+    }
+
+    #[test]
+    fn test_process_annotation_layers_moves_array_parameters() {
+        let mut plot = Plot::new();
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer.parameters.insert("pos1".to_string(), ParameterValue::Array(vec![
+            ArrayElement::Number(1.0),
+            ArrayElement::Number(2.0),
+        ]));
+        layer.parameters.insert("stroke".to_string(), ParameterValue::Array(vec![
+            ArrayElement::String("red".to_string()),
+            ArrayElement::String("blue".to_string()),
+        ]));
+        plot.layers.push(layer);
+
+        plot.process_annotation_layers().unwrap();
+
+        // Array parameters should be moved to mappings (even non-positional)
+        assert!(plot.layers[0].mappings.contains_key("pos1"));
+        assert!(plot.layers[0].mappings.contains_key("stroke"));
+        assert!(!plot.layers[0].parameters.contains_key("pos1"));
+        assert!(!plot.layers[0].parameters.contains_key("stroke"));
+    }
+
+    #[test]
+    fn test_process_annotation_layers_filters_null_aesthetics() {
+        let mut plot = Plot::new();
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer.parameters.insert("pos1".to_string(), ParameterValue::Number(5.0));
+        layer.parameters.insert("pos2".to_string(), ParameterValue::Null); // NULL should be filtered
+        layer.parameters.insert("label".to_string(), ParameterValue::String("Text".to_string()));
+        plot.layers.push(layer);
+
+        plot.process_annotation_layers().unwrap();
+
+        // pos1 should be moved to mappings (positional)
+        assert!(plot.layers[0].mappings.contains_key("pos1"));
+        // label should stay in parameters (optional, not positional)
+        assert!(!plot.layers[0].mappings.contains_key("label"));
+        assert!(plot.layers[0].parameters.contains_key("label"));
+        // NULL pos2 should not be in mappings (filtered out)
+        assert!(!plot.layers[0].mappings.contains_key("pos2"));
+        // NULL should also be removed from parameters
+        assert!(!plot.layers[0].parameters.contains_key("pos2"));
+    }
+
+    #[test]
+    fn test_process_annotation_layers_skips_non_annotation_layers() {
+        let mut plot = Plot::new();
+        let mut layer = Layer::new(Geom::point());
+        layer.source = None; // Regular layer
+        layer.parameters.insert("pos1".to_string(), ParameterValue::Number(5.0));
+        plot.layers.push(layer);
+
+        plot.process_annotation_layers().unwrap();
+
+        // Parameters should not be moved for non-annotation layers
+        assert!(plot.layers[0].parameters.contains_key("pos1"));
+        assert!(!plot.layers[0].mappings.contains_key("pos1"));
+    }
+
+    #[test]
+    fn test_process_annotation_layers_keeps_existing_mappings() {
+        let mut plot = Plot::new();
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer.mappings.insert("pos1", AestheticValue::Literal(ParameterValue::Number(5.0)));
+        layer.parameters.insert("pos1".to_string(), ParameterValue::Number(10.0)); // Should be ignored
+        plot.layers.push(layer);
+
+        plot.process_annotation_layers().unwrap();
+
+        // Existing mapping should be preserved (not overwritten)
+        if let Some(AestheticValue::Literal(ParameterValue::Number(n))) = plot.layers[0].mappings.get("pos1") {
+            assert_eq!(*n, 5.0, "Should keep original mapping value");
+        } else {
+            panic!("pos1 should be a literal number");
+        }
+    }
 }

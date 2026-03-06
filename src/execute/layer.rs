@@ -695,3 +695,155 @@ fn build_annotation_values_clause(layer: &Layer) -> Result<String> {
         values_clause, column_list
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plot::{AestheticValue, ArrayElement, DataSource, Geom, Layer, ParameterValue};
+
+    #[test]
+    fn test_build_annotation_values_clause_single_scalar() {
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer
+            .mappings
+            .insert("pos1", AestheticValue::Literal(ParameterValue::Number(5.0)));
+        layer
+            .mappings
+            .insert("pos2", AestheticValue::Literal(ParameterValue::Number(10.0)));
+        layer.mappings.insert(
+            "label",
+            AestheticValue::Literal(ParameterValue::String("Test".to_string())),
+        );
+
+        let result = build_annotation_values_clause(&layer).unwrap();
+
+        // Should produce: SELECT * FROM (VALUES (...)) AS t("__ggsql_aes_pos1__", ...)
+        assert!(result.contains("VALUES"));
+        // Check all values are present (order may vary due to HashMap)
+        assert!(result.contains("5"));
+        assert!(result.contains("10"));
+        assert!(result.contains("'Test'"));
+        assert!(result.contains("__ggsql_aes_pos1__"));
+        assert!(result.contains("__ggsql_aes_pos2__"));
+        assert!(result.contains("__ggsql_aes_label__"));
+    }
+
+    #[test]
+    fn test_build_annotation_values_clause_array_recycling() {
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer.mappings.insert(
+            "pos1",
+            AestheticValue::Literal(ParameterValue::Array(vec![
+                ArrayElement::Number(1.0),
+                ArrayElement::Number(2.0),
+                ArrayElement::Number(3.0),
+            ])),
+        );
+        layer
+            .mappings
+            .insert("pos2", AestheticValue::Literal(ParameterValue::Number(10.0)));
+        layer.mappings.insert(
+            "label",
+            AestheticValue::Literal(ParameterValue::String("Same".to_string())),
+        );
+
+        let result = build_annotation_values_clause(&layer).unwrap();
+
+        // Should recycle scalar pos2 and label to match array length (3)
+        assert!(result.contains("VALUES"));
+        // Check that all values appear (order may vary due to HashMap)
+        assert!(result.contains("1") && result.contains("2") && result.contains("3"));
+        assert!(result.contains("10"));
+        assert!(result.contains("'Same'"));
+        // Check row count by counting parentheses pairs in VALUES
+        assert_eq!(result.matches("), (").count() + 1, 3, "Should have 3 rows");
+    }
+
+    #[test]
+    fn test_build_annotation_values_clause_mismatched_arrays() {
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer.mappings.insert(
+            "pos1",
+            AestheticValue::Literal(ParameterValue::Array(vec![
+                ArrayElement::Number(1.0),
+                ArrayElement::Number(2.0),
+                ArrayElement::Number(3.0),
+            ])),
+        );
+        layer.mappings.insert(
+            "pos2",
+            AestheticValue::Literal(ParameterValue::Array(vec![
+                ArrayElement::Number(10.0),
+                ArrayElement::Number(20.0),
+            ])),
+        );
+
+        let result = build_annotation_values_clause(&layer);
+
+        // Should error with mismatched lengths
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("mismatched array lengths"), "Error message should mention mismatched arrays");
+        // Error should mention one of the aesthetics (order may vary)
+        assert!(
+            err_msg.contains("pos1") || err_msg.contains("pos2"),
+            "Error message should mention at least one aesthetic"
+        );
+    }
+
+    #[test]
+    fn test_build_annotation_values_clause_multiple_arrays_same_length() {
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer.mappings.insert(
+            "pos1",
+            AestheticValue::Literal(ParameterValue::Array(vec![
+                ArrayElement::Number(1.0),
+                ArrayElement::Number(2.0),
+            ])),
+        );
+        layer.mappings.insert(
+            "pos2",
+            AestheticValue::Literal(ParameterValue::Array(vec![
+                ArrayElement::Number(10.0),
+                ArrayElement::Number(20.0),
+            ])),
+        );
+
+        let result = build_annotation_values_clause(&layer).unwrap();
+
+        // Both arrays have length 2, should work (order may vary)
+        assert!(result.contains("VALUES"));
+        assert!(result.contains("1") && result.contains("2"));
+        assert!(result.contains("10") && result.contains("20"));
+        assert_eq!(result.matches("), (").count() + 1, 2, "Should have 2 rows");
+    }
+
+    #[test]
+    fn test_build_annotation_values_clause_mixed_types() {
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer
+            .mappings
+            .insert("pos1", AestheticValue::Literal(ParameterValue::Number(5.0)));
+        layer.mappings.insert(
+            "label",
+            AestheticValue::Literal(ParameterValue::String("Text".to_string())),
+        );
+        layer.mappings.insert(
+            "visible",
+            AestheticValue::Literal(ParameterValue::Boolean(true)),
+        );
+
+        let result = build_annotation_values_clause(&layer).unwrap();
+
+        // Should handle different types (order may vary)
+        assert!(result.contains("VALUES"));
+        assert!(result.contains("5"));
+        assert!(result.contains("'Text'"));
+        assert!(result.contains("TRUE") || result.contains("true"), "Should contain boolean value");
+    }
+}

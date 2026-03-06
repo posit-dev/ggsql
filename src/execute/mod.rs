@@ -2377,60 +2377,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "duckdb")]
-    #[test]
-    fn test_place_array_recycling_scalar() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-
-        let query = r#"
-            SELECT 1 AS x, 10 AS y
-            VISUALISE x, y
-            DRAW point
-            PLACE text SETTING x => [1, 2, 3], y => 10, label => 'Same'
-        "#;
-
-        let result = prepare_data_with_reader(query, &reader).unwrap();
-
-        let annotation_layer = &result.specs[0].layers[1];
-        assert_eq!(
-            annotation_layer.source,
-            Some(DataSource::Annotation),
-            "Should be an annotation layer"
-        );
-
-        // Verify recycling happened: scalar y should be recycled to match array x length (3)
-        let annotation_key = annotation_layer.data_key.as_ref().unwrap();
-        let annotation_df = result.data.get(annotation_key).unwrap();
-        assert_eq!(annotation_df.height(), 3, "Should have 3 rows after recycling");
-    }
-
-    #[cfg(feature = "duckdb")]
-    #[test]
-    fn test_place_array_mismatched_lengths_error() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-
-        let query = r#"
-            SELECT 1 AS x, 10 AS y
-            VISUALISE x, y
-            DRAW point
-            PLACE text SETTING x => [1, 2, 3], y => [10, 20], label => 'Test'
-        "#;
-
-        let result = prepare_data_with_reader(query, &reader);
-        assert!(result.is_err(), "Should error on mismatched array lengths");
-
-        match result {
-            Err(GgsqlError::ValidationError(msg)) => {
-                assert!(
-                    msg.contains("mismatched array lengths"),
-                    "Error should mention mismatched lengths: {}",
-                    msg
-                );
-            }
-            Err(e) => panic!("Expected ValidationError, got: {}", e),
-            Ok(_) => panic!("Expected error, got success"),
-        }
-    }
 
     #[cfg(feature = "duckdb")]
     #[test]
@@ -2471,3 +2417,4 @@ mod tests {
         );
     }
 }
+
