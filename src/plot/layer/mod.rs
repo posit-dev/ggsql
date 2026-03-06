@@ -241,7 +241,7 @@ impl Layer {
         use crate::naming;
         use crate::plot::aesthetic::is_positional_aesthetic;
 
-        let is_annotation = matches!(self.source, Some(crate::DataSource::Annotation(_)));
+        let is_annotation = matches!(self.source, Some(crate::DataSource::Annotation));
 
         for (aesthetic, value) in self.mappings.aesthetics.iter_mut() {
             let aes_col_name = naming::aesthetic_column(aesthetic);

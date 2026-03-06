@@ -140,9 +140,9 @@ pub enum DataSource {
     Identifier(String),
     /// File path (quoted string like 'data.csv')
     FilePath(String),
-    /// Annotation layer (PLACE clause) with number of annotation rows
-    /// The usize represents how many rows to generate (from array expansion)
-    Annotation(usize),
+    /// Annotation layer (PLACE clause)
+    /// Row count and array recycling handled during SQL generation
+    Annotation,
 }
 
 impl DataSource {
@@ -151,7 +151,7 @@ impl DataSource {
         match self {
             DataSource::Identifier(s) => s,
             DataSource::FilePath(s) => s,
-            DataSource::Annotation(_) => "__annotation__",
+            DataSource::Annotation => "__annotation__",
         }
     }
 
@@ -162,7 +162,7 @@ impl DataSource {
 
     /// Returns true if this is an annotation layer source
     pub fn is_annotation(&self) -> bool {
-        matches!(self, DataSource::Annotation(_))
+        matches!(self, DataSource::Annotation)
     }
 }
 

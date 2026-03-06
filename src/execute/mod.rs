@@ -154,7 +154,7 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
     for spec in specs {
         for (layer, schema) in spec.layers.iter_mut().zip(layer_schemas.iter()) {
             // Skip annotation layers - they don't inherit global mappings
-            if matches!(layer.source, Some(DataSource::Annotation(_))) {
+            if matches!(layer.source, Some(DataSource::Annotation)) {
                 continue;
             }
 
@@ -936,11 +936,12 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 
     // Build source queries for each layer to fetch initial type info
     // Every layer now has its own source query (either explicit source or global table)
+    // For annotation layers, this is where array recycling happens (on-the-fly)
     let layer_source_queries: Vec<String> = specs[0]
         .layers
         .iter()
         .map(|l| layer::layer_source_query(l, &materialized_ctes, has_global_table))
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
 
     // Get types for each layer from source queries (Phase 1: types only, no min/max yet)
     let mut layer_type_info: Vec<Vec<schema::TypeInfo>> = Vec::new();
@@ -2246,7 +2247,7 @@ mod tests {
         let annotation_layer = &result.specs[0].layers[1];
         assert_eq!(annotation_layer.geom, crate::Geom::text());
         assert!(
-            matches!(annotation_layer.source, Some(DataSource::Annotation(_))),
+            matches!(annotation_layer.source, Some(DataSource::Annotation)),
             "PLACE layer should have Annotation source"
         );
 
@@ -2394,13 +2395,14 @@ mod tests {
         let annotation_layer = &result.specs[0].layers[1];
         assert_eq!(
             annotation_layer.source,
-            Some(DataSource::Annotation(3)),
-            "Should recycle scalar y to length 3"
+            Some(DataSource::Annotation),
+            "Should be an annotation layer"
         );
 
+        // Verify recycling happened: scalar y should be recycled to match array x length (3)
         let annotation_key = annotation_layer.data_key.as_ref().unwrap();
         let annotation_df = result.data.get(annotation_key).unwrap();
-        assert_eq!(annotation_df.height(), 3, "Should have 3 rows");
+        assert_eq!(annotation_df.height(), 3, "Should have 3 rows after recycling");
     }
 
     #[cfg(feature = "duckdb")]

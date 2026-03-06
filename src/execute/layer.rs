@@ -25,11 +25,11 @@ pub fn layer_source_query(
     layer: &Layer,
     materialized_ctes: &HashSet<String>,
     has_global: bool,
-) -> String {
+) -> Result<String> {
     match &layer.source {
-        Some(crate::DataSource::Annotation(n)) => {
-            // Annotation layers: return complete VALUES clause
-            build_annotation_values_clause(layer, *n)
+        Some(crate::DataSource::Annotation) => {
+            // Annotation layers: return complete VALUES clause (with on-the-fly recycling)
+            build_annotation_values_clause(layer)
         }
         Some(crate::DataSource::Identifier(name)) => {
             // Regular table or CTE
@@ -38,16 +38,16 @@ pub fn layer_source_query(
             } else {
                 name.clone()
             };
-            format!("SELECT * FROM {}", source)
+            Ok(format!("SELECT * FROM {}", source))
         }
         Some(crate::DataSource::FilePath(path)) => {
             // File path source
-            format!("SELECT * FROM '{}'", path)
+            Ok(format!("SELECT * FROM '{}'", path))
         }
         None => {
             // Layer uses global data
             debug_assert!(has_global, "Layer has no source and no global data");
-            format!("SELECT * FROM {}", naming::global_table())
+            Ok(format!("SELECT * FROM {}", naming::global_table()))
         }
     }
 }
@@ -319,7 +319,7 @@ pub fn build_layer_base_query(
 ) -> String {
     // For annotation layers, source_query is already the VALUES clause from layer_source_query()
     // Just return it as-is - no wrapping, filtering, or casting needed
-    if matches!(layer.source, Some(crate::DataSource::Annotation(_))) {
+    if matches!(layer.source, Some(crate::DataSource::Annotation)) {
         return source_query.to_string();
     }
 
@@ -600,22 +600,47 @@ where
 ///
 /// Generates SQL like: `(VALUES (val1_row1, val2_row1), (val1_row2, val2_row2)) AS t(col1, col2)`
 ///
-/// This eliminates the need for dummy tables and CASE statements by directly
-/// specifying all values in a single VALUES clause with proper column names.
+/// This function handles array recycling on-the-fly:
+/// - Determines max array length from all literal aesthetics
+/// - Replicates scalars to match max length
+/// - Validates that all arrays have compatible lengths (1 or max)
 ///
 /// # Arguments
 ///
 /// * `layer` - The annotation layer with aesthetics as Literal values
-/// * `n` - Number of rows (from DataSource::Annotation(n))
 ///
 /// # Returns
 ///
 /// A complete SQL expression ready to use as a FROM clause
-fn build_annotation_values_clause(layer: &Layer, n: usize) -> String {
+fn build_annotation_values_clause(layer: &Layer) -> Result<String> {
     use crate::plot::ArrayElement;
 
-    // Collect all aesthetic mappings that are literals
-    // Convert scalars to single-element vectors for uniform handling
+    // Step 1: Determine max array length from all literal aesthetics
+    let mut max_length = 1;
+    let mut array_lengths: Vec<(String, usize)> = Vec::new();
+
+    for (aesthetic, value) in &layer.mappings.aesthetics {
+        if let crate::AestheticValue::Literal(param) = value {
+            if let crate::plot::ParameterValue::Array(arr) = param {
+                let len = arr.len();
+                if len > 1 {
+                    array_lengths.push((aesthetic.clone(), len));
+                    if max_length > 1 && len != max_length {
+                        // Multiple different non-1 lengths - error
+                        return Err(GgsqlError::ValidationError(format!(
+                            "PLACE annotation layer has mismatched array lengths: '{}' has length {}, but another has length {}",
+                            aesthetic, len, max_length
+                        )));
+                    }
+                    if len > max_length {
+                        max_length = len;
+                    }
+                }
+            }
+        }
+    }
+
+    // Step 2: Collect all aesthetic mappings and recycle scalars to max_length
     let mut columns: Vec<Vec<ArrayElement>> = Vec::new();
     let mut column_names = Vec::new();
 
@@ -623,31 +648,24 @@ fn build_annotation_values_clause(layer: &Layer, n: usize) -> String {
         if let crate::AestheticValue::Literal(param) = value {
             let column_values = match param {
                 crate::plot::ParameterValue::Array(arr) => {
-                    assert_eq!(
-                        arr.len(),
-                        n,
-                        "Array length mismatch: expected {}, got {} for aesthetic '{}'",
-                        n,
-                        arr.len(),
-                        aesthetic
-                    );
+                    // Arrays: use as-is (already validated to be compatible)
                     arr.clone()
                 }
                 crate::plot::ParameterValue::Number(num) => {
-                    // Scalar number: replicate n times
-                    vec![ArrayElement::Number(*num); n]
+                    // Scalar number: replicate to max_length
+                    vec![ArrayElement::Number(*num); max_length]
                 }
                 crate::plot::ParameterValue::String(s) => {
-                    // Scalar string: replicate n times
-                    vec![ArrayElement::String(s.clone()); n]
+                    // Scalar string: replicate to max_length
+                    vec![ArrayElement::String(s.clone()); max_length]
                 }
                 crate::plot::ParameterValue::Boolean(b) => {
-                    // Scalar boolean: replicate n times
-                    vec![ArrayElement::Boolean(*b); n]
+                    // Scalar boolean: replicate to max_length
+                    vec![ArrayElement::Boolean(*b); max_length]
                 }
                 crate::plot::ParameterValue::Null => {
-                    // Null: replicate n times
-                    vec![ArrayElement::Null; n]
+                    // Null: replicate to max_length
+                    vec![ArrayElement::Null; max_length]
                 }
             };
 
@@ -656,14 +674,14 @@ fn build_annotation_values_clause(layer: &Layer, n: usize) -> String {
         }
     }
 
-    // Build VALUES rows: (val1_row1, val2_row1), (val1_row2, val2_row2), ...
+    // Step 3: Build VALUES rows: (val1_row1, val2_row1), (val1_row2, val2_row2), ...
     let mut rows = Vec::new();
-    for i in 0..n {
+    for i in 0..max_length {
         let values: Vec<String> = columns.iter().map(|col| col[i].to_sql()).collect();
         rows.push(format!("({})", values.join(", ")));
     }
 
-    // Build complete VALUES clause with column names
+    // Step 4: Build complete VALUES clause with column names
     let values_clause = rows.join(", ");
     let column_list = column_names
         .iter()
@@ -673,8 +691,8 @@ fn build_annotation_values_clause(layer: &Layer, n: usize) -> String {
 
     // Return a SELECT statement wrapping the VALUES clause
     // This matches the format of regular layer queries and allows proper wrapping by schema queries
-    format!(
+    Ok(format!(
         "SELECT * FROM (VALUES {}) AS t({})",
         values_clause, column_list
-    )
+    ))
 }

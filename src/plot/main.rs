@@ -206,49 +206,25 @@ impl Plot {
     }
 
     /// Process annotation layers by moving positional and required aesthetics
-    /// from parameters to mappings, with array recycling support.
+    /// from parameters to mappings.
     ///
     /// This must be called AFTER transform_aesthetics_to_internal() so that
     /// parameter keys are already in internal space (pos1, pos2, etc.).
     ///
-    /// Array recycling rules:
-    /// - Scalars and length-1 arrays are recycled to match the max array length
-    /// - All non-1 arrays must have the same length (error on mismatch)
-    /// - Only required/positional aesthetics that are moved to mappings get recycled
-    ///
     /// Positional aesthetics need to be in mappings so they go through the same
     /// transformation pipeline (internal→user space) as data-mapped aesthetics,
     /// enabling them to participate in scale training and coordinate transformations.
+    ///
+    /// Note: Array recycling (replicating scalars to match array lengths) happens later
+    /// during SQL generation in `build_annotation_values_clause()`.
     pub fn process_annotation_layers(&mut self) -> Result<(), crate::GgsqlError> {
         for layer in &mut self.layers {
-            // Get initial length from DataSource
-            let mut max_length = match &layer.source {
-                Some(DataSource::Annotation(n)) => *n,
-                _ => continue,
-            };
-
-            // Step 1: Determine max array length from all parameters
-            let mut array_lengths: std::collections::HashMap<String, usize> =
-                std::collections::HashMap::new();
-
-            for (param_name, value) in &layer.parameters {
-                if let ParameterValue::Array(arr) = value {
-                    let len = arr.len();
-                    array_lengths.insert(param_name.clone(), len);
-                    if len > 1 && len != max_length {
-                        if max_length > 1 {
-                            // Multiple different non-1 lengths - error
-                            return Err(crate::GgsqlError::ValidationError(format!(
-                                "PLACE annotation layer has mismatched array lengths: '{}' has length {}, but another has length {}",
-                                param_name, len, max_length
-                            )));
-                        }
-                        max_length = len;
-                    }
-                }
+            // Skip non-annotation layers
+            if !matches!(&layer.source, Some(DataSource::Annotation)) {
+                continue;
             }
 
-            // Step 2: Move required/positional/array aesthetics to mappings with recycling
+            // Move required/positional/array aesthetics to mappings
             let required_aesthetics = layer.geom.aesthetics().required();
             let param_keys: Vec<String> = layer.parameters.keys().cloned().collect();
 
@@ -267,24 +243,13 @@ impl Plot {
                         continue;
                     }
 
-                    // Move from parameters to mappings with recycling
+                    // Move from parameters to mappings (no recycling - happens later in SQL generation)
                     if let Some(value) = layer.parameters.remove(&param_name) {
-                        let recycled_value = if max_length > 1 {
-                            value.rep(max_length)?
-                        } else {
-                            value
-                        };
-
                         layer
                             .mappings
-                            .insert(&param_name, AestheticValue::Literal(recycled_value));
+                            .insert(&param_name, AestheticValue::Literal(value));
                     }
                 }
-            }
-
-            // Step 3: Update DataSource with the correct length
-            if max_length > 1 {
-                layer.source = Some(DataSource::Annotation(max_length));
             }
         }
 

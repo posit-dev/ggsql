@@ -440,7 +440,7 @@ mod tests {
         // Second layer: PLACE text with annotation source
         assert_eq!(specs[0].layers[1].geom, Geom::text());
         assert!(
-            matches!(specs[0].layers[1].source, Some(DataSource::Annotation(_))),
+            matches!(specs[0].layers[1].source, Some(DataSource::Annotation)),
             "PLACE layer should have Annotation source"
         );
 
