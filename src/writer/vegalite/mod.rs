@@ -869,6 +869,13 @@ fn apply_facet_properties(
     }
 }
 
+/// Vega-Lite schema version identifier (e.g., "v6").
+///
+/// Used to construct the schema URL in generated specs and to locate the
+/// vendored schema file at `schema/{VEGALITE_VERSION}.json`.  Update both
+/// this constant and the vendored file when bumping Vega-Lite versions.
+const VEGALITE_VERSION: &str = "v6";
+
 /// Vega-Lite JSON writer
 ///
 /// Generates Vega-Lite v6 specifications from ggsql specs and data.
@@ -881,7 +888,9 @@ impl VegaLiteWriter {
     /// Create a new Vega-Lite writer with default settings
     pub fn new() -> Self {
         Self {
-            schema: "https://vega.github.io/schema/vega-lite/v6.json".to_string(),
+            schema: format!(
+                "https://vega.github.io/schema/vega-lite/{VEGALITE_VERSION}.json"
+            ),
         }
     }
 
@@ -2490,5 +2499,22 @@ mod tests {
         let invalid = r#"{"$schema": "https://vega.github.io/schema/vega-lite/v6.json", "mark": "not_a_mark"}"#;
         let result = std::panic::catch_unwind(|| assert_valid_vegalite(invalid));
         assert!(result.is_err(), "invalid spec should fail validation");
+    }
+
+    #[test]
+    fn test_vendored_schema_matches_writer_version() {
+        // The vendored schema file is at schema/v6.json (include_str! requires a
+        // literal path). This test ensures the VEGALITE_VERSION constant that drives
+        // the writer's $schema URL stays in sync with that file name.
+        // When bumping to v7+, update VEGALITE_VERSION, rename the schema file, and
+        // update the include_str! path in VL_SCHEMA above.
+        let writer = VegaLiteWriter::new();
+        assert!(
+            writer.schema.contains(&format!("/{VEGALITE_VERSION}.")),
+            "Writer schema URL ({}) must contain VEGALITE_VERSION ({}). \
+             Update VEGALITE_VERSION and the vendored schema file together.",
+            writer.schema,
+            VEGALITE_VERSION
+        );
     }
 }
