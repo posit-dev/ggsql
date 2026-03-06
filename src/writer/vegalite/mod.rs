@@ -1374,6 +1374,7 @@ mod tests {
         // Generate Vega-Lite JSON
         transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Verify structure (uses layer array with inline data)
@@ -1419,6 +1420,7 @@ mod tests {
 
         transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         assert_eq!(vl_spec["title"], "My Chart");
@@ -1454,6 +1456,7 @@ mod tests {
 
         transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         assert_eq!(vl_spec["layer"][0]["encoding"]["color"]["value"], "red");
@@ -1584,6 +1587,7 @@ mod tests {
 
         transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data_for_layers(df, 2)).unwrap();
+        assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Should have layer array with 2 layers
@@ -1693,6 +1697,7 @@ mod tests {
 
         transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check that labelExpr contains VL's range-style format
@@ -1788,6 +1793,7 @@ mod tests {
         let result = writer.write(&spec, &wrap_data(simple_df()));
         assert!(result.is_ok());
         let json_str = result.unwrap();
+        assert_valid_vegalite(&json_str);
         let json: Value = serde_json::from_str(&json_str).unwrap();
 
         // Single-layer spec uses layer array structure
@@ -1816,6 +1822,7 @@ mod tests {
         let result = writer.write(&spec, &wrap_data(simple_df()));
         assert!(result.is_ok());
         let json_str = result.unwrap();
+        assert_valid_vegalite(&json_str);
         let json: Value = serde_json::from_str(&json_str).unwrap();
 
         let encoding = &json["layer"][0]["encoding"];
@@ -1859,6 +1866,7 @@ mod tests {
         let result = writer.write(&spec, &wrap_data(df));
         assert!(result.is_ok());
         let json_str = result.unwrap();
+        assert_valid_vegalite(&json_str);
         let json: Value = serde_json::from_str(&json_str).unwrap();
 
         let encoding = &json["layer"][0]["encoding"];
@@ -1898,6 +1906,7 @@ mod tests {
         let result = writer.write(&spec, &wrap_data(df));
         assert!(result.is_ok());
         let json_str = result.unwrap();
+        assert_valid_vegalite(&json_str);
         let json: Value = serde_json::from_str(&json_str).unwrap();
 
         // Point has linetype => Null, should not appear in encoding
@@ -1922,6 +1931,7 @@ mod tests {
         let result = writer.write(&spec, &wrap_data(simple_df()));
         assert!(result.is_ok());
         let json_str = result.unwrap();
+        assert_valid_vegalite(&json_str);
         let json: Value = serde_json::from_str(&json_str).unwrap();
 
         let encoding = &json["layer"][0]["encoding"];
@@ -1941,6 +1951,7 @@ mod tests {
         let result = writer.write(&spec, &wrap_data(simple_df()));
         assert!(result.is_ok());
         let json_str = result.unwrap();
+        assert_valid_vegalite(&json_str);
         let json: Value = serde_json::from_str(&json_str).unwrap();
 
         let encoding = &json["layer"][0]["encoding"];
@@ -2250,6 +2261,7 @@ mod tests {
 
         transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Verify resolve.scale is set to independent for both axes
@@ -2333,6 +2345,7 @@ mod tests {
 
         transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Verify only y scale is independent
@@ -2413,6 +2426,7 @@ mod tests {
 
         transform_spec(&mut spec);
         let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Verify NO resolve.scale (fixed scales don't need it)
