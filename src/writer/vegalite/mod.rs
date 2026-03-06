@@ -1101,12 +1101,24 @@ mod tests {
             .collect()
     }
 
-    /// Walk a JSON Value tree and apply a function to every string value.
-    fn map_strings(val: &mut Value, f: &impl Fn(&str) -> String) {
+    /// Walk a JSON Value tree and rewrite `$ref` strings that reference renamed definitions.
+    /// Only allocates when a `$ref` actually needs rewriting.
+    fn rewrite_refs(val: &mut Value) {
         match val {
-            Value::String(s) => *s = f(s),
-            Value::Array(arr) => arr.iter_mut().for_each(|v| map_strings(v, f)),
-            Value::Object(obj) => obj.values_mut().for_each(|v| map_strings(v, f)),
+            Value::Object(obj) => {
+                if let Some(Value::String(s)) = obj.get_mut("$ref") {
+                    if let Some(defname) = s.strip_prefix("#/definitions/") {
+                        let sanitized = sanitize_def_name(defname);
+                        if sanitized != defname {
+                            *s = format!("#/definitions/{}", sanitized);
+                        }
+                    }
+                }
+                for v in obj.values_mut() {
+                    rewrite_refs(v);
+                }
+            }
+            Value::Array(arr) => arr.iter_mut().for_each(rewrite_refs),
             _ => {}
         }
     }
@@ -1141,16 +1153,8 @@ mod tests {
             }
         }
 
-        // Walk the entire schema and rewrite any $ref string values that reference old names
-        map_strings(schema, &|s: &str| -> String {
-            if let Some(defname) = s.strip_prefix("#/definitions/") {
-                let sanitized = sanitize_def_name(defname);
-                if sanitized != defname {
-                    return format!("#/definitions/{}", sanitized);
-                }
-            }
-            s.to_string()
-        });
+        // Rewrite $ref values that reference renamed definitions
+        rewrite_refs(schema);
     }
 
     static VL_SCHEMA: LazyLock<jsonschema::Validator> = LazyLock::new(|| {
