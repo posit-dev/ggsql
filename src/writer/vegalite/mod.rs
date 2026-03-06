@@ -1060,12 +1060,99 @@ mod tests {
     use crate::plot::{Labels, Layer, ParameterValue};
     use crate::Geom;
     use polars::prelude::*;
+    use serde_json::Value;
     use std::collections::HashMap;
+    use std::sync::LazyLock;
 
     // Re-export test functions from submodules
     use super::data::find_bin_for_value;
     use super::encoding::infer_field_type;
     use super::layer::geom_to_mark;
+
+    /// Replace characters that are invalid in URI references with underscores.
+    fn sanitize_def_name(s: &str) -> String {
+        s.chars()
+            .map(|c| match c {
+                '<' | '>' | '(' | ')' | '|' | '[' | ']' | '"' | ' ' | '{' | '}' => '_',
+                _ => c,
+            })
+            .collect()
+    }
+
+    /// Walk a JSON Value tree and apply a function to every string value.
+    fn map_strings(val: &mut Value, f: &impl Fn(&str) -> String) {
+        match val {
+            Value::String(s) => *s = f(s),
+            Value::Array(arr) => arr.iter_mut().for_each(|v| map_strings(v, f)),
+            Value::Object(obj) => obj.values_mut().for_each(|v| map_strings(v, f)),
+            _ => {}
+        }
+    }
+
+    /// Sanitize the Vega-Lite schema by replacing non-URI-safe characters in definition
+    /// names (angle brackets, parentheses, pipes, etc.) with underscores so that `jsonschema`
+    /// can parse `$ref` values without URI parse errors.
+    fn sanitize_vegalite_schema(schema: &mut Value) {
+        // Collect mappings from original key → sanitized key for definitions with bad chars
+        let defs = match schema.get_mut("definitions").and_then(|d| d.as_object_mut()) {
+            Some(d) => d,
+            None => return,
+        };
+
+        let substitutions: Vec<(String, String)> = defs
+            .keys()
+            .filter(|k| sanitize_def_name(k) != **k)
+            .map(|k| (k.clone(), sanitize_def_name(k)))
+            .collect();
+
+        if substitutions.is_empty() {
+            return;
+        }
+
+        // Rename definition keys
+        for (orig, sanitized) in &substitutions {
+            if let Some(val) = defs.remove(orig.as_str()) {
+                defs.insert(sanitized.clone(), val);
+            }
+        }
+
+        // Walk the entire schema and rewrite any $ref string values that reference old names
+        map_strings(schema, &|s: &str| -> String {
+            if let Some(defname) = s.strip_prefix("#/definitions/") {
+                let sanitized = sanitize_def_name(defname);
+                if sanitized != defname {
+                    return format!("#/definitions/{}", sanitized);
+                }
+            }
+            s.to_string()
+        });
+    }
+
+    static VL_SCHEMA: LazyLock<jsonschema::Validator> = LazyLock::new(|| {
+        let mut schema: Value =
+            serde_json::from_str(include_str!("schema/v6.json")).expect("invalid schema JSON");
+        sanitize_vegalite_schema(&mut schema);
+        jsonschema::options()
+            .with_draft(jsonschema::Draft::Draft7)
+            .should_validate_formats(false)
+            .build(&schema)
+            .expect("invalid JSON Schema")
+    });
+
+    fn assert_valid_vegalite(json_str: &str) {
+        let spec: Value = serde_json::from_str(json_str).expect("invalid JSON");
+        let errors: Vec<String> = VL_SCHEMA
+            .iter_errors(&spec)
+            .map(|e| format!("  - {} (at {})", e, e.instance_path()))
+            .collect();
+        if !errors.is_empty() {
+            panic!(
+                "Vega-Lite schema validation failed ({} errors):\n{}",
+                errors.len(),
+                errors.join("\n")
+            );
+        }
+    }
 
     /// Helper to wrap a DataFrame in a data map for testing (uses layer 0 key)
     fn wrap_data(df: DataFrame) -> HashMap<String, DataFrame> {
@@ -2344,5 +2431,21 @@ mod tests {
             has_domain,
             "x encoding SHOULD have domain when using fixed scales"
         );
+    }
+
+    #[test]
+    fn test_schema_validation_catches_invalid_spec() {
+        // A valid spec should pass
+        let writer = VegaLiteWriter::new();
+        let mut spec = build_spec(Geom::point());
+        let df = simple_df();
+        transform_spec(&mut spec);
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
+
+        // An invalid spec should fail validation
+        let invalid = r#"{"$schema": "https://vega.github.io/schema/vega-lite/v6.json", "mark": "not_a_mark"}"#;
+        let result = std::panic::catch_unwind(|| assert_valid_vegalite(invalid));
+        assert!(result.is_err(), "invalid spec should fail validation");
     }
 }

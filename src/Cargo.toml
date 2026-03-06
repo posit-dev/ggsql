@@ -71,6 +71,7 @@ tracing-subscriber = { workspace = true, optional = true }
 pyo3 = { workspace = true, optional = true }
 
 [dev-dependencies]
+jsonschema = "0.44"
 proptest.workspace = true
 jsonschema = "0.44"
 
