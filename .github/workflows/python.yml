@@ -41,6 +41,10 @@ jobs:
           command: build
           args: --release
           sccache: true
+        env:
+          # Ensure the cc crate routes C/C++ compilations (e.g. DuckDB)
+          # through sccache on all platforms, including Windows/MSVC
+          CC_WRAPPER: sccache
 
       - name: Upload wheel
         uses: actions/upload-artifact@v4
