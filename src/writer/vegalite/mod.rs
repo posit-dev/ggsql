@@ -2476,13 +2476,11 @@ mod tests {
 
     #[test]
     fn test_vendored_schema_matches_upstream() {
-        let writer = VegaLiteWriter::new();
-        let response = match ureq::get(&writer.schema).call() {
+        let response = match ureq::get(VEGALITE_SCHEMA).call() {
             Ok(r) => r,
             Err(_) => {
                 eprintln!(
-                    "Skipping vendored schema check: could not reach {}",
-                    writer.schema
+                    "Skipping vendored schema check: could not reach {VEGALITE_SCHEMA}"
                 );
                 return;
             }
@@ -2493,9 +2491,8 @@ mod tests {
             serde_json::from_str(include_str!("schema/v6.json")).expect("invalid schema JSON");
         assert_eq!(
             upstream, vendored,
-            "Vendored schema does not match upstream at {}. \
-             Re-download with: curl -sL '{}' > src/writer/vegalite/schema/v6.json",
-            writer.schema, writer.schema
+            "Vendored schema does not match upstream at {VEGALITE_SCHEMA}. \
+             Re-download with: curl -sL '{VEGALITE_SCHEMA}' > src/writer/vegalite/schema/v6.json",
         );
     }
 }
