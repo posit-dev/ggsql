@@ -1116,7 +1116,10 @@ mod tests {
     /// can parse `$ref` values without URI parse errors.
     fn sanitize_vegalite_schema(schema: &mut Value) {
         // Collect mappings from original key → sanitized key for definitions with bad chars
-        let defs = match schema.get_mut("definitions").and_then(|d| d.as_object_mut()) {
+        let defs = match schema
+            .get_mut("definitions")
+            .and_then(|d| d.as_object_mut())
+        {
             Some(d) => d,
             None => return,
         };
