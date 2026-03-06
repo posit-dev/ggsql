@@ -2502,19 +2502,29 @@ mod tests {
     }
 
     #[test]
-    fn test_vendored_schema_matches_writer_version() {
-        // The vendored schema file is at schema/v6.json (include_str! requires a
-        // literal path). This test ensures the VEGALITE_VERSION constant that drives
-        // the writer's $schema URL stays in sync with that file name.
-        // When bumping to v7+, update VEGALITE_VERSION, rename the schema file, and
-        // update the include_str! path in VL_SCHEMA above.
+    fn test_vendored_schema_matches_upstream() {
+        // Download the schema from the URL the writer emits and compare it to the
+        // vendored copy. Skips gracefully when there's no internet access.
         let writer = VegaLiteWriter::new();
-        assert!(
-            writer.schema.contains(&format!("/{VEGALITE_VERSION}.")),
-            "Writer schema URL ({}) must contain VEGALITE_VERSION ({}). \
-             Update VEGALITE_VERSION and the vendored schema file together.",
-            writer.schema,
-            VEGALITE_VERSION
+        let response = match ureq::get(&writer.schema).call() {
+            Ok(r) => r,
+            Err(_) => {
+                eprintln!(
+                    "Skipping vendored schema check: could not reach {}",
+                    writer.schema
+                );
+                return;
+            }
+        };
+        let body = response.into_body().read_to_string().unwrap();
+        let upstream: Value = serde_json::from_str(&body).unwrap();
+        let vendored: Value =
+            serde_json::from_str(include_str!("schema/v6.json")).expect("invalid schema JSON");
+        assert_eq!(
+            upstream, vendored,
+            "Vendored schema does not match upstream at {}. \
+             Re-download with: curl -sL '{}' > src/writer/vegalite/schema/v6.json",
+            writer.schema, writer.schema
         );
     }
 }
