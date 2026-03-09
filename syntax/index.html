@@ -306,6 +306,12 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../syntax/layer/errorbar.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Errorbar</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../syntax/layer/histogram.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Histogram</span></a>
   </div>
@@ -314,6 +320,12 @@ gradient teal.
   <div class="sidebar-item-container"> 
   <a href="../syntax/layer/line.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Line</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../syntax/layer/linear.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Linear line</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -338,6 +350,18 @@ gradient teal.
   <div class="sidebar-item-container"> 
   <a href="../syntax/layer/ribbon.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Ribbon</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../syntax/layer/rule.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Rule</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../syntax/layer/segment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Segment</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -541,17 +565,21 @@ gradient teal.
 <h2 class="anchored" data-anchor-id="layers">Layers</h2>
 <p>There are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g.&nbsp;the histogram layer. A layer is selected by providing the layer name after the <code>DRAW</code> clause</p>
 <ul>
-<li><a href="../syntax/layer/point.html"><code>point</code></a> is used to create a scatterplot layer</li>
-<li><a href="../syntax/layer/line.html"><code>line</code></a> is used to produce lineplots with the data sorted along the x axis</li>
-<li><a href="../syntax/layer/path.html"><code>path</code></a> is like <code>line</code> above but does not sort the data but plot it according to its own order</li>
+<li><a href="../syntax/layer/point.html"><code>point</code></a> is used to create a scatterplot layer.</li>
+<li><a href="../syntax/layer/line.html"><code>line</code></a> is used to produce lineplots with the data sorted along the x axis.</li>
+<li><a href="../syntax/layer/path.html"><code>path</code></a> is like <code>line</code> above but does not sort the data but plot it according to its own order.</li>
+<li><a href="../syntax/layer/segment.html"><code>segment</code></a> connects two points with a line segment.</li>
+<li><a href="../syntax/layer/linear.html"><code>linear</code></a> draws a long line parameterised by a coefficient and intercept.</li>
+<li><a href="../syntax/layer/rule.html"><code>rule</code></a> draws horizontal and vertical reference lines.</li>
 <li><a href="../syntax/layer/area.html"><code>area</code></a> is used to display series as an area chart.</li>
 <li><a href="../syntax/layer/ribbon.html"><code>ribbon</code></a> is used to display series extrema.</li>
 <li><a href="../syntax/layer/polygon.html"><code>polygon</code></a> is used to display arbitrary shapes as polygons.</li>
-<li><a href="../syntax/layer/bar.html"><code>bar</code></a> creates a bar chart, optionally calculating y from the number of records in each bar</li>
-<li><a href="../syntax/layer/density.html"><code>density</code></a> creates univariate kernel density estimates, showing the distribution of a variable</li>
-<li><a href="../syntax/layer/violin.html"><code>violin</code></a> displays a rotated kernel density estimate</li>
-<li><a href="../syntax/layer/histogram.html"><code>histogram</code></a> bins the data along the x axis and produces a bar for each bin showing the number of records in it</li>
-<li><a href="../syntax/layer/boxplot.html"><code>boxplot</code></a> displays continuous variables as 5-number summaries</li>
+<li><a href="../syntax/layer/bar.html"><code>bar</code></a> creates a bar chart, optionally calculating y from the number of records in each bar.</li>
+<li><a href="../syntax/layer/density.html"><code>density</code></a> creates univariate kernel density estimates, showing the distribution of a variable.</li>
+<li><a href="../syntax/layer/violin.html"><code>violin</code></a> displays a rotated kernel density estimate.</li>
+<li><a href="../syntax/layer/histogram.html"><code>histogram</code></a> bins the data along the x axis and produces a bar for each bin showing the number of records in it.</li>
+<li><a href="../syntax/layer/boxplot.html"><code>boxplot</code></a> displays continuous variables as 5-number summaries.</li>
+<li><a href="../syntax/layer/errorbar.html"><code>errorbar</code></a> a line segment with hinges at the endpoints.</li>
 </ul>
 </section>
 <section id="scales" class="level2">

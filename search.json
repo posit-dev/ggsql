@@ -570,63 +570,195 @@
     ]
   },
   {
-    "objectID": "syntax/layer/path.html",
-    "href": "syntax/layer/path.html",
-    "title": "Path",
+    "objectID": "syntax/layer/rule.html",
+    "href": "syntax/layer/rule.html",
+    "title": "Rule",
     "section": "",
-    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe path layer is used to create lineplots, but contrary to the line layer the data will not be connected along the x-axis. Instead records are connected in the order they appear in the data. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers PARTITION BY.",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe rule layer is used to draw horizontal or vertical reference lines at specified values. This is useful for adding thresholds, means, medians, avent markers, cutoff dates or other guides to the plot. The lines span the full width or height of the panels.",
     "crumbs": [
       "Home",
       "Layers",
-      "Path"
+      "Rule"
     ]
   },
   {
-    "objectID": "syntax/layer/path.html#aesthetics",
-    "href": "syntax/layer/path.html#aesthetics",
-    "title": "Path",
+    "objectID": "syntax/layer/rule.html#aesthetics",
+    "href": "syntax/layer/rule.html#aesthetics",
+    "title": "Rule",
     "section": "Aesthetics",
-    "text": "Aesthetics\nThe following aesthetics are recognised by the path layer.\n\nRequired\n\nx: Position along the x-axis\ny: Position along the y-axis\n\n\n\nOptional\n\ncolour/stroke: The colour of the path\nopacity: The opacity of the path\nlinewidth: The width of the path\nlinetype: The type of path, i.e. the dashing pattern",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the hline layer.\n\nRequired\n\nx*: The x-coordinate for the vertical line.\ny*: The y-coordinate for the horizontal line\n\n* Exactly one of x or y is required, not both.\n\n\nOptional\n\ncolour/stroke: The colour of the line\nopacity: The opacity of the line\nlinewidth: The width of the line\nlinetype: The type of the line, i.e. the dashing pattern",
     "crumbs": [
       "Home",
       "Layers",
-      "Path"
+      "Rule"
     ]
   },
   {
-    "objectID": "syntax/layer/path.html#settings",
-    "href": "syntax/layer/path.html#settings",
-    "title": "Path",
+    "objectID": "syntax/layer/rule.html#settings",
+    "href": "syntax/layer/rule.html#settings",
+    "title": "Rule",
     "section": "Settings",
-    "text": "Settings\nThe line layer has no additional settings",
+    "text": "Settings\nThe rule layer has no additional settings.",
     "crumbs": [
       "Home",
       "Layers",
-      "Path"
+      "Rule"
     ]
   },
   {
-    "objectID": "syntax/layer/path.html#data-transformation",
-    "href": "syntax/layer/path.html#data-transformation",
-    "title": "Path",
+    "objectID": "syntax/layer/rule.html#data-transformation",
+    "href": "syntax/layer/rule.html#data-transformation",
+    "title": "Rule",
     "section": "Data transformation",
-    "text": "Data transformation\nThe line layer does not transform its data but passes it through unchanged",
+    "text": "Data transformation\nThe rule layer does not transform its data but passes it through unchanged.",
     "crumbs": [
       "Home",
       "Layers",
-      "Path"
+      "Rule"
     ]
   },
   {
-    "objectID": "syntax/layer/path.html#examples",
-    "href": "syntax/layer/path.html#examples",
-    "title": "Path",
+    "objectID": "syntax/layer/rule.html#examples",
+    "href": "syntax/layer/rule.html#examples",
+    "title": "Rule",
     "section": "Examples",
-    "text": "Examples\n\n\nCreate example data\nCREATE TABLE df AS\nSELECT * FROM (VALUES\n  (1.0, 1.0, 'A'),\n  (2.0, 1.0, 'A'),\n  (1.0, 3.0, 'A'),\n  (3.0, 1.0, 'B'),\n  (2.0, 3.0, 'B'),\n  (3.0, 3.0, 'B'),\n) AS t(x, y, id)\n\n\n\n\n\n\n\n\nSimple example path.\n\nVISUALISE x, y FROM df\n  DRAW path\n\n\n\n\n\nContrary to line drawings, path is not forced to follow the order along the axis.\n\nVISUALISE x, y FROM df\n  DRAW path MAPPING 'Path' AS colour\n  DRAW line MAPPING 'Line' AS colour\n\n\n\n\n\nGroups of individual paths can be declared via PARTITION BY.\n\nVISUALISE x, y FROM df\n  DRAW path PARTITION BY id\n\n\n\n\n\nInvoking a group through discrete aesthetics works as well.\n\nVISUALISE x, y FROM df\n  DRAW path MAPPING id AS colour\n\n\n\n\n\nCompared to polygons, paths don’t close their shapes and fill their interiors.\n\nVISUALISE x, y FROM df\n  DRAW polygon MAPPING 'Polygon' AS stroke\n  DRAW path MAPPING 'Path' AS stroke",
+    "text": "Examples\nAdd a horizontal threshold line to a time series plot:\n\nSELECT Date AS date, temp AS temperature\nFROM ggsql:airquality\nWHERE Month = 5\n\nVISUALISE \n  DRAW line MAPPING date AS x, temperature AS y\n  DRAW rule MAPPING 70 AS y\n\n\n\n\n\nAdd a vertical line to mark a specific value:\n\nVISUALISE FROM ggsql:penguins\n  DRAW point MAPPING bill_len AS x, bill_dep AS y\n  DRAW rule MAPPING 45 AS x\n\n\n\n\n\nAdd multiple threshold lines with different colors:\n\nWITH thresholds AS (\n    SELECT * FROM (VALUES\n        (70, 'Target'),\n        (80, 'Warning'),\n        (90, 'Critical')\n    ) AS t(value, label)\n)\nSELECT Date AS date, temp AS temperature\nFROM ggsql:airquality\nWHERE Month = 5\n\nVISUALISE \n  DRAW line MAPPING date AS x, temperature AS y\n  DRAW rule MAPPING value AS y, label AS colour FROM thresholds",
     "crumbs": [
       "Home",
       "Layers",
-      "Path"
+      "Rule"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/segment.html",
+    "href": "syntax/layer/segment.html",
+    "title": "Segment",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe segment layer is used to create line segments between two endpoints. If differs from lines and paths in that it connects just two points rather than many. Data is expected to be in a different shape, with 4 coordinates for the start (x, y) and end (xend, yend) points on a single row.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Segment"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/segment.html#aesthetics",
+    "href": "syntax/layer/segment.html#aesthetics",
+    "title": "Segment",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the segment layer.\n\nRequired\n\nx: Position along the x-axis of the start point.\ny: Position along the y-axis of the end point.\nxend*: Position along the x-axis of the end point.\nyend*: Position along the y-axis of the end point.\n\n* Only one of xend and yend is required. If one is missing, it takes on the value of the start point.\n\n\nOptional\n\ncolour/stroke: The colour of the line.\nopacity: The opacity of the line.\nlinewidth: The width of the line.\nlinetype: The type of the line, i.e. the dashing pattern.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Segment"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/segment.html#settings",
+    "href": "syntax/layer/segment.html#settings",
+    "title": "Segment",
+    "section": "Settings",
+    "text": "Settings\nThe segment layer has no additional settings.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Segment"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/segment.html#data-transformation",
+    "href": "syntax/layer/segment.html#data-transformation",
+    "title": "Segment",
+    "section": "Data transformation",
+    "text": "Data transformation\nThe segment layer does not transform its data but passes it through unchanged.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Segment"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/segment.html#data-transformation-1",
+    "href": "syntax/layer/segment.html#data-transformation-1",
+    "title": "Segment",
+    "section": "Data transformation",
+    "text": "Data transformation",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Segment"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/segment.html#examples",
+    "href": "syntax/layer/segment.html#examples",
+    "title": "Segment",
+    "section": "Examples",
+    "text": "Examples\nSegments are useful when you have known start and end points of the data. For example in a graph\n\nWITH edges AS (\n  SELECT * FROM (VALUES\n      (0, 0, 1, 1, 'A'),\n      (1, 1, 2, 1, 'A'),\n      (2, 1, 3, 0, 'A'),\n      (0, 3, 1, 2, 'B'),\n      (1, 2, 2, 2, 'B'),\n      (2, 2, 3, 3, 'B'),\n      (1, 1, 1, 2, 'C'),\n      (2, 2, 2, 1, 'C')\n  ) AS t(x, y, xend, yend, type)\n)\nVISUALISE x, y, xend, yend FROM edges\n  DRAW segment MAPPING type AS stroke\n\n\n\n\n\nYou can use segments as part of a lollipop chart by anchoring one of the ends to 0. Note that xend is missing and has taken up the value of x.\n\nSELECT ROUND(bill_dep) AS bill_dep, COUNT(*) AS n \n  FROM ggsql:penguins \n  GROUP BY ROUND(bill_dep)\n\nVISUALISE bill_dep AS x, n AS y\n  DRAW segment MAPPING 0 AS yend\n  DRAW point\n\n\n\n\n\nBy overlaying a thick line on a thin line, you can create a candlestick chart.\n\nSELECT\n  FIRST(Date) AS date,\n  FIRST(temp) AS open,\n  LAST(temp) AS close,\n  MAX(temp) AS high,\n  MIN(temp) AS low,\n  CASE\n    WHEN FIRST(temp) &gt; LAST(temp) THEN 'colder'\n    ELSE 'warmer'\n  END AS trend\nFROM ggsql:airquality\nGROUP BY WEEKOFYEAR(Date)\n\nVISUALISE date AS x, trend AS colour\n  DRAW segment \n    MAPPING open AS y, close AS yend\n    SETTING linewidth =&gt; 5\n  DRAW segment \n    MAPPING low AS y, high AS yend",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Segment"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/linear.html",
+    "href": "syntax/layer/linear.html",
+    "title": "Linear line",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe linear layer is used to draw diagonal reference lines based on a coefficient and intercept. This is useful for adding regression lines, diagonal guides, or mathematical functions to plots. The lines extend across the full extent of the x-axis, regardless of the data range. The layer is named for the following formula:\n\\[\ny = a + \\beta x\n\\]\nWhere \\(a\\) is the intercept and \\(\\beta\\) is the coef.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Linear line"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/linear.html#aesthetics",
+    "href": "syntax/layer/linear.html#aesthetics",
+    "title": "Linear line",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the abline layer.\n\nRequired\n\ncoef: The coefficient/slope of the line i.e. the amount \\(y\\) increases for every unit of \\(x\\).\nintercept: The intercept where the line crosses the y-axis at \\(x = 0\\).\n\n\n\nOptional\n\ncolour/stroke: The colour of the line\nopacity: The opacity of the line\nlinewidth: The width of the line\nlinetype: The type of the line, i.e. the dashing pattern",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Linear line"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/linear.html#settings",
+    "href": "syntax/layer/linear.html#settings",
+    "title": "Linear line",
+    "section": "Settings",
+    "text": "Settings\nThe linear layer has no additional settings.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Linear line"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/linear.html#data-transformation",
+    "href": "syntax/layer/linear.html#data-transformation",
+    "title": "Linear line",
+    "section": "Data transformation",
+    "text": "Data transformation\nThe linear layer does not transform its data but passes it through unchanged.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Linear line"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/linear.html#examples",
+    "href": "syntax/layer/linear.html#examples",
+    "title": "Linear line",
+    "section": "Examples",
+    "text": "Examples\nAdd a simple reference line to a scatterplot:\n\nVISUALISE FROM ggsql:penguins\n  DRAW point MAPPING bill_len AS x, bill_dep AS y\n  DRAW linear MAPPING 0.4 AS coef, -1 AS intercept\n\n\n\n\n\nAdd multiple reference lines with different colors from a separate dataset:\n\nWITH lines AS (\n    SELECT * FROM (VALUES\n        (0.4, -1, 'Line A'),\n        (0.2, 8, 'Line B'),\n        (0.8, -19, 'Line C')\n    ) AS t(coef, intercept, label)\n)\nVISUALISE FROM ggsql:penguins\n  DRAW point MAPPING bill_len AS x, bill_dep AS y\n  DRAW linear\n    MAPPING \n      coef AS coef, \n      intercept AS intercept, \n      label AS colour\n    FROM lines",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Linear line"
     ]
   },
   {
@@ -824,7 +956,7 @@
     "href": "syntax/index.html#layers",
     "title": "Syntax",
     "section": "Layers",
-    "text": "Layers\nThere are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the DRAW clause\n\npoint is used to create a scatterplot layer\nline is used to produce lineplots with the data sorted along the x axis\npath is like line above but does not sort the data but plot it according to its own order\narea is used to display series as an area chart.\nribbon is used to display series extrema.\npolygon is used to display arbitrary shapes as polygons.\nbar creates a bar chart, optionally calculating y from the number of records in each bar\ndensity creates univariate kernel density estimates, showing the distribution of a variable\nviolin displays a rotated kernel density estimate\nhistogram bins the data along the x axis and produces a bar for each bin showing the number of records in it\nboxplot displays continuous variables as 5-number summaries",
+    "text": "Layers\nThere are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the DRAW clause\n\npoint is used to create a scatterplot layer.\nline is used to produce lineplots with the data sorted along the x axis.\npath is like line above but does not sort the data but plot it according to its own order.\nsegment connects two points with a line segment.\nlinear draws a long line parameterised by a coefficient and intercept.\nrule draws horizontal and vertical reference lines.\narea is used to display series as an area chart.\nribbon is used to display series extrema.\npolygon is used to display arbitrary shapes as polygons.\nbar creates a bar chart, optionally calculating y from the number of records in each bar.\ndensity creates univariate kernel density estimates, showing the distribution of a variable.\nviolin displays a rotated kernel density estimate.\nhistogram bins the data along the x axis and produces a bar for each bin showing the number of records in it.\nboxplot displays continuous variables as 5-number summaries.\nerrorbar a line segment with hinges at the endpoints.",
     "crumbs": [
       "Home",
       "Overview"
@@ -1090,6 +1222,126 @@
       "Home",
       "Layers",
       "Violin"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/path.html",
+    "href": "syntax/layer/path.html",
+    "title": "Path",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nThe path layer is used to create lineplots, but contrary to the line layer the data will not be connected along the x-axis. Instead records are connected in the order they appear in the data. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers PARTITION BY.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Path"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/path.html#aesthetics",
+    "href": "syntax/layer/path.html#aesthetics",
+    "title": "Path",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the path layer.\n\nRequired\n\nx: Position along the x-axis\ny: Position along the y-axis\n\n\n\nOptional\n\ncolour/stroke: The colour of the path\nopacity: The opacity of the path\nlinewidth: The width of the path\nlinetype: The type of path, i.e. the dashing pattern",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Path"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/path.html#settings",
+    "href": "syntax/layer/path.html#settings",
+    "title": "Path",
+    "section": "Settings",
+    "text": "Settings\nThe line layer has no additional settings",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Path"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/path.html#data-transformation",
+    "href": "syntax/layer/path.html#data-transformation",
+    "title": "Path",
+    "section": "Data transformation",
+    "text": "Data transformation\nThe line layer does not transform its data but passes it through unchanged",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Path"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/path.html#examples",
+    "href": "syntax/layer/path.html#examples",
+    "title": "Path",
+    "section": "Examples",
+    "text": "Examples\n\n\nCreate example data\nCREATE TABLE df AS\nSELECT * FROM (VALUES\n  (1.0, 1.0, 'A'),\n  (2.0, 1.0, 'A'),\n  (1.0, 3.0, 'A'),\n  (3.0, 1.0, 'B'),\n  (2.0, 3.0, 'B'),\n  (3.0, 3.0, 'B'),\n) AS t(x, y, id)\n\n\n\n\n\n\n\n\nSimple example path.\n\nVISUALISE x, y FROM df\n  DRAW path\n\n\n\n\n\nContrary to line drawings, path is not forced to follow the order along the axis.\n\nVISUALISE x, y FROM df\n  DRAW path MAPPING 'Path' AS colour\n  DRAW line MAPPING 'Line' AS colour\n\n\n\n\n\nGroups of individual paths can be declared via PARTITION BY.\n\nVISUALISE x, y FROM df\n  DRAW path PARTITION BY id\n\n\n\n\n\nInvoking a group through discrete aesthetics works as well.\n\nVISUALISE x, y FROM df\n  DRAW path MAPPING id AS colour\n\n\n\n\n\nCompared to polygons, paths don’t close their shapes and fill their interiors.\n\nVISUALISE x, y FROM df\n  DRAW polygon MAPPING 'Polygon' AS stroke\n  DRAW path MAPPING 'Path' AS stroke",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Path"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/errorbar.html",
+    "href": "syntax/layer/errorbar.html",
+    "title": "Errorbar",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nErrorbars are used to display paired metrics, typically some interval, for a variable. It is displayed as a line between the two values, often with hinges at the ends.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Errorbar"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/errorbar.html#aesthetics",
+    "href": "syntax/layer/errorbar.html#aesthetics",
+    "title": "Errorbar",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the errorbar layer.\n\nRequired\n\nx or y: Position on the x- or y-axis. These are mutually exclusive.\nxmin or ymin: Position of one of the interval ends orthogonal to the main position. These are also mutually exclusive.\nxmax or ymax: Position of the other interval end orthogonal to the main position. These are also mutually exclusive.\n\nNote that the required aesthetics is either a set of {x, ymin, ymax} or {y, xmin, xmax} and not a combination of the two.\n\n\nOptional\n\nstroke/colour: The colour of the lines in the errorbar.\nopacity: The opacity of the colour.\nlinewidth: The width of the lines in the errorbar.\nlinetype: The dash pattern of the lines in the errorbar.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Errorbar"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/errorbar.html#settings",
+    "href": "syntax/layer/errorbar.html#settings",
+    "title": "Errorbar",
+    "section": "Settings",
+    "text": "Settings\n\nwidth: The width of the hinges in points. Can be set to null to not display hinges.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Errorbar"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/errorbar.html#data-transformation",
+    "href": "syntax/layer/errorbar.html#data-transformation",
+    "title": "Errorbar",
+    "section": "Data transformation",
+    "text": "Data transformation\nThe errorbar layer does not transform its data but passes it through unchanged.",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Errorbar"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/errorbar.html#examples",
+    "href": "syntax/layer/errorbar.html#examples",
+    "title": "Errorbar",
+    "section": "Examples",
+    "text": "Examples\n\n\nCreate example data\nCREATE TABLE penguin_summary AS\nSELECT\n  species,\n  MEAN(bill_dep) - STDDEV(bill_dep) AS low,\n  MEAN(bill_dep) AS mean,\n  MEAN(bill_dep) + STDDEV(bill_dep) AS high\nFROM ggsql:penguins\nGROUP BY species\n\n\n\n\n\n\n\n\nClassic errorbar with point at centre.\n\nVISUALISE species AS x FROM penguin_summary\n  DRAW errorbar MAPPING low AS ymax, high AS ymin\n  DRAW point MAPPING mean AS y\n\n\n\n\n\nDynamite plot using bars instead of points, using extra wide hinges.\n\nVISUALISE species AS x FROM penguin_summary\n  DRAW errorbar \n    MAPPING low AS ymax, high AS ymin\n    SETTING width =&gt; 40\n  DRAW bar MAPPING mean AS y\n\n\n\n\n\nThe hinges can be omitted by setting null as width.\n\nVISUALISE species AS x FROM penguin_summary\n  DRAW errorbar \n    MAPPING low AS ymax, high AS ymin\n    SETTING width =&gt; null",
+    "crumbs": [
+      "Home",
+      "Layers",
+      "Errorbar"
     ]
   },
   {

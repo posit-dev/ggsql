@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Polygon – ggsql</title>
+<title>Segment – ggsql</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -114,7 +114,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
 
 
-<meta property="og:title" content="Polygon – ggsql">
+<meta property="og:title" content="Segment – ggsql">
 <meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
 <meta property="og:image" content="https://ggsql.org/syntax/layer/assets/logo.png">
 <meta property="og:site_name" content="ggsql">
@@ -122,7 +122,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 handle is made up of the classic database silo icon and is coloured in a
 gradient teal.
 ">
-<meta name="twitter:title" content="Polygon – ggsql">
+<meta name="twitter:title" content="Segment – ggsql">
 <meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
 <meta name="twitter:image" content="https://ggsql.org/syntax/layer/assets/logo.png">
 <meta name="twitter:card" content="summary">
@@ -227,7 +227,7 @@ gradient teal.
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/polygon.html">Polygon</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/segment.html">Segment</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -380,7 +380,7 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/polygon.html" class="sidebar-item-text sidebar-link active">
+  <a href="../../syntax/layer/polygon.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Polygon</span></a>
   </div>
 </li>
@@ -398,7 +398,7 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/segment.html" class="sidebar-item-text sidebar-link">
+  <a href="../../syntax/layer/segment.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">Segment</span></a>
   </div>
 </li>
@@ -561,6 +561,7 @@ gradient teal.
   </ul></li>
   <li><a href="#settings" id="toc-settings" class="nav-link" data-scroll-target="#settings">Settings</a></li>
   <li><a href="#data-transformation" id="toc-data-transformation" class="nav-link" data-scroll-target="#data-transformation">Data transformation</a></li>
+  <li><a href="#data-transformation-1" id="toc-data-transformation-1" class="nav-link" data-scroll-target="#data-transformation-1">Data transformation</a></li>
   <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/ggsql-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
@@ -568,9 +569,9 @@ gradient teal.
 <!-- main -->
 <main class="content" id="quarto-document-content">
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/polygon.html">Polygon</a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/segment.html">Segment</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">Polygon</h1>
+<h1 class="title">Segment</h1>
 </div>
 
 
@@ -590,69 +591,147 @@ gradient teal.
 <blockquote class="blockquote">
 <p>Layers are declared with the <a href="../../syntax/clause/draw.html"><code>DRAW</code> clause</a>. Read the documentation for this clause for a thorough description of how to use it.</p>
 </blockquote>
-<p>Polygons can be used to draw arbitrary closed shapes based on an ordered sequence of x,y-coordinates. They are similar to <a href="../../syntax/layer/path.html">paths</a>, but close the shapes and fill the interior.</p>
+<p>The segment layer is used to create line segments between two endpoints. If differs from <a href="../../syntax/layer/line.html">lines</a> and <a href="../../syntax/layer/path.html">paths</a> in that it connects just two points rather than many. Data is expected to be in a different shape, with 4 coordinates for the start (x, y) and end (xend, yend) points on a single row.</p>
 <section id="aesthetics" class="level2">
 <h2 class="anchored" data-anchor-id="aesthetics">Aesthetics</h2>
-<p>The following aesthetics are recognised by the polygon layer.</p>
+<p>The following aesthetics are recognised by the segment layer.</p>
 <section id="required" class="level3">
 <h3 class="anchored" data-anchor-id="required">Required</h3>
 <ul>
-<li><code>x</code> Position along the x-axis.</li>
-<li><code>y</code> Position along the y-axis.</li>
+<li><code>x</code>: Position along the x-axis of the start point.</li>
+<li><code>y</code>: Position along the y-axis of the end point.</li>
+<li><code>xend</code>*: Position along the x-axis of the end point.</li>
+<li><code>yend</code>*: Position along the y-axis of the end point.</li>
 </ul>
+<p>* Only one of <code>xend</code> and <code>yend</code> is required. If one is missing, it takes on the value of the start point.</p>
 </section>
 <section id="optional" class="level3">
 <h3 class="anchored" data-anchor-id="optional">Optional</h3>
 <ul>
-<li><code>stroke</code> The colour of the contour lines.</li>
-<li><code>fill</code> The colour of the inner area.</li>
-<li><code>colour</code> Shorthand for setting <code>stroke</code> and <code>fill</code> simultaneously.</li>
-<li><code>opacity</code> The opacity of colours.</li>
-<li><code>linewidth</code> The width of the contour lines.</li>
-<li><code>linetype</code> The dash pattern of the contour line.</li>
+<li><code>colour</code>/<code>stroke</code>: The colour of the line.</li>
+<li><code>opacity</code>: The opacity of the line.</li>
+<li><code>linewidth</code>: The width of the line.</li>
+<li><code>linetype</code>: The type of the line, i.e.&nbsp;the dashing pattern.</li>
 </ul>
 </section>
 </section>
 <section id="settings" class="level2">
 <h2 class="anchored" data-anchor-id="settings">Settings</h2>
-<p>The polygon layer has no additional settings</p>
+<p>The segment layer has no additional settings.</p>
 </section>
 <section id="data-transformation" class="level2">
 <h2 class="anchored" data-anchor-id="data-transformation">Data transformation</h2>
-<p>The polygon layer does not transform its data but passes it through unchanged</p>
+<p>The segment layer does not transform its data but passes it through unchanged.</p>
+</section>
+<section id="data-transformation-1" class="level2">
+<h2 class="anchored" data-anchor-id="data-transformation-1">Data transformation</h2>
 </section>
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
-<div id="8baa6ff3" class="cell" data-execution_count="1">
-<details class="code-fold">
-<summary>Create example data</summary>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> df <span class="kw">AS</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> (<span class="kw">VALUES</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">1.0</span>, <span class="dv">1.0</span>, <span class="st">'A'</span>),</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">1.0</span>, <span class="dv">3.0</span>, <span class="st">'A'</span>),</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">2.0</span>, <span class="dv">1.0</span>, <span class="st">'A'</span>),</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">2.0</span>, <span class="dv">3.0</span>, <span class="st">'B'</span>),</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">3.0</span>, <span class="dv">1.0</span>, <span class="st">'B'</span>),</span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">3.0</span>, <span class="dv">3.0</span>, <span class="st">'B'</span>),</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>) <span class="kw">AS</span> t(x, y, id)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</details>
+<p>Segments are useful when you have known start and end points of the data. For example in a graph</p>
+<div id="92efc047" class="cell" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">WITH</span> edges <span class="kw">AS</span> (</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> (<span class="kw">VALUES</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>      (<span class="dv">0</span>, <span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">1</span>, <span class="st">'A'</span>),</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>      (<span class="dv">1</span>, <span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">1</span>, <span class="st">'A'</span>),</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>      (<span class="dv">2</span>, <span class="dv">1</span>, <span class="dv">3</span>, <span class="dv">0</span>, <span class="st">'A'</span>),</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>      (<span class="dv">0</span>, <span class="dv">3</span>, <span class="dv">1</span>, <span class="dv">2</span>, <span class="st">'B'</span>),</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>      (<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">2</span>, <span class="dv">2</span>, <span class="st">'B'</span>),</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>      (<span class="dv">2</span>, <span class="dv">2</span>, <span class="dv">3</span>, <span class="dv">3</span>, <span class="st">'B'</span>),</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>      (<span class="dv">1</span>, <span class="dv">1</span>, <span class="dv">1</span>, <span class="dv">2</span>, <span class="st">'C'</span>),</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>      (<span class="dv">2</span>, <span class="dv">2</span>, <span class="dv">2</span>, <span class="dv">1</span>, <span class="st">'C'</span>)</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>  ) <span class="kw">AS</span> t(x, y, xend, yend, type)</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span>, <span class="at">xend</span>, <span class="at">yend</span> <span class="kw">FROM</span> edges</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">segment</span> <span class="kw">MAPPING</span> type AS <span class="at">stroke</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="1">
-<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
-<tbody>
-</tbody>
-</table>
+<div id="vis-1773060999235"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":0,"__ggsql_aes_pos1end__":1,"__ggsql_aes_pos2__":0,"__ggsql_aes_pos2end__":1,"__ggsql_aes_stroke__":"A","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":1,"__ggsql_aes_pos1end__":2,"__ggsql_aes_pos2__":1,"__ggsql_aes_pos2end__":1,"__ggsql_aes_stroke__":"A","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":2,"__ggsql_aes_pos1end__":3,"__ggsql_aes_pos2__":1,"__ggsql_aes_pos2end__":0,"__ggsql_aes_stroke__":"A","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":0,"__ggsql_aes_pos1end__":1,"__ggsql_aes_pos2__":3,"__ggsql_aes_pos2end__":2,"__ggsql_aes_stroke__":"B","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":1,"__ggsql_aes_pos1end__":2,"__ggsql_aes_pos2__":2,"__ggsql_aes_pos2end__":2,"__ggsql_aes_stroke__":"B","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":2,"__ggsql_aes_pos1end__":3,"__ggsql_aes_pos2__":2,"__ggsql_aes_pos2end__":3,"__ggsql_aes_stroke__":"B","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":1,"__ggsql_aes_pos1end__":1,"__ggsql_aes_pos2__":1,"__ggsql_aes_pos2end__":2,"__ggsql_aes_stroke__":"C","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":2,"__ggsql_aes_pos1end__":2,"__ggsql_aes_pos2__":2,"__ggsql_aes_pos2end__":1,"__ggsql_aes_stroke__":"C","__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_stroke__","type":"nominal"},"opacity":{"value":1.0},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'C' ? 'C' : datum.label == 'A' ? 'A' : datum.label == 'B' ? 'B' : datum.label"},"scale":{"domain":["A","B","C"],"range":["#0067A5","#F3C300","#008856"]},"title":"type","type":"nominal"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == '2' ? '2' : datum.label == '0' ? '0' : datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label","values":[0.0,1.0,2.0,3.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[-0.15000000000000002,3.15],"zero":false},"title":"x","type":"quantitative"},"x2":{"field":"__ggsql_aes_pos1end__"},"y":{"axis":{"labelExpr":"datum.label == '2' ? '2' : datum.label == '3' ? '3' : datum.label == '0' ? '0' : datum.label == '1' ? '1' : datum.label","values":[0.0,1.0,2.0,3.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-0.15000000000000002,3.15],"zero":false},"title":"y","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__"}},"mark":{"clip":true,"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1773060999235';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
 </div>
 </div>
-<p>Simple example polygon.</p>
-<div id="11aaa61f" class="cell" data-execution_count="2">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">polygon</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>You can use segments as part of a lollipop chart by anchoring one of the ends to 0. Note that <code>xend</code> is missing and has taken up the value of <code>x</code>.</p>
+<div id="0e29adc9" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="fu">ROUND</span>(bill_dep) <span class="kw">AS</span> bill_dep, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n </span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FROM</span> ggsql:penguins </span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">GROUP</span> <span class="kw">BY</span> <span class="fu">ROUND</span>(bill_dep)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span>, n <span class="kw">AS</span> <span class="at">y</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">segment</span> <span class="kw">MAPPING</span> <span class="dv">0</span> AS <span class="at">yend</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">point</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
-<div id="vis-1773061007996"></div>
+<div id="vis-1773060999303"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":3.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"order":{"value":null},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == '2' ? '2' : datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label == '1.5' ? '1.5' : datum.label == '2.5' ? '2.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '3' ? '3' : datum.label == '1.5' ? '1.5' : datum.label == '1' ? '1' : datum.label == '2' ? '2' : datum.label == '2.5' ? '2.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"interpolate":"linear-closed","type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1773061007996';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":19.0,"__ggsql_aes_pos2__":67,"__ggsql_aes_pos2end__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":17.0,"__ggsql_aes_pos2__":54,"__ggsql_aes_pos2end__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":18.0,"__ggsql_aes_pos2__":59,"__ggsql_aes_pos2end__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":21.0,"__ggsql_aes_pos2__":11,"__ggsql_aes_pos2end__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":22.0,"__ggsql_aes_pos2__":1,"__ggsql_aes_pos2end__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":16.0,"__ggsql_aes_pos2__":39,"__ggsql_aes_pos2end__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":14.0,"__ggsql_aes_pos2__":37,"__ggsql_aes_pos2end__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":15.0,"__ggsql_aes_pos2__":42,"__ggsql_aes_pos2end__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":null,"__ggsql_aes_pos2__":2,"__ggsql_aes_pos2end__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":13.0,"__ggsql_aes_pos2__":4,"__ggsql_aes_pos2end__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":20.0,"__ggsql_aes_pos2__":28,"__ggsql_aes_pos2end__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":19.0,"__ggsql_aes_pos2__":67,"__ggsql_aes_pos2end__":null,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":17.0,"__ggsql_aes_pos2__":54,"__ggsql_aes_pos2end__":null,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":18.0,"__ggsql_aes_pos2__":59,"__ggsql_aes_pos2end__":null,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":21.0,"__ggsql_aes_pos2__":11,"__ggsql_aes_pos2end__":null,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":22.0,"__ggsql_aes_pos2__":1,"__ggsql_aes_pos2end__":null,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":16.0,"__ggsql_aes_pos2__":39,"__ggsql_aes_pos2end__":null,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":14.0,"__ggsql_aes_pos2__":37,"__ggsql_aes_pos2end__":null,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":15.0,"__ggsql_aes_pos2__":42,"__ggsql_aes_pos2end__":null,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":null,"__ggsql_aes_pos2__":2,"__ggsql_aes_pos2end__":null,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":13.0,"__ggsql_aes_pos2__":4,"__ggsql_aes_pos2end__":null,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":20.0,"__ggsql_aes_pos2__":28,"__ggsql_aes_pos2end__":null,"__ggsql_source__":"__ggsql_layer_1__"}]},"height":"container","layer":[{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == '22' ? '22' : datum.label == '16' ? '16' : datum.label == '20' ? '20' : datum.label == '18' ? '18' : datum.label == '14' ? '14' : datum.label","values":[14.0,16.0,18.0,20.0,22.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[12.55,22.45],"zero":false},"title":"bill_dep","type":"quantitative"},"x2":{"axis":{"labelExpr":"datum.label == '22' ? '22' : datum.label == '16' ? '16' : datum.label == '20' ? '20' : datum.label == '18' ? '18' : datum.label == '14' ? '14' : datum.label","values":[14.0,16.0,18.0,20.0,22.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[12.55,22.45],"zero":false},"title":"bill_dep","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '20' ? '20' : datum.label == '60' ? '60' : datum.label == '40' ? '40' : datum.label","values":[0.0,20.0,40.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-3.35,70.35],"zero":false},"title":"n","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__"}},"mark":{"clip":true,"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"shape":{"value":"circle"},"size":{"value":50.26548245743668},"stroke":{"value":"black"},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == '22' ? '22' : datum.label == '16' ? '16' : datum.label == '20' ? '20' : datum.label == '18' ? '18' : datum.label == '14' ? '14' : datum.label","values":[14.0,16.0,18.0,20.0,22.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[12.55,22.45],"zero":false},"title":"bill_dep","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '20' ? '20' : datum.label == '60' ? '60' : datum.label == '40' ? '40' : datum.label","values":[0.0,20.0,40.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-3.35,70.35],"zero":false},"title":"n","type":"quantitative"}},"mark":{"clip":true,"type":"point"},"transform":[{"filter":{"equal":"__ggsql_layer_1__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1773060999303';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -720,93 +799,33 @@ gradient teal.
 </script>
 </div>
 </div>
-<p>Groups of individual polygons can be declared via <code>PARTITION BY</code>.</p>
-<div id="c796e0e2" class="cell" data-execution_count="3">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">polygon</span> <span class="kw">PARTITION</span> BY id</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>By overlaying a thick line on a thin line, you can create a candlestick chart.</p>
+<div id="eea3b45d" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FIRST</span>(Date) <span class="kw">AS</span> date,</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FIRST</span>(<span class="kw">temp</span>) <span class="kw">AS</span> open,</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">LAST</span>(<span class="kw">temp</span>) <span class="kw">AS</span> close,</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">MAX</span>(<span class="kw">temp</span>) <span class="kw">AS</span> high,</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">MIN</span>(<span class="kw">temp</span>) <span class="kw">AS</span> low,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>  <span class="kw">CASE</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">WHEN</span> <span class="kw">FIRST</span>(<span class="kw">temp</span>) <span class="op">&gt;</span> <span class="kw">LAST</span>(<span class="kw">temp</span>) <span class="kw">THEN</span> <span class="st">'colder'</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">ELSE</span> <span class="st">'warmer'</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>  <span class="kw">END</span> <span class="kw">AS</span> trend</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="kw">GROUP</span> <span class="kw">BY</span> WEEKOFYEAR(Date)</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> date <span class="kw">AS</span> <span class="at">x</span>, trend <span class="kw">AS</span> <span class="at">colour</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">segment</span> </span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> open AS <span class="at">y</span>, close AS <span class="at">yend</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">linewidth</span> <span class="op">=&gt;</span> <span class="dv">5</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">segment</span> </span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> low AS <span class="at">y</span>, high AS <span class="at">yend</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
-<div id="vis-1773061008014"></div>
+<div id="vis-1773060999328"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"},{"__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"},{"__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"id","type":"nominal"},"fill":{"value":"black"},"fillOpacity":{"value":0.8},"order":{"value":null},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == '1.5' ? '1.5' : datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label == '2' ? '2' : datum.label == '2.5' ? '2.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '1' ? '1' : datum.label == '2.5' ? '2.5' : datum.label == '2' ? '2' : datum.label == '3' ? '3' : datum.label == '1.5' ? '1.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"interpolate":"linear-closed","type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1773061008014';
-    const container = document.getElementById(visId);
-    container.style.width = '100%';
-    container.style.height = '400px';
-
-    // Use full height in Positron's Plots pane
-    if (container.closest('.positron-output-container')) {
-      container.style.height = '100vh';
-    }
-
-    const options = {
-      "actions": true,
-    };
-
-    // Check if we're in a Jupyter environment with require.js
-    if (typeof window.requirejs !== 'undefined') {
-      // Use require.js to load Vega libraries
-      window.requirejs.config({
-        paths: {
-          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
-          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
-          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
-        }
-      });
-
-      function docReady(fn) {
-        if (document.readyState === 'complete') fn();
-        else window.addEventListener("load", () => {
-          fn();
-        });
-      }
-      docReady(function() {
-        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
-            domReady(function () {
-              vegaEmbed('#' + visId, spec, options).catch(console.error);
-            });
-        });
-      });
-    } else {
-      // Fallback for non-Jupyter environments
-      function loadScript(src) {
-        return new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = src;
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
-      }
-
-      Promise.all([
-        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
-      ])
-        .then(() => {
-          vegaEmbed('#' + visId, spec, options)
-            .catch(console.error);
-        })
-        .catch(err => {
-          console.error('Failed to load Vega libraries:', err);
-        });
-    }
-  })();
-</script>
-</div>
-</div>
-<p>Invoking a group through discrete aesthetics works as well.</p>
-<div id="121532ea" class="cell" data-execution_count="4">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">polygon</span> <span class="kw">MAPPING</span> id AS <span class="at">colour</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="4">
-<div id="vis-1773061008031"></div>
-<script type="text/javascript">
-  (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"A","__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":1.0,"__ggsql_aes_stroke__":"A","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"A","__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":3.0,"__ggsql_aes_stroke__":"A","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"A","__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":1.0,"__ggsql_aes_stroke__":"A","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"B","__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":3.0,"__ggsql_aes_stroke__":"B","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"B","__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":1.0,"__ggsql_aes_stroke__":"B","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"B","__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":3.0,"__ggsql_aes_stroke__":"B","__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":[{"field":"__ggsql_aes_stroke__","type":"nominal"},{"field":"__ggsql_aes_fill__","type":"nominal"}],"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'A' ? 'A' : datum.label == 'B' ? 'B' : datum.label"},"scale":{"domain":["A","B"],"range":["#0067A5","#F3C300"]},"title":"id","type":"nominal"},"fillOpacity":{"value":0.8},"order":{"value":null},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'A' ? 'A' : datum.label == 'B' ? 'B' : datum.label"},"scale":{"domain":["A","B"],"range":["#0067A5","#F3C300"]},"title":"id","type":"nominal"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == '2' ? '2' : datum.label == '1.5' ? '1.5' : datum.label == '2.5' ? '2.5' : datum.label == '1' ? '1' : datum.label == '3' ? '3' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '2.5' ? '2.5' : datum.label == '1' ? '1' : datum.label == '2' ? '2' : datum.label == '3' ? '3' : datum.label == '1.5' ? '1.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"interpolate":"linear-closed","type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1773061008031';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":"1973-05-01","__ggsql_aes_pos2__":67,"__ggsql_aes_pos2end__":66,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-05-07","__ggsql_aes_pos2__":65,"__ggsql_aes_pos2end__":66,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-05-14","__ggsql_aes_pos2__":68,"__ggsql_aes_pos2end__":62,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-05-21","__ggsql_aes_pos2__":59,"__ggsql_aes_pos2end__":57,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-05-28","__ggsql_aes_pos2__":67,"__ggsql_aes_pos2end__":67,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-06-04","__ggsql_aes_pos2__":84,"__ggsql_aes_pos2end__":87,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-06-11","__ggsql_aes_pos2__":93,"__ggsql_aes_pos2end__":72,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-06-18","__ggsql_aes_pos2__":65,"__ggsql_aes_pos2end__":76,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-06-25","__ggsql_aes_pos2__":75,"__ggsql_aes_pos2end__":84,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-07-02","__ggsql_aes_pos2__":85,"__ggsql_aes_pos2end__":92,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-07-09","__ggsql_aes_pos2__":92,"__ggsql_aes_pos2end__":80,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-07-16","__ggsql_aes_pos2__":81,"__ggsql_aes_pos2end__":81,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-07-23","__ggsql_aes_pos2__":82,"__ggsql_aes_pos2end__":86,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-07-30","__ggsql_aes_pos2__":83,"__ggsql_aes_pos2end__":85,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-08-06","__ggsql_aes_pos2__":87,"__ggsql_aes_pos2end__":86,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-08-13","__ggsql_aes_pos2__":82,"__ggsql_aes_pos2end__":78,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-08-20","__ggsql_aes_pos2__":78,"__ggsql_aes_pos2end__":86,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-08-27","__ggsql_aes_pos2__":88,"__ggsql_aes_pos2end__":92,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-09-03","__ggsql_aes_pos2__":93,"__ggsql_aes_pos2end__":75,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-09-10","__ggsql_aes_pos2__":73,"__ggsql_aes_pos2end__":78,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-09-17","__ggsql_aes_pos2__":67,"__ggsql_aes_pos2end__":81,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-09-24","__ggsql_aes_pos2__":69,"__ggsql_aes_pos2end__":68,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-05-01","__ggsql_aes_pos2__":56,"__ggsql_aes_pos2end__":74,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-05-07","__ggsql_aes_pos2__":59,"__ggsql_aes_pos2end__":74,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-05-14","__ggsql_aes_pos2__":57,"__ggsql_aes_pos2end__":68,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-05-21","__ggsql_aes_pos2__":57,"__ggsql_aes_pos2end__":73,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-05-28","__ggsql_aes_pos2__":67,"__ggsql_aes_pos2end__":81,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-06-04","__ggsql_aes_pos2__":79,"__ggsql_aes_pos2end__":90,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-06-11","__ggsql_aes_pos2__":72,"__ggsql_aes_pos2end__":93,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-06-18","__ggsql_aes_pos2__":65,"__ggsql_aes_pos2end__":77,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-06-25","__ggsql_aes_pos2__":73,"__ggsql_aes_pos2end__":84,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-07-02","__ggsql_aes_pos2__":81,"__ggsql_aes_pos2end__":92,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-07-09","__ggsql_aes_pos2__":73,"__ggsql_aes_pos2end__":92,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-07-16","__ggsql_aes_pos2__":74,"__ggsql_aes_pos2end__":87,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-07-23","__ggsql_aes_pos2__":82,"__ggsql_aes_pos2end__":88,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-07-30","__ggsql_aes_pos2__":81,"__ggsql_aes_pos2end__":86,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-08-06","__ggsql_aes_pos2__":86,"__ggsql_aes_pos2end__":92,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-08-13","__ggsql_aes_pos2__":76,"__ggsql_aes_pos2end__":82,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-08-20","__ggsql_aes_pos2__":72,"__ggsql_aes_pos2end__":86,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-08-27","__ggsql_aes_pos2__":88,"__ggsql_aes_pos2end__":97,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-09-03","__ggsql_aes_pos2__":75,"__ggsql_aes_pos2end__":93,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-09-10","__ggsql_aes_pos2__":71,"__ggsql_aes_pos2end__":81,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-09-17","__ggsql_aes_pos2__":64,"__ggsql_aes_pos2end__":82,"__ggsql_aes_stroke__":"warmer","__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-09-24","__ggsql_aes_pos2__":63,"__ggsql_aes_pos2end__":77,"__ggsql_aes_stroke__":"colder","__ggsql_source__":"__ggsql_layer_1__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_stroke__","type":"nominal"},"opacity":{"value":1.0},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'colder' ? 'colder' : datum.label == 'warmer' ? 'warmer' : datum.label"},"scale":{"domain":["colder","warmer"],"range":["#0067A5","#F3C300"]},"title":"trend","type":"nominal"},"strokeDash":{"value":[]},"strokeWidth":{"value":6.666666666666666},"x":{"axis":{"labelExpr":"utcFormat(datum.value, '%Y-%m-%d') == '1973-06-18' ? '1973-06-18' : utcFormat(datum.value, '%Y-%m-%d') == '1973-08-13' ? '1973-08-13' : utcFormat(datum.value, '%Y-%m-%d') == '1973-04-23' ? '1973-04-23' : utcFormat(datum.value, '%Y-%m-%d') == '1973-09-10' ? '1973-09-10' : utcFormat(datum.value, '%Y-%m-%d') == '1973-05-21' ? '1973-05-21' : utcFormat(datum.value, '%Y-%m-%d') == '1973-07-16' ? '1973-07-16' : datum.label","values":["1973-04-23","1973-05-21","1973-06-18","1973-07-16","1973-08-13","1973-09-10"]},"field":"__ggsql_aes_pos1__","scale":{"domain":["1973-04-23","1973-10-01"],"zero":false},"title":"date","type":"temporal"},"x2":{"axis":{"labelExpr":"utcFormat(datum.value, '%Y-%m-%d') == '1973-06-18' ? '1973-06-18' : utcFormat(datum.value, '%Y-%m-%d') == '1973-08-13' ? '1973-08-13' : utcFormat(datum.value, '%Y-%m-%d') == '1973-04-23' ? '1973-04-23' : utcFormat(datum.value, '%Y-%m-%d') == '1973-09-10' ? '1973-09-10' : utcFormat(datum.value, '%Y-%m-%d') == '1973-05-21' ? '1973-05-21' : utcFormat(datum.value, '%Y-%m-%d') == '1973-07-16' ? '1973-07-16' : datum.label","values":["1973-04-23","1973-05-21","1973-06-18","1973-07-16","1973-08-13","1973-09-10"]},"field":"__ggsql_aes_pos1__","scale":{"domain":["1973-04-23","1973-10-01"],"zero":false},"title":"date","type":"temporal"},"y":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '70' ? '70' : datum.label == '80' ? '80' : datum.label == '90' ? '90' : datum.label","values":[60.0,70.0,80.0,90.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[53.95,99.05],"zero":false},"title":"open","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__"}},"mark":{"clip":true,"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_stroke__","type":"nominal"},"opacity":{"value":1.0},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'colder' ? 'colder' : datum.label == 'warmer' ? 'warmer' : datum.label"},"scale":{"domain":["colder","warmer"],"range":["#0067A5","#F3C300"]},"title":"trend","type":"nominal"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"utcFormat(datum.value, '%Y-%m-%d') == '1973-06-18' ? '1973-06-18' : utcFormat(datum.value, '%Y-%m-%d') == '1973-08-13' ? '1973-08-13' : utcFormat(datum.value, '%Y-%m-%d') == '1973-04-23' ? '1973-04-23' : utcFormat(datum.value, '%Y-%m-%d') == '1973-09-10' ? '1973-09-10' : utcFormat(datum.value, '%Y-%m-%d') == '1973-05-21' ? '1973-05-21' : utcFormat(datum.value, '%Y-%m-%d') == '1973-07-16' ? '1973-07-16' : datum.label","values":["1973-04-23","1973-05-21","1973-06-18","1973-07-16","1973-08-13","1973-09-10"]},"field":"__ggsql_aes_pos1__","scale":{"domain":["1973-04-23","1973-10-01"],"zero":false},"title":"date","type":"temporal"},"x2":{"axis":{"labelExpr":"utcFormat(datum.value, '%Y-%m-%d') == '1973-06-18' ? '1973-06-18' : utcFormat(datum.value, '%Y-%m-%d') == '1973-08-13' ? '1973-08-13' : utcFormat(datum.value, '%Y-%m-%d') == '1973-04-23' ? '1973-04-23' : utcFormat(datum.value, '%Y-%m-%d') == '1973-09-10' ? '1973-09-10' : utcFormat(datum.value, '%Y-%m-%d') == '1973-05-21' ? '1973-05-21' : utcFormat(datum.value, '%Y-%m-%d') == '1973-07-16' ? '1973-07-16' : datum.label","values":["1973-04-23","1973-05-21","1973-06-18","1973-07-16","1973-08-13","1973-09-10"]},"field":"__ggsql_aes_pos1__","scale":{"domain":["1973-04-23","1973-10-01"],"zero":false},"title":"date","type":"temporal"},"y":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '70' ? '70' : datum.label == '80' ? '80' : datum.label == '90' ? '90' : datum.label","values":[60.0,70.0,80.0,90.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[53.95,99.05],"zero":false},"title":"open","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__"}},"mark":{"clip":true,"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_1__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1773060999328';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';

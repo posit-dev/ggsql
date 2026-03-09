@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Polygon – ggsql</title>
+<title>Errorbar – ggsql</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -114,7 +114,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
 
 
-<meta property="og:title" content="Polygon – ggsql">
+<meta property="og:title" content="Errorbar – ggsql">
 <meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
 <meta property="og:image" content="https://ggsql.org/syntax/layer/assets/logo.png">
 <meta property="og:site_name" content="ggsql">
@@ -122,7 +122,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 handle is made up of the classic database silo icon and is coloured in a
 gradient teal.
 ">
-<meta name="twitter:title" content="Polygon – ggsql">
+<meta name="twitter:title" content="Errorbar – ggsql">
 <meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
 <meta name="twitter:image" content="https://ggsql.org/syntax/layer/assets/logo.png">
 <meta name="twitter:card" content="summary">
@@ -227,7 +227,7 @@ gradient teal.
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/polygon.html">Polygon</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/errorbar.html">Errorbar</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -344,7 +344,7 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/errorbar.html" class="sidebar-item-text sidebar-link">
+  <a href="../../syntax/layer/errorbar.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">Errorbar</span></a>
   </div>
 </li>
@@ -380,7 +380,7 @@ gradient teal.
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/polygon.html" class="sidebar-item-text sidebar-link active">
+  <a href="../../syntax/layer/polygon.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Polygon</span></a>
   </div>
 </li>
@@ -568,9 +568,9 @@ gradient teal.
 <!-- main -->
 <main class="content" id="quarto-document-content">
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/polygon.html">Polygon</a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/layer/area.html">Layers</a></li><li class="breadcrumb-item"><a href="../../syntax/layer/errorbar.html">Errorbar</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">Polygon</h1>
+<h1 class="title">Errorbar</h1>
 </div>
 
 
@@ -590,51 +590,52 @@ gradient teal.
 <blockquote class="blockquote">
 <p>Layers are declared with the <a href="../../syntax/clause/draw.html"><code>DRAW</code> clause</a>. Read the documentation for this clause for a thorough description of how to use it.</p>
 </blockquote>
-<p>Polygons can be used to draw arbitrary closed shapes based on an ordered sequence of x,y-coordinates. They are similar to <a href="../../syntax/layer/path.html">paths</a>, but close the shapes and fill the interior.</p>
+<p>Errorbars are used to display paired metrics, typically some interval, for a variable. It is displayed as a line between the two values, often with hinges at the ends.</p>
 <section id="aesthetics" class="level2">
 <h2 class="anchored" data-anchor-id="aesthetics">Aesthetics</h2>
-<p>The following aesthetics are recognised by the polygon layer.</p>
+<p>The following aesthetics are recognised by the errorbar layer.</p>
 <section id="required" class="level3">
 <h3 class="anchored" data-anchor-id="required">Required</h3>
 <ul>
-<li><code>x</code> Position along the x-axis.</li>
-<li><code>y</code> Position along the y-axis.</li>
+<li><code>x</code> or <code>y</code>: Position on the x- or y-axis. These are mutually exclusive.</li>
+<li><code>xmin</code> or <code>ymin</code>: Position of one of the interval ends orthogonal to the main position. These are also mutually exclusive.</li>
+<li><code>xmax</code> or <code>ymax</code>: Position of the other interval end orthogonal to the main position. These are also mutually exclusive.</li>
 </ul>
+<p>Note that the required aesthetics is either a set of {<code>x</code>, <code>ymin</code>, <code>ymax</code>} or {<code>y</code>, <code>xmin</code>, <code>xmax</code>} and <em>not</em> a combination of the two.</p>
 </section>
 <section id="optional" class="level3">
 <h3 class="anchored" data-anchor-id="optional">Optional</h3>
 <ul>
-<li><code>stroke</code> The colour of the contour lines.</li>
-<li><code>fill</code> The colour of the inner area.</li>
-<li><code>colour</code> Shorthand for setting <code>stroke</code> and <code>fill</code> simultaneously.</li>
-<li><code>opacity</code> The opacity of colours.</li>
-<li><code>linewidth</code> The width of the contour lines.</li>
-<li><code>linetype</code> The dash pattern of the contour line.</li>
+<li><code>stroke</code>/<code>colour</code>: The colour of the lines in the errorbar.</li>
+<li><code>opacity</code>: The opacity of the colour.</li>
+<li><code>linewidth</code>: The width of the lines in the errorbar.</li>
+<li><code>linetype</code>: The dash pattern of the lines in the errorbar.</li>
 </ul>
 </section>
 </section>
 <section id="settings" class="level2">
 <h2 class="anchored" data-anchor-id="settings">Settings</h2>
-<p>The polygon layer has no additional settings</p>
+<ul>
+<li><code>width</code>: The width of the hinges in points. Can be set to <code>null</code> to not display hinges.</li>
+</ul>
 </section>
 <section id="data-transformation" class="level2">
 <h2 class="anchored" data-anchor-id="data-transformation">Data transformation</h2>
-<p>The polygon layer does not transform its data but passes it through unchanged</p>
+<p>The errorbar layer does not transform its data but passes it through unchanged.</p>
 </section>
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
-<div id="8baa6ff3" class="cell" data-execution_count="1">
+<div id="b1fdd578" class="cell" data-execution_count="1">
 <details class="code-fold">
 <summary>Create example data</summary>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> df <span class="kw">AS</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> (<span class="kw">VALUES</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">1.0</span>, <span class="dv">1.0</span>, <span class="st">'A'</span>),</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">1.0</span>, <span class="dv">3.0</span>, <span class="st">'A'</span>),</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">2.0</span>, <span class="dv">1.0</span>, <span class="st">'A'</span>),</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">2.0</span>, <span class="dv">3.0</span>, <span class="st">'B'</span>),</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">3.0</span>, <span class="dv">1.0</span>, <span class="st">'B'</span>),</span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">3.0</span>, <span class="dv">3.0</span>, <span class="st">'B'</span>),</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>) <span class="kw">AS</span> t(x, y, id)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> penguin_summary <span class="kw">AS</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  species,</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  MEAN(bill_dep) <span class="op">-</span> <span class="fu">STDDEV</span>(bill_dep) <span class="kw">AS</span> low,</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  MEAN(bill_dep) <span class="kw">AS</span> mean,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>  MEAN(bill_dep) <span class="op">+</span> <span class="fu">STDDEV</span>(bill_dep) <span class="kw">AS</span> high</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="kw">GROUP</span> <span class="kw">BY</span> species</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
 <div class="cell-output cell-output-display" data-execution_count="1">
 <table class="dataframe caption-top table table-sm table-striped small" data-border="1">
@@ -643,16 +644,17 @@ gradient teal.
 </table>
 </div>
 </div>
-<p>Simple example polygon.</p>
-<div id="11aaa61f" class="cell" data-execution_count="2">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">polygon</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Classic errorbar with point at centre.</p>
+<div id="7ae2df7d" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> penguin_summary</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">errorbar</span> <span class="kw">MAPPING</span> low AS <span class="at">ymax</span>, high AS <span class="at">ymin</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">point</span> <span class="kw">MAPPING</span> mean AS <span class="at">y</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
-<div id="vis-1773061007996"></div>
+<div id="vis-1773061002222"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":3.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":1.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":3.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"order":{"value":null},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == '2' ? '2' : datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label == '1.5' ? '1.5' : datum.label == '2.5' ? '2.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '3' ? '3' : datum.label == '1.5' ? '1.5' : datum.label == '1' ? '1' : datum.label == '2' ? '2' : datum.label == '2.5' ? '2.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"interpolate":"linear-closed","type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1773061007996';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":null,"__ggsql_aes_pos2max__":14.00089406163132,"__ggsql_aes_pos2min__":15.963333580645092,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":null,"__ggsql_aes_pos2max__":17.285193133633705,"__ggsql_aes_pos2min__":19.55598333695453,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":null,"__ggsql_aes_pos2max__":17.129707853393906,"__ggsql_aes_pos2min__":19.56300737839416,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":14.982113821138206,"__ggsql_aes_pos2max__":null,"__ggsql_aes_pos2min__":null,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":18.420588235294115,"__ggsql_aes_pos2max__":null,"__ggsql_aes_pos2min__":null,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":18.346357615894032,"__ggsql_aes_pos2max__":null,"__ggsql_aes_pos2min__":null,"__ggsql_source__":"__ggsql_layer_1__"}]},"height":"container","layer":[{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '14' ? '14' : datum.label == '18' ? '18' : datum.label == '19' ? '19' : datum.label == '17' ? '17' : datum.label == '15' ? '15' : datum.label == '16' ? '16' : datum.label","values":[14.0,15.0,16.0,17.0,18.0,19.0]},"field":"__ggsql_aes_pos2max__","scale":{"domain":[13.722788395793176,19.841113044232294]},"type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '14' ? '14' : datum.label == '18' ? '18' : datum.label == '19' ? '19' : datum.label == '17' ? '17' : datum.label == '15' ? '15' : datum.label == '16' ? '16' : datum.label","values":[14.0,15.0,16.0,17.0,18.0,19.0]},"field":"__ggsql_aes_pos2min__","scale":{"domain":[13.722788395793176,19.841113044232294]},"title":"mean","type":"quantitative"}},"mark":{"clip":true,"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '14' ? '14' : datum.label == '18' ? '18' : datum.label == '19' ? '19' : datum.label == '17' ? '17' : datum.label == '15' ? '15' : datum.label == '16' ? '16' : datum.label","values":[14.0,15.0,16.0,17.0,18.0,19.0]},"field":"__ggsql_aes_ymin__","scale":{"domain":[13.722788395793176,19.841113044232294]},"type":"quantitative"}},"mark":{"clip":true,"orient":"horizontal","size":13.333333333333332,"thickness":0,"type":"tick"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '14' ? '14' : datum.label == '18' ? '18' : datum.label == '19' ? '19' : datum.label == '17' ? '17' : datum.label == '15' ? '15' : datum.label == '16' ? '16' : datum.label","values":[14.0,15.0,16.0,17.0,18.0,19.0]},"field":"__ggsql_aes_ymax__","scale":{"domain":[13.722788395793176,19.841113044232294]},"type":"quantitative"}},"mark":{"clip":true,"orient":"horizontal","size":13.333333333333332,"thickness":0,"type":"tick"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"shape":{"value":"circle"},"size":{"value":50.26548245743668},"stroke":{"value":"black"},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '14' ? '14' : datum.label == '18' ? '18' : datum.label == '19' ? '19' : datum.label == '17' ? '17' : datum.label == '15' ? '15' : datum.label == '16' ? '16' : datum.label","values":[14.0,15.0,16.0,17.0,18.0,19.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[13.722788395793176,19.841113044232294],"zero":false},"title":"mean","type":"quantitative"}},"mark":{"clip":true,"type":"point"},"transform":[{"filter":{"equal":"__ggsql_layer_1__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1773061002222';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -720,16 +722,19 @@ gradient teal.
 </script>
 </div>
 </div>
-<p>Groups of individual polygons can be declared via <code>PARTITION BY</code>.</p>
-<div id="c796e0e2" class="cell" data-execution_count="3">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">polygon</span> <span class="kw">PARTITION</span> BY id</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Dynamite plot using bars instead of points, using extra wide hinges.</p>
+<div id="f6c1bfcd" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> penguin_summary</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">errorbar</span> </span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> low AS <span class="at">ymax</span>, high AS <span class="at">ymin</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">width</span> <span class="op">=&gt;</span> <span class="dv">40</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">bar</span> <span class="kw">MAPPING</span> mean AS <span class="at">y</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
-<div id="vis-1773061008014"></div>
+<div id="vis-1773061002245"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"},{"__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":1.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"},{"__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":3.0,"__ggsql_source__":"__ggsql_layer_0__","id":"B"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"id","type":"nominal"},"fill":{"value":"black"},"fillOpacity":{"value":0.8},"order":{"value":null},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == '1.5' ? '1.5' : datum.label == '3' ? '3' : datum.label == '1' ? '1' : datum.label == '2' ? '2' : datum.label == '2.5' ? '2.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '1' ? '1' : datum.label == '2.5' ? '2.5' : datum.label == '2' ? '2' : datum.label == '3' ? '3' : datum.label == '1.5' ? '1.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"interpolate":"linear-closed","type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1773061008014';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":null,"__ggsql_aes_pos2end__":null,"__ggsql_aes_pos2max__":14.00089406163132,"__ggsql_aes_pos2min__":15.963333580645092,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":null,"__ggsql_aes_pos2end__":null,"__ggsql_aes_pos2max__":17.285193133633705,"__ggsql_aes_pos2min__":19.55598333695453,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":null,"__ggsql_aes_pos2end__":null,"__ggsql_aes_pos2max__":17.129707853393906,"__ggsql_aes_pos2min__":19.56300737839416,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":14.982113821138206,"__ggsql_aes_pos2end__":0.0,"__ggsql_aes_pos2max__":null,"__ggsql_aes_pos2min__":null,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":18.420588235294115,"__ggsql_aes_pos2end__":0.0,"__ggsql_aes_pos2max__":null,"__ggsql_aes_pos2min__":null,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":18.346357615894032,"__ggsql_aes_pos2end__":0.0,"__ggsql_aes_pos2max__":null,"__ggsql_aes_pos2min__":null,"__ggsql_source__":"__ggsql_layer_1__"}]},"height":"container","layer":[{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '10' ? '10' : datum.label == '20' ? '20' : datum.label == '0' ? '0' : datum.label == '5' ? '5' : datum.label == '15' ? '15' : datum.label","values":[0.0,5.0,10.0,15.0,20.0]},"field":"__ggsql_aes_pos2max__","scale":{"domain":[-0.978150368919708,20.541157747313864]},"title":"mean","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '10' ? '10' : datum.label == '20' ? '20' : datum.label == '0' ? '0' : datum.label == '5' ? '5' : datum.label == '15' ? '15' : datum.label","values":[0.0,5.0,10.0,15.0,20.0]},"field":"__ggsql_aes_pos2min__","scale":{"domain":[-0.978150368919708,20.541157747313864]},"type":"quantitative"}},"mark":{"clip":true,"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '10' ? '10' : datum.label == '20' ? '20' : datum.label == '0' ? '0' : datum.label == '5' ? '5' : datum.label == '15' ? '15' : datum.label","values":[0.0,5.0,10.0,15.0,20.0]},"field":"__ggsql_aes_ymin__","scale":{"domain":[-0.978150368919708,20.541157747313864]},"title":"mean","type":"quantitative"}},"mark":{"clip":true,"orient":"horizontal","size":53.33333333333333,"thickness":0,"type":"tick"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '10' ? '10' : datum.label == '20' ? '20' : datum.label == '0' ? '0' : datum.label == '5' ? '5' : datum.label == '15' ? '15' : datum.label","values":[0.0,5.0,10.0,15.0,20.0]},"field":"__ggsql_aes_ymax__","scale":{"domain":[-0.978150368919708,20.541157747313864]},"title":"mean","type":"quantitative"}},"mark":{"clip":true,"orient":"horizontal","size":53.33333333333333,"thickness":0,"type":"tick"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"x":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '10' ? '10' : datum.label == '20' ? '20' : datum.label == '0' ? '0' : datum.label == '5' ? '5' : datum.label == '15' ? '15' : datum.label","values":[0.0,5.0,10.0,15.0,20.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-0.978150368919708,20.541157747313864],"zero":false},"title":"mean","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__"}},"mark":{"clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_1__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1773061002245';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
@@ -797,16 +802,18 @@ gradient teal.
 </script>
 </div>
 </div>
-<p>Invoking a group through discrete aesthetics works as well.</p>
-<div id="121532ea" class="cell" data-execution_count="4">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">polygon</span> <span class="kw">MAPPING</span> id AS <span class="at">colour</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The hinges can be omitted by setting <code>null</code> as width.</p>
+<div id="7e173437" class="cell" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> penguin_summary</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">errorbar</span> </span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> low AS <span class="at">ymax</span>, high AS <span class="at">ymin</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">width</span> <span class="op">=&gt;</span> null</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="4">
-<div id="vis-1773061008031"></div>
+<div id="vis-1773061002264"></div>
 <script type="text/javascript">
   (function() {
-    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"A","__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":1.0,"__ggsql_aes_stroke__":"A","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"A","__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":3.0,"__ggsql_aes_stroke__":"A","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"A","__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":1.0,"__ggsql_aes_stroke__":"A","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"B","__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":3.0,"__ggsql_aes_stroke__":"B","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"B","__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":1.0,"__ggsql_aes_stroke__":"B","__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"B","__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":3.0,"__ggsql_aes_stroke__":"B","__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":[{"field":"__ggsql_aes_stroke__","type":"nominal"},{"field":"__ggsql_aes_fill__","type":"nominal"}],"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'A' ? 'A' : datum.label == 'B' ? 'B' : datum.label"},"scale":{"domain":["A","B"],"range":["#0067A5","#F3C300"]},"title":"id","type":"nominal"},"fillOpacity":{"value":0.8},"order":{"value":null},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'A' ? 'A' : datum.label == 'B' ? 'B' : datum.label"},"scale":{"domain":["A","B"],"range":["#0067A5","#F3C300"]},"title":"id","type":"nominal"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == '2' ? '2' : datum.label == '1.5' ? '1.5' : datum.label == '2.5' ? '2.5' : datum.label == '1' ? '1' : datum.label == '3' ? '3' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '2.5' ? '2.5' : datum.label == '1' ? '1' : datum.label == '2' ? '2' : datum.label == '3' ? '3' : datum.label == '1.5' ? '1.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[0.9,3.1],"zero":false},"title":"y","type":"quantitative"}},"mark":{"interpolate":"linear-closed","type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-    const visId = 'vis-1773061008031';
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2max__":14.00089406163132,"__ggsql_aes_pos2min__":15.963333580645092,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2max__":17.285193133633705,"__ggsql_aes_pos2min__":19.55598333695453,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2max__":17.129707853393906,"__ggsql_aes_pos2min__":19.56300737839416,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '18' ? '18' : datum.label == '16' ? '16' : datum.label == '14' ? '14' : datum.label == '17' ? '17' : datum.label == '19' ? '19' : datum.label == '15' ? '15' : datum.label","values":[14.0,15.0,16.0,17.0,18.0,19.0]},"field":"__ggsql_aes_pos2max__","scale":{"domain":[13.722788395793176,19.841113044232294]},"type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '18' ? '18' : datum.label == '16' ? '16' : datum.label == '14' ? '14' : datum.label == '17' ? '17' : datum.label == '19' ? '19' : datum.label == '15' ? '15' : datum.label","values":[14.0,15.0,16.0,17.0,18.0,19.0]},"field":"__ggsql_aes_pos2min__","scale":{"domain":[13.722788395793176,19.841113044232294]},"title":"high","type":"quantitative"}},"mark":{"clip":true,"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1773061002264';
     const container = document.getElementById(visId);
     container.style.width = '100%';
     container.style.height = '400px';
