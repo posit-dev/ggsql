@@ -472,7 +472,7 @@ module.exports = grammar({
     geom_type: $ => choice(
       'point', 'line', 'path', 'bar', 'area', 'tile', 'polygon', 'ribbon',
       'histogram', 'density', 'smooth', 'boxplot', 'violin',
-      'text', 'label', 'segment', 'arrow', 'hline', 'vline', 'abline', 'errorbar'
+      'text', 'label', 'segment', 'arrow', 'rule', 'linear', 'errorbar'
     ),
 
     // MAPPING clause for aesthetic mappings: MAPPING col AS x, "blue" AS color [FROM source]
@@ -653,6 +653,8 @@ module.exports = grammar({
       'size', 'shape', 'linetype', 'linewidth', 'width', 'height',
       // Text aesthetics
       'label', 'family', 'fontface', 'hjust', 'vjust',
+      // Specialty aesthetics,
+      'coef', 'intercept',
       // Facet aesthetics
       'panel', 'row', 'column',
       // Computed variables

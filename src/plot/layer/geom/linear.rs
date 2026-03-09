@@ -1,21 +1,22 @@
-//! HLine geom implementation
+//! Linear geom implementation
 
 use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::plot::types::DefaultAestheticValue;
 
-/// HLine geom - horizontal reference lines
+/// Linear geom - lines with coefficient and intercept
 #[derive(Debug, Clone, Copy)]
-pub struct HLine;
+pub struct Linear;
 
-impl GeomTrait for HLine {
+impl GeomTrait for Linear {
     fn geom_type(&self) -> GeomType {
-        GeomType::HLine
+        GeomType::Linear
     }
 
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("pos2", DefaultAestheticValue::Required), // y position for horizontal line
+                ("coef", DefaultAestheticValue::Required),
+                ("intercept", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
@@ -25,8 +26,8 @@ impl GeomTrait for HLine {
     }
 }
 
-impl std::fmt::Display for HLine {
+impl std::fmt::Display for Linear {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "hline")
+        write!(f, "linear")
     }
 }

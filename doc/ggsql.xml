@@ -141,9 +141,8 @@
       <item>label</item>
       <item>segment</item>
       <item>arrow</item>
-      <item>hline</item>
-      <item>vline</item>
-      <item>abline</item>
+      <item>rule</item>
+      <item>linear</item>
       <item>errorbar</item>
     </list>
 

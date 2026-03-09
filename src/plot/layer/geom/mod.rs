@@ -28,7 +28,6 @@ use std::sync::Arc;
 pub mod types;
 
 // Geom implementations
-mod abline;
 mod area;
 mod arrow;
 mod bar;
@@ -36,25 +35,24 @@ mod boxplot;
 mod density;
 mod errorbar;
 mod histogram;
-mod hline;
 mod label;
 mod line;
+mod linear;
 mod path;
 mod point;
 mod polygon;
 mod ribbon;
+mod rule;
 mod segment;
 mod smooth;
 mod text;
 mod tile;
 mod violin;
-mod vline;
 
 // Re-export types
 pub use types::{DefaultAesthetics, DefaultParam, DefaultParamValue, StatResult};
 
 // Re-export geom structs for direct access if needed
-pub use abline::AbLine;
 pub use area::Area;
 pub use arrow::Arrow;
 pub use bar::Bar;
@@ -62,19 +60,19 @@ pub use boxplot::Boxplot;
 pub use density::Density;
 pub use errorbar::ErrorBar;
 pub use histogram::Histogram;
-pub use hline::HLine;
 pub use label::Label;
 pub use line::Line;
+pub use linear::Linear;
 pub use path::Path;
 pub use point::Point;
 pub use polygon::Polygon;
 pub use ribbon::Ribbon;
+pub use rule::Rule;
 pub use segment::Segment;
 pub use smooth::Smooth;
 pub use text::Text;
 pub use tile::Tile;
 pub use violin::Violin;
-pub use vline::VLine;
 
 use crate::plot::types::{DefaultAestheticValue, ParameterValue, Schema};
 
@@ -99,9 +97,8 @@ pub enum GeomType {
     Label,
     Segment,
     Arrow,
-    HLine,
-    VLine,
-    AbLine,
+    Rule,
+    Linear,
     ErrorBar,
 }
 
@@ -125,9 +122,8 @@ impl std::fmt::Display for GeomType {
             GeomType::Label => "label",
             GeomType::Segment => "segment",
             GeomType::Arrow => "arrow",
-            GeomType::HLine => "hline",
-            GeomType::VLine => "vline",
-            GeomType::AbLine => "abline",
+            GeomType::Rule => "rule",
+            GeomType::Linear => "linear",
             GeomType::ErrorBar => "errorbar",
         };
         write!(f, "{}", s)
@@ -311,19 +307,14 @@ impl Geom {
         Self(Arc::new(Arrow))
     }
 
-    /// Create an HLine geom
-    pub fn hline() -> Self {
-        Self(Arc::new(HLine))
+    /// Create an Rule geom
+    pub fn rule() -> Self {
+        Self(Arc::new(Rule))
     }
 
-    /// Create a VLine geom
-    pub fn vline() -> Self {
-        Self(Arc::new(VLine))
-    }
-
-    /// Create an AbLine geom
-    pub fn abline() -> Self {
-        Self(Arc::new(AbLine))
+    /// Create an Linear geom
+    pub fn linear() -> Self {
+        Self(Arc::new(Linear))
     }
 
     /// Create an ErrorBar geom
@@ -351,9 +342,8 @@ impl Geom {
             GeomType::Label => Self::label(),
             GeomType::Segment => Self::segment(),
             GeomType::Arrow => Self::arrow(),
-            GeomType::HLine => Self::hline(),
-            GeomType::VLine => Self::vline(),
-            GeomType::AbLine => Self::abline(),
+            GeomType::Rule => Self::rule(),
+            GeomType::Linear => Self::linear(),
             GeomType::ErrorBar => Self::errorbar(),
         }
     }

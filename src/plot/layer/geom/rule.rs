@@ -1,21 +1,22 @@
-//! VLine geom implementation
+//! Rule geom implementation
 
 use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::plot::types::DefaultAestheticValue;
 
-/// VLine geom - vertical reference lines
+/// Rule geom - horizontal and vertical reference lines
 #[derive(Debug, Clone, Copy)]
-pub struct VLine;
+pub struct Rule;
 
-impl GeomTrait for VLine {
+impl GeomTrait for Rule {
     fn geom_type(&self) -> GeomType {
-        GeomType::VLine
+        GeomType::Rule
     }
 
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("pos1", DefaultAestheticValue::Required), // x position for vertical line
+                ("pos1", DefaultAestheticValue::Null),
+                ("pos2", DefaultAestheticValue::Null),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
@@ -25,8 +26,8 @@ impl GeomTrait for VLine {
     }
 }
 
-impl std::fmt::Display for VLine {
+impl std::fmt::Display for Rule {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "vline")
+        write!(f, "rule")
     }
 }

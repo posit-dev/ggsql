@@ -1,0 +1,91 @@
+---
+title: "Segment"
+---
+
+> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+
+The segment layer is used to create line segments between two endpoints. If differs from [lines](line.qmd) and [paths](path.qmd) in that it connects just two points rather than many. Data is expected to be in a different shape, with 4 coordinates for the start (x, y) and end (xend, yend) points on a single row.
+
+## Aesthetics
+The following aesthetics are recognised by the segment layer.
+
+### Required
+* `x`: Position along the x-axis of the start point.
+* `y`: Position along the y-axis of the end point.
+* `xend`\*: Position along the x-axis of the end point.
+* `yend`\*: Position along the y-axis of the end point.
+
+\* Only one of `xend` and `yend` is required. 
+If one is missing, it takes on the value of the start point.
+
+### Optional
+* `colour`/`stroke`: The colour of the line.
+* `opacity`: The opacity of the line.
+* `linewidth`: The width of the line.
+* `linetype`: The type of the line, i.e. the dashing pattern.
+
+## Settings
+The segment layer has no additional settings.
+
+## Data transformation
+The segment layer does not transform its data but passes it through unchanged.
+
+## Data transformation
+
+## Examples
+
+Segments are useful when you have known start and end points of the data. For example in a graph
+
+```{ggsql}
+WITH edges AS (
+  SELECT * FROM (VALUES
+      (0, 0, 1, 1, 'A'),
+      (1, 1, 2, 1, 'A'),
+      (2, 1, 3, 0, 'A'),
+      (0, 3, 1, 2, 'B'),
+      (1, 2, 2, 2, 'B'),
+      (2, 2, 3, 3, 'B'),
+      (1, 1, 1, 2, 'C'),
+      (2, 2, 2, 1, 'C')
+  ) AS t(x, y, xend, yend, type)
+)
+VISUALISE x, y, xend, yend FROM edges
+  DRAW segment MAPPING type AS stroke
+```
+
+You can use segments as part of a lollipop chart by anchoring one of the ends to 0.
+Note that `xend` is missing and has taken up the value of `x`.
+
+```{ggsql}
+SELECT ROUND(bill_dep) AS bill_dep, COUNT(*) AS n 
+  FROM ggsql:penguins 
+  GROUP BY ROUND(bill_dep)
+
+VISUALISE bill_dep AS x, n AS y
+  DRAW segment MAPPING 0 AS yend
+  DRAW point
+```
+
+By overlaying a thick line on a thin line, you can create a candlestick chart.
+
+```{ggsql}
+SELECT
+  FIRST(Date) AS date,
+  FIRST(temp) AS open,
+  LAST(temp) AS close,
+  MAX(temp) AS high,
+  MIN(temp) AS low,
+  CASE
+    WHEN FIRST(temp) > LAST(temp) THEN 'colder'
+    ELSE 'warmer'
+  END AS trend
+FROM ggsql:airquality
+GROUP BY WEEKOFYEAR(Date)
+
+VISUALISE date AS x, trend AS colour
+  DRAW segment 
+    MAPPING open AS y, close AS yend
+    SETTING linewidth => 5
+  DRAW segment 
+    MAPPING low AS y, high AS yend
+```

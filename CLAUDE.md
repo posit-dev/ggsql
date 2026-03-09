@@ -334,7 +334,7 @@ pub enum Geom {
     // Statistical geoms
     Histogram, Density, Smooth, Boxplot, Violin,
     // Annotation geoms
-    Text, Label, Segment, Arrow, HLine, VLine, AbLine, ErrorBar,
+    Text, Label, Segment, Arrow, Rule, Linear, ErrorBar,
 }
 
 pub enum AestheticValue {
@@ -1202,7 +1202,7 @@ All clauses (MAPPING, SETTING, PARTITION BY, FILTER) are optional.
 
 - **Basic**: `point`, `line`, `path`, `bar`, `col`, `area`, `tile`, `polygon`, `ribbon`
 - **Statistical**: `histogram`, `density`, `smooth`, `boxplot`, `violin`
-- **Annotation**: `text`, `label`, `segment`, `arrow`, `hline`, `vline`, `abline`, `errorbar`
+- **Annotation**: `text`, `label`, `segment`, `arrow`, `rule`, `linear`, `errorbar`
 
 **MAPPING Clause** (Aesthetic Mappings):
 
