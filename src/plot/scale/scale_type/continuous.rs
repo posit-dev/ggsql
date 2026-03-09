@@ -5,6 +5,7 @@ use polars::prelude::DataType;
 use super::{ScaleTypeKind, ScaleTypeTrait, SqlTypeNames, TransformKind, OOB_CENSOR, OOB_SQUISH};
 use crate::plot::types::{DefaultParam, DefaultParamValue};
 use crate::plot::{ArrayElement, ParameterValue};
+use crate::utils::{scalar_max, scalar_min};
 
 /// Continuous scale type - for continuous numeric data
 #[derive(Debug, Clone, Copy)]
@@ -196,10 +197,12 @@ impl ScaleTypeTrait for Continuous {
                 "(CASE WHEN {} >= {} AND {} <= {} THEN {} ELSE NULL END)",
                 column_name, min, column_name, max, column_name
             )),
-            OOB_SQUISH => Some(format!(
-                "MAX({}, MIN({}, {}))",
-                min, max, column_name
-            )),
+            OOB_SQUISH => {
+                let min_s = min.to_string();
+                let max_s = max.to_string();
+                let inner = scalar_min(&[&max_s, column_name]);
+                Some(scalar_max(&[&min_s, &inner]))
+            }
             _ => None, // "keep" = no transformation
         }
     }
@@ -268,9 +271,9 @@ mod tests {
 
         assert!(sql.is_some());
         let sql = sql.unwrap();
-        // Should generate MAX/MIN for squish
-        assert!(sql.contains("MAX("));
-        assert!(sql.contains("MIN("));
+        // Should generate portable scalar MAX/MIN via subquery for squish
+        assert!(sql.contains("SELECT MAX(v) FROM (VALUES"));
+        assert!(sql.contains("SELECT MIN(v) FROM (VALUES"));
     }
 
     #[test]

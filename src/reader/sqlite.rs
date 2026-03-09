@@ -3,7 +3,6 @@
 //! Provides a reader for SQLite databases with Polars DataFrame integration.
 //! Works on both native targets and wasm32-unknown-unknown (via sqlite-wasm-rs).
 
-use crate::naming::DATA_PREFIX;
 use crate::reader::Reader;
 use crate::{DataFrame, GgsqlError, Result};
 use chrono::Datelike;

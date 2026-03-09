@@ -7,6 +7,7 @@ use crate::{
         geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
         ParameterValue, StatResult,
     },
+    utils::scalar_min,
     GgsqlError, Mappings, Result,
 };
 use std::collections::HashMap;
@@ -281,11 +282,16 @@ fn silverman_rule(adjust: f64, value_column: &str) -> String {
     // The query computes Silverman's rule of thumb (R's `stats::bw.nrd0()`).
     // We absorb the adjustment in the 0.9 multiplier of the rule
     let adjust = 0.9 * adjust;
-    format!(
-        "{adjust} * MIN(SQRT(AVG({value}*{value}) - AVG({value})*AVG({value})), (PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY {value}) - PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY {value})) / 1.34) * POW(COUNT(*), -0.2)",
-        adjust = adjust,
-        value = value_column
-    )
+    let stddev = format!(
+        "SQRT(AVG({v}*{v}) - AVG({v})*AVG({v}))",
+        v = value_column
+    );
+    let iqr = format!(
+        "(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY {v}) - PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY {v})) / 1.34",
+        v = value_column
+    );
+    let min_expr = scalar_min(&[&stddev, &iqr]);
+    format!("{adjust} * {min_expr} * POW(COUNT(*), -0.2)")
 }
 
 fn choose_kde_kernel(parameters: &HashMap<String, ParameterValue>) -> Result<String> {
@@ -533,7 +539,7 @@ mod tests {
         FROM (
           SELECT
             grid.x AS __ggsql_stat_x,
-            SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_intensity,
+            SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / MIN(bandwidth.bw) AS __ggsql_stat_intensity,
             SUM(data.weight) AS __norm
           FROM data
           INNER JOIN bandwidth ON true
@@ -600,7 +606,7 @@ mod tests {
           SELECT
             grid.x AS __ggsql_stat_x,
             grid.region, grid.category,
-            SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_intensity,
+            SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / MIN(bandwidth.bw) AS __ggsql_stat_intensity,
             SUM(data.weight) AS __norm
           FROM data
           INNER JOIN bandwidth ON data.region IS NOT DISTINCT FROM bandwidth.region AND data.category IS NOT DISTINCT FROM bandwidth.category
@@ -666,7 +672,7 @@ mod tests {
         let expected = "WITH RECURSIVE
           bandwidth AS (
             SELECT
-              0.9 * MIN(SQRT(AVG(x*x) - AVG(x)*AVG(x)), (PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY x) - PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY x)) / 1.34) * POW(COUNT(*), -0.2) AS bw
+              0.9 * (SELECT MIN(v) FROM (VALUES (SQRT(AVG(x*x) - AVG(x)*AVG(x))), ((PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY x) - PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY x)) / 1.34)) AS t(v)) * POW(COUNT(*), -0.2) AS bw
             FROM (SELECT x FROM (VALUES (1.0), (2.0), (3.0), (4.0), (5.0)) AS t(x))
             WHERE x IS NOT NULL
 
@@ -696,7 +702,7 @@ mod tests {
         let expected = "WITH RECURSIVE
           bandwidth AS (
             SELECT
-              0.9 * MIN(SQRT(AVG(x*x) - AVG(x)*AVG(x)), (PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY x) - PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY x)) / 1.34) * POW(COUNT(*), -0.2) AS bw,
+              0.9 * (SELECT MIN(v) FROM (VALUES (SQRT(AVG(x*x) - AVG(x)*AVG(x))), ((PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY x) - PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY x)) / 1.34)) AS t(v)) * POW(COUNT(*), -0.2) AS bw,
               region
             FROM (SELECT x, region FROM (VALUES (1.0, 'A'), (2.0, 'A'), (3.0, 'B')) AS t(x, region))
             WHERE x IS NOT NULL

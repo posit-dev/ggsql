@@ -9,6 +9,7 @@ use crate::{
         geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
         ParameterValue, StatResult,
     },
+    utils::{scalar_max, scalar_min},
     DataFrame, GgsqlError, Mappings, Result,
 };
 
@@ -163,11 +164,13 @@ fn stat_boxplot(
 
 fn boxplot_sql_compute_summary(from: &str, groups: &[String], value: &str, coef: &f64) -> String {
     let groups_str = groups.join(", ");
+    let lower_expr = scalar_max(&[&format!("q1 - {coef} * (q3 - q1)"), "min"]);
+    let upper_expr = scalar_min(&[&format!("q3 + {coef} * (q3 - q1)"), "max"]);
     format!(
         "SELECT
           *,
-          MAX(q1 - {coef} * (q3 - q1), min) AS lower,
-          MIN(q3 + {coef} * (q3 - q1), max) AS upper
+          {lower_expr} AS lower,
+          {upper_expr} AS upper
         FROM (
           SELECT
             {groups},
@@ -180,7 +183,8 @@ fn boxplot_sql_compute_summary(from: &str, groups: &[String], value: &str, coef:
           WHERE {value} IS NOT NULL
           GROUP BY {groups}
         ) AS __ggsql_fn__",
-        coef = coef,
+        lower_expr = lower_expr,
+        upper_expr = upper_expr,
         groups = groups_str,
         value = value,
         from = from
@@ -312,8 +316,8 @@ mod tests {
         assert!(result.contains("MAX(value) AS max"));
         assert!(result.contains("WHERE value IS NOT NULL"));
         assert!(result.contains("GROUP BY category"));
-        assert!(result.contains("MAX(q1 - 1.5"));
-        assert!(result.contains("MIN(q3 + 1.5"));
+        assert!(result.contains("SELECT MAX(v) FROM (VALUES (q1 - 1.5"));
+        assert!(result.contains("SELECT MIN(v) FROM (VALUES (q3 + 1.5"));
     }
 
     #[test]
@@ -329,8 +333,8 @@ mod tests {
         let groups = vec!["pos1".to_string()];
         let result = boxplot_sql_compute_summary("q", &groups, "pos2", &2.5);
         assert!(result.contains("2.5"));
-        assert!(result.contains("MAX(q1 - 2.5 * (q3 - q1), min)"));
-        assert!(result.contains("MIN(q3 + 2.5 * (q3 - q1), max)"));
+        assert!(result.contains("SELECT MAX(v) FROM (VALUES (q1 - 2.5 * (q3 - q1)), (min)) AS t(v)"));
+        assert!(result.contains("SELECT MIN(v) FROM (VALUES (q3 + 2.5 * (q3 - q1)), (max)) AS t(v)"));
     }
 
     #[test]
@@ -353,8 +357,8 @@ mod tests {
 
         let expected = r#"SELECT
           *,
-          MAX(q1 - 1.5 * (q3 - q1), min) AS lower,
-          MIN(q3 + 1.5 * (q3 - q1), max) AS upper
+          (SELECT MAX(v) FROM (VALUES (q1 - 1.5 * (q3 - q1)), (min)) AS t(v)) AS lower,
+          (SELECT MIN(v) FROM (VALUES (q3 + 1.5 * (q3 - q1)), (max)) AS t(v)) AS upper
         FROM (
           SELECT
             category,
@@ -378,8 +382,8 @@ mod tests {
 
         let expected = r#"SELECT
           *,
-          MAX(q1 - 1.5 * (q3 - q1), min) AS lower,
-          MIN(q3 + 1.5 * (q3 - q1), max) AS upper
+          (SELECT MAX(v) FROM (VALUES (q1 - 1.5 * (q3 - q1)), (min)) AS t(v)) AS lower,
+          (SELECT MIN(v) FROM (VALUES (q3 + 1.5 * (q3 - q1)), (max)) AS t(v)) AS upper
         FROM (
           SELECT
             region, product,

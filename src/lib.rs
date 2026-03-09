@@ -48,6 +48,7 @@ pub mod writer;
 
 pub mod execute;
 
+pub mod utils;
 pub mod validate;
 
 // Re-export key types for convenience
