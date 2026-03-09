@@ -747,7 +747,7 @@ mod tests {
             .unwrap()
             .f64()
             .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().filter_map(|v| v).collect();
+        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
 
         // With default width 0.9 and 2 groups (dodge=true):
         // effective_width = 0.9 / 2 = 0.45
@@ -756,7 +756,7 @@ mod tests {
         // Total range: [-0.45, 0.45]
         for &v in &offsets {
             assert!(
-                v >= -0.45 && v <= 0.45,
+                (-0.45..=0.45).contains(&v),
                 "Jitter+dodge offset {} should be in range [-0.45, 0.45]",
                 v
             );
@@ -788,12 +788,12 @@ mod tests {
             .unwrap()
             .f64()
             .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().filter_map(|v| v).collect();
+        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
 
         // With dodge=false and width 0.9, pure jitter in range [-0.45, 0.45]
         for &v in &offsets {
             assert!(
-                v >= -0.45 && v <= 0.45,
+                (-0.45..=0.45).contains(&v),
                 "Pure jitter offset {} should be in range [-0.45, 0.45]",
                 v
             );
@@ -830,12 +830,12 @@ mod tests {
             .unwrap()
             .f64()
             .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().filter_map(|v| v).collect();
+        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
 
         // With default width 0.9 and 2 groups (dodge=true), effective range is [-0.45, 0.45]
         for &v in &offsets {
             assert!(
-                v >= -0.45 && v <= 0.45,
+                (-0.45..=0.45).contains(&v),
                 "Jitter+dodge offset {} should be in range [-0.45, 0.45]",
                 v
             );
@@ -914,14 +914,14 @@ mod tests {
             .unwrap()
             .f64()
             .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().filter_map(|v| v).collect();
+        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
 
         // With custom width 0.6 and 2 groups (dodge=true):
         // effective_width = 0.6 / 2 = 0.3
         // Total range: [-0.3, 0.3]
         for &v in &offsets {
             assert!(
-                v >= -0.3 && v <= 0.3,
+                (-0.3..=0.3).contains(&v),
                 "Jitter+dodge offset {} should be in range [-0.3, 0.3] with width 0.6",
                 v
             );
@@ -1000,12 +1000,12 @@ mod tests {
             .unwrap()
             .f64()
             .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().filter_map(|v| v).collect();
+        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
 
         // Without groups, pure jitter with full width range [-0.45, 0.45]
         for &v in &offsets {
             assert!(
-                v >= -0.45 && v <= 0.45,
+                (-0.45..=0.45).contains(&v),
                 "Pure jitter offset {} should be in range [-0.45, 0.45]",
                 v
             );
@@ -1071,7 +1071,7 @@ mod tests {
             .unwrap()
             .f64()
             .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().filter_map(|v| v).collect();
+        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
 
         // Normal distribution is centered at 0
         // Values can exceed the width bounds (unlike uniform), but should be centered
@@ -1216,7 +1216,7 @@ mod tests {
             .unwrap()
             .f64()
             .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().filter_map(|v| v).collect();
+        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
 
         // Due to randomness, we can't assert exact values
         // But we can verify that offsets were generated
@@ -1279,7 +1279,7 @@ mod tests {
             .unwrap()
             .f64()
             .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().filter_map(|v| v).collect();
+        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
         assert_eq!(offsets.len(), 6);
 
         // With 2 groups, we should see separated dodge positions
@@ -1450,7 +1450,7 @@ mod tests {
             .unwrap()
             .f64()
             .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().filter_map(|v| v).collect();
+        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
 
         // Due to randomness, we can't assert exact values
         // But we can verify that offsets were generated
@@ -1510,7 +1510,7 @@ mod tests {
             .unwrap()
             .f64()
             .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().filter_map(|v| v).collect();
+        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
         assert_eq!(offsets.len(), 7);
     }
 

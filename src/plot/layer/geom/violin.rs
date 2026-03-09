@@ -409,7 +409,7 @@ mod tests {
         let result = violin.post_process(df, &parameters).unwrap();
 
         let scaled_offset = result.column(&offset_col).unwrap().f64().unwrap();
-        let values: Vec<f64> = scaled_offset.into_iter().filter_map(|v| v).collect();
+        let values: Vec<f64> = scaled_offset.into_iter().flatten().collect();
 
         // Max offset (1.0) should be scaled to 0.45 (half_width)
         // Other values should be proportionally scaled
@@ -441,7 +441,7 @@ mod tests {
         let result = violin.post_process(df, &parameters).unwrap();
 
         let scaled_offset = result.column(&offset_col).unwrap().f64().unwrap();
-        let values: Vec<f64> = scaled_offset.into_iter().filter_map(|v| v).collect();
+        let values: Vec<f64> = scaled_offset.into_iter().flatten().collect();
 
         // Max offset (1.0) should be scaled to 0.3 (half_width)
         assert!((values[0] - 0.0).abs() < 1e-6, "0.0 should stay 0.0");

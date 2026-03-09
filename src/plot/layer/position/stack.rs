@@ -144,7 +144,7 @@ fn has_zero_baseline_per_row(df: &DataFrame, col_a: &str, col_b: &str) -> bool {
     // For each row, either a or b must be 0
     a_f64
         .into_iter()
-        .zip(b_f64.into_iter())
+        .zip(b_f64)
         .all(|(a_val, b_val)| a_val == Some(0.0) || b_val == Some(0.0))
 }
 
@@ -553,12 +553,7 @@ mod tests {
 
         // Verify stacking occurred - values should be cumulative sums
         let pos1_col = result.column("__ggsql_aes_pos1__").unwrap();
-        let pos1_vals: Vec<f64> = pos1_col
-            .f64()
-            .unwrap()
-            .into_iter()
-            .filter_map(|v| v)
-            .collect();
+        let pos1_vals: Vec<f64> = pos1_col.f64().unwrap().into_iter().flatten().collect();
 
         // Should have cumulative sums (10, 30, 15, 40) for groups A and B
         assert!(
@@ -584,12 +579,7 @@ mod tests {
 
         // pos2 should sum to 100 within each group (A and B)
         let pos2_col = result.column("__ggsql_aes_pos2__").unwrap();
-        let pos2_vals: Vec<f64> = pos2_col
-            .f64()
-            .unwrap()
-            .into_iter()
-            .filter_map(|v| v)
-            .collect();
+        let pos2_vals: Vec<f64> = pos2_col.f64().unwrap().into_iter().flatten().collect();
 
         // For group A: values 10, 20 -> normalized: 10/30, 20/30 -> cumsum: 10/30, 30/30
         // Multiplied by 100: ~33.33, 100
@@ -619,12 +609,7 @@ mod tests {
         let (result, _) = stack.apply_adjustment(&df, &layer, &spec).unwrap();
 
         let pos2_col = result.column("__ggsql_aes_pos2__").unwrap();
-        let pos2_vals: Vec<f64> = pos2_col
-            .f64()
-            .unwrap()
-            .into_iter()
-            .filter_map(|v| v)
-            .collect();
+        let pos2_vals: Vec<f64> = pos2_col.f64().unwrap().into_iter().flatten().collect();
 
         // Max values should be 1 (normalized to sum to 1)
         let max_val = pos2_vals.iter().cloned().fold(f64::MIN, f64::max);

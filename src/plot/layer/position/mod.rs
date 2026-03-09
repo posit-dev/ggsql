@@ -18,6 +18,7 @@ use crate::plot::types::{DefaultParam, DefaultParamValue, ParameterValue};
 use crate::plot::ScaleTypeKind;
 use crate::{DataFrame, Plot, Result};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use std::sync::Arc;
 
 /// Check if an aesthetic has a continuous scale type.
@@ -129,16 +130,6 @@ impl Position {
         Self(Arc::new(Jitter))
     }
 
-    /// Parse a position from a string value
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "stack" => Self::stack(),
-            "dodge" => Self::dodge(),
-            "jitter" => Self::jitter(),
-            _ => Self::identity(),
-        }
-    }
-
     /// Create a Position from a PositionType
     pub fn from_type(t: PositionType) -> Self {
         match t {
@@ -229,6 +220,19 @@ impl PartialEq for Position {
 
 impl Eq for Position {}
 
+impl FromStr for Position {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
+            "stack" => Self::stack(),
+            "dodge" => Self::dodge(),
+            "jitter" => Self::jitter(),
+            _ => Self::identity(),
+        })
+    }
+}
+
 impl Serialize for Position {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
@@ -284,19 +288,19 @@ mod tests {
     #[test]
     fn test_position_from_str() {
         assert_eq!(
-            Position::from_str("stack").position_type(),
+            "stack".parse::<Position>().unwrap().position_type(),
             PositionType::Stack
         );
         assert_eq!(
-            Position::from_str("dodge").position_type(),
+            "dodge".parse::<Position>().unwrap().position_type(),
             PositionType::Dodge
         );
         assert_eq!(
-            Position::from_str("jitter").position_type(),
+            "jitter".parse::<Position>().unwrap().position_type(),
             PositionType::Jitter
         );
         assert_eq!(
-            Position::from_str("unknown").position_type(),
+            "unknown".parse::<Position>().unwrap().position_type(),
             PositionType::Identity
         );
     }

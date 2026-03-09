@@ -365,7 +365,7 @@ mod tests {
         // - center_offset = 0.5
         // - Group X: center = (0 - 0.5) * 0.45 = -0.225
         // - Group Y: center = (1 - 0.5) * 0.45 = +0.225
-        let offsets: Vec<f64> = offset.into_iter().filter_map(|v| v).collect();
+        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
         assert!(
             offsets.iter().any(|&v| (v - (-0.225)).abs() < 0.001),
             "Should have offset -0.225 for group X, got {:?}",
@@ -423,7 +423,7 @@ mod tests {
         // - center_offset = 0.5
         // - Group X: center = (0 - 0.5) * 0.45 = -0.225
         // - Group Y: center = (1 - 0.5) * 0.45 = +0.225
-        let offsets: Vec<f64> = offset.into_iter().filter_map(|v| v).collect();
+        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
         assert!(
             offsets.iter().any(|&v| (v - (-0.225)).abs() < 0.001),
             "Should have offset -0.225 for group X, got {:?}",
@@ -485,8 +485,8 @@ mod tests {
             .f64()
             .unwrap();
 
-        let pos1_offsets: Vec<f64> = pos1_offset.into_iter().filter_map(|v| v).collect();
-        let pos2_offsets: Vec<f64> = pos2_offset.into_iter().filter_map(|v| v).collect();
+        let pos1_offsets: Vec<f64> = pos1_offset.into_iter().flatten().collect();
+        let pos2_offsets: Vec<f64> = pos2_offset.into_iter().flatten().collect();
 
         // Verify we have both expected pos1 offsets
         assert!(
@@ -576,8 +576,8 @@ mod tests {
             .f64()
             .unwrap();
 
-        let pos1_offsets: Vec<f64> = pos1_offset.into_iter().filter_map(|v| v).collect();
-        let pos2_offsets: Vec<f64> = pos2_offset.into_iter().filter_map(|v| v).collect();
+        let pos1_offsets: Vec<f64> = pos1_offset.into_iter().flatten().collect();
+        let pos2_offsets: Vec<f64> = pos2_offset.into_iter().flatten().collect();
 
         // Verify we have both positive and negative offsets in both dimensions
         assert!(
@@ -663,7 +663,7 @@ mod tests {
         // - center_offset = 0.5
         // - Group X: center = (0 - 0.5) * 0.3 = -0.15
         // - Group Y: center = (1 - 0.5) * 0.3 = +0.15
-        let offsets: Vec<f64> = offset.into_iter().filter_map(|v| v).collect();
+        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
         assert!(
             offsets.iter().any(|&v| (v - (-0.15)).abs() < 0.001),
             "Should have offset -0.15 for group X, got {:?}",

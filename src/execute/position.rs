@@ -190,7 +190,7 @@ mod tests {
         // - center_offset = 0.5
         // - Group X: center = (0 - 0.5) * 0.45 = -0.225
         // - Group Y: center = (1 - 0.5) * 0.45 = +0.225
-        let offsets: Vec<f64> = offset.into_iter().filter_map(|v| v).collect();
+        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
         assert!(
             offsets.iter().any(|&v| (v - (-0.225)).abs() < 0.001),
             "Should have offset -0.225 for group X, got {:?}",
@@ -240,7 +240,7 @@ mod tests {
 
         // With 2 groups and custom width 0.6:
         // - adjusted_width = 0.6 / 2 = 0.3
-        let offsets: Vec<f64> = offset.into_iter().filter_map(|v| v).collect();
+        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
         assert!(offsets.iter().any(|&v| (v - (-0.15)).abs() < 0.001));
         assert!(offsets.iter().any(|&v| (v - 0.15).abs() < 0.001));
 
@@ -275,11 +275,11 @@ mod tests {
         assert!(offset_col.is_ok());
 
         let offset = offset_col.unwrap().f64().unwrap();
-        let offsets: Vec<f64> = offset.into_iter().filter_map(|v| v).collect();
+        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
 
         // With default width 0.9, offsets should be in range [-0.45, 0.45]
         for &v in &offsets {
-            assert!(v >= -0.45 && v <= 0.45);
+            assert!((-0.45..=0.45).contains(&v));
         }
 
         // No adjusted_width for jitter
@@ -315,11 +315,11 @@ mod tests {
             .unwrap()
             .f64()
             .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().filter_map(|v| v).collect();
+        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
 
         // With custom width 0.6, offsets should be in range [-0.3, 0.3]
         for &v in &offsets {
-            assert!(v >= -0.3 && v <= 0.3);
+            assert!((-0.3..=0.3).contains(&v));
         }
     }
 }

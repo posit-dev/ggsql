@@ -479,7 +479,7 @@ fn build_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
 
     // Extract position from parameters if present, otherwise use geom default
     let position = if let Some(ParameterValue::String(pos_str)) = parameters.remove("position") {
-        Position::from_str(&pos_str)
+        pos_str.parse().unwrap()
     } else {
         // Check geom's default_params for position default
         geom.default_params()
@@ -487,7 +487,7 @@ fn build_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
             .find(|p| p.name == "position")
             .and_then(|p| p.to_parameter_value())
             .and_then(|v| match v {
-                ParameterValue::String(s) => Some(Position::from_str(&s)),
+                ParameterValue::String(s) => Some(s.parse().unwrap()),
                 _ => None,
             })
             .unwrap_or_default()
