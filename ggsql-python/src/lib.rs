@@ -355,7 +355,12 @@ impl PyDuckDBReader {
     /// >>> writer = VegaLiteWriter()
     /// >>> json_output = writer.render(spec)
     #[pyo3(signature = (query, *, data=None))]
-    fn execute(&self, py: Python<'_>, query: &str, data: Option<&Bound<'_, PyDict>>) -> PyResult<PySpec> {
+    fn execute(
+        &self,
+        py: Python<'_>,
+        query: &str,
+        data: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<PySpec> {
         // Register DataFrames from data dict
         let registered_names = if let Some(data_dict) = data {
             self.register_data_dict(py, data_dict)?
@@ -364,7 +369,8 @@ impl PyDuckDBReader {
         };
 
         // Execute query (capture result, don't return early)
-        let result = self.inner
+        let result = self
+            .inner
             .execute(query)
             .map(|s| PySpec { inner: s })
             .map_err(ggsql_err_to_py);
@@ -804,7 +810,12 @@ fn validate(query: &str) -> PyResult<PyValidated> {
 /// >>> spec = execute("SELECT * FROM data VISUALISE x, y DRAW point", reader)
 #[pyfunction]
 #[pyo3(signature = (query, reader, *, data=None))]
-fn execute(py: Python<'_>, query: &str, reader: &Bound<'_, PyAny>, data: Option<&Bound<'_, PyDict>>) -> PyResult<PySpec> {
+fn execute(
+    py: Python<'_>,
+    query: &str,
+    reader: &Bound<'_, PyAny>,
+    data: Option<&Bound<'_, PyDict>>,
+) -> PyResult<PySpec> {
     // Native reader fast path: DuckDBReader
     // Note: we can't use the try_native_readers! macro here because it uses `return`
     // which would skip cleanup of registered tables.
@@ -817,7 +828,10 @@ fn execute(py: Python<'_>, query: &str, reader: &Bound<'_, PyAny>, data: Option<
         };
 
         // Execute (capture result for cleanup)
-        let result = native.borrow().inner.execute(query)
+        let result = native
+            .borrow()
+            .inner
+            .execute(query)
             .map(|s| PySpec { inner: s })
             .map_err(ggsql_err_to_py);
 
