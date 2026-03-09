@@ -139,30 +139,31 @@ fn anyvalue_to_sqlite(value: AnyValue, _dtype: &DataType) -> rusqlite::types::Va
         AnyValue::Float64(v) => Value::Real(v),
         AnyValue::String(s) => Value::Text(s.to_string()),
         AnyValue::StringOwned(s) => Value::Text(s.to_string()),
-        AnyValue::Date(days) => {
-            // Convert days since epoch to ISO-8601 date string
-            match chrono::NaiveDate::from_num_days_from_ce_opt(days + 719_163) {
-                Some(d) => Value::Text(d.format("%Y-%m-%d").to_string()),
-                None => Value::Null,
-            }
-        }
-        AnyValue::Datetime(us, _, _) => {
-            // Convert microseconds since epoch to ISO-8601 datetime string
-            match chrono::DateTime::from_timestamp_micros(us) {
-                Some(d) => Value::Text(d.format("%Y-%m-%dT%H:%M:%S%.f").to_string()),
-                None => Value::Null,
-            }
-        }
+        AnyValue::Date(days) => chrono::NaiveDate::from_num_days_from_ce_opt(days + 719_163)
+            .and_then(|d| to_sql_value(&d))
+            .unwrap_or(Value::Null),
+        AnyValue::Datetime(us, _, _) => chrono::DateTime::from_timestamp_micros(us)
+            .map(|d| d.naive_utc())
+            .and_then(|d| to_sql_value(&d))
+            .unwrap_or(Value::Null),
         AnyValue::Time(ns) => {
-            // Convert nanoseconds since midnight to time string
             let secs = (ns / 1_000_000_000) as u32;
             let nanos = (ns % 1_000_000_000) as u32;
-            match chrono::NaiveTime::from_num_seconds_from_midnight_opt(secs, nanos) {
-                Some(t) => Value::Text(t.format("%H:%M:%S%.f").to_string()),
-                None => Value::Null,
-            }
+            chrono::NaiveTime::from_num_seconds_from_midnight_opt(secs, nanos)
+                .and_then(|t| to_sql_value(&t))
+                .unwrap_or(Value::Null)
         }
         _ => Value::Text(format!("{}", value)),
+    }
+}
+
+/// Use rusqlite's `ToSql` to convert a value into a `rusqlite::types::Value`.
+fn to_sql_value(v: &dyn rusqlite::types::ToSql) -> Option<rusqlite::types::Value> {
+    use rusqlite::types::ToSqlOutput;
+    match v.to_sql().ok()? {
+        ToSqlOutput::Borrowed(vref) => Some(vref.into()),
+        ToSqlOutput::Owned(val) => Some(val),
+        _ => None,
     }
 }
 
@@ -399,7 +400,7 @@ impl Reader for SqliteReader {
 /// Try to parse all non-null TEXT values as ISO-8601 dates (YYYY-MM-DD).
 /// Returns a Date series if all non-null values parse, None otherwise.
 fn try_parse_as_date(name: &str, values: &[rusqlite::types::Value]) -> Option<Series> {
-    use rusqlite::types::Value;
+    use rusqlite::types::{FromSql, Value, ValueRef};
 
     // Days between 0001-01-01 (CE day 1) and 1970-01-01 (Unix epoch)
     const EPOCH_DAYS_FROM_CE: i32 = 719_163;
@@ -410,7 +411,8 @@ fn try_parse_as_date(name: &str, values: &[rusqlite::types::Value]) -> Option<Se
         match v {
             Value::Null => parsed.push(None),
             Value::Text(s) => {
-                let date = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()?;
+                let vref = ValueRef::Text(s.as_bytes());
+                let date: chrono::NaiveDate = FromSql::column_result(vref).ok()?;
                 parsed.push(Some(date.num_days_from_ce() - EPOCH_DAYS_FROM_CE));
             }
             _ => return None,
@@ -425,7 +427,7 @@ fn try_parse_as_date(name: &str, values: &[rusqlite::types::Value]) -> Option<Se
 /// Supports both "T" and space separators (e.g. "2024-01-15T10:30:00" or "2024-01-15 10:30:00").
 /// Returns a Datetime series if all non-null values parse, None otherwise.
 fn try_parse_as_datetime(name: &str, values: &[rusqlite::types::Value]) -> Option<Series> {
-    use rusqlite::types::Value;
+    use rusqlite::types::{FromSql, Value, ValueRef};
 
     let mut parsed: Vec<Option<i64>> = Vec::with_capacity(values.len());
 
@@ -437,10 +439,8 @@ fn try_parse_as_datetime(name: &str, values: &[rusqlite::types::Value]) -> Optio
                 if !s.contains('T') && !s.contains(' ') {
                     return None;
                 }
-                let dt = s
-                    .parse::<chrono::NaiveDateTime>()
-                    .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f"))
-                    .ok()?;
+                let vref = ValueRef::Text(s.as_bytes());
+                let dt: chrono::NaiveDateTime = FromSql::column_result(vref).ok()?;
                 parsed.push(Some(dt.and_utc().timestamp_millis()));
             }
             _ => return None,
