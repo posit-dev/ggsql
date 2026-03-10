@@ -4,7 +4,7 @@ title: "Line"
 
 > Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
-The line layer is used to create lineplots. Lineplots always connects records along the x-axis, in contrast to [path layers](path.qmd) which use the order of data to connect records. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers [`PARTITION BY`](../clause/draw.qmd#partition-by).
+The line layer is used to create lineplots. Lineplots always connects records along the x-axis, in contrast to [path layers](path.qmd) which use the order of data to connect records. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers [`PARTITION BY`](../../clause/draw.qmd#partition-by).
 
 ## Aesthetics
 The following aesthetics are recognised by the line layer.

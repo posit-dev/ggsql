@@ -2,7 +2,7 @@
 title: "Segment"
 ---
 
-> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
 The segment layer is used to create line segments between two endpoints. If differs from [lines](line.qmd) and [paths](path.qmd) in that it connects just two points rather than many. Data is expected to be in a different shape, with 4 coordinates for the start (x, y) and end (xend, yend) points on a single row.
 

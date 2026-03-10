@@ -2,7 +2,7 @@
 title: "Errorbar"
 ---
 
-> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
 Errorbars are used to display paired metrics, typically some interval, for a variable. It is displayed as a line between the two values, often with hinges at the ends.
 

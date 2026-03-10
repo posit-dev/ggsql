@@ -2,7 +2,7 @@
 title: Linetype
 ---
 
-The `linetype` aesthetic defines the stroke pattern of lines: a succession of "on" and "off" parts of the line to make different stipple patterns. Linetype is most useful for [line](../../layer/line.qmd) and [path](../../layer/path.qmd) layers as a colorless way to differentiate between categories. 
+The `linetype` aesthetic defines the stroke pattern of lines: a succession of "on" and "off" parts of the line to make different stipple patterns. Linetype is most useful for [line](../../layer/type/line.qmd) and [path](../../layer/type/path.qmd) layers as a colorless way to differentiate between categories. 
 
 While linetypes are most useful for differentiating between discrete data, ggsql also comes with a sequential palette that gradually increases the amount of ink used for the pattern.
 

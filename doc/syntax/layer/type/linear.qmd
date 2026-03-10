@@ -2,7 +2,7 @@
 title: "Linear line"
 ---
 
-> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
 The linear layer is used to draw diagonal reference lines based on a coefficient and intercept. This is useful for adding regression lines, diagonal guides, or mathematical functions to plots. The lines extend across the full extent of the x-axis, regardless of the data range. 
 The layer is named for the following formula:

@@ -2,7 +2,7 @@
 title: "Rule"
 ---
 
-> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
 The rule layer is used to draw horizontal or vertical reference lines at specified values. This is useful for adding thresholds, means, medians, avent markers, cutoff dates or other guides to the plot. The lines span the full width or height of the panels.
 
