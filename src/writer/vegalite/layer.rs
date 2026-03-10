@@ -16,7 +16,7 @@ use serde_json::{json, Map, Value};
 use std::any::Any;
 use std::collections::HashMap;
 
-use super::data::{dataframe_to_values, dataframe_to_values_with_bins};
+use super::data::{dataframe_to_values, dataframe_to_values_with_bins, ROW_INDEX_COLUMN};
 
 // =============================================================================
 // Basic Geom Utilities
@@ -322,8 +322,35 @@ impl GeomRenderer for PathRenderer {
         _layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        // Use the natural data order
-        encoding.insert("order".to_string(), json!({"value": Value::Null}));
+        // Use row index field to preserve natural data order
+        encoding.insert(
+            "order".to_string(),
+            json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
+        );
+        Ok(())
+    }
+}
+
+// =============================================================================
+// Line Renderer
+// =============================================================================
+
+/// Renderer for line geom - preserves data order for correct line rendering
+pub struct LineRenderer;
+
+impl GeomRenderer for LineRenderer {
+    fn modify_encoding(
+        &self,
+        encoding: &mut Map<String, Value>,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
+        // Use row index field to preserve natural data order
+        // (we've already ordered in SQL via apply_stat_transform)
+        encoding.insert(
+            "order".to_string(),
+            json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
+        );
         Ok(())
     }
 }
@@ -566,8 +593,11 @@ impl GeomRenderer for PolygonRenderer {
         if let Some(color) = encoding.remove("color") {
             encoding.insert("fill".to_string(), color);
         }
-        // Use the natural data order
-        encoding.insert("order".to_string(), json!({"value": Value::Null}));
+        // Use row index field to preserve natural data order
+        encoding.insert(
+            "order".to_string(),
+            json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
+        );
         Ok(())
     }
 
@@ -1206,6 +1236,7 @@ impl GeomRenderer for BoxplotRenderer {
 pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
     match geom.geom_type() {
         GeomType::Path => Box::new(PathRenderer),
+        GeomType::Line => Box::new(LineRenderer),
         GeomType::Bar => Box::new(BarRenderer),
         GeomType::Ribbon => Box::new(RibbonRenderer),
         GeomType::Polygon => Box::new(PolygonRenderer),
@@ -1215,7 +1246,7 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Linear => Box::new(LinearRenderer),
         GeomType::ErrorBar => Box::new(ErrorBarRenderer),
         GeomType::Rule => Box::new(RuleRenderer),
-        // All other geoms (Point, Line, Area, Density, Tile, etc.) use the default renderer
+        // All other geoms (Point, Area, Density, Tile, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }
 }
