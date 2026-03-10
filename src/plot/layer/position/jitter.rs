@@ -489,13 +489,10 @@ fn apply_jitter(df: DataFrame, layer: &Layer, spec: &Plot) -> Result<DataFrame> 
         None
     };
 
-    // Determine effective width and dodge offsets based on grouping
-    let (effective_width, n_groups, group_indices) = match &group_info {
-        Some(info) if info.n_groups > 1 => {
-            let adjusted = width / info.n_groups as f64;
-            (adjusted, info.n_groups, Some(&info.indices))
-        }
-        _ => (width, 1, None),
+    // Extract group info for dodge behavior
+    let (n_groups, group_indices) = match &group_info {
+        Some(info) if info.n_groups > 1 => (info.n_groups, Some(&info.indices)),
+        _ => (1, None),
     };
 
     // Get density-specific parameters (match violin/density geoms)
