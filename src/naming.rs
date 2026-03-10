@@ -89,6 +89,16 @@ pub const SOURCE_COLUMN: &str = concatcp!(GGSQL_PREFIX, "source", GGSQL_SUFFIX);
 pub const SCHEMA_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "schema", GGSQL_SUFFIX);
 
 // ============================================================================
+// Internal SQL Aliases
+// ============================================================================
+
+/// CTE name for recursive base counter in generate_series: `__ggsql_base__`
+pub const SERIES_BASE: &str = concatcp!(GGSQL_PREFIX, "base", GGSQL_SUFFIX);
+
+/// CTE name for sequence output from generate_series: `__ggsql_seq__`
+pub const SERIES_SEQ: &str = concatcp!(GGSQL_PREFIX, "seq", GGSQL_SUFFIX);
+
+// ============================================================================
 // Constructor Functions
 // ============================================================================
 

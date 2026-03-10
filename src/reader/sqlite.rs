@@ -63,7 +63,11 @@ impl SqliteReader {
 
     /// Check if a table is registered
     fn table_exists(&self, name: &str) -> bool {
-        self.registered_tables.borrow().contains(name)
+        let sql = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1";
+        self.conn
+            .prepare(sql)
+            .and_then(|mut stmt| stmt.exists([name]))
+            .unwrap_or(false)
     }
 }
 
@@ -956,6 +960,144 @@ mod tests {
             "Expected temporal type in Vega-Lite output: {}",
             json
         );
+    }
+
+    // =========================================================================
+    // Stat Transform Geom Tests
+    // =========================================================================
+
+    #[cfg(feature = "vegalite")]
+    #[test]
+    fn test_geom_bar_count_stat() {
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        let reader = SqliteReader::new().unwrap();
+        reader
+            .execute_sql("CREATE TABLE bar_data (category TEXT)")
+            .unwrap();
+        reader
+            .execute_sql("INSERT INTO bar_data VALUES ('A'), ('B'), ('A'), ('C'), ('A'), ('B')")
+            .unwrap();
+
+        let spec = reader
+            .execute("SELECT * FROM bar_data VISUALISE DRAW bar MAPPING category AS x")
+            .unwrap();
+
+        assert_eq!(spec.plot().layers.len(), 1);
+        assert!(spec.layer_data(0).is_some());
+
+        let writer = VegaLiteWriter::new();
+        let json = writer.render(&spec).unwrap();
+        assert!(
+            json.contains("\"bar\""),
+            "Expected bar mark in output: {}",
+            json
+        );
+    }
+
+    #[cfg(feature = "vegalite")]
+    #[test]
+    fn test_geom_histogram() {
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        let reader = SqliteReader::new().unwrap();
+        reader
+            .execute_sql("CREATE TABLE hist_data (value REAL)")
+            .unwrap();
+        let values: Vec<String> = (0..50).map(|i| format!("({})", i as f64 * 2.0)).collect();
+        reader
+            .execute_sql(&format!(
+                "INSERT INTO hist_data VALUES {}",
+                values.join(", ")
+            ))
+            .unwrap();
+
+        let spec = reader
+            .execute("SELECT * FROM hist_data VISUALISE DRAW histogram MAPPING value AS x")
+            .unwrap();
+
+        assert_eq!(spec.plot().layers.len(), 1);
+        let layer_df = spec.layer_data(0).unwrap();
+        assert!(
+            layer_df.height() < 50,
+            "Histogram should bin data: got {} rows",
+            layer_df.height()
+        );
+
+        let writer = VegaLiteWriter::new();
+        let json = writer.render(&spec).unwrap();
+        assert!(
+            json.contains("\"bar\""),
+            "Histogram should render as bar mark: {}",
+            json
+        );
+    }
+
+    #[cfg(feature = "vegalite")]
+    #[test]
+    fn test_geom_density() {
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        let reader = SqliteReader::new().unwrap();
+        reader
+            .execute_sql("CREATE TABLE density_data (value REAL)")
+            .unwrap();
+        let values: Vec<String> = (0..50).map(|i| format!("({})", i as f64 * 0.5)).collect();
+        reader
+            .execute_sql(&format!(
+                "INSERT INTO density_data VALUES {}",
+                values.join(", ")
+            ))
+            .unwrap();
+
+        let spec = reader
+            .execute("SELECT * FROM density_data VISUALISE DRAW density MAPPING value AS x")
+            .unwrap();
+
+        assert_eq!(spec.plot().layers.len(), 1);
+        assert!(spec.layer_data(0).is_some());
+
+        let writer = VegaLiteWriter::new();
+        let json = writer.render(&spec).unwrap();
+        assert!(
+            json.contains("\"area\""),
+            "Density should render as area mark: {}",
+            json
+        );
+    }
+
+    #[cfg(feature = "vegalite")]
+    #[test]
+    fn test_geom_boxplot() {
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        let reader = SqliteReader::new().unwrap();
+        reader
+            .execute_sql("CREATE TABLE box_data (grp TEXT, value REAL)")
+            .unwrap();
+        let mut values = Vec::new();
+        for v in [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0] {
+            values.push(format!("('A', {})", v));
+        }
+        for v in [5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0] {
+            values.push(format!("('B', {})", v));
+        }
+        reader
+            .execute_sql(&format!(
+                "INSERT INTO box_data VALUES {}",
+                values.join(", ")
+            ))
+            .unwrap();
+
+        let spec = reader
+            .execute("SELECT * FROM box_data VISUALISE DRAW boxplot MAPPING grp AS x, value AS y")
+            .unwrap();
+
+        assert!(spec.layer_data(0).is_some());
+
+        let writer = VegaLiteWriter::new();
+        let json = writer.render(&spec).unwrap();
+        assert!(!json.is_empty(), "Boxplot should render successfully");
     }
 }
 

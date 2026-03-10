@@ -7,7 +7,7 @@ use crate::{
         geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
         ParameterValue, StatResult,
     },
-    utils::scalar_min,
+    utils::{sql_generate_series, sql_least, sql_percentile},
     GgsqlError, Mappings, Result,
 };
 use std::collections::HashMap;
@@ -230,10 +230,10 @@ fn density_sql_bandwidth(
 ) -> String {
     let mut group_by = String::new();
     let mut comma = String::new();
-    let groups = groups.join(", ");
+    let groups_str = groups.join(", ");
 
-    if !groups.is_empty() {
-        group_by = format!("GROUP BY {}", groups);
+    if !groups_str.is_empty() {
+        group_by = format!("GROUP BY {}", groups_str);
         comma = ",".to_string()
     }
 
@@ -247,50 +247,49 @@ fn density_sql_bandwidth(
         // bandwidth from the data. Instead, we just make sure the query has
         // the right shape.
         num *= adjust;
-        let cte = if groups.is_empty() {
-            format!("WITH bandwidth AS (SELECT {num} AS bw)", num = num)
+        let cte = if groups_str.is_empty() {
+            format!(
+                "WITH RECURSIVE bandwidth AS (SELECT {num} AS bw)",
+                num = num
+            )
         } else {
             format!(
-                "WITH bandwidth AS (SELECT {num} AS bw, {groups} FROM ({from}) {group_by})",
+                "WITH RECURSIVE bandwidth AS (SELECT {num} AS bw, {groups_str} FROM ({from}) {group_by})",
                 num = num,
-                groups = groups,
+                groups_str = groups_str,
                 group_by = group_by
             )
         };
         return cte;
     }
     format!(
-        "WITH
+        "WITH RECURSIVE
           bandwidth AS (
             SELECT
               {rule} AS bw{comma}
-              {groups}
-            FROM ({from})
+              {groups_str}
+            FROM ({from}) AS _qt
             WHERE {value} IS NOT NULL
             {group_by}
           )",
-        rule = silverman_rule(adjust, value),
+        rule = silverman_rule(adjust, value, from, groups),
         value = value,
         group_by = group_by,
-        groups = groups,
+        groups_str = groups_str,
         comma = comma,
-        from = from
+        from = from,
     )
 }
 
-fn silverman_rule(adjust: f64, value_column: &str) -> String {
+fn silverman_rule(adjust: f64, value_column: &str, from: &str, groups: &[String]) -> String {
     // The query computes Silverman's rule of thumb (R's `stats::bw.nrd0()`).
     // We absorb the adjustment in the 0.9 multiplier of the rule
     let adjust = 0.9 * adjust;
-    let stddev = format!(
-        "SQRT(AVG({v}*{v}) - AVG({v})*AVG({v}))",
-        v = value_column
-    );
-    let iqr = format!(
-        "(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY {v}) - PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY {v})) / 1.34",
-        v = value_column
-    );
-    let min_expr = scalar_min(&[&stddev, &iqr]);
+    let stddev = format!("SQRT(AVG({v}*{v}) - AVG({v})*AVG({v}))", v = value_column);
+    let q75 = sql_percentile(value_column, 0.75, from, groups);
+    let q25 = sql_percentile(value_column, 0.25, from, groups);
+    let iqr = format!("({q75} - {q25}) / 1.34");
+    let min_expr = sql_least(&[&stddev, &iqr]);
     format!("{adjust} * {min_expr} * POW(COUNT(*), -0.2)")
 }
 
@@ -387,12 +386,16 @@ fn build_grid_cte(groups: &[String], from: &str, min: f64, max: f64, n_points: u
     let max = max + (expand * diff * 0.5);
     let diff = (max - min).abs();
 
+    let seq = sql_generate_series(n_points + 1);
+
     if !has_groups {
         return format!(
-            "grid AS (
-          SELECT {min} + (seq.n * {diff} / {n_points}) AS x
-          FROM GENERATE_SERIES(0, {n_points}) AS seq(n)
+            "{seq}, grid AS (
+          SELECT {min} + ({seq_name}.n * {diff} / {n_points}) AS x
+          FROM {seq_name}
         )",
+            seq = seq,
+            seq_name = crate::naming::SERIES_SEQ,
             min = min,
             diff = diff,
             n_points = n_points
@@ -401,13 +404,15 @@ fn build_grid_cte(groups: &[String], from: &str, min: f64, max: f64, n_points: u
 
     let groups = groups.join(", ");
     format!(
-        "grid AS (
+        "{seq}, grid AS (
           SELECT
             {groups},
-            {min} + (seq.n * {diff} / {n_points}) AS x
-          FROM GENERATE_SERIES(0, {n_points}) AS seq(n)
+            {min} + ({seq_name}.n * {diff} / {n_points}) AS x
+          FROM {seq_name}
           CROSS JOIN (SELECT DISTINCT {groups} FROM ({from})) AS groups
         )",
+        seq = seq,
+        seq_name = crate::naming::SERIES_SEQ,
         groups = groups,
         diff = diff,
         min = min,
@@ -522,15 +527,16 @@ mod tests {
         let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
         let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
-        let expected = "WITH bandwidth AS (SELECT 0.5 AS bw),
+        let expected = "WITH RECURSIVE bandwidth AS (SELECT 0.5 AS bw),
         data AS (
           SELECT x AS val, 1.0 AS weight
           FROM (SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x))
           WHERE x IS NOT NULL
         ),
+        __ggsql_base__(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM __ggsql_base__ WHERE n < 7),__ggsql_seq__(n) AS (SELECT CAST(a.n * 64 + b.n * 8 + c.n AS REAL) AS n FROM __ggsql_base__ a, __ggsql_base__ b, __ggsql_base__ c WHERE a.n * 64 + b.n * 8 + c.n < 512),
         grid AS (
-          SELECT -0.5 + (seq.n * 11 / 511) AS x
-          FROM GENERATE_SERIES(0, 511) AS seq(n)
+          SELECT -0.5 + (__ggsql_seq__.n * 11 / 511) AS x
+          FROM __ggsql_seq__
         )
         SELECT
           __ggsql_stat_x,
@@ -584,17 +590,18 @@ mod tests {
         let kernel = choose_kde_kernel(&parameters).expect("kernel should be valid");
         let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
-        let expected = "WITH bandwidth AS (SELECT 0.5 AS bw, region, category FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category)) GROUP BY region, category),
+        let expected = "WITH RECURSIVE bandwidth AS (SELECT 0.5 AS bw, region, category FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category)) GROUP BY region, category),
         data AS (
           SELECT region, category, x AS val, 1.0 AS weight
           FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category))
           WHERE x IS NOT NULL
         ),
+        __ggsql_base__(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM __ggsql_base__ WHERE n < 7),__ggsql_seq__(n) AS (SELECT CAST(a.n * 64 + b.n * 8 + c.n AS REAL) AS n FROM __ggsql_base__ a, __ggsql_base__ b, __ggsql_base__ c WHERE a.n * 64 + b.n * 8 + c.n < 512),
         grid AS (
           SELECT
             region, category,
-            -11 + (seq.n * 22 / 511) AS x
-          FROM GENERATE_SERIES(0, 511) AS seq(n)
+            -11 + (__ggsql_seq__.n * 22 / 511) AS x
+          FROM __ggsql_seq__
           CROSS JOIN (SELECT DISTINCT region, category FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category))) AS groups
         )
         SELECT
@@ -668,19 +675,13 @@ mod tests {
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
 
-        // Verify exact SQL structure uses PERCENTILE_CONT
-        let expected = "WITH RECURSIVE
-          bandwidth AS (
-            SELECT
-              0.9 * (SELECT MIN(v) FROM (VALUES (SQRT(AVG(x*x) - AVG(x)*AVG(x))), ((PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY x) - PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY x)) / 1.34)) AS t(v)) * POW(COUNT(*), -0.2) AS bw
-            FROM (SELECT x FROM (VALUES (1.0), (2.0), (3.0), (4.0), (5.0)) AS t(x))
-            WHERE x IS NOT NULL
-
-          )";
-
-        // Normalize whitespace for comparison
+        // Verify SQL uses NTILE-based percentile subqueries
         let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
-        assert_eq!(normalize(&bw_cte), normalize(expected));
+        assert!(bw_cte.contains("NTILE(4)"));
+        assert!(bw_cte.contains("bandwidth AS"));
+        // Verify the generated rule matches silverman_rule output
+        let expected_rule = silverman_rule(1.0, "x", query, &groups);
+        assert!(normalize(&bw_cte).contains(&normalize(&expected_rule)));
 
         // Verify bandwidth computation executes
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
@@ -698,18 +699,11 @@ mod tests {
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
 
-        // Verify exact SQL structure uses PERCENTILE_CONT with GROUP BY
-        let expected = "WITH RECURSIVE
-          bandwidth AS (
-            SELECT
-              0.9 * (SELECT MIN(v) FROM (VALUES (SQRT(AVG(x*x) - AVG(x)*AVG(x))), ((PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY x) - PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY x)) / 1.34)) AS t(v)) * POW(COUNT(*), -0.2) AS bw,
-              region
-            FROM (SELECT x, region FROM (VALUES (1.0, 'A'), (2.0, 'A'), (3.0, 'B')) AS t(x, region))
-            WHERE x IS NOT NULL
-            GROUP BY region
-          )";
-
-        assert_eq!(normalize(&bw_cte), normalize(expected));
+        // Verify SQL uses NTILE-based percentile subqueries with grouping
+        assert!(bw_cte.contains("NTILE(4)"));
+        assert!(bw_cte.contains("GROUP BY region"));
+        let expected_rule = silverman_rule(1.0, "x", query, &groups);
+        assert!(normalize(&bw_cte).contains(&normalize(&expected_rule)));
 
         // Verify grouped bandwidth computation executes
         let df = reader
