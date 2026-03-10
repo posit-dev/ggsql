@@ -81,11 +81,18 @@ module.exports = grammar({
 
     cte_definition: $ => seq(
       $.identifier,
+      optional(seq(          // Optional column list: df(x, y, id)
+        '(',
+        $.identifier,
+        repeat(seq(',', $.identifier)),
+        ')'
+      )),
       caseInsensitive('AS'),
       '(',
       choice(
         $.with_statement,    // Allow nested CTEs
-        $.select_statement
+        $.select_statement,
+        $.subquery_body      // VALUES (...) and other non-SELECT bodies
       ),
       ')'
     ),
