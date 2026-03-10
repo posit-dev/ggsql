@@ -2,7 +2,7 @@
 title: "Violin"
 ---
 
-> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
 Violin plots display the distribution of a single continuous variable for multiple groups.
 The violins are mirrored kernel density estimates, similar to the [density](density.qmd) layer, but organised as distinct groups.
@@ -23,6 +23,7 @@ The following aesthetics are recognised by the violin layer.
 * `linetype` The dash pattern of the contour line.
 
 ## Settings
+* `position`: Determines the position adjustment to use for the layer (default is `'dodge'`)
 * `bandwidth`: A numerical value setting the smoothing bandwidth to use. If absent (default), the bandwidth will be computed using Silverman's rule of thumb.
 * `adjust`: A numerical value as multiplier for the `bandwidth` setting, with 1 as default.
 * `kernel`: Determines the smoothing kernel shape. Can be one of the following:
@@ -32,6 +33,7 @@ The following aesthetics are recognised by the violin layer.
     * `'rectangular'` or `'uniform'`
     * `'biweight'` or `'quartic'`
     * `'cosine'`
+* `width`: Relative width of the violins. Defaults to `0.9`.
 
 ## Data transformation
 A violin layer uses the same computation as a density layer. See the [density data transformation](density.qmd#data-transformation) section for details.
@@ -76,11 +78,8 @@ VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
 
 You can combine groups to expand the categories.
 
-<!-- When dodging is implemented we should use that example instead -->
-
 ```{ggsql}
-SELECT *, species || ' ' || island AS groups FROM ggsql:penguins
-VISUALISE groups AS x, bill_dep AS y, island AS fill
+VISUALISE species AS x, bill_dep AS y, island AS fill FROM ggsql:penguins
   DRAW violin
 ```
 

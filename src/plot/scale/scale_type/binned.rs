@@ -345,9 +345,15 @@ impl ScaleTypeTrait for Binned {
                     .iter()
                     .map(|elem| resolved_transform.parse_value(elem))
                     .collect();
-                // Filter breaks to input range (explicit breaks always filtered)
-                let filtered = if let Some(ref range) = scale.input_range {
-                    super::super::super::breaks::filter_breaks_to_range(&converted, range)
+                // Only filter breaks to input range if BOTH explicit breaks AND explicit input range
+                // were provided. If the user only provided breaks (no FROM clause), their breaks
+                // should be used as-is to define the bin boundaries (input_range is derived later).
+                let filtered = if scale.explicit_input_range {
+                    if let Some(ref range) = scale.input_range {
+                        super::super::super::breaks::filter_breaks_to_range(&converted, range)
+                    } else {
+                        converted
+                    }
                 } else {
                     converted
                 };
@@ -1934,5 +1940,120 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err.contains("Boolean"));
         assert!(err.contains("DISCRETE"));
+    }
+
+    // =========================================================================
+    // Break Resolution Tests
+    // =========================================================================
+
+    #[test]
+    fn test_explicit_breaks_preserved_without_explicit_range() {
+        // Regression test: explicit breaks extending beyond data range should NOT
+        // be filtered when no explicit FROM clause is provided.
+        // Issue: breaks like [2600, 3550, 4050, 4750, 6400] were getting terminal
+        // breaks removed when data range was ~[2700, 6300].
+        use super::ScaleTypeTrait;
+        use polars::prelude::DataType;
+
+        let binned = Binned;
+        let mut scale = Scale::new("fill");
+
+        // User provides explicit breaks that extend beyond data range
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(2600.0),
+                ArrayElement::Number(3550.0),
+                ArrayElement::Number(4050.0),
+                ArrayElement::Number(4750.0),
+                ArrayElement::Number(6400.0),
+            ]),
+        );
+        // No explicit input range (no FROM clause)
+        scale.explicit_input_range = false;
+
+        // Data context with narrower range than breaks
+        let context = ScaleDataContext {
+            range: Some(InputRange::Continuous(vec![
+                ArrayElement::Number(2700.0),
+                ArrayElement::Number(6300.0),
+            ])),
+            dtype: Some(DataType::Float64),
+            is_discrete: false,
+        };
+
+        binned.resolve(&mut scale, &context, "fill").unwrap();
+
+        // All 5 breaks should be preserved (not filtered to data range)
+        let resolved_breaks = match scale.properties.get("breaks") {
+            Some(ParameterValue::Array(arr)) => arr.clone(),
+            _ => panic!("breaks should be an array"),
+        };
+        assert_eq!(
+            resolved_breaks.len(),
+            5,
+            "All explicit breaks should be preserved: {:?}",
+            resolved_breaks
+        );
+
+        // Verify the exact values
+        let values: Vec<f64> = resolved_breaks.iter().filter_map(|e| e.to_f64()).collect();
+        assert_eq!(values, vec![2600.0, 3550.0, 4050.0, 4750.0, 6400.0]);
+    }
+
+    #[test]
+    fn test_explicit_breaks_filtered_with_explicit_range() {
+        // When BOTH explicit breaks AND explicit range are provided,
+        // breaks should be filtered to the range.
+        use super::ScaleTypeTrait;
+        use polars::prelude::DataType;
+
+        let binned = Binned;
+        let mut scale = Scale::new("fill");
+
+        // User provides explicit breaks
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(2600.0),
+                ArrayElement::Number(3550.0),
+                ArrayElement::Number(4050.0),
+                ArrayElement::Number(4750.0),
+                ArrayElement::Number(6400.0),
+            ]),
+        );
+        // WITH explicit input range (FROM clause)
+        scale.input_range = Some(vec![
+            ArrayElement::Number(3000.0),
+            ArrayElement::Number(6000.0),
+        ]);
+        scale.explicit_input_range = true;
+
+        let context = ScaleDataContext {
+            range: Some(InputRange::Continuous(vec![
+                ArrayElement::Number(2700.0),
+                ArrayElement::Number(6300.0),
+            ])),
+            dtype: Some(DataType::Float64),
+            is_discrete: false,
+        };
+
+        binned.resolve(&mut scale, &context, "fill").unwrap();
+
+        // Breaks should be filtered to [3000, 6000]
+        // Only 3550, 4050, 4750 are within range
+        // Plus range boundaries 3000 and 6000 are added
+        let resolved_breaks = match scale.properties.get("breaks") {
+            Some(ParameterValue::Array(arr)) => arr.clone(),
+            _ => panic!("breaks should be an array"),
+        };
+
+        // Should have: 3000 (boundary), 3550, 4050, 4750, 6000 (boundary)
+        let values: Vec<f64> = resolved_breaks.iter().filter_map(|e| e.to_f64()).collect();
+        assert_eq!(
+            values,
+            vec![3000.0, 3550.0, 4050.0, 4750.0, 6000.0],
+            "Breaks should be filtered to explicit range with boundaries added"
+        );
     }
 }

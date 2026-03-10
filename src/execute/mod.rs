@@ -13,6 +13,7 @@
 mod casting;
 mod cte;
 mod layer;
+mod position;
 mod scale;
 mod schema;
 
@@ -792,6 +793,18 @@ fn collect_layer_required_columns(layer: &Layer, spec: &Plot) -> HashSet<String>
         required.insert(naming::ORDER_COLUMN.to_string());
     }
 
+    // Position offset column for position adjustments that create pos1offset
+    // This column is created by dodge/jitter positions and is not in layer.mappings
+    if layer.position.creates_pos1offset() {
+        required.insert(naming::aesthetic_column("pos1offset"));
+    }
+
+    // Position offset column for position adjustments that create pos2offset
+    // This column is created by jitter position for vertical jittering
+    if layer.position.creates_pos2offset() {
+        required.insert(naming::aesthetic_column("pos2offset"));
+    }
+
     required
 }
 
@@ -1114,8 +1127,9 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         }
     }
 
-    // Phase 4: Apply remappings (rename stat columns to prefixed aesthetic names)
-    // e.g., __ggsql_stat_count → __ggsql_aes_y__
+    // Phase 4: Apply remappings and post-process
+    // - Rename stat columns to prefixed aesthetic names (e.g., __ggsql_stat_count → __ggsql_aes_y__)
+    // - Apply geom post_process (e.g., violin offset scaling)
     // Note: Prefixed aesthetic names persist through the entire pipeline
     // Track processed keys to avoid duplicate work on shared datasets
     let mut processed_keys: HashSet<String> = HashSet::new();
@@ -1125,7 +1139,10 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
                 // First time seeing this data - process it
                 if let Some(df) = data_map.remove(key) {
                     let df_with_remappings = layer::apply_remappings_post_query(df, l)?;
-                    data_map.insert(key.clone(), df_with_remappings);
+                    // Apply geom post_process (e.g., violin scales offset to [0, 0.5 * width])
+                    let df_post_processed =
+                        l.geom.post_process(df_with_remappings, &l.parameters)?;
+                    data_map.insert(key.clone(), df_post_processed);
                 }
             }
             // Update layer mappings for all layers (even if data shared)
@@ -1138,19 +1155,26 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         l.resolve_aesthetics();
     }
 
+    // Create scales for aesthetics added by stat transforms (e.g., y from histogram)
+    // This must happen after build_layer_query() which applies stat transforms
+    // and modifies layer.mappings with new aesthetics like y → __ggsql_stat_count__
+    for spec in &mut specs {
+        scale::create_missing_scales_post_stat(spec, &data_map)?;
+    }
+
+    // Apply position adjustments (stack, dodge) to layer data
+    // Must be after scale type inference but before full scale resolution
+    // so scales can see the adjusted values (e.g., stacked maxima)
+    for spec in &mut specs {
+        position::apply_position_adjustments(spec, &mut data_map)?;
+    }
+
     // Validate we have some data (every layer should have its own data)
     if data_map.is_empty() {
         return Err(GgsqlError::ValidationError(
             "No data sources found. Either provide a SQL query or use MAPPING FROM in layers."
                 .to_string(),
         ));
-    }
-
-    // Create scales for aesthetics added by stat transforms (e.g., y from histogram)
-    // This must happen after build_layer_query() which applies stat transforms
-    // and modifies layer.mappings with new aesthetics like y → __ggsql_stat_count__
-    for spec in &mut specs {
-        scale::create_missing_scales_post_stat(spec);
     }
 
     // Post-process specs: compute aesthetic labels

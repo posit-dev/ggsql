@@ -202,6 +202,22 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         Ok(StatResult::Identity)
     }
 
+    /// Post-process the DataFrame after stat query execution.
+    ///
+    /// This method is called after the stat transform query has been executed
+    /// and allows geoms to modify the resulting data. The default implementation
+    /// returns the data unchanged.
+    ///
+    /// Used by violin to scale the offset column to [0, 0.5 * width] using global
+    /// max normalization before Vega-Lite rendering.
+    fn post_process(
+        &self,
+        df: DataFrame,
+        _parameters: &HashMap<String, ParameterValue>,
+    ) -> Result<DataFrame> {
+        Ok(df)
+    }
+
     /// Returns valid parameter names for SETTING clause.
     ///
     /// Combines supported aesthetics with non-aesthetic parameters.
@@ -401,6 +417,15 @@ impl Geom {
             parameters,
             execute_query,
         )
+    }
+
+    /// Post-process DataFrame after stat query execution
+    pub fn post_process(
+        &self,
+        df: DataFrame,
+        parameters: &HashMap<String, ParameterValue>,
+    ) -> Result<DataFrame> {
+        self.0.post_process(df, parameters)
     }
 
     /// Get valid settings

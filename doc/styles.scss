@@ -19,6 +19,11 @@ code {
   font-variant-ligatures: none
 }
 
+// Add spacing below rendered plots so text doesn't crowd them
+.cell-output-display {
+  margin-bottom: 1.5rem;
+}
+
 .hero-banner {
   padding: 0;
   margin: 0;

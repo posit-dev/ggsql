@@ -79,7 +79,12 @@ website:
             href: syntax/clause/label.qmd
       - section: Layers
         contents:
-          - auto: syntax/layer/*
+          - section: Types
+            contents:
+              - auto: syntax/layer/type/*
+          - section: Position adjustment
+            contents:
+              - auto: syntax/layer/position/*
       - section: Scales
         contents:
           - section: Types

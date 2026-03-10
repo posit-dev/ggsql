@@ -2,7 +2,7 @@
 title: "Histogram"
 ---
 
-> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
 Visualise the distribution of a single continuous variable by dividing the x axis into bins and counting the number of observations in each bin. If providing a weight then a weighted histogram is calculated instead.
 
@@ -21,7 +21,7 @@ The following aesthetics are recognised by the bar layer.
 * `linetype`: The type of stroke, i.e. the dashing pattern
 
 ## Settings
-
+* `position`: Determines the position adjustment to use for the layer (default is `'stack'`)
 * `bins`: The number of bins to calculate. Defaults to `30`
 * `binwidth`: The width of each bin. If provided it will override the binwidth calculated from `bins`
 * `closed`: Either `'left'` or `'right'` (default). Determines whether the bin intervals are closed to the left or right side
@@ -58,6 +58,15 @@ Split the histogram in two by mapping sex to fill
 VISUALISE FROM ggsql:penguins
 DRAW histogram
     MAPPING body_mass AS x, sex AS fill
+```
+
+The default is to stack multiple histograms. To compare them from a baseline of 0 set position to identity
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW histogram
+    MAPPING body_mass AS x, sex AS fill
+    SETTING position => 'identity'
 ```
 
 Make the two histograms the same scale by remapping to density

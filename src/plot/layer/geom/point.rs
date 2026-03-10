@@ -1,6 +1,6 @@
 //! Point geom implementation
 
-use super::{DefaultAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType};
 use crate::plot::types::DefaultAestheticValue;
 
 /// Point geom - scatter plots and similar
@@ -25,6 +25,13 @@ impl GeomTrait for Point {
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
             ],
         }
+    }
+
+    fn default_params(&self) -> &'static [DefaultParam] {
+        &[DefaultParam {
+            name: "position",
+            default: DefaultParamValue::String("identity"),
+        }]
     }
 }
 

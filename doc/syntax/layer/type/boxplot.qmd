@@ -1,7 +1,7 @@
 ---
 title: "Boxplot"
 ---
-> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
 Boxplots display a summary of a continuous distribution. In the style of Tukey, it displays the median, two hinges and two whiskers as well as outlying points.
 
@@ -23,6 +23,7 @@ The following aesthetics are recognised by the boxplot layer.
 * `shape` The shape of outlier points.
 
 ## Settings
+* `position`: Determines the position adjustment to use for the layer (default is `'dodge'`)
 * `outliers`: Whether to display outliers as points. Defaults to `true`.
 * `coef`: A number indicating the length of the whiskers as a multiple of the interquartile range (IQR). Defaults to `1.5`.
 * `width`: Relative width of the boxes. Defaults to `0.9`.

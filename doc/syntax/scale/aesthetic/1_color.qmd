@@ -6,7 +6,7 @@ format:
     toc-depth: 4
 ---
 
-Color values are used in two places in ggsql: When setting stroke color and fill color. Stroke color governs the color of lines, be it the outline of a rectangle (e.g. in a [bar layer](../../layer/bar.qmd)), or the line of a path (e.g. in a [line layer](../../layer/line.qmd)). The fill color determines the color of the inside of a shape. It follows that all layers respond to the stroke aesthetic but only those containing closed shapes respond to the fill aesthetic.
+Color values are used in two places in ggsql: When setting stroke color and fill color. Stroke color governs the color of lines, be it the outline of a rectangle (e.g. in a [bar layer](../../layer/type/bar.qmd)), or the line of a path (e.g. in a [line layer](../../layer/type/line.qmd)). The fill color determines the color of the inside of a shape. It follows that all layers respond to the stroke aesthetic but only those containing closed shapes respond to the fill aesthetic.
 
 ## The color meta-aesthetic
 In addition to the `fill` and `stroke` aesthetics there is also a `color` meta-aesthetic. Setting this will set the fill *and* stroke at the same time unless they are set directly. For instance, the following will set the fill and stroke to red

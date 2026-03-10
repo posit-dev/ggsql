@@ -2,7 +2,7 @@
 title: "Bar"
 ---
 
-> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
 The bar layer is used to create bar plots. You can either specify the height of the bars directly or let the layer calculate it either as the count of records within the same group or as a weighted sum of the records.
 
@@ -23,7 +23,7 @@ The bar layer has no required aesthetics
 * `linetype`: The type of stroke, i.e. the dashing pattern
 
 ## Settings
-
+* `position`: Determines the position adjustment to use for the layer (default is `'stack'`)
 * `width`: The width of the bars as a proportion of the available width
 
 ## Data transformation
@@ -68,6 +68,15 @@ DRAW bar
     MAPPING species AS x, island AS fill
 ```
 
+Or change the position setting to e.g. get a dodged bar chart
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW bar
+    MAPPING species AS x, sex AS fill
+    SETTING position => 'dodge'
+```
+
 Map to y if the dataset already contains the value you want to show
 
 ```{ggsql}
@@ -87,3 +96,7 @@ DRAW bar
 SCALE BINNED x
     SETTING breaks => 10
 ```
+
+And use with a polar coordinate system to create a pie chart
+
+**TBD**

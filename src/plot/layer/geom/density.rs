@@ -46,8 +46,8 @@ impl GeomTrait for Density {
     fn default_params(&self) -> &'static [DefaultParam] {
         &[
             DefaultParam {
-                name: "stacking",
-                default: DefaultParamValue::String("off"),
+                name: "position",
+                default: DefaultParamValue::String("identity"),
             },
             DefaultParam {
                 name: "bandwidth",
@@ -68,6 +68,7 @@ impl GeomTrait for Density {
         &[
             ("pos1", DefaultAestheticValue::Column("pos1")),
             ("pos2", DefaultAestheticValue::Column("density")),
+            ("pos2end", DefaultAestheticValue::Number(0.0)),
         ]
     }
 

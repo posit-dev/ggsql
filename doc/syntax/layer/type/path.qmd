@@ -2,9 +2,9 @@
 title: "Path"
 ---
 
-> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
-The path layer is used to create lineplots, but contrary to the [line layer](line.qmd) the data will not be connected along the x-axis. Instead records are connected in the order they appear in the data. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers [`PARTITION BY`](../clause/draw.qmd#partition-by).
+The path layer is used to create lineplots, but contrary to the [line layer](line.qmd) the data will not be connected along the x-axis. Instead records are connected in the order they appear in the data. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers [`PARTITION BY`](../../clause/draw.qmd#partition-by).
 
 ## Aesthetics
 The following aesthetics are recognised by the path layer.
@@ -20,7 +20,7 @@ The following aesthetics are recognised by the path layer.
 * `linetype`: The type of path, i.e. the dashing pattern
 
 ## Settings
-The line layer has no additional settings
+* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
 
 ## Data transformation
 The line layer does not transform its data but passes it through unchanged

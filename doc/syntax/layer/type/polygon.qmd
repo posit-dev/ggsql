@@ -2,7 +2,7 @@
 title: "Polygon"
 ---
 
-> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
 Polygons can be used to draw arbitrary closed shapes based on an ordered sequence of x,y-coordinates. They are similar to [paths](path.qmd), but close the shapes and fill the interior.
 
@@ -22,7 +22,7 @@ The following aesthetics are recognised by the polygon layer.
 * `linetype` The dash pattern of the contour line.
 
 ## Settings
-The polygon layer has no additional settings
+* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
 
 ## Data transformation
 The polygon layer does not transform its data but passes it through unchanged

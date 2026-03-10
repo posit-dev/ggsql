@@ -53,10 +53,16 @@ impl GeomTrait for Bar {
     }
 
     fn default_params(&self) -> &'static [DefaultParam] {
-        &[DefaultParam {
-            name: "width",
-            default: DefaultParamValue::Number(0.9),
-        }]
+        &[
+            DefaultParam {
+                name: "width",
+                default: DefaultParamValue::Number(0.9),
+            },
+            DefaultParam {
+                name: "position",
+                default: DefaultParamValue::String("stack"),
+            },
+        ]
     }
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {

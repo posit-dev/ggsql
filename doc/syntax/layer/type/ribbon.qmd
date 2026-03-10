@@ -2,7 +2,7 @@
 title: "Ribbon"
 ---
 
-> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
 The ribbon layer is used to display extrema over a sorted x-axis. It can be seen as an [area chart](area.qmd) that is unanchored from zero.
 
@@ -22,7 +22,7 @@ The following aesthetics are recognised by the ribbon layer.
 * `linewidth`: The width of the contour lines.
 
 ## Settings
-The ribbon layer has no additional settings.
+* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
 
 ## Data transformation
 The ribbon layer does not transform its data but passes it through unchanged.

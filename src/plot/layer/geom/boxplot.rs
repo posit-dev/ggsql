@@ -62,6 +62,10 @@ impl GeomTrait for Boxplot {
                 name: "width",
                 default: DefaultParamValue::Number(0.9),
             },
+            DefaultParam {
+                name: "position",
+                default: DefaultParamValue::String("dodge"),
+            },
         ]
     }
 
@@ -569,7 +573,7 @@ mod tests {
         let boxplot = Boxplot;
         let params = boxplot.default_params();
 
-        assert_eq!(params.len(), 3);
+        assert_eq!(params.len(), 4);
 
         // Find and verify outliers param
         let outliers_param = params.iter().find(|p| p.name == "outliers").unwrap();
@@ -589,6 +593,13 @@ mod tests {
         assert!(
             matches!(width_param.default, DefaultParamValue::Number(v) if (v - 0.9).abs() < f64::EPSILON)
         );
+
+        // Find and verify position param (boxplot defaults to dodge)
+        let position_param = params.iter().find(|p| p.name == "position").unwrap();
+        assert!(matches!(
+            position_param.default,
+            DefaultParamValue::String("dodge")
+        ));
     }
 
     #[test]

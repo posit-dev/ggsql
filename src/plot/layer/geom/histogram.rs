@@ -61,6 +61,10 @@ impl GeomTrait for Histogram {
                 name: "binwidth",
                 default: DefaultParamValue::Null,
             },
+            DefaultParam {
+                name: "position",
+                default: DefaultParamValue::String("stack"),
+            },
         ]
     }
 

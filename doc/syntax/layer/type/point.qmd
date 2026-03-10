@@ -2,7 +2,7 @@
 title: "Point"
 ---
 
-> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
 The point layer is used to create scatterplots. The scatterplot is most useful for displaying the relationship between two continuous variables. A bubblechart is a scatterplot with a third variable mapped to the size of points.
 
@@ -22,7 +22,7 @@ The following aesthetics are recognised by the point layer.
 * `shape`: The shape used to draw the point
 
 ## Settings
-The point layer has no additional settings
+* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
 
 ## Data transformation
 The point layer does not transform its data but passes it through unchanged
@@ -52,4 +52,17 @@ VISUALISE FROM ggsql:penguins
 DRAW point
     MAPPING bill_len AS x, bill_dep AS y, species AS fill
     FILTER sex = 'female'
+```
+
+```{ggsql}
+VISUALISE species AS x, sex AS y, island AS fill FROM ggsql:penguins
+DRAW point
+    SETTING position => 'jitter', distribution => 'normal'
+```
+
+Use density distribution for a violin-like jitter effect, where jitter width scales with local data density.
+
+```{ggsql}
+VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
+DRAW point SETTING position => 'jitter', distribution => 'density'
 ```

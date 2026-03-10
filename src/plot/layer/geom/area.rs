@@ -27,10 +27,14 @@ impl GeomTrait for Area {
         }
     }
 
+    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
+        &[("pos2end", DefaultAestheticValue::Number(0.0))]
+    }
+
     fn default_params(&self) -> &'static [DefaultParam] {
         &[DefaultParam {
-            name: "stacking",
-            default: DefaultParamValue::String("off"),
+            name: "position",
+            default: DefaultParamValue::String("stack"),
         }]
     }
 }

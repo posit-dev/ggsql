@@ -64,6 +64,7 @@ palette = "0.7"
 # Utilities
 regex = "1.10"
 chrono = "0.4"
+rand = "0.8"
 const_format = "0.2"
 uuid = { version = "1.0", features = ["v4"] }
 

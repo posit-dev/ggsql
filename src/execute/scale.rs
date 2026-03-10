@@ -72,7 +72,14 @@ pub fn create_missing_scales(spec: &mut Plot) {
 /// This is necessary because stat transforms modify layer.mappings after
 /// create_missing_scales() has already run, potentially adding new aesthetics
 /// that don't have corresponding scales.
-pub fn create_missing_scales_post_stat(spec: &mut Plot) {
+///
+/// Also infers scale types from data for newly created scales. This must happen
+/// before position adjustments so dodge/stack can correctly identify continuous
+/// vs discrete axes (e.g., stat-generated count columns).
+pub fn create_missing_scales_post_stat(
+    spec: &mut Plot,
+    data_map: &HashMap<String, DataFrame>,
+) -> Result<()> {
     let aesthetic_ctx = spec.get_aesthetic_context();
     let mut current_aesthetics: HashSet<String> = HashSet::new();
 
@@ -90,16 +97,28 @@ pub fn create_missing_scales_post_stat(spec: &mut Plot) {
     let existing_scales: HashSet<String> =
         spec.scales.iter().map(|s| s.aesthetic.clone()).collect();
 
-    // Create scales for new aesthetics
+    // Create scales for new aesthetics and infer their types from data
     for aesthetic in current_aesthetics {
         if !existing_scales.contains(&aesthetic) {
             let mut scale = Scale::new(&aesthetic);
             if !gets_default_scale(&aesthetic) {
                 scale.scale_type = Some(ScaleType::identity());
+            } else {
+                // Infer scale type from column data
+                let column_refs =
+                    find_columns_for_aesthetic(&spec.layers, &aesthetic, data_map, &aesthetic_ctx);
+                if !column_refs.is_empty() {
+                    scale.scale_type = Some(ScaleType::infer_for_aesthetic(
+                        column_refs[0].dtype(),
+                        &aesthetic,
+                    ));
+                }
             }
             spec.scales.push(scale);
         }
     }
+
+    Ok(())
 }
 
 // =============================================================================
@@ -956,7 +975,8 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
             continue;
         }
 
-        // Infer scale_type if not already set
+        // Infer scale_type if not already set (fallback - usually already inferred
+        // by create_missing_scales_post_stat() which runs before position adjustments)
         if spec.scales[idx].scale_type.is_none() {
             spec.scales[idx].scale_type = Some(ScaleType::infer_for_aesthetic(
                 column_refs[0].dtype(),

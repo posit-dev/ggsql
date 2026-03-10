@@ -929,4 +929,119 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_stacked_bar_chart() {
+        // Test stacked bar chart via position => 'stack'
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES
+                ('A', 'X', 10),
+                ('A', 'Y', 20),
+                ('B', 'X', 15),
+                ('B', 'Y', 25)
+            ) AS t(cat, grp, val)
+            VISUALISE
+            DRAW bar MAPPING cat AS x, val AS y, grp AS fill
+            SETTING position => 'stack'
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+
+        // Verify y and y2 encodings exist (stacked bars use y/y2 for range)
+        let encoding = &layer["encoding"];
+        assert!(encoding["y"].is_object(), "Should have y encoding");
+        assert!(
+            encoding["y2"].is_object(),
+            "Should have y2 encoding for stacked bars"
+        );
+
+        // Verify Vega-Lite stacking is disabled (we handle it ourselves)
+        assert!(
+            encoding["y"]["stack"].is_null(),
+            "y encoding should have stack: null to disable VL stacking. Got: {}",
+            serde_json::to_string_pretty(&encoding["y"]).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_dodged_bar_chart() {
+        // Test dodged bar chart via position => 'dodge'
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES
+                ('A', 'X', 10),
+                ('A', 'Y', 20),
+                ('B', 'X', 15),
+                ('B', 'Y', 25)
+            ) AS t(cat, grp, val)
+            VISUALISE
+            DRAW bar MAPPING cat AS x, val AS y, grp AS fill
+            SETTING position => 'dodge'
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+
+        // Verify xOffset encoding exists (dodged bars use xOffset for displacement)
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding["xOffset"].is_object(),
+            "Should have xOffset encoding for dodged bars. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+
+        // Verify bar width uses bandwidth expression with adjusted_width for dodged bars
+        // For 2 groups with default width 0.9: adjusted_width = 0.9 / 2 = 0.45
+        let mark = &layer["mark"];
+        let width_expr = mark["width"]["expr"].as_str();
+        assert!(
+            width_expr.is_some(),
+            "Dodged bars should have expression-based width. Mark: {}",
+            serde_json::to_string_pretty(mark).unwrap()
+        );
+        let expr = width_expr.unwrap();
+        assert!(
+            expr.contains("bandwidth('x')") && expr.contains("0.45"),
+            "Width expression should use bandwidth('x') * adjusted_width, got: {}",
+            expr
+        );
+    }
+
+    #[test]
+    fn test_position_identity_default() {
+        // Test that identity position (default) doesn't modify data
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES
+                ('A', 10),
+                ('B', 20)
+            ) AS t(cat, val)
+            VISUALISE
+            DRAW bar MAPPING cat AS x, val AS y
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+
+        // Verify no xOffset encoding (identity position)
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding.get("xOffset").is_none(),
+            "Identity position should not have xOffset encoding"
+        );
+    }
 }

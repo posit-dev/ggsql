@@ -477,7 +477,24 @@ fn build_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
         }
     }
 
+    // Extract position from parameters if present, otherwise use geom default
+    let position = if let Some(ParameterValue::String(pos_str)) = parameters.remove("position") {
+        pos_str.parse().unwrap()
+    } else {
+        // Check geom's default_params for position default
+        geom.default_params()
+            .iter()
+            .find(|p| p.name == "position")
+            .and_then(|p| p.to_parameter_value())
+            .and_then(|v| match v {
+                ParameterValue::String(s) => Some(s.parse().unwrap()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    };
+
     let mut layer = Layer::new(geom);
+    layer.position = position;
     layer.mappings = aesthetics;
     layer.remappings = remappings;
     layer.parameters = parameters;
@@ -3422,5 +3439,90 @@ mod tests {
         // Should infer cartesian from positional variants
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(project.coord.coord_kind(), CoordKind::Cartesian);
+    }
+
+    // ========================================
+    // Position Adjustment Parsing Tests
+    // ========================================
+
+    #[test]
+    fn test_position_stack_from_setting() {
+        let query = r#"
+            VISUALISE
+            DRAW bar MAPPING cat AS x, val AS y, grp AS fill
+            SETTING position => 'stack'
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert_eq!(specs[0].layers.len(), 1);
+        assert_eq!(specs[0].layers[0].position, Position::stack());
+    }
+
+    #[test]
+    fn test_position_dodge_from_setting() {
+        let query = r#"
+            VISUALISE
+            DRAW bar MAPPING cat AS x, val AS y, grp AS fill
+            SETTING position => 'dodge'
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert_eq!(specs[0].layers.len(), 1);
+        assert_eq!(specs[0].layers[0].position, Position::dodge());
+    }
+
+    #[test]
+    fn test_position_jitter_from_setting() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING cat AS x, val AS y
+            SETTING position => 'jitter'
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert_eq!(specs[0].layers.len(), 1);
+        assert_eq!(specs[0].layers[0].position, Position::jitter());
+    }
+
+    #[test]
+    fn test_position_geom_defaults() {
+        // Bar defaults to Stack (ggplot2 behavior)
+        let query = r#"
+            VISUALISE
+            DRAW bar MAPPING cat AS x, val AS y
+        "#;
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+        assert_eq!(specs[0].layers[0].position, Position::stack());
+
+        // Point defaults to Identity
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING cat AS x, val AS y
+        "#;
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+        assert_eq!(specs[0].layers[0].position, Position::identity());
+
+        // Boxplot defaults to Dodge
+        let query = r#"
+            VISUALISE
+            DRAW boxplot MAPPING cat AS x, val AS y
+        "#;
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+        assert_eq!(specs[0].layers[0].position, Position::dodge());
     }
 }
