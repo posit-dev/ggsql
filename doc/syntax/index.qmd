@@ -15,6 +15,7 @@ ggsql augments the standard SQL syntax with a number of new clauses to describe 
 ## Layers
 There are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the `DRAW` clause
 
+### Layer types
 - [`point`](layer/type/point.qmd) is used to create a scatterplot layer
 - [`line`](layer/type/line.qmd) is used to produce lineplots with the data sorted along the x axis
 - [`path`](layer/type/path.qmd) is like `line` above but does not sort the data but plot it according to its own order
@@ -27,11 +28,17 @@ There are many different layers to choose from when visualising your data. Some 
 - [`histogram`](layer/type/histogram.qmd) bins the data along the x axis and produces a bar for each bin showing the number of records in it
 - [`boxplot`](layer/type/boxplot.qmd) displays continuous variables as 5-number summaries
 
+### Position adjustments
+- [`stack`](layer/position/stack.qmd) places objects with a shared baseline on top of each other.
+- [`dodge`](layer/position/dodge.qmd) places objects that share the same discrete position side by side
+- [`jitter`](layer/position/jitter.qmd) adds a small random offset to objects sharing the same discrete position
+- [`identity`](layer/position/identity.qmd) does nothing, i.e. turns off position adjustment
+
 ## Scales
 A scale is responsible for translating a data value to an aesthetic literal, e.g. a specific color for the fill aesthetic, or a radius in points for the size aesthetic. A scale is a combination of a specific aesthetic and a scale type
 
 ### Aesthetics
-- [Position](scale/aesthetic/0_position.qmd) aesthetics are those aesthetics realted to the spatial location of the data in the coordinate system.
+- [Position](scale/aesthetic/0_position.qmd) aesthetics are those aesthetics related to the spatial location of the data in the coordinate system.
 - [Color](scale/aesthetic/1_color.qmd) aesthetics are related to the color of fill and stroke
 - [`opacity`](scale/aesthetic/2_opacity.qmd) is the aesthetic that determines the opacity of the color
 - [`linetype`](scale/aesthetic/linetype.qmd) governs the stroke pattern of strokes
