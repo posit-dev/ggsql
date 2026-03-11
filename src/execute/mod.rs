@@ -36,84 +36,6 @@ use crate::reader::Reader;
 use crate::reader::DuckDBReader;
 
 // =============================================================================
-// DataFrame Column Flipping for Orientation
-// =============================================================================
-
-/// Flip positional column names in a DataFrame for Transposed orientation layers.
-///
-/// Swaps column names like `__ggsql_aes_pos1__` ↔ `__ggsql_aes_pos2__` so that
-/// the data matches the flipped mapping names.
-///
-/// This is called after query execution for layers with Transposed orientation,
-/// in coordination with `normalize_mapping_column_names` which updates the mappings.
-fn flip_dataframe_positional_columns(df: DataFrame, aesthetic_ctx: &AestheticContext) -> DataFrame {
-    use polars::prelude::*;
-
-    // Collect all positional column renames needed
-    let mut renames: Vec<(String, String)> = Vec::new();
-
-    for col_name in df.get_column_names() {
-        let col_str = col_name.to_string();
-
-        // Check if this is an aesthetic column (__ggsql_aes_XXX__)
-        if let Some(aesthetic) = naming::extract_aesthetic_name(&col_str) {
-            if is_positional_aesthetic(aesthetic) {
-                let flipped = aesthetic_ctx.flip_positional(aesthetic);
-                if flipped != aesthetic {
-                    let new_col_name = naming::aesthetic_column(&flipped);
-                    renames.push((col_str, new_col_name));
-                }
-            }
-        }
-    }
-
-    if renames.is_empty() {
-        return df;
-    }
-
-    // To swap columns (A ↔ B), we need to:
-    // 1. Rename A to temp
-    // 2. Rename B to A
-    // 3. Rename temp to B
-    // But if both A and B exist, we need to handle them together
-
-    let df_clone = df.clone(); // For fallback if collect fails
-    let mut lazy = df.lazy();
-
-    // Group renames into swap pairs
-    let mut processed: HashSet<String> = HashSet::new();
-    for (from, to) in &renames {
-        if processed.contains(from) {
-            continue;
-        }
-
-        // Check if the reverse rename also exists (it's a swap)
-        let is_swap = renames.iter().any(|(f, t)| f == to && t == from);
-
-        if is_swap {
-            // Swap: use intermediate names to avoid collision
-            let temp_from = format!("{}_temp_swap_", from);
-            let temp_to = format!("{}_temp_swap_", to);
-
-            lazy = lazy
-                .rename([from.as_str()], [temp_from.as_str()], true)
-                .rename([to.as_str()], [temp_to.as_str()], true)
-                .rename([temp_from.as_str()], [to.as_str()], true)
-                .rename([temp_to.as_str()], [from.as_str()], true);
-
-            processed.insert(from.clone());
-            processed.insert(to.clone());
-        } else {
-            // Simple rename (one direction only)
-            lazy = lazy.rename([from.as_str()], [to.as_str()], true);
-            processed.insert(from.clone());
-        }
-    }
-
-    lazy.collect().unwrap_or(df_clone)
-}
-
-// =============================================================================
 // Validation
 // =============================================================================
 
@@ -1228,7 +1150,6 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
             &layer_schemas[idx],
             &scales,
             &type_names,
-            &aesthetic_ctx,
             &execute_query,
         )?;
         layer_queries.push(layer_query);
@@ -1339,7 +1260,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
                 if flipped_keys.insert(key.clone()) {
                     // First time flipping this data key
                     if let Some(df) = data_map.remove(key) {
-                        let flipped_df = flip_dataframe_positional_columns(df, &aesthetic_ctx);
+                        let flipped_df = layer::flip_dataframe_positional_columns(df, &aesthetic_ctx);
                         data_map.insert(key.clone(), flipped_df);
                     }
                 }
