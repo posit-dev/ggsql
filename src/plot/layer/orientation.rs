@@ -14,78 +14,34 @@
 //!
 //! Orientation describes how the layer's main axis aligns with the coordinate's
 //! primary axis (pos1):
-//! - **Aligned**: main axis = pos1 (vertical bars, x-axis bins)
-//! - **Transposed**: main axis = pos2 (horizontal bars, y-axis bins)
+//! - **"aligned"**: main axis = pos1 (vertical bars, x-axis bins)
+//! - **"transposed"**: main axis = pos2 (horizontal bars, y-axis bins)
 //!
 //! # Auto-Detection
 //!
 //! Orientation is auto-detected from scale types:
-//! - For two-axis geoms (bar, boxplot): if pos1 is continuous and pos2 is discrete → Transposed
-//! - For single-axis geoms (histogram, density): if pos2 has a scale but pos1 doesn't → Transposed
-//!
-//! # Explicit Override
-//!
-//! Users can set `SETTING orientation => 'transposed'` (or `'horizontal'`) or
-//! `orientation => 'aligned'` (or `'vertical'`) to override auto-detection.
-
-use serde::{Deserialize, Serialize};
+//! - For two-axis geoms (bar, boxplot): if pos1 is continuous and pos2 is discrete → "transposed"
+//! - For single-axis geoms (histogram, density): if pos2 has a scale but pos1 doesn't → "transposed"
 
 use super::geom::GeomType;
 use super::Layer;
 use crate::plot::scale::ScaleTypeKind;
 use crate::plot::{Mappings, Scale};
 
-/// Layer orientation for geoms with implicit direction.
-///
-/// - **Aligned**: Layer's main axis aligns with coord's primary axis (pos1)
-/// - **Transposed**: Layer's main axis aligns with coord's secondary axis (pos2)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Orientation {
-    /// Aligned orientation: layer's main axis = pos1 (vertical bars, x-axis bins)
-    Aligned,
-    /// Transposed orientation: layer's main axis = pos2 (horizontal bars, y-axis bins)
-    Transposed,
-}
+/// Orientation value for aligned/vertical orientation.
+pub const ALIGNED: &str = "aligned";
 
-impl std::fmt::Display for Orientation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Orientation::Aligned => write!(f, "aligned"),
-            Orientation::Transposed => write!(f, "transposed"),
-        }
-    }
-}
-
-impl std::str::FromStr for Orientation {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "aligned" | "vertical" => Ok(Orientation::Aligned),
-            "transposed" | "horizontal" => Ok(Orientation::Transposed),
-            _ => Err(format!(
-                "Invalid orientation '{}'. Valid values: aligned, transposed, vertical, horizontal",
-                s
-            )),
-        }
-    }
-}
+/// Orientation value for transposed/horizontal orientation.
+pub const TRANSPOSED: &str = "transposed";
 
 /// Determine effective orientation for a layer.
 ///
-/// If the layer has an explicit orientation set (from SETTING), use that.
-/// Otherwise, auto-detect from scales for geoms with implicit orientation.
-/// Geoms without implicit orientation always return Aligned.
-pub fn resolve_orientation(layer: &Layer, scales: &[Scale]) -> Orientation {
-    // Explicit orientation always wins
-    if let Some(orientation) = layer.orientation {
-        return orientation;
-    }
-
+/// Auto-detects orientation from scales for geoms with implicit orientation.
+/// Geoms without implicit orientation always return "aligned".
+pub fn resolve_orientation(layer: &Layer, scales: &[Scale]) -> &'static str {
     // Only auto-detect for geoms with implicit orientation
     if !geom_has_implicit_orientation(&layer.geom.geom_type()) {
-        return Orientation::Aligned;
+        return ALIGNED;
     }
 
     detect_from_scales(
@@ -94,6 +50,13 @@ pub fn resolve_orientation(layer: &Layer, scales: &[Scale]) -> Orientation {
         &layer.mappings,
         &layer.remappings,
     )
+}
+
+/// Check if a layer is transposed (horizontal orientation).
+///
+/// Convenience helper for downstream code that needs to check orientation.
+pub fn is_transposed(layer: &Layer, scales: &[Scale]) -> bool {
+    resolve_orientation(layer, scales) == TRANSPOSED
 }
 
 /// Check if a geom type supports orientation auto-detection.
@@ -142,7 +105,7 @@ fn detect_from_scales(
     _geom: &GeomType,
     mappings: &Mappings,
     remappings: &Mappings,
-) -> Orientation {
+) -> &'static str {
     // Check for positional mappings
     let has_pos1_mapping = mappings.contains_key("pos1");
     let has_pos2_mapping = mappings.contains_key("pos2");
@@ -153,10 +116,10 @@ fn detect_from_scales(
         let has_pos2_remapping = remappings.contains_key("pos2");
 
         if has_pos1_remapping && !has_pos2_remapping {
-            return Orientation::Transposed;
+            return TRANSPOSED;
         }
         if has_pos2_remapping && !has_pos1_remapping {
-            return Orientation::Aligned;
+            return ALIGNED;
         }
     }
 
@@ -172,10 +135,10 @@ fn detect_from_scales(
     // to change orientation. The geom's default_remappings will define orientation.
     if has_pos1_mapping || has_pos2_mapping {
         if has_pos2 && !has_pos1 {
-            return Orientation::Transposed;
+            return TRANSPOSED;
         }
         if has_pos1 && !has_pos2 {
-            return Orientation::Aligned;
+            return ALIGNED;
         }
     }
 
@@ -194,9 +157,9 @@ fn detect_from_scales(
             || mappings.contains_key("pos2end");
 
         if has_pos1_range && !has_pos2_range {
-            return Orientation::Transposed;
+            return TRANSPOSED;
         }
-        return Orientation::Aligned;
+        return ALIGNED;
     }
 
     // Rule 3: Mixed types - discrete axis is primary
@@ -204,14 +167,14 @@ fn detect_from_scales(
     let pos2_discrete = pos2_scale.is_some_and(is_discrete_scale);
 
     if pos1_continuous && pos2_discrete {
-        return Orientation::Transposed;
+        return TRANSPOSED;
     }
     if pos1_discrete && pos2_continuous {
-        return Orientation::Aligned;
+        return ALIGNED;
     }
 
     // Default
-    Orientation::Aligned
+    ALIGNED
 }
 
 /// Check if a scale is continuous (numeric/temporal).
@@ -297,34 +260,9 @@ mod tests {
     use crate::plot::{AestheticValue, Geom, ScaleType};
 
     #[test]
-    fn test_orientation_from_str() {
-        assert_eq!(
-            "aligned".parse::<Orientation>().unwrap(),
-            Orientation::Aligned
-        );
-        assert_eq!(
-            "vertical".parse::<Orientation>().unwrap(),
-            Orientation::Aligned
-        );
-        assert_eq!(
-            "transposed".parse::<Orientation>().unwrap(),
-            Orientation::Transposed
-        );
-        assert_eq!(
-            "horizontal".parse::<Orientation>().unwrap(),
-            Orientation::Transposed
-        );
-        assert_eq!(
-            "TRANSPOSED".parse::<Orientation>().unwrap(),
-            Orientation::Transposed
-        );
-        assert!("invalid".parse::<Orientation>().is_err());
-    }
-
-    #[test]
-    fn test_orientation_display() {
-        assert_eq!(Orientation::Aligned.to_string(), "aligned");
-        assert_eq!(Orientation::Transposed.to_string(), "transposed");
+    fn test_orientation_constants() {
+        assert_eq!(ALIGNED, "aligned");
+        assert_eq!(TRANSPOSED, "transposed");
     }
 
     #[test]
@@ -343,23 +281,33 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_orientation_explicit() {
-        let mut layer = Layer::new(Geom::bar());
-        layer.orientation = Some(Orientation::Transposed);
-
-        let scales = vec![];
-        assert_eq!(
-            resolve_orientation(&layer, &scales),
-            Orientation::Transposed
-        );
-    }
-
-    #[test]
     fn test_resolve_orientation_no_implicit() {
         // Point geom has no implicit orientation
         let layer = Layer::new(Geom::point());
         let scales = vec![];
-        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Aligned);
+        assert_eq!(resolve_orientation(&layer, &scales), ALIGNED);
+    }
+
+    #[test]
+    fn test_is_transposed_helper() {
+        // Helper function should return true for transposed orientation
+        let mut layer = Layer::new(Geom::histogram());
+        layer
+            .mappings
+            .insert("pos2", AestheticValue::standard_column("y_col"));
+        let mut scale = Scale::new("pos2");
+        scale.scale_type = Some(ScaleType::continuous());
+        let scales = vec![scale];
+
+        assert!(is_transposed(&layer, &scales));
+
+        // Should return false for aligned orientation
+        let layer2 = Layer::new(Geom::histogram());
+        let mut scale2 = Scale::new("pos1");
+        scale2.scale_type = Some(ScaleType::continuous());
+        let scales2 = vec![scale2];
+
+        assert!(!is_transposed(&layer2, &scales2));
     }
 
     #[test]
@@ -370,7 +318,7 @@ mod tests {
         scale.scale_type = Some(ScaleType::continuous());
         let scales = vec![scale];
 
-        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Aligned);
+        assert_eq!(resolve_orientation(&layer, &scales), ALIGNED);
     }
 
     #[test]
@@ -387,7 +335,7 @@ mod tests {
 
         assert_eq!(
             resolve_orientation(&layer, &scales),
-            Orientation::Transposed
+            TRANSPOSED
         );
     }
 
@@ -402,7 +350,7 @@ mod tests {
         let scales = vec![scale];
 
         // Without positional mappings, scale existence doesn't imply orientation
-        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Aligned);
+        assert_eq!(resolve_orientation(&layer, &scales), ALIGNED);
     }
 
     #[test]
@@ -417,7 +365,7 @@ mod tests {
 
         assert_eq!(
             resolve_orientation(&layer, &scales),
-            Orientation::Transposed
+            TRANSPOSED
         );
     }
 
@@ -431,7 +379,7 @@ mod tests {
         scale2.scale_type = Some(ScaleType::continuous());
         let scales = vec![scale1, scale2];
 
-        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Aligned);
+        assert_eq!(resolve_orientation(&layer, &scales), ALIGNED);
     }
 
     #[test]
@@ -516,7 +464,7 @@ mod tests {
         scale2.scale_type = Some(ScaleType::continuous());
         let scales = vec![scale1, scale2];
 
-        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Aligned);
+        assert_eq!(resolve_orientation(&layer, &scales), ALIGNED);
     }
 
     #[test]
@@ -544,7 +492,7 @@ mod tests {
 
         assert_eq!(
             resolve_orientation(&layer, &scales),
-            Orientation::Transposed
+            TRANSPOSED
         );
     }
 
@@ -569,7 +517,7 @@ mod tests {
 
         assert_eq!(
             resolve_orientation(&layer, &scales),
-            Orientation::Transposed
+            TRANSPOSED
         );
     }
 
@@ -592,7 +540,7 @@ mod tests {
         scale2.scale_type = Some(ScaleType::continuous());
         let scales = vec![scale1, scale2];
 
-        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Aligned);
+        assert_eq!(resolve_orientation(&layer, &scales), ALIGNED);
     }
 
     #[test]
@@ -623,7 +571,7 @@ mod tests {
 
         assert_eq!(
             resolve_orientation(&layer, &scales),
-            Orientation::Transposed
+            TRANSPOSED
         );
     }
 
@@ -653,7 +601,7 @@ mod tests {
         scale2.scale_type = Some(ScaleType::continuous());
         let scales = vec![scale1, scale2];
 
-        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Aligned);
+        assert_eq!(resolve_orientation(&layer, &scales), ALIGNED);
     }
 
     #[test]
@@ -669,7 +617,7 @@ mod tests {
         let scales = vec![];
         assert_eq!(
             resolve_orientation(&layer, &scales),
-            Orientation::Transposed
+            TRANSPOSED
         );
     }
 
@@ -683,7 +631,7 @@ mod tests {
         );
 
         let scales = vec![];
-        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Aligned);
+        assert_eq!(resolve_orientation(&layer, &scales), ALIGNED);
     }
 
     #[test]
@@ -700,7 +648,7 @@ mod tests {
         );
 
         let scales = vec![];
-        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Aligned);
+        assert_eq!(resolve_orientation(&layer, &scales), ALIGNED);
     }
 
     #[test]
@@ -724,6 +672,6 @@ mod tests {
         scale2.scale_type = Some(ScaleType::continuous());
         let scales = vec![scale1, scale2];
 
-        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Aligned);
+        assert_eq!(resolve_orientation(&layer, &scales), ALIGNED);
     }
 }

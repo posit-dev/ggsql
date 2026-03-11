@@ -355,14 +355,19 @@ pub fn apply_layer_transforms<F>(
 where
     F: Fn(&str) -> Result<DataFrame>,
 {
-    use crate::plot::layer::orientation::{flip_mappings, flip_remappings, Orientation};
+    use crate::plot::layer::orientation::{flip_mappings, flip_remappings};
 
     // Clone order_by early to avoid borrow conflicts
     let order_by = layer.order_by.clone();
 
     // Orientation detection and initial flip was already done in mod.rs before
     // build_layer_base_query. We just check if we need to flip back after stat.
-    let needs_flip = layer.orientation == Some(Orientation::Transposed);
+    let needs_flip = layer
+        .parameters
+        .get("orientation")
+        .and_then(|v| v.as_str())
+        .map(|s| s == "transposed")
+        .unwrap_or(false);
 
     // Build the aesthetic-named schema for stat transforms
     // Note: Mappings were already flipped in mod.rs if needed, so schema reflects normalized orientation

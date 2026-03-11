@@ -372,7 +372,6 @@ mod duckdb_tests {
     #[test]
     fn test_ribbon_transposed_orientation() {
         use crate::naming;
-        use crate::plot::layer::orientation::Orientation;
 
         let reader =
             crate::reader::DuckDBReader::from_connection_string("duckdb://memory").unwrap();
@@ -391,7 +390,8 @@ mod duckdb_tests {
 
         // Debug: print orientation and scales
         let layer = &result.specs[0].layers[0];
-        eprintln!("Layer orientation: {:?}", layer.orientation);
+        let orientation = layer.parameters.get("orientation");
+        eprintln!("Layer orientation: {:?}", orientation);
         eprintln!(
             "Scales: {:?}",
             result.specs[0]
@@ -407,8 +407,8 @@ mod duckdb_tests {
 
         // Check orientation was detected correctly
         assert_eq!(
-            layer.orientation,
-            Some(Orientation::Transposed),
+            orientation.and_then(|v| v.as_str()),
+            Some("transposed"),
             "Should detect Transposed orientation"
         );
 

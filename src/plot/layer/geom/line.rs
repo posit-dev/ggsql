@@ -1,6 +1,7 @@
 //! Line geom implementation
 
-use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
+use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, StatResult};
+use crate::plot::layer::orientation::ALIGNED;
 use crate::plot::types::DefaultAestheticValue;
 use crate::{naming, Mappings};
 
@@ -24,6 +25,13 @@ impl GeomTrait for Line {
                 ("linetype", DefaultAestheticValue::String("solid")),
             ],
         }
+    }
+
+    fn default_params(&self) -> &'static [DefaultParam] {
+        &[DefaultParam {
+            name: "orientation",
+            default: DefaultParamValue::String(ALIGNED),
+        }]
     }
 
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {

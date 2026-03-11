@@ -271,14 +271,18 @@ impl GeomRenderer for BarRenderer {
         layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        use crate::plot::layer::Orientation;
         let width = match layer.parameters.get("width") {
             Some(ParameterValue::Number(w)) => *w,
             _ => 0.9,
         };
 
         // For horizontal bars, use "height" for band size; for vertical, use "width"
-        let is_horizontal = layer.orientation == Some(Orientation::Transposed);
+        let is_horizontal = layer
+            .parameters
+            .get("orientation")
+            .and_then(|v| v.as_str())
+            .map(|s| s == "transposed")
+            .unwrap_or(false);
 
         // For dodged bars, use expression-based size with the adjusted width
         // For non-dodged bars, use band-relative size
@@ -548,9 +552,12 @@ impl GeomRenderer for RibbonRenderer {
         layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        use crate::plot::layer::Orientation;
-
-        let is_horizontal = layer.orientation == Some(Orientation::Transposed);
+        let is_horizontal = layer
+            .parameters
+            .get("orientation")
+            .and_then(|v| v.as_str())
+            .map(|s| s == "transposed")
+            .unwrap_or(false);
 
         // Remap min/max to primary/secondary based on orientation:
         // - Aligned (vertical): ymax→y, ymin→y2
@@ -629,7 +636,6 @@ impl GeomRenderer for ViolinRenderer {
         layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        use crate::plot::layer::Orientation;
         layer_spec["mark"] = json!({
             "type": "line",
             "filled": true
@@ -640,7 +646,12 @@ impl GeomRenderer for ViolinRenderer {
         let violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
 
         // Read orientation from layer (already resolved during execution)
-        let is_horizontal = layer.orientation == Some(Orientation::Transposed);
+        let is_horizontal = layer
+            .parameters
+            .get("orientation")
+            .and_then(|v| v.as_str())
+            .map(|s| s == "transposed")
+            .unwrap_or(false);
 
         // Continuous axis column for order calculation:
         // - Vertical: pos2 (y-axis has continuous density values)
@@ -714,10 +725,13 @@ impl GeomRenderer for ViolinRenderer {
         layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        use crate::plot::layer::Orientation;
-
         // Read orientation from layer (already resolved during execution)
-        let is_horizontal = layer.orientation == Some(Orientation::Transposed);
+        let is_horizontal = layer
+            .parameters
+            .get("orientation")
+            .and_then(|v| v.as_str())
+            .map(|s| s == "transposed")
+            .unwrap_or(false);
 
         // Categorical axis for detail encoding:
         // - Vertical: x channel (categorical groups on x-axis)
@@ -994,12 +1008,15 @@ impl BoxplotRenderer {
         base_key: &str,
         has_outliers: bool,
     ) -> Result<Vec<Value>> {
-        use crate::plot::layer::Orientation;
-
         let mut layers: Vec<Value> = Vec::new();
 
         // Read orientation from layer (already resolved during execution)
-        let is_horizontal = layer.orientation == Some(Orientation::Transposed);
+        let is_horizontal = layer
+            .parameters
+            .get("orientation")
+            .and_then(|v| v.as_str())
+            .map(|s| s == "transposed")
+            .unwrap_or(false);
 
         // Value columns depend on orientation (after DataFrame column flip):
         // - Vertical: values in pos2/pos2end (no flip)

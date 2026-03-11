@@ -1,5 +1,6 @@
 //! Area geom implementation
 
+use crate::plot::layer::orientation::ALIGNED;
 use crate::plot::{types::DefaultAestheticValue, DefaultParam, DefaultParamValue};
 use crate::{naming, Mappings};
 
@@ -33,10 +34,16 @@ impl GeomTrait for Area {
     }
 
     fn default_params(&self) -> &'static [DefaultParam] {
-        &[DefaultParam {
-            name: "position",
-            default: DefaultParamValue::String("stack"),
-        }]
+        &[
+            DefaultParam {
+                name: "position",
+                default: DefaultParamValue::String("stack"),
+            },
+            DefaultParam {
+                name: "orientation",
+                default: DefaultParamValue::String(ALIGNED),
+            },
+        ]
     }
 
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {

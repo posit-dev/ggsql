@@ -15,8 +15,8 @@ pub mod orientation;
 // Position is a submodule of layer
 pub mod position;
 
-// Re-export orientation types
-pub use orientation::Orientation;
+// Re-export orientation functions and constants
+pub use orientation::{is_transposed, ALIGNED, TRANSPOSED};
 
 // Re-export geom types for convenience
 pub use geom::{
@@ -69,10 +69,6 @@ pub struct Layer {
     pub order_by: Option<SqlExpression>,
     /// Columns for grouping/partitioning (from PARTITION BY clause)
     pub partition_by: Vec<String>,
-    /// Layer orientation (None = auto-detect from scales)
-    /// Used for geoms with implicit orientation (bar, histogram, boxplot, etc.)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub orientation: Option<Orientation>,
     /// Key for this layer's data in the datamap (set during execution).
     /// Defaults to `None`. Set to `__ggsql_layer_<idx>__` during execution,
     /// but may point to another layer's data when queries are deduplicated.
@@ -98,7 +94,6 @@ impl Layer {
             filter: None,
             order_by: None,
             partition_by: Vec::new(),
-            orientation: None,
             data_key: None,
             adjusted_width: None,
         }
