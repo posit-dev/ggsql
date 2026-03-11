@@ -78,9 +78,9 @@ impl GeomTrait for Violin {
         aesthetics: &Mappings,
         group_by: &[String],
         parameters: &HashMap<String, ParameterValue>,
-        execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
+        _execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
     ) -> Result<StatResult> {
-        stat_violin(query, aesthetics, group_by, parameters, execute_query)
+        stat_violin(query, aesthetics, group_by, parameters)
     }
 }
 
@@ -95,7 +95,6 @@ fn stat_violin(
     aesthetics: &Mappings,
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
-    execute: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
 ) -> Result<StatResult> {
     // Verify y exists
     if get_column_name(aesthetics, "pos2").is_none() {
@@ -123,7 +122,7 @@ fn stat_violin(
         None,
         group_by.as_slice(),
         parameters,
-        execute,
+        true, // Trim to data range - violins shouldn't extend beyond data
     )
 }
 
@@ -185,7 +184,7 @@ mod tests {
 
         let execute = |sql: &str| reader.execute_sql(sql);
 
-        let result = stat_violin(query, &aesthetics, &groups, &parameters, &execute)
+        let result = stat_violin(query, &aesthetics, &groups, &parameters)
             .expect("stat_violin should succeed");
 
         // Verify the result is a transformed stat result
@@ -250,7 +249,7 @@ mod tests {
 
         let execute = |sql: &str| reader.execute_sql(sql);
 
-        let result = stat_violin(query, &aesthetics, &groups, &parameters, &execute)
+        let result = stat_violin(query, &aesthetics, &groups, &parameters)
             .expect("stat_violin should succeed");
 
         // Verify the result is a transformed stat result

@@ -68,7 +68,7 @@ impl GeomTrait for Smooth {
         aesthetics: &Mappings,
         group_by: &[String],
         parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
-        execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
+        _execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
     ) -> crate::Result<super::StatResult> {
         let Some(ParameterValue::String(method)) = parameters.get("method") else {
             return Err(GgsqlError::ValidationError(
@@ -84,7 +84,7 @@ impl GeomTrait for Smooth {
                 Some("pos2"),
                 group_by,
                 parameters,
-                execute_query,
+                true, // Trim to data range - no extrapolation
             ),
             "ols" => stat_ols(query, aesthetics, group_by),
             "tls" => stat_tls(query, aesthetics, group_by),
