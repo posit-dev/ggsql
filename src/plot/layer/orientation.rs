@@ -26,7 +26,7 @@
 use super::geom::GeomType;
 use super::Layer;
 use crate::plot::scale::ScaleTypeKind;
-use crate::plot::{Mappings, Scale};
+use crate::plot::{AestheticValue, Mappings, Scale};
 
 /// Orientation value for aligned/vertical orientation.
 pub const ALIGNED: &str = "aligned";
@@ -215,7 +215,7 @@ fn is_discrete_scale(scale: &Scale) -> bool {
     })
 }
 
-/// Swap positional aesthetic pairs in layer mappings.
+/// Swap positional aesthetic pairs in an aesthetics map.
 ///
 /// Swaps the following pairs:
 /// - pos1 ↔ pos2
@@ -224,11 +224,11 @@ fn is_discrete_scale(scale: &Scale) -> bool {
 /// - pos1end ↔ pos2end
 /// - pos1offset ↔ pos2offset
 ///
-/// This is called before stat transforms for Secondary orientation layers,
-/// so stats always see "standard" orientation. After stat transforms,
-/// this is called again to flip back to the correct output positions.
-pub fn flip_mappings(layer: &mut Layer) {
-    let pairs = [
+/// Used for both mappings and remappings when handling transposed orientation.
+pub fn flip_positional_aesthetics(
+    aesthetics: &mut std::collections::HashMap<String, AestheticValue>,
+) {
+    const PAIRS: [(&str, &str); 5] = [
         ("pos1", "pos2"),
         ("pos1min", "pos2min"),
         ("pos1max", "pos2max"),
@@ -236,40 +236,15 @@ pub fn flip_mappings(layer: &mut Layer) {
         ("pos1offset", "pos2offset"),
     ];
 
-    for (a, b) in pairs {
-        let val_a = layer.mappings.aesthetics.remove(a);
-        let val_b = layer.mappings.aesthetics.remove(b);
+    for (a, b) in PAIRS {
+        let val_a = aesthetics.remove(a);
+        let val_b = aesthetics.remove(b);
 
         if let Some(v) = val_a {
-            layer.mappings.aesthetics.insert(b.to_string(), v);
+            aesthetics.insert(b.to_string(), v);
         }
         if let Some(v) = val_b {
-            layer.mappings.aesthetics.insert(a.to_string(), v);
-        }
-    }
-}
-
-/// Swap positional aesthetic pairs in remappings.
-///
-/// Same as flip_mappings but for remappings (stat output mappings).
-pub fn flip_remappings(layer: &mut Layer) {
-    let pairs = [
-        ("pos1", "pos2"),
-        ("pos1min", "pos2min"),
-        ("pos1max", "pos2max"),
-        ("pos1end", "pos2end"),
-        ("pos1offset", "pos2offset"),
-    ];
-
-    for (a, b) in pairs {
-        let val_a = layer.remappings.aesthetics.remove(a);
-        let val_b = layer.remappings.aesthetics.remove(b);
-
-        if let Some(v) = val_a {
-            layer.remappings.aesthetics.insert(b.to_string(), v);
-        }
-        if let Some(v) = val_b {
-            layer.remappings.aesthetics.insert(a.to_string(), v);
+            aesthetics.insert(a.to_string(), v);
         }
     }
 }
@@ -411,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    fn test_flip_mappings() {
+    fn test_flip_positional_aesthetics() {
         let mut layer = Layer::new(Geom::bar());
         layer.mappings.insert(
             "pos1".to_string(),
@@ -426,7 +401,7 @@ mod tests {
             AestheticValue::standard_column("x2".to_string()),
         );
 
-        flip_mappings(&mut layer);
+        flip_positional_aesthetics(&mut layer.mappings.aesthetics);
 
         // pos1 ↔ pos2
         assert_eq!(
@@ -446,15 +421,15 @@ mod tests {
     }
 
     #[test]
-    fn test_flip_mappings_empty() {
+    fn test_flip_positional_aesthetics_empty() {
         let mut layer = Layer::new(Geom::point());
         // No crash with empty mappings
-        flip_mappings(&mut layer);
+        flip_positional_aesthetics(&mut layer.mappings.aesthetics);
         assert!(layer.mappings.aesthetics.is_empty());
     }
 
     #[test]
-    fn test_flip_mappings_partial() {
+    fn test_flip_positional_aesthetics_partial() {
         let mut layer = Layer::new(Geom::bar());
         // Only pos1 mapped
         layer.mappings.insert(
@@ -462,7 +437,7 @@ mod tests {
             AestheticValue::standard_column("x".to_string()),
         );
 
-        flip_mappings(&mut layer);
+        flip_positional_aesthetics(&mut layer.mappings.aesthetics);
 
         // pos1 moves to pos2
         assert!(layer.mappings.get("pos1").is_none());

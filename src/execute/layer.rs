@@ -5,7 +5,7 @@
 
 use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
 use crate::plot::layer::is_transposed;
-use crate::plot::layer::orientation::{flip_mappings, resolve_orientation};
+use crate::plot::layer::orientation::{flip_positional_aesthetics, resolve_orientation};
 use crate::plot::{
     AestheticValue, DefaultAestheticValue, Layer, ParameterValue, Scale, Schema, SqlTypeNames,
     StatResult,
@@ -356,7 +356,7 @@ pub fn apply_layer_transforms<F>(
 where
     F: Fn(&str) -> Result<DataFrame>,
 {
-    use crate::plot::layer::orientation::{flip_mappings, flip_remappings};
+    use crate::plot::layer::orientation::flip_positional_aesthetics;
 
     // Clone order_by early to avoid borrow conflicts
     let order_by = layer.order_by.clone();
@@ -433,7 +433,7 @@ where
     // We flip them to aligned orientation so they're uniform with defaults.
     // At the end, we flip everything back together.
     if needs_flip {
-        flip_remappings(layer);
+        flip_positional_aesthetics(&mut layer.remappings.aesthetics);
     }
 
     // Apply literal default remappings from geom defaults (e.g., y2 => 0.0 for bar baseline).
@@ -580,10 +580,10 @@ where
     // later in mod.rs after apply_remappings_post_query creates the columns,
     // so that Phase 4.5 can flip those columns along with everything else.
     if needs_flip {
-        flip_mappings(layer);
+        flip_positional_aesthetics(&mut layer.mappings.aesthetics);
 
         // Normalize mapping column names to match their aesthetic keys.
-        // After flip_mappings, pos1 might point to __ggsql_aes_pos2__ (and vice versa).
+        // After flipping, pos1 might point to __ggsql_aes_pos2__ (and vice versa).
         // We update the column names so pos1 → __ggsql_aes_pos1__, etc.
         // The DataFrame columns will be renamed correspondingly in mod.rs.
         normalize_mapping_column_names(layer);
@@ -601,11 +601,11 @@ where
 
 /// Normalize mapping column names to match their aesthetic keys after flip-back.
 ///
-/// After `flip_mappings`, the mapping values (column names) may not match the keys.
+/// After flipping positional aesthetics, the mapping values (column names) may not match the keys.
 /// For example, pos1 might point to `__ggsql_aes_pos2__`.
 /// This function updates the column names so pos1 → `__ggsql_aes_pos1__`, etc.
 ///
-/// This should be called after flip_mappings during flip-back.
+/// This should be called after flipping during flip-back.
 /// The DataFrame columns should be renamed correspondingly using `flip_dataframe_columns`.
 fn normalize_mapping_column_names(layer: &mut Layer) {
     // Collect the aesthetics to update (to avoid borrowing issues)
@@ -710,7 +710,7 @@ pub fn resolve_orientations(
             ParameterValue::String(orientation.to_string()),
         );
         if is_transposed(layer) {
-            flip_mappings(layer);
+            flip_positional_aesthetics(&mut layer.mappings.aesthetics);
             // Also flip column names in type_info to match the flipped mappings
             if layer_idx < layer_type_info.len() {
                 for (name, _, _) in &mut layer_type_info[layer_idx] {

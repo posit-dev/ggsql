@@ -1165,7 +1165,9 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
             // (which uses remapping keys to create mapping entries).
             // Phase 4.5 will then flip the DataFrame columns to match.
             if is_transposed(l) {
-                crate::plot::layer::orientation::flip_remappings(l);
+                crate::plot::layer::orientation::flip_positional_aesthetics(
+                    &mut l.remappings.aesthetics,
+                );
             }
 
             // Update layer mappings for all layers (even if data shared)
