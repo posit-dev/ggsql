@@ -40,11 +40,9 @@ await esbuild.build({
   format: "iife",
 });
 
-// Build main application bundle
-const buildOptions = {
-  entryPoints: [join(__dirname, "src/main.ts")],
+// Shared build options
+const sharedOptions = {
   bundle: true,
-  outfile: join(distDir, "bundle.js"),
   format: "esm",
   platform: "browser",
   target: "es2020",
@@ -55,13 +53,35 @@ const buildOptions = {
   },
 };
 
+// Build playground bundle
+const playgroundOptions = {
+  ...sharedOptions,
+  entryPoints: [join(__dirname, "src/main.ts")],
+  outfile: join(distDir, "bundle.js"),
+};
+
+// Build quarto integration bundle
+const quartoOptions = {
+  ...sharedOptions,
+  entryPoints: [join(__dirname, "src/quarto/main.ts")],
+  outfile: join(distDir, "quarto.js"),
+  loader: {
+    ...sharedOptions.loader,
+    ".css": "css",
+  },
+};
+
 if (isWatch) {
   console.log("Starting watch mode...");
-  const ctx = await esbuild.context(buildOptions);
-  await ctx.watch();
+  const playgroundCtx = await esbuild.context(playgroundOptions);
+  const quartoCtx = await esbuild.context(quartoOptions);
+  await Promise.all([playgroundCtx.watch(), quartoCtx.watch()]);
   console.log("Watching for changes...");
 } else {
-  console.log("Building main bundle...");
-  await esbuild.build(buildOptions);
+  console.log("Building bundles...");
+  await Promise.all([
+    esbuild.build(playgroundOptions),
+    esbuild.build(quartoOptions),
+  ]);
   console.log("Build complete!");
 }

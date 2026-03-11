@@ -38,7 +38,7 @@ else
     echo "Skipping WASM binary build (--skip-binary)."
 fi
 
-echo "Building WASM demo..."
+echo "Building WASM demo and Quarto integration..."
 (cd "$SCRIPT_DIR/demo" && npm install && npm run build)
 
 echo "Copying output to doc/wasm..."

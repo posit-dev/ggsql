@@ -1,10 +1,11 @@
 import * as monaco from "monaco-editor";
 import { createOnigScanner, createOnigString, loadWASM } from "vscode-oniguruma";
 import { Registry, parseRawGrammar, type IGrammar } from "vscode-textmate";
+import { WASM_BASE } from "./wasmBase";
 
 // Must be set before any Monaco editor is created
 (self as any).MonacoEnvironment = {
-  getWorkerUrl: (_moduleId: string, _label: string) => "./editor.worker.js",
+  getWorkerUrl: (_moduleId: string, _label: string) => WASM_BASE + "editor.worker.js",
 };
 
 // Map TextMate scope names to Monaco theme token colors
@@ -40,7 +41,7 @@ function scopeToMonacoToken(scopes: string[]): string {
 
 async function initTextMateGrammar(): Promise<IGrammar | null> {
   // Load oniguruma WASM
-  const onigWasm = await fetch("./onig.wasm");
+  const onigWasm = await fetch(WASM_BASE + "onig.wasm");
   const onigBuffer = await onigWasm.arrayBuffer();
   await loadWASM(onigBuffer);
 
@@ -52,7 +53,7 @@ async function initTextMateGrammar(): Promise<IGrammar | null> {
     }),
     loadGrammar: async (scopeName: string) => {
       if (scopeName === "source.ggsql") {
-        const response = await fetch("./ggsql.tmLanguage.json");
+        const response = await fetch(WASM_BASE + "ggsql.tmLanguage.json");
         const grammarText = await response.text();
         return parseRawGrammar(grammarText, "ggsql.tmLanguage.json");
       }

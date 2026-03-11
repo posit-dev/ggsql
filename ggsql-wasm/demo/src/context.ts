@@ -1,4 +1,5 @@
 import init, { GgsqlContext } from "ggsql-wasm";
+import { WASM_BASE } from "./wasmBase";
 
 export class WasmContextManager {
   private context: GgsqlContext | null = null;
@@ -7,7 +8,7 @@ export class WasmContextManager {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    await init("./ggsql_wasm_bg.wasm");
+    await init(WASM_BASE + "ggsql_wasm_bg.wasm");
     this.context = new GgsqlContext();
     this.initialized = true;
   }

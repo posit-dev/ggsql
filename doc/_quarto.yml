@@ -118,3 +118,14 @@ format:
           <script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js"
               data-light-bg="#94D2BD"
               data-dark-bg="#001219"></script>
+    include-after-body:
+      - text: |
+          <script type="module">
+            const offset = document.querySelector('meta[name="quarto:offset"]')?.content || './';
+            const base = offset + 'wasm/';
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = base + 'quarto.css';
+            document.head.appendChild(link);
+            import(base + 'quarto.js');
+          </script>
