@@ -10,8 +10,8 @@ The point layer is used to create scatterplots. The scatterplot is most useful f
 The following aesthetics are recognised by the point layer.
 
 ### Required
-* `x`: Position along the x-axis
-* `y`: Position along the y-axis
+* Primary axis (e.g. `x`): Position along the primary axis.
+* Secondary axis (e.g. `y`): Position along the secondary axis.
 
 ### Optional
 * `size`: The size of each point
@@ -26,6 +26,9 @@ The following aesthetics are recognised by the point layer.
 
 ## Data transformation
 The point layer does not transform its data but passes it through unchanged
+
+## Orientation
+The point layer is symmetric in how it regards its axes and thus doesn't exhibit any orientation.
 
 ## Examples
 

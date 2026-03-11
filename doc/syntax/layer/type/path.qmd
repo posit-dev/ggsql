@@ -10,8 +10,8 @@ The path layer is used to create lineplots, but contrary to the [line layer](lin
 The following aesthetics are recognised by the path layer.
 
 ### Required
-* `x`: Position along the x-axis
-* `y`: Position along the y-axis
+* Primary axis (e.g. `x`): Position along the primary axis.
+* Secondary axis (e.g. `y`): Position along the secondary axis.
 
 ### Optional
 * `colour`/`stroke`: The colour of the path
@@ -23,7 +23,10 @@ The following aesthetics are recognised by the path layer.
 * `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
 
 ## Data transformation
-The line layer does not transform its data but passes it through unchanged
+The path layer does not transform its data but passes it through unchanged
+
+## Orientation
+The path layer is symmetric in how it regards its axes and thus doesn't exhibit any orientation.
 
 ## Examples
 

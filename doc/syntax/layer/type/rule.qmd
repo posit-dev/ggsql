@@ -4,16 +4,15 @@ title: "Rule"
 
 > Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
-The rule layer is used to draw horizontal or vertical reference lines at specified values. This is useful for adding thresholds, means, medians, avent markers, cutoff dates or other guides to the plot. The lines span the full width or height of the panels.
+The rule layer is used to draw reference lines perpendicular to an axis at specified values. This is useful for adding thresholds, means, medians, event markers, cutoff dates or other guides to the plot. The lines span the full width or height of the panels.
+
+> The rule layer doesn't have a natural extend along the secondary axis and the scale range can thus not be deduced from it. If the rule layer is the only layer in the visualisation you must specify the position scale range manually.
 
 ## Aesthetics
 The following aesthetics are recognised by the hline layer.
 
 ### Required
-* `x`\*: The x-coordinate for the vertical line.
-* `y`\*: The y-coordinate for the horizontal line
-
-\* Exactly one of `x` or `y` is required, not both.
+* Primary axis (e.g. `x` or `y`): Position along the primary axis.
 
 ### Optional
 * `colour`/`stroke`: The colour of the line
@@ -26,6 +25,9 @@ The rule layer has no additional settings.
 
 ## Data transformation
 The rule layer does not transform its data but passes it through unchanged.
+
+## Orientation
+Rules are drawn perpendicular to their primary axis. The orientation can be deduced purely from the mapping. To create a horizontal rule you map the values to `y` instead of `x` (assuming a default Cartesian coordinate system).
 
 ## Examples
 

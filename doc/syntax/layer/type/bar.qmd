@@ -100,14 +100,19 @@ SCALE BINNED x
     SETTING breaks => 10
 ```
 
-And use with a polar coordinate system to create a pie chart
-
-**TBD**
-
 Create a horizontal bar plot by changing the mapping
 
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
 DRAW bar
     MAPPING species AS y
+```
+
+And use with a polar coordinate system to create a pie chart
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW bar
+    MAPPING species AS fill
+PROJECT TO polar
 ```

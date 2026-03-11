@@ -27,7 +27,7 @@ The following aesthetics are recognised by the bar layer.
 * `closed`: Either `'left'` or `'right'` (default). Determines whether the bin intervals are closed to the left or right side
 
 ## Data transformation
-The histogram layer will bin the records in each group and count them. By default it will map the count to `y`.
+The histogram layer will bin the records in each group and count them. By default it will map the count to the secondary axis.
 
 ### Properties
 

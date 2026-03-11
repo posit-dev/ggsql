@@ -13,6 +13,8 @@ $$
 
 Where $a$ is the `intercept` and $\beta$ is the `coef`.
 
+> The linear layer doesn't have a natural extend along either axes and the scale ranges can thus not be deduced from it. If the linear layer is the only layer in the visualisation you must specify the position scale ranges manually.
+
 ## Aesthetics
 The following aesthetics are recognised by the abline layer.
 
@@ -27,10 +29,13 @@ The following aesthetics are recognised by the abline layer.
 * `linetype`: The type of the line, i.e. the dashing pattern
 
 ## Settings
-The linear layer has no additional settings.
+* `orientation`: The orientation of the layer. Either `'aligned'` (default), or `'transposed'`. Determines if the layers primary axis ($x$ in the equation) is aligned with the coordinate systems first axis or not
 
 ## Data transformation
 The linear layer does not transform its data but passes it through unchanged.
+
+## Orientation
+Linear layers uses the predictor ($x$) for their primary axis and the response $y$ for its secondary axis. Since the primary axis cannot be deduced from the mapping it must be specified using the `orientation` setting. E.g. if you wish to create a vertical linear plot you need to set `orientation => 'transposed'` to indicate that the primary layer axis follows the second axis of the coordinate system.
 
 ## Examples
 
