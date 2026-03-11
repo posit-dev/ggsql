@@ -83,9 +83,6 @@ fn prepare_layer_data(
     let mut layer_renderers: Vec<Box<dyn GeomRenderer>> = Vec::new();
     let mut prepared_data: Vec<PreparedData> = Vec::new();
 
-    // Build context once for all layers
-    let context = layer::RenderContext::new(&spec.scales);
-
     for (layer_idx, layer) in spec.layers.iter().enumerate() {
         let data_key = &layer_data_keys[layer_idx];
         let df = data.get(data_key).ok_or_else(|| {
@@ -100,7 +97,7 @@ fn prepare_layer_data(
         let renderer = get_renderer(&layer.geom);
 
         // Prepare data using the renderer (handles both standard and composite cases)
-        let prepared = renderer.prepare_data(df, data_key, binned_columns, layer, &context)?;
+        let prepared = renderer.prepare_data(df, data_key, binned_columns)?;
 
         // Add data to individual datasets based on prepared type
         match &prepared {

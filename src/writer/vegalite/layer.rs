@@ -192,8 +192,6 @@ pub trait GeomRenderer: Send + Sync {
         df: &DataFrame,
         _data_key: &str,
         binned_columns: &HashMap<String, Vec<f64>>,
-        _layer: &Layer,
-        _context: &RenderContext,
     ) -> Result<PreparedData> {
         let values = if binned_columns.is_empty() {
             dataframe_to_values(df)?
@@ -433,8 +431,6 @@ impl GeomRenderer for LinearRenderer {
         df: &DataFrame,
         _data_key: &str,
         _binned_columns: &HashMap<String, Vec<f64>>,
-        _layer: &Layer,
-        _context: &RenderContext,
     ) -> Result<PreparedData> {
         // Just convert DataFrame to JSON values
         // No need to add xmin/xmax - they'll be encoded as literal values
@@ -1202,8 +1198,6 @@ impl GeomRenderer for BoxplotRenderer {
         df: &DataFrame,
         _data_key: &str,
         binned_columns: &HashMap<String, Vec<f64>>,
-        _layer: &Layer,
-        _context: &RenderContext,
     ) -> Result<PreparedData> {
         let (components, has_outliers) = self.prepare_components(df, binned_columns)?;
 
