@@ -449,39 +449,56 @@ impl GeomRenderer for LinearRenderer {
     fn modify_encoding(
         &self,
         encoding: &mut Map<String, Value>,
-        _layer: &Layer,
+        layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
         // Remove coefficient and intercept from encoding - they're only used in transforms
         encoding.remove("coef");
         encoding.remove("intercept");
 
-        // Add x/x2/y/y2 encodings for rule mark
-        // All are fields - x_min/x_max are created by transforms, y_min/y_max are computed
+        // Check orientation
+        let is_horizontal = layer
+            .parameters
+            .get("orientation")
+            .and_then(|v| v.as_str())
+            .map(|s| s == "transposed")
+            .unwrap_or(false);
+
+        // For aligned (default): x is primary axis, y is computed (secondary)
+        // For transposed: y is primary axis, x is computed (secondary)
+        let (primary, primary2, secondary, secondary2) = if is_horizontal {
+            ("y", "y2", "x", "x2")
+        } else {
+            ("x", "x2", "y", "y2")
+        };
+
+        // Add encodings for rule mark
+        // primary_min/primary_max are created by transforms (extent of the axis)
+        // secondary_min/secondary_max are computed via formula
         encoding.insert(
-            "x".to_string(),
+            primary.to_string(),
             json!({
-                "field": "x_min",
+                "field": "primary_min",
                 "type": "quantitative"
             }),
         );
         encoding.insert(
-            "x2".to_string(),
+            primary2.to_string(),
             json!({
-                "field": "x_max"
+                "field": "primary_max"
             }),
         );
         encoding.insert(
-            "y".to_string(),
+            secondary.to_string(),
             json!({
-                "field": "y_min",
+                "field": "secondary_min",
                 "type": "quantitative"
             }),
         );
         encoding.insert(
-            "y2".to_string(),
+            secondary2.to_string(),
             json!({
-                "field": "y_max"
+                "field": "secondary_max"
             }),
         );
 
@@ -491,35 +508,46 @@ impl GeomRenderer for LinearRenderer {
     fn modify_spec(
         &self,
         layer_spec: &mut Value,
-        _layer: &Layer,
+        layer: &Layer,
         context: &RenderContext,
     ) -> Result<()> {
         // Field names for coef and intercept (with aesthetic column prefix)
         let coef_field = naming::aesthetic_column("coef");
         let intercept_field = naming::aesthetic_column("intercept");
 
-        // Get x extent from scale (use pos1, the internal name for the first positional aesthetic)
-        let (x_min, x_max) = context.get_extent("pos1")?;
+        // Check orientation
+        let is_horizontal = layer
+            .parameters
+            .get("orientation")
+            .and_then(|v| v.as_str())
+            .map(|s| s == "transposed")
+            .unwrap_or(false);
+
+        // Get extent from appropriate axis:
+        // - Aligned (default): extent from pos1 (x-axis), compute y from x
+        // - Transposed: extent from pos2 (y-axis), compute x from y
+        let extent_aesthetic = if is_horizontal { "pos2" } else { "pos1" };
+        let (primary_min, primary_max) = context.get_extent(extent_aesthetic)?;
 
         // Add transforms:
-        // 1. Create constant x_min/x_max fields
-        // 2. Compute y values at those x positions
+        // 1. Create constant primary_min/primary_max fields (extent of the primary axis)
+        // 2. Compute secondary values at those primary positions: secondary = coef * primary + intercept
         let transforms = json!([
             {
-                "calculate": x_min.to_string(),
-                "as": "x_min"
+                "calculate": primary_min.to_string(),
+                "as": "primary_min"
             },
             {
-                "calculate": x_max.to_string(),
-                "as": "x_max"
+                "calculate": primary_max.to_string(),
+                "as": "primary_max"
             },
             {
-                "calculate": format!("datum.{} * datum.x_min + datum.{}", coef_field, intercept_field),
-                "as": "y_min"
+                "calculate": format!("datum.{} * datum.primary_min + datum.{}", coef_field, intercept_field),
+                "as": "secondary_min"
             },
             {
-                "calculate": format!("datum.{} * datum.x_max + datum.{}", coef_field, intercept_field),
-                "as": "y_max"
+                "calculate": format!("datum.{} * datum.primary_max + datum.{}", coef_field, intercept_field),
+                "as": "secondary_max"
             }
         ]);
 
@@ -1579,69 +1607,69 @@ mod tests {
         assert_eq!(
             transforms.len(),
             5,
-            "Should have 5 transforms (x_min, x_max, y_min, y_max, filter)"
+            "Should have 5 transforms (primary_min, primary_max, secondary_min, secondary_max, filter)"
         );
 
-        // Verify x_min/x_max transforms exist with consistent naming
-        let x_min_transform = transforms
+        // Verify primary_min/primary_max transforms exist with consistent naming
+        let primary_min_transform = transforms
             .iter()
-            .find(|t| t["as"] == "x_min")
-            .expect("x_min transform not found");
-        let x_max_transform = transforms
+            .find(|t| t["as"] == "primary_min")
+            .expect("primary_min transform not found");
+        let primary_max_transform = transforms
             .iter()
-            .find(|t| t["as"] == "x_max")
-            .expect("x_max transform not found");
+            .find(|t| t["as"] == "primary_max")
+            .expect("primary_max transform not found");
 
         assert!(
-            x_min_transform["calculate"].is_string(),
-            "x_min should have calculate expression"
+            primary_min_transform["calculate"].is_string(),
+            "primary_min should have calculate expression"
         );
         assert!(
-            x_max_transform["calculate"].is_string(),
-            "x_max should have calculate expression"
+            primary_max_transform["calculate"].is_string(),
+            "primary_max should have calculate expression"
         );
 
-        // Verify y_min and y_max transforms use coef and intercept with x_min/x_max
-        let y_min_transform = transforms
+        // Verify secondary_min and secondary_max transforms use coef and intercept with primary_min/primary_max
+        let secondary_min_transform = transforms
             .iter()
-            .find(|t| t["as"] == "y_min")
-            .expect("y_min transform not found");
-        let y_max_transform = transforms
+            .find(|t| t["as"] == "secondary_min")
+            .expect("secondary_min transform not found");
+        let secondary_max_transform = transforms
             .iter()
-            .find(|t| t["as"] == "y_max")
-            .expect("y_max transform not found");
+            .find(|t| t["as"] == "secondary_max")
+            .expect("secondary_max transform not found");
 
-        let y_min_calc = y_min_transform["calculate"]
+        let secondary_min_calc = secondary_min_transform["calculate"]
             .as_str()
-            .expect("y_min calculate should be string");
-        let y_max_calc = y_max_transform["calculate"]
+            .expect("secondary_min calculate should be string");
+        let secondary_max_calc = secondary_max_transform["calculate"]
             .as_str()
-            .expect("y_max calculate should be string");
+            .expect("secondary_max calculate should be string");
 
-        // Should reference coef, intercept, and x_min/x_max
+        // Should reference coef, intercept, and primary_min/primary_max
         assert!(
-            y_min_calc.contains("__ggsql_aes_coef__"),
-            "y_min should reference coef"
+            secondary_min_calc.contains("__ggsql_aes_coef__"),
+            "secondary_min should reference coef"
         );
         assert!(
-            y_min_calc.contains("__ggsql_aes_intercept__"),
-            "y_min should reference intercept"
+            secondary_min_calc.contains("__ggsql_aes_intercept__"),
+            "secondary_min should reference intercept"
         );
         assert!(
-            y_min_calc.contains("datum.x_min"),
-            "y_min should reference datum.x_min"
+            secondary_min_calc.contains("datum.primary_min"),
+            "secondary_min should reference datum.primary_min"
         );
         assert!(
-            y_max_calc.contains("__ggsql_aes_coef__"),
-            "y_max should reference coef"
+            secondary_max_calc.contains("__ggsql_aes_coef__"),
+            "secondary_max should reference coef"
         );
         assert!(
-            y_max_calc.contains("__ggsql_aes_intercept__"),
-            "y_max should reference intercept"
+            secondary_max_calc.contains("__ggsql_aes_intercept__"),
+            "secondary_max should reference intercept"
         );
         assert!(
-            y_max_calc.contains("datum.x_max"),
-            "y_max should reference datum.x_max"
+            secondary_max_calc.contains("datum.primary_max"),
+            "secondary_max should reference datum.primary_max"
         );
 
         // Verify encoding has x, x2, y, y2 with consistent field names
@@ -1654,22 +1682,22 @@ mod tests {
         assert!(encoding.contains_key("y"), "Should have y encoding");
         assert!(encoding.contains_key("y2"), "Should have y2 encoding");
 
-        // Verify consistent naming: x_min, x_max, y_min, y_max
+        // Verify consistent naming: primary_min/max for x, secondary_min/max for y (default orientation)
         assert_eq!(
-            encoding["x"]["field"], "x_min",
-            "x should reference x_min field"
+            encoding["x"]["field"], "primary_min",
+            "x should reference primary_min field"
         );
         assert_eq!(
-            encoding["x2"]["field"], "x_max",
-            "x2 should reference x_max field"
+            encoding["x2"]["field"], "primary_max",
+            "x2 should reference primary_max field"
         );
         assert_eq!(
-            encoding["y"]["field"], "y_min",
-            "y should reference y_min field"
+            encoding["y"]["field"], "secondary_min",
+            "y should reference secondary_min field"
         );
         assert_eq!(
-            encoding["y2"]["field"], "y_max",
-            "y2 should reference y_max field"
+            encoding["y2"]["field"], "secondary_max",
+            "y2 should reference secondary_max field"
         );
 
         // Verify stroke encoding exists for line_id (color aesthetic becomes stroke for rule mark)
@@ -1705,6 +1733,91 @@ mod tests {
         coefs.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
         assert_eq!(coefs, vec![1.0, 2.0, 3.0], "Should have coefs 1, 2, and 3");
+    }
+
+    #[test]
+    fn test_linear_renderer_transposed_orientation() {
+        use crate::reader::{DuckDBReader, Reader};
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        // Test that linear with transposed orientation swaps x/y axes
+        let query = r#"
+            WITH points AS (
+                SELECT * FROM (VALUES (0, 5), (5, 15), (10, 25)) AS t(x, y)
+            ),
+            lines AS (
+                SELECT * FROM (VALUES (0.4, -1, 'A')) AS t(coef, intercept, line_id)
+            )
+            SELECT * FROM points
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            DRAW linear MAPPING coef AS coef, intercept AS intercept, line_id AS color FROM lines SETTING orientation => 'transposed'
+        "#;
+
+        // Execute query
+        let reader = DuckDBReader::from_connection_string("duckdb://memory")
+            .expect("Failed to create reader");
+        let spec = reader.execute(query).expect("Failed to execute query");
+
+        // Render to Vega-Lite
+        let writer = VegaLiteWriter::new();
+        let vl_json = writer.render(&spec).expect("Failed to render spec");
+
+        // Parse JSON
+        let vl_spec: serde_json::Value =
+            serde_json::from_str(&vl_json).expect("Failed to parse Vega-Lite JSON");
+
+        // Get the linear layer (second layer)
+        let layers = vl_spec["layer"].as_array().expect("No layers found");
+        let linear_layer = &layers[1];
+
+        // Verify transforms exist
+        let transforms = linear_layer["transform"]
+            .as_array()
+            .expect("No transforms found");
+
+        // Verify primary_min/max use pos2 extent (y-axis) for transposed orientation
+        let primary_min_transform = transforms
+            .iter()
+            .find(|t| t["as"] == "primary_min")
+            .expect("primary_min transform not found");
+        let primary_max_transform = transforms
+            .iter()
+            .find(|t| t["as"] == "primary_max")
+            .expect("primary_max transform not found");
+
+        // The primary extent should come from the y-axis for transposed
+        assert!(
+            primary_min_transform["calculate"].is_string(),
+            "primary_min should have calculate expression"
+        );
+        assert!(
+            primary_max_transform["calculate"].is_string(),
+            "primary_max should have calculate expression"
+        );
+
+        // Verify encoding has y as primary axis (mapped to primary_min/max)
+        let encoding = linear_layer["encoding"]
+            .as_object()
+            .expect("No encoding found");
+
+        // For transposed orientation: y is primary (uses primary_min/max), x is secondary
+        assert_eq!(
+            encoding["y"]["field"], "primary_min",
+            "y should reference primary_min field for transposed"
+        );
+        assert_eq!(
+            encoding["y2"]["field"], "primary_max",
+            "y2 should reference primary_max field for transposed"
+        );
+        assert_eq!(
+            encoding["x"]["field"], "secondary_min",
+            "x should reference secondary_min field for transposed"
+        );
+        assert_eq!(
+            encoding["x2"]["field"], "secondary_max",
+            "x2 should reference secondary_max field for transposed"
+        );
     }
 
     #[test]

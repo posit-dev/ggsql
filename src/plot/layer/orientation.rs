@@ -36,9 +36,19 @@ pub const TRANSPOSED: &str = "transposed";
 
 /// Determine effective orientation for a layer.
 ///
-/// Auto-detects orientation from scales for geoms with implicit orientation.
-/// Geoms without implicit orientation always return "aligned".
+/// Returns explicit orientation if set via SETTING, otherwise auto-detects
+/// from scales for geoms with implicit orientation.
+/// Geoms without implicit orientation return "aligned" unless explicitly set.
 pub fn resolve_orientation(layer: &Layer, scales: &[Scale]) -> &'static str {
+    // Check for explicit orientation setting first
+    if let Some(orientation) = layer.parameters.get("orientation").and_then(|v| v.as_str()) {
+        return if orientation == TRANSPOSED {
+            TRANSPOSED
+        } else {
+            ALIGNED
+        };
+    }
+
     // Only auto-detect for geoms with implicit orientation
     if !geom_has_implicit_orientation(&layer.geom.geom_type()) {
         return ALIGNED;
