@@ -615,11 +615,6 @@ impl GeomRenderer for ViolinRenderer {
             y = naming::aesthetic_column("pos2")
         );
 
-        // Filter threshold to trim very low density regions (removes thin tails)
-        // In theory, this depends on the grid resolution and might be better
-        // handled upstream, but for now it seems not unreasonable.
-        let filter_expr = format!("datum.{} > 0.001", offset_col);
-
         // Preserve existing transforms (e.g., source filter) and extend with violin-specific transforms
         let existing_transforms = layer_spec
             .get("transform")
@@ -629,10 +624,6 @@ impl GeomRenderer for ViolinRenderer {
 
         let mut transforms = existing_transforms;
         transforms.extend(vec![
-            json!({
-                // Remove points with very low density to clean up thin tails
-                "filter": filter_expr
-            }),
             json!({
                 "calculate": violin_offset,
                 "as": "violin_offsets"
