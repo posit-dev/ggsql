@@ -603,13 +603,13 @@ fn get_free_scales(facet: Option<&crate::plot::Facet>) -> Option<&[crate::plot::
 ///
 /// Maps ggsql free property (boolean array) to Vega-Lite resolve.scale configuration:
 /// - `[false, false]`: shared scales (Vega-Lite default, no resolve needed)
-/// - `[true, false]`: independent pos1 scale (x or theta), shared pos2 scale
-/// - `[false, true]`: shared pos1 scale, independent pos2 scale (y or radius)
+/// - `[true, false]`: independent pos1 scale (x or radius), shared pos2 scale
+/// - `[false, true]`: shared pos1 scale, independent pos2 scale (y or theta)
 /// - `[true, true]`: independent scales for both axes
 ///
 /// The channel names depend on coord_kind:
 /// - Cartesian: pos1 -> "x", pos2 -> "y"
-/// - Polar: pos1 -> "theta", pos2 -> "radius"
+/// - Polar: pos1 -> "radius", pos2 -> "theta"
 fn apply_facet_scale_resolution(
     vl_spec: &mut Value,
     properties: &HashMap<String, ParameterValue>,
@@ -623,7 +623,7 @@ fn apply_facet_scale_resolution(
     // Determine channel names based on coord kind
     let (pos1_channel, pos2_channel) = match coord_kind {
         CoordKind::Cartesian => ("x", "y"),
-        CoordKind::Polar => ("theta", "radius"),
+        CoordKind::Polar => ("radius", "theta"),
     };
 
     // Extract booleans from the array (position-indexed)
@@ -1404,36 +1404,36 @@ mod tests {
             "text"
         );
 
-        // Test with polar coord kind - internal positional maps to theta/radius
+        // Test with polar coord kind - internal positional maps to radius/theta
         // regardless of the context's user-facing names
-        let polar_ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
+        let polar_ctx = AestheticContext::from_static(&["radius", "theta"], &[]);
         assert_eq!(
             map_aesthetic_name("pos1", &polar_ctx, CoordKind::Polar),
-            "theta"
+            "radius"
         );
         assert_eq!(
             map_aesthetic_name("pos2", &polar_ctx, CoordKind::Polar),
-            "radius"
-        );
-        assert_eq!(
-            map_aesthetic_name("pos1end", &polar_ctx, CoordKind::Polar),
-            "theta2"
-        );
-        assert_eq!(
-            map_aesthetic_name("pos2end", &polar_ctx, CoordKind::Polar),
-            "radius2"
-        );
-
-        // Even with custom positional names (e.g., PROJECT y, x TO polar),
-        // internal pos1/pos2 should still map to theta/radius for Vega-Lite
-        let custom_ctx = AestheticContext::from_static(&["y", "x"], &[]);
-        assert_eq!(
-            map_aesthetic_name("pos1", &custom_ctx, CoordKind::Polar),
             "theta"
         );
         assert_eq!(
-            map_aesthetic_name("pos2", &custom_ctx, CoordKind::Polar),
+            map_aesthetic_name("pos1end", &polar_ctx, CoordKind::Polar),
+            "radius2"
+        );
+        assert_eq!(
+            map_aesthetic_name("pos2end", &polar_ctx, CoordKind::Polar),
+            "theta2"
+        );
+
+        // Even with custom positional names (e.g., PROJECT y, x TO polar),
+        // internal pos1/pos2 should still map to radius/theta for Vega-Lite
+        let custom_ctx = AestheticContext::from_static(&["y", "x"], &[]);
+        assert_eq!(
+            map_aesthetic_name("pos1", &custom_ctx, CoordKind::Polar),
             "radius"
+        );
+        assert_eq!(
+            map_aesthetic_name("pos2", &custom_ctx, CoordKind::Polar),
+            "theta"
         );
     }
 

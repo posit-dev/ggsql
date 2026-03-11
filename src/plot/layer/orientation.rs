@@ -167,11 +167,16 @@ fn detect_from_scales(
     let has_pos2 = pos2_scale.is_some();
 
     // Rule 1: Single scale present - that axis is primary
-    if has_pos2 && !has_pos1 {
-        return Orientation::Transposed;
-    }
-    if has_pos1 && !has_pos2 {
-        return Orientation::Aligned;
+    // Only apply when there are explicit positional mappings; otherwise the user
+    // is just customizing a scale (e.g., SCALE y SETTING expand) without intending
+    // to change orientation. The geom's default_remappings will define orientation.
+    if has_pos1_mapping || has_pos2_mapping {
+        if has_pos2 && !has_pos1 {
+            return Orientation::Transposed;
+        }
+        if has_pos1 && !has_pos2 {
+            return Orientation::Aligned;
+        }
     }
 
     // Both scales present
@@ -370,8 +375,12 @@ mod tests {
 
     #[test]
     fn test_resolve_orientation_histogram_horizontal() {
-        // Histogram with only pos2 scale → Transposed
-        let layer = Layer::new(Geom::histogram());
+        // Histogram with pos2 mapping (y binned) → Transposed
+        // Real-world: `VISUALISE y AS y DRAW histogram` or `MAPPING y AS pos2`
+        let mut layer = Layer::new(Geom::histogram());
+        layer
+            .mappings
+            .insert("pos2", AestheticValue::standard_column("y_col"));
         let mut scale = Scale::new("pos2");
         scale.scale_type = Some(ScaleType::continuous());
         let scales = vec![scale];
@@ -380,6 +389,20 @@ mod tests {
             resolve_orientation(&layer, &scales),
             Orientation::Transposed
         );
+    }
+
+    #[test]
+    fn test_resolve_orientation_scale_only_no_flip() {
+        // Scale specification without positional mapping shouldn't flip orientation
+        // Real-world: `VISUALISE FROM data DRAW bar SCALE y SETTING expand => [...]`
+        // The bar stat will produce pos1=category, pos2=count → should stay Aligned
+        let layer = Layer::new(Geom::bar());
+        let mut scale = Scale::new("pos2");
+        scale.scale_type = Some(ScaleType::continuous());
+        let scales = vec![scale];
+
+        // Without positional mappings, scale existence doesn't imply orientation
+        assert_eq!(resolve_orientation(&layer, &scales), Orientation::Aligned);
     }
 
     #[test]

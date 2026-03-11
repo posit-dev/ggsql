@@ -93,28 +93,38 @@ pub fn create_missing_scales_post_stat(
         }
     }
 
-    // Find aesthetics that don't have scales yet
+    // Find aesthetics that don't have scales yet and create them
     let existing_scales: HashSet<String> =
         spec.scales.iter().map(|s| s.aesthetic.clone()).collect();
 
-    // Create scales for new aesthetics and infer their types from data
     for aesthetic in current_aesthetics {
         if !existing_scales.contains(&aesthetic) {
             let mut scale = Scale::new(&aesthetic);
             if !gets_default_scale(&aesthetic) {
                 scale.scale_type = Some(ScaleType::identity());
-            } else {
-                // Infer scale type from column data
-                let column_refs =
-                    find_columns_for_aesthetic(&spec.layers, &aesthetic, data_map, &aesthetic_ctx);
-                if !column_refs.is_empty() {
-                    scale.scale_type = Some(ScaleType::infer_for_aesthetic(
-                        column_refs[0].dtype(),
-                        &aesthetic,
-                    ));
-                }
             }
             spec.scales.push(scale);
+        }
+    }
+
+    // Infer types for all scales that don't have scale_type set
+    // This handles both newly created scales and user-specified scales like
+    // `SCALE y SETTING expand` where the type wasn't explicitly specified.
+    // Position adjustments (stack, dodge) need scale types to determine axes.
+    for scale in &mut spec.scales {
+        if scale.scale_type.is_none() && gets_default_scale(&scale.aesthetic) {
+            let column_refs = find_columns_for_aesthetic(
+                &spec.layers,
+                &scale.aesthetic,
+                data_map,
+                &aesthetic_ctx,
+            );
+            if !column_refs.is_empty() {
+                scale.scale_type = Some(ScaleType::infer_for_aesthetic(
+                    column_refs[0].dtype(),
+                    &scale.aesthetic,
+                ));
+            }
         }
     }
 
@@ -944,6 +954,9 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
 
     let aesthetic_ctx = spec.get_aesthetic_context();
 
+    // Get coord_kind from projection (for disabling expansion on polar theta)
+    let coord_kind = spec.project.as_ref().map(|p| p.coord.coord_kind());
+
     for idx in 0..spec.scales.len() {
         // Clone aesthetic to avoid borrow issues with find_columns_for_aesthetic
         let aesthetic = spec.scales[idx].aesthetic.clone();
@@ -991,7 +1004,8 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
             let use_discrete_range = st.uses_discrete_input_range();
 
             // Build context from actual data columns
-            let context = ScaleDataContext::from_columns(&column_refs, use_discrete_range);
+            let mut context = ScaleDataContext::from_columns(&column_refs, use_discrete_range);
+            context.coord_kind = coord_kind;
 
             // Use unified resolve method (includes resolve_output_range)
             st.resolve(&mut spec.scales[idx], &context, &aesthetic)
@@ -1647,6 +1661,71 @@ mod tests {
             (ArrayElement::Number(min), ArrayElement::Number(max)) => {
                 assert_eq!(*min, 1.0); // Inferred from data
                 assert_eq!(*max, 100.0); // Explicit value
+            }
+            _ => panic!("Expected Number elements"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_scales_polar_theta_no_expansion() {
+        use crate::plot::projection::{Coord, Projection};
+        use polars::prelude::*;
+
+        // Create a Plot with a polar projection
+        let mut spec = Plot::new();
+        let coord = Coord::polar();
+        let aesthetics = coord
+            .positional_aesthetic_names()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        spec.project = Some(Projection {
+            coord,
+            aesthetics,
+            properties: std::collections::HashMap::new(),
+        });
+
+        // Create scale for pos2 (theta in polar) without explicit expand
+        let scale = crate::plot::Scale::new("pos2");
+        spec.scales.push(scale);
+
+        // Add a layer with pos2 mapping
+        let layer = Layer::new(Geom::bar())
+            .with_aesthetic("pos2".to_string(), AestheticValue::standard_column("value"));
+        spec.layers.push(layer);
+
+        // Create data with numeric values
+        let df = df! {
+            "value" => &[10.0f64, 20.0, 30.0]
+        }
+        .unwrap();
+
+        let mut data_map = HashMap::new();
+        data_map.insert(naming::layer_key(0), df);
+
+        // Verify projection is set correctly
+        assert!(spec.project.is_some(), "project should be set");
+        let coord_kind = spec.project.as_ref().map(|p| p.coord.coord_kind());
+        assert_eq!(
+            coord_kind,
+            Some(crate::plot::CoordKind::Polar),
+            "coord_kind should be Polar"
+        );
+
+        // Resolve scales
+        resolve_scales(&mut spec, &mut data_map).unwrap();
+
+        // Check that no expansion was applied for polar theta
+        // Without expansion, range should be exactly [10.0, 30.0]
+        let scale = &spec.scales[0];
+        assert!(scale.input_range.is_some());
+
+        let range = scale.input_range.as_ref().unwrap();
+        assert_eq!(range.len(), 2);
+        match (&range[0], &range[1]) {
+            (ArrayElement::Number(min), ArrayElement::Number(max)) => {
+                assert_eq!(*min, 10.0, "min should be 10.0 (no expansion)");
+                assert_eq!(*max, 30.0, "max should be 30.0 (no expansion)");
             }
             _ => panic!("Expected Number elements"),
         }

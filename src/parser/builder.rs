@@ -1346,7 +1346,7 @@ mod tests {
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(
             project.aesthetics,
-            vec!["theta".to_string(), "radius".to_string()]
+            vec!["radius".to_string(), "theta".to_string()]
         );
     }
 
@@ -3386,7 +3386,7 @@ mod tests {
         // Should infer polar projection
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(project.coord.coord_kind(), CoordKind::Polar);
-        assert_eq!(project.aesthetics, vec!["theta", "radius"]);
+        assert_eq!(project.aesthetics, vec!["radius", "theta"]);
     }
 
     #[test]
