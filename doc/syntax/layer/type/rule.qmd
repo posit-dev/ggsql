@@ -9,7 +9,7 @@ The rule layer is used to draw reference lines perpendicular to an axis at speci
 > The rule layer doesn't have a natural extend along the secondary axis and the scale range can thus not be deduced from it. If the rule layer is the only layer in the visualisation you must specify the position scale range manually.
 
 ## Aesthetics
-The following aesthetics are recognised by the hline layer.
+The following aesthetics are recognised by the rule layer.
 
 ### Required
 * Primary axis (e.g. `x` or `y`): Position along the primary axis.

@@ -85,6 +85,7 @@ pub fn geom_has_implicit_orientation(geom: &GeomType) -> bool {
             | GeomType::Violin
             | GeomType::Density
             | GeomType::Ribbon
+            | GeomType::Rule
     )
 }
 
@@ -283,6 +284,7 @@ mod tests {
         assert!(geom_has_implicit_orientation(&GeomType::Violin));
         assert!(geom_has_implicit_orientation(&GeomType::Density));
         assert!(geom_has_implicit_orientation(&GeomType::Ribbon));
+        assert!(geom_has_implicit_orientation(&GeomType::Rule));
 
         assert!(!geom_has_implicit_orientation(&GeomType::Point));
         assert!(!geom_has_implicit_orientation(&GeomType::Line));
@@ -663,6 +665,45 @@ mod tests {
         let mut scale2 = Scale::new("pos2");
         scale2.scale_type = Some(ScaleType::continuous());
         let scales = vec![scale1, scale2];
+
+        assert_eq!(resolve_orientation(&layer, &scales), ALIGNED);
+    }
+
+    #[test]
+    fn test_resolve_orientation_rule_vertical() {
+        // Rule with pos1 scale → Aligned (vertical rule)
+        // Real-world: `DRAW rule MAPPING 2.5 AS pos1` with `SCALE CONTINUOUS pos1`
+        let mut layer = Layer::new(Geom::rule());
+        layer
+            .mappings
+            .insert("pos1", AestheticValue::standard_column("x_val"));
+        let mut scale = Scale::new("pos1");
+        scale.scale_type = Some(ScaleType::continuous());
+        let scales = vec![scale];
+
+        assert_eq!(resolve_orientation(&layer, &scales), ALIGNED);
+    }
+
+    #[test]
+    fn test_resolve_orientation_rule_horizontal() {
+        // Rule with pos2 scale → Transposed (horizontal rule)
+        // Real-world: `DRAW rule MAPPING 15 AS pos1` with `SCALE CONTINUOUS pos2`
+        let mut layer = Layer::new(Geom::rule());
+        layer
+            .mappings
+            .insert("pos1", AestheticValue::standard_column("y_val"));
+        let mut scale = Scale::new("pos2");
+        scale.scale_type = Some(ScaleType::continuous());
+        let scales = vec![scale];
+
+        assert_eq!(resolve_orientation(&layer, &scales), TRANSPOSED);
+    }
+
+    #[test]
+    fn test_resolve_orientation_rule_default() {
+        // Rule with no scales → defaults to Aligned
+        let layer = Layer::new(Geom::rule());
+        let scales = vec![];
 
         assert_eq!(resolve_orientation(&layer, &scales), ALIGNED);
     }
