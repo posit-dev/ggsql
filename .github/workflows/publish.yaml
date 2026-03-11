@@ -8,7 +8,11 @@ on:
   workflow_dispatch:
 
 jobs:
+  build-wasm:
+    uses: ./.github/workflows/wasm.yaml
+
   publish-website:
+    needs: build-wasm
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -21,6 +25,12 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
           sudo docker builder prune -a
+
+      - name: Download WASM demo artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-demo
+          path: doc/playground
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
