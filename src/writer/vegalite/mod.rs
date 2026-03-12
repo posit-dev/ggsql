@@ -1068,8 +1068,12 @@ impl Writer for VegaLiteWriter {
         let mut vl_spec = json!({
             "$schema": self.schema
         });
-        vl_spec["width"] = json!("container");
-        vl_spec["height"] = json!("container");
+        // Container sizing doesn't work with faceting in Vega-Lite, so only apply it
+        // for non-faceted charts
+        if spec.facet.is_none() {
+            vl_spec["width"] = json!("container");
+            vl_spec["height"] = json!("container");
+        }
 
         if let Some(labels) = &spec.labels {
             if let Some(title) = labels.labels.get("title") {
