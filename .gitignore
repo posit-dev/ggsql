@@ -3,9 +3,6 @@
 **/*.rs.bk
 *.pdb
 
-# Cargo
-Cargo.lock
-
 # IDEs and Editors
 .vscode/*
 !.vscode/launch.json
