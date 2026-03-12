@@ -166,10 +166,11 @@ fn parse_literal_value(node: &Node, source: &SourceTree) -> Result<AestheticValu
     let child = node.child(0).unwrap();
     let value = parse_value_node(&child, source, "literal")?;
 
-    // Grammar ensures literals can't be arrays or nulls, but add safety check
-    if matches!(value, ParameterValue::Array(_) | ParameterValue::Null) {
+    // Arrays cannot be used as literal values in aesthetic mappings
+    // (null is allowed as a sentinel to remove global mappings)
+    if matches!(value, ParameterValue::Array(_)) {
         return Err(GgsqlError::ParseError(
-            "Arrays and null cannot be used as literal values in aesthetic mappings".to_string(),
+            "Arrays cannot be used as literal values in aesthetic mappings".to_string(),
         ));
     }
 
@@ -3339,6 +3340,17 @@ mod tests {
         let literal_node2 = source2.find_node(&root2, "(literal_value) @lit").unwrap();
         let parsed2 = parse_literal_value(&literal_node2, &source2).unwrap();
         assert!(matches!(parsed2, AestheticValue::Literal(ParameterValue::Number(n)) if n == 42.0));
+    }
+
+    #[test]
+    fn test_parse_null_literal_value() {
+        // Test null literal (used to remove global mappings)
+        let source = make_source("VISUALISE DRAW point MAPPING null AS fill");
+        let root = source.root();
+
+        let literal_node = source.find_node(&root, "(literal_value) @lit").unwrap();
+        let parsed = parse_literal_value(&literal_node, &source).unwrap();
+        assert!(matches!(parsed, AestheticValue::Literal(ParameterValue::Null)));
     }
 
     // ========================================
