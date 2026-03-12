@@ -37,7 +37,7 @@ We have designed ggsql to be modular, both when it comes to the database input a
 ## Syntax & Usage
 
 ::: {.callout-note collapse="true"}
-## What's the difference between VISUALISE and VISUALIZE?
+## What's the difference between `VISUALISE` and `VISUALIZE`?
 
 Both spellings are supported - use whichever you prefer. The grammar accepts both British (`VISUALISE`) and American (`VISUALIZE`) spellings.
 :::
@@ -69,7 +69,7 @@ LABEL title => 'Sales Over Time', x => 'Date', y => 'Revenue (USD)'
 :::
 
 ::: {.callout-note collapse="true"}
-## Can I use SQL queries inside the VISUALISE clause
+## Can I use SQL queries inside the `VISUALISE` clause
 
 Some parts of the syntax are passed on directly to the database, such as the `FILTER` and `ORDER BY` clauses in `DRAW`.
 
@@ -80,12 +80,14 @@ DRAW line
 DRAW point
     FILTER revenue = max(revenue)
 ```
+
+Further, any query before the `VISUALISE` clause is passed directly to the database so anything supported by your backend can go in there.
 :::
 
 ::: {.callout-note collapse="true"}
 ## What if I'm working with huge datasets
 
-ggsql integrates very deeply with the database backends and handle all statistical transformations as SQL queries. This means that if you need to make a histogram of 1 billion observations, you'll only ever fetch the values of each histogram bin, not the full dataset.
+ggsql integrates very deeply with the database backends and handles all statistical transformations as SQL queries. This means that if you need to make a histogram of 1 billion observations, you'll only ever fetch the values of each histogram bin, not the full dataset.
 :::
 
 ::: {.callout-note collapse="true"}
