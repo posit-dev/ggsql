@@ -369,6 +369,15 @@ code {
   }
 }
 
+// Hide category badges on gallery example pages
+.quarto-listing-category {
+  // Keep category sidebar for filtering
+}
+
+body:has(.quarto-title) .quarto-categories {
+  display: none;
+}
+
 .btn {
   display: inline-block;
   padding: 0.75rem 1.5rem;

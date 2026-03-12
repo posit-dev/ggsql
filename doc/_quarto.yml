@@ -47,7 +47,8 @@ website:
             href: syntax/clause/project.qmd
           - text: "`LABEL`"
             href: syntax/clause/label.qmd
-      - examples.qmd
+      - text: Gallery
+        href: gallery/index.qmd
       - href: faq.qmd
         text: FAQ
     tools:
