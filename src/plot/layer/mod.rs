@@ -297,8 +297,12 @@ impl Layer {
                     // Column is now named with the prefixed aesthetic name
                     *name = aes_col_name;
                 }
+                AestheticValue::AnnotationColumn { name } => {
+                    // AnnotationColumn already has identity scale behavior, just update name
+                    *name = aes_col_name;
+                }
                 AestheticValue::Literal(_) => {
-                    // Literals are also columns with prefixed aesthetic name
+                    // Literals become standard columns with prefixed aesthetic name
                     // Note: literals don't have an original_name to preserve
                     *value = AestheticValue::standard_column(aes_col_name);
                 }
@@ -335,6 +339,13 @@ impl Layer {
                         name: prefixed_name,
                         original_name: original_name.clone(),
                         is_dummy: *is_dummy,
+                    }
+                }
+                AestheticValue::AnnotationColumn { .. } => {
+                    // Annotation columns can be remapped (e.g., stat transforms on annotation data)
+                    // They remain annotation columns (identity scale)
+                    AestheticValue::AnnotationColumn {
+                        name: prefixed_name,
                     }
                 }
                 AestheticValue::Literal(_) => {

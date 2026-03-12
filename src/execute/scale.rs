@@ -548,7 +548,8 @@ pub fn find_schema_columns_for_aesthetic(
         for aes_name in &aesthetics_to_check {
             if let Some(value) = layer.mappings.get(aes_name) {
                 match value {
-                    AestheticValue::Column { name, .. } => {
+                    AestheticValue::Column { name, .. }
+                    | AestheticValue::AnnotationColumn { name } => {
                         if let Some(info) = schema.iter().find(|c| c.name == *name) {
                             infos.push(info.clone());
                         }
@@ -1026,10 +1027,12 @@ pub fn find_columns_for_aesthetic<'a>(
         if let Some(df) = data_map.get(&naming::layer_key(i)) {
             for aes_name in &aesthetics_to_check {
                 if let Some(AestheticValue::Column { name, .. }) = layer.mappings.get(aes_name) {
+                    // Regular columns (data and positional annotations) participate in scale training
                     if let Ok(column) = df.column(name) {
                         column_refs.push(column);
                     }
                 }
+                // AnnotationColumn and Literal don't participate in scale training
             }
         }
     }

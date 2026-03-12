@@ -27,7 +27,7 @@ use crate::parser;
 use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
 use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDataContext};
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
-use crate::{DataFrame, GgsqlError, Plot, Result};
+use crate::{DataFrame, DataSource, GgsqlError, Plot, Result};
 use std::collections::{HashMap, HashSet};
 
 use crate::reader::Reader;
@@ -154,6 +154,11 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
 fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema]) {
     for spec in specs {
         for (layer, schema) in spec.layers.iter_mut().zip(layer_schemas.iter()) {
+            // Skip annotation layers - they don't inherit global mappings
+            if matches!(layer.source, Some(DataSource::Annotation)) {
+                continue;
+            }
+
             let supported = layer.geom.aesthetics().supported();
             let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
 
@@ -943,11 +948,12 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 
     // Build source queries for each layer to fetch initial type info
     // Every layer now has its own source query (either explicit source or global table)
+    // For annotation layers, this is where array recycling and parameter→mapping conversion happens
     let layer_source_queries: Vec<String> = specs[0]
         .layers
-        .iter()
+        .iter_mut()
         .map(|l| layer::layer_source_query(l, &materialized_ctes, has_global_table))
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
 
     // Get types for each layer from source queries (Phase 1: types only, no min/max yet)
     let mut layer_type_info: Vec<Vec<schema::TypeInfo>> = Vec::new();
@@ -2218,6 +2224,285 @@ mod tests {
             line_df.height(),
             2,
             "line layer with facet column should not be expanded"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_place_annotation_layer() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Create test data
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE test_place AS SELECT * FROM (VALUES (1, 10), (2, 20), (3, 30)) AS t(x, y)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT * FROM test_place
+            VISUALISE x, y
+            DRAW point
+            PLACE text SETTING x => 2, y => 25, label => 'Annotation', size => 14
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        assert_eq!(result.specs.len(), 1);
+        assert_eq!(
+            result.specs[0].layers.len(),
+            2,
+            "Should have DRAW + PLACE layers"
+        );
+
+        // First layer: regular DRAW point
+        let point_layer = &result.specs[0].layers[0];
+        assert_eq!(point_layer.geom, crate::Geom::point());
+        assert!(
+            point_layer.source.is_none(),
+            "DRAW layer should have no explicit source"
+        );
+
+        // Second layer: PLACE text annotation
+        let annotation_layer = &result.specs[0].layers[1];
+        assert_eq!(annotation_layer.geom, crate::Geom::text());
+        assert!(
+            matches!(annotation_layer.source, Some(DataSource::Annotation)),
+            "PLACE layer should have Annotation source"
+        );
+
+        // Verify annotation layer has 1-row data
+        let annotation_key = annotation_layer.data_key.as_ref().unwrap();
+        let annotation_df = result.data.get(annotation_key).unwrap();
+        assert_eq!(
+            annotation_df.height(),
+            1,
+            "Annotation layer should have exactly 1 row"
+        );
+
+        // Verify positional aesthetics are moved from SETTING to mappings with transformed names
+        // They become Column references (not Literals) so they can participate in scale training
+        assert!(
+            matches!(
+                annotation_layer.mappings.get("pos1"),
+                Some(AestheticValue::Column { name, .. }) if name == "__ggsql_aes_pos1__"
+            ),
+            "x should be transformed to pos1, moved to mappings, and materialized as column"
+        );
+        assert!(
+            matches!(
+                annotation_layer.mappings.get("pos2"),
+                Some(AestheticValue::Column { name, .. }) if name == "__ggsql_aes_pos2__"
+            ),
+            "y should be transformed to pos2, moved to mappings, and materialized as column"
+        );
+
+        // Verify required non-positional aesthetic (label) is in mappings as AnnotationColumn
+        // After process_annotation_layer, required aesthetics are converted to AnnotationColumn
+        assert!(
+            matches!(
+                annotation_layer.mappings.get("label"),
+                Some(AestheticValue::AnnotationColumn { name }) if name == "__ggsql_aes_label__"
+            ),
+            "label (required) should be in mappings as AnnotationColumn with prefixed name"
+        );
+
+        // Non-required, non-positional, non-array aesthetics like size may be processed
+        // by resolve_aesthetics or other downstream logic, so we don't strictly check
+        // where they end up. The key point is that required/positional aesthetics are
+        // correctly moved to mappings.
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_place_annotation_with_stat_geom() {
+        // Test that annotation layers work with stat geoms (e.g., histogram)
+        // This was previously broken due to naming conflicts:
+        // - Annotation layers created __ggsql_aes_pos1__ directly
+        // - Stat transforms tried to rename __ggsql_stat_bin → __ggsql_aes_pos1__ (conflict!)
+        // Now fixed: annotations use raw names (pos1), go through normal renaming pipeline
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            VISUALISE
+            PLACE histogram SETTING x => [1.2, 2.5, 3.1, 2.8, 1.9, 2.2, 3.5, 2.1, 1.8, 2.9], bins => 5
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        assert_eq!(result.specs.len(), 1);
+        assert_eq!(
+            result.specs[0].layers.len(),
+            1,
+            "Should have one PLACE layer"
+        );
+
+        let histogram_layer = &result.specs[0].layers[0];
+        assert_eq!(histogram_layer.geom, crate::Geom::histogram());
+        assert!(
+            matches!(histogram_layer.source, Some(DataSource::Annotation)),
+            "PLACE layer should have Annotation source"
+        );
+
+        // After stat transform, pos1 should be remapped to bin
+        assert!(
+            histogram_layer.mappings.contains_key("pos1"),
+            "Histogram should have pos1 aesthetic (bin start)"
+        );
+        assert!(
+            histogram_layer.mappings.contains_key("pos1end"),
+            "Histogram should have pos1end aesthetic (bin end)"
+        );
+        assert!(
+            histogram_layer.mappings.contains_key("pos2"),
+            "Histogram should have pos2 aesthetic (count)"
+        );
+
+        // Verify the data has binned results
+        let histogram_key = histogram_layer.data_key.as_ref().unwrap();
+        let histogram_df = result.data.get(histogram_key).unwrap();
+
+        assert!(
+            histogram_df.height() > 0,
+            "Histogram should produce binned data"
+        );
+        assert!(
+            histogram_df.height() <= 5,
+            "Histogram with 5 bins should produce at most 5 rows"
+        );
+
+        // Verify the binned data has the expected columns
+        assert!(
+            histogram_df.column("__ggsql_aes_pos1__").is_ok(),
+            "Should have bin start column"
+        );
+        assert!(
+            histogram_df.column("__ggsql_aes_pos1end__").is_ok(),
+            "Should have bin end column"
+        );
+        assert!(
+            histogram_df.column("__ggsql_aes_pos2__").is_ok(),
+            "Should have count column"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_place_missing_required_aesthetic() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            SELECT 1 AS x, 2 AS y
+            VISUALISE x, y
+            DRAW point
+            PLACE text SETTING x => 5, label => 'Missing y!'
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(result.is_err(), "Should fail validation");
+
+        match result {
+            Err(GgsqlError::ValidationError(msg)) => {
+                assert!(
+                    msg.contains("pos2"),
+                    "Error should mention missing pos2 aesthetic: {}",
+                    msg
+                );
+            }
+            Err(e) => panic!("Expected ValidationError, got: {}", e),
+            Ok(_) => panic!("Expected error, got success"),
+        }
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_place_affects_scale_ranges() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Data has x from 1-3, but PLACE annotation at x=10 should extend the range
+        let query = r#"
+            SELECT 1 AS x, 10 AS y UNION ALL
+            SELECT 2 AS x, 20 AS y UNION ALL
+            SELECT 3 AS x, 30 AS y
+            VISUALISE x, y
+            DRAW point
+            PLACE text SETTING x => 10, y => 50, label => 'Extended'
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(result.is_ok(), "Query should execute: {:?}", result.err());
+
+        let prep = result.unwrap();
+
+        // Check that x scale input_range includes both data range (1-3) and annotation point (10)
+        let x_scale = prep.specs[0].find_scale("pos1");
+        assert!(x_scale.is_some(), "Should have x scale");
+
+        let scale = x_scale.unwrap();
+        if let Some(input_range) = &scale.input_range {
+            // Input range should include the annotation x value (10)
+            // The scale input_range is resolved from the combined data + annotation DataFrames
+            assert!(
+                input_range.len() >= 2,
+                "Scale input_range should have min/max values"
+            );
+            // Check that the range max is at least 10 (the annotation x value)
+            if let Some(max_val) = input_range.last() {
+                match max_val {
+                    crate::plot::types::ArrayElement::Number(n) => {
+                        assert!(
+                            *n >= 10.0,
+                            "Scale input_range max should include annotation point at x=10, got: {}",
+                            n
+                        );
+                    }
+                    _ => panic!("Expected numeric input_range value"),
+                }
+            }
+        } else {
+            panic!("Scale should have an input_range");
+        }
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_place_no_global_mapping_inheritance() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            SELECT 1 AS x, 2 AS y, 'red' AS color
+            VISUALISE x, y, color
+            DRAW point
+            PLACE text SETTING x => 5, y => 10, label => 'Test'
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // DRAW layer should have inherited global color mapping
+        let point_layer = &result.specs[0].layers[0];
+        assert!(
+            point_layer.mappings.contains_key("color")
+                || point_layer.mappings.contains_key("fill")
+                || point_layer.mappings.contains_key("stroke"),
+            "DRAW layer should inherit color from global mappings"
+        );
+
+        // PLACE layer should NOT have inherited global mappings
+        let annotation_layer = &result.specs[0].layers[1];
+        assert!(
+            !annotation_layer.mappings.contains_key("color"),
+            "PLACE layer should not inherit color from global mappings"
+        );
+        assert!(
+            !annotation_layer.mappings.contains_key("fill"),
+            "PLACE layer should not inherit fill from global mappings"
+        );
+        assert!(
+            !annotation_layer.mappings.contains_key("stroke"),
+            "PLACE layer should not inherit stroke from global mappings"
         );
     }
 }

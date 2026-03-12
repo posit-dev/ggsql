@@ -17,7 +17,7 @@ impl GeomTrait for Text {
             defaults: &[
                 ("pos1", DefaultAestheticValue::Required),
                 ("pos2", DefaultAestheticValue::Required),
-                ("label", DefaultAestheticValue::Null),
+                ("label", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::Null),
                 ("size", DefaultAestheticValue::Number(11.0)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),

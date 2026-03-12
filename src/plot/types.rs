@@ -140,6 +140,9 @@ pub enum DataSource {
     Identifier(String),
     /// File path (quoted string like 'data.csv')
     FilePath(String),
+    /// Annotation layer (PLACE clause)
+    /// Row count and array recycling handled during SQL generation
+    Annotation,
 }
 
 impl DataSource {
@@ -148,12 +151,18 @@ impl DataSource {
         match self {
             DataSource::Identifier(s) => s,
             DataSource::FilePath(s) => s,
+            DataSource::Annotation => "__annotation__",
         }
     }
 
     /// Returns true if this is a file path source
     pub fn is_file(&self) -> bool {
         matches!(self, DataSource::FilePath(_))
+    }
+
+    /// Returns true if this is an annotation layer source
+    pub fn is_annotation(&self) -> bool {
+        matches!(self, DataSource::Annotation)
     }
 }
 
@@ -164,7 +173,7 @@ impl DataSource {
 /// Value for aesthetic mappings
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AestheticValue {
-    /// Column reference
+    /// Column reference from data source
     Column {
         name: String,
         /// Original column name before internal renaming (for labels)
@@ -174,12 +183,17 @@ pub enum AestheticValue {
         /// Whether this is a dummy/placeholder column (e.g., for bar charts without x mapped)
         is_dummy: bool,
     },
+    /// Annotation column for non-positional aesthetics (synthesized from PLACE literals)
+    /// These columns are generated from user-specified literal values in visual space
+    /// (e.g., color => 'red', size => 10) and use identity scales (no transformation).
+    /// Positional annotations (x, y) use Column instead since they're in data coordinate space.
+    AnnotationColumn { name: String },
     /// Literal value (quoted string, number, or boolean)
     Literal(ParameterValue),
 }
 
 impl AestheticValue {
-    /// Create a column mapping
+    /// Create a standard column mapping
     pub fn standard_column(name: impl Into<String>) -> Self {
         Self::Column {
             name: name.into(),
@@ -209,10 +223,15 @@ impl AestheticValue {
         }
     }
 
+    /// Create an annotation column mapping (synthesized from PLACE literals)
+    pub fn annotation_column(name: impl Into<String>) -> Self {
+        Self::AnnotationColumn { name: name.into() }
+    }
+
     /// Get column name if this is a column mapping
     pub fn column_name(&self) -> Option<&str> {
         match self {
-            Self::Column { name, .. } => Some(name),
+            Self::Column { name, .. } | Self::AnnotationColumn { name } => Some(name),
             _ => None,
         }
     }
@@ -229,16 +248,19 @@ impl AestheticValue {
                 original_name,
                 ..
             } => Some(original_name.as_deref().unwrap_or(name)),
+            Self::AnnotationColumn { name } => Some(name),
             _ => None,
         }
     }
 
     /// Check if this is a dummy/placeholder column
     pub fn is_dummy(&self) -> bool {
-        match self {
-            Self::Column { is_dummy, .. } => *is_dummy,
-            _ => false,
-        }
+        matches!(self, Self::Column { is_dummy: true, .. })
+    }
+
+    /// Check if this is an annotation column
+    pub fn is_annotation(&self) -> bool {
+        matches!(self, Self::AnnotationColumn { .. })
     }
 
     /// Check if this is a literal value (not a column mapping)
@@ -250,7 +272,9 @@ impl AestheticValue {
 impl std::fmt::Display for AestheticValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AestheticValue::Column { name, .. } => write!(f, "{}", name),
+            AestheticValue::Column { name, .. } | AestheticValue::AnnotationColumn { name } => {
+                write!(f, "{}", name)
+            }
             AestheticValue::Literal(lit) => write!(f, "{}", lit),
         }
     }
@@ -609,6 +633,78 @@ impl ArrayElement {
         }
     }
 
+    /// Homogenize a slice of array elements to a common type.
+    ///
+    /// Infers the target type from all elements, then attempts to coerce all elements
+    /// to that type. If coercion fails (e.g., string + number), falls back to String type.
+    ///
+    /// Returns a new vector with homogenized elements.
+    pub fn homogenize(values: &[Self]) -> Vec<Self> {
+        // Infer target type from all elements
+        let Some(target_type) = Self::infer_type(values) else {
+            // All nulls or empty array - return cloned as-is
+            return values.to_vec();
+        };
+
+        // Try to coerce all elements to the inferred type
+        let coerced: Result<Vec<_>, _> = values
+            .iter()
+            .map(|elem| elem.coerce_to(target_type))
+            .collect();
+
+        match coerced {
+            Ok(coerced_arr) => coerced_arr,
+            Err(_) => {
+                // Coercion failed - fall back to String type
+                values
+                    .iter()
+                    .map(|elem| {
+                        elem.coerce_to(ArrayElementType::String)
+                            .unwrap_or(Self::Null)
+                    })
+                    .collect()
+            }
+        }
+    }
+
+    /// Convert this element to a SQL literal string.
+    ///
+    /// Used for generating SQL expressions from literal values.
+    pub fn to_sql(&self) -> String {
+        match self {
+            Self::String(s) => format!("'{}'", s.replace('\'', "''")),
+            Self::Number(n) => n.to_string(),
+            Self::Boolean(b) => {
+                if *b {
+                    "TRUE".to_string()
+                } else {
+                    "FALSE".to_string()
+                }
+            }
+            Self::Date(d) => {
+                // Convert days since epoch to DATE
+                format!("DATE '1970-01-01' + INTERVAL {} DAY", d)
+            }
+            Self::DateTime(dt) => {
+                // Convert microseconds since epoch to TIMESTAMP
+                format!(
+                    "TIMESTAMP '1970-01-01 00:00:00' + INTERVAL {} MICROSECOND",
+                    dt
+                )
+            }
+            Self::Time(t) => {
+                // Convert nanoseconds since midnight to TIME
+                let seconds = t / 1_000_000_000;
+                let nanos = t % 1_000_000_000;
+                format!(
+                    "TIME '00:00:00' + INTERVAL {} SECOND + INTERVAL {} NANOSECOND",
+                    seconds, nanos
+                )
+            }
+            Self::Null => "NULL".to_string(),
+        }
+    }
+
     /// Get the type name for error messages.
     fn type_name(&self) -> &'static str {
         match self {
@@ -786,6 +882,76 @@ impl ParameterValue {
         match self {
             ParameterValue::Array(arr) => Some(arr),
             _ => None,
+        }
+    }
+
+    /// Convert this parameter value to a SQL literal string.
+    ///
+    /// Only supports scalar values (String, Number, Boolean, Null).
+    /// Arrays are handled separately in annotation layer VALUES clause generation.
+    pub fn to_sql(&self) -> String {
+        match self {
+            ParameterValue::String(s) => format!("'{}'", s.replace('\'', "''")),
+            ParameterValue::Number(n) => n.to_string(),
+            ParameterValue::Boolean(b) => {
+                if *b {
+                    "TRUE".to_string()
+                } else {
+                    "FALSE".to_string()
+                }
+            }
+            ParameterValue::Array(_) => {
+                panic!("ParameterValue::to_sql() does not support arrays. Arrays in annotation layers should be handled via VALUES clause generation.")
+            }
+            ParameterValue::Null => "NULL".to_string(),
+        }
+    }
+
+    /// Convert a scalar ParameterValue to an ArrayElement.
+    ///
+    /// Panics if called on an Array variant.
+    fn to_array_element(&self) -> ArrayElement {
+        match self {
+            ParameterValue::Number(num) => ArrayElement::Number(*num),
+            ParameterValue::String(s) => ArrayElement::String(s.clone()),
+            ParameterValue::Boolean(b) => ArrayElement::Boolean(*b),
+            ParameterValue::Null => ArrayElement::Null,
+            ParameterValue::Array(_) => panic!("Cannot convert Array to single ArrayElement"),
+        }
+    }
+
+    /// Recycle this value to a target array length.
+    ///
+    /// - Scalars (String, Number, Boolean, Null) are converted to arrays with n copies
+    /// - Arrays of length 1 are recycled to n copies of that element
+    /// - Arrays of target length are returned as-is (after homogenization)
+    /// - Arrays of other lengths produce an error
+    pub fn rep(self, n: usize) -> Result<Self, crate::GgsqlError> {
+        match self {
+            // Arrays: homogenize types if mixed, then recycle if needed
+            ParameterValue::Array(arr) => {
+                if arr.len() == 1 {
+                    // Recycle the single element
+                    let element = arr[0].clone();
+                    Ok(ParameterValue::Array(vec![element; n]))
+                } else if arr.len() == n {
+                    // Already correct length - homogenize for type consistency
+                    let arr = ArrayElement::homogenize(&arr);
+                    Ok(ParameterValue::Array(arr))
+                } else {
+                    // Mismatched length - shouldn't happen if validation passed
+                    Err(crate::GgsqlError::InternalError(format!(
+                        "Attempted to recycle array of length {} to length {} (should have been caught earlier)",
+                        arr.len(),
+                        n
+                    )))
+                }
+            }
+            // Scalars: convert to ArrayElement and replicate n times
+            scalar => {
+                let elem = scalar.to_array_element();
+                Ok(ParameterValue::Array(vec![elem; n]))
+            }
         }
     }
 }
@@ -1365,5 +1531,27 @@ mod tests {
         let elem = ArrayElement::DateTime(100000);
         let result = elem.coerce_to(ArrayElementType::Date);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_homogenize_mixed_number_string() {
+        let arr = vec![
+            ArrayElement::Number(1.0),
+            ArrayElement::String("foo".to_string()),
+        ];
+
+        let homogenized = ArrayElement::homogenize(&arr);
+
+        // Should fall back to String type since "foo" can't be coerced to Number
+        assert_eq!(homogenized.len(), 2);
+        assert!(matches!(homogenized[0], ArrayElement::String(_)));
+        assert!(matches!(homogenized[1], ArrayElement::String(_)));
+
+        if let ArrayElement::String(s) = &homogenized[0] {
+            assert_eq!(s, "1");
+        }
+        if let ArrayElement::String(s) = &homogenized[1] {
+            assert_eq!(s, "foo");
+        }
     }
 }

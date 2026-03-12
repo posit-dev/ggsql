@@ -11,24 +11,48 @@ use crate::{naming, DataFrame, GgsqlError, Result};
 use polars::prelude::DataType;
 use std::collections::{HashMap, HashSet};
 
-use super::casting::{literal_to_sql, TypeRequirement};
+use super::casting::TypeRequirement;
 use super::schema::build_aesthetic_schema;
 
 /// Build the source query for a layer.
 ///
-/// Returns `SELECT * FROM source` where source is either:
-/// - The layer's explicit source (table, CTE, file)
-/// - The global table if layer has no explicit source
+/// Returns a complete query that can be executed to retrieve the layer's data:
+/// - Annotation layers → VALUES clause with all aesthetic columns (modifies layer mappings)
+/// - Table/CTE layers → `SELECT * FROM table_or_cte`
+/// - File path layers → `SELECT * FROM 'path'`
+/// - Layers without explicit source → `SELECT * FROM __ggsql_global__`
 ///
-/// Note: This is distinct from `build_layer_base_query()` which builds a full
-/// SELECT with aesthetic column renames and type casts.
+/// For annotation layers, this function processes parameters and converts them to
+/// Column/AnnotationColumn mappings, so the layer is modified in place.
 pub fn layer_source_query(
-    layer: &Layer,
+    layer: &mut Layer,
     materialized_ctes: &HashSet<String>,
     has_global: bool,
-) -> String {
-    let source = super::casting::determine_layer_source(layer, materialized_ctes, has_global);
-    format!("SELECT * FROM {}", source)
+) -> Result<String> {
+    match &layer.source {
+        Some(crate::DataSource::Annotation) => {
+            // Annotation layers: process parameters and return complete VALUES clause (with on-the-fly recycling)
+            process_annotation_layer(layer)
+        }
+        Some(crate::DataSource::Identifier(name)) => {
+            // Regular table or CTE
+            let source = if materialized_ctes.contains(name) {
+                naming::cte_table(name)
+            } else {
+                name.clone()
+            };
+            Ok(format!("SELECT * FROM {}", source))
+        }
+        Some(crate::DataSource::FilePath(path)) => {
+            // File path source
+            Ok(format!("SELECT * FROM '{}'", path))
+        }
+        None => {
+            // Layer uses global data
+            debug_assert!(has_global, "Layer has no source and no global data");
+            Ok(format!("SELECT * FROM {}", naming::global_table()))
+        }
+    }
 }
 
 /// Build the SELECT list for a layer query with aesthetic-renamed columns and casting.
@@ -75,7 +99,7 @@ pub fn build_layer_select_list(
     for (aesthetic, value) in &layer.mappings.aesthetics {
         let aes_col_name = naming::aesthetic_column(aesthetic);
         let select_expr = match value {
-            AestheticValue::Column { name, .. } => {
+            AestheticValue::Column { name, .. } | AestheticValue::AnnotationColumn { name } => {
                 // Check if this column needs casting
                 if let Some(req) = cast_map.get(name.as_str()) {
                     // Cast and rename to prefixed aesthetic name
@@ -90,7 +114,7 @@ pub fn build_layer_select_list(
             }
             AestheticValue::Literal(lit) => {
                 // Literals become columns with prefixed aesthetic name
-                format!("{} AS \"{}\"", literal_to_sql(lit), aes_col_name)
+                format!("{} AS \"{}\"", lit.to_sql(), aes_col_name)
             }
         };
 
@@ -123,7 +147,7 @@ pub fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataF
         let target_col_name = naming::aesthetic_column(target_aesthetic);
 
         match value {
-            AestheticValue::Column { name, .. } => {
+            AestheticValue::Column { name, .. } | AestheticValue::AnnotationColumn { name } => {
                 // Check if this stat column exists in the DataFrame
                 if df.column(name).is_ok() {
                     df.rename(name, target_col_name.into()).map_err(|e| {
@@ -162,7 +186,7 @@ pub fn literal_to_series(name: &str, lit: &ParameterValue, len: usize) -> polars
         ParameterValue::String(s) => Series::new(name.into(), vec![s.as_str(); len]),
         ParameterValue::Boolean(b) => Series::new(name.into(), vec![*b; len]),
         ParameterValue::Array(_) | ParameterValue::Null => {
-            unreachable!("Grammar prevents arrays and null in literal aesthetic mappings")
+            unreachable!("Arrays are never moved to mappings; NULL is filtered in process_annotation_layers()")
         }
     }
 }
@@ -273,6 +297,9 @@ pub fn apply_pre_stat_transform(
 /// 2. Renames columns to aesthetic names (e.g., "Date" AS "__ggsql_aes_x__")
 /// 3. Applies type casts based on scale requirements
 ///
+/// For annotation layers, the source_query is already the complete VALUES clause,
+/// so it's returned as-is (no wrapping, filtering, or casting needed).
+///
 /// The resulting query can be used for:
 /// - Schema completion (fetching min/max values)
 /// - Scale input range resolution
@@ -282,8 +309,8 @@ pub fn apply_pre_stat_transform(
 /// # Arguments
 ///
 /// * `layer` - The layer configuration with aesthetic mappings
-/// * `source_query` - The base query for the layer's data source
-/// * `type_requirements` - Columns that need type casting
+/// * `source_query` - The base query for the layer's data source (for annotations, this is already the VALUES clause)
+/// * `type_requirements` - Columns that need type casting (not applicable to annotations)
 ///
 /// # Returns
 ///
@@ -293,6 +320,10 @@ pub fn build_layer_base_query(
     source_query: &str,
     type_requirements: &[TypeRequirement],
 ) -> String {
+    // Annotation layers now go through the same pipeline as regular layers.
+    // The source_query for annotations is a VALUES clause with raw column names,
+    // and this function wraps it with SELECT expressions that rename to prefixed aesthetic names.
+
     // Build SELECT list with aesthetic renames, casts
     let select_exprs = build_layer_select_list(layer, type_requirements);
     let select_clause = if select_exprs.is_empty() {
@@ -563,4 +594,303 @@ where
     };
 
     Ok(final_query)
+}
+
+/// Build a VALUES clause for an annotation layer with all aesthetic columns.
+///
+/// Generates SQL like: `(VALUES (val1_row1, val2_row1), (val1_row2, val2_row2)) AS t(col1, col2)`
+///
+/// This function:
+/// 1. Moves positional/required/array parameters from layer.parameters to layer.mappings
+/// 2. Handles array recycling on-the-fly (determines max length, replicates scalars)
+/// 3. Validates that all arrays have compatible lengths (1 or max)
+/// 4. Builds the VALUES clause with raw aesthetic column names
+/// 5. Converts parameter values to Column/AnnotationColumn mappings
+///
+/// For annotation layers:
+/// - Positional aesthetics (pos1, pos2): use Column (data coordinate space, participate in scales)
+/// - Non-positional aesthetics (color, size): use AnnotationColumn (visual space, identity scale)
+///
+/// # Arguments
+///
+/// * `layer` - The annotation layer with aesthetics in parameters (will be modified)
+///
+/// # Returns
+///
+/// A complete SQL expression ready to use as a FROM clause
+fn process_annotation_layer(layer: &mut Layer) -> Result<String> {
+    use crate::plot::ArrayElement;
+
+    // Step 1: Identify which parameters to use for annotation data
+    // Only process positional aesthetics, required aesthetics, and array parameters
+    // (non-positional non-required scalars stay in parameters as geom settings)
+    let required_aesthetics = layer.geom.aesthetics().required();
+    let param_keys: Vec<String> = layer.parameters.keys().cloned().collect();
+
+    // Collect parameters we'll use, checking criteria and filtering NULLs
+    let mut annotation_params: Vec<(String, ParameterValue)> = Vec::new();
+
+    for param_name in param_keys {
+        // Skip if already in mappings
+        if layer.mappings.contains_key(&param_name) {
+            continue;
+        }
+
+        let Some(value) = layer.parameters.get(&param_name) else {
+            continue;
+        };
+
+        // Filter out NULL aesthetics - they mean "use geom default"
+        if value.is_null() {
+            continue;
+        }
+
+        // Check if this is a positional aesthetic OR a required aesthetic OR an array
+        let is_positional = crate::plot::aesthetic::is_positional_aesthetic(&param_name);
+        let is_required = required_aesthetics.contains(&param_name.as_str());
+        let is_array = matches!(value, ParameterValue::Array(_));
+
+        // Only process positional/required/array parameters
+        if is_positional || is_required || is_array {
+            annotation_params.push((param_name.clone(), value.clone()));
+        }
+    }
+
+    // Step 2: Determine max array length from all annotation parameters
+    let mut max_length = 1;
+
+    for (aesthetic, value) in &annotation_params {
+        // Only check array values
+        let ParameterValue::Array(arr) = value else {
+            continue;
+        };
+
+        let len = arr.len();
+        if len <= 1 {
+            continue;
+        }
+
+        if max_length > 1 && len != max_length {
+            // Multiple different non-1 lengths - error
+            return Err(GgsqlError::ValidationError(format!(
+                "PLACE annotation layer has mismatched array lengths: '{}' has length {}, but another has length {}",
+                aesthetic, len, max_length
+            )));
+        }
+        if len > max_length {
+            max_length = len;
+        }
+    }
+
+    // Step 3: Build VALUES clause and create final mappings simultaneously
+    let mut columns: Vec<Vec<ArrayElement>> = Vec::new();
+    let mut column_names = Vec::new();
+
+    for (aesthetic, param) in &annotation_params {
+        // Build column data for VALUES clause using rep() to handle scalars and arrays uniformly
+        let column_values = match param.clone().rep(max_length)? {
+            ParameterValue::Array(arr) => arr,
+            _ => unreachable!("rep() always returns Array variant"),
+        };
+
+        columns.push(column_values);
+        // Use raw aesthetic names (not prefixed) so annotations go through
+        // the same column→aesthetic renaming pipeline as regular layers
+        column_names.push(aesthetic.clone());
+
+        // Create final mapping directly (no intermediate Literal step)
+        let is_positional = crate::plot::aesthetic::is_positional_aesthetic(aesthetic);
+        let mapping_value = if is_positional {
+            // Positional aesthetics use Column (participate in scales)
+            AestheticValue::Column {
+                name: aesthetic.clone(), // Raw aesthetic name from VALUES clause
+                original_name: None,
+                is_dummy: false,
+            }
+        } else {
+            // Non-positional aesthetics use AnnotationColumn (identity scale)
+            AestheticValue::AnnotationColumn {
+                name: aesthetic.clone(), // Raw aesthetic name from VALUES clause
+            }
+        };
+
+        layer.mappings.insert(aesthetic.clone(), mapping_value);
+        // Remove from parameters now that it's in mappings
+        layer.parameters.remove(aesthetic);
+    }
+
+    // Step 4: Build VALUES rows
+    let mut rows = Vec::new();
+    for i in 0..max_length {
+        let values: Vec<String> = columns.iter().map(|col| col[i].to_sql()).collect();
+        rows.push(format!("({})", values.join(", ")));
+    }
+
+    // Step 5: Build complete SQL query
+    let values_clause = rows.join(", ");
+    let column_list = column_names
+        .iter()
+        .map(|c| format!("\"{}\"", c))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let sql = format!(
+        "SELECT * FROM (VALUES {}) AS t({})",
+        values_clause, column_list
+    );
+
+    Ok(sql)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plot::{ArrayElement, DataSource, Geom, Layer, ParameterValue};
+
+    #[test]
+    fn test_annotation_single_scalar() {
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        // Put values in parameters (not mappings) - process_annotation_layer will process them
+        layer
+            .parameters
+            .insert("pos1".to_string(), ParameterValue::Number(5.0));
+        layer
+            .parameters
+            .insert("pos2".to_string(), ParameterValue::Number(10.0));
+        layer.parameters.insert(
+            "label".to_string(),
+            ParameterValue::String("Test".to_string()),
+        );
+
+        let result = process_annotation_layer(&mut layer).unwrap();
+
+        // Should produce: SELECT * FROM (VALUES (...)) AS t("pos1", "pos2", "label")
+        // Uses raw aesthetic names, not prefixed names
+        assert!(result.contains("VALUES"));
+        // Check all values are present (order may vary due to HashMap)
+        assert!(result.contains("5"));
+        assert!(result.contains("10"));
+        assert!(result.contains("'Test'"));
+        // Raw aesthetic names in column list
+        assert!(result.contains("\"pos1\""));
+        assert!(result.contains("\"pos2\""));
+        assert!(result.contains("\"label\""));
+
+        // After processing, mappings should have Column/AnnotationColumn values
+        assert!(layer.mappings.contains_key("pos1"));
+        assert!(layer.mappings.contains_key("pos2"));
+        assert!(layer.mappings.contains_key("label"));
+    }
+
+    #[test]
+    fn test_annotation_array_recycling() {
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer.parameters.insert(
+            "pos1".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(1.0),
+                ArrayElement::Number(2.0),
+                ArrayElement::Number(3.0),
+            ]),
+        );
+        layer
+            .parameters
+            .insert("pos2".to_string(), ParameterValue::Number(10.0));
+        layer.parameters.insert(
+            "label".to_string(),
+            ParameterValue::String("Same".to_string()),
+        );
+
+        let result = process_annotation_layer(&mut layer).unwrap();
+
+        // Should recycle scalar pos2 and label to match array length (3)
+        assert!(result.contains("VALUES"));
+        // Check that all values appear (order may vary due to HashMap)
+        assert!(result.contains("1") && result.contains("2") && result.contains("3"));
+        assert!(result.contains("10"));
+        assert!(result.contains("'Same'"));
+        // Check row count by counting parentheses pairs in VALUES
+        assert_eq!(result.matches("), (").count() + 1, 3, "Should have 3 rows");
+    }
+
+    #[test]
+    fn test_annotation_mismatched_arrays() {
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer.parameters.insert(
+            "pos1".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(1.0),
+                ArrayElement::Number(2.0),
+                ArrayElement::Number(3.0),
+            ]),
+        );
+        layer.parameters.insert(
+            "pos2".to_string(),
+            ParameterValue::Array(vec![ArrayElement::Number(10.0), ArrayElement::Number(20.0)]),
+        );
+
+        let result = process_annotation_layer(&mut layer);
+
+        // Should error with mismatched lengths
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("mismatched array lengths"),
+            "Error message should mention mismatched arrays"
+        );
+        // Error should mention one of the aesthetics (order may vary)
+        assert!(
+            err_msg.contains("pos1") || err_msg.contains("pos2"),
+            "Error message should mention at least one aesthetic"
+        );
+    }
+
+    #[test]
+    fn test_annotation_multiple_arrays_same_length() {
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer.parameters.insert(
+            "pos1".to_string(),
+            ParameterValue::Array(vec![ArrayElement::Number(1.0), ArrayElement::Number(2.0)]),
+        );
+        layer.parameters.insert(
+            "pos2".to_string(),
+            ParameterValue::Array(vec![ArrayElement::Number(10.0), ArrayElement::Number(20.0)]),
+        );
+
+        let result = process_annotation_layer(&mut layer).unwrap();
+
+        // Both arrays have length 2, should work (order may vary)
+        assert!(result.contains("VALUES"));
+        assert!(result.contains("1") && result.contains("2"));
+        assert!(result.contains("10") && result.contains("20"));
+        assert_eq!(result.matches("), (").count() + 1, 2, "Should have 2 rows");
+    }
+
+    #[test]
+    fn test_annotation_mixed_types() {
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer
+            .parameters
+            .insert("pos1".to_string(), ParameterValue::Number(5.0));
+        layer
+            .parameters
+            .insert("pos2".to_string(), ParameterValue::Number(10.0));
+        layer.parameters.insert(
+            "label".to_string(),
+            ParameterValue::String("Text".to_string()),
+        );
+
+        let result = process_annotation_layer(&mut layer).unwrap();
+
+        // Should handle different types (order may vary)
+        assert!(result.contains("VALUES"));
+        assert!(result.contains("5"));
+        assert!(result.contains("10"));
+        assert!(result.contains("'Text'"));
+    }
 }

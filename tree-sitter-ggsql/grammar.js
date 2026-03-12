@@ -442,6 +442,7 @@ module.exports = grammar({
     // All the visualization clauses (same as current grammar)
     viz_clause: $ => choice(
       $.draw_clause,
+      $.place_clause,
       $.scale_clause,
       $.facet_clause,
       $.project_clause,
@@ -459,6 +460,14 @@ module.exports = grammar({
       optional($.filter_clause),
       optional($.partition_clause),
       optional($.order_clause)
+    ),
+
+    // PLACE clause - syntax: PLACE geom [SETTING ...]
+    // For annotation layers with literal values only (no data mappings)
+    place_clause: $ => seq(
+      caseInsensitive('PLACE'),
+      $.geom_type,
+      optional($.setting_clause)
     ),
 
     // REMAPPING clause: maps stat-computed columns to aesthetics

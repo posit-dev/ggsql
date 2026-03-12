@@ -97,16 +97,8 @@ pub(super) fn series_value_at(series: &Series, idx: usize) -> Result<Value> {
             let ca = series
                 .str()
                 .map_err(|e| GgsqlError::WriterError(format!("Failed to cast to string: {}", e)))?;
-            // Try to parse as number if it looks numeric
-            if let Some(val) = ca.get(idx) {
-                if let Ok(num) = val.parse::<f64>() {
-                    Ok(json!(num))
-                } else {
-                    Ok(json!(val))
-                }
-            } else {
-                Ok(Value::Null)
-            }
+            // Keep strings as strings (don't parse to numbers)
+            Ok(ca.get(idx).map(|v| json!(v)).unwrap_or(Value::Null))
         }
         Date => {
             // Convert days since epoch to ISO date string: "YYYY-MM-DD"

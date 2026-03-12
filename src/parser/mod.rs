@@ -413,4 +413,60 @@ mod tests {
             Some(DataSource::Identifier("cte".to_string()))
         );
     }
+
+    #[test]
+    fn test_place_clause() {
+        let query = r#"
+            SELECT x, y FROM data
+            VISUALISE x, y
+            DRAW point
+            PLACE text SETTING x => 5, y => 10, label => 'Hello'
+        "#;
+
+        let result = parse_query(query);
+        assert!(result.is_ok(), "Failed to parse PLACE clause: {:?}", result);
+
+        let specs = result.unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].layers.len(), 2, "Expected 2 layers (DRAW + PLACE)");
+
+        // First layer: regular DRAW point
+        assert_eq!(specs[0].layers[0].geom, Geom::point());
+        assert!(
+            specs[0].layers[0].source.is_none(),
+            "DRAW layer should have no explicit source"
+        );
+
+        // Second layer: PLACE text with annotation source
+        assert_eq!(specs[0].layers[1].geom, Geom::text());
+        assert!(
+            matches!(specs[0].layers[1].source, Some(DataSource::Annotation)),
+            "PLACE layer should have Annotation source"
+        );
+
+        // After parsing, annotation layer parameters stay in parameters
+        // They are only moved to mappings during execution (in process_annotation_layer)
+        // (transform_aesthetics_to_internal runs and transforms x→pos1, y→pos2)
+        assert_eq!(
+            specs[0].layers[1].parameters.get("pos1"),
+            Some(&ParameterValue::Number(5.0)),
+            "x should be transformed to pos1 but remain in parameters at parse time"
+        );
+        assert_eq!(
+            specs[0].layers[1].parameters.get("pos2"),
+            Some(&ParameterValue::Number(10.0)),
+            "y should be transformed to pos2 but remain in parameters at parse time"
+        );
+        assert_eq!(
+            specs[0].layers[1].parameters.get("label"),
+            Some(&ParameterValue::String("Hello".to_string())),
+            "label (required) also remains in parameters at parse time"
+        );
+
+        // Mappings should be empty at parse time for annotation layers
+        assert!(
+            specs[0].layers[1].mappings.is_empty(),
+            "Annotation layer mappings should be empty at parse time (populated during execution)"
+        );
+    }
 }

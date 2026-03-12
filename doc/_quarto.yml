@@ -39,6 +39,8 @@ website:
             href: syntax/clause/visualise.qmd
           - text: "`DRAW`"
             href: syntax/clause/draw.qmd
+          - text: "`PLACE`"
+            href: syntax/clause/place.qmd
           - text: "`SCALE`"
             href: syntax/clause/scale.qmd
           - text: "`FACET`"
@@ -69,6 +71,8 @@ website:
             href: syntax/clause/visualise.qmd
           - text: "`DRAW`"
             href: syntax/clause/draw.qmd
+          - text: "`PLACE`"
+            href: syntax/clause/place.qmd
           - text: "`SCALE`"
             href: syntax/clause/scale.qmd
           - text: "`FACET`"

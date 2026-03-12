@@ -802,7 +802,11 @@ pub(super) fn build_encoding_channel(
             name: col,
             original_name,
             is_dummy,
-        } => build_column_encoding(aesthetic, col, original_name, *is_dummy, ctx),
+        } => build_column_encoding(aesthetic, col, original_name, *is_dummy, true, ctx),
+        AestheticValue::AnnotationColumn { name: col } => {
+            // Non-positional annotation columns use identity scale
+            build_column_encoding(aesthetic, col, &None, false, false, ctx)
+        }
         AestheticValue::Literal(lit) => build_literal_encoding(aesthetic, lit),
     }
 }
@@ -813,13 +817,14 @@ fn build_column_encoding(
     col: &str,
     original_name: &Option<String>,
     is_dummy: bool,
+    is_scaled: bool,
     ctx: &mut EncodingContext,
 ) -> Result<Value> {
     let aesthetic_ctx = ctx.spec.get_aesthetic_context();
     let primary = aesthetic_ctx
         .primary_internal_positional(aesthetic)
         .unwrap_or(aesthetic);
-    let mut identity_scale = false;
+    let mut identity_scale = !is_scaled;
 
     // Determine field type from scale or infer from data
     let field_type = determine_field_type_for_aesthetic(
@@ -936,6 +941,12 @@ fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value
                 "linewidth" => json!(n * POINTS_TO_PIXELS),
                 _ => json!(n),
             }
+        }
+        ParameterValue::Array(_) => {
+            return Err(crate::GgsqlError::WriterError(format!(
+                "The `{aes}` SETTING must be scalar, not an array.",
+                aes = aesthetic
+            )))
         }
         _ => lit.to_json(),
     };

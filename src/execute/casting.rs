@@ -3,11 +3,11 @@
 //! This module handles determining which columns need type casting based on
 //! scale requirements and updating type info accordingly.
 
+use crate::naming;
 use crate::plot::scale::coerce_dtypes;
-use crate::plot::{CastTargetType, Layer, ParameterValue, Plot, SqlTypeNames};
-use crate::{naming, DataSource};
+use crate::plot::{CastTargetType, Plot, SqlTypeNames};
 use polars::prelude::{DataType, TimeUnit};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use super::schema::TypeInfo;
 
@@ -20,24 +20,6 @@ pub struct TypeRequirement {
     pub target_type: CastTargetType,
     /// SQL type name (e.g., "DATE", "DOUBLE", "VARCHAR")
     pub sql_type_name: String,
-}
-
-/// Format a literal value as SQL
-pub fn literal_to_sql(lit: &ParameterValue) -> String {
-    match lit {
-        ParameterValue::String(s) => format!("'{}'", s.replace('\'', "''")),
-        ParameterValue::Number(n) => n.to_string(),
-        ParameterValue::Boolean(b) => {
-            if *b {
-                "TRUE".to_string()
-            } else {
-                "FALSE".to_string()
-            }
-        }
-        ParameterValue::Array(_) | ParameterValue::Null => {
-            unreachable!("Grammar prevents arrays and null in literal aesthetic mappings")
-        }
-    }
 }
 
 /// Determine which columns need casting based on scale requirements.
@@ -198,35 +180,6 @@ pub fn update_type_info_for_casting(type_info: &mut [TypeInfo], requirements: &[
             };
             // Update is_discrete flag based on new type
             entry.2 = matches!(entry.1, DataType::String | DataType::Boolean);
-        }
-    }
-}
-
-/// Determine the data source table name for a layer.
-///
-/// Returns the table/CTE name to query from:
-/// - Layer with explicit source (CTE, table, file) → that source name
-/// - Layer using global data → global table name
-pub fn determine_layer_source(
-    layer: &Layer,
-    materialized_ctes: &HashSet<String>,
-    has_global: bool,
-) -> String {
-    match &layer.source {
-        Some(DataSource::Identifier(name)) => {
-            if materialized_ctes.contains(name) {
-                naming::cte_table(name)
-            } else {
-                name.clone()
-            }
-        }
-        Some(DataSource::FilePath(path)) => {
-            format!("'{}'", path)
-        }
-        None => {
-            // Layer uses global data - caller must ensure has_global is true
-            debug_assert!(has_global, "Layer has no source and no global data");
-            naming::global_table()
         }
     }
 }
