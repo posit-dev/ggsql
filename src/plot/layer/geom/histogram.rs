@@ -85,9 +85,9 @@ impl GeomTrait for Histogram {
         group_by: &[String],
         parameters: &HashMap<String, ParameterValue>,
         execute_query: &dyn Fn(&str) -> Result<DataFrame>,
-        _dialect: &dyn SqlDialect,
+        dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
-        stat_histogram(query, aesthetics, group_by, parameters, execute_query)
+        stat_histogram(query, aesthetics, group_by, parameters, execute_query, dialect)
     }
 }
 
@@ -104,6 +104,7 @@ fn stat_histogram(
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
     execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+    dialect: &dyn SqlDialect,
 ) -> Result<StatResult> {
     // Get x column name from aesthetics
     let x_col = get_column_name(aesthetics, "pos1").ok_or_else(|| {
@@ -166,13 +167,18 @@ fn stat_histogram(
         )
     } else {
         // Right-closed (a, b]: use CEIL - 1, clamped to 0 minimum
-        // Use CASE instead of MAX(a,b) because this expression appears in GROUP BY
-        // where MAX would be interpreted as the aggregate function
-        format!(
-            "(CASE WHEN CEIL(({x} - {min} + {w} * 0.5) / {w}) - 1 > 0 THEN CEIL(({x} - {min} + {w} * 0.5) / {w}) - 1 ELSE 0 END) * {w} + {min} - {w} * 0.5",
+        let ceil_expr = format!(
+            "CEIL(({x} - {min} + {w} * 0.5) / {w}) - 1",
             x = x_col,
             min = min_val,
             w = bin_width
+        );
+        let clamped = dialect.sql_greatest(&["0", &ceil_expr]);
+        format!(
+            "({clamped}) * {w} + {min} - {w} * 0.5",
+            clamped = clamped,
+            w = bin_width,
+            min = min_val
         )
     };
     // Build the bin end expression (bin start + bin width)
