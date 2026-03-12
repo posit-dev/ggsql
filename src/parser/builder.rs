@@ -3350,7 +3350,10 @@ mod tests {
 
         let literal_node = source.find_node(&root, "(literal_value) @lit").unwrap();
         let parsed = parse_literal_value(&literal_node, &source).unwrap();
-        assert!(matches!(parsed, AestheticValue::Literal(ParameterValue::Null)));
+        assert!(matches!(
+            parsed,
+            AestheticValue::Literal(ParameterValue::Null)
+        ));
     }
 
     // ========================================

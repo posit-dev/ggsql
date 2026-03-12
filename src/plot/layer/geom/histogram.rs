@@ -87,7 +87,14 @@ impl GeomTrait for Histogram {
         execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
-        stat_histogram(query, aesthetics, group_by, parameters, execute_query, dialect)
+        stat_histogram(
+            query,
+            aesthetics,
+            group_by,
+            parameters,
+            execute_query,
+            dialect,
+        )
     }
 }
 
