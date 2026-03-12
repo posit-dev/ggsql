@@ -6,6 +6,8 @@
 
 # Continuous palettes referenced in color_cont.qmd
 CONTINUOUS_PALETTES <- c(
+  # ggsql default
+  "sequential",
   # Crameri Sequential
   "navia", "batlow", "batlowk", "batloww", "hawaii", "lajolla", "tokyo",
   "turku", "acton", "bamako", "bilbao", "buda", "davos", "devon", "glasgow",

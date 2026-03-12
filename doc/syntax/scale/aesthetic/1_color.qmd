@@ -85,31 +85,32 @@ SCALE color TO ['antiquewhite', 'firebrick']
 ### Continuous palettes
 
 #### Sequential
-Sequential palettes for numeric data. `navia` is the default continuous color palette in ggsql.
+Sequential palettes for numeric data. `sequential` is the default continuous color palette in ggsql.
 
 | Name | Gradient | Source | Description |
 |------|----------|--------|-------------|
-| `navia` | ![](examples/gradient_navia.svg){height=20 .lightbox} | Crameri | **Default.** Blue-green-cream (alias: `sequential`) |
-| `batlow` | ![](examples/gradient_batlow.svg){height=20 .lightbox} | Crameri | Blue-green-yellow-red |
+| `sequential` | ![](examples/gradient_sequential.svg){height=20 .lightbox} | ggsql | **Default.** Blue-teal-green (derived from navia) |
+| `acton` | ![](examples/gradient_acton.svg){height=20 .lightbox} | Crameri | Dark purple-light purple |
+| `bamako` | ![](examples/gradient_bamako.svg){height=20 .lightbox} | Crameri | Teal-olive-cream |
+| `batlow` | ![](examples/gradient_batlow.svg){height=20 .lightbox} | Crameri | Blue-teal-green-brown-pink |
 | `batlowk` | ![](examples/gradient_batlowk.svg){height=20 .lightbox} | Crameri | Dark variant of batlow |
 | `batloww` | ![](examples/gradient_batloww.svg){height=20 .lightbox} | Crameri | Light variant of batlow |
-| `hawaii` | ![](examples/gradient_hawaii.svg){height=20 .lightbox} | Crameri | Green-yellow-orange-magenta |
-| `lajolla` | ![](examples/gradient_lajolla.svg){height=20 .lightbox} | Crameri | Cream-yellow-orange-brown |
-| `tokyo` | ![](examples/gradient_tokyo.svg){height=20 .lightbox} | Crameri | White-magenta-dark blue |
-| `turku` | ![](examples/gradient_turku.svg){height=20 .lightbox} | Crameri | Cream-green-dark brown |
-| `acton` | ![](examples/gradient_acton.svg){height=20 .lightbox} | Crameri | White-purple |
-| `bamako` | ![](examples/gradient_bamako.svg){height=20 .lightbox} | Crameri | White-brown-dark brown |
-| `bilbao` | ![](examples/gradient_bilbao.svg){height=20 .lightbox} | Crameri | White-orange-dark brown |
-| `buda` | ![](examples/gradient_buda.svg){height=20 .lightbox} | Crameri | White-pink-magenta |
-| `davos` | ![](examples/gradient_davos.svg){height=20 .lightbox} | Crameri | White-blue |
-| `devon` | ![](examples/gradient_devon.svg){height=20 .lightbox} | Crameri | White-blue-dark blue |
-| `glasgow` | ![](examples/gradient_glasgow.svg){height=20 .lightbox} | Crameri | Blue-cream-orange |
-| `grayc` | ![](examples/gradient_grayc.svg){height=20 .lightbox} | Crameri | White-black grayscale |
-| `imola` | ![](examples/gradient_imola.svg){height=20 .lightbox} | Crameri | Blue-cream-green |
-| `lapaz` | ![](examples/gradient_lapaz.svg){height=20 .lightbox} | Crameri | White-blue-dark |
-| `lipari` | ![](examples/gradient_lipari.svg){height=20 .lightbox} | Crameri | White-orange-dark blue |
-| `nuuk` | ![](examples/gradient_nuuk.svg){height=20 .lightbox} | Crameri | White-blue-green |
-| `oslo` | ![](examples/gradient_oslo.svg){height=20 .lightbox} | Crameri | White-blue-black |
+| `bilbao` | ![](examples/gradient_bilbao.svg){height=20 .lightbox} | Crameri | Brown-tan-white |
+| `buda` | ![](examples/gradient_buda.svg){height=20 .lightbox} | Crameri | Magenta-pink-yellow |
+| `davos` | ![](examples/gradient_davos.svg){height=20 .lightbox} | Crameri | Dark blue-teal-green-white |
+| `devon` | ![](examples/gradient_devon.svg){height=20 .lightbox} | Crameri | Dark purple-blue-white |
+| `glasgow` | ![](examples/gradient_glasgow.svg){height=20 .lightbox} | Crameri | Purple-brown-olive-light purple |
+| `grayc` | ![](examples/gradient_grayc.svg){height=20 .lightbox} | Crameri | Black-white grayscale |
+| `hawaii` | ![](examples/gradient_hawaii.svg){height=20 .lightbox} | Crameri | Magenta-orange-green-cyan |
+| `imola` | ![](examples/gradient_imola.svg){height=20 .lightbox} | Crameri | Blue-teal-green-yellow |
+| `lajolla` | ![](examples/gradient_lajolla.svg){height=20 .lightbox} | Crameri | Dark brown-orange-yellow-cream |
+| `lapaz` | ![](examples/gradient_lapaz.svg){height=20 .lightbox} | Crameri | Dark purple-blue-teal-cream |
+| `lipari` | ![](examples/gradient_lipari.svg){height=20 .lightbox} | Crameri | Dark blue-red-orange-cream |
+| `navia` | ![](examples/gradient_navia.svg){height=20 .lightbox} | Crameri | Blue-teal-green-cream |
+| `nuuk` | ![](examples/gradient_nuuk.svg){height=20 .lightbox} | Crameri | Blue-teal-green-yellow |
+| `oslo` | ![](examples/gradient_oslo.svg){height=20 .lightbox} | Crameri | Black-blue-white |
+| `tokyo` | ![](examples/gradient_tokyo.svg){height=20 .lightbox} | Crameri | Dark purple-magenta-olive-green |
+| `turku` | ![](examples/gradient_turku.svg){height=20 .lightbox} | Crameri | Black-olive-tan-pink |
 | `blues` | ![](examples/gradient_blues.svg){height=20 .lightbox} | ColorBrewer | Light to dark blue |
 | `greens` | ![](examples/gradient_greens.svg){height=20 .lightbox} | ColorBrewer | Light to dark green |
 | `oranges` | ![](examples/gradient_oranges.svg){height=20 .lightbox} | ColorBrewer | Light to dark orange |
@@ -141,15 +142,15 @@ Diverging palettes emphasize a critical midpoint with two contrasting hues on ei
 | Name | Gradient | Source | Description |
 |------|----------|--------|-------------|
 | `vik` | ![](examples/gradient_vik.svg){height=20 .lightbox} | Crameri | Blue-white-red (alias: `diverging`) |
-| `berlin` | ![](examples/gradient_berlin.svg){height=20 .lightbox} | Crameri | Blue-white-red (different hues) |
-| `roma` | ![](examples/gradient_roma.svg){height=20 .lightbox} | Crameri | Green-cream-orange |
-| `bam` | ![](examples/gradient_bam.svg){height=20 .lightbox} | Crameri | Blue-white-red |
-| `broc` | ![](examples/gradient_broc.svg){height=20 .lightbox} | Crameri | Brown-white-green |
-| `cork` | ![](examples/gradient_cork.svg){height=20 .lightbox} | Crameri | Blue-white-green |
-| `lisbon` | ![](examples/gradient_lisbon.svg){height=20 .lightbox} | Crameri | Blue-white-brown |
-| `managua` | ![](examples/gradient_managua.svg){height=20 .lightbox} | Crameri | Blue-white-magenta |
-| `tofino` | ![](examples/gradient_tofino.svg){height=20 .lightbox} | Crameri | Blue-cream-brown |
-| `vanimo` | ![](examples/gradient_vanimo.svg){height=20 .lightbox} | Crameri | Magenta-white-green |
+| `berlin` | ![](examples/gradient_berlin.svg){height=20 .lightbox} | Crameri | Light blue-dark-light red |
+| `roma` | ![](examples/gradient_roma.svg){height=20 .lightbox} | Crameri | Brown-cream-blue |
+| `bam` | ![](examples/gradient_bam.svg){height=20 .lightbox} | Crameri | Purple-white-green |
+| `broc` | ![](examples/gradient_broc.svg){height=20 .lightbox} | Crameri | Purple-white-olive |
+| `cork` | ![](examples/gradient_cork.svg){height=20 .lightbox} | Crameri | Purple-white-green |
+| `lisbon` | ![](examples/gradient_lisbon.svg){height=20 .lightbox} | Crameri | Light purple-dark-light yellow |
+| `managua` | ![](examples/gradient_managua.svg){height=20 .lightbox} | Crameri | Yellow-dark-cyan |
+| `tofino` | ![](examples/gradient_tofino.svg){height=20 .lightbox} | Crameri | Light purple-dark-light green |
+| `vanimo` | ![](examples/gradient_vanimo.svg){height=20 .lightbox} | Crameri | Pink-dark-light green |
 | `rdbu` | ![](examples/gradient_rdbu.svg){height=20 .lightbox} | ColorBrewer | Red-Blue |
 | `rdylbu` | ![](examples/gradient_rdylbu.svg){height=20 .lightbox} | ColorBrewer | Red-Yellow-Blue |
 | `rdylgn` | ![](examples/gradient_rdylgn.svg){height=20 .lightbox} | ColorBrewer | Red-Yellow-Green |
@@ -158,7 +159,7 @@ Diverging palettes emphasize a critical midpoint with two contrasting hues on ei
 | `prgn` | ![](examples/gradient_prgn.svg){height=20 .lightbox} | ColorBrewer | Purple-Green |
 | `piyg` | ![](examples/gradient_piyg.svg){height=20 .lightbox} | ColorBrewer | Pink-Yellow-Green |
 | `rdgy` | ![](examples/gradient_rdgy.svg){height=20 .lightbox} | ColorBrewer | Red-Grey |
-| `puor` | ![](examples/gradient_puor.svg){height=20 .lightbox} | ColorBrewer | Purple-Orange |
+| `puor` | ![](examples/gradient_puor.svg){height=20 .lightbox} | ColorBrewer | Orange-Purple |
 
 #### Multi-Sequential
 
@@ -176,11 +177,11 @@ Cyclic palettes wrap around, making them suitable for periodic data like angles,
 
 | Name | Gradient | Source | Description |
 |------|----------|--------|-------------|
-| `romao` | ![](examples/gradient_romao.svg){height=20 .lightbox} | Crameri | Cyclic green-orange (alias: `cyclic`) |
-| `bamo` | ![](examples/gradient_bamo.svg){height=20 .lightbox} | Crameri | Cyclic blue-red |
-| `broco` | ![](examples/gradient_broco.svg){height=20 .lightbox} | Crameri | Cyclic brown-green |
-| `corko` | ![](examples/gradient_corko.svg){height=20 .lightbox} | Crameri | Cyclic blue-green |
-| `viko` | ![](examples/gradient_viko.svg){height=20 .lightbox} | Crameri | Cyclic blue-red |
+| `romao` | ![](examples/gradient_romao.svg){height=20 .lightbox} | Crameri | Cyclic purple-orange-teal-blue (alias: `cyclic`) |
+| `bamo` | ![](examples/gradient_bamo.svg){height=20 .lightbox} | Crameri | Cyclic purple-pink-cream-olive |
+| `broco` | ![](examples/gradient_broco.svg){height=20 .lightbox} | Crameri | Cyclic gray-blue-cream-olive |
+| `corko` | ![](examples/gradient_corko.svg){height=20 .lightbox} | Crameri | Cyclic gray-blue-teal-green |
+| `viko` | ![](examples/gradient_viko.svg){height=20 .lightbox} | Crameri | Cyclic purple-blue-cream-orange |
 
 ### Discrete palettes
 
@@ -229,7 +230,7 @@ Kelly, K.L. (1965). Twenty-two colors of maximum contrast. *Color Engineering*, 
 
 #### For general continuous data
 
-- **`navia`** (default) - Good all-purpose choice, perceptually uniform
+- **`sequential`** (default) - Good all-purpose choice, perceptually uniform
 - **`viridis`** - Excellent for print, colorblind-safe, perceptually uniform
 - **`batlow`** - Wide perceptual range, good for scientific data
 
