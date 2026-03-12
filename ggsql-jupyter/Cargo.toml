@@ -16,7 +16,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # Core ggsql library
-ggsql = { path = "../src", features = ["duckdb", "vegalite"] }
+ggsql = { workspace = true, features = ["duckdb", "vegalite"] }
 
 # Need polars for DataFrame type
 polars = { workspace = true }

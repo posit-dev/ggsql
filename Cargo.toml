@@ -25,10 +25,13 @@ homepage = "https://ggsql.org"
 description = "A declarative visualization language that extends SQL with powerful data visualization capabilities."
 
 [workspace.dependencies]
+# workspace packages
+tree-sitter-ggsql = { path = "tree-sitter-ggsql", version = "0.1.0" }
+ggsql = { path = "src", version = "0.1.0" }
+
 # Parsing
 csscolorparser = "0.8.1"
 tree-sitter = "0.26"
-tree-sitter-ggsql = { path = "tree-sitter-ggsql", version = "0.1.0" }
 
 # Data processing
 polars = { version = "0.52", default-features = false }
