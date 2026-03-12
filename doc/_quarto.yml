@@ -60,6 +60,7 @@ website:
     title: Syntax
     style: "floating"
     search: true
+    logo: false
     contents:
       - text: Overview
         href: syntax/index.qmd
