@@ -50,6 +50,7 @@ website:
           - text: "`LABEL`"
             href: syntax/clause/label.qmd
       - examples.qmd
+    right:
       - text: Playground
         href: wasm/index.html
     tools:
