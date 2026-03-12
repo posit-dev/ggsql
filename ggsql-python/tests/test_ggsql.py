@@ -530,3 +530,42 @@ class TestCustomReader:
         writer = ggsql.VegaLiteWriter()
         json_output = writer.render(spec)
         assert "point" in json_output
+
+
+class TestVegaLiteWriterRenderChart:
+    """Tests for VegaLiteWriter.render_chart() method."""
+
+    def test_render_chart_returns_altair_chart(self):
+        """render_chart() returns an Altair chart object."""
+        reader = ggsql.DuckDBReader("duckdb://memory")
+        spec = reader.execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
+        writer = ggsql.VegaLiteWriter()
+        chart = writer.render_chart(spec)
+        assert isinstance(chart, altair.TopLevelMixin)
+
+    def test_render_chart_layer(self):
+        """render_chart() returns LayerChart for layered specs."""
+        reader = ggsql.DuckDBReader("duckdb://memory")
+        spec = reader.execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
+        writer = ggsql.VegaLiteWriter()
+        chart = writer.render_chart(spec)
+        assert isinstance(chart, altair.LayerChart)
+
+    def test_render_chart_facet(self):
+        """render_chart() returns FacetChart for faceted specs."""
+        reader = ggsql.DuckDBReader("duckdb://memory")
+        df = pl.DataFrame(
+            {
+                "x": [1, 2, 3, 4, 5, 6],
+                "y": [10, 20, 30, 40, 50, 60],
+                "group": ["A", "A", "A", "B", "B", "B"],
+            }
+        )
+        reader.register("data", df)
+        spec = reader.execute(
+            "SELECT * FROM data VISUALISE x, y FACET group DRAW point"
+        )
+        writer = ggsql.VegaLiteWriter()
+        chart = writer.render_chart(spec, validate=False)
+        assert isinstance(chart, altair.FacetChart)
+

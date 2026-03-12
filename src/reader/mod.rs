@@ -1111,4 +1111,76 @@ mod tests {
             "Identity position should not have xOffset encoding"
         );
     }
+
+    #[test]
+    fn test_label_with_flipped_project() {
+        // End-to-end test: LABEL x/y with PROJECT y, x TO cartesian
+        // Labels should be correctly applied to the flipped axes
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES (1, 10), (2, 20)) AS t(x, y)
+            VISUALISE
+            DRAW bar MAPPING x AS y, y AS x
+            PROJECT y, x TO cartesian
+            LABEL x => 'Value', y => 'Category'
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let encoding = &layer["encoding"];
+
+        // With PROJECT y, x TO cartesian:
+        // - y is pos1 (first positional), renders to VL x-axis in cartesian
+        // - x is pos2 (second positional), renders to VL y-axis in cartesian
+        // So LABEL y => 'Category' should appear on VL x-axis, LABEL x => 'Value' on VL y-axis
+        let x_title = encoding["x"]["title"].as_str();
+        let y_title = encoding["y"]["title"].as_str();
+
+        assert_eq!(
+            x_title,
+            Some("Category"),
+            "x-axis should have 'Category' title (from LABEL y). Got encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+        assert_eq!(
+            y_title,
+            Some("Value"),
+            "y-axis should have 'Value' title (from LABEL x). Got encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_label_with_polar_project() {
+        // End-to-end test: LABEL theta/radius with PROJECT TO polar
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
+            VISUALISE value AS theta, category AS fill
+            DRAW bar
+            PROJECT TO polar
+            LABEL theta => 'Angle', radius => 'Distance'
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let encoding = &layer["encoding"];
+
+        // Verify theta encoding has the label
+        let theta_title = encoding["theta"]["title"].as_str();
+        assert_eq!(
+            theta_title,
+            Some("Angle"),
+            "theta encoding should have 'Angle' title. Got encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+    }
 }

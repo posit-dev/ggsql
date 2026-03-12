@@ -81,11 +81,18 @@ module.exports = grammar({
 
     cte_definition: $ => seq(
       $.identifier,
+      optional(seq(          // Optional column list: df(x, y, id)
+        '(',
+        $.identifier,
+        repeat(seq(',', $.identifier)),
+        ')'
+      )),
       caseInsensitive('AS'),
       '(',
       choice(
         $.with_statement,    // Allow nested CTEs
-        $.select_statement
+        $.select_statement,
+        $.subquery_body      // VALUES (...) and other non-SELECT bodies
       ),
       ')'
     ),
@@ -681,7 +688,8 @@ module.exports = grammar({
     literal_value: $ => choice(
       $.string,
       $.number,
-      $.boolean
+      $.boolean,
+      $.null_literal
     ),
 
     // SCALE clause - SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]

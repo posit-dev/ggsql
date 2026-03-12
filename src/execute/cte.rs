@@ -16,6 +16,8 @@ pub struct CteDefinition {
     pub name: String,
     /// Full SQL text of the CTE body (including the SELECT statement inside)
     pub body: String,
+    /// Optional column aliases: WITH t(value, label) AS (...) → ["value", "label"]
+    pub column_aliases: Vec<String>,
 }
 
 /// Extract CTE definitions from the source tree
@@ -36,6 +38,7 @@ pub fn extract_ctes(source_tree: &SourceTree) -> Vec<CteDefinition> {
 /// Parse a single CTE definition node into a CteDefinition
 fn parse_cte_definition(node: &Node, source: &str) -> Option<CteDefinition> {
     let mut name: Option<String> = None;
+    let mut column_aliases: Vec<String> = Vec::new();
     let mut body_start: Option<usize> = None;
     let mut body_end: Option<usize> = None;
 
@@ -43,10 +46,14 @@ fn parse_cte_definition(node: &Node, source: &str) -> Option<CteDefinition> {
     for child in node.children(&mut cursor) {
         match child.kind() {
             "identifier" => {
-                name = Some(get_node_text(&child, source).to_string());
+                // First identifier is the CTE name, subsequent ones are column aliases
+                if name.is_none() {
+                    name = Some(get_node_text(&child, source).to_string());
+                } else {
+                    column_aliases.push(get_node_text(&child, source).to_string());
+                }
             }
-            "select_statement" => {
-                // The SELECT inside the CTE
+            "select_statement" | "subquery_body" | "with_statement" => {
                 body_start = Some(child.start_byte());
                 body_end = Some(child.end_byte());
             }
@@ -57,7 +64,11 @@ fn parse_cte_definition(node: &Node, source: &str) -> Option<CteDefinition> {
     match (name, body_start, body_end) {
         (Some(n), Some(start), Some(end)) => {
             let body = source[start..end].to_string();
-            Some(CteDefinition { name: n, body })
+            Some(CteDefinition {
+                name: n,
+                body,
+                column_aliases,
+            })
         }
         _ => None,
     }
@@ -136,9 +147,27 @@ pub fn materialize_ctes(ctes: &[CteDefinition], reader: &dyn Reader) -> Result<H
         let temp_table_name = naming::cte_table(&cte.name);
 
         // Execute the CTE body SQL to get a DataFrame, then register it
-        let df = reader.execute_sql(&transformed_body).map_err(|e| {
+        let mut df = reader.execute_sql(&transformed_body).map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to materialize CTE '{}': {}", cte.name, e))
         })?;
+
+        // Apply column aliases if present: WITH t(value, label) AS (...) renames columns
+        if !cte.column_aliases.is_empty() && cte.column_aliases.len() == df.width() {
+            let current_names: Vec<String> = df
+                .get_column_names()
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            for (old, new) in current_names.iter().zip(cte.column_aliases.iter()) {
+                df.rename(old, new.into()).map_err(|e| {
+                    GgsqlError::ReaderError(format!(
+                        "Failed to apply column alias '{}' for CTE '{}': {}",
+                        new, cte.name, e
+                    ))
+                })?;
+            }
+        }
+
         reader.register(&temp_table_name, df, true).map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to register CTE '{}': {}", cte.name, e))
         })?;
@@ -285,6 +314,28 @@ mod tests {
         // Verify order is preserved
         assert_eq!(ctes[0].name, "sales");
         assert_eq!(ctes[1].name, "targets");
+    }
+
+    #[test]
+    fn test_extract_ctes_with_column_aliases() {
+        let sql = "WITH t(value, label) AS (SELECT * FROM (VALUES (70, 'Target'))) SELECT * FROM t";
+        let source_tree = SourceTree::new(sql).unwrap();
+        let ctes = extract_ctes(&source_tree);
+
+        assert_eq!(ctes.len(), 1);
+        assert_eq!(ctes[0].name, "t");
+        assert_eq!(ctes[0].column_aliases, vec!["value", "label"]);
+    }
+
+    #[test]
+    fn test_extract_ctes_without_column_aliases() {
+        let sql = "WITH sales AS (SELECT * FROM raw_sales) SELECT * FROM sales";
+        let source_tree = SourceTree::new(sql).unwrap();
+        let ctes = extract_ctes(&source_tree);
+
+        assert_eq!(ctes.len(), 1);
+        assert_eq!(ctes[0].name, "sales");
+        assert!(ctes[0].column_aliases.is_empty());
     }
 
     #[test]

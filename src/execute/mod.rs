@@ -142,6 +142,11 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
 // Global Mapping & Color Splitting
 // =============================================================================
 
+/// Check if an aesthetic value is a null sentinel (explicit removal marker)
+fn is_null_sentinel(value: &AestheticValue) -> bool {
+    matches!(value, AestheticValue::Literal(crate::plot::ParameterValue::Null))
+}
+
 /// Merge global mappings into layer aesthetics and expand wildcards
 ///
 /// This function performs smart wildcard expansion with schema awareness:
@@ -191,6 +196,12 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
 
             // Clear wildcard flag since it's been resolved
             layer.mappings.wildcard = false;
+
+            // Remove null sentinel mappings (explicit "don't inherit" markers)
+            layer
+                .mappings
+                .aesthetics
+                .retain(|_, value| !is_null_sentinel(value));
         }
     }
 }
@@ -1368,6 +1379,36 @@ mod tests {
 
     #[cfg(feature = "duckdb")]
     #[test]
+    fn test_layer_references_cte_with_column_aliases() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            WITH t(value, label) AS (
+                SELECT * FROM (VALUES
+                    (70, 'Target'),
+                    (80, 'Warning'),
+                    (90, 'Critical')
+                )
+            )
+            SELECT 1 AS date, 75 AS temperature
+            VISUALISE
+            DRAW line MAPPING date AS x, temperature AS y
+            DRAW rule MAPPING value AS y, label AS colour FROM t
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Layer 0: line from global data
+        let layer0_df = result.data.get(&naming::layer_key(0)).unwrap();
+        assert_eq!(layer0_df.height(), 1);
+
+        // Layer 1: rule from CTE with column aliases
+        let layer1_df = result.data.get(&naming::layer_key(1)).unwrap();
+        assert_eq!(layer1_df.height(), 3);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
     fn test_histogram_stat_transform() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
@@ -2218,6 +2259,35 @@ mod tests {
             line_df.height(),
             2,
             "line layer with facet column should not be expanded"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_null_mapping_removes_global_aesthetic() {
+        // Global mapping sets fill=region, but second layer uses null AS fill to opt out
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT 1 as x, 2 as y, 'A' as region
+            VISUALISE x, y, region AS fill
+            DRAW point
+            DRAW line MAPPING null AS fill
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Point layer (first) should have fill inherited from global
+        let point_layer = &result.specs[0].layers[0];
+        assert!(
+            point_layer.mappings.aesthetics.contains_key("fill"),
+            "point layer should inherit fill from global mapping"
+        );
+
+        // Line layer (second) should NOT have fill because of null AS fill
+        let line_layer = &result.specs[0].layers[1];
+        assert!(
+            !line_layer.mappings.aesthetics.contains_key("fill"),
+            "line layer should not have fill due to null AS fill"
         );
     }
 }

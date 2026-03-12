@@ -19,63 +19,55 @@ The ggsql Jupyter kernel enables you to run ggsql queries directly in Jupyter no
 ### Prerequisites
 
 - Jupyter Lab or Notebook installed
-- Python 3.8+ (for Jupyter)
 
-### Option 1: Install from crates.io (Recommended)
+### Option 1: Install from PyPI (Recommended)
 
-If you have Rust installed:
+The easiest way to install the ggsql kernel is from PyPI. This provides pre-built binaries for Linux, macOS, and Windows.
+
+Using pip:
 
 ```bash
-cargo install ggsql-jupyter
+pip install ggsql-jupyter
 ggsql-jupyter --install
 ```
 
-This will:
+Using [uv](https://docs.astral.sh/uv/):
 
-1. Download and compile the kernel
-2. Install it into your current environment (respects virtualenvs, conda, uv)
+```bash
+uv tool install ggsql-jupyter
+ggsql-jupyter --install
+```
 
-### Option 2: Download Pre-built Binary from GitHub Releases
+The `--install` flag registers the kernel with Jupyter. It automatically detects and respects your current environment (virtualenv, conda, uv, etc.).
 
-For users without Rust:
+### Option 2: Download Pre-built Binary
 
-1. **Download the binary** for your platform from [GitHub Releases](https://github.com/georgestagg/ggsql/releases)
+Pre-built binaries are available from [GitHub Releases](https://github.com/georgestagg/ggsql/releases):
 
-   - Linux: `ggsql-jupyter-linux-x64`
-   - macOS (Intel): `ggsql-jupyter-macos-x64`
-   - macOS (Apple Silicon): `ggsql-jupyter-macos-arm64`
-   - Windows: `ggsql-jupyter-windows-x64.exe`
+| Platform             | Binary                             |
+| -------------------- | ---------------------------------- |
+| Linux (x86_64)       | `ggsql-jupyter-linux-x64`          |
+| Linux (ARM64)        | `ggsql-jupyter-linux-arm64`        |
+| macOS (Intel)        | `ggsql-jupyter-macos-x64`          |
+| macOS (Apple Silicon) | `ggsql-jupyter-macos-arm64`       |
+| Windows (x64)        | `ggsql-jupyter-windows-x64.exe`    |
 
-2. **Rename and make executable** (Linux/macOS):
+After downloading, make it executable and install:
 
-   ```bash
-   mv ggsql-jupyter-linux-x64 ggsql-jupyter
-   chmod +x ggsql-jupyter
-   ```
+```bash
+chmod +x ggsql-jupyter-*
+./ggsql-jupyter-linux-x64 --install
+```
 
-3. **Install the kernel**:
+On Windows (PowerShell):
 
-   ```bash
-   ./ggsql-jupyter --install
-   ```
-
-   On Windows (PowerShell):
-
-   ```powershell
-   .\ggsql-jupyter-windows-x64.exe --install
-   ```
-
-The `--install` flag automatically:
-
-- Creates a temporary directory with the kernel spec
-- Copies the binary to the appropriate location
-- Runs `jupyter kernelspec install` with the correct flags
-- Respects your current environment (virtualenv, conda, etc.)
-- Cleans up temporary files
+```powershell
+.\ggsql-jupyter-windows-x64.exe --install
+```
 
 ### Option 3: Build from Source
 
-From the workspace root:
+Requires a [Rust toolchain](https://rustup.rs/). From the workspace root:
 
 ```bash
 cargo build --release --package ggsql-jupyter
