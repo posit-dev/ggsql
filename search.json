@@ -1180,6 +1180,181 @@
     ]
   },
   {
+    "objectID": "gallery/examples/line-chart.html",
+    "href": "gallery/examples/line-chart.html",
+    "title": "Line Chart",
+    "section": "",
+    "text": "Line charts are ideal for showing trends over time. The SCALE x VIA date clause ensures proper date formatting on the axis."
+  },
+  {
+    "objectID": "gallery/examples/line-chart.html#code",
+    "href": "gallery/examples/line-chart.html#code",
+    "title": "Line Chart",
+    "section": "Code",
+    "text": "Code\n\nSELECT Date, Temp FROM ggsql:airquality\nVISUALISE Date AS x, Temp AS y\nDRAW line\nSCALE x VIA date\nLABEL\n    title =&gt; 'Daily Temperature',\n    x =&gt; 'Date',\n    y =&gt; 'Temperature (F)'"
+  },
+  {
+    "objectID": "gallery/examples/line-chart.html#explanation",
+    "href": "gallery/examples/line-chart.html#explanation",
+    "title": "Line Chart",
+    "section": "Explanation",
+    "text": "Explanation\n\nSELECT ... FROM ggsql:airquality queries the built-in air quality dataset\nVISUALISE Date AS x, Temp AS y maps the date column to x and temperature to y\nDRAW line connects data points with lines\nSCALE x VIA date ensures the x-axis is formatted as dates with appropriate tick marks\nLABEL provides descriptive titles for the chart and axes"
+  },
+  {
+    "objectID": "gallery/examples/line-chart.html#variations",
+    "href": "gallery/examples/line-chart.html#variations",
+    "title": "Line Chart",
+    "section": "Variations",
+    "text": "Variations\n\nMultiple Lines by Category\n\nSELECT Date, Temp, Month FROM ggsql:airquality\nVISUALISE Date AS x, Temp AS y, Month AS color\nDRAW line\nSCALE x VIA date\nLABEL\n    title =&gt; 'Daily Temperature by Month',\n    x =&gt; 'Date',\n    y =&gt; 'Temperature (F)'"
+  },
+  {
+    "objectID": "gallery/examples/bar-chart.html",
+    "href": "gallery/examples/bar-chart.html",
+    "title": "Bar Chart",
+    "section": "",
+    "text": "Bar charts display categorical data with rectangular bars. The height of each bar represents the value for that category."
+  },
+  {
+    "objectID": "gallery/examples/bar-chart.html#code",
+    "href": "gallery/examples/bar-chart.html#code",
+    "title": "Bar Chart",
+    "section": "Code",
+    "text": "Code\n\nSELECT species, COUNT(*) as count FROM ggsql:penguins\nGROUP BY species\nVISUALISE species AS x, count AS y, species AS fill\nDRAW bar\nLABEL\n    title =&gt; 'Penguin Count by Species',\n    x =&gt; 'Species',\n    y =&gt; 'Count'"
+  },
+  {
+    "objectID": "gallery/examples/bar-chart.html#explanation",
+    "href": "gallery/examples/bar-chart.html#explanation",
+    "title": "Bar Chart",
+    "section": "Explanation",
+    "text": "Explanation\n\nThe SQL query aggregates penguin counts by species\nspecies AS x places species names on the x-axis\ncount AS y sets the bar height based on the count\nspecies AS fill colors each bar by species\nDRAW bar creates vertical bars"
+  },
+  {
+    "objectID": "gallery/examples/bar-chart.html#variations",
+    "href": "gallery/examples/bar-chart.html#variations",
+    "title": "Bar Chart",
+    "section": "Variations",
+    "text": "Variations\n\nHorizontal Bars\nUse PROJECT y, x TO cartesian to flip the axes for horizontal bars:\n\nSELECT species, COUNT(*) as count FROM ggsql:penguins\nGROUP BY species\nVISUALISE species AS x, count AS y, species AS fill\nDRAW bar\nPROJECT y, x TO cartesian\nLABEL\n    title =&gt; 'Penguin Count by Species',\n    x =&gt; 'Species',\n    y =&gt; 'Count'\n\n\n\n\n\n\n\nAuto-Count Bar Chart\nWhen you don’t specify a y aesthetic, ggsql automatically counts occurrences:\n\nSELECT species FROM ggsql:penguins\nVISUALISE species AS x\nDRAW bar\nLABEL\n    title =&gt; 'Penguin Distribution',\n    x =&gt; 'Species',\n    y =&gt; 'Count'"
+  },
+  {
+    "objectID": "gallery/examples/faceted.html",
+    "href": "gallery/examples/faceted.html",
+    "title": "Faceted Plot",
+    "section": "",
+    "text": "Faceted plots (small multiples) split data into separate panels by one or more categorical variables. This makes it easy to compare patterns across groups."
+  },
+  {
+    "objectID": "gallery/examples/faceted.html#code",
+    "href": "gallery/examples/faceted.html#code",
+    "title": "Faceted Plot",
+    "section": "Code",
+    "text": "Code\n\nSELECT bill_len, bill_dep, species FROM ggsql:penguins\nVISUALISE bill_len AS x, bill_dep AS y\nDRAW point\nFACET species\nLABEL\n    title =&gt; 'Bill Dimensions by Species',\n    x =&gt; 'Bill Length (mm)',\n    y =&gt; 'Bill Depth (mm)'"
+  },
+  {
+    "objectID": "gallery/examples/faceted.html#explanation",
+    "href": "gallery/examples/faceted.html#explanation",
+    "title": "Faceted Plot",
+    "section": "Explanation",
+    "text": "Explanation\n\nFACET species creates a separate panel for each penguin species\nEach panel shows the same scatter plot, filtered to that species\nThis reveals species-specific patterns that might be hidden in a combined view"
+  },
+  {
+    "objectID": "gallery/examples/faceted.html#variations",
+    "href": "gallery/examples/faceted.html#variations",
+    "title": "Faceted Plot",
+    "section": "Variations",
+    "text": "Variations\n\nGrid Layout with Two Variables\nUse FACET rows BY cols to create a grid layout:\n\nSELECT bill_len, bill_dep, species, island FROM ggsql:penguins\nVISUALISE bill_len AS x, bill_dep AS y\nDRAW point\nFACET species BY island\nLABEL\n    title =&gt; 'Bill Dimensions by Species and Island',\n    x =&gt; 'Bill Length (mm)',\n    y =&gt; 'Bill Depth (mm)'\n\n\n\n\n\n\n\nFree Scales\nAllow each facet to have independent axis scales with SETTING free:\n\nSELECT bill_len, bill_dep, species FROM ggsql:penguins\nVISUALISE bill_len AS x, bill_dep AS y\nDRAW point\nFACET species SETTING free =&gt; 'y'\nLABEL\n    title =&gt; 'Bill Dimensions (Free Y Scale)',\n    x =&gt; 'Bill Length (mm)',\n    y =&gt; 'Bill Depth (mm)'"
+  },
+  {
+    "objectID": "gallery/index.html",
+    "href": "gallery/index.html",
+    "title": "Example Gallery",
+    "section": "",
+    "text": "Browse examples of ggsql visualizations. Click any example to see the full code and explanation.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nScatter Plot\n\n\nBasic scatter plot mapping two numeric variables to position\n\n\n\n\n\n\n\n\n\n\n\n\nLine Chart\n\n\nTime series visualization with proper date scaling\n\n\n\n\n\n\n\n\n\n\n\n\nBar Chart\n\n\nCategorical comparisons using bars\n\n\n\n\n\n\n\n\n\n\n\n\nHistogram\n\n\nDistribution of a single numeric variable\n\n\n\n\n\n\n\n\n\n\n\n\nMulti-Layer Plot\n\n\nCombining multiple geometric layers in one visualization\n\n\n\n\n\n\n\n\n\n\n\n\nFaceted Plot\n\n\nSmall multiples showing data split by category\n\n\n\n\n\nNo matching items"
+  },
+  {
+    "objectID": "gallery/examples/histogram.html",
+    "href": "gallery/examples/histogram.html",
+    "title": "Histogram",
+    "section": "",
+    "text": "Histograms show the distribution of a numeric variable by grouping values into bins and counting occurrences in each bin."
+  },
+  {
+    "objectID": "gallery/examples/histogram.html#code",
+    "href": "gallery/examples/histogram.html#code",
+    "title": "Histogram",
+    "section": "Code",
+    "text": "Code\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\nLABEL\n    title =&gt; 'Temperature Distribution',\n    x =&gt; 'Temperature (F)',\n    y =&gt; 'Count'"
+  },
+  {
+    "objectID": "gallery/examples/histogram.html#explanation",
+    "href": "gallery/examples/histogram.html#explanation",
+    "title": "Histogram",
+    "section": "Explanation",
+    "text": "Explanation\n\nVISUALISE Temp AS x specifies the variable to bin\nDRAW histogram automatically computes bins and counts\nNo y mapping is needed - ggsql computes the count automatically"
+  },
+  {
+    "objectID": "gallery/examples/histogram.html#variations",
+    "href": "gallery/examples/histogram.html#variations",
+    "title": "Histogram",
+    "section": "Variations",
+    "text": "Variations\n\nCustom Bin Count\nControl the number of bins with SETTING bins:\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\n    SETTING bins =&gt; 15\nLABEL\n    title =&gt; 'Temperature Distribution (15 bins)',\n    x =&gt; 'Temperature (F)',\n    y =&gt; 'Count'\n\n\n\n\n\n\n\nCustom Bin Width\nSet explicit bin width instead of count:\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\n    SETTING binwidth =&gt; 5\nLABEL\n    title =&gt; 'Temperature Distribution (5 degree bins)',\n    x =&gt; 'Temperature (F)',\n    y =&gt; 'Count'\n\n\n\n\n\n\n\nDensity Instead of Count\nUse REMAPPING to show density (proportion) instead of count:\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\n    REMAPPING density AS y\nLABEL\n    title =&gt; 'Temperature Density',\n    x =&gt; 'Temperature (F)',\n    y =&gt; 'Density'"
+  },
+  {
+    "objectID": "gallery/examples/scatterplot.html",
+    "href": "gallery/examples/scatterplot.html",
+    "title": "Scatter Plot",
+    "section": "",
+    "text": "A scatter plot displays the relationship between two numeric variables by mapping them to x and y positions. This is one of the most fundamental visualization types for exploring correlations and patterns."
+  },
+  {
+    "objectID": "gallery/examples/scatterplot.html#code",
+    "href": "gallery/examples/scatterplot.html#code",
+    "title": "Scatter Plot",
+    "section": "Code",
+    "text": "Code\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nLABEL\n    title =&gt; 'Penguin Bill Dimensions',\n    x =&gt; 'Bill Length (mm)',\n    y =&gt; 'Bill Depth (mm)'"
+  },
+  {
+    "objectID": "gallery/examples/scatterplot.html#explanation",
+    "href": "gallery/examples/scatterplot.html#explanation",
+    "title": "Scatter Plot",
+    "section": "Explanation",
+    "text": "Explanation\n\nVISUALISE ... FROM ggsql:penguins loads the built-in penguins dataset\nbill_len AS x, bill_dep AS y maps bill length to the x-axis and bill depth to the y-axis\nDRAW point creates a scatter plot using points\nLABEL adds descriptive axis labels and a title"
+  },
+  {
+    "objectID": "gallery/examples/scatterplot.html#variations",
+    "href": "gallery/examples/scatterplot.html#variations",
+    "title": "Scatter Plot",
+    "section": "Variations",
+    "text": "Variations\n\nWith Color by Species\n\nVISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins\nDRAW point\nLABEL\n    title =&gt; 'Penguin Bill Dimensions by Species',\n    x =&gt; 'Bill Length (mm)',\n    y =&gt; 'Bill Depth (mm)'"
+  },
+  {
+    "objectID": "gallery/examples/multi-layer.html",
+    "href": "gallery/examples/multi-layer.html",
+    "title": "Multi-Layer Plot",
+    "section": "",
+    "text": "Multi-layer plots combine different geometric elements (geoms) to create richer visualizations. Each DRAW clause adds a new layer."
+  },
+  {
+    "objectID": "gallery/examples/multi-layer.html#code",
+    "href": "gallery/examples/multi-layer.html#code",
+    "title": "Multi-Layer Plot",
+    "section": "Code",
+    "text": "Code\n\nSELECT Date, Temp FROM ggsql:airquality\nVISUALISE Date AS x, Temp AS y\nDRAW line\n    SETTING color =&gt; 'steelblue'\nDRAW point\n    SETTING size =&gt; 4, color =&gt; 'darkblue'\nSCALE x VIA date\nLABEL\n    title =&gt; 'Temperature with Line and Points',\n    x =&gt; 'Date',\n    y =&gt; 'Temperature (F)'"
+  },
+  {
+    "objectID": "gallery/examples/multi-layer.html#explanation",
+    "href": "gallery/examples/multi-layer.html#explanation",
+    "title": "Multi-Layer Plot",
+    "section": "Explanation",
+    "text": "Explanation\n\nThe first DRAW line creates a line connecting all points\nThe second DRAW point adds point markers at each data point\nSETTING on each layer controls that layer’s visual properties\nBoth layers share the same x and y mappings from VISUALISE"
+  },
+  {
+    "objectID": "gallery/examples/multi-layer.html#variations",
+    "href": "gallery/examples/multi-layer.html#variations",
+    "title": "Multi-Layer Plot",
+    "section": "Variations",
+    "text": "Variations\n\nDifferent Aesthetics Per Layer\nEach layer can have its own aesthetic mappings using MAPPING:\n\nSELECT Date, Temp, Ozone FROM ggsql:airquality\nVISUALISE Date AS x\nDRAW line\n    MAPPING Temp AS y, 'Temperature' AS color\nDRAW line\n    MAPPING Ozone AS y, 'Ozone' AS color\nSCALE x VIA date\nLABEL\n    title =&gt; 'Temperature and Ozone Over Time',\n    x =&gt; 'Date',\n    y =&gt; 'Value'\n\n\n\n\n\n\n\nLayers from Different Data Sources\nUse MAPPING ... FROM to pull each layer from different CTEs:\n\nWITH temps AS (\n    SELECT Date, Temp as value FROM ggsql:airquality\n),\nozone AS (\n    SELECT Date, Ozone as value FROM ggsql:airquality WHERE Ozone IS NOT NULL\n)\nVISUALISE\nDRAW line\n    MAPPING Date AS x, value AS y, 'Temperature' AS color FROM temps\nDRAW point\n    MAPPING Date AS x, value AS y, 'Ozone' AS color FROM ozone\n    SETTING size =&gt; 3\nSCALE x VIA date\nLABEL\n    title =&gt; 'Temperature vs Ozone',\n    x =&gt; 'Date',\n    y =&gt; 'Value'"
+  },
+  {
     "objectID": "syntax/index.html",
     "href": "syntax/index.html",
     "title": "Syntax",

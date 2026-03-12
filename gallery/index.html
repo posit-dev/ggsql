@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Installing ggsql – ggsql</title>
+<title>Example Gallery – ggsql</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -23,66 +23,33 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
-/* CSS for syntax highlighting */
-html { -webkit-text-size-adjust: 100%; }
-pre > code.sourceCode { white-space: pre; position: relative; }
-pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
-pre > code.sourceCode > span:empty { height: 1.2em; }
-.sourceCode { overflow: visible; }
-code.sourceCode > span { color: inherit; text-decoration: inherit; }
-div.sourceCode { margin: 1em 0; }
-pre.sourceCode { margin: 0; }
-@media screen {
-div.sourceCode { overflow: auto; }
-}
-@media print {
-pre > code.sourceCode { white-space: pre-wrap; }
-pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
-}
-pre.numberSource code
-  { counter-reset: source-line 0; }
-pre.numberSource code > span
-  { position: relative; left: -4em; counter-increment: source-line; }
-pre.numberSource code > span > a:first-child::before
-  { content: counter(source-line);
-    position: relative; left: -1em; text-align: right; vertical-align: baseline;
-    border: none; display: inline-block;
-    -webkit-touch-callout: none; -webkit-user-select: none;
-    -khtml-user-select: none; -moz-user-select: none;
-    -ms-user-select: none; user-select: none;
-    padding: 0 4px; width: 4em;
-  }
-pre.numberSource { margin-left: 3em;  padding-left: 4px; }
-div.sourceCode
-  {   }
-@media screen {
-pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
-}
 </style>
 
 
-<script src="site_libs/quarto-nav/quarto-nav.js"></script>
-<script src="site_libs/quarto-nav/headroom.min.js"></script>
-<script src="site_libs/clipboard/clipboard.min.js"></script>
-<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
-<script src="site_libs/quarto-search/fuse.min.js"></script>
-<script src="site_libs/quarto-search/quarto-search.js"></script>
-<meta name="quarto:offset" content="./">
-<link href="./assets/icon.svg" rel="icon" type="image/svg+xml">
-<script src="site_libs/quarto-html/quarto.js" type="module"></script>
-<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
-<script src="site_libs/quarto-html/popper.min.js"></script>
-<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
-<script src="site_libs/quarto-html/anchor.min.js"></script>
-<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-8277d71423f8bf409986fc0a8e306eac.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-782968149af33607e2a9b4943268fa3a.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-8277d71423f8bf409986fc0a8e306eac.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
-<script src="site_libs/bootstrap/bootstrap.min.js"></script>
-<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-efca65e42f4c6294f7d8798107c5d500.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="site_libs/bootstrap/bootstrap-dark-3a31e1694d3c7fd5160852497473949f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
-<link href="site_libs/bootstrap/bootstrap-efca65e42f4c6294f7d8798107c5d500.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<link href="../assets/icon.svg" rel="icon" type="image/svg+xml">
+<script src="../site_libs/quarto-listing/list.min.js"></script>
+<script src="../site_libs/quarto-listing/quarto-listing.js"></script>
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-8277d71423f8bf409986fc0a8e306eac.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-782968149af33607e2a9b4943268fa3a.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-8277d71423f8bf409986fc0a8e306eac.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-efca65e42f4c6294f7d8798107c5d500.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-3a31e1694d3c7fd5160852497473949f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-efca65e42f4c6294f7d8798107c5d500.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -110,6 +77,35 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     "search-label": "Search"
   }
 }</script>
+<script>
+
+  window.document.addEventListener("DOMContentLoaded", function (_event) {
+    const listingTargetEl = window.document.querySelector('#listing-listing .list');
+    if (!listingTargetEl) {
+      // No listing discovered, do not attach.
+      return; 
+    }
+
+    const options = {
+      valueNames: ['listing-image','listing-title','listing-description',{ data: ['index'] },{ data: ['categories'] },{ data: ['listing-date-sort'] },{ data: ['listing-file-modified-sort'] }],
+      
+      searchColumns: ["listing-title","listing-author","listing-image","listing-description","listing-categories"],
+    };
+
+    window['quarto-listings'] = window['quarto-listings'] || {};
+    window['quarto-listings']['listing-listing'] = new List('listing-listing', options);
+
+    if (window['quarto-listing-loaded']) {
+      window['quarto-listing-loaded']();
+    }
+  });
+
+  window.addEventListener('hashchange',() => {
+    if (window['quarto-listing-loaded']) {
+      window['quarto-listing-loaded']();
+    }
+  })
+  </script>
 <script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
 <!-- Privacy-friendly analytics by Plausible -->
 <script async="" src="https://plausible.io/js/pa-eH2pS73nQmBLURrhxXgML.js"></script>
@@ -118,27 +114,44 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     plausible.init()
 </script>
 
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script defer="" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
 
-<meta property="og:title" content="Installing ggsql – ggsql">
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN" && texText && texText.data) {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+<meta property="og:title" content="Example Gallery – ggsql">
 <meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta property="og:image" content="https://ggsql.org/assets/logo.png">
+<meta property="og:image" content="https://ggsql.org/gallery/examples/thumbnails/scatterplot.svg">
 <meta property="og:site_name" content="ggsql">
-<meta property="og:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
-handle is made up of the classic database silo icon and is coloured in a
-gradient teal.
-">
-<meta property="og:image:height" content="876">
-<meta property="og:image:width" content="1000">
-<meta name="twitter:title" content="Installing ggsql – ggsql">
+<meta name="twitter:title" content="Example Gallery – ggsql">
 <meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta name="twitter:image" content="https://ggsql.org/assets/logo.png">
+<meta name="twitter:image" content="https://ggsql.org/gallery/examples/thumbnails/scatterplot.svg">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
-handle is made up of the classic database silo icon and is coloured in a
-gradient teal.
-">
-<meta name="twitter:image-height" content="876">
-<meta name="twitter:image-width" content="1000">
 </head>
 
 <body class="nav-fixed quarto-light">
@@ -148,11 +161,11 @@ gradient teal.
     <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
-    <a href="./index.html" class="navbar-brand navbar-brand-logo">
-    <img src="./assets/icon.svg" alt="" class="navbar-logo light-content">
-    <img src="./assets/icon.svg" alt="" class="navbar-logo dark-content">
+    <a href="../index.html" class="navbar-brand navbar-brand-logo">
+    <img src="../assets/icon.svg" alt="" class="navbar-logo light-content">
+    <img src="../assets/icon.svg" alt="" class="navbar-logo dark-content">
     </a>
-    <a class="navbar-brand" href="./index.html">
+    <a class="navbar-brand" href="../index.html">
     <span class="navbar-title">ggsql</span>
     </a>
   </div>
@@ -163,11 +176,11 @@ gradient teal.
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll me-auto">
   <li class="nav-item">
-    <a class="nav-link" href="./index.html"> 
+    <a class="nav-link" href="../index.html"> 
 <span class="menu-text">Home</span></a>
   </li>  
   <li class="nav-item">
-    <a class="nav-link active" href="./installation.html" aria-current="page"> 
+    <a class="nav-link" href="../installation.html"> 
 <span class="menu-text">Installing ggsql</span></a>
   </li>  
   <li class="nav-item dropdown ">
@@ -176,42 +189,42 @@ gradient teal.
     </a>
     <ul class="dropdown-menu" aria-labelledby="nav-menu-syntax">    
         <li>
-    <a class="dropdown-item" href="./syntax/index.html">
+    <a class="dropdown-item" href="../syntax/index.html">
  <span class="dropdown-text">Overview</span></a>
   </li>  
         <li><hr class="dropdown-divider"></li>
         <li>
-    <a class="dropdown-item" href="./syntax/clause/visualise.html">
+    <a class="dropdown-item" href="../syntax/clause/visualise.html">
  <span class="dropdown-text"><code>VISUALISE</code></span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="./syntax/clause/draw.html">
+    <a class="dropdown-item" href="../syntax/clause/draw.html">
  <span class="dropdown-text"><code>DRAW</code></span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="./syntax/clause/scale.html">
+    <a class="dropdown-item" href="../syntax/clause/scale.html">
  <span class="dropdown-text"><code>SCALE</code></span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="./syntax/clause/facet.html">
+    <a class="dropdown-item" href="../syntax/clause/facet.html">
  <span class="dropdown-text"><code>FACET</code></span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="./syntax/clause/project.html">
+    <a class="dropdown-item" href="../syntax/clause/project.html">
  <span class="dropdown-text"><code>PROJECT</code></span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="./syntax/clause/label.html">
+    <a class="dropdown-item" href="../syntax/clause/label.html">
  <span class="dropdown-text"><code>LABEL</code></span></a>
   </li>  
     </ul>
   </li>
   <li class="nav-item">
-    <a class="nav-link" href="./gallery/index.html"> 
+    <a class="nav-link active" href="../gallery/index.html" aria-current="page"> 
 <span class="menu-text">Gallery</span></a>
   </li>  
   <li class="nav-item">
-    <a class="nav-link" href="./faq.html"> 
+    <a class="nav-link" href="../faq.html"> 
 <span class="menu-text">FAQ</span></a>
   </li>  
 </ul>
@@ -244,20 +257,14 @@ gradient teal.
 <!-- sidebar -->
 <!-- margin-sidebar -->
     <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
-        <nav id="TOC" role="doc-toc" class="toc-active">
-    <h2 id="toc-title">On this page</h2>
-   
-  <ul>
-  <li><a href="#building-from-source" id="toc-building-from-source" class="nav-link active" data-scroll-target="#building-from-source">Building from Source</a></li>
-  </ul>
-<div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
-    </div>
+        
+    <h5 class="quarto-listing-category-title">Categories</h5><div class="quarto-listing-category category-default"><div class="category" data-category="">All <span class="quarto-category-count">(6)</span></div><div class="category" data-category="YWR2YW5jZWQ=">advanced <span class="quarto-category-count">(2)</span></div><div class="category" data-category="YmFy">bar <span class="quarto-category-count">(1)</span></div><div class="category" data-category="YmFzaWM=">basic <span class="quarto-category-count">(3)</span></div><div class="category" data-category="ZGlzdHJpYnV0aW9u">distribution <span class="quarto-category-count">(1)</span></div><div class="category" data-category="ZmFjZXRlZA==">faceted <span class="quarto-category-count">(1)</span></div><div class="category" data-category="bGF5ZXJz">layers <span class="quarto-category-count">(1)</span></div><div class="category" data-category="bGluZQ==">line <span class="quarto-category-count">(1)</span></div><div class="category" data-category="cG9pbnQ=">point <span class="quarto-category-count">(1)</span></div><div class="category" data-category="c3RhdGlzdGljYWw=">statistical <span class="quarto-category-count">(1)</span></div><div class="category" data-category="dGltZS1zZXJpZXM=">time-series <span class="quarto-category-count">(1)</span></div></div></div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">Installing ggsql</h1>
+<h1 class="title">Example Gallery</h1>
 </div>
 
 
@@ -274,88 +281,112 @@ gradient teal.
 </header>
 
 
-<!-- UNCOMMENT THIS WHEN WE RELEASE
-
-ggsql provides native installers for Windows, macOS, and Linux. You can also build from source if you prefer.
-
-## Native Installers
-
-Download the latest installer for your platform from the [GitHub Releases page](https://github.com/posit-dev/ggsql/releases).
-
-### Windows
-
-**Option 1: NSIS Installer (Recommended)**
-
-1. Download `ggsql_x.x.x_x64-setup.exe`
-2. Double-click to run the installer
-3. Follow the installation wizard
-4. `ggsql` will be automatically added to your PATH
-
-**Option 2: MSI Installer**
-
-1. Download `ggsql_x.x.x_x64_en-US.msi`
-2. Double-click to run the installer
-3. For silent installation: `msiexec /i ggsql_x.x.x_x64_en-US.msi /quiet`
-
-**Note**: Windows may show a security warning since the installer is unsigned. Click "More info" → "Run anyway" to proceed.
-
-### macOS
-
-1. Download the appropriate DMG for your system:
-   - `ggsql_x.x.x_x64.dmg` (Intel Macs)
-   - `ggsql_x.x.x_aarch64.dmg` (Apple Silicon - M1/M2/M3)
-2. Open the DMG file
-3. Drag `ggsql.app` to your Applications folder
-4. Or copy binaries directly to `/usr/local/bin`
-
-**Note**: macOS may show "ggsql.app is damaged" for unsigned apps. If this happens, run:
-```bash
-xattr -cr /Applications/ggsql.app
-```
-
-### Linux (Debian/Ubuntu)
-
-1. Download `ggsql_x.x.x_amd64.deb`
-2. Install with:
-   ```bash
-   sudo dpkg -i ggsql_x.x.x_amd64.deb
-   ```
-3. If dependencies are missing:
-   ```bash
-   sudo apt-get install -f
-   ```
-
-### What Gets Installed
-
-The native installers include the **ggsql CLI** binary only. Additional components must be installed separately:
-
-- **REST API server**: `cargo install ggsql --features rest-api`
-- **Jupyter kernel**: `cargo install ggsql-jupyter`
-
-// -->
-<section id="building-from-source" class="level2">
-<h2 class="anchored" data-anchor-id="building-from-source">Building from Source</h2>
-<p>If you prefer to build from source or need the latest development version:</p>
-<ol type="1">
-<li><p><strong>Clone the repository:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/posit-dev/ggsql</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> ggsql</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
-<li><p><strong>Install tree-sitter CLI:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">npm</span> install <span class="at">-g</span> tree-sitter-cli</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
-<li><p><strong>Build the project:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> tree-sitter-ggsql <span class="kw">&amp;&amp;</span> <span class="ex">tree-sitter</span> generate <span class="kw">&amp;&amp;</span> <span class="bu">cd</span> ..</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> build <span class="at">--release</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
-<li><p><strong>Install the CLI:</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> install <span class="at">--path</span> src</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
-<li><p><strong>Install the Jupyter kernel (optional):</strong></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> install <span class="at">--path</span> ggsql-jupyter</span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql-jupyter</span> <span class="at">--install</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
-</ol>
+<p>Browse examples of ggsql visualizations. Click any example to see the full code and explanation.</p>
 
 
-</section>
 
-</main> <!-- /main -->
+
+<div class="quarto-listing quarto-listing-container-grid" id="listing-listing">
+<div class="list grid quarto-listing-cols-3">
+<div class="g-col-1" data-index="0" data-categories="YmFzaWMlMkNwb2ludA==" data-listing-file-modified-sort="1773333521413" data-listing-reading-time-sort="1" data-listing-word-count-sort="152">
+<a href="../gallery/examples/scatterplot.html" class="quarto-grid-link">
+<div class="quarto-grid-item card h-100 card-left">
+<p class="card-img-top">
+<img loading="lazy" src="../gallery/examples/thumbnails/scatterplot.svg" class="thumbnail-image card-img" style="height: 200px;">
+</p>
+<div class="card-body post-contents">
+<h5 class="no-anchor card-title listing-title">
+Scatter Plot
+</h5>
+<div class="card-text listing-description delink">
+<p>Basic scatter plot mapping two numeric variables to position</p>
+</div>
+</div>
+</div></a>
+</div>
+<div class="g-col-1" data-index="1" data-categories="YmFzaWMlMkNsaW5lJTJDdGltZS1zZXJpZXM=" data-listing-file-modified-sort="1773333521413" data-listing-reading-time-sort="1" data-listing-word-count-sort="160">
+<a href="../gallery/examples/line-chart.html" class="quarto-grid-link">
+<div class="quarto-grid-item card h-100 card-left">
+<p class="card-img-top">
+<img loading="lazy" src="../gallery/examples/thumbnails/line-chart.svg" class="thumbnail-image card-img" style="height: 200px;">
+</p>
+<div class="card-body post-contents">
+<h5 class="no-anchor card-title listing-title">
+Line Chart
+</h5>
+<div class="card-text listing-description delink">
+<p>Time series visualization with proper date scaling</p>
+</div>
+</div>
+</div></a>
+</div>
+<div class="g-col-1" data-index="2" data-categories="YmFzaWMlMkNiYXI=" data-listing-file-modified-sort="1773333521413" data-listing-reading-time-sort="1" data-listing-word-count-sort="197">
+<a href="../gallery/examples/bar-chart.html" class="quarto-grid-link">
+<div class="quarto-grid-item card h-100 card-left">
+<p class="card-img-top">
+<img loading="lazy" src="../gallery/examples/thumbnails/bar-chart.svg" class="thumbnail-image card-img" style="height: 200px;">
+</p>
+<div class="card-body post-contents">
+<h5 class="no-anchor card-title listing-title">
+Bar Chart
+</h5>
+<div class="card-text listing-description delink">
+<p>Categorical comparisons using bars</p>
+</div>
+</div>
+</div></a>
+</div>
+<div class="g-col-1" data-index="3" data-categories="c3RhdGlzdGljYWwlMkNkaXN0cmlidXRpb24=" data-listing-file-modified-sort="1773333521413" data-listing-reading-time-sort="2" data-listing-word-count-sort="213">
+<a href="../gallery/examples/histogram.html" class="quarto-grid-link">
+<div class="quarto-grid-item card h-100 card-left">
+<p class="card-img-top">
+<img loading="lazy" src="../gallery/examples/thumbnails/histogram.svg" class="thumbnail-image card-img" style="height: 200px;">
+</p>
+<div class="card-body post-contents">
+<h5 class="no-anchor card-title listing-title">
+Histogram
+</h5>
+<div class="card-text listing-description delink">
+<p>Distribution of a single numeric variable</p>
+</div>
+</div>
+</div></a>
+</div>
+<div class="g-col-1" data-index="4" data-categories="bGF5ZXJzJTJDYWR2YW5jZWQ=" data-listing-file-modified-sort="1773333521413" data-listing-reading-time-sort="2" data-listing-word-count-sort="291">
+<a href="../gallery/examples/multi-layer.html" class="quarto-grid-link">
+<div class="quarto-grid-item card h-100 card-left">
+<p class="card-img-top">
+<img loading="lazy" src="../gallery/examples/thumbnails/multi-layer.svg" class="thumbnail-image card-img" style="height: 200px;">
+</p>
+<div class="card-body post-contents">
+<h5 class="no-anchor card-title listing-title">
+Multi-Layer Plot
+</h5>
+<div class="card-text listing-description delink">
+<p>Combining multiple geometric layers in one visualization</p>
+</div>
+</div>
+</div></a>
+</div>
+<div class="g-col-1" data-index="5" data-categories="ZmFjZXRlZCUyQ2FkdmFuY2Vk" data-listing-file-modified-sort="1773333521413" data-listing-reading-time-sort="2" data-listing-word-count-sort="209">
+<a href="../gallery/examples/faceted.html" class="quarto-grid-link">
+<div class="quarto-grid-item card h-100 card-left">
+<p class="card-img-top">
+<img loading="lazy" src="../gallery/examples/thumbnails/faceted.svg" class="thumbnail-image card-img" style="height: 200px;">
+</p>
+<div class="card-body post-contents">
+<h5 class="no-anchor card-title listing-title">
+Faceted Plot
+</h5>
+<div class="card-text listing-description delink">
+<p>Small multiples showing data split by category</p>
+</div>
+</div>
+</div></a>
+</div>
+</div>
+<div class="listing-no-matching d-none">No matching items</div>
+</div></main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
   window.document.addEventListener("DOMContentLoaded", function (event) {
     const icon = "";
@@ -761,4 +792,4 @@ The native installers include the **ggsql CLI** binary only. Additional componen
 
 
 
-<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

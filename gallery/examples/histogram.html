@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.32">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="Distribution of a single numeric variable">
+
+<title>Histogram – ggsql</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<link href="../../assets/icon.svg" rel="icon" type="image/svg+xml">
+<script src="../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-8277d71423f8bf409986fc0a8e306eac.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-dark-782968149af33607e2a9b4943268fa3a.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-8277d71423f8bf409986fc0a8e306eac.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap-efca65e42f4c6294f7d8798107c5d500.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-dark-3a31e1694d3c7fd5160852497473949f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-efca65e42f4c6294f7d8798107c5d500.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+<script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
+<!-- Privacy-friendly analytics by Plausible -->
+<script async="" src="https://plausible.io/js/pa-eH2pS73nQmBLURrhxXgML.js"></script>
+<script>
+    window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+    plausible.init()
+</script>
+
+
+<meta property="og:title" content="Histogram – ggsql">
+<meta property="og:description" content="Distribution of a single numeric variable">
+<meta property="og:image" content="https://ggsql.org/gallery/examples/thumbnails/histogram.svg">
+<meta property="og:site_name" content="ggsql">
+<meta name="twitter:title" content="Histogram – ggsql">
+<meta name="twitter:description" content="Distribution of a single numeric variable">
+<meta name="twitter:image" content="https://ggsql.org/gallery/examples/thumbnails/histogram.svg">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a href="../../index.html" class="navbar-brand navbar-brand-logo">
+    <img src="../../assets/icon.svg" alt="" class="navbar-logo light-content">
+    <img src="../../assets/icon.svg" alt="" class="navbar-logo dark-content">
+    </a>
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">ggsql</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../installation.html"> 
+<span class="menu-text">Installing ggsql</span></a>
+  </li>  
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-syntax" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Syntax</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-syntax">    
+        <li>
+    <a class="dropdown-item" href="../../syntax/index.html">
+ <span class="dropdown-text">Overview</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/visualise.html">
+ <span class="dropdown-text"><code>VISUALISE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/draw.html">
+ <span class="dropdown-text"><code>DRAW</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/scale.html">
+ <span class="dropdown-text"><code>SCALE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/facet.html">
+ <span class="dropdown-text"><code>FACET</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/project.html">
+ <span class="dropdown-text"><code>PROJECT</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/label.html">
+ <span class="dropdown-text"><code>LABEL</code></span></a>
+  </li>  
+    </ul>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../../gallery/index.html"> 
+<span class="menu-text">Gallery</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../faq.html"> 
+<span class="menu-text">FAQ</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+    <div class="dropdown">
+      <a href="" title="" id="quarto-navigation-tool-dropdown-0" class="quarto-navigation-tool dropdown-toggle px-1" data-bs-toggle="dropdown" aria-expanded="false" role="link" aria-label=""><i class="bi bi-github"></i></a>
+      <ul class="dropdown-menu" aria-labelledby="quarto-navigation-tool-dropdown-0">
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/ggsql-dev/ggsql">
+            Source Code
+            </a>
+          </li>
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/ggsql-dev/ggsql/issues">
+            Report a Bug
+            </a>
+          </li>
+      </ul>
+    </div>
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <div id="quarto-announcement" data-announcement-id="5ba53bd994f13c27f80364dba6b56481" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
+<p>ggsql is still in early development and all functionality are subject to change</p>
+</div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#code" id="toc-code" class="nav-link active" data-scroll-target="#code">Code</a></li>
+  <li><a href="#explanation" id="toc-explanation" class="nav-link" data-scroll-target="#explanation">Explanation</a></li>
+  <li><a href="#variations" id="toc-variations" class="nav-link" data-scroll-target="#variations">Variations</a>
+  <ul class="collapse">
+  <li><a href="#custom-bin-count" id="toc-custom-bin-count" class="nav-link" data-scroll-target="#custom-bin-count">Custom Bin Count</a></li>
+  <li><a href="#custom-bin-width" id="toc-custom-bin-width" class="nav-link" data-scroll-target="#custom-bin-width">Custom Bin Width</a></li>
+  <li><a href="#density-instead-of-count" id="toc-density-instead-of-count" class="nav-link" data-scroll-target="#density-instead-of-count">Density Instead of Count</a></li>
+  </ul></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Histogram</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">statistical</div>
+    <div class="quarto-category">distribution</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    Distribution of a single numeric variable
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<p>Histograms show the distribution of a numeric variable by grouping values into bins and counting occurrences in each bin.</p>
+<section id="code" class="level2">
+<h2 class="anchored" data-anchor-id="code">Code</h2>
+<div id="b0400a31" class="cell" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="kw">Temp</span> <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Temp <span class="kw">AS</span> <span class="at">x</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">histogram</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="kw">LABEL</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">title</span> <span class="op">=&gt;</span> <span class="st">'Temperature Distribution'</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">x</span> <span class="op">=&gt;</span> <span class="st">'Temperature (F)'</span>,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">y</span> <span class="op">=&gt;</span> <span class="st">'Count'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="1">
+<div id="vis-1773333627381"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":66.6034482755,"__ggsql_aes_pos1end__":68.0172413789,"__ggsql_aes_pos2__":8,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":73.67241379250001,"__ggsql_aes_pos1end__":75.0862068959,"__ggsql_aes_pos2__":8,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":55.2931034483,"__ggsql_aes_pos1end__":56.706896551700005,"__ggsql_aes_pos2__":1,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":56.706896551700005,"__ggsql_aes_pos1end__":58.12068965510001,"__ggsql_aes_pos2__":5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":77.9137931027,"__ggsql_aes_pos1end__":79.3275862061,"__ggsql_aes_pos2__":12,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":90.6379310333,"__ggsql_aes_pos1end__":92.0517241367,"__ggsql_aes_pos2__":7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":70.8448275857,"__ggsql_aes_pos1end__":72.2586206891,"__ggsql_aes_pos2__":6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":60.9482758619,"__ggsql_aes_pos1end__":62.3620689653,"__ggsql_aes_pos2__":5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":63.77586206870001,"__ggsql_aes_pos1end__":65.1896551721,"__ggsql_aes_pos2__":4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":58.1206896551,"__ggsql_aes_pos1end__":59.534482758500005,"__ggsql_aes_pos2__":2,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":80.7413793095,"__ggsql_aes_pos1end__":82.1551724129,"__ggsql_aes_pos2__":20,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":75.0862068959,"__ggsql_aes_pos1end__":76.4999999993,"__ggsql_aes_pos2__":9,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":76.4999999993,"__ggsql_aes_pos1end__":77.9137931027,"__ggsql_aes_pos2__":7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":82.1551724129,"__ggsql_aes_pos1end__":83.5689655163,"__ggsql_aes_pos2__":4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":62.3620689653,"__ggsql_aes_pos1end__":63.77586206870001,"__ggsql_aes_pos2__":1,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":68.0172413789,"__ggsql_aes_pos1end__":69.43103448229999,"__ggsql_aes_pos2__":3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":72.2586206891,"__ggsql_aes_pos1end__":73.6724137925,"__ggsql_aes_pos2__":5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":84.98275861970001,"__ggsql_aes_pos1end__":86.3965517231,"__ggsql_aes_pos2__":12,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":92.0517241367,"__ggsql_aes_pos1end__":93.4655172401,"__ggsql_aes_pos2__":3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":79.3275862061,"__ggsql_aes_pos1end__":80.74137930949999,"__ggsql_aes_pos2__":5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":87.8103448265,"__ggsql_aes_pos1end__":89.2241379299,"__ggsql_aes_pos2__":5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":96.2931034469,"__ggsql_aes_pos1end__":97.7068965503,"__ggsql_aes_pos2__":1,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":94.8793103435,"__ggsql_aes_pos1end__":96.2931034469,"__ggsql_aes_pos2__":1,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":65.1896551721,"__ggsql_aes_pos1end__":66.6034482755,"__ggsql_aes_pos2__":3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":83.5689655163,"__ggsql_aes_pos1end__":84.9827586197,"__ggsql_aes_pos2__":5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":86.3965517231,"__ggsql_aes_pos1end__":87.8103448265,"__ggsql_aes_pos2__":5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":89.2241379299,"__ggsql_aes_pos1end__":90.6379310333,"__ggsql_aes_pos2__":3,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":93.4655172401,"__ggsql_aes_pos1end__":94.8793103435,"__ggsql_aes_pos2__":2,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":69.4310344823,"__ggsql_aes_pos1end__":70.8448275857,"__ggsql_aes_pos2__":1,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"x":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '80' ? '80' : datum.label == '90' ? '90' : datum.label == '70' ? '70' : datum.label","values":[60.0,70.0,80.0,90.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[53.1724137932,99.8275862054],"zero":false},"title":"Temperature (F)","type":"quantitative"},"x2":{"field":"__ggsql_aes_pos1end__"},"y":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '20' ? '20' : datum.label == '5' ? '5' : datum.label == '10' ? '10' : datum.label == '15' ? '15' : datum.label","values":[0.0,5.0,10.0,15.0,20.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-1.0,21.0],"zero":false},"stack":null,"title":"Count","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__","stack":null}},"mark":{"clip":true,"type":"bar"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"title":"Temperature Distribution","width":"container"};
+    const visId = 'vis-1773333627381';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="explanation" class="level2">
+<h2 class="anchored" data-anchor-id="explanation">Explanation</h2>
+<ul>
+<li><code>VISUALISE Temp AS x</code> specifies the variable to bin</li>
+<li><code>DRAW histogram</code> automatically computes bins and counts</li>
+<li>No y mapping is needed - ggsql computes the count automatically</li>
+</ul>
+</section>
+<section id="variations" class="level2">
+<h2 class="anchored" data-anchor-id="variations">Variations</h2>
+<section id="custom-bin-count" class="level3">
+<h3 class="anchored" data-anchor-id="custom-bin-count">Custom Bin Count</h3>
+<p>Control the number of bins with <code>SETTING bins</code>:</p>
+<div id="e9582ce5" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="kw">Temp</span> <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Temp <span class="kw">AS</span> <span class="at">x</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">histogram</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> bins <span class="op">=&gt;</span> <span class="dv">15</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="kw">LABEL</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">title</span> <span class="op">=&gt;</span> <span class="st">'Temperature Distribution (15 bins)'</span>,</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">x</span> <span class="op">=&gt;</span> <span class="st">'Temperature (F)'</span>,</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">y</span> <span class="op">=&gt;</span> <span class="st">'Count'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<div id="vis-1773333627403"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":80.8928571431,"__ggsql_aes_pos1end__":83.8214285717,"__ggsql_aes_pos2__":24,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":75.0357142859,"__ggsql_aes_pos1end__":77.9642857145,"__ggsql_aes_pos2__":16,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":72.10714285729999,"__ggsql_aes_pos1end__":75.03571428589999,"__ggsql_aes_pos2__":13,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":60.392857142900006,"__ggsql_aes_pos1end__":63.32142857150001,"__ggsql_aes_pos2__":6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":63.3214285715,"__ggsql_aes_pos1end__":66.2500000001,"__ggsql_aes_pos2__":7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":83.8214285717,"__ggsql_aes_pos1end__":86.75000000029999,"__ggsql_aes_pos2__":17,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":86.7500000003,"__ggsql_aes_pos1end__":89.6785714289,"__ggsql_aes_pos2__":10,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":69.1785714287,"__ggsql_aes_pos1end__":72.10714285729999,"__ggsql_aes_pos2__":7,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":57.4642857143,"__ggsql_aes_pos1end__":60.392857142900006,"__ggsql_aes_pos2__":4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":95.5357142861,"__ggsql_aes_pos1end__":98.4642857147,"__ggsql_aes_pos2__":2,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":66.2500000001,"__ggsql_aes_pos1end__":69.1785714287,"__ggsql_aes_pos2__":11,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":54.5357142857,"__ggsql_aes_pos1end__":57.4642857143,"__ggsql_aes_pos2__":4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":77.9642857145,"__ggsql_aes_pos1end__":80.89285714309999,"__ggsql_aes_pos2__":17,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":89.6785714289,"__ggsql_aes_pos1end__":92.6071428575,"__ggsql_aes_pos2__":10,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":92.6071428575,"__ggsql_aes_pos1end__":95.5357142861,"__ggsql_aes_pos2__":5,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"x":{"axis":{"labelExpr":"datum.label == '70' ? '70' : datum.label == '80' ? '80' : datum.label == '90' ? '90' : datum.label == '100' ? '100' : datum.label == '60' ? '60' : datum.label","values":[60.0,70.0,80.0,90.0,100.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[52.33928571425,100.66071428615],"zero":false},"title":"Temperature (F)","type":"quantitative"},"x2":{"field":"__ggsql_aes_pos1end__"},"y":{"axis":{"labelExpr":"datum.label == '15' ? '15' : datum.label == '25' ? '25' : datum.label == '10' ? '10' : datum.label == '0' ? '0' : datum.label == '20' ? '20' : datum.label == '5' ? '5' : datum.label","values":[0.0,5.0,10.0,15.0,20.0,25.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-1.2000000000000002,25.2],"zero":false},"stack":null,"title":"Count","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__","stack":null}},"mark":{"clip":true,"type":"bar"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"title":"Temperature Distribution (15 bins)","width":"container"};
+    const visId = 'vis-1773333627403';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="custom-bin-width" class="level3">
+<h3 class="anchored" data-anchor-id="custom-bin-width">Custom Bin Width</h3>
+<p>Set explicit bin width instead of count:</p>
+<div id="a564c4f3" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="kw">Temp</span> <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Temp <span class="kw">AS</span> <span class="at">x</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">histogram</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> binwidth <span class="op">=&gt;</span> <span class="dv">5</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="kw">LABEL</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">title</span> <span class="op">=&gt;</span> <span class="st">'Temperature Distribution (5 degree bins)'</span>,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">x</span> <span class="op">=&gt;</span> <span class="st">'Temperature (F)'</span>,</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">y</span> <span class="op">=&gt;</span> <span class="st">'Count'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<div id="vis-1773333627431"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":63.5,"__ggsql_aes_pos1end__":68.5,"__ggsql_aes_pos2__":15,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":68.5,"__ggsql_aes_pos1end__":73.5,"__ggsql_aes_pos2__":15,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":78.5,"__ggsql_aes_pos1end__":83.5,"__ggsql_aes_pos2__":35,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":83.5,"__ggsql_aes_pos1end__":88.5,"__ggsql_aes_pos2__":25,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":93.5,"__ggsql_aes_pos1end__":98.5,"__ggsql_aes_pos2__":4,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":73.5,"__ggsql_aes_pos1end__":78.5,"__ggsql_aes_pos2__":30,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":58.5,"__ggsql_aes_pos1end__":63.5,"__ggsql_aes_pos2__":8,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":53.5,"__ggsql_aes_pos1end__":58.5,"__ggsql_aes_pos2__":6,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":88.5,"__ggsql_aes_pos1end__":93.5,"__ggsql_aes_pos2__":15,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"x":{"axis":{"labelExpr":"datum.label == '90' ? '90' : datum.label == '60' ? '60' : datum.label == '80' ? '80' : datum.label == '70' ? '70' : datum.label == '100' ? '100' : datum.label","values":[60.0,70.0,80.0,90.0,100.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[51.25,100.75],"zero":false},"title":"Temperature (F)","type":"quantitative"},"x2":{"field":"__ggsql_aes_pos1end__"},"y":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '30' ? '30' : datum.label == '10' ? '10' : datum.label == '20' ? '20' : datum.label","values":[0.0,10.0,20.0,30.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-1.75,36.75],"zero":false},"stack":null,"title":"Count","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__","stack":null}},"mark":{"clip":true,"type":"bar"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"title":"Temperature Distribution (5 degree bins)","width":"container"};
+    const visId = 'vis-1773333627431';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="density-instead-of-count" class="level3">
+<h3 class="anchored" data-anchor-id="density-instead-of-count">Density Instead of Count</h3>
+<p>Use <code>REMAPPING</code> to show density (proportion) instead of count:</p>
+<div id="d21e5ed1" class="cell" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="kw">Temp</span> <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Temp <span class="kw">AS</span> <span class="at">x</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">histogram</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">REMAPPING</span> <span class="dt">density</span> AS <span class="at">y</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="kw">LABEL</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">title</span> <span class="op">=&gt;</span> <span class="st">'Temperature Density'</span>,</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">x</span> <span class="op">=&gt;</span> <span class="st">'Temperature (F)'</span>,</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">y</span> <span class="op">=&gt;</span> <span class="st">'Density'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<div id="vis-1773333627457"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":66.6034482755,"__ggsql_aes_pos1end__":68.0172413789,"__ggsql_aes_pos2__":0.05228758169934641,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":73.67241379250001,"__ggsql_aes_pos1end__":75.0862068959,"__ggsql_aes_pos2__":0.05228758169934641,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":55.2931034483,"__ggsql_aes_pos1end__":56.706896551700005,"__ggsql_aes_pos2__":0.006535947712418301,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":56.706896551700005,"__ggsql_aes_pos1end__":58.12068965510001,"__ggsql_aes_pos2__":0.032679738562091505,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":77.9137931027,"__ggsql_aes_pos1end__":79.3275862061,"__ggsql_aes_pos2__":0.0784313725490196,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":90.6379310333,"__ggsql_aes_pos1end__":92.0517241367,"__ggsql_aes_pos2__":0.0457516339869281,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":70.8448275857,"__ggsql_aes_pos1end__":72.2586206891,"__ggsql_aes_pos2__":0.0392156862745098,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":60.9482758619,"__ggsql_aes_pos1end__":62.3620689653,"__ggsql_aes_pos2__":0.032679738562091505,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":63.77586206870001,"__ggsql_aes_pos1end__":65.1896551721,"__ggsql_aes_pos2__":0.026143790849673203,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":58.1206896551,"__ggsql_aes_pos1end__":59.534482758500005,"__ggsql_aes_pos2__":0.013071895424836602,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":80.7413793095,"__ggsql_aes_pos1end__":82.1551724129,"__ggsql_aes_pos2__":0.13071895424836602,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":75.0862068959,"__ggsql_aes_pos1end__":76.4999999993,"__ggsql_aes_pos2__":0.058823529411764705,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":76.4999999993,"__ggsql_aes_pos1end__":77.9137931027,"__ggsql_aes_pos2__":0.0457516339869281,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":82.1551724129,"__ggsql_aes_pos1end__":83.5689655163,"__ggsql_aes_pos2__":0.026143790849673203,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":62.3620689653,"__ggsql_aes_pos1end__":63.77586206870001,"__ggsql_aes_pos2__":0.006535947712418301,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":68.0172413789,"__ggsql_aes_pos1end__":69.43103448229999,"__ggsql_aes_pos2__":0.0196078431372549,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":72.2586206891,"__ggsql_aes_pos1end__":73.6724137925,"__ggsql_aes_pos2__":0.032679738562091505,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":84.98275861970001,"__ggsql_aes_pos1end__":86.3965517231,"__ggsql_aes_pos2__":0.0784313725490196,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":92.0517241367,"__ggsql_aes_pos1end__":93.4655172401,"__ggsql_aes_pos2__":0.0196078431372549,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":79.3275862061,"__ggsql_aes_pos1end__":80.74137930949999,"__ggsql_aes_pos2__":0.032679738562091505,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":87.8103448265,"__ggsql_aes_pos1end__":89.2241379299,"__ggsql_aes_pos2__":0.032679738562091505,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":96.2931034469,"__ggsql_aes_pos1end__":97.7068965503,"__ggsql_aes_pos2__":0.006535947712418301,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":94.8793103435,"__ggsql_aes_pos1end__":96.2931034469,"__ggsql_aes_pos2__":0.006535947712418301,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":65.1896551721,"__ggsql_aes_pos1end__":66.6034482755,"__ggsql_aes_pos2__":0.0196078431372549,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":83.5689655163,"__ggsql_aes_pos1end__":84.9827586197,"__ggsql_aes_pos2__":0.032679738562091505,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":86.3965517231,"__ggsql_aes_pos1end__":87.8103448265,"__ggsql_aes_pos2__":0.032679738562091505,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":89.2241379299,"__ggsql_aes_pos1end__":90.6379310333,"__ggsql_aes_pos2__":0.0196078431372549,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":93.4655172401,"__ggsql_aes_pos1end__":94.8793103435,"__ggsql_aes_pos2__":0.013071895424836602,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":69.4310344823,"__ggsql_aes_pos1end__":70.8448275857,"__ggsql_aes_pos2__":0.006535947712418301,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"x":{"axis":{"labelExpr":"datum.label == '90' ? '90' : datum.label == '70' ? '70' : datum.label == '80' ? '80' : datum.label == '60' ? '60' : datum.label","values":[60.0,70.0,80.0,90.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[53.1724137932,99.8275862054],"zero":false},"title":"Temperature (F)","type":"quantitative"},"x2":{"field":"__ggsql_aes_pos1end__"},"y":{"axis":{"labelExpr":"datum.label == '0.05' ? '0.05' : datum.label == '0' ? '0' : datum.label == '0.10000000000000002' ? '0.10000000000000002' : datum.label","values":[0.0,0.05,0.10000000000000002]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-0.006535947712418302,0.13725490196078433],"zero":false},"stack":null,"title":"Density","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__","stack":null}},"mark":{"clip":true,"type":"bar"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"title":"Temperature Density","width":"container"};
+    const visId = 'vis-1773333627457';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/ggsql\.org");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

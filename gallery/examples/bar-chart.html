@@ -6,8 +6,9 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
+<meta name="description" content="Categorical comparisons using bars">
 
-<title>Create small multiples with FACET – ggsql</title>
+<title>Bar Chart – ggsql</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -61,7 +62,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 
 
-<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
 <script src="../../site_libs/quarto-nav/headroom.min.js"></script>
 <script src="../../site_libs/clipboard/clipboard.min.js"></script>
 <script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
@@ -110,6 +111,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     "search-label": "Search"
   }
 }</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
 <script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
 <!-- Privacy-friendly analytics by Plausible -->
 <script async="" src="https://plausible.io/js/pa-eH2pS73nQmBLURrhxXgML.js"></script>
@@ -119,25 +123,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </script>
 
 
-<meta property="og:title" content="Create small multiples with FACET – ggsql">
-<meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta property="og:image" content="https://ggsql.org/syntax/clause/assets/logo.png">
+<meta property="og:title" content="Bar Chart – ggsql">
+<meta property="og:description" content="Categorical comparisons using bars">
+<meta property="og:image" content="https://ggsql.org/gallery/examples/thumbnails/bar-chart.svg">
 <meta property="og:site_name" content="ggsql">
-<meta property="og:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
-handle is made up of the classic database silo icon and is coloured in a
-gradient teal.
-">
-<meta name="twitter:title" content="Create small multiples with FACET – ggsql">
-<meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta name="twitter:image" content="https://ggsql.org/syntax/clause/assets/logo.png">
+<meta name="twitter:title" content="Bar Chart – ggsql">
+<meta name="twitter:description" content="Categorical comparisons using bars">
+<meta name="twitter:image" content="https://ggsql.org/gallery/examples/thumbnails/bar-chart.svg">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
-handle is made up of the classic database silo icon and is coloured in a
-gradient teal.
-">
 </head>
 
-<body class="nav-sidebar floating nav-fixed quarto-light">
+<body class="nav-fixed quarto-light">
 
 <div id="quarto-search-results"></div>
   <header id="quarto-header" class="headroom fixed-top">
@@ -231,19 +227,6 @@ gradient teal.
 </div>
       </div> <!-- /container-fluid -->
     </nav>
-  <nav class="quarto-secondary-nav">
-    <div class="container-fluid d-flex">
-      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
-        <i class="bi bi-layout-text-sidebar-reverse"></i>
-      </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/clause/visualise.html">Main clauses</a></li><li class="breadcrumb-item"><a href="../../syntax/clause/facet.html"><code>FACET</code></a></li></ol></nav>
-        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
-        </a>
-      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
-        <i class="bi bi-search"></i>
-      </button>
-    </div>
-  </nav>
   <div id="quarto-announcement" data-announcement-id="5ba53bd994f13c27f80364dba6b56481" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
 <p>ggsql is still in early development and all functionality are subject to change</p>
 </div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
@@ -251,364 +234,18 @@ gradient teal.
 <!-- content -->
 <div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
 <!-- sidebar -->
-  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
-        <div class="mt-2 flex-shrink-0 align-items-center">
-        <div class="sidebar-search">
-        <div id="quarto-search" class="" title="Search"></div>
-        </div>
-        </div>
-    <div class="sidebar-menu-container"> 
-    <ul class="list-unstyled mt-1">
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/index.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Overview</span></a>
-  </div>
-</li>
-        <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
- <span class="menu-text">Main clauses</span></a>
-          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/clause/visualise.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text"><code>VISUALISE</code></span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/clause/draw.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text"><code>DRAW</code></span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/clause/scale.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text"><code>SCALE</code></span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/clause/facet.html" class="sidebar-item-text sidebar-link active">
- <span class="menu-text"><code>FACET</code></span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/clause/project.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text"><code>PROJECT</code></span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/clause/label.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text"><code>LABEL</code></span></a>
-  </div>
-</li>
-      </ul>
-  </li>
-        <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
- <span class="menu-text">Layers</span></a>
-          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
-          <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="false">
- <span class="menu-text">Types</span></a>
-          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="false" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth2 ">  
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/type/area.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Area</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/type/bar.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Bar</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/type/boxplot.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Boxplot</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/type/density.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Density</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/type/errorbar.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Errorbar</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/type/histogram.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Histogram</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/type/line.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Line</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/type/linear.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Linear line</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/type/path.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Path</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/type/point.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Point</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/type/polygon.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Polygon</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/type/ribbon.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Ribbon</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/type/rule.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Rule</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/type/segment.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Segment</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/type/violin.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Violin</span></a>
-  </div>
-</li>
-      </ul>
-  </li>
-          <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="false">
- <span class="menu-text">Position adjustment</span></a>
-          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="false" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth2 ">  
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/position/dodge.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Dodge</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/position/identity.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Identity</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/position/jitter.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Jitter</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/layer/position/stack.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Stack</span></a>
-  </div>
-</li>
-      </ul>
-  </li>
-      </ul>
-  </li>
-        <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" role="navigation" aria-expanded="true">
- <span class="menu-text">Scales</span></a>
-          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" role="navigation" aria-expanded="true" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-5" class="collapse list-unstyled sidebar-section depth1 show">  
-          <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="false">
- <span class="menu-text">Types</span></a>
-          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="false" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-6" class="collapse list-unstyled sidebar-section depth2 ">  
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/scale/type/binned.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Binned</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/scale/type/continuous.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Continuous</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/scale/type/discrete.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Discrete</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/scale/type/identity.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Identity</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/scale/type/ordinal.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Ordinal</span></a>
-  </div>
-</li>
-      </ul>
-  </li>
-          <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-7" role="navigation" aria-expanded="false">
- <span class="menu-text">Aesthetics</span></a>
-          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-7" role="navigation" aria-expanded="false" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-7" class="collapse list-unstyled sidebar-section depth2 ">  
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/scale/aesthetic/0_position.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Position</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/scale/aesthetic/1_color.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Fill and Stroke</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/scale/aesthetic/2_opacity.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Opacity</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/scale/aesthetic/linetype.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Linetype</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/scale/aesthetic/linewidth.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Linewidth</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/scale/aesthetic/shape.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Shape</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/scale/aesthetic/size.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Size</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/scale/aesthetic/Z_faceting.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Faceting</span></a>
-  </div>
-</li>
-      </ul>
-  </li>
-      </ul>
-  </li>
-        <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-8" role="navigation" aria-expanded="true">
- <span class="menu-text">Coordinate systems</span></a>
-          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-8" role="navigation" aria-expanded="true" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-8" class="collapse list-unstyled sidebar-section depth1 show">  
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/coord/cartesian.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Cartesian</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../syntax/coord/polar.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Polar</span></a>
-  </div>
-</li>
-      </ul>
-  </li>
-    </ul>
-    </div>
-</nav>
-<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
     <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
         <nav id="TOC" role="doc-toc" class="toc-active">
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#clause-syntax" id="toc-clause-syntax" class="nav-link active" data-scroll-target="#clause-syntax">Clause syntax</a>
+  <li><a href="#code" id="toc-code" class="nav-link active" data-scroll-target="#code">Code</a></li>
+  <li><a href="#explanation" id="toc-explanation" class="nav-link" data-scroll-target="#explanation">Explanation</a></li>
+  <li><a href="#variations" id="toc-variations" class="nav-link" data-scroll-target="#variations">Variations</a>
   <ul class="collapse">
-  <li><a href="#by" id="toc-by" class="nav-link" data-scroll-target="#by"><code>BY</code></a></li>
-  <li><a href="#setting" id="toc-setting" class="nav-link" data-scroll-target="#setting"><code>SETTING</code></a></li>
-  <li><a href="#facet-variables-as-aesthetics" id="toc-facet-variables-as-aesthetics" class="nav-link" data-scroll-target="#facet-variables-as-aesthetics">Facet variables as aesthetics</a></li>
-  <li><a href="#customizing-facet-strip-labels" id="toc-customizing-facet-strip-labels" class="nav-link" data-scroll-target="#customizing-facet-strip-labels">Customizing facet strip labels</a></li>
+  <li><a href="#horizontal-bars" id="toc-horizontal-bars" class="nav-link" data-scroll-target="#horizontal-bars">Horizontal Bars</a></li>
+  <li><a href="#auto-count-bar-chart" id="toc-auto-count-bar-chart" class="nav-link" data-scroll-target="#auto-count-bar-chart">Auto-Count Bar Chart</a></li>
   </ul></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
@@ -616,11 +253,20 @@ gradient teal.
 <!-- main -->
 <main class="content" id="quarto-document-content">
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../syntax/clause/visualise.html">Main clauses</a></li><li class="breadcrumb-item"><a href="../../syntax/clause/facet.html"><code>FACET</code></a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">Create small multiples with <code>FACET</code></h1>
-</div>
+<h1 class="title">Bar Chart</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">basic</div>
+    <div class="quarto-category">bar</div>
+  </div>
+  </div>
 
+<div>
+  <div class="description">
+    Categorical comparisons using bars
+  </div>
+</div>
 
 
 <div class="quarto-title-meta">
@@ -635,44 +281,275 @@ gradient teal.
 </header>
 
 
-<p>The <code>FACET</code> clause allows you to split your data, by one or two variables, and plot each group as a small version of the plot: a technique called ‘small multiples’. The technique is great for preventing overplotting. Because each small plot shares the same positional scales by default, visual comparisons between groups become easy.</p>
-<section id="clause-syntax" class="level2">
-<h2 class="anchored" data-anchor-id="clause-syntax">Clause syntax</h2>
-<p>The <code>FACET</code> syntax contains a number of subclauses that are all optional</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FACET</span> <span class="op">&lt;</span>column<span class="op">&gt;</span> BY <span class="op">&lt;</span>column<span class="op">&gt;</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="op">&lt;</span>parameter<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span>value<span class="op">&gt;</span>, ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>The first <code>column</code> is mandatory. It names a column in the layer data that will be used for splitting the data. If the layer data does not contain the column the behavior for that layer depends on the <code>missing</code> parameter of the facet.</p>
-<section id="by" class="level3">
-<h3 class="anchored" data-anchor-id="by"><code>BY</code></h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">BY</span> <span class="op">&lt;</span>column<span class="op">&gt;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>The optional <code>BY</code> clause is used to define an additional column to split the data by. If it is missing the small multiples are laid out in a grid with the facet panels filling the cells in a row-wise fashion. If <code>BY</code> is present then the categories of the first <code>column</code> defines the rows of the grid and the categories of the second <code>column</code> the columns of the grid. Each multiple is then positioned according to that.</p>
+<p>Bar charts display categorical data with rectangular bars. The height of each bar represents the value for that category.</p>
+<section id="code" class="level2">
+<h2 class="anchored" data-anchor-id="code">Code</h2>
+<div id="29fc9b3f" class="cell" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> species, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">as</span> <span class="fu">count</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">GROUP</span> <span class="kw">BY</span> species</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span>, count <span class="kw">AS</span> <span class="at">y</span>, species <span class="kw">AS</span> <span class="at">fill</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="kw">LABEL</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">title</span> <span class="op">=&gt;</span> <span class="st">'Penguin Count by Species'</span>,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">x</span> <span class="op">=&gt;</span> <span class="st">'Species'</span>,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">y</span> <span class="op">=&gt;</span> <span class="st">'Count'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="1">
+<div id="vis-1773333635158"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":68,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":124,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":152,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F3C300","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"Species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '150' ? '150' : datum.label == '0' ? '0' : datum.label == '50' ? '50' : datum.label == '100' ? '100' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-7.6,159.6],"zero":false},"stack":null,"title":"Count","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__","stack":null}},"mark":{"align":"center","clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"title":"Penguin Count by Species","width":"container"};
+    const visId = 'vis-1773333635158';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
 </section>
-<section id="setting" class="level3">
-<h3 class="anchored" data-anchor-id="setting"><code>SETTING</code></h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SETTING</span> <span class="op">&lt;</span>parameter<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span>value<span class="op">&gt;</span>, ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>This clause behaves much like the <code>SETTINGS</code> clause in <code>DRAW</code>, in that it allows you to fine-tune specific behavior of the faceting. The following parameters exist:</p>
+<section id="explanation" class="level2">
+<h2 class="anchored" data-anchor-id="explanation">Explanation</h2>
 <ul>
-<li><code>free</code>: Controls whether the positional scales are independent across the small multiples. Permissible values are:
-<ul>
-<li><code>null</code> or omitted (default): Shared/fixed scales across all panels</li>
-<li><code>'x'</code>: Independent x-axis scale, shared y-axis scale</li>
-<li><code>'y'</code>: Shared x-axis scale, independent y-axis scale</li>
-<li><code>['x', 'y']</code>: Independent scales for both axes</li>
-</ul></li>
-<li><code>missing</code>: Determines how layers behave when the faceting column is missing. It can take two values: <code>'repeat'</code> (default), and <code>'null'</code>. If <code>'repeat'</code> is set, then the layer data is repeated in each panel. If <code>'null'</code>, then such layers are only displayed if a null panel is shown, as controlled by the facet scale.</li>
-<li><code>ncol</code>: The number of panel columns to use when faceting by a single variable. Default is 3 when fewer than 6 categories are present, 4 when fewer than 12 categeries are present and otherwise 5. When the <code>BY</code>-clause is used to set a second faceting variable, the <code>ncol</code> setting is not allowed. There is no <code>nrow</code> setting as this is derived from the number of panels and the <code>ncol</code> setting.</li>
+<li>The SQL query aggregates penguin counts by species</li>
+<li><code>species AS x</code> places species names on the x-axis</li>
+<li><code>count AS y</code> sets the bar height based on the count</li>
+<li><code>species AS fill</code> colors each bar by species</li>
+<li><code>DRAW bar</code> creates vertical bars</li>
 </ul>
 </section>
-<section id="facet-variables-as-aesthetics" class="level3">
-<h3 class="anchored" data-anchor-id="facet-variables-as-aesthetics">Facet variables as aesthetics</h3>
-<p>When you apply faceting to a plot you are creating new aesthetics you can control. For 1-dimensional faceting (no <code>BY</code> clause) the aesthetic is called <code>panel</code> and for 2-dimensional faceting the aesthetics are called <code>row</code> and <code>column</code>. You can read more about these aesthetics in <a href="../../syntax/scale/aesthetic/Z_faceting.html">their documentation</a></p>
+<section id="variations" class="level2">
+<h2 class="anchored" data-anchor-id="variations">Variations</h2>
+<section id="horizontal-bars" class="level3">
+<h3 class="anchored" data-anchor-id="horizontal-bars">Horizontal Bars</h3>
+<p>Use <code>PROJECT y, x TO cartesian</code> to flip the axes for horizontal bars:</p>
+<div id="4732af36" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> species, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">as</span> <span class="fu">count</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">GROUP</span> <span class="kw">BY</span> species</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span>, count <span class="kw">AS</span> <span class="at">y</span>, species <span class="kw">AS</span> <span class="at">fill</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="at">y</span>, <span class="at">x</span> <span class="kw">TO</span> <span class="dt">cartesian</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="kw">LABEL</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">title</span> <span class="op">=&gt;</span> <span class="st">'Penguin Count by Species'</span>,</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">x</span> <span class="op">=&gt;</span> <span class="st">'Species'</span>,</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">y</span> <span class="op">=&gt;</span> <span class="st">'Count'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<div id="vis-1773333635176"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":68,"__ggsql_aes_pos2__":"Chinstrap","__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":124,"__ggsql_aes_pos2__":"Gentoo","__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":152,"__ggsql_aes_pos2__":"Adelie","__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F3C300","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"x":{"axis":{"labelExpr":"datum.label == '140' ? '140' : datum.label == '80' ? '80' : datum.label == '100' ? '100' : datum.label == '120' ? '120' : datum.label","values":[80.0,100.0,120.0,140.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[63.8,156.2],"zero":false},"title":"Count","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == '0.0' ? '0.0' : datum.label"},"field":"__ggsql_aes_pos2__","scale":{"domain":["0.0","Adelie","Chinstrap","Gentoo"],"zero":false},"stack":null,"title":"Species","type":"nominal"},"y2":{"field":"__ggsql_aes_pos2end__","stack":null}},"mark":{"align":"center","clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"title":"Penguin Count by Species","width":"container"};
+    const visId = 'vis-1773333635176';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
 </section>
-<section id="customizing-facet-strip-labels" class="level3">
-<h3 class="anchored" data-anchor-id="customizing-facet-strip-labels">Customizing facet strip labels</h3>
-<p>To customize facet strip labels (e.g., renaming categories), use the <code>RENAMING</code> clause on the facet scale:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FACET</span> region</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> panel <span class="kw">RENAMING</span> <span class="st">'N'</span> <span class="op">=&gt;</span> <span class="st">'North'</span>, <span class="st">'S'</span> <span class="op">=&gt;</span> <span class="st">'South'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>See the <a href="../../syntax/scale/aesthetic/Z_faceting.html">facet scale documentation</a> for more details on label customization.</p>
+<section id="auto-count-bar-chart" class="level3">
+<h3 class="anchored" data-anchor-id="auto-count-bar-chart">Auto-Count Bar Chart</h3>
+<p>When you don’t specify a y aesthetic, ggsql automatically counts occurrences:</p>
+<div id="88284549" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> species <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="kw">LABEL</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">title</span> <span class="op">=&gt;</span> <span class="st">'Penguin Distribution'</span>,</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">x</span> <span class="op">=&gt;</span> <span class="st">'Species'</span>,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">y</span> <span class="op">=&gt;</span> <span class="st">'Count'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<div id="vis-1773333635195"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":68,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":124,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":152,"__ggsql_aes_pos2end__":0.0,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"x":{"axis":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"Species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '100' ? '100' : datum.label == '50' ? '50' : datum.label == '150' ? '150' : datum.label","values":[0.0,50.0,100.0,150.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-7.6,159.6],"zero":false},"stack":null,"title":"Count","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__","stack":null}},"mark":{"align":"center","clip":true,"type":"bar","width":{"band":0.9}},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"title":"Penguin Distribution","width":"container"};
+    const visId = 'vis-1773333635195';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
 
 
 </section>
