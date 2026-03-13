@@ -321,10 +321,9 @@ mod tests {
 
     #[test]
     fn test_validate_allows_keyword_in_string() {
-        let validated = validate(
-            "SELECT 'DELETE' as x, 1 as y VISUALISE DRAW point MAPPING x AS x, y AS y",
-        )
-        .unwrap();
+        let validated =
+            validate("SELECT 'DELETE' as x, 1 as y VISUALISE DRAW point MAPPING x AS x, y AS y")
+                .unwrap();
         assert!(
             validated.valid(),
             "Should allow DELETE in string literal: {:?}",

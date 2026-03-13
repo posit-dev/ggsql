@@ -19,9 +19,8 @@ static SQLSERVER_DANGEROUS: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// CREATE OR REPLACE pattern
-static CREATE_OR_REPLACE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)CREATE\s+OR\s+REPLACE").unwrap()
-});
+static CREATE_OR_REPLACE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)CREATE\s+OR\s+REPLACE").unwrap());
 
 /// Data-modifying CTEs (WITH ... DELETE/UPDATE/INSERT ... RETURNING)
 static CTE_DML: LazyLock<Regex> = LazyLock::new(|| {
