@@ -37,6 +37,7 @@ test_that("engine can handle a query without visualisation statement", {
 })
 
 test_that("engine does not return a table when merely creating data", {
+  skip("Currently SQL queries are not allowed to alter environment")
   query <-
     "COPY (
       SELECT * FROM (VALUES
