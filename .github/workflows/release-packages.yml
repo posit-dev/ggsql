@@ -3,8 +3,8 @@ name: Release Cargo and Installer Packages
 on:
   push:
     tags:
-      - "v*" # Trigger on version tags (e.g., v0.1.0)
-  workflow_dispatch: # Allow manual triggering
+      - "v*"
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -235,15 +235,12 @@ jobs:
         run: ls -R artifacts
 
       - name: Create release and upload installers
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/**/*.exe
             artifacts/**/*.msi
             artifacts/**/*.dmg
             artifacts/**/*.deb
-          draft: false
-          prerelease: false
-          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
