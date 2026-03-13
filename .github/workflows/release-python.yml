@@ -3,7 +3,7 @@ name: Python Release
 on:
   push:
     tags:
-      - "v*"
+      - "py/v*"
   workflow_dispatch:
 
 permissions:
