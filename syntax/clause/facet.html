@@ -666,7 +666,7 @@ gradient teal.
 <li><code>['x', 'y']</code>: Independent scales for both axes</li>
 </ul></li>
 <li><code>missing</code>: Determines how layers behave when the faceting column is missing. It can take two values: <code>'repeat'</code> (default), and <code>'null'</code>. If <code>'repeat'</code> is set, then the layer data is repeated in each panel. If <code>'null'</code>, then such layers are only displayed if a null panel is shown, as controlled by the facet scale.</li>
-<li><code>ncol</code>: The number of panel columns to use when faceting by a single variable. Default is 3 when fewer than 6 categories are present, 4 when fewer than 12 categeries are present and otherwise 5. When the <code>BY</code>-clause is used to set a second faceting variable, the <code>ncol</code> setting is not allowed. There is no <code>nrow</code> setting as this is derived from the number of panels and the <code>ncol</code> setting.</li>
+<li><code>ncol</code>/<code>nrow</code>: The dimensions of the layout when faceting by a single variable. Only one of these can be given, as the other is derived based on the number of panels to draw. Default is 3 columns when fewer than 6 categories are present, 4 columns when fewer than 12 categories are present and otherwise 5 columns. When the <code>BY</code>-clause is used to set a second faceting variable, the <code>ncol</code> and <code>nrow</code> setting are not allowed.</li>
 </ul>
 </section>
 <section id="facet-variables-as-aesthetics" class="level3">
