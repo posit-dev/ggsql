@@ -926,7 +926,8 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     let mut data_map: HashMap<String, DataFrame> = HashMap::new();
 
     // Extract SQL once (reused later for PreparedData)
-    let sql_part = source_tree.extract_sql();
+    // Safety validation happens here - will error on dangerous SQL patterns
+    let sql_part = source_tree.extract_sql()?;
 
     // Execute global SQL if present
     // If there's a WITH clause, extract just the trailing SELECT and transform CTE references.

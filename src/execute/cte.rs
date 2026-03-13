@@ -238,7 +238,8 @@ pub fn transform_global_sql(
         // Non-SELECT executable SQL (CREATE, INSERT, UPDATE, DELETE)
         // OR VISUALISE FROM (which injects SELECT * FROM <source>)
         // Extract SQL (with injection if VISUALISE FROM) and transform CTE references
-        let sql = source_tree.extract_sql()?;
+        // Note: Safety validation is done in execute/mod.rs, so use unchecked here
+        let sql = source_tree.extract_sql_unchecked()?;
         Some(transform_cte_references(&sql, materialized_ctes))
     } else {
         // No executable SQL (just CTEs)

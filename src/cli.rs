@@ -335,7 +335,13 @@ fn print_table_fallback(query: &str, reader: &DuckDBReader, max_rows: usize) {
         }
     };
 
-    let sql_part = source_tree.extract_sql().unwrap_or_default();
+    let sql_part = match source_tree.extract_sql() {
+        Ok(sql) => sql.unwrap_or_default(),
+        Err(e) => {
+            eprintln!("SQL validation error: {}", e);
+            std::process::exit(1);
+        }
+    };
 
     let data = reader.execute_sql(&sql_part);
     if let Err(e) = data {

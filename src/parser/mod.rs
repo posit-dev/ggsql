@@ -95,7 +95,7 @@ mod tests {
         "#;
 
         let source_tree = SourceTree::new(query).unwrap();
-        let sql = source_tree.extract_sql().unwrap();
+        let sql = source_tree.extract_sql().unwrap().unwrap();
         assert!(sql.contains("SELECT date, revenue FROM sales"));
         assert!(sql.contains("WHERE year = 2024"));
         assert!(!sql.contains("VISUALISE"));

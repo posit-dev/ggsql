@@ -3,6 +3,7 @@
 //! The `SourceTree` struct wraps a tree-sitter parse tree along with the source text
 //! and language, providing high-level query operations for tree traversal and text extraction.
 
+use crate::validate::validate_sql_safety;
 use crate::{GgsqlError, Result};
 use tree_sitter::{Language, Node, Parser, Query, QueryCursor, StreamingIterator, Tree};
 
@@ -107,11 +108,25 @@ impl<'a> SourceTree<'a> {
             .collect()
     }
 
-    /// Extract the SQL portion of the query (before VISUALISE)
+    /// Extract the SQL portion of the query (before VISUALISE) with safety validation.
     ///
     /// If VISUALISE FROM is used, this injects "SELECT * FROM <source>"
-    /// Returns None if there's no SQL portion and no VISUALISE FROM injection needed
-    pub fn extract_sql(&self) -> Option<String> {
+    /// Returns None if there's no SQL portion and no VISUALISE FROM injection needed.
+    ///
+    /// Returns an error if the SQL contains dangerous operations (DROP, DELETE, etc.)
+    pub fn extract_sql(&self) -> Result<Option<String>> {
+        let sql = self.extract_sql_unchecked();
+        if let Some(ref sql_text) = sql {
+            validate_sql_safety(sql_text)?;
+        }
+        Ok(sql)
+    }
+
+    /// Extract the SQL portion without safety validation.
+    ///
+    /// Use this only in trusted environments or when validation is handled separately.
+    /// Prefer `extract_sql()` for user-provided queries.
+    pub fn extract_sql_unchecked(&self) -> Option<String> {
         let root = self.root();
 
         // Check if there's any VISUALISE statement
@@ -181,7 +196,7 @@ mod tests {
         let query = "SELECT * FROM data VISUALISE  DRAW point MAPPING x AS x, y AS y";
         let tree = SourceTree::new(query).unwrap();
 
-        let sql = tree.extract_sql().unwrap();
+        let sql = tree.extract_sql().unwrap().unwrap();
         assert_eq!(sql, "SELECT * FROM data");
 
         let viz = tree.extract_visualise().unwrap();
@@ -194,7 +209,7 @@ mod tests {
         let query = "SELECT * FROM data visualise x, y DRAW point";
         let tree = SourceTree::new(query).unwrap();
 
-        let sql = tree.extract_sql().unwrap();
+        let sql = tree.extract_sql().unwrap().unwrap();
         assert_eq!(sql, "SELECT * FROM data");
 
         let viz = tree.extract_visualise().unwrap();
@@ -206,7 +221,7 @@ mod tests {
         let query = "SELECT * FROM data WHERE x > 5";
         let tree = SourceTree::new(query).unwrap();
 
-        let sql = tree.extract_sql().unwrap();
+        let sql = tree.extract_sql().unwrap().unwrap();
         assert_eq!(sql, query);
 
         let viz = tree.extract_visualise();
@@ -218,7 +233,7 @@ mod tests {
         let query = "VISUALISE FROM mtcars  DRAW point MAPPING mpg AS x, hp AS y";
         let tree = SourceTree::new(query).unwrap();
 
-        let sql = tree.extract_sql().unwrap();
+        let sql = tree.extract_sql().unwrap().unwrap();
         // Should inject SELECT * FROM mtcars
         assert_eq!(sql, "SELECT * FROM mtcars");
 
@@ -232,7 +247,7 @@ mod tests {
             "WITH cte AS (SELECT * FROM x) VISUALISE FROM cte DRAW point MAPPING a AS x, b AS y";
         let tree = SourceTree::new(query).unwrap();
 
-        let sql = tree.extract_sql().unwrap();
+        let sql = tree.extract_sql().unwrap().unwrap();
         // Should inject SELECT * FROM cte after the WITH
         assert!(sql.contains("WITH cte AS (SELECT * FROM x)"));
         assert!(sql.contains("SELECT * FROM cte"));
@@ -243,10 +258,11 @@ mod tests {
 
     #[test]
     fn test_extract_sql_visualise_from_after_create() {
+        // CREATE is blocked by safety validation, use unchecked for this test
         let query = "CREATE TABLE x AS SELECT 1; VISUALISE FROM x";
         let tree = SourceTree::new(query).unwrap();
 
-        let sql = tree.extract_sql().unwrap();
+        let sql = tree.extract_sql_unchecked().unwrap();
         assert!(sql.contains("CREATE TABLE x AS SELECT 1;"));
         assert!(sql.contains("SELECT * FROM x"));
 
@@ -257,7 +273,7 @@ mod tests {
         let query2 = "CREATE TABLE x AS SELECT 1 VISUALISE FROM x";
         let tree2 = SourceTree::new(query2).unwrap();
 
-        let sql2 = tree2.extract_sql().unwrap();
+        let sql2 = tree2.extract_sql_unchecked().unwrap();
         assert!(sql2.contains("CREATE TABLE x AS SELECT 1"));
         assert!(sql2.contains("SELECT * FROM x"));
 
@@ -267,10 +283,11 @@ mod tests {
 
     #[test]
     fn test_extract_sql_visualise_from_after_insert() {
+        // INSERT is blocked by safety validation, use unchecked for this test
         let query = "INSERT INTO x VALUES (1) VISUALISE FROM x DRAW";
         let tree = SourceTree::new(query).unwrap();
 
-        let sql = tree.extract_sql().unwrap();
+        let sql = tree.extract_sql_unchecked().unwrap();
         assert!(sql.contains("INSERT"));
 
         let viz = tree.extract_visualise().unwrap();
@@ -282,7 +299,7 @@ mod tests {
         let query = "SELECT * FROM x VISUALISE DRAW point MAPPING a AS x, b AS y";
         let tree = SourceTree::new(query).unwrap();
 
-        let sql = tree.extract_sql().unwrap();
+        let sql = tree.extract_sql().unwrap().unwrap();
         // Should NOT inject anything - just extract SQL normally
         assert_eq!(sql, "SELECT * FROM x");
         assert!(!sql.contains("SELECT * FROM SELECT")); // Make sure we didn't double-inject
@@ -293,7 +310,7 @@ mod tests {
         let query = "VISUALISE FROM 'mtcars.csv'  DRAW point MAPPING mpg AS x, hp AS y";
         let tree = SourceTree::new(query).unwrap();
 
-        let sql = tree.extract_sql().unwrap();
+        let sql = tree.extract_sql().unwrap().unwrap();
         // Should inject SELECT * FROM 'mtcars.csv' with quotes preserved
         assert_eq!(sql, "SELECT * FROM 'mtcars.csv'");
 
@@ -307,7 +324,7 @@ mod tests {
             r#"VISUALISE FROM "data/sales.parquet"  DRAW bar MAPPING region AS x, total AS y"#;
         let tree = SourceTree::new(query).unwrap();
 
-        let sql = tree.extract_sql().unwrap();
+        let sql = tree.extract_sql().unwrap().unwrap();
         // Should inject SELECT * FROM "data/sales.parquet" with quotes preserved
         assert_eq!(sql, r#"SELECT * FROM "data/sales.parquet""#);
 
@@ -320,12 +337,44 @@ mod tests {
         let query = "WITH prep AS (SELECT * FROM 'raw.csv' WHERE year = 2024) VISUALISE FROM prep  DRAW line MAPPING date AS x, value AS y";
         let tree = SourceTree::new(query).unwrap();
 
-        let sql = tree.extract_sql().unwrap();
+        let sql = tree.extract_sql().unwrap().unwrap();
         // Should inject SELECT * FROM prep after WITH
         assert!(sql.contains("WITH prep AS"));
         assert!(sql.contains("SELECT * FROM prep"));
         // The file path inside the CTE should remain as-is (part of the WITH clause)
         assert!(sql.contains("'raw.csv'"));
+    }
+
+    // ========================================================================
+    // SQL Safety Validation Tests
+    // ========================================================================
+
+    #[test]
+    fn test_extract_sql_blocks_delete() {
+        // DELETE is supported by grammar, so validation should block it
+        let query = "DELETE FROM users VISUALISE DRAW point";
+        let tree = SourceTree::new(query).unwrap();
+        let result = tree.extract_sql();
+        assert!(result.is_err(), "Expected error, got: {:?}", result);
+        assert!(result.unwrap_err().to_string().contains("DELETE"));
+    }
+
+    #[test]
+    fn test_extract_sql_blocks_update() {
+        // UPDATE is supported by grammar, so validation should block it
+        let query = "UPDATE users SET name = 'foo' VISUALISE DRAW point";
+        let tree = SourceTree::new(query).unwrap();
+        let result = tree.extract_sql();
+        assert!(result.is_err(), "Expected error, got: {:?}", result);
+        assert!(result.unwrap_err().to_string().contains("UPDATE"));
+    }
+
+    #[test]
+    fn test_extract_sql_allows_keyword_in_string() {
+        let query = "SELECT 'DELETE' as x FROM data VISUALISE DRAW point";
+        let tree = SourceTree::new(query).unwrap();
+        let result = tree.extract_sql();
+        assert!(result.is_ok(), "Should allow DELETE in string literal");
     }
 
     // ========================================================================

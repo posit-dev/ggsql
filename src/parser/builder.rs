@@ -146,16 +146,27 @@ fn parse_value_node(node: &Node, source: &SourceTree, context: &str) -> Result<P
     }
 }
 
-/// Parse a data source node (identifier or string file path)
-fn parse_data_source(node: &Node, source: &SourceTree) -> DataSource {
+/// Parse a data source node (identifier, string file path, or subquery)
+/// Returns an error if a subquery contains dangerous SQL patterns.
+fn parse_data_source(node: &Node, source: &SourceTree) -> Result<DataSource> {
     match node.kind() {
         "string" => {
             let path = parse_string_node(node, source);
-            DataSource::FilePath(path)
+            Ok(DataSource::FilePath(path))
+        }
+        "subquery" => {
+            // Subquery: validate the SQL content for safety
+            let text = source.get_text(node);
+            crate::validate::validate_sql_safety(&text)?;
+            Ok(DataSource::Identifier(text))
         }
         _ => {
             let text = source.get_text(node);
-            DataSource::Identifier(text)
+            // Check if identifier looks like a subquery (starts with `(`)
+            if text.trim_start().starts_with('(') {
+                crate::validate::validate_sql_safety(&text)?;
+            }
+            Ok(DataSource::Identifier(text))
         }
     }
 }
@@ -258,7 +269,7 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
                 // Extract the 'table' field from table_ref (grammar: FROM table_ref)
                 let query = "(table_ref table: (_) @table)";
                 if let Some(table_node) = source.find_node(&child, query) {
-                    spec.source = Some(parse_data_source(&table_node, source));
+                    spec.source = Some(parse_data_source(&table_node, source)?);
                 }
             }
             "viz_clause" => {
@@ -453,7 +464,8 @@ fn build_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
                 aesthetics = parse_mapping(&child, source)?;
                 layer_source = child
                     .child_by_field_name("layer_source")
-                    .map(|src| parse_data_source(&src, source));
+                    .map(|src| parse_data_source(&src, source))
+                    .transpose()?;
             }
             "remapping_clause" => {
                 // Parse stat result remappings (same syntax as mapping_clause)
@@ -569,11 +581,12 @@ fn parse_partition_clause(node: &Node, source: &SourceTree) -> Result<Vec<String
 ///
 /// Extracts the raw SQL text from the filter_expression and returns it verbatim.
 /// This allows any valid SQL WHERE expression to be passed to the database backend.
+/// Returns an error if the expression contains dangerous SQL patterns.
 fn parse_filter_clause(node: &Node, source: &SourceTree) -> Result<SqlExpression> {
     let query = "(filter_expression) @expr";
 
     if let Some(filter_text) = source.find_text(node, query) {
-        Ok(SqlExpression::new(filter_text.trim().to_string()))
+        SqlExpression::new(filter_text.trim().to_string())
     } else {
         Err(GgsqlError::ParseError(
             "Could not find filter expression in filter clause".to_string(),
@@ -582,11 +595,12 @@ fn parse_filter_clause(node: &Node, source: &SourceTree) -> Result<SqlExpression
 }
 
 /// Parse an order_clause: ORDER BY date ASC, value DESC
+/// Returns an error if the expression contains dangerous SQL patterns.
 fn parse_order_clause(node: &Node, source: &SourceTree) -> Result<SqlExpression> {
     let query = "(order_expression) @expr";
 
     if let Some(order_text) = source.find_text(node, query) {
-        Ok(SqlExpression::new(order_text.trim().to_string()))
+        SqlExpression::new(order_text.trim().to_string())
     } else {
         Err(GgsqlError::ParseError(
             "Could not find order expression in order clause".to_string(),
@@ -3308,7 +3322,7 @@ mod tests {
         let root = source.root();
 
         let from_node = source.find_node(&root, "(table_ref) @ref").unwrap();
-        let parsed = parse_data_source(&from_node, &source);
+        let parsed = parse_data_source(&from_node, &source).unwrap();
         assert!(matches!(parsed, DataSource::Identifier(ref name) if name == "sales"));
 
         // Test file path - table_ref contains a string child
@@ -3317,7 +3331,7 @@ mod tests {
 
         let from_node2 = source2.find_node(&root2, "(table_ref) @ref").unwrap();
         let string_node = source2.find_node(&from_node2, "(string) @s").unwrap();
-        let parsed2 = parse_data_source(&string_node, &source2);
+        let parsed2 = parse_data_source(&string_node, &source2).unwrap();
         assert!(matches!(parsed2, DataSource::FilePath(ref path) if path == "data.csv"));
     }
 

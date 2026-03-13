@@ -350,7 +350,7 @@ mod tests {
 
     #[test]
     fn test_layer_with_filter() {
-        let filter = SqlExpression::new("year > 2020");
+        let filter = SqlExpression::new("year > 2020").unwrap();
         let layer = Layer::new(Geom::point()).with_filter(filter);
         assert!(layer.filter.is_some());
         assert_eq!(layer.filter.as_ref().unwrap().as_str(), "year > 2020");
