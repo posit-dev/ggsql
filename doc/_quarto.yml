@@ -29,8 +29,6 @@ website:
   search: true
   navbar:
     left:
-      - href: index.qmd
-        text: Home
       - get_started.qmd
       - text: Syntax
         menu:
