@@ -213,6 +213,12 @@ gradient teal.
 <span class="menu-text">FAQ</span></a>
   </li>  
 </ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="./wasm/index.html"> 
+<span class="menu-text">Playground</span></a>
+  </li>  
+</ul>
           </div> <!-- /navcollapse -->
             <div class="quarto-navbar-tools">
     <div class="dropdown">
@@ -716,6 +722,15 @@ gradient teal.
   });
   </script>
 </div> <!-- /content -->
+<script type="module">
+  const offset = document.querySelector('meta[name="quarto:offset"]')?.content || './';
+  const base = offset + 'wasm/';
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = base + 'quarto.css';
+  document.head.appendChild(link);
+  import(base + 'quarto.js');
+</script>
 
 
 

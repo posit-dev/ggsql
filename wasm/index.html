@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ggsql playground</title>
+    <link rel="stylesheet" href="bundle.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Nunito+Sans:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+  </head>
+  <body>
+    <div id="app">
+      <div id="header">
+        <a href="https://ggsql.org/" style="display: flex; align-items: center; gap: 8px; text-decoration: none;">
+          <img src="https://ggsql.org/assets/icon.svg" alt="ggsql logo" height="22" />
+          <h1>ggsql playground</h1>
+        </a>
+        <div id="status" class="loading">Initializing...</div>
+      </div>
+
+      <div id="mobile-toolbar">
+        <select id="mobile-example-select">
+          <option value="" disabled selected>Select an example…</option>
+        </select>
+      </div>
+
+      <div id="sidebar">
+        <div class="sidebar-section">
+          <h3>Tables</h3>
+          <ul id="table-list" class="table-list"></ul>
+        </div>
+
+        <div class="sidebar-section">
+          <h3>Upload</h3>
+          <div class="file-input-wrapper">
+            <input type="file" id="csv-upload" accept=".csv,.parquet" />
+            <label for="csv-upload" class="file-input-label">Upload Data</label>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <div id="examples-list"></div>
+        </div>
+      </div>
+
+      <div id="editor-container"></div>
+      <div id="viz-container">
+        <div id="viz-output"></div>
+      </div>
+      <div id="error-panel">
+        <h3 class="panel-label">Problems</h3>
+        <div id="error-messages"></div>
+      </div>
+    </div>
+
+    <script type="module" src="bundle.js"></script>
+  </body>
+</html>

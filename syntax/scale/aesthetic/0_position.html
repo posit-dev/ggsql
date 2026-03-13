@@ -176,6 +176,12 @@ gradient teal.
 <span class="menu-text">FAQ</span></a>
   </li>  
 </ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../wasm/index.html"> 
+<span class="menu-text">Playground</span></a>
+  </li>  
+</ul>
           </div> <!-- /navcollapse -->
             <div class="quarto-navbar-tools">
     <div class="dropdown">
@@ -1040,8 +1046,17 @@ Note
   });
   </script>
 </div> <!-- /content -->
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer><script type="module">
+  const offset = document.querySelector('meta[name="quarto:offset"]')?.content || './';
+  const base = offset + 'wasm/';
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = base + 'quarto.css';
+  document.head.appendChild(link);
+  import(base + 'quarto.js');
+</script>
 
 
 
 
-<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>
+</body></html>
