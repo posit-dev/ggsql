@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.6
+## 0.1.7
 
 - Initial pre-alpha release.
 
