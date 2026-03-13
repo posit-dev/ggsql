@@ -27,12 +27,9 @@ except ImportError:
 
         try:
             # Use tree-sitter to compile the language
-            language = tree_sitter.Language.build_library(
-                LIB_PATH,
-                [grammar_path]
-            )
+            language = tree_sitter.Language.build_library(LIB_PATH, [grammar_path])
         except Exception as e:
             raise ImportError(f"Could not load tree-sitter-ggsql language: {e}")
 
-__version__ = "0.1.0"
+__version__ = "0.1.6"
 __all__ = ["language"]
