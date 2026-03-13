@@ -10,9 +10,9 @@ The ribbon layer is used to display extrema over a sorted x-axis. It can be seen
 The following aesthetics are recognised by the ribbon layer.
 
 ### Required
-* `x`: Position along the x-axis
-* `ymin`: Lower position along the y-axis.
-* `ymax`: Upper position along the y-axis.
+* Primary axis (e.g. `x`): Position along the primary axis
+* Secondary axis min (e.g. `ymin`): Lower position along the secondary axis.
+* Secondary axis max (e.g. `ymax`): Upper position along the secondary axis.
 
 ### Optional
 * `stroke`: The colour of the contour lines.
@@ -25,7 +25,10 @@ The following aesthetics are recognised by the ribbon layer.
 * `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
 
 ## Data transformation
-The ribbon layer does not transform its data but passes it through unchanged.
+The ribbon layer sorts the data along its primary axis
+
+## Orientation
+Ribbon layers are sorted and connected along their primary axis. The orientation can be deduced purely from the mapping since interval is mapped to the secodnary axis. To create a vertical ribbon layer you map the independent variable to `y` instead of `x` and the interval to `xmin` and `xmax` (assuming a default Cartesian coordinate system).
 
 ## Examples
 

@@ -7,8 +7,8 @@ The polar coordinate system interprets its primary aesthetic as the angular posi
 ## Default aesthetics
 The polar coordinate system has the following default positional aesthetics which will be used if no others have been provided:
 
-* **Primary**: `theta` (angular position)
-* **Secondary**: `radius` (distance from center)
+* **Primary**: `radius` (distance from center)
+* **Secondary**: `theta` (angular position)
 
 Users can provide their own aesthetic names if needed. For example, if using `x` and `y` aesthetics:
 
@@ -16,7 +16,7 @@ Users can provide their own aesthetic names if needed. For example, if using `x`
 PROJECT y, x TO polar
 ```
 
-This maps `y` to theta (angle) and `x` to radius. This is useful when converting from a cartesian coordinate system without editing all the mappings.
+This maps `y` to radius and `x` to theta (angle). This is useful when converting from a cartesian coordinate system without editing all the mappings.
 
 ## Settings
 * `clip`: Should data be removed if it appears outside the bounds of the coordinate system. Defaults to `true`

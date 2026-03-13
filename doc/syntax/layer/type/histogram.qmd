@@ -4,13 +4,13 @@ title: "Histogram"
 
 > Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
-Visualise the distribution of a single continuous variable by dividing the x axis into bins and counting the number of observations in each bin. If providing a weight then a weighted histogram is calculated instead.
+Visualise the distribution of a single continuous variable by dividing the primary axis into bins and counting the number of observations in each bin. If providing a weight then a weighted histogram is calculated instead.
 
 ## Aesthetics
 The following aesthetics are recognised by the bar layer.
 
 ### Required
-* `x`: Position on the x-axis
+* Primary axis (e.g. `x`): The continuous variable to bin
 
 ### Optional
 * `colour`: The default colour of each bar
@@ -27,7 +27,7 @@ The following aesthetics are recognised by the bar layer.
 * `closed`: Either `'left'` or `'right'` (default). Determines whether the bin intervals are closed to the left or right side
 
 ## Data transformation
-The histogram layer will bin the records in each group and count them. By default it will map the count to `y`.
+The histogram layer will bin the records in each group and count them. By default it will map the count to the secondary axis.
 
 ### Properties
 
@@ -40,7 +40,10 @@ The histogram layer will bin the records in each group and count them. By defaul
 
 ### Default remappings
 
-* `count AS y`: By default the histogram will show count as the height of the bars
+* `count AS <secondary axis>`: By default the histogram will show count as the height of the bars
+
+## Orientation
+The histogram has its primary axis along the binned variable. The orientation can be deduced from the mapping. To create a horizontal histogram you map the variable to `y` instead of `x` (assuming a default Cartesian coordinate system).
 
 ## Examples
 
@@ -85,4 +88,12 @@ VISUALISE FROM ggsql:penguins
 DRAW histogram
     MAPPING body_mass AS x
     SETTING binwidth => 100
+```
+
+Create a horizontal histogram by changing the mapping
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW histogram
+    MAPPING body_mass AS y
 ```

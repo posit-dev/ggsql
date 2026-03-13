@@ -947,7 +947,7 @@ fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value
 /// For internal positional aesthetics (pos1, pos2, etc.), maps directly to Vega-Lite
 /// channel names based on coord type:
 /// - Cartesian: pos1 → "x", pos2 → "y"
-/// - Polar: pos1 → "theta", pos2 → "radius"
+/// - Polar: pos1 → "radius", pos2 → "theta"
 ///
 /// This ensures correct Vega-Lite channel names regardless of what the user originally
 /// called their positional aesthetics in the PROJECT clause.
@@ -984,7 +984,7 @@ pub(super) fn map_aesthetic_name(
 fn map_positional_to_vegalite(aesthetic: &str, coord_kind: CoordKind) -> Option<String> {
     let (primary, secondary) = match coord_kind {
         CoordKind::Cartesian => ("x", "y"),
-        CoordKind::Polar => ("theta", "radius"),
+        CoordKind::Polar => ("radius", "theta"),
     };
 
     // Match internal positional aesthetic patterns

@@ -11,8 +11,8 @@ The violins are mirrored kernel density estimates, similar to the [density](dens
 The following aesthetics are recognised by the violin layer.
 
 ### Required
-* `x`: Position on the x-axis (categorical).
-* `y`: Value on the y-axis for which to compute density.
+* Primary axis (e.g. `x`): The categorical variable for grouping.
+* Secondary axis (e.g. `y`): The continuous variable to compute density for.
 
 ### Optional
 * `stroke`: The colour of the contour lines.
@@ -52,6 +52,9 @@ The major difference between a violin layer and a density layer is just the matt
 
 * `density AS offset`: By default the offsets around a centerline reflect the computed density.
 
+## Orientation
+The violin plot has its categorical groups along the primary axis and the continuous values along the secondary axis. The orientation can be deduced from the scale types or from the mapping. To create horizontal violins, swap `x` and `y` in the mapping (assuming a default Cartesian coordinate system).
+
 ## Examples
 
 A typical violin plot.
@@ -80,6 +83,13 @@ You can combine groups to expand the categories.
 
 ```{ggsql}
 VISUALISE species AS x, bill_dep AS y, island AS fill FROM ggsql:penguins
+  DRAW violin
+```
+
+Create horizontal violins by swapping x and y:
+
+```{ggsql}
+VISUALISE species AS y, bill_dep AS x FROM ggsql:penguins
   DRAW violin
 ```
 

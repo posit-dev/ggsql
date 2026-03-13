@@ -627,7 +627,7 @@ mod tests {
             );
         }
 
-        // Test case 1: PROJECT y, x TO polar (y as pos1→theta, x as pos2→radius)
+        // Test case 1: PROJECT y, x TO polar (y as pos1→radius, x as pos2→theta)
         let query1 = r#"
             SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
             VISUALISE value AS y, category AS fill
@@ -640,7 +640,7 @@ mod tests {
         let json1: serde_json::Value = serde_json::from_str(&result1).unwrap();
         check_encoding_keys(&json1, "PROJECT y, x TO polar");
 
-        // Test case 2: PROJECT x, y TO polar (x as pos1→theta, y as pos2→radius)
+        // Test case 2: PROJECT x, y TO polar (x as pos1→radius, y as pos2→theta)
         let query2 = r#"
             SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
             VISUALISE value AS x, category AS fill
@@ -652,7 +652,7 @@ mod tests {
         let json2: serde_json::Value = serde_json::from_str(&result2).unwrap();
         check_encoding_keys(&json2, "PROJECT x, y TO polar");
 
-        // Test case 3: PROJECT TO polar (default theta/radius names)
+        // Test case 3: PROJECT TO polar (default radius/theta names)
         let query3 = r#"
             SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
             VISUALISE value AS theta, category AS fill
@@ -1033,6 +1033,70 @@ mod tests {
             encoding["y"]["stack"].is_null(),
             "y encoding should have stack: null to disable VL stacking. Got: {}",
             serde_json::to_string_pretty(&encoding["y"]).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_stacked_bar_chart_dummy_x() {
+        // Test stacked bar chart with no x mapping (dummy x column)
+        // This is the case where only fill is mapped: all bars at same x position should stack
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            VISUALISE FROM ggsql:penguins
+            DRAW bar MAPPING species AS fill
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+
+        // Verify y and y2 encodings exist (stacked bars use y/y2 for range)
+        let encoding = &layer["encoding"];
+        assert!(encoding["y"].is_object(), "Should have y encoding");
+        assert!(
+            encoding["y2"].is_object(),
+            "Should have y2 encoding for stacked bars with dummy x. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+
+        // Verify Vega-Lite stacking is disabled (we handle it ourselves)
+        assert!(
+            encoding["y"]["stack"].is_null(),
+            "y encoding should have stack: null to disable VL stacking. Got: {}",
+            serde_json::to_string_pretty(&encoding["y"]).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_bar_chart_with_expand_setting() {
+        // Test bar chart with SCALE y SETTING expand - should work even when y is stat-derived
+        // This tests that:
+        // 1. Scale type inference works for stat-generated count columns
+        // 2. Stacking still works (y2 encoding exists) when SCALE y is specified
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            VISUALISE FROM ggsql:penguins
+            DRAW bar MAPPING species AS fill
+            SCALE y SETTING expand => [0.05, 0.05]
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        // Should succeed without "discrete scale does not support SETTING 'expand'" error
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+
+        // Verify stacking works (y2 encoding exists for stacked bars)
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding["y2"].is_object(),
+            "Should have y2 encoding for stacked bars. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
         );
     }
 

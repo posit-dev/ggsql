@@ -10,8 +10,8 @@ The line layer is used to create lineplots. Lineplots always connects records al
 The following aesthetics are recognised by the line layer.
 
 ### Required
-* `x`: Position along the x-axis
-* `y`: Position along the y-axis
+* Primary axis (e.g. `x`): The value of the independent variable.
+* Secondary axis (e.g. `y`): The value of the dependent variable.
 
 ### Optional
 * `colour`/`stroke`: The colour of the line
@@ -21,9 +21,13 @@ The following aesthetics are recognised by the line layer.
 
 ## Settings
 * `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
+* `orientation`: The orientation of the layer. Either `'aligned'` (default), or `'transposed'`. Determines if the layers primary axis is aligned with the coordinate systems first axis or not
 
 ## Data transformation
-The line layer does not transform its data but passes it through unchanged
+The line layer sorts the data along its primary axis
+
+## Orientation
+Line plots are sorted and connected along their primary axis. Since the primary axis cannot be deduced from the mapping it must be specified using the `orientation` setting. E.g. if you wish to create a vertical line plot you need to set `orientation => 'transposed'` to indicate that the primary layer axis follows the second axis of the coordinate system.
 
 ## Examples
 

@@ -861,4 +861,70 @@ mod integration_tests {
         assert!(!layer0_rows.is_empty(), "Should have layer data rows");
         assert_eq!(layer0_rows[0][&stroke_col], "value");
     }
+
+    #[test]
+    fn test_orientation_setting_rejected_with_helpful_error() {
+        // Test orientation setting behavior for different geom types
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // 1. Bar geom (has implicit orientation) - should reject
+        // Orientation is auto-detected based on mappings, not settable via SETTING
+        let query = r#"
+            SELECT 'A' as category, 10 as value
+            VISUALISE
+            DRAW bar MAPPING category AS x, value AS y SETTING orientation => 'horizontal'
+        "#;
+
+        let result = execute::prepare_data_with_reader(query, &reader);
+        match result {
+            Err(e) => {
+                let err = e.to_string();
+                assert!(
+                    err.contains("Invalid setting 'orientation'"),
+                    "Error should mention invalid setting: {}",
+                    err
+                );
+                assert!(
+                    err.contains("bar"),
+                    "Error should mention the geom type: {}",
+                    err
+                );
+            }
+            Ok(_) => panic!("Should reject orientation setting for bar geom"),
+        }
+
+        // 2. Point geom (symmetrical, no orientation concept) - should reject
+        let query2 = r#"
+            SELECT 1 as x, 2 as y
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y SETTING orientation => 'horizontal'
+        "#;
+
+        let result2 = execute::prepare_data_with_reader(query2, &reader);
+        match result2 {
+            Err(e) => {
+                let err2 = e.to_string();
+                assert!(
+                    err2.contains("Invalid setting 'orientation'"),
+                    "Error should mention invalid setting: {}",
+                    err2
+                );
+            }
+            Ok(_) => panic!("Should reject orientation setting for point geom"),
+        }
+
+        // 3. Line geom (has orientation in default_params) - should accept
+        let query3 = r#"
+            SELECT 1 as x, 2 as y
+            VISUALISE
+            DRAW line MAPPING x AS x, y AS y SETTING orientation => 'aligned'
+        "#;
+
+        let result3 = execute::prepare_data_with_reader(query3, &reader);
+        assert!(
+            result3.is_ok(),
+            "Line geom should accept orientation setting: {:?}",
+            result3.err()
+        );
+    }
 }

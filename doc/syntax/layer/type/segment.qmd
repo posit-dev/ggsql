@@ -4,18 +4,18 @@ title: "Segment"
 
 > Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
-The segment layer is used to create line segments between two endpoints. If differs from [lines](line.qmd) and [paths](path.qmd) in that it connects just two points rather than many. Data is expected to be in a different shape, with 4 coordinates for the start (x, y) and end (xend, yend) points on a single row.
+The segment layer is used to create line segments between two endpoints. It differs from [lines](line.qmd) and [paths](path.qmd) in that it connects just two points rather than many. Data is expected to be in a different shape, with 4 coordinates for the start (e.g. `x`/`y`) and end (e.g. `xend`/`yend`) points on a single row.
 
 ## Aesthetics
 The following aesthetics are recognised by the segment layer.
 
 ### Required
-* `x`: Position along the x-axis of the start point.
-* `y`: Position along the y-axis of the end point.
-* `xend`\*: Position along the x-axis of the end point.
-* `yend`\*: Position along the y-axis of the end point.
+* Primary axis (e.g. `x`): Start position along the primary axis.
+* Primary axis end (e.g. `xend`): End position along the primary axis.
+* Secondary axis (e.g. `y`): Start position along the secondary axis.
+* Secondary axis end (e.g. `yend`): end position along the secondary axis.
 
-\* Only one of `xend` and `yend` is required. 
+\* Only one of `end` value is strictly required. 
 If one is missing, it takes on the value of the start point.
 
 ### Optional
@@ -25,12 +25,13 @@ If one is missing, it takes on the value of the start point.
 * `linetype`: The type of the line, i.e. the dashing pattern.
 
 ## Settings
-The segment layer has no additional settings.
+* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
 
 ## Data transformation
 The segment layer does not transform its data but passes it through unchanged.
 
-## Data transformation
+## Orientation
+The segment layer is symmetric in how it regards its axes and thus doesn't exhibit any orientation.
 
 ## Examples
 
