@@ -20,7 +20,10 @@ pub use geom::{
 // Re-export position types for convenience
 pub use position::{Position, PositionTrait, PositionType};
 
-use crate::plot::types::{AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression};
+use crate::plot::{
+    is_facet_aesthetic,
+    types::{AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression},
+};
 
 /// A single visualization layer (from DRAW clause)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -177,6 +180,9 @@ impl Layer {
         let mut extra: Vec<&str> = Vec::new();
         let supported = self.geom.aesthetics().supported();
         for aesthetic in self.mappings.aesthetics.keys() {
+            if is_facet_aesthetic(aesthetic) {
+                continue;
+            }
             if !supported.contains(&aesthetic.as_str()) {
                 extra.push(aesthetic);
             }
