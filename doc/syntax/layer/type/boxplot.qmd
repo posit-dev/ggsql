@@ -82,7 +82,6 @@ Consider more observations as outliers by setting a smaller `coef`:
 
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
-Create a horizontal boxplot by swapping `x` and `y`:
   MAPPING species AS x, bill_len AS y
   SETTING coef => 0.1
 ```
