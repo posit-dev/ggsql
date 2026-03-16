@@ -71,6 +71,8 @@ pub struct ScaleDataContext {
     pub dtype: Option<DataType>,
     /// Whether this is discrete data
     pub is_discrete: bool,
+    /// Override for default expand factors (set by caller based on coord context)
+    pub default_expand: Option<(f64, f64)>,
 }
 
 impl ScaleDataContext {
@@ -80,6 +82,7 @@ impl ScaleDataContext {
             range: None,
             dtype: None,
             is_discrete: false,
+            default_expand: None,
         }
     }
 
@@ -123,6 +126,7 @@ impl ScaleDataContext {
             range,
             dtype,
             is_discrete,
+            default_expand: None,
         }
     }
 
@@ -148,6 +152,7 @@ impl ScaleDataContext {
             range,
             dtype,
             is_discrete,
+            default_expand: None,
         }
     }
 
@@ -1637,11 +1642,43 @@ pub(crate) fn expand_numeric_range_selective(
 }
 
 /// Get expand factors from properties, using defaults for continuous/temporal scales.
+#[allow(dead_code)]
 pub(crate) fn get_expand_factors(properties: &HashMap<String, ParameterValue>) -> (f64, f64) {
     properties
         .get("expand")
         .and_then(parse_expand_value)
         .unwrap_or((DEFAULT_EXPAND_MULT, DEFAULT_EXPAND_ADD))
+}
+
+/// Get expand factors with aesthetic-aware defaults.
+///
+/// Uses `context.default_expand` if set (e.g., for polar full-circle theta).
+/// Users can still explicitly set expand via SETTING if they want expansion.
+pub(crate) fn get_expand_factors_for_aesthetic(
+    properties: &HashMap<String, ParameterValue>,
+    _aesthetic: &str,
+    context: &ScaleDataContext,
+    user_explicit_expand: bool,
+) -> (f64, f64) {
+    // If user explicitly set expand in their SCALE SETTING, use their value
+    if user_explicit_expand {
+        if let Some(expand) = properties.get("expand").and_then(parse_expand_value) {
+            return expand;
+        }
+    }
+
+    // Use context-provided default expand if set (e.g., zero for polar full-circle theta)
+    if let Some(expand) = context.default_expand {
+        return expand;
+    }
+
+    // Use the resolved (possibly default) expand value for other aesthetics
+    if let Some(expand) = properties.get("expand").and_then(parse_expand_value) {
+        return expand;
+    }
+
+    // Final fallback (should not normally reach here after resolve_properties)
+    (DEFAULT_EXPAND_MULT, DEFAULT_EXPAND_ADD)
 }
 
 /// Clip an input range to a transform's valid domain.
@@ -1705,6 +1742,9 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
     context: &ScaleDataContext,
     aesthetic: &str,
 ) -> Result<ResolveCommonResult, String> {
+    // Check if user explicitly set expand BEFORE resolve_properties fills in defaults
+    let user_explicit_expand = scale.properties.contains_key("expand");
+
     // 1. Resolve properties (fills in defaults, validates)
     scale.properties = scale_type.resolve_properties(aesthetic, &scale.properties)?;
 
@@ -1740,7 +1780,15 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
     // This ensures expansion is calculated on the final range span.
     // IMPORTANT: Only expand values that were inferred (originally null), not explicit user values.
     // For example, `FROM [0, null]` should keep min=0 and only expand max.
-    let (mult, add) = get_expand_factors(&scale.properties);
+    //
+    // For polar coordinates, pos2 (theta) defaults to zero expansion since it's angular/categorical.
+    // Users can still explicitly set expand if they want.
+    let (mult, add) = get_expand_factors_for_aesthetic(
+        &scale.properties,
+        aesthetic,
+        context,
+        user_explicit_expand,
+    );
 
     // Track the original user range to know which values are explicit vs inferred
     let original_user_range = scale.input_range.clone();

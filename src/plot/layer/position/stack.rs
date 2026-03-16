@@ -100,16 +100,20 @@ fn is_axis_stackable(spec: &Plot, layer: &Layer, df: &DataFrame, axis: &str) -> 
         return false;
     }
 
+    // Helper to check if an aesthetic is defined in mappings OR remappings
+    // (remappings come from default_remappings for stat geoms like bar)
+    let has_aesthetic = |aes: &str| -> bool {
+        layer.mappings.contains_key(aes) || layer.remappings.contains_key(aes)
+    };
+
     // Check for pos/posend pair (e.g., pos2/pos2end)
     let end_aesthetic = format!("{}end", axis);
-    let has_end_pair =
-        layer.mappings.contains_key(axis) && layer.mappings.contains_key(&end_aesthetic);
+    let has_end_pair = has_aesthetic(axis) && has_aesthetic(&end_aesthetic);
 
     // Check for posmin/posmax pair (e.g., pos2min/pos2max)
     let min_aesthetic = format!("{}min", axis);
     let max_aesthetic = format!("{}max", axis);
-    let has_minmax_pair =
-        layer.mappings.contains_key(&min_aesthetic) && layer.mappings.contains_key(&max_aesthetic);
+    let has_minmax_pair = has_aesthetic(&min_aesthetic) && has_aesthetic(&max_aesthetic);
 
     // Check that each row has zero baseline in one of the range columns
     if has_end_pair {
@@ -134,13 +138,30 @@ fn has_zero_baseline_per_row(df: &DataFrame, col_a: &str, col_b: &str) -> bool {
     let (Ok(a), Ok(b)) = (df.column(col_a), df.column(col_b)) else {
         return false;
     };
-    let (Ok(a_f64), Ok(b_f64)) = (a.f64(), b.f64()) else {
+
+    // Cast columns to f64 for comparison - handle both Int64 and Float64 sources
+    let Ok(a_casted) = a.cast(&polars::datatypes::DataType::Float64) else {
         return false;
     };
+    let Ok(b_casted) = b.cast(&polars::datatypes::DataType::Float64) else {
+        return false;
+    };
+
+    let Ok(a_vals) = a_casted.f64() else {
+        return false;
+    };
+    let Ok(b_vals) = b_casted.f64() else {
+        return false;
+    };
+
+    // Collect values to avoid borrow issues
+    let a_vec: Vec<Option<f64>> = a_vals.into_iter().collect();
+    let b_vec: Vec<Option<f64>> = b_vals.into_iter().collect();
+
     // For each row, either a or b must be 0
-    a_f64
+    a_vec
         .into_iter()
-        .zip(b_f64)
+        .zip(b_vec)
         .all(|(a_val, b_val)| a_val == Some(0.0) || b_val == Some(0.0))
 }
 

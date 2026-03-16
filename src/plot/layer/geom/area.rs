@@ -1,8 +1,10 @@
 //! Area geom implementation
 
+use crate::plot::layer::orientation::ALIGNED;
 use crate::plot::{types::DefaultAestheticValue, DefaultParam, DefaultParamValue};
+use crate::{naming, Mappings};
 
-use super::{DefaultAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 
 /// Area geom - filled area charts
 #[derive(Debug, Clone, Copy)]
@@ -32,10 +34,40 @@ impl GeomTrait for Area {
     }
 
     fn default_params(&self) -> &'static [DefaultParam] {
-        &[DefaultParam {
-            name: "position",
-            default: DefaultParamValue::String("stack"),
-        }]
+        &[
+            DefaultParam {
+                name: "position",
+                default: DefaultParamValue::String("stack"),
+            },
+            DefaultParam {
+                name: "orientation",
+                default: DefaultParamValue::String(ALIGNED),
+            },
+        ]
+    }
+
+    fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
+        true
+    }
+
+    fn apply_stat_transform(
+        &self,
+        query: &str,
+        _schema: &crate::plot::Schema,
+        _aesthetics: &Mappings,
+        _group_by: &[String],
+        _parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
+        _execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
+        _dialect: &dyn crate::reader::SqlDialect,
+    ) -> crate::Result<StatResult> {
+        // Area geom needs ordering by pos1 (domain axis) for proper rendering
+        let order_col = naming::aesthetic_column("pos1");
+        Ok(StatResult::Transformed {
+            query: format!("{} ORDER BY \"{}\"", query, order_col),
+            stat_columns: vec![],
+            dummy_columns: vec![],
+            consumed_aesthetics: vec![],
+        })
     }
 }
 

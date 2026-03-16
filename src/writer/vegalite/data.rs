@@ -4,6 +4,9 @@
 //! including temporal type handling and binned data transformations.
 
 use crate::plot::scale::ScaleTypeKind;
+
+/// Column name for row index (used to preserve data order in Vega-Lite)
+pub(super) const ROW_INDEX_COLUMN: &str = "__ggsql_row_index__";
 // ArrayElement is used for temporal parsing
 #[allow(unused_imports)]
 use crate::plot::ArrayElement;
@@ -389,7 +392,9 @@ pub(super) fn unify_datasets(datasets: &Map<String, Value>) -> Result<Vec<Value>
     // 2. For each dataset, for each row:
     //    - Include all columns (null for missing)
     //    - Add __ggsql_source__ field with dataset key
+    //    - Add __ggsql_row_index__ field for order preservation
     let mut unified = Vec::new();
+    let mut row_index: usize = 0;
     for (key, values) in datasets {
         if let Some(arr) = values.as_array() {
             for row in arr {
@@ -404,6 +409,10 @@ pub(super) fn unify_datasets(datasets: &Map<String, Value>) -> Result<Vec<Value>
 
                     // Add source identifier
                     new_row.insert(naming::SOURCE_COLUMN.to_string(), json!(key));
+
+                    // Add row index for order preservation (used by line/path/polygon geoms)
+                    new_row.insert(ROW_INDEX_COLUMN.to_string(), json!(row_index));
+                    row_index += 1;
 
                     unified.push(Value::Object(new_row));
                 }

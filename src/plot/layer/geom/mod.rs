@@ -223,7 +223,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
     /// Returns valid parameter names for SETTING clause.
     ///
-    /// Combines supported aesthetics with non-aesthetic parameters.
+    /// Combines supported aesthetics with non-aesthetic parameters from default_params.
     fn valid_settings(&self) -> Vec<&'static str> {
         let mut valid: Vec<&'static str> = self.aesthetics().supported();
         for param in self.default_params() {
