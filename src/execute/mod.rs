@@ -2331,7 +2331,7 @@ mod tests {
             Ok(_) => panic!("Expected error"),
         };
         assert!(
-            err_msg.contains("'y'"),
+            err_msg.contains("`y`"),
             "Error should mention user-facing name 'y', got: {}",
             err_msg
         );
@@ -2371,7 +2371,7 @@ mod tests {
             Ok(_) => panic!("Expected error"),
         };
         assert!(
-            err_msg.contains("'xmin'"),
+            err_msg.contains("`xmin`"),
             "Error should mention user-facing name 'xmin', got: {}",
             err_msg
         );

@@ -168,22 +168,28 @@ impl Layer {
         &self,
         context: &Option<AestheticContext>,
     ) -> std::result::Result<(), String> {
+        // If there is aesthetic context, translate to user-facing form
+        let translate = |aes: &str| -> String {
+            let name = match context {
+                Some(ctx) => ctx.map_internal_to_user(aes),
+                None => aes.to_string(),
+            };
+            format!("`{}`", name)
+        };
+
         // Check if all required aesthetics exist.
         let mut missing = Vec::new();
         for aesthetic in self.geom.aesthetics().required() {
             if !self.mappings.contains_key(aesthetic) {
-                let name = match context {
-                    Some(ctx) => ctx.map_internal_to_user(aesthetic),
-                    _ => aesthetic.to_string(),
-                };
-                missing.push(name);
+                missing.push(translate(aesthetic));
             }
         }
         if !missing.is_empty() {
             return Err(format!(
-                "Layer '{}' mapping requires the '{}' aesthetic(s).",
+                "Layer '{}' mapping requires the {} aesthetic{s}.",
                 self.geom,
-                missing.join(", ")
+                missing.join(", "),
+                s = if missing.len() > 1 { "s" } else { "" }
             ));
         }
         // Check if any unsupported mappings are present
@@ -194,18 +200,15 @@ impl Layer {
                 continue;
             }
             if !supported.contains(&aesthetic.as_str()) {
-                let name = match context {
-                    Some(ctx) => ctx.map_internal_to_user(aesthetic),
-                    _ => aesthetic.to_string(),
-                };
-                extra.push(name);
+                extra.push(translate(aesthetic));
             }
         }
         if !extra.is_empty() {
             return Err(format!(
-                "Layer '{}' does not support the '{}' mapping(s).",
+                "Layer '{}' does not support the {} mapping{s}.",
                 self.geom,
-                extra.join(", ")
+                extra.join(", "),
+                s = if extra.len() > 1 { "s" } else { "" }
             ));
         }
         Ok(())
