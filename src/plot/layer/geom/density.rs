@@ -89,17 +89,12 @@ impl GeomTrait for Density {
         group_by: &[String],
         parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
-        dialect: &dyn SqlDialect
+        dialect: &dyn SqlDialect,
     ) -> crate::Result<super::StatResult> {
         stat_density(
-            query,
-            aesthetics,
-            "pos1",
-            None,
-            group_by,
-            parameters,
+            query, aesthetics, "pos1", None, group_by, parameters,
             false, // Don't trim - show full density including zeros
-            dialect
+            dialect,
         )
     }
 }
@@ -434,10 +429,8 @@ fn build_grid_cte(
                 )
             })
             .collect();
-        let grid_groups_select: Vec<String> = groups
-            .iter()
-            .map(|g| format!("full_grid.{}", g))
-            .collect();
+        let grid_groups_select: Vec<String> =
+            groups.iter().map(|g| format!("full_grid.{}", g)).collect();
 
         format!(
             "{seq_cte},
@@ -723,10 +716,15 @@ mod tests {
         // Compute grid spacing dynamically from actual data
         let x_col = df.column("__ggsql_stat_x").expect("x exists");
         // Cast to f64 if needed (AnsiDialect generates f32 from REAL)
-        let x_col = x_col.cast(&polars::prelude::DataType::Float64).expect("can cast to f64");
+        let x_col = x_col
+            .cast(&polars::prelude::DataType::Float64)
+            .expect("can cast to f64");
         let x_vals = x_col.f64().expect("x is f64");
         let x_min = x_vals.into_iter().flatten().fold(f64::INFINITY, f64::min);
-        let x_max = x_vals.into_iter().flatten().fold(f64::NEG_INFINITY, f64::max);
+        let x_max = x_vals
+            .into_iter()
+            .flatten()
+            .fold(f64::NEG_INFINITY, f64::max);
         let dx = (x_max - x_min) / 511.0; // (n - 1) for 512 points
 
         let density_col = df
@@ -768,7 +766,10 @@ mod tests {
         // Verify bandwidth computation executes
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let df = reader
-            .execute_sql(&format!("{}\nSELECT bw, x_min, x_max FROM bandwidth", bw_cte))
+            .execute_sql(&format!(
+                "{}\nSELECT bw, x_min, x_max FROM bandwidth",
+                bw_cte
+            ))
             .expect("Bandwidth SQL should execute");
 
         assert_eq!(df.get_column_names(), vec!["bw", "x_min", "x_max"]);
@@ -789,10 +790,16 @@ mod tests {
 
         // Verify grouped bandwidth computation executes
         let df = reader
-            .execute_sql(&format!("{}\nSELECT bw, region, x_min, x_max FROM bandwidth", bw_cte))
+            .execute_sql(&format!(
+                "{}\nSELECT bw, region, x_min, x_max FROM bandwidth",
+                bw_cte
+            ))
             .expect("Grouped bandwidth SQL should execute");
 
-        assert_eq!(df.get_column_names(), vec!["bw", "region", "x_min", "x_max"]);
+        assert_eq!(
+            df.get_column_names(),
+            vec!["bw", "region", "x_min", "x_max"]
+        );
         assert_eq!(df.height(), 2); // Two groups: A and B
     }
 
@@ -832,10 +839,15 @@ mod tests {
         // Get actual grid spacing from the data (dynamically computed range)
         let x_col = df.column("__ggsql_stat_x").expect("x exists");
         // Cast to f64 if needed (AnsiDialect generates f32 from REAL)
-        let x_col = x_col.cast(&polars::prelude::DataType::Float64).expect("can cast to f64");
+        let x_col = x_col
+            .cast(&polars::prelude::DataType::Float64)
+            .expect("can cast to f64");
         let x_vals = x_col.f64().expect("x is f64");
         let x_min = x_vals.into_iter().flatten().fold(f64::INFINITY, f64::min);
-        let x_max = x_vals.into_iter().flatten().fold(f64::NEG_INFINITY, f64::max);
+        let x_max = x_vals
+            .into_iter()
+            .flatten()
+            .fold(f64::NEG_INFINITY, f64::max);
         let dx = (x_max - x_min) / (df.height() as f64 - 1.0);
 
         let density_col = df.column("__ggsql_stat_density").expect("density exists");
@@ -945,14 +957,8 @@ mod tests {
         // With explicit uniform weights (should be equivalent)
         let query_weighted = "SELECT x, 1.0 AS weight FROM (VALUES (1.0), (2.0), (3.0)) AS t(x)";
         let data_cte_weighted = build_data_cte("x", None, Some("weight"), query_weighted, &groups);
-        let sql_weighted = compute_density(
-            "x",
-            &groups,
-            kernel,
-            &bw_cte,
-            &data_cte_weighted,
-            &grid_cte,
-        );
+        let sql_weighted =
+            compute_density("x", &groups, kernel, &bw_cte, &data_cte_weighted, &grid_cte);
         let df_weighted = reader
             .execute_sql(&sql_weighted)
             .expect("SQL should execute");
