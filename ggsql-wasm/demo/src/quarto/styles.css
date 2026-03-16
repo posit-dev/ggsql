@@ -1,0 +1,34 @@
+/* ggsql Quarto interactive editor styles */
+
+.ggsql-editor-wrapper {
+  position: relative;
+  border: 1px solid #94D2BD;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 1em 0;
+}
+
+.ggsql-editor-wrapper:focus-within {
+  border-color: #005F73;
+  box-shadow: 0 0 0 2px rgba(0, 95, 115, 0.15);
+}
+
+.ggsql-editor-container {
+  width: 100%;
+}
+
+.ggsql-error-display {
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: monospace;
+  color: #AE2012;
+  background: #FFF0ED;
+  border-top: 1px solid #E5A4A0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: none;
+}
+
+.ggsql-error-display.visible {
+  display: block;
+}

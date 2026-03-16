@@ -275,9 +275,20 @@ impl GeomRenderer for BarRenderer {
             Some(ParameterValue::Number(w)) => *w,
             _ => 0.9,
         };
+
+        // For dodged bars, use expression-based width with the adjusted width
+        // For non-dodged bars, use band-relative width
+        let width_value = if let Some(adjusted) = layer.adjusted_width {
+            // Use bandwidth expression for dodged bars
+            json!({"expr": format!("bandwidth('x') * {}", adjusted)})
+        } else {
+            json!({"band": width})
+        };
+
         layer_spec["mark"] = json!({
             "type": "bar",
-            "width": {"band": width},
+            "width": width_value,
+            "align": "center",
             "clip": true
         });
         Ok(())
@@ -507,44 +518,6 @@ impl GeomRenderer for RibbonRenderer {
 }
 
 // =============================================================================
-// Area Renderer
-// =============================================================================
-
-/// Renderer for area geom - handles stacking options
-pub struct AreaRenderer;
-
-impl GeomRenderer for AreaRenderer {
-    fn modify_encoding(
-        &self,
-        encoding: &mut Map<String, Value>,
-        layer: &Layer,
-        _context: &RenderContext,
-    ) -> Result<()> {
-        if let Some(mut y) = encoding.remove("y") {
-            let stack_value;
-            if let Some(ParameterValue::String(stack)) = layer.parameters.get("stacking") {
-                stack_value = match stack.as_str() {
-                    "on" => json!("zero"),
-                    "off" => Value::Null,
-                    "fill" => json!("normalize"),
-                    _ => {
-                        return Err(GgsqlError::ValidationError(format!(
-                            "Area layer's `stacking` must be \"on\", \"off\" or \"fill\", not \"{}\"",
-                            stack
-                        )));
-                    }
-                }
-            } else {
-                stack_value = Value::Null
-            }
-            y["stack"] = stack_value;
-            encoding.insert("y".to_string(), y);
-        }
-        Ok(())
-    }
-}
-
-// =============================================================================
 // Polygon Renderer
 // =============================================================================
 
@@ -603,10 +576,6 @@ impl GeomRenderer for ViolinRenderer {
         });
         let offset_col = naming::aesthetic_column("offset");
 
-        // Mirror the density on both sides.
-        // It'll be implemented as an offset.
-        let violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
-
         // We use an order calculation to create a proper closed shape.
         // Right side (+ offset), sort by -y (top -> bottom)
         // Left side (- offset), sort by +y (bottom -> top)
@@ -622,15 +591,31 @@ impl GeomRenderer for ViolinRenderer {
             .cloned()
             .unwrap_or_default();
 
+        // Mirror the offset on both sides (offset is already scaled by post_process)
+        let violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
+
+        // Check if pos1offset exists (from dodging) - we'll combine it with violin offset
+        let pos1offset_col = naming::aesthetic_column("pos1offset");
+
         let mut transforms = existing_transforms;
         transforms.extend(vec![
             json!({
+                // Mirror offset on both sides (offset is pre-scaled to [0, 0.5 * width])
                 "calculate": violin_offset,
                 "as": "violin_offsets"
             }),
             json!({
                 "flatten": ["violin_offsets"],
                 "as": ["__violin_offset"]
+            }),
+            json!({
+                // Add pos1offset (dodge displacement) if it exists, otherwise use violin offset directly
+                // This positions the violin correctly when dodging
+                "calculate": format!(
+                    "datum.{pos1offset} != null ? datum.__violin_offset + datum.{pos1offset} : datum.__violin_offset",
+                    pos1offset = pos1offset_col
+                ),
+                "as": "__final_offset"
             }),
             json!({
                 "calculate": calc_order,
@@ -713,8 +698,11 @@ impl GeomRenderer for ViolinRenderer {
         encoding.insert(
             "xOffset".to_string(),
             json!({
-                "field": "__violin_offset",
-                "type": "quantitative"
+                "field": "__final_offset",
+                "type": "quantitative",
+                "scale": {
+                    "domain": [-0.5, 0.5]
+                }
             }),
         );
         encoding.insert(
@@ -841,8 +829,6 @@ impl GeomRenderer for ErrorBarRenderer {
 
 /// Metadata for boxplot rendering
 struct BoxplotMetadata {
-    /// Grouping column names
-    grouping_cols: Vec<String>,
     /// Whether there are any outliers
     has_outliers: bool,
 }
@@ -853,30 +839,15 @@ pub struct BoxplotRenderer;
 impl BoxplotRenderer {
     /// Prepare boxplot data by splitting into type-specific datasets.
     ///
-    /// Returns a HashMap of type_suffix -> data_values, plus grouping_cols and has_outliers.
+    /// Returns a HashMap of type_suffix -> data_values, plus has_outliers flag.
     /// Type suffixes are: "lower_whisker", "upper_whisker", "box", "median", "outlier"
-    #[allow(clippy::type_complexity)]
     fn prepare_components(
         &self,
         data: &DataFrame,
         binned_columns: &HashMap<String, Vec<f64>>,
-    ) -> Result<(HashMap<String, Vec<Value>>, Vec<String>, bool)> {
+    ) -> Result<(HashMap<String, Vec<Value>>, bool)> {
         let type_col = naming::aesthetic_column("type");
         let type_col = type_col.as_str();
-        let value_col = naming::aesthetic_column("pos2");
-        let value_col = value_col.as_str();
-        let value2_col = naming::aesthetic_column("pos2end");
-        let value2_col = value2_col.as_str();
-
-        // Find grouping columns (all columns except type, value, value2)
-        let grouping_cols: Vec<String> = data
-            .get_column_names()
-            .iter()
-            .filter(|&col| {
-                col.as_str() != type_col && col.as_str() != value_col && col.as_str() != value2_col
-            })
-            .map(|s| s.to_string())
-            .collect();
 
         // Get the type column for filtering
         let type_series = data
@@ -915,7 +886,7 @@ impl BoxplotRenderer {
             type_datasets.insert(type_name.to_string(), values);
         }
 
-        Ok((type_datasets, grouping_cols, has_outliers))
+        Ok((type_datasets, has_outliers))
     }
 
     /// Render boxplot layers using filter transforms on the unified dataset.
@@ -926,7 +897,6 @@ impl BoxplotRenderer {
         prototype: Value,
         layer: &Layer,
         base_key: &str,
-        grouping_cols: &[String],
         has_outliers: bool,
     ) -> Result<Vec<Value>> {
         let mut layers: Vec<Value> = Vec::new();
@@ -941,7 +911,8 @@ impl BoxplotRenderer {
             .ok_or_else(|| {
                 GgsqlError::WriterError("Boxplot requires 'x' aesthetic mapping".to_string())
             })?;
-        let y_col = layer
+        // Validate y aesthetic exists (not used directly but required for boxplot)
+        layer
             .mappings
             .get("pos2")
             .and_then(|y| y.column_name())
@@ -951,23 +922,26 @@ impl BoxplotRenderer {
 
         // Set orientation
         let is_horizontal = x_col == value_col;
-        let group_col = if is_horizontal { y_col } else { x_col };
-        let offset = if is_horizontal { "yOffset" } else { "xOffset" };
         let value_var1 = if is_horizontal { "x" } else { "y" };
         let value_var2 = if is_horizontal { "x2" } else { "y2" };
 
-        // Find dodge groups (grouping cols minus the axis group col)
-        let dodge_groups: Vec<&str> = grouping_cols
-            .iter()
-            .filter(|col| col.as_str() != group_col)
-            .map(|s| s.as_str())
-            .collect();
-
         // Get width parameter
-        let mut width = 0.9;
-        if let Some(ParameterValue::Number(num)) = layer.parameters.get("width") {
-            width = *num;
-        }
+        let base_width = layer
+            .parameters
+            .get("width")
+            .and_then(|v| match v {
+                ParameterValue::Number(n) => Some(*n),
+                _ => None,
+            })
+            .unwrap_or(0.9);
+
+        // For dodged boxplots, use expression-based width with adjusted_width
+        // For non-dodged boxplots, use band-relative width
+        let width_value = if let Some(adjusted) = layer.adjusted_width {
+            json!({"expr": format!("bandwidth('x') * {}", adjusted)})
+        } else {
+            json!({"band": base_width})
+        };
 
         // Helper to create filter transform for source selection
         let make_source_filter = |type_suffix: &str| -> Value {
@@ -1006,11 +980,6 @@ impl BoxplotRenderer {
             );
             if points["encoding"].get("color").is_some() {
                 points["mark"]["filled"] = json!(true);
-            }
-
-            // Add dodging offset
-            if !dodge_groups.is_empty() {
-                points["encoding"][offset] = json!({"field": dodge_groups[0]});
             }
 
             layers.push(points);
@@ -1076,7 +1045,7 @@ impl BoxplotRenderer {
             "box",
             json!({
                 "type": "bar",
-                "width": {"band": width},
+                "width": width_value,
                 "align": "center"
             }),
         );
@@ -1089,20 +1058,11 @@ impl BoxplotRenderer {
             "median",
             json!({
                 "type": "tick",
-                "width": {"band": width},
+                "width": width_value,
                 "align": "center"
             }),
         );
         median_line["encoding"][value_var1] = y_encoding;
-
-        // Add dodging to all summary layers
-        if !dodge_groups.is_empty() {
-            let offset_val = json!({"field": dodge_groups[0]});
-            lower_whiskers["encoding"][offset] = offset_val.clone();
-            upper_whiskers["encoding"][offset] = offset_val.clone();
-            box_part["encoding"][offset] = offset_val.clone();
-            median_line["encoding"][offset] = offset_val;
-        }
 
         layers.push(lower_whiskers);
         layers.push(upper_whiskers);
@@ -1121,15 +1081,11 @@ impl GeomRenderer for BoxplotRenderer {
         binned_columns: &HashMap<String, Vec<f64>>,
         _context: &RenderContext,
     ) -> Result<PreparedData> {
-        let (components, grouping_cols, has_outliers) =
-            self.prepare_components(df, binned_columns)?;
+        let (components, has_outliers) = self.prepare_components(df, binned_columns)?;
 
         Ok(PreparedData::Composite {
             components,
-            metadata: Box::new(BoxplotMetadata {
-                grouping_cols,
-                has_outliers,
-            }),
+            metadata: Box::new(BoxplotMetadata { has_outliers }),
         })
     }
 
@@ -1155,13 +1111,7 @@ impl GeomRenderer for BoxplotRenderer {
             GgsqlError::InternalError("Failed to downcast boxplot metadata".to_string())
         })?;
 
-        self.render_layers(
-            prototype,
-            layer,
-            data_key,
-            &info.grouping_cols,
-            info.has_outliers,
-        )
+        self.render_layers(prototype, layer, data_key, info.has_outliers)
     }
 }
 
@@ -1174,17 +1124,15 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
     match geom.geom_type() {
         GeomType::Path => Box::new(PathRenderer),
         GeomType::Bar => Box::new(BarRenderer),
-        GeomType::Area => Box::new(AreaRenderer),
         GeomType::Ribbon => Box::new(RibbonRenderer),
         GeomType::Polygon => Box::new(PolygonRenderer),
         GeomType::Boxplot => Box::new(BoxplotRenderer),
-        GeomType::Density => Box::new(AreaRenderer),
         GeomType::Violin => Box::new(ViolinRenderer),
         GeomType::Segment => Box::new(SegmentRenderer),
         GeomType::Linear => Box::new(LinearRenderer),
         GeomType::ErrorBar => Box::new(ErrorBarRenderer),
         GeomType::Rule => Box::new(RuleRenderer),
-        // All other geoms (Point, Line, Tile, etc.) use the default renderer
+        // All other geoms (Point, Line, Area, Density, Tile, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }
 }
@@ -1299,6 +1247,69 @@ mod tests {
                 {"field": "island", "type": "nominal"},
                 {"field": "species", "type": "nominal"}
             ]))
+        );
+    }
+
+    #[test]
+    fn test_violin_mirroring() {
+        use crate::naming;
+
+        let renderer = ViolinRenderer;
+        let context = RenderContext::new(&[]);
+
+        let layer = Layer::new(crate::plot::Geom::violin());
+        let mut layer_spec = json!({
+            "mark": {"type": "line"},
+            "encoding": {
+                "x": {"field": "species", "type": "nominal"},
+                "y": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"}
+            }
+        });
+
+        renderer
+            .modify_spec(&mut layer_spec, &layer, &context)
+            .unwrap();
+
+        // Verify transforms include mirroring (violin_offsets)
+        let transforms = layer_spec["transform"].as_array().unwrap();
+
+        // Find the violin_offsets calculation (mirrors offset on both sides)
+        let mirror_calc = transforms
+            .iter()
+            .find(|t| t.get("as").and_then(|a| a.as_str()) == Some("violin_offsets"));
+        assert!(
+            mirror_calc.is_some(),
+            "Should have violin_offsets mirroring calculation"
+        );
+
+        let calc_expr = mirror_calc.unwrap()["calculate"].as_str().unwrap();
+        let offset_col = naming::aesthetic_column("offset");
+        // Should mirror the offset column: [datum.offset, -datum.offset]
+        assert!(
+            calc_expr.contains(&offset_col),
+            "Mirror calculation should use offset column: {}",
+            calc_expr
+        );
+        assert!(
+            calc_expr.contains("-datum"),
+            "Mirror calculation should negate: {}",
+            calc_expr
+        );
+
+        // Verify flatten transform exists
+        let flatten = transforms.iter().find(|t| t.get("flatten").is_some());
+        assert!(
+            flatten.is_some(),
+            "Should have flatten transform for violin_offsets"
+        );
+
+        // Verify __final_offset calculation (combines with dodge offset)
+        let final_offset = transforms
+            .iter()
+            .find(|t| t.get("as").and_then(|a| a.as_str()) == Some("__final_offset"));
+        assert!(
+            final_offset.is_some(),
+            "Should have __final_offset calculation"
         );
     }
 

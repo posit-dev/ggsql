@@ -70,7 +70,7 @@ const LAYER_PREFIX: &str = concatcp!(GGSQL_PREFIX, "layer_");
 const AES_PREFIX: &str = concatcp!(GGSQL_PREFIX, "aes_");
 
 /// Full prefix for builtin data tables: `__ggsql_data_`
-const DATA_PREFIX: &str = concatcp!(GGSQL_PREFIX, "data_");
+pub const DATA_PREFIX: &str = concatcp!(GGSQL_PREFIX, "data_");
 
 /// Key for global data in the layer data HashMap.
 /// Used as the key in PreparedData.data to store global data that applies to all layers.

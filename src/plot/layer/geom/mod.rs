@@ -75,6 +75,7 @@ pub use tile::Tile;
 pub use violin::Violin;
 
 use crate::plot::types::{DefaultAestheticValue, ParameterValue, Schema};
+use crate::reader::SqlDialect;
 
 /// Enum of all geom types for pattern matching and serialization
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -190,6 +191,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Apply statistical transformation to the layer query.
     ///
     /// The default implementation returns identity (no transformation).
+    #[allow(clippy::too_many_arguments)]
     fn apply_stat_transform(
         &self,
         _query: &str,
@@ -198,8 +200,25 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         _group_by: &[String],
         _parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+        _dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
         Ok(StatResult::Identity)
+    }
+
+    /// Post-process the DataFrame after stat query execution.
+    ///
+    /// This method is called after the stat transform query has been executed
+    /// and allows geoms to modify the resulting data. The default implementation
+    /// returns the data unchanged.
+    ///
+    /// Used by violin to scale the offset column to [0, 0.5 * width] using global
+    /// max normalization before Vega-Lite rendering.
+    fn post_process(
+        &self,
+        df: DataFrame,
+        _parameters: &HashMap<String, ParameterValue>,
+    ) -> Result<DataFrame> {
+        Ok(df)
     }
 
     /// Returns valid parameter names for SETTING clause.
@@ -384,6 +403,7 @@ impl Geom {
     }
 
     /// Apply stat transform
+    #[allow(clippy::too_many_arguments)]
     pub fn apply_stat_transform(
         &self,
         query: &str,
@@ -392,6 +412,7 @@ impl Geom {
         group_by: &[String],
         parameters: &HashMap<String, ParameterValue>,
         execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+        dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
         self.0.apply_stat_transform(
             query,
@@ -400,7 +421,17 @@ impl Geom {
             group_by,
             parameters,
             execute_query,
+            dialect,
         )
+    }
+
+    /// Post-process DataFrame after stat query execution
+    pub fn post_process(
+        &self,
+        df: DataFrame,
+        parameters: &HashMap<String, ParameterValue>,
+    ) -> Result<DataFrame> {
+        self.0.post_process(df, parameters)
     }
 
     /// Get valid settings

@@ -1,6 +1,6 @@
 //! Text geom implementation
 
-use super::{DefaultAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType};
 use crate::plot::types::DefaultAestheticValue;
 
 /// Text geom - text labels at positions
@@ -27,6 +27,13 @@ impl GeomTrait for Text {
                 ("vjust", DefaultAestheticValue::Null),
             ],
         }
+    }
+
+    fn default_params(&self) -> &'static [DefaultParam] {
+        &[DefaultParam {
+            name: "position",
+            default: DefaultParamValue::String("identity"),
+        }]
     }
 }
 

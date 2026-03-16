@@ -86,6 +86,7 @@ fn main() {
     let grammar_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let src_dir = grammar_dir.join("src");
     let parser_c = src_dir.join("parser.c");
+    let grammar_js = grammar_dir.join("grammar.js");
 
     // Re-run this build script if the env var changes.
     println!("cargo:rerun-if-env-changed=GGSQL_SKIP_GENERATE");
@@ -152,4 +153,5 @@ fn main() {
         .compile("parser");
 
     println!("cargo:rerun-if-changed={}", parser_path.to_str().unwrap());
+    println!("cargo:rerun-if-changed={}", grammar_js.to_str().unwrap());
 }

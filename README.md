@@ -1,4 +1,4 @@
-# ggsql - SQL Visualization Grammar
+# <a href="https://ggsql.org"><img src="doc/assets/logo.png" height="50px" alt="ggsql website" /></a> ggsql
 
 A SQL extension for declarative data visualization based on the Grammar of Graphics.
 
@@ -6,339 +6,31 @@ ggsql allows you to write queries that combine SQL data retrieval with visualiza
 
 ## Example
 
-```sql
+```ggsql
 SELECT date, revenue, region
 FROM sales
 WHERE year = 2024
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
+SCALE x SETTING breaks => 'month'
 LABEL title => 'Sales by Region'
-THEME minimal
 ```
 
-## Project Status
+## Why?
+Many data analysts are naturally at home in SQL and spend more time there than in a programming language like Python or R. Having to extract data, context switch to a new programming language, import data, etc. is cumbersome when all you want to do is understand the data you are working with *right now*.
 
-✨ **Active Development** - Core functionality is working with ongoing feature additions.
+ggsql is built for immediate familiarity and alignment with the SQL language. It is further built on the foundation of the grammar of graphics known from [ggplot2](https://ggplot2.tidyverse.org/) which affords a composable syntax capable of simple as well as arbitrarily complex visualizations.
 
-**Completed:**
+The syntax has been designed to be easy to learn, read, and write. This also means that it is a great fit for AI agents to produce as the output query is immediately easy to understand and validate by the user so that you can have certainty in its validity.
 
-- ✅ Complete tree-sitter grammar with SQL + VISUALISE parsing
-- ✅ Full AST type system with validation
-- ✅ DuckDB reader with comprehensive type handling
-- ✅ Vega-Lite writer with multi-layer support
-- ✅ CLI tool (`ggsql`) with parse, exec, and validate commands
-- ✅ REST API server (`ggsql-rest`) with CORS support
-- ✅ Jupyter kernel (`ggsql-jupyter`) with inline Vega-Lite visualizations
-- ✅ VS Code extension (`ggsql-vscode`) with syntax highlighting and Positron IDE integration
-- ✅ Python bindings (`ggsql-python`) with Altair chart output
+## Project status
+We are approaching an alpha release with the main architectural parts finished. Future development will focus on adding new readers (database support) and writers (output types) to compliment the DuckDB/SQLite + Vegalite setup we have focused on during early development.
 
-**Planned:**
+## Installation
+Please follow the instructions on [the website](https://ggsql.org/get_started.html) for up to date information on how to install ggsql.
 
-- 📋 Additional readers
-- 📋 Additional writers
-- 📋 More geom types and statistical transformations
-- 📋 Enhanced theme system
+## Try it out
+ggsql compiles to WASM and can thus be embedded in a website. You can try it out on our [playground](https://ggsql.org/wasm/) (no installation required).
 
-## Architecture
-
-ggsql splits queries at the `VISUALISE` boundary:
-
-- **SQL portion** → passed to pluggable readers (DuckDB, PostgreSQL, CSV, etc.)
-- **VISUALISE portion** → parsed and compiled into visualization specifications
-- **Output** → rendered via pluggable writers (ggplot2, PNG, Vega-Lite, etc.)
-
-## Development Setup
-
-### Getting Started
-
-1. **Clone the repository:**
-
-   ```bash
-   git clone https://github.com/georgestagg/ggsql
-   cd ggsql
-   ```
-
-2. **Install tree-sitter CLI:**
-
-   ```bash
-   npm install -g tree-sitter-cli
-   ```
-
-3. **Build the project:**
-
-   ```bash
-   cargo build
-   ```
-
-4. **Run tests:**
-   ```bash
-   cargo test
-   ```
-
-## Project Structure
-
-```
-ggsql/
-├── Cargo.toml                       # Workspace root configuration
-├── README.md                        # This file
-│
-├── tree-sitter-ggsql/               # Tree-sitter grammar package
-│
-├── src/                             # Main library
-│   ├── lib.rs                       # Public API and re-exports
-│   ├── cli.rs                       # Command-line interface
-│   ├── rest.rs                      # REST API server
-│   ├── parser/                      # Parsing subsystem
-│   ├── reader/                      # Data source readers
-│   └── writer/                      # Visualization writers
-│
-├── ggsql-jupyter/                   # Jupyter kernel
-│
-├── ggsql-vscode/                    # VS Code extension
-│
-└── ggsql-python/                    # Python bindings
-```
-
-## Development Workflow
-
-### Running Tests
-
-```bash
-# Run all tests
-cargo test
-
-# Run specific test modules
-cargo test ast                       # AST type tests
-cargo test splitter                  # Query splitter tests
-cargo test parser                    # All parser tests
-
-# Run without default features (avoids database dependencies)
-cargo test --no-default-features
-
-# Run with specific features
-cargo test --features duckdb,sqlite
-```
-
-### Working with the Grammar
-
-The tree-sitter grammar is in `tree-sitter-ggsql/grammar.js`.
-The grammar is automatically regenerated whenever the `tree-sitter-ggsql` project is build.
-After making changes, you can manually test:
-
-1. **Regenerate the parser:**
-
-   ```bash
-   cd tree-sitter-ggsql
-   tree-sitter generate
-   ```
-
-2. **Test the grammar:**
-
-   ```bash
-   # Test parsing a specific file
-   tree-sitter parse test/corpus/basic.txt
-
-   # Test all corpus files
-   tree-sitter test
-   ```
-
-3. **Debug parsing issues:**
-
-   ```bash
-   # Enable debug mode
-   tree-sitter parse --debug test/corpus/basic.txt
-
-   # Check for conflicts
-   tree-sitter generate --report-states-for-rule=query
-   ```
-
-### Code Organization
-
-- **AST Types** (`src/parser/ast.rs`): Core data structures representing parsed ggsql
-- **Query Splitter** (`src/parser/splitter.rs`): Separates SQL from VISUALISE portions
-- **AST Builder** (`src/parser/builder.rs`): Converts tree-sitter parse trees to typed AST
-- **Error Handling** (`src/parser/error.rs`): Parse-time error types and formatting
-
-### Adding New Grammar Features
-
-1. **Update the grammar** in `tree-sitter-ggsql/grammar.js`
-2. **Add corresponding AST types** in `src/parser/ast.rs`
-3. **Update the AST builder** in `src/parser/builder.rs`
-4. **Add test cases** for the new feature
-5. **Update syntax highlighting** in `tree-sitter-ggsql/queries/highlights.scm`
-
-## Testing Strategy
-
-### Unit Tests
-
-Located alongside the code they test:
-
-- `src/parser/ast.rs` - AST type functionality and validation
-- `src/parser/splitter.rs` - Query splitting edge cases
-- `src/parser/builder.rs` - CST to AST conversion
-
-### Integration Tests
-
-- Full parsing pipeline tests in `src/parser/mod.rs`
-- End-to-end query processing (planned)
-
-### Grammar Tests
-
-- `tree-sitter-ggsql/test/corpus/` - Example queries with expected parse trees
-- Run with `tree-sitter test`
-
-### Running Specific Test Categories
-
-```bash
-# Core AST functionality
-cargo test ast::tests
-
-# Query splitting logic
-cargo test splitter::tests
-
-# Tree-sitter grammar
-cd tree-sitter-ggsql && tree-sitter test
-
-# All parser integration tests
-cargo test parser
-```
-
-## Grammar Specification
-
-See [CLAUDE.md](CLAUDE.md) for the in-progress ggsql grammar specification, including:
-
-- Syntax reference
-- AST structure
-- Implementation phases and architecture
-- Design principles and philosophy
-
-Key grammar elements:
-
-- `VISUALISE [mappings] [FROM source]` - Entry point with global aesthetic mappings
-- `DRAW <geom> [MAPPING] [SETTING] [FILTER]` - Define geometric layers (point, line, bar, etc.)
-- `SCALE <aesthetic> SETTING` - Configure data-to-visual mappings
-- `FACET` - Create small multiples (WRAP for flowing layout, BY for grid)
-- `PROJECT` - Coordinate transformations (cartesian, flip, polar)
-- `LABEL`, `THEME` - Styling and annotation
-
-## Jupyter Kernel
-
-The `ggsql-jupyter` package provides a Jupyter kernel for interactive ggsql queries with inline Vega-Lite visualizations.
-
-### Installation
-
-```bash
-cargo build --release --package ggsql-jupyter
-./target/release/ggsql-jupyter --install
-```
-
-### Usage
-
-After installation, create a new notebook with the "ggsql" kernel or use `%kernel ggsql` in an existing notebook.
-
-```sql
--- Create data
-CREATE TABLE sales AS
-SELECT * FROM (VALUES
-    ('2024-01-01'::DATE, 100, 'North'),
-    ('2024-01-02'::DATE, 120, 'South')
-) AS t(date, revenue, region)
-
--- Visualize with ggsql using global mapping
-SELECT * FROM sales
-VISUALISE date AS x, revenue AS y, region AS color
-DRAW line
-SCALE x SETTING type => 'date'
-LABEL title => 'Sales Trends'
-```
-
-The kernel maintains a persistent DuckDB session across cells, so you can create tables in one cell and query them in another.
-
-### Quarto
-
-A Quarto example can be found in `ggsql-jupyter/tests/quarto/doc.qmd`.
-
-## VS Code Extension
-
-The `ggsql-vscode` extension provides syntax highlighting for ggsql files in Visual Studio Code and Positron IDE.
-
-### Installation
-
-```bash
-# Install dependencies and package the extension
-cd ggsql-vscode
-npm install
-npm install -g @vscode/vsce
-vsce package
-
-# Install the VSIX file
-code --install-extension ggsql-0.1.0.vsix
-
-# For Positron integration, also install the kernel
-cargo run --package ggsql-jupyter -- --install
-```
-
-### Features
-
-- **Syntax highlighting** for ggsql keywords, geoms, aesthetics, and SQL
-- **File association** for `.ggsql`, `.ggsql.sql`, and `.gsql` extensions
-- **Bracket matching** and auto-closing for parentheses and brackets
-- **Comment support** for `--` single-line and `/* */` multi-line comments
-
-The extension uses a TextMate grammar that highlights:
-
-- SQL keywords (SELECT, FROM, WHERE, JOIN, etc.)
-- ggsql clauses (VISUALISE, DRAW, SCALE, PROJECT, FACET, etc.)
-- Geometric objects (point, line, bar, area, etc.)
-- Aesthetics (x, y, color, size, shape, etc.)
-- Scale types (linear, log10, date, viridis, etc.)
-
-### Positron IDE Integration
-
-When running in Positron IDE, the extension provides additional features:
-
-- **Language runtime registration** for executing ggsql queries directly within Positron
-- **Plot pane integration** - visualizations are automatically routed to Positron's Plots pane
-
-## Python Bindings
-
-The `ggsql-python` package provides Python bindings for using ggsql with DataFrames.
-
-### Installation
-
-```bash
-cd ggsql-python
-pip install maturin
-maturin develop
-```
-
-### Usage
-
-```python
-import ggsql
-import polars as pl
-
-# Simple usage with render_altair
-df = pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
-chart = ggsql.render_altair(df, "VISUALISE x, y DRAW point")
-chart.display()
-
-# Two-stage API for full control
-reader = ggsql.DuckDBReader("duckdb://memory")
-reader.register("data", df)
-
-spec = reader.execute("SELECT * FROM data VISUALISE x, y DRAW point")
-
-writer = ggsql.VegaLiteWriter()
-json_output = writer.render(spec)
-```
-
-See the [ggsql-python README](ggsql-python/README.md) for complete API documentation.
-
-## CLI
-
-### Installation
-
-```bash
-cargo install --path src
-```
+## Learn more
+Browse [the documentation](https://ggsql.org/syntax/) to learn of all ggsql has to offer. Complete with interactive examples to try out.

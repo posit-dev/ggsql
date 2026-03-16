@@ -1,0 +1,13 @@
+---
+title: Example Gallery
+listing:
+  contents: examples
+  type: grid
+  grid-columns: 3
+  image-height: 200px
+  fields: [image, title, description]
+  sort: "order"
+  categories: true
+---
+
+Browse examples of ggsql visualizations. Click any example to see the full code and explanation.

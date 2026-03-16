@@ -7,7 +7,7 @@
 use polars::prelude::DataType;
 
 use super::super::transform::{Transform, TransformKind};
-use super::{ScaleTypeKind, ScaleTypeTrait, SqlTypeNames};
+use super::{ScaleTypeKind, ScaleTypeTrait};
 use crate::plot::types::{DefaultParam, DefaultParamValue};
 use crate::plot::ArrayElement;
 
@@ -264,7 +264,7 @@ impl ScaleTypeTrait for Ordinal {
         column_name: &str,
         _column_dtype: &DataType,
         scale: &super::super::Scale,
-        _type_names: &SqlTypeNames,
+        _dialect: &dyn super::SqlDialect,
     ) -> Option<String> {
         // Only apply if input_range is explicitly specified by user
         // (not inferred from data)

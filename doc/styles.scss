@@ -1,5 +1,12 @@
 /*-- scss:rules --*/
 
+// Override Quarto's default padding-top on narrow screens for content after hero
+@media (max-width: 991.98px) {
+  #quarto-content > .hero-banner + .content-block {
+    padding-top: 1rem;
+  }
+}
+
 .navbar {
   .navbar-brand-logo {
     width: 20px;
@@ -17,6 +24,11 @@
 
 code {
   font-variant-ligatures: none
+}
+
+// Add spacing below rendered plots so text doesn't crowd them
+.cell-output-display {
+  margin-bottom: 1.5rem;
 }
 
 .hero-banner {
@@ -64,6 +76,80 @@ code {
     justify-content: center;
     flex-wrap: wrap;
   }
+
+
+  // Wide layout: content box to the right of image
+  @media (min-width: 1200px) {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    min-height: 400px;
+    overflow: hidden;
+
+    // Constrain total width to match content-blocks
+    &>p, .hero-content {
+      max-width: 1200px;
+    }
+
+    &>p {
+      flex: 1 1 auto;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      margin: 0;
+    }
+
+    .hero-image {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      object-position: center;
+      mask-image: linear-gradient(
+        to right,
+        transparent 0%,
+        black 15%,
+        black 85%,
+        transparent 100%
+      );
+      -webkit-mask-image: linear-gradient(
+        to right,
+        transparent 0%,
+        black 15%,
+        black 85%,
+        transparent 100%
+      );
+    }
+
+    .hero-content {
+      flex: 0 0 auto;
+      width: auto;
+      max-width: 400px;
+      padding: 0rem 1rem 1rem;
+      margin: 4rem calc((100vw - 1200px) / 2) 2rem -80px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+      position: relative;
+      z-index: 1;
+
+      h1 {
+        font-size: 1.5rem;
+      }
+
+      p {
+        font-size: 1rem;
+        margin-bottom: 1rem;
+      }
+    }
+
+    .hero-buttons {
+      gap: 0.75rem;
+
+      .btn.btn-lg {
+        padding: 0.6rem 1.25rem;
+        font-size: 0.95rem;
+      }
+    }
+  }
 }
 
 
@@ -96,13 +182,13 @@ code {
     background: var(--brand-paleteal, #DEF1EB);
     color: var(--brand-darkteal);
 
+    > section > p > a {
+      color: black
+    }
+
     > h2 {
       color: var(--brand-darkteal);
       border-bottom-color: var(--brand-darkteal);
-    }
-
-    a {
-      color: var(--brand-teal);
     }
   }
 }
@@ -111,6 +197,12 @@ code {
   display: flex;
   flex-direction: column;
   gap: 2rem;
+
+  // 2-column layout on large screens
+  @media (min-width: 1000px) {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .feature {
@@ -158,20 +250,24 @@ code {
     }
   }
 
-  &:nth-of-type(even) {
+  // Full width text when no code cell - use flexbox for natural flow
+  &:not(:has(.code-copy-outer-scaffold)) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+
     h3 {
-      grid-column: 2;
+      grid-column: unset;
+      grid-row: unset;
     }
 
     > p {
-      grid-column: 2;
-    }
-
-    .code-copy-outer-scaffold {
-      grid-column: 1;
+      grid-column: unset;
+      grid-row: unset;
     }
   }
 
+  // Single-column internal layout on small screens
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto;
@@ -191,6 +287,28 @@ code {
       grid-row: 3;
       padding-top: 0;
     }
+  }
+
+  // Single-column internal layout when features are in 2-column grid
+  @media (min-width: 1000px) {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+
+    h3 {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    > p {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    .code-copy-outer-scaffold {
+      grid-column: 1;
+      grid-row: 3;
+      padding-top: 1rem;
+    }
 
     &:nth-of-type(even) {
       h3, > p, .code-copy-outer-scaffold {
@@ -200,84 +318,37 @@ code {
   }
 }
 
-.workflow-grid {
+.tool-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 2rem;
-}
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
 
-.workflow-item {
-  text-align: center;
-  padding: 1.5rem;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  border-top: 3px solid var(--brand-teal, #0A9396);
-
-  h3 {
-    font-size: 1.1rem;
-    color: var(--brand-darkteal, #005F73);
-    margin-bottom: 0.75rem;
-  }
-
-  p {
-    font-size: 0.95rem;
-    color: var(--brand-black, #001219);
-    line-height: 1.5;
-    margin-bottom: 0.75rem;
-  }
-
-  a {
-    color: var(--brand-teal, #0A9396);
-    font-weight: 500;
-    text-decoration: none;
-
-    &:hover {
-      text-decoration: underline;
-    }
+  // Single row when box is wide
+  @media (min-width: 769px) and (max-width: 999px) {
+    grid-template-columns: repeat(4, 1fr);
   }
 }
 
-.example-container {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2rem;
-  align-items: start;
+.tool-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  font-size: 1.5rem;
+  font-weight: 500;
+  color: var(--brand-darkteal, #005F73);
 
-  @media (max-width: 768px) {
-    grid-template-columns: 1fr;
-  }
-}
-
-.example-code {
-  pre {
+  > p {
     margin: 0;
-    border-radius: 8px;
-    max-height: 500px;
-    overflow-y: auto;
   }
 }
 
-.example-description {
-  h3 {
-    color: var(--brand-darkteal, #005F73);
-    margin-bottom: 1rem;
-  }
-
-  ol {
-    padding-left: 1.25rem;
-
-    li {
-      margin-bottom: 0.5rem;
-      line-height: 1.5;
-    }
-  }
-
-  p {
-    margin-top: 1rem;
-    color: var(--brand-teal, #0A9396);
-    font-style: italic;
-  }
+.tool-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
 }
 
 .cta-section {
@@ -300,6 +371,15 @@ code {
     justify-content: center;
     flex-wrap: wrap;
   }
+}
+
+// Hide category badges on gallery example pages
+.quarto-listing-category {
+  // Keep category sidebar for filtering
+}
+
+body:has(.quarto-title) .quarto-categories {
+  display: none;
 }
 
 .btn {
@@ -350,5 +430,20 @@ code {
       color: white;
       text-decoration: none;
     }
+  }
+}
+
+// FAQ callouts with brand teal colors
+.callout.callout-style-default.callout-note {
+  border-color: var(--brand-paleteal, #DEF1EB);
+  border-left-color: var(--brand-teal, #0A9396);
+
+  .callout-icon {
+    // Transform icon to brand-teal (#0A9396)
+    filter: brightness(0) saturate(100%) invert(33%) sepia(92%) saturate(458%) hue-rotate(152deg) brightness(93%) contrast(89%);
+  }
+
+  .callout-header {
+    background-color: var(--brand-paleteal, #DEF1EB);
   }
 }

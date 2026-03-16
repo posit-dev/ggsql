@@ -39,7 +39,7 @@ SCALE y FROM [0, null]
 ```
 
 ## Output range
-The output range can either be given as an array of values or a named palette. For both of these, the requirement is that they contain at least the number of values as is present in the input range. There are discrete palettes for both [`color`](../palette/color_disc.qmd), [`linetype`](../palette/linetype.qmd), and [`shape`](../palette/shape.qmd). 
+The output range can either be given as an array of values or a named palette. For both of these, the requirement is that they contain at least the number of values as is present in the input range. There are discrete palettes for both [`color`](../aesthetic/1_color.qmd#discrete-palettes), [`linetype`](../aesthetic/linetype.qmd#palettes), and [`shape`](../aesthetic/shape.qmd#palettes). 
 
 All aesthetics has a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:
 

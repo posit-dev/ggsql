@@ -1,9 +1,10 @@
 //! Smooth geom implementation
 
-use super::{DefaultAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType};
 use crate::plot::geom::types::get_column_name;
 use crate::plot::types::DefaultAestheticValue;
-use crate::plot::{DefaultParam, ParameterValue, StatResult};
+use crate::plot::{ParameterValue, StatResult};
+use crate::reader::SqlDialect;
 use crate::{naming, GgsqlError, Mappings, Result};
 
 /// Smooth geom - smoothed conditional means (regression, LOESS, etc.)
@@ -29,29 +30,33 @@ impl GeomTrait for Smooth {
         }
     }
 
-    fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
-        true
-    }
-
-    fn default_params(&self) -> &'static [super::DefaultParam] {
+    fn default_params(&self) -> &'static [DefaultParam] {
         &[
             DefaultParam {
+                name: "position",
+                default: DefaultParamValue::String("identity"),
+            },
+            DefaultParam {
                 name: "method",
-                default: super::DefaultParamValue::String("nw"),
+                default: DefaultParamValue::String("nw"),
             },
             DefaultParam {
                 name: "bandwidth",
-                default: super::DefaultParamValue::Null,
+                default: DefaultParamValue::Null,
             },
             DefaultParam {
                 name: "adjust",
-                default: super::DefaultParamValue::Number(1.0),
+                default: DefaultParamValue::Number(1.0),
             },
             DefaultParam {
                 name: "kernel",
-                default: super::DefaultParamValue::String("gaussian"),
+                default: DefaultParamValue::String("gaussian"),
             },
         ]
+    }
+
+    fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
+        true
     }
 
     fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
@@ -69,6 +74,7 @@ impl GeomTrait for Smooth {
         group_by: &[String],
         parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
+        dialect: &dyn SqlDialect,
     ) -> crate::Result<super::StatResult> {
         let Some(ParameterValue::String(method)) = parameters.get("method") else {
             return Err(GgsqlError::ValidationError(
@@ -85,6 +91,7 @@ impl GeomTrait for Smooth {
                 group_by,
                 parameters,
                 true, // Trim to data range - no extrapolation
+                dialect,
             ),
             "ols" => stat_ols(query, aesthetics, group_by),
             "tls" => stat_tls(query, aesthetics, group_by),

@@ -1,6 +1,6 @@
 //! Ribbon geom implementation
 
-use super::{DefaultAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType};
 use crate::plot::types::DefaultAestheticValue;
 
 /// Ribbon geom - confidence bands and ranges
@@ -25,6 +25,13 @@ impl GeomTrait for Ribbon {
                 ("linetype", DefaultAestheticValue::String("solid")),
             ],
         }
+    }
+
+    fn default_params(&self) -> &'static [DefaultParam] {
+        &[DefaultParam {
+            name: "position",
+            default: DefaultParamValue::String("identity"),
+        }]
     }
 }
 

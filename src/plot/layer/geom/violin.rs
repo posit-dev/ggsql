@@ -2,12 +2,14 @@
 
 use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::{
+    naming,
     plot::{
         geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
         ParameterValue,
     },
-    GgsqlError, Mappings, Result,
+    DataFrame, GgsqlError, Mappings, Result,
 };
+use polars::prelude::*;
 use std::collections::HashMap;
 
 /// Violin geom - violin plots (mirrored density)
@@ -30,7 +32,7 @@ impl GeomTrait for Violin {
                 ("opacity", DefaultAestheticValue::Number(0.8)),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("linetype", DefaultAestheticValue::String("solid")),
-                ("offset", DefaultAestheticValue::Delayed), // Computed by stat
+                ("offset", DefaultAestheticValue::Delayed), // Computed by stat, used for violin shape
             ],
         }
     }
@@ -52,6 +54,14 @@ impl GeomTrait for Violin {
             DefaultParam {
                 name: "kernel",
                 default: DefaultParamValue::String("gaussian"),
+            },
+            DefaultParam {
+                name: "position",
+                default: DefaultParamValue::String("dodge"),
+            },
+            DefaultParam {
+                name: "width",
+                default: DefaultParamValue::Number(0.9),
             },
         ]
     }
@@ -79,8 +89,34 @@ impl GeomTrait for Violin {
         group_by: &[String],
         parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
+        dialect: &dyn crate::reader::SqlDialect,
     ) -> Result<StatResult> {
-        stat_violin(query, aesthetics, group_by, parameters)
+        stat_violin(query, aesthetics, group_by, parameters, dialect)
+    }
+
+    /// Post-process the violin DataFrame to scale offset to [0, 0.5 * width].
+    ///
+    /// Uses global max normalization so relative differences across groups are preserved:
+    /// - Narrow distributions will have higher peaks (normalized density)
+    /// - Groups with more data will be wider when using intensity remapping
+    fn post_process(
+        &self,
+        df: DataFrame,
+        parameters: &HashMap<String, ParameterValue>,
+    ) -> Result<DataFrame> {
+        let offset_col = naming::aesthetic_column("offset");
+
+        // Get width parameter (default 0.9)
+        let width = parameters
+            .get("width")
+            .and_then(|v| match v {
+                ParameterValue::Number(n) => Some(*n),
+                _ => None,
+            })
+            .unwrap_or(0.9);
+        let half_width = 0.5 * width;
+
+        scale_offset_column(df, &offset_col, half_width)
     }
 }
 
@@ -90,11 +126,46 @@ impl std::fmt::Display for Violin {
     }
 }
 
+/// Scale the offset column to [0, half_width] using global max normalization.
+///
+/// new_offset = offset * half_width / global_max
+fn scale_offset_column(df: DataFrame, offset_col: &str, half_width: f64) -> Result<DataFrame> {
+    // Check if offset column exists
+    if df.column(offset_col).is_err() {
+        // No offset column, return unchanged
+        return Ok(df);
+    }
+
+    // Get global max of offset column
+    let max_val = df
+        .column(offset_col)
+        .map_err(|e| GgsqlError::InternalError(format!("Failed to get offset column: {}", e)))?
+        .f64()
+        .map_err(|e| GgsqlError::InternalError(format!("Offset column must be f64: {}", e)))?
+        .max()
+        .unwrap_or(1.0);
+
+    if max_val <= 0.0 {
+        return Ok(df);
+    }
+
+    // Scale: new_offset = offset * half_width / max_val
+    let scale_factor = half_width / max_val;
+    let scaled = df
+        .lazy()
+        .with_column((col(offset_col) * lit(scale_factor)).alias(offset_col))
+        .collect()
+        .map_err(|e| GgsqlError::InternalError(format!("Failed to scale offset: {}", e)))?;
+
+    Ok(scaled)
+}
+
 fn stat_violin(
     query: &str,
     aesthetics: &Mappings,
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
+    dialect: &dyn crate::reader::SqlDialect,
 ) -> Result<StatResult> {
     // Verify y exists
     if get_column_name(aesthetics, "pos2").is_none() {
@@ -123,6 +194,7 @@ fn stat_violin(
         group_by.as_slice(),
         parameters,
         true, // Trim to data range - violins shouldn't extend beyond data
+        dialect,
     )
 }
 
@@ -131,6 +203,7 @@ mod tests {
     use super::*;
     use crate::plot::AestheticValue;
     use crate::reader::duckdb::DuckDBReader;
+    use crate::reader::AnsiDialect;
     use crate::reader::Reader;
 
     // ==================== Helper Functions ====================
@@ -184,7 +257,7 @@ mod tests {
 
         let execute = |sql: &str| reader.execute_sql(sql);
 
-        let result = stat_violin(query, &aesthetics, &groups, &parameters)
+        let result = stat_violin(query, &aesthetics, &groups, &parameters, &AnsiDialect)
             .expect("stat_violin should succeed");
 
         // Verify the result is a transformed stat result
@@ -249,7 +322,7 @@ mod tests {
 
         let execute = |sql: &str| reader.execute_sql(sql);
 
-        let result = stat_violin(query, &aesthetics, &groups, &parameters)
+        let result = stat_violin(query, &aesthetics, &groups, &parameters, &AnsiDialect)
             .expect("stat_violin should succeed");
 
         // Verify the result is a transformed stat result
@@ -292,5 +365,108 @@ mod tests {
             }
             _ => panic!("Expected Transformed result"),
         }
+    }
+
+    #[test]
+    fn test_violin_width_parameter() {
+        // Verify that the violin geom has a width parameter with default 0.9
+        let violin = Violin;
+        let params = violin.default_params();
+
+        let width_param = params.iter().find(|p| p.name == "width");
+        assert!(
+            width_param.is_some(),
+            "Violin should have a 'width' parameter"
+        );
+
+        if let Some(param) = width_param {
+            match param.default {
+                DefaultParamValue::Number(n) => {
+                    assert!(
+                        (n - 0.9).abs() < 1e-6,
+                        "Default width should be 0.9, got {}",
+                        n
+                    );
+                }
+                _ => panic!("Width parameter should have a numeric default"),
+            }
+        }
+    }
+
+    // ==================== Post-Process Tests ====================
+
+    #[test]
+    fn test_violin_post_process_scales_offset() {
+        let violin = Violin;
+        let offset_col = naming::aesthetic_column("offset");
+
+        // Create a DataFrame with offset values
+        let df = df! {
+            offset_col.as_str() => [0.0, 0.5, 1.0, 0.25],
+            "__ggsql_aes_pos2__" => [1.0, 2.0, 3.0, 4.0],
+        }
+        .unwrap();
+
+        // With default width 0.9, half_width = 0.45
+        // Offset should be scaled to [0, 0.45]
+        let parameters = HashMap::new();
+        let result = violin.post_process(df, &parameters).unwrap();
+
+        let scaled_offset = result.column(&offset_col).unwrap().f64().unwrap();
+        let values: Vec<f64> = scaled_offset.into_iter().flatten().collect();
+
+        // Max offset (1.0) should be scaled to 0.45 (half_width)
+        // Other values should be proportionally scaled
+        assert!((values[0] - 0.0).abs() < 1e-6, "0.0 should stay 0.0");
+        assert!((values[1] - 0.225).abs() < 1e-6, "0.5 should become 0.225");
+        assert!((values[2] - 0.45).abs() < 1e-6, "1.0 should become 0.45");
+        assert!(
+            (values[3] - 0.1125).abs() < 1e-6,
+            "0.25 should become 0.1125"
+        );
+    }
+
+    #[test]
+    fn test_violin_post_process_custom_width() {
+        let violin = Violin;
+        let offset_col = naming::aesthetic_column("offset");
+
+        // Create a DataFrame with offset values
+        let df = df! {
+            offset_col.as_str() => [0.0, 0.5, 1.0],
+            "__ggsql_aes_pos2__" => [1.0, 2.0, 3.0],
+        }
+        .unwrap();
+
+        // With width 0.6, half_width = 0.3
+        let mut parameters = HashMap::new();
+        parameters.insert("width".to_string(), ParameterValue::Number(0.6));
+
+        let result = violin.post_process(df, &parameters).unwrap();
+
+        let scaled_offset = result.column(&offset_col).unwrap().f64().unwrap();
+        let values: Vec<f64> = scaled_offset.into_iter().flatten().collect();
+
+        // Max offset (1.0) should be scaled to 0.3 (half_width)
+        assert!((values[0] - 0.0).abs() < 1e-6, "0.0 should stay 0.0");
+        assert!((values[1] - 0.15).abs() < 1e-6, "0.5 should become 0.15");
+        assert!((values[2] - 0.3).abs() < 1e-6, "1.0 should become 0.3");
+    }
+
+    #[test]
+    fn test_violin_post_process_no_offset_column() {
+        let violin = Violin;
+
+        // Create a DataFrame without offset column
+        let df = df! {
+            "__ggsql_aes_pos2__" => [1.0, 2.0, 3.0],
+        }
+        .unwrap();
+
+        let parameters = HashMap::new();
+        let result = violin.post_process(df.clone(), &parameters).unwrap();
+
+        // Should return unchanged DataFrame
+        assert_eq!(result.height(), df.height());
     }
 }

@@ -7,6 +7,7 @@ use crate::{
         geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
         ParameterValue, StatResult,
     },
+    reader::SqlDialect,
     GgsqlError, Mappings, Result,
 };
 use std::collections::HashMap;
@@ -46,8 +47,8 @@ impl GeomTrait for Density {
     fn default_params(&self) -> &'static [DefaultParam] {
         &[
             DefaultParam {
-                name: "stacking",
-                default: DefaultParamValue::String("off"),
+                name: "position",
+                default: DefaultParamValue::String("identity"),
             },
             DefaultParam {
                 name: "bandwidth",
@@ -68,6 +69,7 @@ impl GeomTrait for Density {
         &[
             ("pos1", DefaultAestheticValue::Column("pos1")),
             ("pos2", DefaultAestheticValue::Column("density")),
+            ("pos2end", DefaultAestheticValue::Number(0.0)),
         ]
     }
 
@@ -87,6 +89,7 @@ impl GeomTrait for Density {
         group_by: &[String],
         parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
+        dialect: &dyn SqlDialect
     ) -> crate::Result<super::StatResult> {
         stat_density(
             query,
@@ -96,6 +99,7 @@ impl GeomTrait for Density {
             group_by,
             parameters,
             false, // Don't trim - show full density including zeros
+            dialect
         )
     }
 }
@@ -132,6 +136,7 @@ pub(crate) fn stat_density(
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
     trim: bool,
+    dialect: &dyn SqlDialect,
 ) -> Result<StatResult> {
     let value = get_column_name(aesthetics, value_aesthetic).ok_or_else(|| {
         GgsqlError::ValidationError(format!(
@@ -142,7 +147,7 @@ pub(crate) fn stat_density(
     let smooth = smooth_aesthetic.and_then(|smth| get_column_name(aesthetics, smth));
     let weight = get_column_name(aesthetics, "weight");
 
-    let bw_cte = density_sql_bandwidth(query, group_by, &value, parameters);
+    let bw_cte = density_sql_bandwidth(query, group_by, &value, parameters, dialect);
     let data_cte = build_data_cte(
         &value,
         smooth.as_deref(),
@@ -150,7 +155,7 @@ pub(crate) fn stat_density(
         query,
         group_by,
     );
-    let grid_cte = build_grid_cte(group_by, 512, trim);
+    let grid_cte = build_grid_cte(group_by, 512, trim, dialect);
     let kernel = choose_kde_kernel(parameters, smooth)?;
 
     let density_query = compute_density(
@@ -186,6 +191,7 @@ fn density_sql_bandwidth(
     groups: &[String],
     value: &str,
     parameters: &HashMap<String, ParameterValue>,
+    dialect: &dyn SqlDialect,
 ) -> String {
     let adjust = match parameters.get("adjust") {
         Some(ParameterValue::Number(adj)) => *adj,
@@ -196,7 +202,7 @@ fn density_sql_bandwidth(
     let bw_expr = if let Some(ParameterValue::Number(num)) = parameters.get("bandwidth") {
         format!("{}", num * adjust)
     } else {
-        silverman_rule(adjust, value)
+        silverman_rule(adjust, value, from, groups, dialect)
     };
 
     // Preformat groups and GROUP BY clause together
@@ -211,13 +217,13 @@ fn density_sql_bandwidth(
     };
 
     format!(
-        "WITH
+        "WITH RECURSIVE
           bandwidth AS (
             SELECT
               {bw_expr} AS bw,{groups_select}
               MIN({value}) AS x_min,
               MAX({value}) AS x_max
-            FROM ({from})
+            FROM ({from}) AS __ggsql_qt__
             WHERE {value} IS NOT NULL{group_by}
           )",
         bw_expr = bw_expr,
@@ -228,15 +234,22 @@ fn density_sql_bandwidth(
     )
 }
 
-fn silverman_rule(adjust: f64, value_column: &str) -> String {
+fn silverman_rule(
+    adjust: f64,
+    value_column: &str,
+    from: &str,
+    groups: &[String],
+    dialect: &dyn SqlDialect,
+) -> String {
     // The query computes Silverman's rule of thumb (R's `stats::bw.nrd0()`).
     // We absorb the adjustment in the 0.9 multiplier of the rule
     let adjust = 0.9 * adjust;
-    format!(
-        "{adjust} * LEAST(STDDEV({value}), (QUANTILE_CONT({value}, 0.75) - QUANTILE_CONT({value}, 0.25)) / 1.34) * POWER(COUNT(*), -0.2)",
-        adjust = adjust,
-        value = value_column
-    )
+    let stddev = format!("SQRT(AVG({v}*{v}) - AVG({v})*AVG({v}))", v = value_column);
+    let q75 = dialect.sql_percentile(value_column, 0.75, from, groups);
+    let q25 = dialect.sql_percentile(value_column, 0.25, from, groups);
+    let iqr = format!("({q75} - {q25}) / 1.34");
+    let min_expr = dialect.sql_least(&[&stddev, &iqr]);
+    format!("{adjust} * {min_expr} * POW(COUNT(*), -0.2)")
 }
 
 fn choose_kde_kernel(
@@ -303,7 +316,7 @@ fn choose_kde_kernel(
         // Use weighted sum for density computation
         // Weighted: density = (1/h) × Σ(wi × K((x-xi)/h)) / Σwi
         Ok(format!(
-            "SUM(data.weight * ({kernel})) / ANY_VALUE(bandwidth.bw)",
+            "SUM(data.weight * ({kernel})) / MIN(bandwidth.bw)",
             kernel = kernel
         ))
     }
@@ -357,11 +370,15 @@ fn build_grid_cte(
     groups: &[String],
     n_points: usize,
     trim: bool,
+    dialect: &dyn SqlDialect,
 ) -> String {
     let has_groups = !groups.is_empty();
-    let n_points = n_points - 1; // GENERATE_SERIES gives on point for free
+    let n_points_minus_1 = n_points - 1; // For formula: n-1 divisions between n points
 
-    // Shared: global_range CTE (same for all cases)
+    // Generate sequence CTE using dialect-specific SQL
+    let seq_cte = dialect.sql_generate_series(n_points);
+
+    // Shared: global_range CTE (computes range dynamically from bandwidth table)
     let global_range_cte = "global_range AS (
           SELECT
             MIN(x_min) AS min,
@@ -373,7 +390,7 @@ fn build_grid_cte(
     // Shared: x-coordinate formula
     let x_formula = format!(
         "(global.min - global.expansion) + (seq.n * ((global.max - global.min) + 2 * global.expansion) / {n_points})",
-        n_points = n_points
+        n_points = n_points_minus_1
     );
 
     // Build base grid CTE
@@ -383,10 +400,9 @@ fn build_grid_cte(
             "grid AS (
           SELECT {x_formula} AS x
           FROM global_range AS global
-          CROSS JOIN GENERATE_SERIES(0, {n_points}) AS seq(n)
+          CROSS JOIN __ggsql_seq__ AS seq
         )",
-            x_formula = x_formula,
-            n_points = n_points
+            x_formula = x_formula
         )
     } else {
         let groups_str = groups.join(", ");
@@ -398,13 +414,12 @@ fn build_grid_cte(
             {groups},
             {x_formula} AS x
           FROM global_range AS global
-          CROSS JOIN GENERATE_SERIES(0, {n_points}) AS seq(n)
+          CROSS JOIN __ggsql_seq__ AS seq
           CROSS JOIN (SELECT DISTINCT {groups} FROM bandwidth) AS groups
         )",
             cte_name = cte_name,
             groups = groups_str,
-            x_formula = x_formula,
-            n_points = n_points
+            x_formula = x_formula
         )
     };
 
@@ -425,7 +440,8 @@ fn build_grid_cte(
             .collect();
 
         format!(
-            "{global_range_cte},
+            "{seq_cte},
+        {global_range_cte},
         {base_grid_cte},
         grid AS (
           SELECT {grid_groups}, full_grid.x
@@ -434,6 +450,7 @@ fn build_grid_cte(
           WHERE full_grid.x >= bandwidth.x_min - 3 * bandwidth.bw
             AND full_grid.x <= bandwidth.x_max + 3 * bandwidth.bw
         )",
+            seq_cte = seq_cte,
             global_range_cte = global_range_cte,
             base_grid_cte = base_grid_cte,
             grid_groups = grid_groups_select.join(", "),
@@ -441,8 +458,10 @@ fn build_grid_cte(
         )
     } else {
         format!(
-            "{global_range_cte},
+            "{seq_cte},
+        {global_range_cte},
         {base_grid_cte}",
+            seq_cte = seq_cte,
             global_range_cte = global_range_cte,
             base_grid_cte = base_grid_cte
         )
@@ -536,6 +555,7 @@ fn compute_density(
 mod tests {
     use super::*;
     use crate::reader::duckdb::DuckDBReader;
+    use crate::reader::AnsiDialect;
     use crate::reader::Reader;
 
     #[test]
@@ -549,19 +569,19 @@ mod tests {
             ParameterValue::String("gaussian".to_string()),
         );
 
-        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, None, query, &groups);
-        let grid_cte = build_grid_cte(&groups, 512, false);
+        let grid_cte = build_grid_cte(&groups, 512, false, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters, None).expect("kernel should be valid");
         let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
-        let expected = "WITH
+        let expected = "WITH RECURSIVE
           bandwidth AS (
             SELECT
               0.5 AS bw,
               MIN(x) AS x_min,
               MAX(x) AS x_max
-            FROM (SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x))
+            FROM (SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x)) AS __ggsql_qt__
             WHERE x IS NOT NULL
           ),
         data AS (
@@ -569,6 +589,7 @@ mod tests {
           FROM (SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x))
           WHERE x IS NOT NULL
         ),
+        __ggsql_base__(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM __ggsql_base__ WHERE n < 7),__ggsql_seq__(n) AS (SELECT CAST(a.n * 64 + b.n * 8 + c.n AS REAL) AS n FROM __ggsql_base__ a, __ggsql_base__ b, __ggsql_base__ c WHERE a.n * 64 + b.n * 8 + c.n < 512),
         global_range AS (
           SELECT MIN(x_min) AS min, MAX(x_max) AS max, 3 * MAX(bw) AS expansion
           FROM bandwidth
@@ -576,7 +597,7 @@ mod tests {
         grid AS (
           SELECT (global.min - global.expansion) + (seq.n * ((global.max - global.min) + 2 * global.expansion) / 511) AS x
           FROM global_range AS global
-          CROSS JOIN GENERATE_SERIES(0, 511) AS seq(n)
+          CROSS JOIN __ggsql_seq__ AS seq
         )
         SELECT
           __ggsql_stat_x,
@@ -585,7 +606,7 @@ mod tests {
         FROM (
           SELECT
             grid.x AS __ggsql_stat_x,
-            SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_intensity,
+            SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / MIN(bandwidth.bw) AS __ggsql_stat_intensity,
             SUM(data.weight) AS __norm
           FROM data
           INNER JOIN bandwidth ON true
@@ -624,20 +645,20 @@ mod tests {
             ParameterValue::String("gaussian".to_string()),
         );
 
-        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, None, query, &groups);
-        let grid_cte = build_grid_cte(&groups, 512, false);
+        let grid_cte = build_grid_cte(&groups, 512, false, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters, None).expect("kernel should be valid");
         let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
-        let expected = "WITH
+        let expected = "WITH RECURSIVE
           bandwidth AS (
             SELECT
               0.5 AS bw,
               region, category,
               MIN(x) AS x_min,
               MAX(x) AS x_max
-            FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category))
+            FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category)) AS __ggsql_qt__
             WHERE x IS NOT NULL
             GROUP BY region, category
           ),
@@ -646,6 +667,7 @@ mod tests {
           FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category))
           WHERE x IS NOT NULL
         ),
+        __ggsql_base__(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM __ggsql_base__ WHERE n < 7),__ggsql_seq__(n) AS (SELECT CAST(a.n * 64 + b.n * 8 + c.n AS REAL) AS n FROM __ggsql_base__ a, __ggsql_base__ b, __ggsql_base__ c WHERE a.n * 64 + b.n * 8 + c.n < 512),
         global_range AS (
           SELECT MIN(x_min) AS min, MAX(x_max) AS max, 3 * MAX(bw) AS expansion
           FROM bandwidth
@@ -655,7 +677,7 @@ mod tests {
             region, category,
             (global.min - global.expansion) + (seq.n * ((global.max - global.min) + 2 * global.expansion) / 511) AS x
           FROM global_range AS global
-          CROSS JOIN GENERATE_SERIES(0, 511) AS seq(n)
+          CROSS JOIN __ggsql_seq__ AS seq
           CROSS JOIN (SELECT DISTINCT region, category FROM bandwidth) AS groups
         )
         SELECT
@@ -667,7 +689,7 @@ mod tests {
           SELECT
             grid.x AS __ggsql_stat_x,
             grid.region, grid.category,
-            SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / ANY_VALUE(bandwidth.bw) AS __ggsql_stat_intensity,
+            SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / MIN(bandwidth.bw) AS __ggsql_stat_intensity,
             SUM(data.weight) AS __norm
           FROM data
           INNER JOIN bandwidth ON data.region IS NOT DISTINCT FROM bandwidth.region AND data.category IS NOT DISTINCT FROM bandwidth.category
@@ -700,6 +722,8 @@ mod tests {
         // Verify density integrates to ~2 (one per group)
         // Compute grid spacing dynamically from actual data
         let x_col = df.column("__ggsql_stat_x").expect("x exists");
+        // Cast to f64 if needed (AnsiDialect generates f32 from REAL)
+        let x_col = x_col.cast(&polars::prelude::DataType::Float64).expect("can cast to f64");
         let x_vals = x_col.f64().expect("x is f64");
         let x_min = x_vals.into_iter().flatten().fold(f64::INFINITY, f64::min);
         let x_max = x_vals.into_iter().flatten().fold(f64::NEG_INFINITY, f64::max);
@@ -731,23 +755,15 @@ mod tests {
         let groups: Vec<String> = vec![];
         let parameters = HashMap::new(); // No explicit bandwidth - will compute
 
-        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
 
-        // Verify exact SQL structure uses QUANTILE_CONT
-        let expected = "WITH
-          bandwidth AS (
-            SELECT
-              0.9 * LEAST(STDDEV(x), (QUANTILE_CONT(x, 0.75) - QUANTILE_CONT(x, 0.25)) / 1.34) * POWER(COUNT(*), -0.2) AS bw,
-              MIN(x) AS x_min,
-              MAX(x) AS x_max
-            FROM (SELECT x FROM (VALUES (1.0), (2.0), (3.0), (4.0), (5.0)) AS t(x))
-            WHERE x IS NOT NULL
-
-          )";
-
-        // Normalize whitespace for comparison
+        // Verify SQL uses NTILE-based percentile subqueries
         let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
-        assert_eq!(normalize(&bw_cte), normalize(expected));
+        assert!(bw_cte.contains("NTILE(4)"));
+        assert!(bw_cte.contains("bandwidth AS"));
+        // Verify the generated rule matches silverman_rule output
+        let expected_rule = silverman_rule(1.0, "x", query, &groups, &AnsiDialect);
+        assert!(normalize(&bw_cte).contains(&normalize(&expected_rule)));
 
         // Verify bandwidth computation executes
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
@@ -763,22 +779,13 @@ mod tests {
             "SELECT x, region FROM (VALUES (1.0, 'A'), (2.0, 'A'), (3.0, 'B')) AS t(x, region)";
         let groups = vec!["region".to_string()];
 
-        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
 
-        // Verify exact SQL structure uses QUANTILE_CONT with GROUP BY
-        let expected = "WITH
-          bandwidth AS (
-            SELECT
-              0.9 * LEAST(STDDEV(x), (QUANTILE_CONT(x, 0.75) - QUANTILE_CONT(x, 0.25)) / 1.34) * POWER(COUNT(*), -0.2) AS bw,
-              region,
-              MIN(x) AS x_min,
-              MAX(x) AS x_max
-            FROM (SELECT x, region FROM (VALUES (1.0, 'A'), (2.0, 'A'), (3.0, 'B')) AS t(x, region))
-            WHERE x IS NOT NULL
-            GROUP BY region
-          )";
-
-        assert_eq!(normalize(&bw_cte), normalize(expected));
+        // Verify SQL uses NTILE-based percentile subqueries with grouping
+        assert!(bw_cte.contains("NTILE(4)"));
+        assert!(bw_cte.contains("GROUP BY region"));
+        let expected_rule = silverman_rule(1.0, "x", query, &groups, &AnsiDialect);
+        assert!(normalize(&bw_cte).contains(&normalize(&expected_rule)));
 
         // Verify grouped bandwidth computation executes
         let df = reader
@@ -800,10 +807,10 @@ mod tests {
             ParameterValue::String(kernel_name.to_string()),
         );
 
-        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, None, query, &groups);
         // Use wide range to capture essentially all density mass
-        let grid_cte = build_grid_cte(&groups, 512, false);
+        let grid_cte = build_grid_cte(&groups, 512, false, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters, None).expect("kernel should be valid");
         let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
@@ -824,6 +831,8 @@ mod tests {
         // Compute integral using trapezoidal rule
         // Get actual grid spacing from the data (dynamically computed range)
         let x_col = df.column("__ggsql_stat_x").expect("x exists");
+        // Cast to f64 if needed (AnsiDialect generates f32 from REAL)
+        let x_col = x_col.cast(&polars::prelude::DataType::Float64).expect("can cast to f64");
         let x_vals = x_col.f64().expect("x is f64");
         let x_min = x_vals.into_iter().flatten().fold(f64::INFINITY, f64::min);
         let x_max = x_vals.into_iter().flatten().fold(f64::NEG_INFINITY, f64::max);
@@ -913,8 +922,8 @@ mod tests {
             ParameterValue::String("gaussian".to_string()),
         );
 
-        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
-        let grid_cte = build_grid_cte(&groups, 100, false);
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
+        let grid_cte = build_grid_cte(&groups, 100, false, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters, None).expect("kernel should be valid");
 
         // Unweighted (default weights of 1.0)
@@ -1081,9 +1090,9 @@ mod tests {
             ParameterValue::String("gaussian".to_string()),
         );
 
-        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters);
+        let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, None, query, &groups);
-        let grid_cte = build_grid_cte(&groups, 512, false);
+        let grid_cte = build_grid_cte(&groups, 512, false, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters, None).expect("kernel should be valid");
         let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 

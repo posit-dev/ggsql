@@ -38,7 +38,8 @@ mod identity;
 mod ordinal;
 
 // Re-export scale type structs for direct access if needed
-use crate::plot::types::{CastTargetType, SqlTypeNames};
+use crate::plot::types::CastTargetType;
+use crate::reader::SqlDialect;
 pub use binned::Binned;
 pub use continuous::Continuous;
 pub use discrete::{infer_transform_from_input_range, Discrete};
@@ -1027,13 +1028,13 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// * `column_name` - The column to transform
     /// * `column_dtype` - The column's data type from the schema
     /// * `scale` - The resolved scale specification
-    /// * `type_names` - SQL type names for casting (from Reader)
+    /// * `dialect` - SQL dialect for the database backend
     fn pre_stat_transform_sql(
         &self,
         _column_name: &str,
         _column_dtype: &DataType,
         _scale: &super::Scale,
-        _type_names: &SqlTypeNames,
+        _dialect: &dyn SqlDialect,
     ) -> Option<String> {
         None
     }
@@ -1270,16 +1271,16 @@ impl ScaleType {
     /// * `column_name` - The column to transform
     /// * `column_dtype` - The column's data type from the schema
     /// * `scale` - The resolved scale specification
-    /// * `type_names` - SQL type names for casting (from Reader)
+    /// * `dialect` - SQL dialect for the database backend
     pub fn pre_stat_transform_sql(
         &self,
         column_name: &str,
         column_dtype: &DataType,
         scale: &super::Scale,
-        type_names: &SqlTypeNames,
+        dialect: &dyn SqlDialect,
     ) -> Option<String> {
         self.0
-            .pre_stat_transform_sql(column_name, column_dtype, scale, type_names)
+            .pre_stat_transform_sql(column_name, column_dtype, scale, dialect)
     }
 
     /// Determine if a column needs casting to match the scale's target type.
@@ -3342,30 +3343,35 @@ mod tests {
     }
 
     // =========================================================================
-    // SqlTypeNames Tests
+    // SqlDialect Tests
     // =========================================================================
 
     #[test]
-    fn test_sql_type_names_for_target() {
-        let names = SqlTypeNames {
-            number: Some("DOUBLE".to_string()),
-            integer: Some("BIGINT".to_string()),
-            date: Some("DATE".to_string()),
-            datetime: Some("TIMESTAMP".to_string()),
-            time: Some("TIME".to_string()),
-            string: Some("VARCHAR".to_string()),
-            boolean: Some("BOOLEAN".to_string()),
-        };
-        assert_eq!(names.for_target(CastTargetType::Number), Some("DOUBLE"));
-        assert_eq!(names.for_target(CastTargetType::Integer), Some("BIGINT"));
-        assert_eq!(names.for_target(CastTargetType::Date), Some("DATE"));
+    fn test_ansi_dialect_type_name_for() {
+        use crate::reader::AnsiDialect;
+        let dialect = AnsiDialect;
         assert_eq!(
-            names.for_target(CastTargetType::DateTime),
+            dialect.type_name_for(CastTargetType::Number),
+            Some("DOUBLE")
+        );
+        assert_eq!(
+            dialect.type_name_for(CastTargetType::Integer),
+            Some("BIGINT")
+        );
+        assert_eq!(dialect.type_name_for(CastTargetType::Date), Some("DATE"));
+        assert_eq!(
+            dialect.type_name_for(CastTargetType::DateTime),
             Some("TIMESTAMP")
         );
-        assert_eq!(names.for_target(CastTargetType::Time), Some("TIME"));
-        assert_eq!(names.for_target(CastTargetType::String), Some("VARCHAR"));
-        assert_eq!(names.for_target(CastTargetType::Boolean), Some("BOOLEAN"));
+        assert_eq!(dialect.type_name_for(CastTargetType::Time), Some("TIME"));
+        assert_eq!(
+            dialect.type_name_for(CastTargetType::String),
+            Some("VARCHAR")
+        );
+        assert_eq!(
+            dialect.type_name_for(CastTargetType::Boolean),
+            Some("BOOLEAN")
+        );
     }
 
     // =========================================================================

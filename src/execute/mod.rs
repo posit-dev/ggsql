@@ -13,6 +13,7 @@
 mod casting;
 mod cte;
 mod layer;
+mod position;
 mod scale;
 mod schema;
 
@@ -141,6 +142,14 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
 // Global Mapping & Color Splitting
 // =============================================================================
 
+/// Check if an aesthetic value is a null sentinel (explicit removal marker)
+fn is_null_sentinel(value: &AestheticValue) -> bool {
+    matches!(
+        value,
+        AestheticValue::Literal(crate::plot::ParameterValue::Null)
+    )
+}
+
 /// Merge global mappings into layer aesthetics and expand wildcards
 ///
 /// This function performs smart wildcard expansion with schema awareness:
@@ -190,6 +199,12 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
 
             // Clear wildcard flag since it's been resolved
             layer.mappings.wildcard = false;
+
+            // Remove null sentinel mappings (explicit "don't inherit" markers)
+            layer
+                .mappings
+                .aesthetics
+                .retain(|_, value| !is_null_sentinel(value));
         }
     }
 }
@@ -792,6 +807,18 @@ fn collect_layer_required_columns(layer: &Layer, spec: &Plot) -> HashSet<String>
         required.insert(naming::ORDER_COLUMN.to_string());
     }
 
+    // Position offset column for position adjustments that create pos1offset
+    // This column is created by dodge/jitter positions and is not in layer.mappings
+    if layer.position.creates_pos1offset() {
+        required.insert(naming::aesthetic_column("pos1offset"));
+    }
+
+    // Position offset column for position adjustments that create pos2offset
+    // This column is created by jitter position for vertical jittering
+    if layer.position.creates_pos2offset() {
+        required.insert(naming::aesthetic_column("pos2offset"));
+    }
+
     required
 }
 
@@ -863,7 +890,7 @@ pub struct PreparedData {
 /// * `reader` - A Reader implementation for executing SQL
 pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<PreparedData> {
     let execute_query = |sql: &str| reader.execute_sql(sql);
-    let type_names = reader.sql_type_names();
+    let dialect = reader.dialect();
 
     // Parse once and create SourceTree
     let source_tree = parser::SourceTree::new(query)?;
@@ -1001,7 +1028,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 
     // Determine which columns need type casting
     let type_requirements =
-        casting::determine_type_requirements(&specs[0], &layer_type_info, &type_names);
+        casting::determine_type_requirements(&specs[0], &layer_type_info, dialect);
 
     // Update type info with post-cast dtypes
     // This ensures subsequent schema extraction and scale resolution see the correct types
@@ -1070,7 +1097,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
             &layer_base_queries[idx],
             &layer_schemas[idx],
             &scales,
-            &type_names,
+            dialect,
             &execute_query,
         )?;
         layer_queries.push(layer_query);
@@ -1114,8 +1141,9 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         }
     }
 
-    // Phase 4: Apply remappings (rename stat columns to prefixed aesthetic names)
-    // e.g., __ggsql_stat_count → __ggsql_aes_y__
+    // Phase 4: Apply remappings and post-process
+    // - Rename stat columns to prefixed aesthetic names (e.g., __ggsql_stat_count → __ggsql_aes_y__)
+    // - Apply geom post_process (e.g., violin offset scaling)
     // Note: Prefixed aesthetic names persist through the entire pipeline
     // Track processed keys to avoid duplicate work on shared datasets
     let mut processed_keys: HashSet<String> = HashSet::new();
@@ -1125,7 +1153,10 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
                 // First time seeing this data - process it
                 if let Some(df) = data_map.remove(key) {
                     let df_with_remappings = layer::apply_remappings_post_query(df, l)?;
-                    data_map.insert(key.clone(), df_with_remappings);
+                    // Apply geom post_process (e.g., violin scales offset to [0, 0.5 * width])
+                    let df_post_processed =
+                        l.geom.post_process(df_with_remappings, &l.parameters)?;
+                    data_map.insert(key.clone(), df_post_processed);
                 }
             }
             // Update layer mappings for all layers (even if data shared)
@@ -1138,19 +1169,26 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         l.resolve_aesthetics();
     }
 
+    // Create scales for aesthetics added by stat transforms (e.g., y from histogram)
+    // This must happen after build_layer_query() which applies stat transforms
+    // and modifies layer.mappings with new aesthetics like y → __ggsql_stat_count__
+    for spec in &mut specs {
+        scale::create_missing_scales_post_stat(spec, &data_map)?;
+    }
+
+    // Apply position adjustments (stack, dodge) to layer data
+    // Must be after scale type inference but before full scale resolution
+    // so scales can see the adjusted values (e.g., stacked maxima)
+    for spec in &mut specs {
+        position::apply_position_adjustments(spec, &mut data_map)?;
+    }
+
     // Validate we have some data (every layer should have its own data)
     if data_map.is_empty() {
         return Err(GgsqlError::ValidationError(
             "No data sources found. Either provide a SQL query or use MAPPING FROM in layers."
                 .to_string(),
         ));
-    }
-
-    // Create scales for aesthetics added by stat transforms (e.g., y from histogram)
-    // This must happen after build_layer_query() which applies stat transforms
-    // and modifies layer.mappings with new aesthetics like y → __ggsql_stat_count__
-    for spec in &mut specs {
-        scale::create_missing_scales_post_stat(spec);
     }
 
     // Post-process specs: compute aesthetic labels
@@ -1340,6 +1378,36 @@ mod tests {
         // Layer 1 should have 2 rows (from targets CTE)
         let layer1_df = result.data.get(&naming::layer_key(1)).unwrap();
         assert_eq!(layer1_df.height(), 2);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_layer_references_cte_with_column_aliases() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            WITH t(value, label) AS (
+                SELECT * FROM (VALUES
+                    (70, 'Target'),
+                    (80, 'Warning'),
+                    (90, 'Critical')
+                )
+            )
+            SELECT 1 AS date, 75 AS temperature
+            VISUALISE
+            DRAW line MAPPING date AS x, temperature AS y
+            DRAW rule MAPPING value AS y, label AS colour FROM t
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Layer 0: line from global data
+        let layer0_df = result.data.get(&naming::layer_key(0)).unwrap();
+        assert_eq!(layer0_df.height(), 1);
+
+        // Layer 1: rule from CTE with column aliases
+        let layer1_df = result.data.get(&naming::layer_key(1)).unwrap();
+        assert_eq!(layer1_df.height(), 3);
     }
 
     #[cfg(feature = "duckdb")]
@@ -2194,6 +2262,35 @@ mod tests {
             line_df.height(),
             2,
             "line layer with facet column should not be expanded"
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_null_mapping_removes_global_aesthetic() {
+        // Global mapping sets fill=region, but second layer uses null AS fill to opt out
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT 1 as x, 2 as y, 'A' as region
+            VISUALISE x, y, region AS fill
+            DRAW point
+            DRAW line MAPPING null AS fill
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Point layer (first) should have fill inherited from global
+        let point_layer = &result.specs[0].layers[0];
+        assert!(
+            point_layer.mappings.aesthetics.contains_key("fill"),
+            "point layer should inherit fill from global mapping"
+        );
+
+        // Line layer (second) should NOT have fill because of null AS fill
+        let line_layer = &result.specs[0].layers[1];
+        assert!(
+            !line_layer.mappings.aesthetics.contains_key("fill"),
+            "line layer should not have fill due to null AS fill"
         );
     }
 }

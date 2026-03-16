@@ -97,7 +97,7 @@ docs/_build/
 *.db
 *.sqlite
 *.sqlite3
-!data/*.parquet
+!src/data/*.parquet
 
 # Configuration files
 .env

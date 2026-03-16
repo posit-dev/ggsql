@@ -308,6 +308,72 @@ fn build_layer_encoding(
         encoding.insert("detail".to_string(), detail);
     }
 
+    // Add xOffset encoding for dodged positions (pos1offset column)
+    // This column is created by position::apply_dodge() for Position::Dodge
+    // The offset values are centered around 0 (e.g., -0.3, 0, +0.3 for 3 groups)
+    // We set domain [-0.5, 0.5] to ensure the scale is symmetric and maps to full band width
+    let pos1offset_col = naming::aesthetic_column("pos1offset");
+    if df.column(&pos1offset_col).is_ok() {
+        // Map to appropriate offset channel based on coord type
+        let offset_channel = match coord_kind {
+            CoordKind::Cartesian => "xOffset",
+            CoordKind::Polar => "thetaOffset",
+        };
+        encoding.insert(
+            offset_channel.to_string(),
+            json!({
+                "field": pos1offset_col,
+                "type": "quantitative",
+                "scale": {
+                    "domain": [-0.5, 0.5]
+                }
+            }),
+        );
+    }
+
+    // Add yOffset encoding for vertical jitter (pos2offset column)
+    // This column is created by position::Jitter when pos2 axis is discrete
+    let pos2offset_col = naming::aesthetic_column("pos2offset");
+    if df.column(&pos2offset_col).is_ok() {
+        // Map to appropriate offset channel based on coord type
+        let offset_channel = match coord_kind {
+            CoordKind::Cartesian => "yOffset",
+            CoordKind::Polar => "radiusOffset",
+        };
+        encoding.insert(
+            offset_channel.to_string(),
+            json!({
+                "field": pos2offset_col,
+                "type": "quantitative",
+                "scale": {
+                    "domain": [-0.5, 0.5]
+                }
+            }),
+        );
+    }
+
+    // Disable Vega-Lite's automatic stacking - we handle position adjustments ourselves
+    // This prevents Vega-Lite from applying its own stack/dodge logic on top of ours
+    // Set stack: null on both y and y2 channels (pos2 and pos2end in our terminology)
+    let y_channel = match coord_kind {
+        CoordKind::Cartesian => "y",
+        CoordKind::Polar => "radius",
+    };
+    let y2_channel = match coord_kind {
+        CoordKind::Cartesian => "y2",
+        CoordKind::Polar => "radius2",
+    };
+    if let Some(y_enc) = encoding.get_mut(y_channel) {
+        if let Some(obj) = y_enc.as_object_mut() {
+            obj.insert("stack".to_string(), Value::Null);
+        }
+    }
+    if let Some(y2_enc) = encoding.get_mut(y2_channel) {
+        if let Some(obj) = y2_enc.as_object_mut() {
+            obj.insert("stack".to_string(), Value::Null);
+        }
+    }
+
     // Apply geom-specific encoding modifications via renderer
     let renderer = get_renderer(&layer.geom);
     let context = layer::RenderContext::new(&spec.scales);
@@ -1002,8 +1068,12 @@ impl Writer for VegaLiteWriter {
         let mut vl_spec = json!({
             "$schema": self.schema
         });
-        vl_spec["width"] = json!("container");
-        vl_spec["height"] = json!("container");
+        // Container sizing doesn't work with faceting in Vega-Lite, so only apply it
+        // for non-faceted charts
+        if spec.facet.is_none() {
+            vl_spec["width"] = json!("container");
+            vl_spec["height"] = json!("container");
+        }
 
         if let Some(labels) = &spec.labels {
             if let Some(title) = labels.labels.get("title") {

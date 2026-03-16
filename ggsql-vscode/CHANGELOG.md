@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.8
+
+- Initial pre-alpha release.
+
 ## 0.1.1
 
 - Rename the WITH clause to DRAW
