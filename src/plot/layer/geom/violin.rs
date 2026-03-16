@@ -63,6 +63,10 @@ impl GeomTrait for Violin {
                 name: "width",
                 default: DefaultParamValue::Number(0.9),
             },
+            DefaultParam {
+                name: "tails",
+                default: DefaultParamValue::Number(3.0),
+            },
         ]
     }
 
@@ -186,6 +190,7 @@ fn stat_violin(
         ));
     }
 
+    // Violin uses tails parameter from user (default 3.0 set in default_params)
     super::density::stat_density(
         query,
         aesthetics,
@@ -193,7 +198,6 @@ fn stat_violin(
         None,
         group_by.as_slice(),
         parameters,
-        true, // Trim to data range - violins shouldn't extend beyond data
         dialect,
     )
 }

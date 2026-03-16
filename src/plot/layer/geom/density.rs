@@ -91,10 +91,9 @@ impl GeomTrait for Density {
         _execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
         dialect: &dyn SqlDialect,
     ) -> crate::Result<super::StatResult> {
+        // Density geom: no tails limit (don't set tails parameter, defaults to None)
         stat_density(
-            query, aesthetics, "pos1", None, group_by, parameters,
-            false, // Don't trim - show full density including zeros
-            dialect,
+            query, aesthetics, "pos1", None, group_by, parameters, dialect,
         )
     }
 }
@@ -130,7 +129,6 @@ pub(crate) fn stat_density(
     smooth_aesthetic: Option<&str>,
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
-    trim: bool,
     dialect: &dyn SqlDialect,
 ) -> Result<StatResult> {
     let value = get_column_name(aesthetics, value_aesthetic).ok_or_else(|| {
@@ -142,6 +140,12 @@ pub(crate) fn stat_density(
     let smooth = smooth_aesthetic.and_then(|smth| get_column_name(aesthetics, smth));
     let weight = get_column_name(aesthetics, "weight");
 
+    // Get tails parameter (None = unlimited)
+    let tails = match parameters.get("tails") {
+        Some(ParameterValue::Number(n)) => Some(*n),
+        _ => None,
+    };
+
     let bw_cte = density_sql_bandwidth(query, group_by, &value, parameters, dialect);
     let data_cte = build_data_cte(
         &value,
@@ -150,7 +154,7 @@ pub(crate) fn stat_density(
         query,
         group_by,
     );
-    let grid_cte = build_grid_cte(group_by, 512, trim, dialect);
+    let grid_cte = build_grid_cte(group_by, 512, tails, dialect);
     let kernel = choose_kde_kernel(parameters, smooth)?;
 
     let density_query = compute_density(
@@ -364,7 +368,7 @@ fn build_data_cte(
 fn build_grid_cte(
     groups: &[String],
     n_points: usize,
-    trim: bool,
+    tails: Option<f64>,
     dialect: &dyn SqlDialect,
 ) -> String {
     let has_groups = !groups.is_empty();
@@ -401,8 +405,8 @@ fn build_grid_cte(
         )
     } else {
         let groups_str = groups.join(", ");
-        // When trimming, create full_grid; otherwise create grid directly
-        let cte_name = if trim { "full_grid" } else { "grid" };
+        // When tails is specified, create full_grid; otherwise create grid directly
+        let cte_name = if tails.is_some() { "full_grid" } else { "grid" };
         format!(
             "{cte_name} AS (
           SELECT
@@ -418,37 +422,50 @@ fn build_grid_cte(
         )
     };
 
-    // If trimming with groups, add the trimmed grid CTE
-    if trim && has_groups {
-        let bandwidth_join_conds: Vec<String> = groups
-            .iter()
-            .map(|g| {
-                format!(
-                    "full_grid.{col} IS NOT DISTINCT FROM bandwidth.{col}",
-                    col = g
-                )
-            })
-            .collect();
-        let grid_groups_select: Vec<String> =
-            groups.iter().map(|g| format!("full_grid.{}", g)).collect();
+    // If tails is specified with groups, add the trimmed grid CTE
+    if let Some(extent) = tails {
+        if has_groups {
+            let bandwidth_join_conds: Vec<String> = groups
+                .iter()
+                .map(|g| {
+                    format!(
+                        "full_grid.{col} IS NOT DISTINCT FROM bandwidth.{col}",
+                        col = g
+                    )
+                })
+                .collect();
+            let grid_groups_select: Vec<String> =
+                groups.iter().map(|g| format!("full_grid.{}", g)).collect();
 
-        format!(
-            "{seq_cte},
+            format!(
+                "{seq_cte},
         {global_range_cte},
         {base_grid_cte},
         grid AS (
           SELECT {grid_groups}, full_grid.x
           FROM full_grid
           INNER JOIN bandwidth ON {bandwidth_join_conds}
-          WHERE full_grid.x >= bandwidth.x_min - 3 * bandwidth.bw
-            AND full_grid.x <= bandwidth.x_max + 3 * bandwidth.bw
+          WHERE full_grid.x >= bandwidth.x_min - {extent} * bandwidth.bw
+            AND full_grid.x <= bandwidth.x_max + {extent} * bandwidth.bw
         )",
-            seq_cte = seq_cte,
-            global_range_cte = global_range_cte,
-            base_grid_cte = base_grid_cte,
-            grid_groups = grid_groups_select.join(", "),
-            bandwidth_join_conds = bandwidth_join_conds.join(" AND ")
-        )
+                seq_cte = seq_cte,
+                global_range_cte = global_range_cte,
+                base_grid_cte = base_grid_cte,
+                grid_groups = grid_groups_select.join(", "),
+                bandwidth_join_conds = bandwidth_join_conds.join(" AND "),
+                extent = extent
+            )
+        } else {
+            // No groups but tail_extent specified - not meaningful, treat as no tail_extent
+            format!(
+                "{seq_cte},
+        {global_range_cte},
+        {base_grid_cte}",
+                seq_cte = seq_cte,
+                global_range_cte = global_range_cte,
+                base_grid_cte = base_grid_cte
+            )
+        }
     } else {
         format!(
             "{seq_cte},
@@ -564,7 +581,7 @@ mod tests {
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, None, query, &groups);
-        let grid_cte = build_grid_cte(&groups, 512, false, &AnsiDialect);
+        let grid_cte = build_grid_cte(&groups, 512, None, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters, None).expect("kernel should be valid");
         let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
@@ -640,7 +657,7 @@ mod tests {
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, None, query, &groups);
-        let grid_cte = build_grid_cte(&groups, 512, false, &AnsiDialect);
+        let grid_cte = build_grid_cte(&groups, 512, None, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters, None).expect("kernel should be valid");
         let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
@@ -817,7 +834,7 @@ mod tests {
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, None, query, &groups);
         // Use wide range to capture essentially all density mass
-        let grid_cte = build_grid_cte(&groups, 512, false, &AnsiDialect);
+        let grid_cte = build_grid_cte(&groups, 512, None, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters, None).expect("kernel should be valid");
         let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 
@@ -935,7 +952,7 @@ mod tests {
         );
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
-        let grid_cte = build_grid_cte(&groups, 100, false, &AnsiDialect);
+        let grid_cte = build_grid_cte(&groups, 100, None, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters, None).expect("kernel should be valid");
 
         // Unweighted (default weights of 1.0)
@@ -1098,7 +1115,7 @@ mod tests {
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, None, query, &groups);
-        let grid_cte = build_grid_cte(&groups, 512, false, &AnsiDialect);
+        let grid_cte = build_grid_cte(&groups, 512, None, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters, None).expect("kernel should be valid");
         let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
 

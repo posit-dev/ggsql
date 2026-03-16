@@ -83,16 +83,21 @@ impl GeomTrait for Smooth {
         };
 
         match method.as_str() {
-            "nw" | "nadaraya-watson" => super::density::stat_density(
-                query,
-                aesthetics,
-                "pos1",
-                Some("pos2"),
-                group_by,
-                parameters,
-                true, // Trim to data range - no extrapolation
-                dialect,
-            ),
+            "nw" | "nadaraya-watson" => {
+                // Smooth geom: hardcode tails=0.0 (trim exactly to data range, no extrapolation)
+                let mut params = parameters.clone();
+                params.insert("tails".to_string(), ParameterValue::Number(0.0));
+
+                super::density::stat_density(
+                    query,
+                    aesthetics,
+                    "pos1",
+                    Some("pos2"),
+                    group_by,
+                    &params,
+                    dialect,
+                )
+            }
             "ols" => stat_ols(query, aesthetics, group_by),
             "tls" => stat_tls(query, aesthetics, group_by),
             _ => Err(GgsqlError::ValidationError(
