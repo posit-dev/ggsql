@@ -603,4 +603,69 @@ mod tests {
         assert_eq!(ctx.primary_internal_positional("pos2end"), Some("pos2"));
         assert_eq!(ctx.primary_internal_positional("color"), Some("color"));
     }
+
+    #[test]
+    fn test_aesthetic_context_internal_to_user_cartesian() {
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+
+        // Primary aesthetics
+        assert_eq!(ctx.map_internal_to_user("pos1"), "x");
+        assert_eq!(ctx.map_internal_to_user("pos2"), "y");
+
+        // Variants
+        assert_eq!(ctx.map_internal_to_user("pos1min"), "xmin");
+        assert_eq!(ctx.map_internal_to_user("pos1max"), "xmax");
+        assert_eq!(ctx.map_internal_to_user("pos1end"), "xend");
+        assert_eq!(ctx.map_internal_to_user("pos2min"), "ymin");
+        assert_eq!(ctx.map_internal_to_user("pos2max"), "ymax");
+        assert_eq!(ctx.map_internal_to_user("pos2end"), "yend");
+
+        // Non-positional aesthetics remain unchanged
+        assert_eq!(ctx.map_internal_to_user("color"), "color");
+        assert_eq!(ctx.map_internal_to_user("size"), "size");
+        assert_eq!(ctx.map_internal_to_user("fill"), "fill");
+    }
+
+    #[test]
+    fn test_aesthetic_context_internal_to_user_polar() {
+        let ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
+
+        // Primary aesthetics map to polar names
+        assert_eq!(ctx.map_internal_to_user("pos1"), "theta");
+        assert_eq!(ctx.map_internal_to_user("pos2"), "radius");
+
+        // Variants
+        assert_eq!(ctx.map_internal_to_user("pos1end"), "thetaend");
+        assert_eq!(ctx.map_internal_to_user("pos2min"), "radiusmin");
+        assert_eq!(ctx.map_internal_to_user("pos2max"), "radiusmax");
+    }
+
+    #[test]
+    fn test_aesthetic_context_internal_to_user_facets() {
+        // Wrap facet (panel)
+        let ctx_wrap = AestheticContext::from_static(&["x", "y"], &["panel"]);
+        assert_eq!(ctx_wrap.map_internal_to_user("facet1"), "panel");
+
+        // Grid facet (row, column)
+        let ctx_grid = AestheticContext::from_static(&["x", "y"], &["row", "column"]);
+        assert_eq!(ctx_grid.map_internal_to_user("facet1"), "row");
+        assert_eq!(ctx_grid.map_internal_to_user("facet2"), "column");
+    }
+
+    #[test]
+    fn test_aesthetic_context_roundtrip() {
+        // Test that user -> internal -> user roundtrips correctly
+        let ctx = AestheticContext::from_static(&["x", "y"], &["panel"]);
+
+        // Positional
+        let internal = ctx.map_user_to_internal("x").unwrap();
+        assert_eq!(ctx.map_internal_to_user(internal), "x");
+
+        let internal = ctx.map_user_to_internal("ymin").unwrap();
+        assert_eq!(ctx.map_internal_to_user(internal), "ymin");
+
+        // Facet
+        let internal = ctx.map_user_to_internal("panel").unwrap();
+        assert_eq!(ctx.map_internal_to_user(internal), "panel");
+    }
 }

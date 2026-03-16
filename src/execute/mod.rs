@@ -2297,4 +2297,88 @@ mod tests {
             "line layer should not have fill due to null AS fill"
         );
     }
+
+    // ========================================================================
+    // Validation Error Message Tests (User-facing aesthetic names)
+    // ========================================================================
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_validation_error_shows_user_facing_names_for_missing_aesthetics() {
+        // Test that validation errors show user-facing names (x, y) instead of internal (pos1, pos2)
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE test_data AS SELECT * FROM (VALUES (1, 2)) AS t(a, b)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Query missing required aesthetic 'y' - should show 'y' not 'pos2'
+        let query = r#"
+            SELECT * FROM test_data
+            VISUALISE
+            DRAW point MAPPING a AS x
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(result.is_err(), "Expected validation error");
+
+        let err_msg = match result {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("Expected error"),
+        };
+        assert!(
+            err_msg.contains("'y'"),
+            "Error should mention user-facing name 'y', got: {}",
+            err_msg
+        );
+        assert!(
+            !err_msg.contains("pos2"),
+            "Error should not mention internal name 'pos2', got: {}",
+            err_msg
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_validation_error_shows_user_facing_names_for_unsupported_aesthetics() {
+        // Test that validation errors show user-facing names for unsupported aesthetics
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE test_data AS SELECT * FROM (VALUES (1, 2, 3)) AS t(a, b, c)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Query with unsupported aesthetic 'xmin' for point - should show 'xmin' not 'pos1min'
+        let query = r#"
+            SELECT * FROM test_data
+            VISUALISE
+            DRAW point MAPPING a AS x, b AS y, c AS xmin
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(result.is_err(), "Expected validation error");
+
+        let err_msg = match result {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("Expected error"),
+        };
+        assert!(
+            err_msg.contains("'xmin'"),
+            "Error should mention user-facing name 'xmin', got: {}",
+            err_msg
+        );
+        assert!(
+            !err_msg.contains("pos1min"),
+            "Error should not mention internal name 'pos1min', got: {}",
+            err_msg
+        );
+    }
 }
