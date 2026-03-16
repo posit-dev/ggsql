@@ -1139,8 +1139,8 @@ impl Writer for VegaLiteWriter {
 
         // Validate each layer
         for layer in &spec.layers {
-            // Check required aesthetics
-            layer.validate_required_aesthetics().map_err(|e| {
+            // Check aesthetics
+            layer.validate_mapping().map_err(|e| {
                 GgsqlError::ValidationError(format!("Layer validation failed: {}", e))
             })?;
 

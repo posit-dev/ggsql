@@ -363,12 +363,12 @@ mod tests {
             .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"))
             .with_aesthetic("pos2".to_string(), AestheticValue::standard_column("y"));
 
-        assert!(valid_point.validate_required_aesthetics().is_ok());
+        assert!(valid_point.validate_mapping().is_ok());
 
         let invalid_point = Layer::new(Geom::point())
             .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"));
 
-        assert!(invalid_point.validate_required_aesthetics().is_err());
+        assert!(invalid_point.validate_mapping().is_err());
 
         let valid_ribbon = Layer::new(Geom::ribbon())
             .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"))
@@ -381,7 +381,7 @@ mod tests {
                 AestheticValue::standard_column("ymax"),
             );
 
-        assert!(valid_ribbon.validate_required_aesthetics().is_ok());
+        assert!(valid_ribbon.validate_mapping().is_ok());
     }
 
     #[test]
@@ -759,8 +759,8 @@ mod tests {
         let labels = spec.labels.as_ref().unwrap();
         assert_eq!(labels.labels.get("pos1"), Some(&"X Axis".to_string()));
         assert_eq!(labels.labels.get("pos2"), Some(&"Y Axis".to_string()));
-        assert!(labels.labels.get("x").is_none());
-        assert!(labels.labels.get("y").is_none());
+        assert!(!labels.labels.contains_key("x"));
+        assert!(!labels.labels.contains_key("y"));
     }
 
     #[test]

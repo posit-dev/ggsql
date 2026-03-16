@@ -157,17 +157,37 @@ impl Layer {
         }
     }
 
-    /// Check if this layer has the required aesthetics for its geom
-    pub fn validate_required_aesthetics(&self) -> std::result::Result<(), String> {
+    /// Check if this layer has the required aesthetics, and no exotic aesthetics.
+    pub fn validate_mapping(&self) -> std::result::Result<(), String> {
+        // Check if all required aesthetics exist.
+        let mut missing: Vec<&str> = Vec::new();
         for aesthetic in self.geom.aesthetics().required() {
             if !self.mappings.contains_key(aesthetic) {
-                return Err(format!(
-                    "Geom '{}' requires aesthetic '{}' but it was not provided",
-                    self.geom, aesthetic
-                ));
+                missing.push(aesthetic);
             }
         }
-
+        if !missing.is_empty() {
+            return Err(format!(
+                "Layer '{}' mapping requires the '{}' aesthetic(s).",
+                self.geom,
+                missing.join(", ")
+            ));
+        }
+        // Check if any unsupported mappings are present
+        let mut extra: Vec<&str> = Vec::new();
+        let supported = self.geom.aesthetics().supported();
+        for aesthetic in self.mappings.aesthetics.keys() {
+            if !supported.contains(&aesthetic.as_str()) {
+                extra.push(aesthetic);
+            }
+        }
+        if !extra.is_empty() {
+            return Err(format!(
+                "Layer '{}' does not support the '{}' mapping(s).",
+                self.geom,
+                extra.join(", ")
+            ));
+        }
         Ok(())
     }
 

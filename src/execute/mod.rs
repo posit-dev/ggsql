@@ -55,7 +55,7 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
 
         // Validate required aesthetics for this geom
         layer
-            .validate_required_aesthetics()
+            .validate_mapping()
             .map_err(|e| GgsqlError::ValidationError(format!("Layer {}: {}", idx + 1, e)))?;
 
         // Validate SETTING parameters are valid for this geom
