@@ -46,6 +46,7 @@ impl GeomTrait for Line {
         _group_by: &[String],
         _parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
+        _dialect: &dyn crate::reader::SqlDialect,
     ) -> crate::Result<StatResult> {
         // Line geom needs ordering by pos1 (domain axis) for proper rendering
         let order_col = naming::aesthetic_column("pos1");
