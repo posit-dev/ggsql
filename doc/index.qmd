@@ -3,22 +3,172 @@ pagetitle: "ggsql"
 page-layout: custom
 section-divs: false
 toc: false
+lightbox: false
+repo-actions: false
+listing:
+  - id: example-carousel
+    contents: gallery/examples
+    type: grid
+    grid-columns: 6
+    image-height: 150px
+    fields: [image, title]
+    sort: "order"
+    max-items: 6
+include-in-header: 
+    text: |
+        <link href="https://fonts.googleapis.com/css2?family=Antic+Didone&display=swap" rel="stylesheet">
 ---
 
 ::: {.hero-banner}
-![](assets/hero.png){.hero-image}
 
-::: {.hero-content}
-# SQL meets Grammar of Graphics
+# <span class="hcode">QUERY</span> <span class="hviz-wrapper">![](assets/visualize.svg){.hviz aria-hidden="true"}<span class="sr-only">VISUALIZE</span></span> <span class="hund">UNDERSTAND</span>
 
-A declarative visualization language that extends SQL with powerful data visualization capabilities.
+::: {.hero-body}
+ggsql brings the elegance of the Grammar of Graphics to SQL. Write familiar queries, add visualization clauses, and see your data transform into beautiful, composable charts — no context switching, no separate tools, just SQL with superpowers.
 
 ::: {.hero-buttons}
-[Get Started](installation.qmd){.btn .btn-secondary .btn-lg}
-[View Examples](examples.qmd){.btn .btn-outline-secondary .btn-lg}
+[Get Started](get_started.qmd){.btn .btn-primary .btn-lg}
+[View Examples](gallery/index.qmd){.btn .btn-outline-primary .btn-lg}
+:::
 :::
 
 :::
+
+::: {.content-block .dark-bg}
+### Try it out
+
+ggsql runs in the browser as well! Edit the code and watch the plot update.
+
+```{ggsql}
+-- Regular query
+SELECT * FROM ggsql:penguins
+WHERE island = 'Biscoe'
+-- Followed by visualization declaration
+VISUALISE bill_len AS x, bill_dep AS y, body_mass AS fill
+DRAW point
+DRAW linear 
+    MAPPING 0.4 AS coef, -1 AS intercept
+SCALE BINNED fill
+LABEL
+   title => 'Relationship between bill dimensions in 3 species of penguins',
+   x => 'Bill length (mm)',
+   y => 'Bill depth (mm)'
+```
+
+:::
+
+::: {.content-block .examples-carousel}
+## Explore the examples
+
+::: {#example-carousel}
+:::
+
+[See all examples →](gallery/index.qmd){.see-all-link}
+
+:::
+
+::: {.content-block .dark-bg .install-section}
+### Install it today
+
+::: {#installer-buttons}
+<noscript>Download from [GitHub Releases](https://github.com/posit-dev/ggsql/releases)</noscript>
+:::
+
+::: {.install-cli-options}
+**Or via command line:**
+`uv pip install ggsql-jupyter && ggsql-jupyter --install`
+·
+`cargo install ggsql`
+:::
+
+```{=html}
+<script>
+(function() {
+  const repoOwner = 'posit-dev';
+  const repoName = 'ggsql';
+  const includePreReleases = true; // Set to false to only show published releases
+
+  function detectOS() {
+    const ua = navigator.userAgent.toLowerCase();
+    if (ua.includes('win')) return 'windows';
+    if (ua.includes('mac')) return 'macos';
+    if (ua.includes('linux')) return 'linux';
+    return 'unknown';
+  }
+
+  function getOSLabel(os) {
+    switch(os) {
+      case 'windows': return 'Windows';
+      case 'macos': return 'macOS';
+      case 'linux': return 'Linux';
+      default: return 'your platform';
+    }
+  }
+
+  async function loadInstallers() {
+    const container = document.getElementById('installer-buttons');
+    if (!container) return;
+
+    const os = detectOS();
+    const jupyterPattern = {
+      windows: /ggsql-jupyter.*\.(exe|msi)$/i,
+      macos: /ggsql-jupyter.*\.dmg$/i,
+      linux: /ggsql-jupyter.*\.deb$/i
+    }[os];
+    const cliPattern = {
+      windows: /^ggsql[^-].*\.(exe|msi)$/i,
+      macos: /^ggsql[^-].*\.dmg$/i,
+      linux: /^ggsql[^-].*\.deb$/i
+    }[os];
+
+    try {
+      const endpoint = includePreReleases
+        ? `https://api.github.com/repos/${repoOwner}/${repoName}/releases`
+        : `https://api.github.com/repos/${repoOwner}/${repoName}/releases/latest`;
+      const response = await fetch(endpoint);
+      if (!response.ok) throw new Error('Failed to fetch release');
+      const data = await response.json();
+      const release = includePreReleases ? data[0] : data;
+      if (!release) throw new Error('No releases found');
+
+      const version = release.tag_name;
+      const jupyterAsset = release.assets?.find(a => jupyterPattern?.test(a.name));
+      const cliAsset = release.assets?.find(a => cliPattern?.test(a.name));
+
+      container.innerHTML = `
+        <p class="install-version">${version} · ${getOSLabel(os)} · <a href="${release.html_url}">Other platforms</a></p>
+        <div class="install-buttons-row">
+          <div class="install-option">
+            <a href="${jupyterAsset?.browser_download_url || release.html_url}" class="btn btn-primary install-btn">
+              Jupyter Kernel
+            </a>
+            <p class="install-description">For Jupyter and Quarto notebooks</p>
+          </div>
+          <div class="install-option">
+            <a href="${cliAsset?.browser_download_url || release.html_url}" class="btn btn-outline-primary install-btn">
+              CLI
+            </a>
+            <p class="install-description">For terminal and scripting workflows</p>
+          </div>
+        </div>
+      `;
+    } catch (e) {
+      container.innerHTML = `
+        <a href="https://github.com/${repoOwner}/${repoName}/releases" class="btn btn-primary">
+          View Downloads on GitHub
+        </a>
+      `;
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadInstallers);
+  } else {
+    loadInstallers();
+  }
+})();
+</script>
+```
 :::
 
 ::: {.content-block}
@@ -27,7 +177,7 @@ A declarative visualization language that extends SQL with powerful data visuali
 ::: {.features}
 
 ::: {.feature}
-### Pure SQL Foundation
+### Familiar Syntax
 
 Write standard SQL queries and seamlessly extend them with visualization clauses. Your existing SQL knowledge transfers directly.
 
@@ -43,134 +193,61 @@ DRAW line
 ::: {.feature}
 ### Grammar of Graphics
 
-Compose visualizations from independent layers, scales, and coordinates. Mix and match geoms, facets, and themes for precise control.
+Compose visualizations from independent layers, scales, and coordinates. Mix and match components for powerful custom visuals.
 
 ```{.ggsql .code-example}
-DRAW line 
-    MAPPING date AS x, value AS y
-DRAW point 
-    MAPPING date AS x, value AS y
-SCALE x 
-    SETTING type => 'date'
+VISUALISE date AS x FROM sales
+DRAW bar 
+SCALE BINNED x 
+    SETTING breaks => 'weeks'
 FACET region
 ```
 :::
 
 ::: {.feature}
-### Pluggable Architecture
+### Built for Humans _and_ AI
 
-Connect to DuckDB, PostgreSQL, or SQLite. Output to Vega-Lite, ggplot2, or render directly to PNG.
+The structured syntax makes it easy for AI agents to write, and for you to read, adjust, and verify.
 
-```{.ggsql .code-example}
--- Use any data source
-ggsql exec "SELECT ..."
-  --reader duckdb://data.db
-  --writer vegalite
-  --output viz.json
-```
+You also avoid needing agents to launch full programming languages like Python or R to create powerful visualizations, so you can rest assured that the agent doesn't accidentally alter your environment in unwanted ways.
+:::
+
+::: {.feature}
+### Connect directly to your data
+
+ggsql interfaces directly with your database. Want to create a histogram over 1 billion observations? No problem! All calculations are pushed to the database so you only extract what is needed for the visual.
 :::
 
 :::
 
 :::
 
-::: {.content-block .alt-bg}
+::: {.content-block .integrations}
 
-## Built for Modern Workflows
+## Available where your data is
 
-::: {.workflow-grid}
-
-::: {.workflow-item}
-
-### Jupyter Kernel
-
-Interactive notebooks with inline Vega-Lite visualizations. Persistent database sessions across cells.
-
-[Learn more &rarr;](installation.qmd#jupyter-kernel)
+::: {.tool-grid}
+::: {.tool-item}
+![](assets/logos/positron.svg){.tool-logo}
+[Positron](https://positron.posit.co/)
 :::
-
-::: {.workflow-item}
-
-### VS Code Extension
-
-Syntax highlighting for `.ggsql` files with full SQL and visualization clause support.
-
-[Learn more &rarr;](installation.qmd#vs-code-extension)
+::: {.tool-item}
+![](assets/logos/quarto.svg){.tool-logo}
+[Quarto](https://quarto.org/)
 :::
-
-::: {.workflow-item}
-
-### REST API
-
-Build dashboards and web applications with the `ggsql-rest` server. CORS-enabled with sample data loading.
-
-[Learn more &rarr;](installation.qmd#rest-api)
+::: {.tool-item}
+![](assets/logos/jupyter.svg){.tool-logo}
+[Jupyter](https://jupyter.org)
 :::
-
-::: {.workflow-item}
-
-### CLI Tool
-
-Parse, validate, and execute queries from the command line. Perfect for automation and CI pipelines.
-
-[Learn more &rarr;](installation.qmd#cli)
+::: {.tool-item}
+![](assets/logos/vscode.svg){.tool-logo}
+[VS Code](https://code.visualstudio.com/)
 :::
-
 :::
 
 :::
 
 ::: {.content-block}
-
-## Quick Example
-
-::: {.example-container}
-
-::: {.example-code}
-```{.ggsql}
--- Create a multi-layer visualization
-SELECT date, revenue, region
-FROM sales
-WHERE year >= 2023
-
-VISUALISE date AS x, revenue AS y, region AS color
-
-DRAW line
-DRAW point 
-    SETTING size => 3
-
-SCALE x 
-    SETTING type => 'date'
-SCALE y 
-    SETTING type => 'linear', limits => [0, 100000]
-
-FACET region SETTING scales => 'free_y'
-
-LABEL
-  title => 'Revenue Trends by Region',
-  x => 'Date',
-  y => 'Revenue (USD)'
-```
-:::
-
-::: {.example-description}
-### What's happening here?
-
-1. **SQL Query** retrieves sales data filtered by year
-2. **VISUALISE** maps columns to visual aesthetics
-3. **DRAW** creates line and point layers
-4. **SCALE** configures the x-axis as temporal
-5. **FACET** creates small multiples by region
-6. **LABEL** adds descriptive titles
-
-The output is a Vega-Lite specification that renders as an interactive chart.
-:::
-
-:::
-
-:::
-
-::: {.content-block .alt-bg}
 
 ::: {.cta-section}
 
@@ -179,11 +256,14 @@ The output is a Vega-Lite specification that renders as an interactive chart.
 Install ggsql and start creating visualizations in minutes.
 
 ::: {.cta-buttons}
-[Installation Guide](installation.qmd){.btn .btn-primary .btn-lg}
-[Syntax Reference](syntax/index.qmd){.btn .btn-outline-primary .btn-lg}
-[GitHub](https://github.com/georgestagg/ggsql){.btn .btn-outline-secondary .btn-lg}
+[Installation](get_started.qmd){.btn .btn-primary .btn-lg}
+[Documentation](syntax/index.qmd){.btn .btn-outline-primary .btn-lg}
+[Examples](examples.qmd){.btn .btn-outline-secondary .btn-lg}
 :::
+
+Or try our [online playground](wasm/) to experience the syntax _right now_.
 
 :::
 
 :::
+

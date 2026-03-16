@@ -9,6 +9,7 @@ use crate::{
         geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
         ParameterValue, StatResult,
     },
+    reader::SqlDialect,
     DataFrame, GgsqlError, Mappings, Result,
 };
 
@@ -85,8 +86,9 @@ impl GeomTrait for Boxplot {
         group_by: &[String],
         parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+        dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
-        stat_boxplot(query, aesthetics, group_by, parameters)
+        stat_boxplot(query, aesthetics, group_by, parameters, dialect)
     }
 }
 
@@ -101,6 +103,7 @@ fn stat_boxplot(
     aesthetics: &Mappings,
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
+    dialect: &dyn SqlDialect,
 ) -> Result<StatResult> {
     let y = get_column_name(aesthetics, "pos2").ok_or_else(|| {
         GgsqlError::ValidationError("Boxplot requires 'y' aesthetic mapping".to_string())
@@ -146,7 +149,7 @@ fn stat_boxplot(
     }
 
     // Query for boxplot summary statistics
-    let summary = boxplot_sql_compute_summary(query, &groups, &value_col, coef);
+    let summary = boxplot_sql_compute_summary(query, &groups, &value_col, coef, dialect);
     let stats_query = boxplot_sql_append_outliers(&summary, &groups, &value_col, query, outliers);
 
     Ok(StatResult::Transformed {
@@ -161,29 +164,44 @@ fn stat_boxplot(
     })
 }
 
-fn boxplot_sql_compute_summary(from: &str, groups: &[String], value: &str, coef: &f64) -> String {
+fn boxplot_sql_compute_summary(
+    from: &str,
+    groups: &[String],
+    value: &str,
+    coef: &f64,
+    dialect: &dyn SqlDialect,
+) -> String {
     let groups_str = groups.join(", ");
+    let lower_expr = dialect.sql_greatest(&[&format!("q1 - {coef} * (q3 - q1)"), "min"]);
+    let upper_expr = dialect.sql_least(&[&format!("q3 + {coef} * (q3 - q1)"), "max"]);
+    let q1 = dialect.sql_percentile(value, 0.25, from, groups);
+    let median = dialect.sql_percentile(value, 0.50, from, groups);
+    let q3 = dialect.sql_percentile(value, 0.75, from, groups);
     format!(
         "SELECT
           *,
-          GREATEST(q1 - {coef} * (q3 - q1), min) AS lower,
-          LEAST(   q3 + {coef} * (q3 - q1), max) AS upper
+          {lower_expr} AS lower,
+          {upper_expr} AS upper
         FROM (
           SELECT
             {groups},
             MIN({value}) AS min,
             MAX({value}) AS max,
-            QUANTILE_CONT({value}, 0.25) AS q1,
-            QUANTILE_CONT({value}, 0.50) AS median,
-            QUANTILE_CONT({value}, 0.75) AS q3
+            {q1} AS q1,
+            {median} AS median,
+            {q3} AS q3
           FROM ({from}) AS __ggsql_qt__
           WHERE {value} IS NOT NULL
           GROUP BY {groups}
         ) AS __ggsql_fn__",
-        coef = coef,
+        lower_expr = lower_expr,
+        upper_expr = upper_expr,
         groups = groups_str,
         value = value,
-        from = from
+        from = from,
+        q1 = q1,
+        median = median,
+        q3 = q3,
     )
 }
 
@@ -266,10 +284,8 @@ fn boxplot_sql_append_outliers(
         )
         {summary_select}
         UNION ALL
-        (
           SELECT {groups}, type AS {type_name}, value AS {value_name}, NULL AS {value2_name}
           FROM outliers
-        )
         ",
         summary = from,
         outliers = outliers,
@@ -285,6 +301,7 @@ fn boxplot_sql_append_outliers(
 mod tests {
     use super::*;
     use crate::plot::AestheticValue;
+    use crate::reader::AnsiDialect;
 
     // ==================== Helper Functions ====================
 
@@ -306,33 +323,38 @@ mod tests {
     #[test]
     fn test_sql_compute_summary_basic() {
         let groups = vec!["category".to_string()];
-        let result = boxplot_sql_compute_summary("data", &groups, "value", &1.5);
-        assert!(result.contains("QUANTILE_CONT(value, 0.25)"));
-        assert!(result.contains("QUANTILE_CONT(value, 0.50)"));
-        assert!(result.contains("QUANTILE_CONT(value, 0.75)"));
+        let result = boxplot_sql_compute_summary("data", &groups, "value", &1.5, &AnsiDialect);
+        assert!(result.contains("NTILE(4) OVER (ORDER BY value)"));
+        assert!(result.contains("AS q1"));
+        assert!(result.contains("AS median"));
+        assert!(result.contains("AS q3"));
         assert!(result.contains("MIN(value) AS min"));
         assert!(result.contains("MAX(value) AS max"));
         assert!(result.contains("WHERE value IS NOT NULL"));
         assert!(result.contains("GROUP BY category"));
-        assert!(result.contains("GREATEST"));
-        assert!(result.contains("LEAST"));
+        assert!(result.contains("CASE WHEN (q1 - 1.5"));
+        assert!(result.contains("CASE WHEN (q3 + 1.5"));
     }
 
     #[test]
     fn test_sql_compute_summary_multiple_groups() {
         let groups = vec!["cat".to_string(), "region".to_string()];
-        let result = boxplot_sql_compute_summary("tbl", &groups, "val", &1.5);
+        let result = boxplot_sql_compute_summary("tbl", &groups, "val", &1.5, &AnsiDialect);
         assert!(result.contains("GROUP BY cat, region"));
-        assert!(result.contains("QUANTILE_CONT(val, 0.25)"));
+        assert!(result.contains("NTILE(4) OVER (ORDER BY val)"));
     }
 
     #[test]
     fn test_sql_compute_summary_custom_coef() {
         let groups = vec!["pos1".to_string()];
-        let result = boxplot_sql_compute_summary("q", &groups, "pos2", &2.5);
+        let result = boxplot_sql_compute_summary("q", &groups, "pos2", &2.5, &AnsiDialect);
         assert!(result.contains("2.5"));
-        assert!(result.contains("GREATEST(q1 - 2.5 * (q3 - q1), min)"));
-        assert!(result.contains("LEAST(   q3 + 2.5 * (q3 - q1), max)"));
+        assert!(
+            result.contains("(CASE WHEN (q1 - 2.5 * (q3 - q1)) >= (min) THEN (q1 - 2.5 * (q3 - q1)) ELSE (min) END)")
+        );
+        assert!(
+            result.contains("(CASE WHEN (q3 + 2.5 * (q3 - q1)) <= (max) THEN (q3 + 2.5 * (q3 - q1)) ELSE (max) END)")
+        );
     }
 
     #[test]
@@ -351,24 +373,35 @@ mod tests {
     #[test]
     fn test_boxplot_sql_compute_summary_single_group() {
         let groups = vec!["category".to_string()];
-        let result = boxplot_sql_compute_summary("SELECT * FROM sales", &groups, "price", &1.5);
+        let result = boxplot_sql_compute_summary(
+            "SELECT * FROM sales",
+            &groups,
+            "price",
+            &1.5,
+            &AnsiDialect,
+        );
 
-        let expected = r#"SELECT
+        let q1 = AnsiDialect.sql_percentile("price", 0.25, "SELECT * FROM sales", &groups);
+        let median = AnsiDialect.sql_percentile("price", 0.50, "SELECT * FROM sales", &groups);
+        let q3 = AnsiDialect.sql_percentile("price", 0.75, "SELECT * FROM sales", &groups);
+        let expected = format!(
+            r#"SELECT
           *,
-          GREATEST(q1 - 1.5 * (q3 - q1), min) AS lower,
-          LEAST(   q3 + 1.5 * (q3 - q1), max) AS upper
+          (CASE WHEN (q1 - 1.5 * (q3 - q1)) >= (min) THEN (q1 - 1.5 * (q3 - q1)) ELSE (min) END) AS lower,
+          (CASE WHEN (q3 + 1.5 * (q3 - q1)) <= (max) THEN (q3 + 1.5 * (q3 - q1)) ELSE (max) END) AS upper
         FROM (
           SELECT
             category,
             MIN(price) AS min,
             MAX(price) AS max,
-            QUANTILE_CONT(price, 0.25) AS q1,
-            QUANTILE_CONT(price, 0.50) AS median,
-            QUANTILE_CONT(price, 0.75) AS q3
+            {q1} AS q1,
+            {median} AS median,
+            {q3} AS q3
           FROM (SELECT * FROM sales) AS __ggsql_qt__
           WHERE price IS NOT NULL
           GROUP BY category
-        ) AS __ggsql_fn__"#;
+        ) AS __ggsql_fn__"#
+        );
 
         assert_eq!(result, expected);
     }
@@ -376,24 +409,35 @@ mod tests {
     #[test]
     fn test_boxplot_sql_compute_summary_multiple_groups() {
         let groups = vec!["region".to_string(), "product".to_string()];
-        let result = boxplot_sql_compute_summary("SELECT * FROM data", &groups, "revenue", &1.5);
+        let result = boxplot_sql_compute_summary(
+            "SELECT * FROM data",
+            &groups,
+            "revenue",
+            &1.5,
+            &AnsiDialect,
+        );
 
-        let expected = r#"SELECT
+        let q1 = AnsiDialect.sql_percentile("revenue", 0.25, "SELECT * FROM data", &groups);
+        let median = AnsiDialect.sql_percentile("revenue", 0.50, "SELECT * FROM data", &groups);
+        let q3 = AnsiDialect.sql_percentile("revenue", 0.75, "SELECT * FROM data", &groups);
+        let expected = format!(
+            r#"SELECT
           *,
-          GREATEST(q1 - 1.5 * (q3 - q1), min) AS lower,
-          LEAST(   q3 + 1.5 * (q3 - q1), max) AS upper
+          (CASE WHEN (q1 - 1.5 * (q3 - q1)) >= (min) THEN (q1 - 1.5 * (q3 - q1)) ELSE (min) END) AS lower,
+          (CASE WHEN (q3 + 1.5 * (q3 - q1)) <= (max) THEN (q3 + 1.5 * (q3 - q1)) ELSE (max) END) AS upper
         FROM (
           SELECT
             region, product,
             MIN(revenue) AS min,
             MAX(revenue) AS max,
-            QUANTILE_CONT(revenue, 0.25) AS q1,
-            QUANTILE_CONT(revenue, 0.50) AS median,
-            QUANTILE_CONT(revenue, 0.75) AS q3
+            {q1} AS q1,
+            {median} AS median,
+            {q3} AS q3
           FROM (SELECT * FROM data) AS __ggsql_qt__
           WHERE revenue IS NOT NULL
           GROUP BY region, product
-        ) AS __ggsql_fn__"#;
+        ) AS __ggsql_fn__"#
+        );
 
         assert_eq!(result, expected);
     }
@@ -484,7 +528,13 @@ mod tests {
         );
         parameters.insert("outliers".to_string(), ParameterValue::Boolean(true));
 
-        let result = stat_boxplot("SELECT * FROM data", &aesthetics, &groups, &parameters);
+        let result = stat_boxplot(
+            "SELECT * FROM data",
+            &aesthetics,
+            &groups,
+            &parameters,
+            &AnsiDialect,
+        );
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("coef"));
@@ -499,7 +549,13 @@ mod tests {
         parameters.insert("outliers".to_string(), ParameterValue::Boolean(true));
         // Missing coef
 
-        let result = stat_boxplot("SELECT * FROM data", &aesthetics, &groups, &parameters);
+        let result = stat_boxplot(
+            "SELECT * FROM data",
+            &aesthetics,
+            &groups,
+            &parameters,
+            &AnsiDialect,
+        );
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("coef"));
@@ -517,7 +573,13 @@ mod tests {
             ParameterValue::String("yes".to_string()),
         );
 
-        let result = stat_boxplot("SELECT * FROM data", &aesthetics, &groups, &parameters);
+        let result = stat_boxplot(
+            "SELECT * FROM data",
+            &aesthetics,
+            &groups,
+            &parameters,
+            &AnsiDialect,
+        );
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("outliers"));
@@ -532,7 +594,13 @@ mod tests {
         parameters.insert("coef".to_string(), ParameterValue::Number(1.5));
         // Missing outliers
 
-        let result = stat_boxplot("SELECT * FROM data", &aesthetics, &groups, &parameters);
+        let result = stat_boxplot(
+            "SELECT * FROM data",
+            &aesthetics,
+            &groups,
+            &parameters,
+            &AnsiDialect,
+        );
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("outliers"));

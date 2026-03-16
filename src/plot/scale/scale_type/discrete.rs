@@ -3,7 +3,7 @@
 use polars::prelude::DataType;
 
 use super::super::transform::{Transform, TransformKind};
-use super::{ScaleTypeKind, ScaleTypeTrait, SqlTypeNames};
+use super::{ScaleTypeKind, ScaleTypeTrait};
 use crate::plot::types::{DefaultParam, DefaultParamValue};
 use crate::plot::ArrayElement;
 
@@ -233,7 +233,7 @@ impl ScaleTypeTrait for Discrete {
         column_name: &str,
         _column_dtype: &DataType,
         scale: &super::super::Scale,
-        _type_names: &SqlTypeNames,
+        _dialect: &dyn super::SqlDialect,
     ) -> Option<String> {
         // Only apply if input_range is explicitly specified by user
         // (not inferred from data)
@@ -297,6 +297,8 @@ impl std::fmt::Display for Discrete {
 
 #[cfg(test)]
 mod tests {
+    use crate::reader::AnsiDialect;
+
     use super::*;
 
     #[test]
@@ -475,9 +477,8 @@ mod tests {
         ]);
         scale.explicit_input_range = true;
 
-        let type_names = super::SqlTypeNames::default();
         let sql =
-            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &type_names);
+            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &AnsiDialect);
 
         assert!(sql.is_some());
         let sql = sql.unwrap();
@@ -500,9 +501,8 @@ mod tests {
         // explicit_input_range = false (inferred from data)
         scale.explicit_input_range = false;
 
-        let type_names = super::SqlTypeNames::default();
         let sql =
-            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &type_names);
+            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &AnsiDialect);
 
         // Should return None (no OOB handling for inferred ranges)
         assert!(sql.is_none());
@@ -520,8 +520,7 @@ mod tests {
         ]);
         scale.explicit_input_range = true;
 
-        let type_names = super::SqlTypeNames::default();
-        let sql = discrete.pre_stat_transform_sql("flag", &DataType::Boolean, &scale, &type_names);
+        let sql = discrete.pre_stat_transform_sql("flag", &DataType::Boolean, &scale, &AnsiDialect);
 
         assert!(sql.is_some());
         let sql = sql.unwrap();
@@ -542,8 +541,7 @@ mod tests {
         ]);
         scale.explicit_input_range = true;
 
-        let type_names = super::SqlTypeNames::default();
-        let sql = discrete.pre_stat_transform_sql("text", &DataType::String, &scale, &type_names);
+        let sql = discrete.pre_stat_transform_sql("text", &DataType::String, &scale, &AnsiDialect);
 
         assert!(sql.is_some());
         let sql = sql.unwrap();
@@ -560,9 +558,8 @@ mod tests {
         scale.input_range = Some(vec![]);
         scale.explicit_input_range = true;
 
-        let type_names = super::SqlTypeNames::default();
         let sql =
-            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &type_names);
+            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &AnsiDialect);
 
         // Should return None for empty range
         assert!(sql.is_none());

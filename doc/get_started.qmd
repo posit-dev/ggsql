@@ -1,5 +1,5 @@
 ---
-title: "Installing ggsql"
+title: "Getting started"
 ---
 
 <!-- UNCOMMENT THIS WHEN WE RELEASE
@@ -62,7 +62,27 @@ The native installers include the **ggsql CLI** binary only. Additional componen
 
 // -->
 
-## Building from Source
+Before you spend time on the minutia of installing ggsql — not that it is particularly daunting — why not try it out right now, right here, in your browser?
+
+The code below shows a simple ggsql example. But it is not just a static piece of text and an image. It is ggsql running right in your browser, using one of the built-in datasets. Try to change e.g. the title and see the plot update as you type. Even though this may be your first encounter with the ggsql syntax you might already get a sense of how some of the things fit together. See if you can change the code to instead show the different species as different shapes
+
+```{ggsql}
+VISUALISE bill_len AS x, bill_dep AS y, species AS fill FROM ggsql:penguins
+DRAW point
+SCALE x RENAMING * => '{} mm'
+LABEL
+   title => 'Relationship between bill dimensions in 3 species of penguins',
+   x => 'Bill length',
+   y => 'Bill depth'
+```
+
+Congratulations! You have started your journey with ggsql! All examples you see on this site will be interactive. Please experiment to your heart's content. If you want a more dedicated exploration experience head to [our playground](wasm/) which provides a simple IDE with a number of examples to try out.
+
+Now that you have gotten a feel for ggsql you may want to try running locally with your own data. Read on to learn how.
+
+## Installation
+
+### Building from Source
 
 If you prefer to build from source or need the latest development version:
 

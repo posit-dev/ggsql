@@ -24,7 +24,7 @@ required-features = ["rest-api"]
 [dependencies]
 # Parsing
 tree-sitter.workspace = true
-tree-sitter-ggsql = { path = "../tree-sitter-ggsql" }
+tree-sitter-ggsql = { workspace = true }
 csscolorparser.workspace = true
 
 # Color interpolation
@@ -38,7 +38,6 @@ polars-ops.workspace = true
 duckdb = { workspace = true, optional = true }
 arrow = { workspace = true, optional = true }
 postgres = { workspace = true, optional = true }
-sqlx = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }
 
 # Writers
@@ -77,15 +76,16 @@ proptest.workspace = true
 ureq = "3"
 
 [features]
-default = ["duckdb", "sqlite", "vegalite", "ipc", "builtin-data"]
+default = ["duckdb", "sqlite", "vegalite", "ipc", "parquet", "builtin-data"]
 ipc = ["polars/ipc"]
 duckdb = ["dep:duckdb", "dep:arrow"]
 polars-sql = ["polars/sql"]
-builtin-data = ["polars/parquet"]
+parquet = ["polars/parquet"]
 postgres = ["dep:postgres"]
 sqlite = ["dep:rusqlite"]
 vegalite = []
 ggplot2 = []
+builtin-data = []
 python = ["dep:pyo3"]
 rest-api = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tracing", "dep:tracing-subscriber", "duckdb", "vegalite"]
 all-readers = ["duckdb", "postgres", "sqlite", "polars-sql"]

@@ -169,6 +169,7 @@ impl Plot {
     /// - Layer aesthetics
     /// - Layer remappings
     /// - Scale aesthetics
+    /// - Label keys
     pub fn transform_aesthetics_to_internal(&mut self) {
         let ctx = self.get_aesthetic_context();
 
@@ -186,6 +187,19 @@ impl Plot {
             if let Some(internal) = ctx.map_user_to_internal(&scale.aesthetic) {
                 scale.aesthetic = internal.to_string();
             }
+        }
+
+        // Transform label keys
+        if let Some(labels) = &mut self.labels {
+            let mut transformed = HashMap::new();
+            for (key, value) in labels.labels.drain() {
+                let internal_key = ctx
+                    .map_user_to_internal(&key)
+                    .map(|s| s.to_string())
+                    .unwrap_or(key);
+                transformed.insert(internal_key, value);
+            }
+            labels.labels = transformed;
         }
     }
 
@@ -715,5 +729,121 @@ mod tests {
             Some(&"size".to_string()),
             "Non-color aesthetic should keep its name"
         );
+    }
+
+    // ========================================
+    // Label Transformation Tests
+    // ========================================
+
+    #[test]
+    fn test_label_transform_with_default_project() {
+        // LABEL x/y with default cartesian should transform to pos1/pos2
+        use crate::plot::projection::{Coord, Projection};
+
+        let mut spec = Plot::new();
+        spec.project = Some(Projection {
+            coord: Coord::cartesian(),
+            aesthetics: vec!["x".to_string(), "y".to_string()],
+            properties: HashMap::new(),
+        });
+        spec.labels = Some(Labels {
+            labels: HashMap::from([
+                ("x".to_string(), "X Axis".to_string()),
+                ("y".to_string(), "Y Axis".to_string()),
+            ]),
+        });
+
+        spec.initialize_aesthetic_context();
+        spec.transform_aesthetics_to_internal();
+
+        let labels = spec.labels.as_ref().unwrap();
+        assert_eq!(labels.labels.get("pos1"), Some(&"X Axis".to_string()));
+        assert_eq!(labels.labels.get("pos2"), Some(&"Y Axis".to_string()));
+        assert!(labels.labels.get("x").is_none());
+        assert!(labels.labels.get("y").is_none());
+    }
+
+    #[test]
+    fn test_label_transform_with_flipped_project() {
+        // LABEL x/y with PROJECT y, x TO cartesian should swap the mappings
+        use crate::plot::projection::{Coord, Projection};
+
+        let mut spec = Plot::new();
+        // PROJECT y, x TO cartesian means y maps to pos1, x maps to pos2
+        spec.project = Some(Projection {
+            coord: Coord::cartesian(),
+            aesthetics: vec!["y".to_string(), "x".to_string()],
+            properties: HashMap::new(),
+        });
+        spec.labels = Some(Labels {
+            labels: HashMap::from([
+                ("x".to_string(), "Category".to_string()),
+                ("y".to_string(), "Value".to_string()),
+            ]),
+        });
+
+        spec.initialize_aesthetic_context();
+        spec.transform_aesthetics_to_internal();
+
+        let labels = spec.labels.as_ref().unwrap();
+        // x maps to pos2 (second positional), y maps to pos1 (first positional)
+        assert_eq!(labels.labels.get("pos1"), Some(&"Value".to_string()));
+        assert_eq!(labels.labels.get("pos2"), Some(&"Category".to_string()));
+    }
+
+    #[test]
+    fn test_label_transform_with_polar_project() {
+        // LABEL theta/radius with polar should transform to pos1/pos2
+        use crate::plot::projection::{Coord, Projection};
+
+        let mut spec = Plot::new();
+        spec.project = Some(Projection {
+            coord: Coord::polar(),
+            aesthetics: vec!["theta".to_string(), "radius".to_string()],
+            properties: HashMap::new(),
+        });
+        spec.labels = Some(Labels {
+            labels: HashMap::from([
+                ("theta".to_string(), "Angle".to_string()),
+                ("radius".to_string(), "Distance".to_string()),
+            ]),
+        });
+
+        spec.initialize_aesthetic_context();
+        spec.transform_aesthetics_to_internal();
+
+        let labels = spec.labels.as_ref().unwrap();
+        assert_eq!(labels.labels.get("pos1"), Some(&"Angle".to_string()));
+        assert_eq!(labels.labels.get("pos2"), Some(&"Distance".to_string()));
+    }
+
+    #[test]
+    fn test_label_transform_preserves_non_positional() {
+        // LABEL title/color should be preserved unchanged
+        use crate::plot::projection::{Coord, Projection};
+
+        let mut spec = Plot::new();
+        spec.project = Some(Projection {
+            coord: Coord::cartesian(),
+            aesthetics: vec!["x".to_string(), "y".to_string()],
+            properties: HashMap::new(),
+        });
+        spec.labels = Some(Labels {
+            labels: HashMap::from([
+                ("title".to_string(), "My Chart".to_string()),
+                ("color".to_string(), "Category".to_string()),
+                ("x".to_string(), "X Axis".to_string()),
+            ]),
+        });
+
+        spec.initialize_aesthetic_context();
+        spec.transform_aesthetics_to_internal();
+
+        let labels = spec.labels.as_ref().unwrap();
+        // Non-positional labels should remain unchanged
+        assert_eq!(labels.labels.get("title"), Some(&"My Chart".to_string()));
+        assert_eq!(labels.labels.get("color"), Some(&"Category".to_string()));
+        // Positional label should be transformed
+        assert_eq!(labels.labels.get("pos1"), Some(&"X Axis".to_string()));
     }
 }

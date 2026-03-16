@@ -1,10 +1,10 @@
-name: Release Installers
+name: Release Cargo and Installer Packages
 
 on:
   push:
     tags:
-      - 'v*'  # Trigger on version tags (e.g., v0.1.0)
-  workflow_dispatch:  # Allow manual triggering
+      - "v*"
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -21,7 +21,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
@@ -75,7 +75,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
@@ -125,7 +125,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
@@ -167,10 +167,67 @@ jobs:
           path: src/target/release/packager/*.deb
           retention-days: 30
 
+  build-cargo:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cargo-publish
+
+      - name: Get crates.io publish token
+        uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+
+      - name: Build tree-sitter-ggsql
+        run: cargo build --package tree-sitter-ggsql
+
+      - name: Publish tree-sitter-ggsql
+        run: cargo publish --package tree-sitter-ggsql --allow-dirty
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      - name: Wait for crates.io index update
+        run: sleep 30
+
+      - name: Publish ggsql
+        run: cargo publish --package ggsql
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      - name: Wait for crates.io index update
+        run: sleep 30
+
+      - name: Publish ggsql-jupyter
+        run: cargo publish --package ggsql-jupyter
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
   create-release:
     name: Create GitHub Release
-    needs: [build-windows, build-macos, build-linux]
+    needs: [build-windows, build-macos, build-linux, build-cargo]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
@@ -183,15 +240,12 @@ jobs:
         run: ls -R artifacts
 
       - name: Create release and upload installers
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/**/*.exe
             artifacts/**/*.msi
             artifacts/**/*.dmg
             artifacts/**/*.deb
-          draft: false
-          prerelease: false
-          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

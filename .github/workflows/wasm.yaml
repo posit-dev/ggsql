@@ -6,6 +6,7 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   build:
@@ -47,6 +48,10 @@ jobs:
       - name: Install wasm-pack
         run: cargo install wasm-pack
 
+      - name: Build WASM library
+        working-directory: ggsql-wasm/library
+        run: npm install && npm run build
+
       - name: Build WASM package
         working-directory: ggsql-wasm
         run: wasm-pack build --target web --profile wasm --no-opt
@@ -54,3 +59,13 @@ jobs:
       - name: Optimise WASM binary
         working-directory: ggsql-wasm
         run: wasm-opt pkg/ggsql_wasm_bg.wasm -o pkg/ggsql_wasm_bg.wasm -Oz --all-features
+
+      - name: Build WASM demo
+        working-directory: ggsql-wasm/demo
+        run: npm install && npm run build
+
+      - name: Upload demo artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-demo
+          path: ggsql-wasm/demo/dist/

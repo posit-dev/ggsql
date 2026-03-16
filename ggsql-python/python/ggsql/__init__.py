@@ -9,7 +9,7 @@ from narwhals.typing import IntoFrame
 
 from ggsql._ggsql import (
     DuckDBReader,
-    VegaLiteWriter,
+    VegaLiteWriter as _RustVegaLiteWriter,
     Validated,
     Spec,
     validate,
@@ -27,7 +27,7 @@ __all__ = [
     "execute",
     "render_altair",
 ]
-__version__ = "0.1.0"
+__version__ = "0.1.8"
 
 # Type alias for any Altair chart type
 AltairChart = Union[
@@ -39,6 +39,64 @@ AltairChart = Union[
     altair.VConcatChart,
     altair.RepeatChart,
 ]
+
+
+def _json_to_altair_chart(vegalite_json: str, **kwargs: Any) -> AltairChart:
+    """Convert a Vega-Lite JSON string to the appropriate Altair chart type."""
+    spec = json.loads(vegalite_json)
+
+    if "layer" in spec:
+        return altair.LayerChart.from_json(vegalite_json, **kwargs)
+    elif "facet" in spec or "spec" in spec:
+        return altair.FacetChart.from_json(vegalite_json, **kwargs)
+    elif "concat" in spec:
+        return altair.ConcatChart.from_json(vegalite_json, **kwargs)
+    elif "hconcat" in spec:
+        return altair.HConcatChart.from_json(vegalite_json, **kwargs)
+    elif "vconcat" in spec:
+        return altair.VConcatChart.from_json(vegalite_json, **kwargs)
+    elif "repeat" in spec:
+        return altair.RepeatChart.from_json(vegalite_json, **kwargs)
+    else:
+        return altair.Chart.from_json(vegalite_json, **kwargs)
+
+
+class VegaLiteWriter:
+    """Vega-Lite v6 JSON output writer.
+
+    Methods
+    -------
+    render(spec)
+        Render a Spec to a Vega-Lite JSON string.
+    render_chart(spec, **kwargs)
+        Render a Spec to an Altair chart object.
+    """
+
+    def __init__(self) -> None:
+        self._inner = _RustVegaLiteWriter()
+
+    def render(self, spec: Spec) -> str:
+        """Render a Spec to a Vega-Lite JSON string."""
+        return self._inner.render(spec)
+
+    def render_chart(self, spec: Spec, **kwargs: Any) -> AltairChart:
+        """Render a Spec to an Altair chart object.
+
+        Parameters
+        ----------
+        spec
+            The resolved visualization specification from ``reader.execute()``.
+        **kwargs
+            Additional keyword arguments passed to ``altair.Chart.from_json()``.
+            Common options include ``validate=False`` to skip schema validation.
+
+        Returns
+        -------
+        AltairChart
+            An Altair chart object (Chart, LayerChart, FacetChart, etc.).
+        """
+        vegalite_json = self.render(spec)
+        return _json_to_altair_chart(vegalite_json, **kwargs)
 
 
 def render_altair(
@@ -86,21 +144,4 @@ def render_altair(
     writer = VegaLiteWriter()
     vegalite_json = writer.render(spec)
 
-    # Parse to determine the correct Altair class
-    spec = json.loads(vegalite_json)
-
-    # Determine the correct Altair class based on spec structure
-    if "layer" in spec:
-        return altair.LayerChart.from_json(vegalite_json, **kwargs)
-    elif "facet" in spec or "spec" in spec:
-        return altair.FacetChart.from_json(vegalite_json, **kwargs)
-    elif "concat" in spec:
-        return altair.ConcatChart.from_json(vegalite_json, **kwargs)
-    elif "hconcat" in spec:
-        return altair.HConcatChart.from_json(vegalite_json, **kwargs)
-    elif "vconcat" in spec:
-        return altair.VConcatChart.from_json(vegalite_json, **kwargs)
-    elif "repeat" in spec:
-        return altair.RepeatChart.from_json(vegalite_json, **kwargs)
-    else:
-        return altair.Chart.from_json(vegalite_json, **kwargs)
+    return _json_to_altair_chart(vegalite_json, **kwargs)

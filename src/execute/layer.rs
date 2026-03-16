@@ -7,9 +7,9 @@ use crate::plot::aesthetic::AestheticContext;
 use crate::plot::layer::is_transposed;
 use crate::plot::layer::orientation::{flip_positional_aesthetics, resolve_orientation};
 use crate::plot::{
-    AestheticValue, DefaultAestheticValue, Layer, ParameterValue, Scale, Schema, SqlTypeNames,
-    StatResult,
+    AestheticValue, DefaultAestheticValue, Layer, ParameterValue, Scale, Schema, StatResult,
 };
+use crate::reader::SqlDialect;
 use crate::{naming, DataFrame, GgsqlError, Result};
 use polars::prelude::DataType;
 use std::collections::{HashMap, HashSet};
@@ -153,6 +153,17 @@ pub fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataF
         }
     }
 
+    // Drop any remaining __ggsql_stat_* columns that weren't consumed by remappings.
+    let stat_cols: Vec<String> = df
+        .get_column_names()
+        .into_iter()
+        .filter(|name| naming::is_stat_column(name))
+        .map(|name| name.to_string())
+        .collect();
+    if !stat_cols.is_empty() {
+        df = df.drop_many(stat_cols);
+    }
+
     Ok(df)
 }
 
@@ -186,14 +197,14 @@ pub fn literal_to_series(name: &str, lit: &ParameterValue, len: usize) -> polars
 /// * `layer` - The layer configuration
 /// * `schema` - The layer's schema (used for column dtype lookup)
 /// * `scales` - All resolved scales
-/// * `type_names` - SQL type names for the database backend
+/// * `dialect` - SQL dialect for the database backend
 pub fn apply_pre_stat_transform(
     query: &str,
     layer: &Layer,
     full_schema: &Schema,
     aesthetic_schema: &Schema,
     scales: &[Scale],
-    type_names: &SqlTypeNames,
+    dialect: &dyn SqlDialect,
 ) -> String {
     let mut transform_exprs: Vec<(String, String)> = vec![];
     let mut transformed_columns: HashSet<String> = HashSet::new();
@@ -229,7 +240,7 @@ pub fn apply_pre_stat_transform(
                 // Get pre-stat SQL transformation from scale type (if applicable)
                 // Each scale type's pre_stat_transform_sql() returns None if not applicable
                 if let Some(sql) =
-                    scale_type.pre_stat_transform_sql(&aes_col_name, &col_dtype, scale, type_names)
+                    scale_type.pre_stat_transform_sql(&aes_col_name, &col_dtype, scale, dialect)
                 {
                     transformed_columns.insert(aes_col_name.clone());
                     transform_exprs.push((aes_col_name, sql));
@@ -339,7 +350,7 @@ pub fn build_layer_base_query(
 /// * `base_query` - The base query from build_layer_base_query
 /// * `schema` - The layer's schema (with min/max from base_query)
 /// * `scales` - All resolved scales
-/// * `type_names` - SQL type names for the database backend
+/// * `dialect` - SQL dialect for the database backend
 /// * `execute_query` - Function to execute queries (needed for some stat transforms)
 ///
 /// # Returns
@@ -350,7 +361,7 @@ pub fn apply_layer_transforms<F>(
     base_query: &str,
     schema: &Schema,
     scales: &[Scale],
-    type_names: &SqlTypeNames,
+    dialect: &dyn SqlDialect,
     execute_query: &F,
 ) -> Result<String>
 where
@@ -397,7 +408,7 @@ where
         schema,
         &aesthetic_schema,
         scales,
-        type_names,
+        dialect,
     );
 
     // Build group_by columns from partition_by
@@ -426,6 +437,7 @@ where
         &group_by,
         &layer.parameters,
         execute_query,
+        dialect,
     )?;
 
     // Flip user remappings BEFORE merging defaults for Transposed orientation.
@@ -537,12 +549,6 @@ where
             if stat_rename_exprs.is_empty() {
                 transformed_query
             } else {
-                let stat_col_names: Vec<String> = stat_columns
-                    .iter()
-                    .map(|s| naming::stat_column(s))
-                    .collect();
-                let exclude_clause = format!("EXCLUDE ({})", stat_col_names.join(", "));
-
                 // If the transformed query uses CTEs (WITH ... SELECT ...),
                 // we can't wrap it in a subquery because Polars SQL doesn't
                 // support CTEs inside subqueries. Instead, split into CTE
@@ -555,16 +561,14 @@ where
                         .and_then(super::cte::split_with_query)
                 {
                     format!(
-                        "{}, __ggsql_stat__ AS ({}) SELECT * {}, {} FROM __ggsql_stat__",
+                        "{}, __ggsql_stat__ AS ({}) SELECT *, {} FROM __ggsql_stat__",
                         cte_prefix,
                         trailing_select,
-                        exclude_clause,
                         stat_rename_exprs.join(", ")
                     )
                 } else {
                     format!(
-                        "SELECT * {}, {} FROM ({}) AS __ggsql_stat__",
-                        exclude_clause,
+                        "SELECT *, {} FROM ({}) AS __ggsql_stat__",
                         stat_rename_exprs.join(", "),
                         transformed_query
                     )

@@ -75,6 +75,7 @@ pub use tile::Tile;
 pub use violin::Violin;
 
 use crate::plot::types::{DefaultAestheticValue, ParameterValue, Schema};
+use crate::reader::SqlDialect;
 
 /// Enum of all geom types for pattern matching and serialization
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -190,6 +191,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Apply statistical transformation to the layer query.
     ///
     /// The default implementation returns identity (no transformation).
+    #[allow(clippy::too_many_arguments)]
     fn apply_stat_transform(
         &self,
         _query: &str,
@@ -198,6 +200,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         _group_by: &[String],
         _parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+        _dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
         Ok(StatResult::Identity)
     }
@@ -400,6 +403,7 @@ impl Geom {
     }
 
     /// Apply stat transform
+    #[allow(clippy::too_many_arguments)]
     pub fn apply_stat_transform(
         &self,
         query: &str,
@@ -408,6 +412,7 @@ impl Geom {
         group_by: &[String],
         parameters: &HashMap<String, ParameterValue>,
         execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+        dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
         self.0.apply_stat_transform(
             query,
@@ -416,6 +421,7 @@ impl Geom {
             group_by,
             parameters,
             execute_query,
+            dialect,
         )
     }
 

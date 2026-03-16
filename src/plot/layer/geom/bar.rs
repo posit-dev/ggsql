@@ -7,6 +7,7 @@ use super::types::get_column_name;
 use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, StatResult};
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
+use crate::reader::SqlDialect;
 use crate::{DataFrame, GgsqlError, Mappings, Result};
 
 use super::types::Schema;
@@ -81,6 +82,7 @@ impl GeomTrait for Bar {
         group_by: &[String],
         _parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+        _dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
         stat_bar_count(query, schema, aesthetics, group_by)
     }

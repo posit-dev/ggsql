@@ -17,18 +17,18 @@ use crate::{naming, GgsqlError};
 #[cfg(feature = "builtin-data")]
 static PENGUINS: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../data/penguins.parquet"
+    "/data/penguins.parquet"
 ));
 
 #[cfg(feature = "builtin-data")]
 static AIRQUALITY: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../data/airquality.parquet"
+    "/data/airquality.parquet"
 ));
 
 /// Get the embedded parquet bytes for a known builtin dataset.
 #[cfg(feature = "builtin-data")]
-fn builtin_parquet_bytes(name: &str) -> Option<&'static [u8]> {
+pub fn builtin_parquet_bytes(name: &str) -> Option<&'static [u8]> {
     match name {
         "penguins" => Some(PENGUINS),
         "airquality" => Some(AIRQUALITY),
@@ -86,7 +86,7 @@ pub fn register_builtin_datasets_duckdb(
 // Polars-based builtin data loading
 // =============================================================================
 
-#[cfg(feature = "builtin-data")]
+#[cfg(feature = "parquet")]
 pub fn load_builtin_dataframe(name: &str) -> Result<crate::DataFrame, GgsqlError> {
     use polars::prelude::*;
     use std::io::Cursor;
@@ -109,7 +109,7 @@ pub fn load_builtin_dataframe(name: &str) -> Result<crate::DataFrame, GgsqlError
 }
 
 /// Known builtin dataset names in the ggsql namespace
-const KNOWN_DATASETS: &[&str] = &["penguins", "airquality"];
+pub const KNOWN_DATASETS: &[&str] = &["penguins", "airquality"];
 
 /// Check if a dataset name is a known builtin
 pub fn is_known_builtin(name: &str) -> bool {

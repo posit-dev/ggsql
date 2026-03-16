@@ -541,7 +541,7 @@ impl ScaleTypeTrait for Binned {
         column_name: &str,
         column_dtype: &DataType,
         scale: &super::super::Scale,
-        type_names: &super::SqlTypeNames,
+        dialect: &dyn super::SqlDialect,
     ) -> Option<String> {
         use super::super::transform::TransformKind;
 
@@ -602,9 +602,9 @@ impl ScaleTypeTrait for Binned {
                 // For temporal columns, format break values as ISO strings with CAST
                 if let Some(t) = transform {
                     let type_name = match t.transform_kind() {
-                        TransformKind::Date => type_names.date.as_deref(),
-                        TransformKind::DateTime => type_names.datetime.as_deref(),
-                        TransformKind::Time => type_names.time.as_deref(),
+                        TransformKind::Date => dialect.date_type_name(),
+                        TransformKind::DateTime => dialect.datetime_type_name(),
+                        TransformKind::Time => dialect.time_type_name(),
                         _ => None,
                     };
 
@@ -796,20 +796,8 @@ pub fn add_range_boundaries_to_breaks(breaks: &mut Vec<ArrayElement>, range: &[A
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::scale::{Scale, SqlTypeNames};
-
-    /// Helper to create default type names for tests
-    fn test_type_names() -> SqlTypeNames {
-        SqlTypeNames {
-            number: Some("DOUBLE".to_string()),
-            integer: Some("BIGINT".to_string()),
-            date: Some("DATE".to_string()),
-            datetime: Some("TIMESTAMP".to_string()),
-            time: Some("TIME".to_string()),
-            string: Some("VARCHAR".to_string()),
-            boolean: Some("BOOLEAN".to_string()),
-        }
-    }
+    use crate::plot::scale::Scale;
+    use crate::reader::AnsiDialect;
 
     #[test]
     fn test_pre_stat_transform_sql_even_breaks() {
@@ -827,7 +815,7 @@ mod tests {
 
         // Float64 column - no casting needed
         let sql = binned
-            .pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect)
             .unwrap();
 
         // Should produce CASE WHEN with bin centers 5, 15, 25
@@ -855,7 +843,7 @@ mod tests {
         );
 
         let sql = binned
-            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
             .unwrap();
 
         // Bin centers: (0+10)/2=5, (10+25)/2=17.5, (25+100)/2=62.5
@@ -879,7 +867,7 @@ mod tests {
         // No explicit closed property, should default to "left"
 
         let sql = binned
-            .pre_stat_transform_sql("col", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("col", &DataType::Float64, &scale, &AnsiDialect)
             .unwrap();
 
         // closed="left": [lower, upper) except last which is [lower, upper]
@@ -905,7 +893,7 @@ mod tests {
         );
 
         let sql = binned
-            .pre_stat_transform_sql("col", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("col", &DataType::Float64, &scale, &AnsiDialect)
             .unwrap();
 
         // closed="right": first bin is [lower, upper], rest are (lower, upper]
@@ -925,7 +913,7 @@ mod tests {
         );
 
         assert!(binned
-            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
             .is_none());
     }
 
@@ -936,7 +924,7 @@ mod tests {
         // No breaks property at all
 
         assert!(binned
-            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
             .is_none());
     }
 
@@ -951,7 +939,7 @@ mod tests {
 
         // Should return None because breaks hasn't been resolved to Array
         assert!(binned
-            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
             .is_none());
     }
 
@@ -993,8 +981,7 @@ mod tests {
         );
 
         // Date column - no casting needed (types match)
-        let sql =
-            binned.pre_stat_transform_sql("date_col", &DataType::Date, &scale, &test_type_names());
+        let sql = binned.pre_stat_transform_sql("date_col", &DataType::Date, &scale, &AnsiDialect);
 
         // Should successfully generate SQL (not return None due to filtered-out breaks)
         assert!(sql.is_some(), "SQL should be generated for Date breaks");
@@ -1048,7 +1035,7 @@ mod tests {
             "datetime_col",
             &DataType::Datetime(TimeUnit::Microseconds, None),
             &scale,
-            &test_type_names(),
+            &AnsiDialect,
         );
 
         // Should successfully generate SQL
@@ -1077,8 +1064,7 @@ mod tests {
             ]),
         );
 
-        let sql =
-            binned.pre_stat_transform_sql("time_col", &DataType::Time, &scale, &test_type_names());
+        let sql = binned.pre_stat_transform_sql("time_col", &DataType::Time, &scale, &AnsiDialect);
 
         // Should successfully generate SQL
         assert!(sql.is_some(), "SQL should be generated for Time breaks");
@@ -1119,7 +1105,7 @@ mod tests {
 
         // Date column - no column casting, but break values are formatted as ISO dates
         let sql = binned
-            .pre_stat_transform_sql("date_col", &DataType::Date, &scale, &test_type_names())
+            .pre_stat_transform_sql("date_col", &DataType::Date, &scale, &AnsiDialect)
             .unwrap();
 
         // Should NOT contain column CAST (column is already DATE)
@@ -1160,7 +1146,7 @@ mod tests {
 
         // Float64 column - no casting needed
         let sql = binned
-            .pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect)
             .unwrap();
 
         // Should NOT contain any CAST expressions
@@ -1198,7 +1184,7 @@ mod tests {
 
         // Int64 column - no casting needed
         let sql = binned
-            .pre_stat_transform_sql("value", &DataType::Int64, &scale, &test_type_names())
+            .pre_stat_transform_sql("value", &DataType::Int64, &scale, &AnsiDialect)
             .unwrap();
 
         // Should NOT contain CAST expressions
@@ -1236,7 +1222,7 @@ mod tests {
                 "datetime_col",
                 &DataType::Datetime(TimeUnit::Microseconds, None),
                 &scale,
-                &test_type_names(),
+                &AnsiDialect,
             )
             .unwrap();
 
@@ -1518,7 +1504,7 @@ mod tests {
             }
 
             let sql = binned
-                .pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names())
+                .pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect)
                 .unwrap();
             for pattern in expected {
                 assert!(
@@ -1552,7 +1538,7 @@ mod tests {
                 ParameterValue::String("squish".to_string()),
             );
             let sql = binned
-                .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
+                .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
                 .unwrap();
             assert!(
                 sql.contains("WHEN x < 50 THEN 25"),
@@ -1576,7 +1562,7 @@ mod tests {
                 ParameterValue::String("squish".to_string()),
             );
             let sql = binned
-                .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
+                .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
                 .unwrap();
             assert!(
                 sql.contains("WHEN TRUE THEN 50"),
@@ -1601,7 +1587,7 @@ mod tests {
         );
 
         let sql = binned
-            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
             .unwrap();
         assert!(
             sql.contains("x >= 0 AND x < 10"),

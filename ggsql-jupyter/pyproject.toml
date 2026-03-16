@@ -1,0 +1,18 @@
+[build-system]
+requires = ["maturin>=1.4"]
+build-backend = "maturin"
+
+[project]
+name = "ggsql-jupyter"
+version = "0.1.8"
+description = "Jupyter kernel for ggsql - SQL extension for declarative data visualization"
+readme = "README.md"
+license = { text = "MIT" }
+keywords = ["jupyter", "kernel", "sql", "visualization", "ggsql"]
+classifiers = [
+    "Programming Language :: Rust",
+    "Framework :: Jupyter",
+]
+
+[tool.maturin]
+bindings = "bin"

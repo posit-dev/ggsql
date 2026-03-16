@@ -51,7 +51,7 @@ impl FacetDataContext {
 }
 
 /// Allowed properties for wrap facets
-const WRAP_ALLOWED: &[&str] = &["free", "ncol", "missing"];
+const WRAP_ALLOWED: &[&str] = &["free", "ncol", "nrow", "missing"];
 
 /// Allowed properties for grid facets
 const GRID_ALLOWED: &[&str] = &["free", "missing"];
@@ -117,6 +117,11 @@ pub fn resolve_properties(
                     "Setting `ncol` is only allowed for 1 dimensional facets, not 2 dimensional facets".to_string(),
                 );
             }
+            if key == "nrow" && !is_wrap {
+                return Err(
+                    "Setting `nrow` is only allowed for 1 dimensional facets, not 2 dimensional facets".to_string(),
+                );
+            }
             return Err(format!(
                 "Unknown setting: '{}'. Allowed settings: {}",
                 key,
@@ -127,7 +132,7 @@ pub fn resolve_properties(
 
     // Step 2: Validate property values
     validate_free_property(facet, positional_names)?;
-    validate_ncol_property(facet)?;
+    validate_layout_properties(facet)?;
     validate_missing_property(facet)?;
 
     // Step 3: Normalize free property to boolean vector
@@ -279,8 +284,22 @@ fn normalize_free_property(facet: &mut Facet, positional_names: &[&str]) {
         .insert("free".to_string(), ParameterValue::Array(bool_array));
 }
 
-/// Validate ncol property value
-fn validate_ncol_property(facet: &Facet) -> Result<(), String> {
+/// Validate ncol and nrow properties
+///
+/// - Both must be positive integers if present
+/// - They are mutually exclusive (cannot both be specified)
+fn validate_layout_properties(facet: &Facet) -> Result<(), String> {
+    let has_ncol = facet.properties.contains_key("ncol");
+    let has_nrow = facet.properties.contains_key("nrow");
+
+    // Check mutual exclusivity first
+    if has_ncol && has_nrow {
+        return Err(
+            "`ncol` and `nrow` cannot both be specified. Use one or the other.".to_string(),
+        );
+    }
+
+    // Validate ncol if present
     if let Some(value) = facet.properties.get("ncol") {
         match value {
             ParameterValue::Number(n) => {
@@ -288,11 +307,22 @@ fn validate_ncol_property(facet: &Facet) -> Result<(), String> {
                     return Err(format!("`ncol` must be a positive integer, got {}", n));
                 }
             }
-            _ => {
-                return Err("'ncol' must be a number".to_string());
-            }
+            _ => return Err("'ncol' must be a number".to_string()),
         }
     }
+
+    // Validate nrow if present
+    if let Some(value) = facet.properties.get("nrow") {
+        match value {
+            ParameterValue::Number(n) => {
+                if *n <= 0.0 || n.fract() != 0.0 {
+                    return Err(format!("`nrow` must be a positive integer, got {}", n));
+                }
+            }
+            _ => return Err("'nrow' must be a number".to_string()),
+        }
+    }
+
     Ok(())
 }
 
@@ -322,13 +352,29 @@ fn apply_defaults(facet: &mut Facet, context: &FacetDataContext) {
     // Note: absence of 'free' property means fixed/shared scales (default)
     // No need to insert a default value
 
-    // Default ncol for wrap facets (computed from data)
-    if facet.is_wrap() && !facet.properties.contains_key("ncol") {
-        let default_cols = compute_default_ncol(context.num_levels);
-        facet.properties.insert(
-            "ncol".to_string(),
-            ParameterValue::Number(default_cols as f64),
-        );
+    // Handle ncol/nrow for wrap facets
+    if facet.is_wrap() {
+        let has_ncol = facet.properties.contains_key("ncol");
+        let has_nrow = facet.properties.contains_key("nrow");
+
+        if has_nrow && !has_ncol {
+            // User provided nrow: compute ncol from it
+            if let Some(ParameterValue::Number(nrow)) = facet.properties.get("nrow") {
+                let nrow_val = *nrow as usize;
+                let ncol = ((context.num_levels as f64) / (nrow_val as f64)).ceil() as i64;
+                facet
+                    .properties
+                    .insert("ncol".to_string(), ParameterValue::Number(ncol as f64));
+                facet.properties.remove("nrow");
+            }
+        } else if !has_ncol && !has_nrow {
+            // Neither provided: apply default ncol
+            let default_cols = compute_default_ncol(context.num_levels);
+            facet.properties.insert(
+                "ncol".to_string(),
+                ParameterValue::Number(default_cols as f64),
+            );
+        }
     }
 }
 
@@ -902,5 +948,184 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err.contains("'theta'"));
         assert!(err.contains("'x'") || err.contains("'y'"));
+    }
+
+    // ========================================
+    // nrow Property Tests
+    // ========================================
+
+    #[test]
+    fn test_nrow_computes_ncol() {
+        // 10 levels, nrow=2 -> ncol=5
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Number(2.0));
+
+        let context = make_context(10);
+        resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
+
+        // nrow should be removed and ncol computed
+        assert!(!facet.properties.contains_key("nrow"));
+        assert_eq!(
+            facet.properties.get("ncol"),
+            Some(&ParameterValue::Number(5.0))
+        );
+    }
+
+    #[test]
+    fn test_nrow_with_remainder() {
+        // 10 levels, nrow=3 -> ncol=ceil(10/3)=4
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Number(3.0));
+
+        let context = make_context(10);
+        resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
+
+        assert!(!facet.properties.contains_key("nrow"));
+        assert_eq!(
+            facet.properties.get("ncol"),
+            Some(&ParameterValue::Number(4.0))
+        );
+    }
+
+    #[test]
+    fn test_nrow_larger_than_num_levels() {
+        // 3 levels, nrow=10 -> ncol=ceil(3/10)=1
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Number(10.0));
+
+        let context = make_context(3);
+        resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
+
+        assert!(!facet.properties.contains_key("nrow"));
+        assert_eq!(
+            facet.properties.get("ncol"),
+            Some(&ParameterValue::Number(1.0))
+        );
+    }
+
+    #[test]
+    fn test_nrow_equals_num_levels() {
+        // 5 levels, nrow=5 -> ncol=ceil(5/5)=1
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Number(5.0));
+
+        let context = make_context(5);
+        resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
+
+        assert!(!facet.properties.contains_key("nrow"));
+        assert_eq!(
+            facet.properties.get("ncol"),
+            Some(&ParameterValue::Number(1.0))
+        );
+    }
+
+    #[test]
+    fn test_error_ncol_and_nrow_both_provided() {
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("ncol".to_string(), ParameterValue::Number(3.0));
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Number(2.0));
+
+        let context = make_context(10);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("ncol"));
+        assert!(err.contains("nrow"));
+        assert!(err.contains("cannot both be specified"));
+    }
+
+    #[test]
+    fn test_error_negative_nrow() {
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Number(-1.0));
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("nrow"));
+        assert!(err.contains("positive"));
+    }
+
+    #[test]
+    fn test_error_non_integer_nrow() {
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Number(2.5));
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("nrow"));
+        assert!(err.contains("integer"));
+    }
+
+    #[test]
+    fn test_error_nrow_on_grid() {
+        let mut facet = make_grid_facet();
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Number(2.0));
+
+        let context = make_context(10);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("nrow"));
+        assert!(err.contains("1 dimensional"));
+    }
+
+    #[test]
+    fn test_nrow_not_string() {
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::String("2".to_string()));
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("nrow"));
+        assert!(err.contains("number"));
+    }
+
+    #[test]
+    fn test_user_ncol_preserved() {
+        // Existing behavior: user-provided ncol should be preserved
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("ncol".to_string(), ParameterValue::Number(2.0));
+
+        let context = make_context(10);
+        resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
+
+        // User's ncol should be preserved, not overwritten
+        assert_eq!(
+            facet.properties.get("ncol"),
+            Some(&ParameterValue::Number(2.0))
+        );
     }
 }
