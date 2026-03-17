@@ -596,73 +596,6 @@ impl GeomRenderer for RibbonRenderer {
 /// For discrete scales: keeps x/y as-is and applies width/height as band fractions
 pub struct RectRenderer;
 
-impl RectRenderer {
-    /// Extract and remove band size (width/height) from encoding for discrete scales.
-    /// Should only be called for discrete scales.
-    fn extract_band_size(
-        encoding: &mut Map<String, Value>,
-        aesthetic: &str,
-        axis: &str,
-    ) -> Result<f64> {
-        const DEFAULT_BAND_SIZE: f64 = 1.0;
-
-        // Extract and remove the aesthetic
-        let size_enc = encoding.remove(aesthetic);
-
-        // If no aesthetic specified, use default
-        let Some(size_enc) = size_enc else {
-            return Ok(DEFAULT_BAND_SIZE);
-        };
-
-        // Case 1: value encoding (from SETTING parameter) - extract directly
-        if let Some(value) = size_enc.get("value").and_then(|v| v.as_f64()) {
-            return Ok(value);
-        }
-
-        // Case 2: field encoding (from MAPPING) - check scale domain for constant
-        if size_enc.get("field").is_none() {
-            // Neither value nor field - shouldn't happen
-            return Err(GgsqlError::WriterError(format!(
-                "Invalid {} encoding (expected value or field).",
-                aesthetic
-            )));
-        }
-
-        // Helper closure for repeated error message
-        let domain_error = || {
-            GgsqlError::WriterError(format!(
-                "Could not determine {} value for discrete {} scale.",
-                aesthetic, axis
-            ))
-        };
-
-        // Extract domain from scale
-        let domain = size_enc
-            .get("scale")
-            .and_then(|s| s.get("domain"))
-            .and_then(|d| d.as_array())
-            .ok_or_else(domain_error)?;
-
-        if domain.len() != 2 {
-            return Err(domain_error());
-        }
-
-        let (Some(min), Some(max)) = (domain[0].as_f64(), domain[1].as_f64()) else {
-            return Err(domain_error());
-        };
-
-        if (min - max).abs() < 1e-10 {
-            // Constant value - use it
-            Ok(min)
-        } else {
-            // Variable - error
-            Err(GgsqlError::WriterError(format!(
-                "Discrete {} scale does not support variable {} columns.",
-                axis, aesthetic
-            )))
-        }
-    }
-}
 
 impl GeomRenderer for RectRenderer {
     fn modify_encoding(
@@ -713,23 +646,47 @@ impl GeomRenderer for RectRenderer {
             return Ok(());
         }
 
-        // Build mark spec with band sizing for discrete directions
+        // Build mark properties for discrete directions
         let mut mark = json!({
             "type": "rect",
             "clip": true
         });
 
         if x_is_discrete {
-            let width = Self::extract_band_size(encoding, "width", "x")?;
-            mark["width"] = json!({"band": width});
+            if let Some(width_enc) = encoding.remove("width") {
+                // Check if it's a field encoding or literal value
+                if let Some(field) = width_enc.get("field").and_then(|f| f.as_str()) {
+                    // Field encoding: use expression with datum reference
+                    mark["width"] = json!({
+                        "expr": format!("datum.{} * bandwidth('x')", field)
+                    });
+                } else if let Some(value) = width_enc.get("value") {
+                    // Literal value: use band syntax
+                    mark["width"] = json!({"band": value});
+                }
+            }
         }
 
         if y_is_discrete {
-            let height = Self::extract_band_size(encoding, "height", "y")?;
-            mark["height"] = json!({"band": height});
+            if let Some(height_enc) = encoding.remove("height") {
+                // Check if it's a field encoding or literal value
+                if let Some(field) = height_enc.get("field").and_then(|f| f.as_str()) {
+                    // Field encoding: use expression with datum reference
+                    mark["height"] = json!({
+                        "expr": format!("datum.{} * bandwidth('y')", field)
+                    });
+                } else if let Some(value) = height_enc.get("value") {
+                    // Literal value: use band syntax
+                    mark["height"] = json!({"band": value});
+                }
+            }
         }
 
-        layer_spec["mark"] = mark;
+        // Only set mark if we added width or height
+        if mark.get("width").is_some() || mark.get("height").is_some() {
+            layer_spec["mark"] = mark;
+        }
+
         Ok(())
     }
 }
@@ -1621,12 +1578,12 @@ mod tests {
         assert_eq!(enc.get("y"), Some(&quant("ymin_col")));
         assert_eq!(enc.get("y2"), Some(&quant("ymax_col")));
 
-        // width should be removed
+        // width should be removed from encoding
         assert!(enc.get("width").is_none());
 
-        // Should have width band sizing for discrete x
+        // Should have mark-level width with band sizing
         assert_eq!(spec["mark"]["width"], json!({"band": 0.8}));
-        assert!(spec["mark"].get("height").is_none()); // y is continuous, no band height
+        assert!(spec["mark"].get("height").is_none()); // y is continuous, no height
     }
 
     #[test]
@@ -1645,11 +1602,11 @@ mod tests {
         assert_eq!(enc.get("x"), Some(&nominal("day")));
         assert_eq!(enc.get("y"), Some(&nominal("hour")));
 
-        // width/height should be removed
+        // width/height should be removed from encoding
         assert!(enc.get("width").is_none());
         assert!(enc.get("height").is_none());
 
-        // Should have both width and height band sizing
+        // Should have mark-level width and height with band sizing
         assert_eq!(spec["mark"]["width"], json!({"band": 0.7}));
         assert_eq!(spec["mark"]["height"], json!({"band": 0.9}));
     }
@@ -1664,61 +1621,27 @@ mod tests {
 
         let spec = render_rect(&mut encoding).unwrap();
 
-        // Should have default band sizing (1.0) for both
-        assert_eq!(spec["mark"]["width"], json!({"band": 1.0}));
-        assert_eq!(spec["mark"]["height"], json!({"band": 1.0}));
+        // With no width/height specified, should have no mark-level width/height
+        // (rects will fill the full band by default)
+        assert!(spec["mark"].get("width").is_none());
+        assert!(spec["mark"].get("height").is_none());
     }
 
     #[test]
-    fn test_rect_discrete_with_constant_width_column() {
-        // Test rect with discrete x scale where width is a constant-valued column
-        // This should work by detecting the constant in the scale domain
+    fn test_rect_discrete_with_field_width() {
+        // Test that field-based width on discrete scales uses datum expressions
+        // (works for both variable and constant domains, or no domain)
         let mut encoding = serde_json::Map::new();
         encoding.insert("x".to_string(), nominal("day"));
-        encoding.insert("width".to_string(), scale("width_col", 0.85, 0.85)); // constant
-        encoding.insert("ymin".to_string(), quant("ymin_col"));
-        encoding.insert("ymax".to_string(), quant("ymax_col"));
+        encoding.insert("width".to_string(), scale("width_col", 0.5, 0.9));
 
         let spec = render_rect(&mut encoding).unwrap();
 
-        // Should extract the constant value 0.85
-        assert_eq!(spec["mark"]["width"], json!({"band": 0.85}));
-    }
-
-    #[test]
-    fn test_rect_discrete_with_variable_width_column_error() {
-        // Test that variable width columns on discrete scales produce an error
-        let mut encoding = serde_json::Map::new();
-        encoding.insert("x".to_string(), nominal("day"));
-        encoding.insert("width".to_string(), scale("width_col", 0.5, 0.9)); // variable
-
-        let result = render_rect(&mut encoding);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("Discrete x scale"));
-        assert!(err
-            .to_string()
-            .contains("does not support variable width columns"));
-    }
-
-    #[test]
-    fn test_rect_extract_band_size_missing_domain_error() {
-        // Test that missing domain in scale produces an error
-        let mut encoding = serde_json::Map::new();
-        encoding.insert("x".to_string(), nominal("day"));
-        encoding.insert(
-            "width".to_string(),
-            json!({
-                "field": "width_col",
-                "type": "quantitative",
-                "scale": {}  // missing domain
-            }),
+        // Should use mark-level width with datum expression
+        assert_eq!(
+            spec["mark"]["width"],
+            json!({"expr": "datum.width_col * bandwidth('x')"})
         );
-
-        let result = render_rect(&mut encoding);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("Could not determine width value"));
     }
 
     #[test]
@@ -1740,11 +1663,11 @@ mod tests {
         // y should remain as y (discrete)
         assert_eq!(enc.get("y"), Some(&nominal("category")));
 
-        // height should be removed
+        // height should be removed from encoding
         assert!(enc.get("height").is_none());
 
-        // Should have height band sizing for discrete y
-        assert!(spec["mark"].get("width").is_none()); // x is continuous, no band width
+        // Should have mark-level height with band sizing
+        assert!(spec["mark"].get("width").is_none()); // x is continuous, no width
         assert_eq!(spec["mark"]["height"], json!({"band": 0.6}));
     }
     #[test]
