@@ -687,7 +687,10 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "windows", ignore = "DuckDB crashes on Windows with invalid SQL")]
+    #[cfg_attr(
+        target_os = "windows",
+        ignore = "DuckDB crashes on Windows with invalid SQL"
+    )]
     fn test_invalid_sql() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let result = reader.execute_sql("INVALID SQL SYNTAX");
