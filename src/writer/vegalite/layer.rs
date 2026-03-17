@@ -559,25 +559,6 @@ impl GeomRenderer for LinearRenderer {
 pub struct TextRenderer;
 
 impl TextRenderer {
-    /// Apply label formatting if format parameter is specified.
-    /// Returns a new DataFrame with the label column formatted, or the original if no formatting.
-    fn apply_label_formatting(df: &DataFrame, layer: &Layer) -> Result<DataFrame> {
-        use crate::format;
-        use crate::naming;
-        use crate::plot::ParameterValue;
-
-        // Check if format parameter is specified
-        let format_template = match layer.parameters.get("format") {
-            Some(ParameterValue::String(template)) => template,
-            _ => return Ok(df.clone()), // No formatting, return original
-        };
-
-        // Use format.rs helper to do the formatting
-        let label_col_name = naming::aesthetic_column("label");
-        format::format_dataframe_column(df, &label_col_name, format_template)
-            .map_err(GgsqlError::WriterError)
-    }
-
     /// Analyze DataFrame columns to build font property runs using run-length encoding.
     /// Returns:
     /// - DataFrame where each row represents a run's font properties (family, fontface, hjust, vjust, angle)
@@ -940,15 +921,14 @@ impl GeomRenderer for TextRenderer {
     fn prepare_data(
         &self,
         df: &DataFrame,
-        layer: &Layer,
+        _layer: &Layer,
         _data_key: &str,
         binned_columns: &HashMap<String, Vec<f64>>,
     ) -> Result<PreparedData> {
-        // Apply label formatting if specified
-        let df = Self::apply_label_formatting(df, layer)?;
+        // Note: Label formatting is already applied via Text::post_process() during execution
 
         // Analyze font columns to get RLE runs
-        let (font_runs_df, run_lengths) = Self::build_font_rle(&df)?;
+        let (font_runs_df, run_lengths) = Self::build_font_rle(df)?;
 
         // Split data by font runs, tracking cumulative position
         let mut components: HashMap<String, Vec<Value>> = HashMap::new();
