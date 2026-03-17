@@ -944,7 +944,9 @@ pub struct StringConstraint {
 impl StringConstraint {
     /// Any string allowed (empty slice = no restriction)
     pub const fn unconstrained() -> Self {
-        Self { allowed_values: &[] }
+        Self {
+            allowed_values: &[],
+        }
     }
 
     /// String must be one of the specified values
@@ -1137,9 +1139,9 @@ impl ParamConstraint {
             number: TypeConstraint::Forbidden,
             string: TypeConstraint::Constrained(StringConstraint::one_of(values)),
             boolean: TypeConstraint::Forbidden,
-            array: TypeConstraint::Constrained(ArrayConstraint::of_strings(StringConstraint::one_of(
-                values,
-            ))),
+            array: TypeConstraint::Constrained(ArrayConstraint::of_strings(
+                StringConstraint::one_of(values),
+            )),
             allow_null: true,
         }
     }
@@ -1251,7 +1253,11 @@ fn validate_string(name: &str, s: &str, c: &StringConstraint) -> Result<(), Stri
         return Ok(());
     }
     if !c.allowed_values.contains(&s) {
-        let quoted: Vec<String> = c.allowed_values.iter().map(|v| format!("'{}'", v)).collect();
+        let quoted: Vec<String> = c
+            .allowed_values
+            .iter()
+            .map(|v| format!("'{}'", v))
+            .collect();
         return Err(format!(
             "Invalid value '{}' for '{}'. Allowed: {}",
             s,
@@ -1837,8 +1843,11 @@ mod tests {
     #[test]
     fn test_number_constraint_rejects_wrong_type() {
         let constraint = ParamConstraint::number_min(0.0);
-        let result =
-            validate_parameter("test", &ParameterValue::String("hello".to_string()), &constraint);
+        let result = validate_parameter(
+            "test",
+            &ParameterValue::String("hello".to_string()),
+            &constraint,
+        );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("expects Number"));
     }
@@ -1846,17 +1855,22 @@ mod tests {
     #[test]
     fn test_string_enum_accepts_valid() {
         let constraint = ParamConstraint::string_enum(&["a", "b", "c"]);
-        assert!(
-            validate_parameter("test", &ParameterValue::String("a".to_string()), &constraint)
-                .is_ok()
-        );
+        assert!(validate_parameter(
+            "test",
+            &ParameterValue::String("a".to_string()),
+            &constraint
+        )
+        .is_ok());
     }
 
     #[test]
     fn test_string_enum_rejects_invalid() {
         let constraint = ParamConstraint::string_enum(&["a", "b", "c"]);
-        let result =
-            validate_parameter("test", &ParameterValue::String("d".to_string()), &constraint);
+        let result = validate_parameter(
+            "test",
+            &ParameterValue::String("d".to_string()),
+            &constraint,
+        );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid value 'd'"));
     }
@@ -1873,14 +1887,19 @@ mod tests {
     fn test_boolean_accepts_valid() {
         let constraint = ParamConstraint::boolean();
         assert!(validate_parameter("reverse", &ParameterValue::Boolean(true), &constraint).is_ok());
-        assert!(validate_parameter("reverse", &ParameterValue::Boolean(false), &constraint).is_ok());
+        assert!(
+            validate_parameter("reverse", &ParameterValue::Boolean(false), &constraint).is_ok()
+        );
     }
 
     #[test]
     fn test_boolean_rejects_wrong_type() {
         let constraint = ParamConstraint::boolean();
-        let result =
-            validate_parameter("reverse", &ParameterValue::String("true".to_string()), &constraint);
+        let result = validate_parameter(
+            "reverse",
+            &ParameterValue::String("true".to_string()),
+            &constraint,
+        );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("expects Boolean"));
     }
@@ -1900,10 +1919,8 @@ mod tests {
             NumberConstraint::min(0.0),
             ArrayConstraint::of_numbers_len(2, NumberConstraint::min(0.0)),
         );
-        let arr = ParameterValue::Array(vec![
-            ArrayElement::Number(0.05),
-            ArrayElement::Number(10.0),
-        ]);
+        let arr =
+            ParameterValue::Array(vec![ArrayElement::Number(0.05), ArrayElement::Number(10.0)]);
         assert!(validate_parameter("expand", &arr, &constraint).is_ok());
     }
 
@@ -1925,8 +1942,11 @@ mod tests {
             NumberConstraint::min(0.0),
             ArrayConstraint::of_numbers_len(2, NumberConstraint::min(0.0)),
         );
-        let result =
-            validate_parameter("expand", &ParameterValue::String("0.05".to_string()), &constraint);
+        let result = validate_parameter(
+            "expand",
+            &ParameterValue::String("0.05".to_string()),
+            &constraint,
+        );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("expects Number, Array"));
     }
@@ -1993,7 +2013,9 @@ mod tests {
         );
         let result = validate_parameter("breaks", &ParameterValue::Boolean(true), &constraint);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("expects Number, String, Array"));
+        assert!(result
+            .unwrap_err()
+            .contains("expects Number, String, Array"));
     }
 
     #[test]
@@ -2056,10 +2078,12 @@ mod tests {
     #[test]
     fn test_string_or_string_array_accepts_string() {
         let constraint = ParamConstraint::string_or_string_array(&["x", "y"]);
-        assert!(
-            validate_parameter("free", &ParameterValue::String("x".to_string()), &constraint)
-                .is_ok()
-        );
+        assert!(validate_parameter(
+            "free",
+            &ParameterValue::String("x".to_string()),
+            &constraint
+        )
+        .is_ok());
     }
 
     #[test]
