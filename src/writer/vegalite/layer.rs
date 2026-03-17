@@ -9,7 +9,7 @@
 
 use crate::plot::layer::geom::GeomType;
 use crate::plot::layer::is_transposed;
-use crate::plot::ParameterValue;
+use crate::plot::{ArrayElement, ParameterValue};
 use crate::writer::vegalite::POINTS_TO_PIXELS;
 use crate::{naming, AestheticValue, DataFrame, Geom, GgsqlError, Layer, Result};
 use polars::prelude::ChunkCompareEq;
@@ -900,10 +900,10 @@ impl TextRenderer {
             match layer.parameters.get("offset") {
                 Some(ParameterValue::Array(offset_array)) if offset_array.len() == 2 => {
                     // Array case: [x, y]
-                    if let ParameterValue::Number(x_offset) = offset_array[0] {
+                    if let ArrayElement::Number(x_offset) = offset_array[0] {
                         mark_map.insert("xOffset".to_string(), json!(x_offset * POINTS_TO_PIXELS));
                     }
-                    if let ParameterValue::Number(y_offset) = offset_array[1] {
+                    if let ArrayElement::Number(y_offset) = offset_array[1] {
                         mark_map.insert("yOffset".to_string(), json!(-y_offset * POINTS_TO_PIXELS));
                     }
                 }
