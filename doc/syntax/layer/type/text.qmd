@@ -27,7 +27,7 @@ The following aesthetics are recognised by the text layer.
 * `italic` Whether text should be italicised. Boolean value (`true` or `false`).
 * `hjust` Horizontal justification. Can be a numeric value between 0-1 or one of `"left"`, `"right"` or `"centre"` (default). Interpretation of numeric values is writer-dependent.
 * `vjust` Vertical justification. Can be a numeric value between 0-1 or one of `"top"`, `"bottom"` or `"middle"` (default). Interpretation of numeric values is writer-dependent.
-* `angle` Rotation of the text in degrees.
+* `rotation` Rotation of the text in degrees.
 
 ## Settings
 * `offset` Position offset expressed in absolute points. Can be one of the following:

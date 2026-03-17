@@ -30,7 +30,7 @@ impl GeomTrait for Text {
                 ("italic", DefaultAestheticValue::Boolean(false)),
                 ("hjust", DefaultAestheticValue::Number(0.5)),
                 ("vjust", DefaultAestheticValue::Number(0.5)),
-                ("angle", DefaultAestheticValue::Number(0.0)),
+                ("rotation", DefaultAestheticValue::Number(0.0)),
             ],
         }
     }

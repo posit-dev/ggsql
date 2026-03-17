@@ -57,6 +57,7 @@
   "italic"
   "hjust"
   "vjust"
+  "rotation"
   "panel"
   "row"
   "column"

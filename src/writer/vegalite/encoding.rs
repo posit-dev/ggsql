@@ -974,6 +974,7 @@ pub(super) fn map_aesthetic_name(
         "fontsize" => "size".to_string(),
         // All other aesthetics pass through directly
         // (fill and stroke map to Vega-Lite's separate fill/stroke channels)
+        // typeface/fontweight/italic/rotation are parsed explicitly
         _ => aesthetic.to_string(),
     }
 }

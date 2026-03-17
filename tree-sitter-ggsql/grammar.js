@@ -672,7 +672,7 @@ module.exports = grammar({
       // Size and shape
       'size', 'shape', 'linetype', 'linewidth', 'width', 'height',
       // Text aesthetics
-      'label', 'typeface', 'fontweight', 'italic', 'fontsize', 'hjust', 'vjust', 'angle',
+      'label', 'typeface', 'fontweight', 'italic', 'fontsize', 'hjust', 'vjust', 'rotation',
       // Specialty aesthetics,
       'coef', 'intercept',
       // Facet aesthetics

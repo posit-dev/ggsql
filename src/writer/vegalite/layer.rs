@@ -576,7 +576,7 @@ impl TextRenderer {
         let mut changed = BooleanChunked::full("changed".into(), false, nrows);
         let mut font_columns: HashMap<&str, &polars::prelude::Column> = HashMap::new();
 
-        for aesthetic in ["typeface", "fontweight", "italic", "hjust", "vjust", "angle"] {
+        for aesthetic in ["typeface", "fontweight", "italic", "hjust", "vjust", "rotation"] {
             if let Ok(col) = df.column(&naming::aesthetic_column(aesthetic)) {
                 let col_changed = col.not_equal(&col.shift(1)).map_err(|e| {
                     GgsqlError::InternalError(format!("Failed to compare column: {}", e))
@@ -618,7 +618,7 @@ impl TextRenderer {
             "indices".into(),
             change_indices.iter().map(|&i| i as u32).collect(),
         );
-        let font_aesthetics = ["typeface", "fontweight", "italic", "hjust", "vjust", "angle"];
+        let font_aesthetics = ["typeface", "fontweight", "italic", "hjust", "vjust", "rotation"];
 
         let mut result_cols = Vec::new();
         for aesthetic in font_aesthetics {
@@ -814,10 +814,10 @@ impl TextRenderer {
         Some(json!(baseline))
     }
 
-    /// Convert angle to Vega-Lite angle value (degrees)
+    /// Convert rotation to Vega-Lite angle value (degrees)
     /// Prefers literal over column value
     /// Normalizes angles to [0, 360) range
-    fn convert_angle(literal: Option<&ParameterValue>, column_value: Option<f64>) -> Option<Value> {
+    fn convert_rotation(literal: Option<&ParameterValue>, column_value: Option<f64>) -> Option<Value> {
         // First select which value to use (prefer literal)
         let value = if let Some(ParameterValue::Number(n)) = literal {
             *n
@@ -907,7 +907,7 @@ impl TextRenderer {
             mark_obj.insert("baseline".to_string(), vjust_val);
         }
 
-        if let Some(angle_val) = Self::convert_angle(layer.get_literal("angle"), get_f64("angle")) {
+        if let Some(angle_val) = Self::convert_rotation(layer.get_literal("rotation"), get_f64("rotation")) {
             mark_obj.insert("angle".to_string(), angle_val);
         }
 
@@ -1048,7 +1048,7 @@ impl GeomRenderer for TextRenderer {
         _context: &RenderContext,
     ) -> Result<()> {
         // Remove font aesthetics from encoding - they only work as mark properties
-        for &aesthetic in &["typeface", "fontweight", "italic", "hjust", "vjust", "angle"] {
+        for &aesthetic in &["typeface", "fontweight", "italic", "hjust", "vjust", "rotation"] {
             encoding.remove(aesthetic);
         }
 
@@ -2073,7 +2073,7 @@ mod tests {
             naming::aesthetic_column("x").as_str() => &[1.0, 2.0, 3.0],
             naming::aesthetic_column("y").as_str() => &[10.0, 20.0, 30.0],
             naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
-            naming::aesthetic_column("angle").as_str() => &["0", "45", "90"],
+            naming::aesthetic_column("rotation").as_str() => &["0", "45", "90"],
         }
         .unwrap();
 
@@ -2123,7 +2123,7 @@ mod tests {
         // Each layer should have angle property in mark
         for nested_layer in nested_layers {
             let mark = nested_layer["mark"].as_object().unwrap();
-            assert!(mark.contains_key("angle"));
+            assert!(mark.contains_key("angle")); // Vega-Lite uses "angle" property name
         }
     }
 
@@ -2140,7 +2140,7 @@ mod tests {
             naming::aesthetic_column("x").as_str() => &[1, 2, 3],
             naming::aesthetic_column("y").as_str() => &[1, 2, 3],
             naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
-            naming::aesthetic_column("angle").as_str() => &[0i32, 180i32, 0i32],  // integer column
+            naming::aesthetic_column("rotation").as_str() => &[0i32, 180i32, 0i32],  // integer column
         }
         .unwrap();
 
@@ -2188,9 +2188,9 @@ mod tests {
                     WHEN n = 1 THEN 45
                     WHEN n = 2 THEN 90
                     ELSE 0
-                END as rotation
+                END as rot
             FROM generate_series(0, 2) as t(n)
-            VISUALISE x, y, label, rotation AS angle
+            VISUALISE x, y, label, rot AS rotation
             DRAW text
         "#;
 
@@ -2239,7 +2239,7 @@ mod tests {
         for (idx, nested_layer) in nested_layers.iter().enumerate() {
             let mark = nested_layer["mark"].as_object().unwrap();
             assert!(
-                mark.contains_key("angle"),
+                mark.contains_key("angle"), // Vega-Lite uses "angle" property name
                 "Nested layer {} mark should have angle property",
                 idx
             );
@@ -2272,7 +2272,7 @@ mod tests {
         let data_values = vl_spec["data"]["values"].as_array().unwrap();
         assert!(!data_values.is_empty());
 
-        let angle_col = naming::aesthetic_column("angle");
+        let angle_col = naming::aesthetic_column("rotation");
         for row in data_values {
             assert!(
                 row[&angle_col].is_number(),
