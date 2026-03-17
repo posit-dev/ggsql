@@ -560,7 +560,7 @@ pub struct TextRenderer;
 impl TextRenderer {
     /// Analyze DataFrame columns to build font property runs using run-length encoding.
     /// Returns:
-    /// - DataFrame where each row represents a run's font properties (family, fontface, hjust, vjust, angle)
+    /// - DataFrame where each row represents a run's font properties (family, fontweight, italic, hjust, vjust, angle)
     /// - Vec<usize> of run lengths corresponding to each row
     fn build_font_rle(df: &DataFrame) -> Result<(DataFrame, Vec<usize>)> {
         use polars::prelude::*;
@@ -576,7 +576,7 @@ impl TextRenderer {
         let mut changed = BooleanChunked::full("changed".into(), false, nrows);
         let mut font_columns: HashMap<&str, &polars::prelude::Column> = HashMap::new();
 
-        for aesthetic in ["family", "fontface", "hjust", "vjust", "angle"] {
+        for aesthetic in ["family", "fontweight", "italic", "hjust", "vjust", "angle"] {
             if let Ok(col) = df.column(&naming::aesthetic_column(aesthetic)) {
                 let col_changed = col.not_equal(&col.shift(1)).map_err(|e| {
                     GgsqlError::InternalError(format!("Failed to compare column: {}", e))
@@ -618,7 +618,7 @@ impl TextRenderer {
             "indices".into(),
             change_indices.iter().map(|&i| i as u32).collect(),
         );
-        let font_aesthetics = ["family", "fontface", "hjust", "vjust", "angle"];
+        let font_aesthetics = ["family", "fontweight", "italic", "hjust", "vjust", "angle"];
 
         let mut result_cols = Vec::new();
         for aesthetic in font_aesthetics {
@@ -662,29 +662,49 @@ impl TextRenderer {
         }
     }
 
-    /// Convert fontface to Vega-Lite fontWeight and fontStyle values
+    /// Convert fontweight to Vega-Lite fontWeight value
     /// Prefers literal over column value
-    fn convert_fontface(
+    fn convert_fontweight(
         literal: Option<&ParameterValue>,
         column_value: Option<&str>,
-    ) -> (Option<Value>, Option<Value>) {
+    ) -> Option<Value> {
         // First select which value to use (prefer literal)
         let value = if let Some(ParameterValue::String(s)) = literal {
             s.as_str()
         } else if let Some(s) = column_value {
             s
         } else {
-            return (None, None);
+            return None;
         };
 
-        // Then apply conversion
-        let (weight, style) = match value {
-            "bold" => (json!("bold"), json!("normal")),
-            "italic" => (json!("normal"), json!("italic")),
-            "bold.italic" | "bolditalic" => (json!("bold"), json!("italic")),
-            _ => (json!("normal"), json!("normal")),
+        // Valid values: 'normal' and 'bold'
+        Some(json!(value))
+    }
+
+    /// Convert italic to Vega-Lite fontStyle value
+    /// Prefers literal over column value
+    /// Accepts boolean literals or string column values ('true', 'false', '1', '0')
+    fn convert_italic(
+        literal: Option<&ParameterValue>,
+        column_value: Option<&str>,
+    ) -> Option<Value> {
+        // First select which value to use (prefer literal)
+        let value = if let Some(ParameterValue::Boolean(b)) = literal {
+            *b
+        } else if let Some(s) = column_value {
+            // Parse string to boolean
+            match s.to_lowercase().as_str() {
+                "true" | "1" => true,
+                "false" | "0" => false,
+                _ => return None,
+            }
+        } else {
+            return None;
         };
-        (Some(weight), Some(style))
+
+        // Convert boolean to fontStyle
+        let style = if value { "italic" } else { "normal" };
+        Some(json!(style))
     }
 
     /// Convert hjust to Vega-Lite align value
@@ -809,14 +829,17 @@ impl TextRenderer {
             mark_obj.insert("font".to_string(), family_val);
         }
 
-        let (font_weight_val, font_style_val) = Self::convert_fontface(
-            layer.get_literal("fontface"),
-            get_str("fontface").as_deref(),
-        );
-        if let Some(weight) = font_weight_val {
+        if let Some(weight) = Self::convert_fontweight(
+            layer.get_literal("fontweight"),
+            get_str("fontweight").as_deref(),
+        ) {
             mark_obj.insert("fontWeight".to_string(), weight);
         }
-        if let Some(style) = font_style_val {
+
+        if let Some(style) = Self::convert_italic(
+            layer.get_literal("italic"),
+            get_str("italic").as_deref(),
+        ) {
             mark_obj.insert("fontStyle".to_string(), style);
         }
 
@@ -962,7 +985,7 @@ impl GeomRenderer for TextRenderer {
         _context: &RenderContext,
     ) -> Result<()> {
         // Remove font aesthetics from encoding - they only work as mark properties
-        for &aesthetic in &["family", "fontface", "hjust", "vjust", "angle"] {
+        for &aesthetic in &["family", "fontweight", "italic", "hjust", "vjust", "angle"] {
             encoding.remove(aesthetic);
         }
 
@@ -1908,7 +1931,8 @@ mod tests {
             naming::aesthetic_column("y").as_str() => &[10.0, 20.0, 30.0],
             naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
             naming::aesthetic_column("family").as_str() => &["Arial", "Courier", "Arial"],
-            naming::aesthetic_column("fontface").as_str() => &["bold", "italic", "bold"],
+            naming::aesthetic_column("fontweight").as_str() => &["bold", "normal", "bold"],
+            naming::aesthetic_column("italic").as_str() => &["false", "true", "false"],
         }
         .unwrap();
 
@@ -1924,7 +1948,7 @@ mod tests {
         };
 
         // Should have 3 components due to non-contiguous indices
-        // (Arial+bold at index 0, Courier+italic at index 1, Arial+bold at index 2)
+        // (Arial+bold+not-italic at index 0, Courier+normal+italic at index 1, Arial+bold+not-italic at index 2)
         assert_eq!(components.len(), 3);
 
         // Build prototype spec
@@ -2363,17 +2387,17 @@ mod tests {
     }
 
     #[test]
-    fn test_text_setting_fontface() {
+    fn test_text_setting_fontweight() {
         use crate::execute;
         use crate::reader::DuckDBReader;
         use crate::writer::vegalite::VegaLiteWriter;
         use crate::writer::Writer;
 
-        // Integration test: SETTING fontface => 'bold' should add fontWeight to base mark
+        // Integration test: SETTING fontweight => 'bold' should add fontWeight to base mark
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
-        // Query with fontface in SETTING
+        // Query with fontweight in SETTING
         let query = r#"
             SELECT
                 n::INTEGER as x,
@@ -2381,7 +2405,7 @@ mod tests {
                 chr(65 + n::INTEGER) as label
             FROM generate_series(0, 2) as t(n)
             VISUALISE x, y, label
-            DRAW text SETTING fontface => 'bold'
+            DRAW text SETTING fontweight => 'bold'
         "#;
 
         // Execute and prepare data
@@ -2409,7 +2433,7 @@ mod tests {
 
             assert!(
                 mark.contains_key("fontWeight"),
-                "Mark should have fontWeight from SETTING fontface"
+                "Mark should have fontWeight from SETTING fontweight"
             );
             assert_eq!(
                 mark["fontWeight"].as_str().unwrap(),

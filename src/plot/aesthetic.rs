@@ -58,7 +58,7 @@ pub const USER_FACET_AESTHETICS: &[&str] = &["panel", "row", "column"];
 /// - Color aesthetics: color, colour, fill, stroke, opacity
 /// - Size/shape aesthetics: size, shape, linetype, linewidth
 /// - Dimension aesthetics: width, height
-/// - Text aesthetics: label, family, fontface, hjust, vjust
+/// - Text aesthetics: label, family, fontweight, italic, hjust, vjust
 pub const NON_POSITIONAL: &[&str] = &[
     "color",
     "colour",
@@ -73,7 +73,8 @@ pub const NON_POSITIONAL: &[&str] = &[
     "height",
     "label",
     "family",
-    "fontface",
+    "fontweight",
+    "italic",
     "fontsize",
     "hjust",
     "vjust",

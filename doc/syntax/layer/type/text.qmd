@@ -21,7 +21,8 @@ The following aesthetics are recognised by the text layer.
 * `opacity` The opacity of the fill colour.
 * `family` The typeface to style the lettering.
 * `fontsize` The size of the text in points.
-* `fontface` Font style, can be one of `'bold'`, `'italic'` or `'bold.italic'`.
+* `fontweight` Font weight, can be `'normal'` (default) or `'bold'`.
+* `italic` Whether text should be italicised. Boolean value (`true` or `false`).
 * `hjust` Horizontal justification. Can be a numeric value between 0-1 or one of `"left"`, `"right"` or `"centre"` (default). Interpretation of numeric values is writer-dependent.
 * `vjust` Vertical justification. Can be a numeric value between 0-1 or one of `"top"`, `"bottom"` or `"middle"` (default). Interpretation of numeric values is writer-dependent.
 * `angle` Rotation of the text in degrees.
@@ -94,9 +95,9 @@ DRAW text
     island AS label, 
     species AS fill,
     flipper_len AS fontsize
-  SETTING 
-    opacity => 0.8, 
-    fontface => 'bold',
+  SETTING
+    opacity => 0.8,
+    fontweight => 'bold',
     family => 'Times New Roman'
   SCALE fontsize TO [6, 20]
 ```
