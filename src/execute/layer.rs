@@ -192,12 +192,35 @@ pub fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataF
 }
 
 /// Convert a literal value to a Polars Series with constant values.
+///
+/// For string literals, attempts to parse as temporal types (date/datetime/time)
+/// using the same format precedence as the rest of ggsql. Falls back to string
+/// if parsing fails.
 pub fn literal_to_series(name: &str, lit: &ParameterValue, len: usize) -> polars::prelude::Series {
-    use polars::prelude::{NamedFrom, Series};
+    use crate::plot::ArrayElement;
+    use polars::prelude::{DataType, NamedFrom, Series, TimeUnit};
 
     match lit {
         ParameterValue::Number(n) => Series::new(name.into(), vec![*n; len]),
-        ParameterValue::String(s) => Series::new(name.into(), vec![s.as_str(); len]),
+        ParameterValue::String(s) => {
+            // Try to parse as temporal types (DateTime > Date > Time)
+            match ArrayElement::String(s.clone()).try_as_temporal() {
+                ArrayElement::DateTime(micros) => Series::new(name.into(), vec![micros; len])
+                    .cast(&DataType::Datetime(TimeUnit::Microseconds, None))
+                    .expect("DateTime cast should not fail"),
+                ArrayElement::Date(days) => Series::new(name.into(), vec![days; len])
+                    .cast(&DataType::Date)
+                    .expect("Date cast should not fail"),
+                ArrayElement::Time(nanos) => Series::new(name.into(), vec![nanos; len])
+                    .cast(&DataType::Time)
+                    .expect("Time cast should not fail"),
+                ArrayElement::String(_) => {
+                    // Parsing failed, use original string
+                    Series::new(name.into(), vec![s.as_str(); len])
+                }
+                _ => unreachable!("try_as_temporal only returns String or temporal types"),
+            }
+        }
         ParameterValue::Boolean(b) => Series::new(name.into(), vec![*b; len]),
         ParameterValue::Array(_) | ParameterValue::Null => {
             unreachable!("Arrays are never moved to mappings; NULL is filtered in process_annotation_layers()")
@@ -726,10 +749,17 @@ fn process_annotation_layer(layer: &mut Layer) -> Result<String> {
 
     for (aesthetic, param) in &annotation_params {
         // Build column data for VALUES clause using rep() to handle scalars and arrays uniformly
-        let column_values = match param.clone().rep(max_length)? {
+        let mut column_values = match param.clone().rep(max_length)? {
             ParameterValue::Array(arr) => arr,
             _ => unreachable!("rep() always returns Array variant"),
         };
+
+        // Try to parse string elements as temporal types (Date/DateTime/Time)
+        // This ensures literals like '1973-06-01' become Date columns, not String columns
+        column_values = column_values
+            .into_iter()
+            .map(|elem| elem.try_as_temporal())
+            .collect();
 
         columns.push(column_values);
         // Use raw aesthetic names (not prefixed) so annotations go through
@@ -1001,5 +1031,79 @@ mod tests {
         assert!(result.contains("5"));
         assert!(result.contains("10"));
         assert!(result.contains("'Text'"));
+    }
+
+    #[test]
+    fn test_literal_to_series_date_parsing() {
+        use polars::prelude::DataType;
+
+        // Date literal should parse to Date type
+        let series = literal_to_series(
+            "date_col",
+            &ParameterValue::String("1973-06-01".to_string()),
+            5,
+        );
+        assert_eq!(
+            series.dtype(),
+            &DataType::Date,
+            "Date string should parse to Date type"
+        );
+        assert_eq!(series.len(), 5);
+    }
+
+    #[test]
+    fn test_literal_to_series_datetime_parsing() {
+        use polars::prelude::{DataType, TimeUnit};
+
+        // DateTime literal should parse to Datetime type
+        let series = literal_to_series(
+            "dt_col",
+            &ParameterValue::String("2024-03-17T14:30:00".to_string()),
+            3,
+        );
+        assert!(
+            matches!(
+                series.dtype(),
+                DataType::Datetime(TimeUnit::Microseconds, None)
+            ),
+            "DateTime string should parse to Datetime type"
+        );
+        assert_eq!(series.len(), 3);
+    }
+
+    #[test]
+    fn test_literal_to_series_time_parsing() {
+        use polars::prelude::DataType;
+
+        // Time literal should parse to Time type
+        let series = literal_to_series(
+            "time_col",
+            &ParameterValue::String("14:30:00".to_string()),
+            4,
+        );
+        assert_eq!(
+            series.dtype(),
+            &DataType::Time,
+            "Time string should parse to Time type"
+        );
+        assert_eq!(series.len(), 4);
+    }
+
+    #[test]
+    fn test_literal_to_series_string_fallback() {
+        use polars::prelude::DataType;
+
+        // Non-temporal string should remain String type
+        let series = literal_to_series(
+            "text_col",
+            &ParameterValue::String("not a date".to_string()),
+            2,
+        );
+        assert_eq!(
+            series.dtype(),
+            &DataType::String,
+            "Non-temporal string should remain String type"
+        );
+        assert_eq!(series.len(), 2);
     }
 }

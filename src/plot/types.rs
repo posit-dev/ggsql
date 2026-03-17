@@ -683,7 +683,8 @@ impl ArrayElement {
             }
             Self::Date(d) => {
                 // Convert days since epoch to DATE
-                format!("DATE '1970-01-01' + INTERVAL {} DAY", d)
+                // Use CAST to ensure result is DATE type, not TIMESTAMP
+                format!("CAST(DATE '1970-01-01' + INTERVAL {} DAY AS DATE)", d)
             }
             Self::DateTime(dt) => {
                 // Convert microseconds since epoch to TIMESTAMP
@@ -789,6 +790,39 @@ impl ArrayElement {
             }
         }
         None
+    }
+
+    /// Try to parse string as temporal type (Date/DateTime/Time).
+    ///
+    /// If this is a String variant, attempts to parse it as a temporal type
+    /// in order of specificity: DateTime > Date > Time.
+    /// If parsing succeeds, returns the temporal variant. Otherwise returns self unchanged.
+    ///
+    /// For non-String variants, returns self unchanged.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let elem = ArrayElement::String("1973-06-01".to_string());
+    /// let parsed = elem.try_as_temporal();
+    /// // parsed is now ArrayElement::Date(...)
+    /// ```
+    pub fn try_as_temporal(self) -> Self {
+        if let Self::String(ref s) = self {
+            // Try DateTime first (most specific)
+            if let Some(dt) = Self::from_datetime_string(s) {
+                return dt;
+            }
+            // Try Date
+            if let Some(d) = Self::from_date_string(s) {
+                return d;
+            }
+            // Try Time
+            if let Some(t) = Self::from_time_string(s) {
+                return t;
+            }
+        }
+        // Fall back to original value if not a string or parsing failed
+        self
     }
 
     /// Convert to string for HashMap keys and display
@@ -1513,5 +1547,47 @@ mod tests {
         if let ArrayElement::String(s) = &homogenized[1] {
             assert_eq!(s, "foo");
         }
+    }
+
+    #[test]
+    fn test_try_as_temporal_date() {
+        let elem = ArrayElement::String("1973-06-01".to_string());
+        let parsed = elem.try_as_temporal();
+        assert!(matches!(parsed, ArrayElement::Date(_)));
+        assert_eq!(parsed.to_key_string(), "1973-06-01");
+    }
+
+    #[test]
+    fn test_try_as_temporal_datetime() {
+        let elem = ArrayElement::String("2024-03-17T14:30:00".to_string());
+        let parsed = elem.try_as_temporal();
+        assert!(matches!(parsed, ArrayElement::DateTime(_)));
+    }
+
+    #[test]
+    fn test_try_as_temporal_time() {
+        let elem = ArrayElement::String("14:30:00".to_string());
+        let parsed = elem.try_as_temporal();
+        assert!(matches!(parsed, ArrayElement::Time(_)));
+    }
+
+    #[test]
+    fn test_try_as_temporal_non_temporal_string() {
+        let elem = ArrayElement::String("not a date".to_string());
+        let parsed = elem.try_as_temporal();
+        assert!(matches!(parsed, ArrayElement::String(_)));
+        assert_eq!(parsed.to_key_string(), "not a date");
+    }
+
+    #[test]
+    fn test_try_as_temporal_non_string() {
+        // Non-string elements should pass through unchanged
+        let elem = ArrayElement::Number(42.0);
+        let parsed = elem.try_as_temporal();
+        assert!(matches!(parsed, ArrayElement::Number(_)));
+
+        let elem = ArrayElement::Boolean(true);
+        let parsed = elem.try_as_temporal();
+        assert!(matches!(parsed, ArrayElement::Boolean(_)));
     }
 }
