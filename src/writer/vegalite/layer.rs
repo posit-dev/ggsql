@@ -576,7 +576,14 @@ impl TextRenderer {
         let mut changed = BooleanChunked::full("changed".into(), false, nrows);
         let mut font_columns: HashMap<&str, &polars::prelude::Column> = HashMap::new();
 
-        for aesthetic in ["typeface", "fontweight", "italic", "hjust", "vjust", "rotation"] {
+        for aesthetic in [
+            "typeface",
+            "fontweight",
+            "italic",
+            "hjust",
+            "vjust",
+            "rotation",
+        ] {
             if let Ok(col) = df.column(&naming::aesthetic_column(aesthetic)) {
                 let col_changed = col.not_equal(&col.shift(1)).map_err(|e| {
                     GgsqlError::InternalError(format!("Failed to compare column: {}", e))
@@ -618,7 +625,14 @@ impl TextRenderer {
             "indices".into(),
             change_indices.iter().map(|&i| i as u32).collect(),
         );
-        let font_aesthetics = ["typeface", "fontweight", "italic", "hjust", "vjust", "rotation"];
+        let font_aesthetics = [
+            "typeface",
+            "fontweight",
+            "italic",
+            "hjust",
+            "vjust",
+            "rotation",
+        ];
 
         let mut result_cols = Vec::new();
         for aesthetic in font_aesthetics {
@@ -817,7 +831,10 @@ impl TextRenderer {
     /// Convert rotation to Vega-Lite angle value (degrees)
     /// Prefers literal over column value
     /// Normalizes angles to [0, 360) range
-    fn convert_rotation(literal: Option<&ParameterValue>, column_value: Option<f64>) -> Option<Value> {
+    fn convert_rotation(
+        literal: Option<&ParameterValue>,
+        column_value: Option<f64>,
+    ) -> Option<Value> {
         // First select which value to use (prefer literal)
         let value = if let Some(ParameterValue::Number(n)) = literal {
             *n
@@ -876,9 +893,10 @@ impl TextRenderer {
         };
 
         // Convert and apply font properties
-        if let Some(typeface_val) =
-            Self::convert_typeface(layer.get_literal("typeface"), get_str("typeface").as_deref())
-        {
+        if let Some(typeface_val) = Self::convert_typeface(
+            layer.get_literal("typeface"),
+            get_str("typeface").as_deref(),
+        ) {
             mark_obj.insert("font".to_string(), typeface_val);
         }
 
@@ -907,7 +925,9 @@ impl TextRenderer {
             mark_obj.insert("baseline".to_string(), vjust_val);
         }
 
-        if let Some(angle_val) = Self::convert_rotation(layer.get_literal("rotation"), get_f64("rotation")) {
+        if let Some(angle_val) =
+            Self::convert_rotation(layer.get_literal("rotation"), get_f64("rotation"))
+        {
             mark_obj.insert("angle".to_string(), angle_val);
         }
 
@@ -1048,7 +1068,14 @@ impl GeomRenderer for TextRenderer {
         _context: &RenderContext,
     ) -> Result<()> {
         // Remove font aesthetics from encoding - they only work as mark properties
-        for &aesthetic in &["typeface", "fontweight", "italic", "hjust", "vjust", "rotation"] {
+        for &aesthetic in &[
+            "typeface",
+            "fontweight",
+            "italic",
+            "hjust",
+            "vjust",
+            "rotation",
+        ] {
             encoding.remove(aesthetic);
         }
 
@@ -2686,55 +2713,142 @@ mod tests {
         // Test parse_fontweight_to_numeric helper function - all CSS keywords
 
         // 100 - thin/hairline
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("thin"), Some(100.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("hairline"), Some(100.0));
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("thin"),
+            Some(100.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("hairline"),
+            Some(100.0)
+        );
 
         // 200 - extra-light/ultra-light
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("extra-light"), Some(200.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("extralight"), Some(200.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("ultra-light"), Some(200.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("ultralight"), Some(200.0));
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("extra-light"),
+            Some(200.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("extralight"),
+            Some(200.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("ultra-light"),
+            Some(200.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("ultralight"),
+            Some(200.0)
+        );
 
         // 300 - light
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("light"), Some(300.0));
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("light"),
+            Some(300.0)
+        );
 
         // 400 - normal/regular/lighter
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("normal"), Some(400.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("regular"), Some(400.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("lighter"), Some(400.0));
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("normal"),
+            Some(400.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("regular"),
+            Some(400.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("lighter"),
+            Some(400.0)
+        );
 
         // 500 - medium
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("medium"), Some(500.0));
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("medium"),
+            Some(500.0)
+        );
 
         // 600 - semi-bold/demi-bold
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("semi-bold"), Some(600.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("semibold"), Some(600.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("demi-bold"), Some(600.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("demibold"), Some(600.0));
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("semi-bold"),
+            Some(600.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("semibold"),
+            Some(600.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("demi-bold"),
+            Some(600.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("demibold"),
+            Some(600.0)
+        );
 
         // 700 - bold/bolder
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("bold"), Some(700.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("bolder"), Some(700.0));
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("bold"),
+            Some(700.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("bolder"),
+            Some(700.0)
+        );
 
         // 800 - extra-bold/ultra-bold
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("extra-bold"), Some(800.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("extrabold"), Some(800.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("ultra-bold"), Some(800.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("ultrabold"), Some(800.0));
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("extra-bold"),
+            Some(800.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("extrabold"),
+            Some(800.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("ultra-bold"),
+            Some(800.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("ultrabold"),
+            Some(800.0)
+        );
 
         // 900 - black/heavy
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("black"), Some(900.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("heavy"), Some(900.0));
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("black"),
+            Some(900.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("heavy"),
+            Some(900.0)
+        );
 
         // Case insensitive
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("BOLD"), Some(700.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("Normal"), Some(400.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("SEMI-BOLD"), Some(600.0));
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("BOLD"),
+            Some(700.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("Normal"),
+            Some(400.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("SEMI-BOLD"),
+            Some(600.0)
+        );
 
         // Numeric strings pass through
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("100"), Some(100.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("400"), Some(400.0));
-        assert_eq!(TextRenderer::parse_fontweight_to_numeric("700"), Some(700.0));
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("100"),
+            Some(100.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("400"),
+            Some(400.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("700"),
+            Some(700.0)
+        );
 
         // Invalid values
         assert_eq!(TextRenderer::parse_fontweight_to_numeric("invalid"), None);
