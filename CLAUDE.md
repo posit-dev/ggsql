@@ -334,7 +334,7 @@ pub enum Geom {
     // Statistical geoms
     Histogram, Density, Smooth, Boxplot, Violin,
     // Annotation geoms
-    Text, Label, Segment, Arrow, Rule, Linear, ErrorBar,
+    Text, Segment, Arrow, Rule, Linear, ErrorBar,
 }
 
 pub enum AestheticValue {

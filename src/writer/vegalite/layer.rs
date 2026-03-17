@@ -40,7 +40,6 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Violin => "line",
         GeomType::Boxplot => "boxplot",
         GeomType::Text => "text",
-        GeomType::Label => "text",
         GeomType::Segment => "rule",
         GeomType::Rule => "rule",
         GeomType::Linear => "rule",
