@@ -40,7 +40,7 @@ WHERE Month = 5
 
 VISUALISE 
   DRAW line MAPPING date AS x, temperature AS y
-  DRAW rule MAPPING 70 AS y
+  PLACE rule SETTING y => 70
 ```
 
 Add a vertical line to mark a specific value:
@@ -48,10 +48,10 @@ Add a vertical line to mark a specific value:
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
   DRAW point MAPPING bill_len AS x, bill_dep AS y
-  DRAW rule MAPPING 45 AS x
+  PLACE rule SETTING x => 45
 ```
 
-Add multiple threshold lines with different colors:
+Add multiple threshold lines with different colors. Note that because we're mapping data from data, we use the `DRAW` clause instead of the `PLACE` clause.
 
 ```{ggsql}
 WITH thresholds AS (
