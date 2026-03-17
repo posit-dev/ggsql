@@ -11,7 +11,7 @@ use crate::plot::ArrayElement;
 /// ggsql 10 - default categorical palette
 pub const GGSQL10: &[&str] = &[
     "#0067A5", "#F38400", "#008856", "#F3C300", "#875692", "#A1CAF1", "#BE0032", "#8DB600",
-    "#654522","#E68FAC",
+    "#654522", "#E68FAC",
 ];
 
 /// Tableau 10
