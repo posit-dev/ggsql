@@ -836,10 +836,9 @@ impl TextRenderer {
             mark_obj.insert("fontWeight".to_string(), weight);
         }
 
-        if let Some(style) = Self::convert_italic(
-            layer.get_literal("italic"),
-            get_str("italic").as_deref(),
-        ) {
+        if let Some(style) =
+            Self::convert_italic(layer.get_literal("italic"), get_str("italic").as_deref())
+        {
             mark_obj.insert("fontStyle".to_string(), style);
         }
 
@@ -897,11 +896,11 @@ impl TextRenderer {
         // Build base mark object with fixed parameters
         let mut base_mark = json!({"type": "text"});
         if let Some(mark_map) = base_mark.as_object_mut() {
-            // Extract nudge parameters (nudge_x → xOffset, nudge_y → yOffset)
-            if let Some(ParameterValue::Number(x_offset)) = layer.parameters.get("nudge_x") {
+            // Extract offset parameters (offset_x → xOffset, offset_y → yOffset)
+            if let Some(ParameterValue::Number(x_offset)) = layer.parameters.get("offset_x") {
                 mark_map.insert("xOffset".to_string(), json!(x_offset * POINTS_TO_PIXELS));
             }
-            if let Some(ParameterValue::Number(y_offset)) = layer.parameters.get("nudge_y") {
+            if let Some(ParameterValue::Number(y_offset)) = layer.parameters.get("offset_y") {
                 mark_map.insert("yOffset".to_string(), json!(-y_offset * POINTS_TO_PIXELS));
             }
         }
@@ -2220,17 +2219,17 @@ mod tests {
     }
 
     #[test]
-    fn test_text_nudge_parameters() {
+    fn test_text_offset_parameters() {
         use crate::execute;
         use crate::reader::DuckDBReader;
         use crate::writer::vegalite::VegaLiteWriter;
         use crate::writer::Writer;
 
-        // Integration test: nudge_x and nudge_y parameters should map to xOffset/yOffset
+        // Integration test: offset_x and offset_y parameters should map to xOffset/yOffset
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
-        // Query with nudge parameters
+        // Query with offset parameters
         let query = r#"
             SELECT
                 n::INTEGER as x,
@@ -2238,7 +2237,7 @@ mod tests {
                 chr(65 + n::INTEGER) as label
             FROM generate_series(0, 2) as t(n)
             VISUALISE x, y, label
-            DRAW text SETTING nudge_x => 5, nudge_y => -10
+            DRAW text SETTING offset_x => 5, offset_y => -10
         "#;
 
         // Execute and prepare data
@@ -2266,7 +2265,7 @@ mod tests {
 
             assert!(
                 mark.contains_key("xOffset"),
-                "Mark should have xOffset from nudge_x"
+                "Mark should have xOffset from offset_x"
             );
             assert_eq!(
                 mark["xOffset"].as_f64().unwrap(),
@@ -2276,12 +2275,12 @@ mod tests {
 
             assert!(
                 mark.contains_key("yOffset"),
-                "Mark should have yOffset from nudge_y"
+                "Mark should have yOffset from offset_y"
             );
             assert_eq!(
                 mark["yOffset"].as_f64().unwrap(),
                 10.0 * POINTS_TO_PIXELS,
-                "yOffset should be 10 * POINTS_TO_PIXELS (negated from nudge_y = -10)"
+                "yOffset should be 10 * POINTS_TO_PIXELS (negated from offset_y = -10)"
             );
         }
     }

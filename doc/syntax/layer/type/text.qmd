@@ -28,8 +28,8 @@ The following aesthetics are recognised by the text layer.
 * `angle` Rotation of the text in degrees.
 
 ## Settings
-* `nudge_x` Horizontal offset expressed in absolute points.
-* `nudge_y` Vertical offset expressed in absolute points.
+* `offset_x` Horizontal offset expressed in absolute points.
+* `offset_y` Vertical offset expressed in absolute points.
 * `format` Formatting specifier, see explanation below.
 * `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
 
@@ -117,9 +117,9 @@ Labelling precomputed bars with the data value.
 SELECT island, COUNT(*) AS n FROM ggsql:penguins GROUP BY island
 VISUALISE island AS x, n AS y
   DRAW bar
-  DRAW text 
+  DRAW text
     MAPPING n AS label
-    SETTING vjust => 'top', nudge_y => -11, fill => 'white'
+    SETTING vjust => 'top', offset_y => -11, fill => 'white'
 ```
 
 If you label bars at the extreme end, you may to expand the scale to accommodate the labels.
@@ -128,9 +128,9 @@ If you label bars at the extreme end, you may to expand the scale to accommodate
 SELECT island, COUNT(*) AS n FROM ggsql:penguins GROUP BY island
 VISUALISE island AS x, n AS y
   DRAW bar
-  DRAW text 
+  DRAW text
     MAPPING n AS label
-    SETTING vjust => 'bottom', nudge_y => 11
+    SETTING vjust => 'bottom', offset_y => 11
   SCALE y FROM [0, 200]
 ```
 
