@@ -35,7 +35,6 @@ mod boxplot;
 mod density;
 mod errorbar;
 mod histogram;
-mod label;
 mod line;
 mod linear;
 mod path;
@@ -60,7 +59,6 @@ pub use boxplot::Boxplot;
 pub use density::Density;
 pub use errorbar::ErrorBar;
 pub use histogram::Histogram;
-pub use label::Label;
 pub use line::Line;
 pub use linear::Linear;
 pub use path::Path;
@@ -95,7 +93,6 @@ pub enum GeomType {
     Boxplot,
     Violin,
     Text,
-    Label,
     Segment,
     Arrow,
     Rule,
@@ -120,7 +117,6 @@ impl std::fmt::Display for GeomType {
             GeomType::Boxplot => "boxplot",
             GeomType::Violin => "violin",
             GeomType::Text => "text",
-            GeomType::Label => "label",
             GeomType::Segment => "segment",
             GeomType::Arrow => "arrow",
             GeomType::Rule => "rule",
@@ -311,11 +307,6 @@ impl Geom {
         Self(Arc::new(Text))
     }
 
-    /// Create a Label geom
-    pub fn label() -> Self {
-        Self(Arc::new(Label))
-    }
-
     /// Create a Segment geom
     pub fn segment() -> Self {
         Self(Arc::new(Segment))
@@ -358,7 +349,6 @@ impl Geom {
             GeomType::Boxplot => Self::boxplot(),
             GeomType::Violin => Self::violin(),
             GeomType::Text => Self::text(),
-            GeomType::Label => Self::label(),
             GeomType::Segment => Self::segment(),
             GeomType::Arrow => Self::arrow(),
             GeomType::Rule => Self::rule(),

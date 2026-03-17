@@ -387,7 +387,7 @@ fn time_to_iso_string(nanos: i64) -> String {
 }
 
 /// Format number for display (remove trailing zeros for integers)
-fn format_number(n: f64) -> String {
+pub fn format_number(n: f64) -> String {
     if n.fract() == 0.0 {
         format!("{:.0}", n)
     } else {

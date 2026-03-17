@@ -334,7 +334,7 @@ pub enum Geom {
     // Statistical geoms
     Histogram, Density, Smooth, Boxplot, Violin,
     // Annotation geoms
-    Text, Label, Segment, Arrow, Rule, Linear, ErrorBar,
+    Text, Segment, Arrow, Rule, Linear, ErrorBar,
 }
 
 pub enum AestheticValue {
@@ -1211,7 +1211,7 @@ Maps data values (columns or literals) to visual aesthetics. Syntax: `value AS a
 - **Position**: `x`, `y`, `xmin`, `xmax`, `ymin`, `ymax`
 - **Color**: `color`, `fill`, `stroke`, `opacity`
 - **Size/Shape**: `size`, `shape`, `linetype`, `linewidth`
-- **Text**: `label`, `family`, `fontface`
+- **Text**: `label`, `typeface`, `fontweight`, `italic`
 
 **Literal vs Column**:
 

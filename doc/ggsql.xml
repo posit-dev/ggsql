@@ -168,8 +168,9 @@
       <item>linewidth</item>
       <item>width</item>
       <item>height</item>
-      <item>family</item>
-      <item>fontface</item>
+      <item>typeface</item>
+      <item>fontweight</item>
+      <item>italic</item>
       <item>hjust</item>
       <item>vjust</item>
     </list>

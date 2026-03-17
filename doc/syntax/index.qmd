@@ -25,6 +25,7 @@ There are many different layers to choose from when visualising your data. Some 
 - [`area`](layer/type/area.qmd) is used to display series as an area chart.
 - [`ribbon`](layer/type/ribbon.qmd) is used to display series extrema.
 - [`polygon`](layer/type/polygon.qmd) is used to display arbitrary shapes as polygons.
+- [`text`](layer/text.qmd) is used to render datapoints as text.
 - [`bar`](layer/type/bar.qmd) creates a bar chart, optionally calculating y from the number of records in each bar.
 - [`density`](layer/type/density.qmd) creates univariate kernel density estimates, showing the distribution of a variable.
 - [`violin`](layer/type/violin.qmd) displays a rotated kernel density estimate.

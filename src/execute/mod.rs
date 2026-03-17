@@ -687,8 +687,12 @@ fn add_discrete_columns_to_partition_by(
             .map(|c| c.name.as_str())
             .collect();
 
-        // Get aesthetics consumed by stat transforms (if any)
+        // Build set of excluded aesthetics that should not trigger auto-grouping:
+        // - Stat-consumed aesthetics (transformed, not grouped)
+        // - 'label' aesthetic (text content to display, not grouping categories)
         let consumed_aesthetics = layer.geom.stat_consumed_aesthetics();
+        let mut excluded_aesthetics: HashSet<&str> = consumed_aesthetics.iter().copied().collect();
+        excluded_aesthetics.insert("label");
 
         for (aesthetic, value) in &layer.mappings.aesthetics {
             // Skip positional aesthetics - these should not trigger auto-grouping.
@@ -698,8 +702,8 @@ fn add_discrete_columns_to_partition_by(
                 continue;
             }
 
-            // Skip stat-consumed aesthetics (they're transformed, not grouped)
-            if consumed_aesthetics.contains(&aesthetic.as_str()) {
+            // Skip excluded aesthetics (stat-consumed or label)
+            if excluded_aesthetics.contains(aesthetic.as_str()) {
                 continue;
             }
 

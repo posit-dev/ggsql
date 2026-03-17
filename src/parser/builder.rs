@@ -611,7 +611,6 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
         "boxplot" => Ok(Geom::boxplot()),
         "violin" => Ok(Geom::violin()),
         "text" => Ok(Geom::text()),
-        "label" => Ok(Geom::label()),
         "segment" => Ok(Geom::segment()),
         "arrow" => Ok(Geom::arrow()),
         "rule" => Ok(Geom::rule()),
