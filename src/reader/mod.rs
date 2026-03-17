@@ -94,6 +94,49 @@ pub trait SqlDialect {
         }
     }
 
+    // =========================================================================
+    // Schema introspection queries (for Connections pane)
+    // =========================================================================
+
+    /// SQL to list catalog names. Returns rows with column `catalog_name`.
+    fn sql_list_catalogs(&self) -> String {
+        "SELECT DISTINCT catalog_name FROM information_schema.schemata ORDER BY catalog_name"
+            .into()
+    }
+
+    /// SQL to list schema names within a catalog. Returns rows with column `schema_name`.
+    fn sql_list_schemas(&self, catalog: &str) -> String {
+        format!(
+            "SELECT DISTINCT schema_name FROM information_schema.schemata \
+             WHERE catalog_name = '{}' ORDER BY schema_name",
+            catalog.replace('\'', "''")
+        )
+    }
+
+    /// SQL to list tables/views within a catalog and schema.
+    /// Returns rows with columns `table_name` and `table_type`.
+    fn sql_list_tables(&self, catalog: &str, schema: &str) -> String {
+        format!(
+            "SELECT DISTINCT table_name, table_type FROM information_schema.tables \
+             WHERE table_catalog = '{}' AND table_schema = '{}' ORDER BY table_name",
+            catalog.replace('\'', "''"),
+            schema.replace('\'', "''")
+        )
+    }
+
+    /// SQL to list columns in a table.
+    /// Returns rows with columns `column_name` and `data_type`.
+    fn sql_list_columns(&self, catalog: &str, schema: &str, table: &str) -> String {
+        format!(
+            "SELECT column_name, data_type FROM information_schema.columns \
+             WHERE table_catalog = '{}' AND table_schema = '{}' AND table_name = '{}' \
+             ORDER BY ordinal_position",
+            catalog.replace('\'', "''"),
+            schema.replace('\'', "''"),
+            table.replace('\'', "''")
+        )
+    }
+
     /// Scalar MAX across any number of SQL expressions.
     fn sql_greatest(&self, exprs: &[&str]) -> String {
         let mut result = exprs[0].to_string();
@@ -177,6 +220,9 @@ pub mod polars_sql;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 
+#[cfg(feature = "odbc")]
+pub mod odbc;
+
 pub mod connection;
 pub mod data;
 mod spec;
@@ -189,6 +235,9 @@ pub use polars_sql::PolarsReader;
 
 #[cfg(feature = "sqlite")]
 pub use sqlite::SqliteReader;
+
+#[cfg(feature = "odbc")]
+pub use odbc::OdbcReader;
 
 // ============================================================================
 // Spec - Result of reader.execute()
@@ -334,37 +383,7 @@ pub trait Reader {
     /// let writer = VegaLiteWriter::new();
     /// let json = writer.render(&spec)?;
     /// ```
-    fn execute(&self, query: &str) -> Result<Spec>
-    where
-        Self: Sized,
-    {
-        // Run validation first to capture warnings
-        let validated = validate(query)?;
-        let warnings: Vec<ValidationWarning> = validated.warnings().to_vec();
-
-        // Prepare data with type names for this reader
-        let prepared_data = prepare_data_with_reader(query, self)?;
-
-        // Get the first (and typically only) spec
-        let plot = prepared_data.specs.into_iter().next().ok_or_else(|| {
-            GgsqlError::ValidationError("No visualization spec found".to_string())
-        })?;
-
-        // For now, layer_sql and stat_sql are not tracked in PreparedData
-        // (they were part of main's version but not HEAD's)
-        let layer_sql = vec![None; plot.layers.len()];
-        let stat_sql = vec![None; plot.layers.len()];
-
-        Ok(Spec::new(
-            plot,
-            prepared_data.data,
-            prepared_data.sql,
-            prepared_data.visual,
-            layer_sql,
-            stat_sql,
-            warnings,
-        ))
-    }
+    fn execute(&self, query: &str) -> Result<Spec>;
 
     /// Get the SQL dialect for this reader.
     ///
@@ -372,6 +391,35 @@ pub trait Reader {
     fn dialect(&self) -> &dyn SqlDialect {
         &AnsiDialect
     }
+}
+
+/// Execute a ggsql query using any reader (object-safe entry point).
+///
+/// This is the shared implementation behind `Reader::execute()`. Concrete
+/// readers delegate to this so the trait stays object-safe (no `Self: Sized`
+/// bound on `execute`).
+pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<Spec> {
+    let validated = validate(query)?;
+    let warnings: Vec<ValidationWarning> = validated.warnings().to_vec();
+
+    let prepared_data = prepare_data_with_reader(query, reader)?;
+
+    let plot = prepared_data.specs.into_iter().next().ok_or_else(|| {
+        GgsqlError::ValidationError("No visualization spec found".to_string())
+    })?;
+
+    let layer_sql = vec![None; plot.layers.len()];
+    let stat_sql = vec![None; plot.layers.len()];
+
+    Ok(Spec::new(
+        plot,
+        prepared_data.data,
+        prepared_data.sql,
+        prepared_data.visual,
+        layer_sql,
+        stat_sql,
+        warnings,
+    ))
 }
 
 #[cfg(test)]

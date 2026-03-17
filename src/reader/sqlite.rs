@@ -45,6 +45,29 @@ impl super::SqlDialect for SqliteDialect {
     fn time_type_name(&self) -> Option<&str> {
         Some("TEXT")
     }
+
+    fn sql_list_catalogs(&self) -> String {
+        "SELECT name AS catalog_name FROM pragma_database_list ORDER BY name".into()
+    }
+
+    fn sql_list_schemas(&self, _catalog: &str) -> String {
+        "SELECT 'main' AS schema_name".into()
+    }
+
+    fn sql_list_tables(&self, catalog: &str, _schema: &str) -> String {
+        format!(
+            "SELECT name AS table_name, type AS table_type FROM \"{}\".sqlite_master \
+             WHERE type IN ('table', 'view') ORDER BY name",
+            catalog.replace('"', "\"\"")
+        )
+    }
+
+    fn sql_list_columns(&self, _catalog: &str, _schema: &str, table: &str) -> String {
+        format!(
+            "SELECT name AS column_name, type AS data_type FROM pragma_table_info('{}') ORDER BY cid",
+            table.replace('\'', "''")
+        )
+    }
 }
 
 /// SQLite database reader
@@ -418,6 +441,10 @@ impl Reader for SqliteReader {
 
         self.registered_tables.borrow_mut().remove(name);
         Ok(())
+    }
+
+    fn execute(&self, query: &str) -> Result<super::Spec> {
+        super::execute_with_reader(self, query)
     }
 
     fn dialect(&self) -> &dyn super::SqlDialect {

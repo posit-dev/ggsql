@@ -204,6 +204,10 @@ impl Reader for PolarsReader {
         Ok(())
     }
 
+    fn execute(&self, query: &str) -> Result<super::Spec> {
+        super::execute_with_reader(self, query)
+    }
+
     fn unregister(&self, name: &str) -> Result<()> {
         // Only allow unregistering tables we created via register()
         if !self.registered_tables.borrow().contains(name) {

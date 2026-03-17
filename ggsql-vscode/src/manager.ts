@@ -118,7 +118,7 @@ function generateMetadata(
  *
  * @param workspacePath - Optional workspace path to use as the kernel's working directory
  */
-function createKernelSpec(workspacePath?: string): JupyterKernelSpec {
+function createKernelSpec(workspacePath?: string, readerUri?: string): JupyterKernelSpec {
     const kernelPath = getKernelPath();
 
     return {
@@ -132,11 +132,20 @@ function createKernelSpec(workspacePath?: string): JupyterKernelSpec {
         startKernel: async (session: JupyterSession, kernel: JupyterKernel) => {
             kernel.log(`Starting ggsql kernel with connection file: ${session.state.connectionFile}`);
             kernel.log(`Working directory: ${workspacePath ?? 'inherited from parent'}`);
+            if (readerUri) {
+                kernel.log(`Reader URI: ${readerUri}`);
+            }
 
             const connectionFile = session.state.connectionFile;
 
+            // Build arguments
+            const args = ['-f', connectionFile];
+            if (readerUri) {
+                args.push('--reader', readerUri);
+            }
+
             // Start the kernel process
-            const proc = cp.spawn(kernelPath, ['-f', connectionFile], {
+            const proc = cp.spawn(kernelPath, args, {
                 stdio: ['ignore', 'pipe', 'pipe'],
                 detached: false,
                 cwd: workspacePath

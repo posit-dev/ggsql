@@ -39,6 +39,8 @@ duckdb = { workspace = true, optional = true }
 arrow = { workspace = true, optional = true }
 postgres = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }
+odbc-api = { workspace = true, optional = true }
+toml_edit = { workspace = true, optional = true }
 
 # Writers
 plotters = { workspace = true, optional = true }
@@ -83,12 +85,13 @@ polars-sql = ["polars/sql"]
 parquet = ["polars/parquet"]
 postgres = ["dep:postgres"]
 sqlite = ["dep:rusqlite"]
+odbc = ["dep:odbc-api", "dep:toml_edit"]
 vegalite = []
 ggplot2 = []
 builtin-data = []
 python = ["dep:pyo3"]
 rest-api = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tracing", "dep:tracing-subscriber", "duckdb", "vegalite"]
-all-readers = ["duckdb", "postgres", "sqlite", "polars-sql"]
+all-readers = ["duckdb", "postgres", "sqlite", "polars-sql", "odbc"]
 all-writers = ["vegalite", "ggplot2", "plotters"]
 
 # cargo-packager configuration for cross-platform installers

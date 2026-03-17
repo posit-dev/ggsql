@@ -639,6 +639,10 @@ impl Reader for DuckDBReader {
         Ok(())
     }
 
+    fn execute(&self, query: &str) -> Result<super::Spec> {
+        super::execute_with_reader(self, query)
+    }
+
     fn dialect(&self) -> &dyn super::SqlDialect {
         &DuckDbDialect
     }

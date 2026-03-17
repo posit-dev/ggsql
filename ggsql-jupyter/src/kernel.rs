@@ -3,8 +3,9 @@
 //! This module implements the Jupyter messaging protocol over ZeroMQ sockets,
 //! handling kernel_info, execute, and shutdown requests.
 
+use crate::connection;
 use crate::display::format_display_data;
-use crate::executor::QueryExecutor;
+use crate::executor::{self, ExecutionResult, QueryExecutor};
 use crate::message::{ConnectionInfo, JupyterMessage, MessageHeader};
 use anyhow::Result;
 use hmac::{Hmac, Mac};
@@ -32,11 +33,12 @@ pub struct KernelServer {
     variables_comm_id: Option<String>,
     ui_comm_id: Option<String>,
     plot_comm_id: Option<String>,
+    connection_comm_id: Option<String>,
 }
 
 impl KernelServer {
     /// Create a new kernel server from connection info
-    pub async fn new(connection: ConnectionInfo) -> Result<Self> {
+    pub async fn new(connection: ConnectionInfo, reader_uri: &str) -> Result<Self> {
         tracing::info!("Initializing kernel server");
 
         // Initialize sockets
@@ -68,8 +70,8 @@ impl KernelServer {
         tracing::info!("Binding heartbeat socket to {}", hb_addr);
         heartbeat.bind(&hb_addr).await?;
 
-        // Create executor
-        let executor = QueryExecutor::new()?;
+        // Create executor with the specified reader
+        let executor = QueryExecutor::new_with_uri(reader_uri)?;
 
         // Generate session ID
         let session = uuid::Uuid::new_v4().to_string();
@@ -92,11 +94,15 @@ impl KernelServer {
             variables_comm_id: None,
             ui_comm_id: None,
             plot_comm_id: None,
+            connection_comm_id: None,
         };
 
         // Send initial "starting" status on IOPub
         // This is required by Jupyter protocol - exactly once at process startup
         kernel.send_status_initial("starting").await?;
+
+        // Open initial connection comm so the Connections pane shows the database
+        kernel.open_connection_comm(reader_uri).await?;
 
         Ok(kernel)
     }
@@ -310,9 +316,15 @@ impl KernelServer {
 
         match result {
             Ok(exec_result) => {
+                // If the connection changed, open a new connection comm
+                let is_connection_changed = matches!(&exec_result, ExecutionResult::ConnectionChanged { .. });
+                if let ExecutionResult::ConnectionChanged { ref uri, .. } = &exec_result {
+                    self.open_connection_comm(uri).await?;
+                }
+
                 // Send execute_result (not display_data)
                 // Per Jupyter spec: execute_result includes execution_count
-                if !silent {
+                if !silent && !is_connection_changed {
                     let display_data = format_display_data(exec_result);
 
                     // Build message content, including output_location if present
@@ -593,6 +605,11 @@ impl KernelServer {
             else if Some(comm_id.to_string()) == self.plot_comm_id {
                 tracing::info!("Received plot request: {} (ignoring)", method);
             }
+            // Handle positron.connection requests
+            else if Some(comm_id.to_string()) == self.connection_comm_id {
+                self.handle_connection_rpc(method, rpc_id, comm_id, parent, identities)
+                    .await?;
+            }
             // Unknown comm
             else {
                 tracing::warn!("Message for unknown comm_id: {}", comm_id);
@@ -631,6 +648,11 @@ impl KernelServer {
         if let Some(id) = &self.plot_comm_id {
             if target_name.is_none() || target_name == Some("positron.plot") {
                 comms[id] = json!({"target_name": "positron.plot"});
+            }
+        }
+        if let Some(id) = &self.connection_comm_id {
+            if target_name.is_none() || target_name == Some("positron.connection") {
+                comms[id] = json!({"target_name": "positron.connection"});
             }
         }
 
@@ -676,11 +698,165 @@ impl KernelServer {
         } else if Some(comm_id.to_string()) == self.plot_comm_id {
             tracing::info!("Closing positron.plot comm");
             self.plot_comm_id = None;
+        } else if Some(comm_id.to_string()) == self.connection_comm_id {
+            tracing::info!("Closing positron.connection comm");
+            self.connection_comm_id = None;
         } else {
             tracing::warn!("Close for unknown comm_id: {}", comm_id);
         }
 
         self.send_status("idle", parent).await?;
+        Ok(())
+    }
+
+    /// Open (or replace) a `positron.connection` comm for the current reader.
+    ///
+    /// The kernel initiates this comm (backend-initiated). If an existing
+    /// connection comm is open, it is closed first.
+    async fn open_connection_comm(&mut self, uri: &str) -> Result<()> {
+        // Close existing connection comm if any
+        if let Some(old_id) = self.connection_comm_id.take() {
+            tracing::info!("Closing old connection comm: {}", old_id);
+            let close_msg = self.create_message(
+                "comm_close",
+                json!({ "comm_id": old_id }),
+                None,
+            );
+            let zmq_msg = self.serialize_message_with_topic(&close_msg, "comm_close")?;
+            self.iopub.send(zmq_msg).await?;
+        }
+
+        let comm_id = uuid::Uuid::new_v4().to_string();
+        let display_name = executor::display_name_for_uri(uri);
+        let type_name = executor::type_name_for_uri(uri);
+        let host = executor::host_for_uri(uri);
+        let meta_command = format!("-- @connect: {}", uri);
+
+        tracing::info!(
+            "Opening positron.connection comm: {} ({})",
+            comm_id,
+            display_name
+        );
+
+        let msg = self.create_message(
+            "comm_open",
+            json!({
+                "comm_id": comm_id,
+                "target_name": "positron.connection",
+                "data": {
+                    "name": display_name,
+                    "language_id": "ggsql",
+                    "host": host,
+                    "type": type_name,
+                    "code": meta_command
+                }
+            }),
+            None,
+        );
+        let zmq_msg = self.serialize_message_with_topic(&msg, "comm_open")?;
+        self.iopub.send(zmq_msg).await?;
+
+        self.connection_comm_id = Some(comm_id);
+        Ok(())
+    }
+
+    /// Handle JSON-RPC requests on the connection comm
+    async fn handle_connection_rpc(
+        &mut self,
+        method: &str,
+        rpc_id: &Value,
+        comm_id: &str,
+        parent: &JupyterMessage,
+        identities: &[Vec<u8>],
+    ) -> Result<()> {
+        tracing::info!("Connection RPC: {}", method);
+
+        let params = &parent.content["data"]["params"];
+
+        let result = match method {
+            "list_objects" => {
+                let path: Vec<String> = params["path"]
+                    .as_array()
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| {
+                                v.get("name")
+                                    .and_then(|n| n.as_str())
+                                    .map(|s| s.to_string())
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                match connection::list_objects(self.executor.reader(), &path) {
+                    Ok(objects) => json!(objects),
+                    Err(e) => {
+                        tracing::error!("list_objects failed: {}", e);
+                        json!([])
+                    }
+                }
+            }
+            "list_fields" => {
+                let path: Vec<String> = params["path"]
+                    .as_array()
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| {
+                                v.get("name")
+                                    .and_then(|n| n.as_str())
+                                    .map(|s| s.to_string())
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                match connection::list_fields(self.executor.reader(), &path) {
+                    Ok(fields) => json!(fields),
+                    Err(e) => {
+                        tracing::error!("list_fields failed: {}", e);
+                        json!([])
+                    }
+                }
+            }
+            "contains_data" => {
+                let path: Vec<Value> = params["path"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default();
+                let has_data = connection::contains_data(&path);
+                json!(has_data)
+            }
+            "get_icon" => json!(""),
+            "preview_object" => json!(null),
+            "get_metadata" => {
+                let uri = self.executor.reader_uri();
+                json!({
+                    "name": executor::display_name_for_uri(uri),
+                    "language_id": "ggsql",
+                    "host": executor::host_for_uri(uri),
+                    "type": executor::type_name_for_uri(uri),
+                    "code": format!("-- @connect: {}", uri)
+                })
+            }
+            _ => {
+                tracing::warn!("Unknown connection method: {}", method);
+                json!(null)
+            }
+        };
+
+        self.send_shell_reply(
+            "comm_msg",
+            json!({
+                "comm_id": comm_id,
+                "data": {
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "result": result
+                }
+            }),
+            parent,
+            identities,
+        )
+        .await?;
+
         Ok(())
     }
 

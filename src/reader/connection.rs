@@ -19,6 +19,9 @@ pub enum ConnectionInfo {
     /// SQLite file-based database
     #[allow(dead_code)]
     SQLite(String),
+    /// Generic ODBC connection (raw connection string after `odbc://` prefix)
+    #[allow(dead_code)]
+    ODBC(String),
 }
 
 /// Parse a connection string into connection information
@@ -84,8 +87,17 @@ pub fn parse_connection_string(uri: &str) -> Result<ConnectionInfo> {
         return Ok(ConnectionInfo::SQLite(cleaned_path.to_string()));
     }
 
+    if let Some(conn_str) = uri.strip_prefix("odbc://") {
+        if conn_str.is_empty() {
+            return Err(GgsqlError::ReaderError(
+                "ODBC connection string cannot be empty".to_string(),
+            ));
+        }
+        return Ok(ConnectionInfo::ODBC(conn_str.to_string()));
+    }
+
     Err(GgsqlError::ReaderError(format!(
-        "Unsupported connection string format: {}. Supported: duckdb://, polars://, postgres://, sqlite://",
+        "Unsupported connection string format: {}. Supported: duckdb://, polars://, postgres://, sqlite://, odbc://",
         uri
     )))
 }
@@ -166,6 +178,25 @@ mod tests {
     #[test]
     fn test_empty_duckdb_path() {
         let result = parse_connection_string("duckdb://");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_odbc() {
+        let info =
+            parse_connection_string("odbc://Driver=Snowflake;Server=myaccount.snowflakecomputing.com")
+                .unwrap();
+        assert_eq!(
+            info,
+            ConnectionInfo::ODBC(
+                "Driver=Snowflake;Server=myaccount.snowflakecomputing.com".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn test_odbc_empty() {
+        let result = parse_connection_string("odbc://");
         assert!(result.is_err());
     }
 
