@@ -294,7 +294,7 @@
       "patterns": [
         {
           "name": "support.type.geom.ggsql",
-          "match": "\\b(point|line|path|bar|col|area|tile|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|linear|errorbar)\\b"
+          "match": "\\b(point|line|path|bar|col|area|rect|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|linear|errorbar)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]

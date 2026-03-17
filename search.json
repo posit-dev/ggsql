@@ -1193,326 +1193,82 @@
     ]
   },
   {
-    "objectID": "syntax/layer/type/histogram.html",
-    "href": "syntax/layer/type/histogram.html",
-    "title": "Histogram",
+    "objectID": "syntax/layer/type/rect.html",
+    "href": "syntax/layer/type/rect.html",
+    "title": "Rectangle",
     "section": "",
-    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nVisualise the distribution of a single continuous variable by dividing the primary axis into bins and counting the number of observations in each bin. If providing a weight then a weighted histogram is calculated instead.",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nRectangles can be used to draw heatmaps or indicate ranges.",
     "crumbs": [
       "Getting started",
       "Layers",
       "Types",
-      "Histogram"
+      "Rectangle"
     ]
   },
   {
-    "objectID": "syntax/layer/type/histogram.html#aesthetics",
-    "href": "syntax/layer/type/histogram.html#aesthetics",
-    "title": "Histogram",
+    "objectID": "syntax/layer/type/rect.html#aesthetics",
+    "href": "syntax/layer/type/rect.html#aesthetics",
+    "title": "Rectangle",
     "section": "Aesthetics",
-    "text": "Aesthetics\nThe following aesthetics are recognised by the bar layer.\n\nRequired\n\nPrimary axis (e.g. x): The continuous variable to bin\n\n\n\nOptional\n\ncolour: The default colour of each bar\nstroke: The colour of the stroke around each bar. Overrides colour\nfill: The fill colour of each bar. Overrides colour\nopacity: The opacity of the bar fill\nlinewidth: The width of the stroke\nlinetype: The type of stroke, i.e. the dashing pattern",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the rectangle layer.\n\nRequired\n\nPick two of the following for the primary axis:\n\nCenter (e.g. x)\nwidth\nStart position (e.g. xmin). Unavailable when the center is discrete.\nEnd position (e.g. xmax). Unavailable when the center is discrete.\n\n\nAlternatively, use only the center, which will set width to 1 by default.\n\nPick two of the following for the secondary axis:\n\nCenter (e.g. y)\nheight: The size of the rectangle in the vertical dimension.\nStart position (e.g. ymin). Unavailable when the center is discrete.\nEnd position (e.g. ymax) Unavailable when the center is discrete.\n\n\nAlternatively, use only the center, which will set height to 1 by default.\n\n\nOptional\n\nstroke: The colour of the contour lines.\nfill: The colour of the inner area.\ncolour: Shorthand for setting stroke and fill simultaneously.\nopacity: The opacity of colours.\nlinewidth: The width of the contour lines.\nlinetype: The dash pattern of the contour line.",
     "crumbs": [
       "Getting started",
       "Layers",
       "Types",
-      "Histogram"
+      "Rectangle"
     ]
   },
   {
-    "objectID": "syntax/layer/type/histogram.html#settings",
-    "href": "syntax/layer/type/histogram.html#settings",
-    "title": "Histogram",
+    "objectID": "syntax/layer/type/rect.html#settings",
+    "href": "syntax/layer/type/rect.html#settings",
+    "title": "Rectangle",
     "section": "Settings",
-    "text": "Settings\n\nposition: Determines the position adjustment to use for the layer (default is 'stack')\nbins: The number of bins to calculate. Defaults to 30\nbinwidth: The width of each bin. If provided it will override the binwidth calculated from bins\nclosed: Either 'left' or 'right' (default). Determines whether the bin intervals are closed to the left or right side",
+    "text": "Settings\n\nposition: Determines the position adjustment to use for the layer (default is 'identity')",
     "crumbs": [
       "Getting started",
       "Layers",
       "Types",
-      "Histogram"
+      "Rectangle"
     ]
   },
   {
-    "objectID": "syntax/layer/type/histogram.html#data-transformation",
-    "href": "syntax/layer/type/histogram.html#data-transformation",
-    "title": "Histogram",
-    "section": "Data transformation",
-    "text": "Data transformation\nThe histogram layer will bin the records in each group and count them. By default it will map the count to the secondary axis.\n\nProperties\n\nweight: If mapped, the sum of the weights within each bin is calculated instead of the count in each bin\n\n\n\nCalculated statistics\n\ncount: The count or, if weight have been mapped, sum of weights in each bin.\ndensity: The groupwise density, i.e. the count divided by the sum of count among all bins within each group\n\n\n\nDefault remappings\n\ncount AS &lt;secondary axis&gt;: By default the histogram will show count as the height of the bars",
+    "objectID": "syntax/layer/type/rect.html#data-transformation.",
+    "href": "syntax/layer/type/rect.html#data-transformation.",
+    "title": "Rectangle",
+    "section": "Data transformation.",
+    "text": "Data transformation.\nWhen the primary aesthetics are continuous, primary data is reparameterised to {start, end}, e.g. xmin and xmax. When the secondary aesthetics are continuous, secondary data is reparameterised to {start, end}, e.g. ymin and ymax.",
     "crumbs": [
       "Getting started",
       "Layers",
       "Types",
-      "Histogram"
+      "Rectangle"
     ]
   },
   {
-    "objectID": "syntax/layer/type/histogram.html#orientation",
-    "href": "syntax/layer/type/histogram.html#orientation",
-    "title": "Histogram",
+    "objectID": "syntax/layer/type/rect.html#orientation",
+    "href": "syntax/layer/type/rect.html#orientation",
+    "title": "Rectangle",
     "section": "Orientation",
-    "text": "Orientation\nThe histogram has its primary axis along the binned variable. The orientation is deduced directly from the mapping. To create a horizontal histogram, you map the variable to y instead of x (assuming a default Cartesian coordinate system).",
+    "text": "Orientation\nThe rectangle layer has no orientation. The axes are treated symmetrically.",
     "crumbs": [
       "Getting started",
       "Layers",
       "Types",
-      "Histogram"
+      "Rectangle"
     ]
   },
   {
-    "objectID": "syntax/layer/type/histogram.html#examples",
-    "href": "syntax/layer/type/histogram.html#examples",
-    "title": "Histogram",
+    "objectID": "syntax/layer/type/rect.html#examples",
+    "href": "syntax/layer/type/rect.html#examples",
+    "title": "Rectangle",
     "section": "Examples",
-    "text": "Examples\nShow the number of each species in the data\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x\n\n\n\n\n\nSplit the histogram in two by mapping sex to fill\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x, sex AS fill\n\n\n\n\n\nThe default is to stack multiple histograms. To compare them from a baseline of 0 set position to identity\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x, sex AS fill\n    SETTING position =&gt; 'identity'\n\n\n\n\n\nMake the two histograms the same scale by remapping to density\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x, sex AS fill\n    REMAPPING density AS y\n\n\n\n\n\nSpecify an exact binwidth if needed\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x\n    SETTING binwidth =&gt; 100\n\n\n\n\n\nCreate a histogram along the y axis by changing the mapping\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS y",
+    "text": "Examples\nJust using x and y. Note that width and height are set to 1.\n\nVISUALISE Day AS x, Month AS y, Temp AS colour FROM ggsql:airquality\n  DRAW rect \n\n\n\n\n\nCustomising width and height with either the MAPPING or SETTING clauses.\n\nVISUALISE Day AS x, Month AS y, Temp AS colour FROM ggsql:airquality\n  DRAW rect MAPPING 0.5 AS width SETTING height =&gt; 0.8\n\n\n\n\n\nIf x is continuous, then width can be variable. Likewise for y and height.\n\nSELECT *, Temp / (SELECT MAX(Temp) FROM ggsql:airquality) AS norm_temp \nFROM ggsql:airquality\nVISUALISE \n    Day AS x, \n    Month AS y, \n    Temp AS colour\n  DRAW rect \n    MAPPING \n      norm_temp AS width, \n      norm_temp AS height\n\n\n\n\n\nUsing top, right, bottom, left parameterisation instead.\n\nSELECT\n  MIN(Date) AS start,\n  MAX(Date) AS end,\n  MIN(Temp) AS min,\n  MAX(Temp) AS max\nFROM ggsql:airquality\nGROUP BY\n  WEEKOFYEAR(Date)\n\nVISUALISE start AS xmin, end AS xmax, min AS ymin, max AS ymax\n  DRAW rect\n\n\n\n\n\nUsing a rectangle as an annotation.\n\n\nVISUALISE FROM ggsql:airquality\n  DRAW rect MAPPING\n    '1973-06-01' AS xmin,\n    '1973-06-30' AS xmax,\n    50 AS ymin, \n    100 AS ymax,\n    'June' AS colour\n  DRAW line MAPPING Date AS x, Temp AS y",
     "crumbs": [
       "Getting started",
       "Layers",
       "Types",
-      "Histogram"
+      "Rectangle"
     ]
-  },
-  {
-    "objectID": "syntax/index.html",
-    "href": "syntax/index.html",
-    "title": "Syntax",
-    "section": "",
-    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends",
-    "crumbs": [
-      "Getting started",
-      "Overview"
-    ]
-  },
-  {
-    "objectID": "syntax/index.html#main-clauses",
-    "href": "syntax/index.html#main-clauses",
-    "title": "Syntax",
-    "section": "",
-    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends",
-    "crumbs": [
-      "Getting started",
-      "Overview"
-    ]
-  },
-  {
-    "objectID": "syntax/index.html#layers",
-    "href": "syntax/index.html#layers",
-    "title": "Syntax",
-    "section": "Layers",
-    "text": "Layers\nThere are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the DRAW clause\n\nLayer types\n\npoint is used to create a scatterplot layer.\nline is used to produce lineplots with the data sorted along the x axis.\npath is like line above but does not sort the data but plot it according to its own order.\nsegment connects two points with a line segment.\nlinear draws a long line parameterised by a coefficient and intercept.\nrule draws horizontal and vertical reference lines.\narea is used to display series as an area chart.\nribbon is used to display series extrema.\npolygon is used to display arbitrary shapes as polygons.\ntext is used to render datapoints as text.\nbar creates a bar chart, optionally calculating y from the number of records in each bar.\ndensity creates univariate kernel density estimates, showing the distribution of a variable.\nviolin displays a rotated kernel density estimate.\nhistogram bins the data along the x axis and produces a bar for each bin showing the number of records in it.\nboxplot displays continuous variables as 5-number summaries.\nerrorbar a line segment with hinges at the endpoints.\n\n\n\nPosition adjustments\n\nstack places objects with a shared baseline on top of each other.\ndodge places objects that share the same discrete position side by side\njitter adds a small random offset to objects sharing the same discrete position\nidentity does nothing, i.e. turns off position adjustment",
-    "crumbs": [
-      "Getting started",
-      "Overview"
-    ]
-  },
-  {
-    "objectID": "syntax/index.html#scales",
-    "href": "syntax/index.html#scales",
-    "title": "Syntax",
-    "section": "Scales",
-    "text": "Scales\nA scale is responsible for translating a data value to an aesthetic literal, e.g. a specific color for the fill aesthetic, or a radius in points for the size aesthetic. A scale is a combination of a specific aesthetic and a scale type\n\nAesthetics\n\nPosition aesthetics are those aesthetics related to the spatial location of the data in the coordinate system.\nColor aesthetics are related to the color of fill and stroke\nopacity is the aesthetic that determines the opacity of the color\nlinetype governs the stroke pattern of strokes\nlinewidth determines the width of strokes\nshape determines the shape of points\nsize governs the radius of points\nFaceting aesthetics are used to determine which facet panel the data belongs to\n\n\n\nScale types\n\ncontinuous scales translates a continuous input to a continuous output\ndiscrete scales translates discrete input to a discrete output\nbinned scales translate continuous input to an ordered discrete output by binning the data\nordinal scales translate discrete input to an ordered discrete output by enforcing an ordering to the input\nidentity scales passes the data through unchanged",
-    "crumbs": [
-      "Getting started",
-      "Overview"
-    ]
-  },
-  {
-    "objectID": "syntax/index.html#coordinate-systems",
-    "href": "syntax/index.html#coordinate-systems",
-    "title": "Syntax",
-    "section": "Coordinate systems",
-    "text": "Coordinate systems\nThe coordinate system defines how the abstract positional aesthetics are projected onto the screen or paper where the final plot appears. As such, it has great influence over the final look of the plot.\n\ncartesian is the classic coordinate system consisting of two perpendicular axes, one being horizontal and one being vertical\npolar interprets the primary position as the angular location relative to the center and the secondary position as the distance (radius) from the center, and this creates a circular coordinate system",
-    "crumbs": [
-      "Getting started",
-      "Overview"
-    ]
-  },
-  {
-    "objectID": "gallery/examples/multi-layer.html",
-    "href": "gallery/examples/multi-layer.html",
-    "title": "Multi-Layer Plot",
-    "section": "",
-    "text": "Multi-layer plots combine different geometric elements (geoms) to create richer visualizations. Each DRAW clause adds a new layer."
-  },
-  {
-    "objectID": "gallery/examples/multi-layer.html#code",
-    "href": "gallery/examples/multi-layer.html#code",
-    "title": "Multi-Layer Plot",
-    "section": "Code",
-    "text": "Code\n\nSELECT Date, Temp FROM ggsql:airquality\nVISUALISE Date AS x, Temp AS y\nDRAW line\n    SETTING color =&gt; 'steelblue'\nDRAW point\n    SETTING size =&gt; 4, color =&gt; 'darkblue'\nSCALE x VIA date\nLABEL\n    title =&gt; 'Temperature with Line and Points',\n    x =&gt; 'Date',\n    y =&gt; 'Temperature (F)'"
-  },
-  {
-    "objectID": "gallery/examples/multi-layer.html#explanation",
-    "href": "gallery/examples/multi-layer.html#explanation",
-    "title": "Multi-Layer Plot",
-    "section": "Explanation",
-    "text": "Explanation\n\nThe first DRAW line creates a line connecting all points\nThe second DRAW point adds point markers at each data point\nSETTING on each layer controls that layer’s visual properties\nBoth layers share the same x and y mappings from VISUALISE"
-  },
-  {
-    "objectID": "gallery/examples/multi-layer.html#variations",
-    "href": "gallery/examples/multi-layer.html#variations",
-    "title": "Multi-Layer Plot",
-    "section": "Variations",
-    "text": "Variations\n\nDifferent Aesthetics Per Layer\nEach layer can have its own aesthetic mappings using MAPPING:\n\nSELECT Date, Temp, Ozone FROM ggsql:airquality\nVISUALISE Date AS x\nDRAW line\n    MAPPING Temp AS y, 'Temperature' AS color\nDRAW line\n    MAPPING Ozone AS y, 'Ozone' AS color\nSCALE x VIA date\nLABEL\n    title =&gt; 'Temperature and Ozone Over Time',\n    x =&gt; 'Date',\n    y =&gt; 'Value'\n\n\n\n\n\n\n\nLayers from Different Data Sources\nUse MAPPING ... FROM to pull each layer from different CTEs:\n\nWITH temps AS (\n    SELECT Date, Temp as value FROM ggsql:airquality\n),\nozone AS (\n    SELECT Date, Ozone as value FROM ggsql:airquality WHERE Ozone IS NOT NULL\n)\nVISUALISE\nDRAW line\n    MAPPING Date AS x, value AS y, 'Temperature' AS color FROM temps\nDRAW point\n    MAPPING Date AS x, value AS y, 'Ozone' AS color FROM ozone\n    SETTING size =&gt; 3\nSCALE x VIA date\nLABEL\n    title =&gt; 'Temperature vs Ozone',\n    x =&gt; 'Date',\n    y =&gt; 'Value'"
-  },
-  {
-    "objectID": "gallery/examples/scatterplot.html",
-    "href": "gallery/examples/scatterplot.html",
-    "title": "Scatter Plot",
-    "section": "",
-    "text": "A scatter plot displays the relationship between two numeric variables by mapping them to x and y positions. This is one of the most fundamental visualization types for exploring correlations and patterns."
-  },
-  {
-    "objectID": "gallery/examples/scatterplot.html#code",
-    "href": "gallery/examples/scatterplot.html#code",
-    "title": "Scatter Plot",
-    "section": "Code",
-    "text": "Code\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nLABEL\n    title =&gt; 'Penguin Bill Dimensions',\n    x =&gt; 'Bill Length (mm)',\n    y =&gt; 'Bill Depth (mm)'"
-  },
-  {
-    "objectID": "gallery/examples/scatterplot.html#explanation",
-    "href": "gallery/examples/scatterplot.html#explanation",
-    "title": "Scatter Plot",
-    "section": "Explanation",
-    "text": "Explanation\n\nVISUALISE ... FROM ggsql:penguins loads the built-in penguins dataset\nbill_len AS x, bill_dep AS y maps bill length to the x-axis and bill depth to the y-axis\nDRAW point creates a scatter plot using points\nLABEL adds descriptive axis labels and a title"
-  },
-  {
-    "objectID": "gallery/examples/scatterplot.html#variations",
-    "href": "gallery/examples/scatterplot.html#variations",
-    "title": "Scatter Plot",
-    "section": "Variations",
-    "text": "Variations\n\nWith Color by Species\n\nVISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins\nDRAW point\nLABEL\n    title =&gt; 'Penguin Bill Dimensions by Species',\n    x =&gt; 'Bill Length (mm)',\n    y =&gt; 'Bill Depth (mm)'"
-  },
-  {
-    "objectID": "gallery/examples/histogram.html",
-    "href": "gallery/examples/histogram.html",
-    "title": "Histogram",
-    "section": "",
-    "text": "Histograms show the distribution of a numeric variable by grouping values into bins and counting occurrences in each bin."
-  },
-  {
-    "objectID": "gallery/examples/histogram.html#code",
-    "href": "gallery/examples/histogram.html#code",
-    "title": "Histogram",
-    "section": "Code",
-    "text": "Code\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\nLABEL\n    title =&gt; 'Temperature Distribution',\n    x =&gt; 'Temperature (F)',\n    y =&gt; 'Count'"
-  },
-  {
-    "objectID": "gallery/examples/histogram.html#explanation",
-    "href": "gallery/examples/histogram.html#explanation",
-    "title": "Histogram",
-    "section": "Explanation",
-    "text": "Explanation\n\nVISUALISE Temp AS x specifies the variable to bin\nDRAW histogram automatically computes bins and counts\nNo y mapping is needed - ggsql computes the count automatically"
-  },
-  {
-    "objectID": "gallery/examples/histogram.html#variations",
-    "href": "gallery/examples/histogram.html#variations",
-    "title": "Histogram",
-    "section": "Variations",
-    "text": "Variations\n\nCustom Bin Count\nControl the number of bins with SETTING bins:\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\n    SETTING bins =&gt; 15\nLABEL\n    title =&gt; 'Temperature Distribution (15 bins)',\n    x =&gt; 'Temperature (F)',\n    y =&gt; 'Count'\n\n\n\n\n\n\n\nCustom Bin Width\nSet explicit bin width instead of count:\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\n    SETTING binwidth =&gt; 5\nLABEL\n    title =&gt; 'Temperature Distribution (5 degree bins)',\n    x =&gt; 'Temperature (F)',\n    y =&gt; 'Count'\n\n\n\n\n\n\n\nDensity Instead of Count\nUse REMAPPING to show density (proportion) instead of count:\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\n    REMAPPING density AS y\nLABEL\n    title =&gt; 'Temperature Density',\n    x =&gt; 'Temperature (F)',\n    y =&gt; 'Density'"
-  },
-  {
-    "objectID": "get_started.html",
-    "href": "get_started.html",
-    "title": "Getting started",
-    "section": "",
-    "text": "Before you spend time on the minutia of installing ggsql — not that it is particularly daunting — why not try it out right now, right here, in your browser?\nThe code below shows a simple ggsql example. But it is not just a static piece of text and an image. It is ggsql running right in your browser, using one of the built-in datasets. Try to change e.g. the title and see the plot update as you type. Even though this may be your first encounter with the ggsql syntax you might already get a sense of how some of the things fit together. See if you can change the code to instead show the different species as different shapes\nVISUALISE bill_len AS x, bill_dep AS y, species AS fill FROM ggsql:penguins\nDRAW point\nSCALE x RENAMING * =&gt; '{} mm'\nLABEL\n   title =&gt; 'Relationship between bill dimensions in 3 species of penguins',\n   x =&gt; 'Bill length',\n   y =&gt; 'Bill depth'\nCongratulations! You have started your journey with ggsql! All examples you see on this site will be interactive. Please experiment to your heart’s content. If you want a more dedicated exploration experience head to our playground which provides a simple IDE with a number of examples to try out.\nNow that you have gotten a feel for ggsql you may want to try running locally with your own data. Read on to learn how."
-  },
-  {
-    "objectID": "get_started.html#installation",
-    "href": "get_started.html#installation",
-    "title": "Getting started",
-    "section": "Installation",
-    "text": "Installation\n\nBuilding from Source\nIf you prefer to build from source or need the latest development version:\n\nClone the repository:\ngit clone https://github.com/posit-dev/ggsql\ncd ggsql\nInstall tree-sitter CLI:\nnpm install -g tree-sitter-cli\nBuild the project:\ncd tree-sitter-ggsql && tree-sitter generate && cd ..\ncargo build --release\nInstall the CLI:\ncargo install --path src\nInstall the Jupyter kernel (optional):\ncargo install --path ggsql-jupyter\nggsql-jupyter --install"
-  },
-  {
-    "objectID": "gallery/index.html",
-    "href": "gallery/index.html",
-    "title": "Example Gallery",
-    "section": "",
-    "text": "Browse examples of ggsql visualizations. Click any example to see the full code and explanation.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nScatter Plot\n\n\nBasic scatter plot mapping two numeric variables to position\n\n\n\n\n\n\n\n\n\n\n\n\nLine Chart\n\n\nTime series visualization with proper date scaling\n\n\n\n\n\n\n\n\n\n\n\n\nBar Chart\n\n\nCategorical comparisons using bars\n\n\n\n\n\n\n\n\n\n\n\n\nHistogram\n\n\nDistribution of a single numeric variable\n\n\n\n\n\n\n\n\n\n\n\n\nMulti-Layer Plot\n\n\nCombining multiple geometric layers in one visualization\n\n\n\n\n\n\n\n\n\n\n\n\nFaceted Plot\n\n\nSmall multiples showing data split by category\n\n\n\n\n\nNo matching items"
-  },
-  {
-    "objectID": "gallery/examples/faceted.html",
-    "href": "gallery/examples/faceted.html",
-    "title": "Faceted Plot",
-    "section": "",
-    "text": "Faceted plots (small multiples) split data into separate panels by one or more categorical variables. This makes it easy to compare patterns across groups."
-  },
-  {
-    "objectID": "gallery/examples/faceted.html#code",
-    "href": "gallery/examples/faceted.html#code",
-    "title": "Faceted Plot",
-    "section": "Code",
-    "text": "Code\n\nSELECT bill_len, bill_dep, species FROM ggsql:penguins\nVISUALISE bill_len AS x, bill_dep AS y\nDRAW point\nFACET species\nLABEL\n    title =&gt; 'Bill Dimensions by Species',\n    x =&gt; 'Bill Length (mm)',\n    y =&gt; 'Bill Depth (mm)'"
-  },
-  {
-    "objectID": "gallery/examples/faceted.html#explanation",
-    "href": "gallery/examples/faceted.html#explanation",
-    "title": "Faceted Plot",
-    "section": "Explanation",
-    "text": "Explanation\n\nFACET species creates a separate panel for each penguin species\nEach panel shows the same scatter plot, filtered to that species\nThis reveals species-specific patterns that might be hidden in a combined view"
-  },
-  {
-    "objectID": "gallery/examples/faceted.html#variations",
-    "href": "gallery/examples/faceted.html#variations",
-    "title": "Faceted Plot",
-    "section": "Variations",
-    "text": "Variations\n\nGrid Layout with Two Variables\nUse FACET rows BY cols to create a grid layout:\n\nSELECT bill_len, bill_dep, species, island FROM ggsql:penguins\nVISUALISE bill_len AS x, bill_dep AS y\nDRAW point\nFACET species BY island\nLABEL\n    title =&gt; 'Bill Dimensions by Species and Island',\n    x =&gt; 'Bill Length (mm)',\n    y =&gt; 'Bill Depth (mm)'\n\n\n\n\n\n\n\nFree Scales\nAllow each facet to have independent axis scales with SETTING free:\n\nSELECT bill_len, bill_dep, species FROM ggsql:penguins\nVISUALISE bill_len AS x, bill_dep AS y\nDRAW point\nFACET species SETTING free =&gt; 'y'\nLABEL\n    title =&gt; 'Bill Dimensions (Free Y Scale)',\n    x =&gt; 'Bill Length (mm)',\n    y =&gt; 'Bill Depth (mm)'"
-  },
-  {
-    "objectID": "gallery/examples/bar-chart.html",
-    "href": "gallery/examples/bar-chart.html",
-    "title": "Bar Chart",
-    "section": "",
-    "text": "Bar charts display categorical data with rectangular bars. The height of each bar represents the value for that category."
-  },
-  {
-    "objectID": "gallery/examples/bar-chart.html#code",
-    "href": "gallery/examples/bar-chart.html#code",
-    "title": "Bar Chart",
-    "section": "Code",
-    "text": "Code\n\nSELECT species, COUNT(*) as count FROM ggsql:penguins\nGROUP BY species\nVISUALISE species AS x, count AS y, species AS fill\nDRAW bar\nLABEL\n    title =&gt; 'Penguin Count by Species',\n    x =&gt; 'Species',\n    y =&gt; 'Count'"
-  },
-  {
-    "objectID": "gallery/examples/bar-chart.html#explanation",
-    "href": "gallery/examples/bar-chart.html#explanation",
-    "title": "Bar Chart",
-    "section": "Explanation",
-    "text": "Explanation\n\nThe SQL query aggregates penguin counts by species\nspecies AS x places species names on the x-axis\ncount AS y sets the bar height based on the count\nspecies AS fill colors each bar by species\nDRAW bar creates vertical bars"
-  },
-  {
-    "objectID": "gallery/examples/bar-chart.html#variations",
-    "href": "gallery/examples/bar-chart.html#variations",
-    "title": "Bar Chart",
-    "section": "Variations",
-    "text": "Variations\n\nHorizontal Bars\nUse PROJECT y, x TO cartesian to flip the axes for horizontal bars:\n\nSELECT species, COUNT(*) as count FROM ggsql:penguins\nGROUP BY species\nVISUALISE species AS x, count AS y, species AS fill\nDRAW bar\nPROJECT y, x TO cartesian\nLABEL\n    title =&gt; 'Penguin Count by Species',\n    x =&gt; 'Species',\n    y =&gt; 'Count'\n\n\n\n\n\n\n\nAuto-Count Bar Chart\nWhen you don’t specify a y aesthetic, ggsql automatically counts occurrences:\n\nSELECT species FROM ggsql:penguins\nVISUALISE species AS x\nDRAW bar\nLABEL\n    title =&gt; 'Penguin Distribution',\n    x =&gt; 'Species',\n    y =&gt; 'Count'"
-  },
-  {
-    "objectID": "gallery/examples/line-chart.html",
-    "href": "gallery/examples/line-chart.html",
-    "title": "Line Chart",
-    "section": "",
-    "text": "Line charts are ideal for showing trends over time. The SCALE x VIA date clause ensures proper date formatting on the axis."
-  },
-  {
-    "objectID": "gallery/examples/line-chart.html#code",
-    "href": "gallery/examples/line-chart.html#code",
-    "title": "Line Chart",
-    "section": "Code",
-    "text": "Code\n\nSELECT Date, Temp FROM ggsql:airquality\nVISUALISE Date AS x, Temp AS y\nDRAW line\nSCALE x VIA date\nLABEL\n    title =&gt; 'Daily Temperature',\n    x =&gt; 'Date',\n    y =&gt; 'Temperature (F)'"
-  },
-  {
-    "objectID": "gallery/examples/line-chart.html#explanation",
-    "href": "gallery/examples/line-chart.html#explanation",
-    "title": "Line Chart",
-    "section": "Explanation",
-    "text": "Explanation\n\nSELECT ... FROM ggsql:airquality queries the built-in air quality dataset\nVISUALISE Date AS x, Temp AS y maps the date column to x and temperature to y\nDRAW line connects data points with lines\nSCALE x VIA date ensures the x-axis is formatted as dates with appropriate tick marks\nLABEL provides descriptive titles for the chart and axes"
-  },
-  {
-    "objectID": "gallery/examples/line-chart.html#variations",
-    "href": "gallery/examples/line-chart.html#variations",
-    "title": "Line Chart",
-    "section": "Variations",
-    "text": "Variations\n\nMultiple Lines by Category\n\nSELECT Date, Temp, Month FROM ggsql:airquality\nVISUALISE Date AS x, Temp AS y, Month AS color\nDRAW line\nSCALE x VIA date\nLABEL\n    title =&gt; 'Daily Temperature by Month',\n    x =&gt; 'Date',\n    y =&gt; 'Temperature (F)'"
   },
   {
     "objectID": "syntax/layer/type/ribbon.html",
@@ -1590,6 +1346,328 @@
       "Layers",
       "Types",
       "Ribbon"
+    ]
+  },
+  {
+    "objectID": "gallery/examples/line-chart.html",
+    "href": "gallery/examples/line-chart.html",
+    "title": "Line Chart",
+    "section": "",
+    "text": "Line charts are ideal for showing trends over time. The SCALE x VIA date clause ensures proper date formatting on the axis."
+  },
+  {
+    "objectID": "gallery/examples/line-chart.html#code",
+    "href": "gallery/examples/line-chart.html#code",
+    "title": "Line Chart",
+    "section": "Code",
+    "text": "Code\n\nSELECT Date, Temp FROM ggsql:airquality\nVISUALISE Date AS x, Temp AS y\nDRAW line\nSCALE x VIA date\nLABEL\n    title =&gt; 'Daily Temperature',\n    x =&gt; 'Date',\n    y =&gt; 'Temperature (F)'"
+  },
+  {
+    "objectID": "gallery/examples/line-chart.html#explanation",
+    "href": "gallery/examples/line-chart.html#explanation",
+    "title": "Line Chart",
+    "section": "Explanation",
+    "text": "Explanation\n\nSELECT ... FROM ggsql:airquality queries the built-in air quality dataset\nVISUALISE Date AS x, Temp AS y maps the date column to x and temperature to y\nDRAW line connects data points with lines\nSCALE x VIA date ensures the x-axis is formatted as dates with appropriate tick marks\nLABEL provides descriptive titles for the chart and axes"
+  },
+  {
+    "objectID": "gallery/examples/line-chart.html#variations",
+    "href": "gallery/examples/line-chart.html#variations",
+    "title": "Line Chart",
+    "section": "Variations",
+    "text": "Variations\n\nMultiple Lines by Category\n\nSELECT Date, Temp, Month FROM ggsql:airquality\nVISUALISE Date AS x, Temp AS y, Month AS color\nDRAW line\nSCALE x VIA date\nLABEL\n    title =&gt; 'Daily Temperature by Month',\n    x =&gt; 'Date',\n    y =&gt; 'Temperature (F)'"
+  },
+  {
+    "objectID": "gallery/examples/bar-chart.html",
+    "href": "gallery/examples/bar-chart.html",
+    "title": "Bar Chart",
+    "section": "",
+    "text": "Bar charts display categorical data with rectangular bars. The height of each bar represents the value for that category."
+  },
+  {
+    "objectID": "gallery/examples/bar-chart.html#code",
+    "href": "gallery/examples/bar-chart.html#code",
+    "title": "Bar Chart",
+    "section": "Code",
+    "text": "Code\n\nSELECT species, COUNT(*) as count FROM ggsql:penguins\nGROUP BY species\nVISUALISE species AS x, count AS y, species AS fill\nDRAW bar\nLABEL\n    title =&gt; 'Penguin Count by Species',\n    x =&gt; 'Species',\n    y =&gt; 'Count'"
+  },
+  {
+    "objectID": "gallery/examples/bar-chart.html#explanation",
+    "href": "gallery/examples/bar-chart.html#explanation",
+    "title": "Bar Chart",
+    "section": "Explanation",
+    "text": "Explanation\n\nThe SQL query aggregates penguin counts by species\nspecies AS x places species names on the x-axis\ncount AS y sets the bar height based on the count\nspecies AS fill colors each bar by species\nDRAW bar creates vertical bars"
+  },
+  {
+    "objectID": "gallery/examples/bar-chart.html#variations",
+    "href": "gallery/examples/bar-chart.html#variations",
+    "title": "Bar Chart",
+    "section": "Variations",
+    "text": "Variations\n\nHorizontal Bars\nUse PROJECT y, x TO cartesian to flip the axes for horizontal bars:\n\nSELECT species, COUNT(*) as count FROM ggsql:penguins\nGROUP BY species\nVISUALISE species AS x, count AS y, species AS fill\nDRAW bar\nPROJECT y, x TO cartesian\nLABEL\n    title =&gt; 'Penguin Count by Species',\n    x =&gt; 'Species',\n    y =&gt; 'Count'\n\n\n\n\n\n\n\nAuto-Count Bar Chart\nWhen you don’t specify a y aesthetic, ggsql automatically counts occurrences:\n\nSELECT species FROM ggsql:penguins\nVISUALISE species AS x\nDRAW bar\nLABEL\n    title =&gt; 'Penguin Distribution',\n    x =&gt; 'Species',\n    y =&gt; 'Count'"
+  },
+  {
+    "objectID": "gallery/examples/faceted.html",
+    "href": "gallery/examples/faceted.html",
+    "title": "Faceted Plot",
+    "section": "",
+    "text": "Faceted plots (small multiples) split data into separate panels by one or more categorical variables. This makes it easy to compare patterns across groups."
+  },
+  {
+    "objectID": "gallery/examples/faceted.html#code",
+    "href": "gallery/examples/faceted.html#code",
+    "title": "Faceted Plot",
+    "section": "Code",
+    "text": "Code\n\nSELECT bill_len, bill_dep, species FROM ggsql:penguins\nVISUALISE bill_len AS x, bill_dep AS y\nDRAW point\nFACET species\nLABEL\n    title =&gt; 'Bill Dimensions by Species',\n    x =&gt; 'Bill Length (mm)',\n    y =&gt; 'Bill Depth (mm)'"
+  },
+  {
+    "objectID": "gallery/examples/faceted.html#explanation",
+    "href": "gallery/examples/faceted.html#explanation",
+    "title": "Faceted Plot",
+    "section": "Explanation",
+    "text": "Explanation\n\nFACET species creates a separate panel for each penguin species\nEach panel shows the same scatter plot, filtered to that species\nThis reveals species-specific patterns that might be hidden in a combined view"
+  },
+  {
+    "objectID": "gallery/examples/faceted.html#variations",
+    "href": "gallery/examples/faceted.html#variations",
+    "title": "Faceted Plot",
+    "section": "Variations",
+    "text": "Variations\n\nGrid Layout with Two Variables\nUse FACET rows BY cols to create a grid layout:\n\nSELECT bill_len, bill_dep, species, island FROM ggsql:penguins\nVISUALISE bill_len AS x, bill_dep AS y\nDRAW point\nFACET species BY island\nLABEL\n    title =&gt; 'Bill Dimensions by Species and Island',\n    x =&gt; 'Bill Length (mm)',\n    y =&gt; 'Bill Depth (mm)'\n\n\n\n\n\n\n\nFree Scales\nAllow each facet to have independent axis scales with SETTING free:\n\nSELECT bill_len, bill_dep, species FROM ggsql:penguins\nVISUALISE bill_len AS x, bill_dep AS y\nDRAW point\nFACET species SETTING free =&gt; 'y'\nLABEL\n    title =&gt; 'Bill Dimensions (Free Y Scale)',\n    x =&gt; 'Bill Length (mm)',\n    y =&gt; 'Bill Depth (mm)'"
+  },
+  {
+    "objectID": "gallery/index.html",
+    "href": "gallery/index.html",
+    "title": "Example Gallery",
+    "section": "",
+    "text": "Browse examples of ggsql visualizations. Click any example to see the full code and explanation.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nScatter Plot\n\n\nBasic scatter plot mapping two numeric variables to position\n\n\n\n\n\n\n\n\n\n\n\n\nLine Chart\n\n\nTime series visualization with proper date scaling\n\n\n\n\n\n\n\n\n\n\n\n\nBar Chart\n\n\nCategorical comparisons using bars\n\n\n\n\n\n\n\n\n\n\n\n\nHistogram\n\n\nDistribution of a single numeric variable\n\n\n\n\n\n\n\n\n\n\n\n\nMulti-Layer Plot\n\n\nCombining multiple geometric layers in one visualization\n\n\n\n\n\n\n\n\n\n\n\n\nFaceted Plot\n\n\nSmall multiples showing data split by category\n\n\n\n\n\nNo matching items"
+  },
+  {
+    "objectID": "get_started.html",
+    "href": "get_started.html",
+    "title": "Getting started",
+    "section": "",
+    "text": "Before you spend time on the minutia of installing ggsql — not that it is particularly daunting — why not try it out right now, right here, in your browser?\nThe code below shows a simple ggsql example. But it is not just a static piece of text and an image. It is ggsql running right in your browser, using one of the built-in datasets. Try to change e.g. the title and see the plot update as you type. Even though this may be your first encounter with the ggsql syntax you might already get a sense of how some of the things fit together. See if you can change the code to instead show the different species as different shapes\nVISUALISE bill_len AS x, bill_dep AS y, species AS fill FROM ggsql:penguins\nDRAW point\nSCALE x RENAMING * =&gt; '{} mm'\nLABEL\n   title =&gt; 'Relationship between bill dimensions in 3 species of penguins',\n   x =&gt; 'Bill length',\n   y =&gt; 'Bill depth'\nCongratulations! You have started your journey with ggsql! All examples you see on this site will be interactive. Please experiment to your heart’s content. If you want a more dedicated exploration experience head to our playground which provides a simple IDE with a number of examples to try out.\nNow that you have gotten a feel for ggsql you may want to try running locally with your own data. Read on to learn how."
+  },
+  {
+    "objectID": "get_started.html#installation",
+    "href": "get_started.html#installation",
+    "title": "Getting started",
+    "section": "Installation",
+    "text": "Installation\n\nBuilding from Source\nIf you prefer to build from source or need the latest development version:\n\nClone the repository:\ngit clone https://github.com/posit-dev/ggsql\ncd ggsql\nInstall tree-sitter CLI:\nnpm install -g tree-sitter-cli\nBuild the project:\ncd tree-sitter-ggsql && tree-sitter generate && cd ..\ncargo build --release\nInstall the CLI:\ncargo install --path src\nInstall the Jupyter kernel (optional):\ncargo install --path ggsql-jupyter\nggsql-jupyter --install"
+  },
+  {
+    "objectID": "gallery/examples/histogram.html",
+    "href": "gallery/examples/histogram.html",
+    "title": "Histogram",
+    "section": "",
+    "text": "Histograms show the distribution of a numeric variable by grouping values into bins and counting occurrences in each bin."
+  },
+  {
+    "objectID": "gallery/examples/histogram.html#code",
+    "href": "gallery/examples/histogram.html#code",
+    "title": "Histogram",
+    "section": "Code",
+    "text": "Code\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\nLABEL\n    title =&gt; 'Temperature Distribution',\n    x =&gt; 'Temperature (F)',\n    y =&gt; 'Count'"
+  },
+  {
+    "objectID": "gallery/examples/histogram.html#explanation",
+    "href": "gallery/examples/histogram.html#explanation",
+    "title": "Histogram",
+    "section": "Explanation",
+    "text": "Explanation\n\nVISUALISE Temp AS x specifies the variable to bin\nDRAW histogram automatically computes bins and counts\nNo y mapping is needed - ggsql computes the count automatically"
+  },
+  {
+    "objectID": "gallery/examples/histogram.html#variations",
+    "href": "gallery/examples/histogram.html#variations",
+    "title": "Histogram",
+    "section": "Variations",
+    "text": "Variations\n\nCustom Bin Count\nControl the number of bins with SETTING bins:\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\n    SETTING bins =&gt; 15\nLABEL\n    title =&gt; 'Temperature Distribution (15 bins)',\n    x =&gt; 'Temperature (F)',\n    y =&gt; 'Count'\n\n\n\n\n\n\n\nCustom Bin Width\nSet explicit bin width instead of count:\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\n    SETTING binwidth =&gt; 5\nLABEL\n    title =&gt; 'Temperature Distribution (5 degree bins)',\n    x =&gt; 'Temperature (F)',\n    y =&gt; 'Count'\n\n\n\n\n\n\n\nDensity Instead of Count\nUse REMAPPING to show density (proportion) instead of count:\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\n    REMAPPING density AS y\nLABEL\n    title =&gt; 'Temperature Density',\n    x =&gt; 'Temperature (F)',\n    y =&gt; 'Density'"
+  },
+  {
+    "objectID": "gallery/examples/scatterplot.html",
+    "href": "gallery/examples/scatterplot.html",
+    "title": "Scatter Plot",
+    "section": "",
+    "text": "A scatter plot displays the relationship between two numeric variables by mapping them to x and y positions. This is one of the most fundamental visualization types for exploring correlations and patterns."
+  },
+  {
+    "objectID": "gallery/examples/scatterplot.html#code",
+    "href": "gallery/examples/scatterplot.html#code",
+    "title": "Scatter Plot",
+    "section": "Code",
+    "text": "Code\n\nVISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins\nDRAW point\nLABEL\n    title =&gt; 'Penguin Bill Dimensions',\n    x =&gt; 'Bill Length (mm)',\n    y =&gt; 'Bill Depth (mm)'"
+  },
+  {
+    "objectID": "gallery/examples/scatterplot.html#explanation",
+    "href": "gallery/examples/scatterplot.html#explanation",
+    "title": "Scatter Plot",
+    "section": "Explanation",
+    "text": "Explanation\n\nVISUALISE ... FROM ggsql:penguins loads the built-in penguins dataset\nbill_len AS x, bill_dep AS y maps bill length to the x-axis and bill depth to the y-axis\nDRAW point creates a scatter plot using points\nLABEL adds descriptive axis labels and a title"
+  },
+  {
+    "objectID": "gallery/examples/scatterplot.html#variations",
+    "href": "gallery/examples/scatterplot.html#variations",
+    "title": "Scatter Plot",
+    "section": "Variations",
+    "text": "Variations\n\nWith Color by Species\n\nVISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins\nDRAW point\nLABEL\n    title =&gt; 'Penguin Bill Dimensions by Species',\n    x =&gt; 'Bill Length (mm)',\n    y =&gt; 'Bill Depth (mm)'"
+  },
+  {
+    "objectID": "gallery/examples/multi-layer.html",
+    "href": "gallery/examples/multi-layer.html",
+    "title": "Multi-Layer Plot",
+    "section": "",
+    "text": "Multi-layer plots combine different geometric elements (geoms) to create richer visualizations. Each DRAW clause adds a new layer."
+  },
+  {
+    "objectID": "gallery/examples/multi-layer.html#code",
+    "href": "gallery/examples/multi-layer.html#code",
+    "title": "Multi-Layer Plot",
+    "section": "Code",
+    "text": "Code\n\nSELECT Date, Temp FROM ggsql:airquality\nVISUALISE Date AS x, Temp AS y\nDRAW line\n    SETTING color =&gt; 'steelblue'\nDRAW point\n    SETTING size =&gt; 4, color =&gt; 'darkblue'\nSCALE x VIA date\nLABEL\n    title =&gt; 'Temperature with Line and Points',\n    x =&gt; 'Date',\n    y =&gt; 'Temperature (F)'"
+  },
+  {
+    "objectID": "gallery/examples/multi-layer.html#explanation",
+    "href": "gallery/examples/multi-layer.html#explanation",
+    "title": "Multi-Layer Plot",
+    "section": "Explanation",
+    "text": "Explanation\n\nThe first DRAW line creates a line connecting all points\nThe second DRAW point adds point markers at each data point\nSETTING on each layer controls that layer’s visual properties\nBoth layers share the same x and y mappings from VISUALISE"
+  },
+  {
+    "objectID": "gallery/examples/multi-layer.html#variations",
+    "href": "gallery/examples/multi-layer.html#variations",
+    "title": "Multi-Layer Plot",
+    "section": "Variations",
+    "text": "Variations\n\nDifferent Aesthetics Per Layer\nEach layer can have its own aesthetic mappings using MAPPING:\n\nSELECT Date, Temp, Ozone FROM ggsql:airquality\nVISUALISE Date AS x\nDRAW line\n    MAPPING Temp AS y, 'Temperature' AS color\nDRAW line\n    MAPPING Ozone AS y, 'Ozone' AS color\nSCALE x VIA date\nLABEL\n    title =&gt; 'Temperature and Ozone Over Time',\n    x =&gt; 'Date',\n    y =&gt; 'Value'\n\n\n\n\n\n\n\nLayers from Different Data Sources\nUse MAPPING ... FROM to pull each layer from different CTEs:\n\nWITH temps AS (\n    SELECT Date, Temp as value FROM ggsql:airquality\n),\nozone AS (\n    SELECT Date, Ozone as value FROM ggsql:airquality WHERE Ozone IS NOT NULL\n)\nVISUALISE\nDRAW line\n    MAPPING Date AS x, value AS y, 'Temperature' AS color FROM temps\nDRAW point\n    MAPPING Date AS x, value AS y, 'Ozone' AS color FROM ozone\n    SETTING size =&gt; 3\nSCALE x VIA date\nLABEL\n    title =&gt; 'Temperature vs Ozone',\n    x =&gt; 'Date',\n    y =&gt; 'Value'"
+  },
+  {
+    "objectID": "syntax/index.html",
+    "href": "syntax/index.html",
+    "title": "Syntax",
+    "section": "",
+    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends",
+    "crumbs": [
+      "Getting started",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/index.html#main-clauses",
+    "href": "syntax/index.html#main-clauses",
+    "title": "Syntax",
+    "section": "",
+    "text": "ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:\n\nVISUALISE initiates the visualisation part of the query\nDRAW adds a new layer to the visualisation\nSCALE specify how an aesthetic should be scaled\nFACET describes how data should be split into small multiples\nPROJECT is used for selecting the coordinate system to use\nLABEL is used to manually add titles to the plot or the various axes and legends",
+    "crumbs": [
+      "Getting started",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/index.html#layers",
+    "href": "syntax/index.html#layers",
+    "title": "Syntax",
+    "section": "Layers",
+    "text": "Layers\nThere are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the DRAW clause\n\nLayer types\n\npoint is used to create a scatterplot layer.\nline is used to produce lineplots with the data sorted along the x axis.\npath is like line above but does not sort the data but plot it according to its own order.\nsegment connects two points with a line segment.\nlinear draws a long line parameterised by a coefficient and intercept.\nrule draws horizontal and vertical reference lines.\narea is used to display series as an area chart.\nribbon is used to display series extrema.\npolygon is used to display arbitrary shapes as polygons.\ntext is used to render datapoints as text.\nbar creates a bar chart, optionally calculating y from the number of records in each bar.\ndensity creates univariate kernel density estimates, showing the distribution of a variable.\nviolin displays a rotated kernel density estimate.\nhistogram bins the data along the x axis and produces a bar for each bin showing the number of records in it.\nboxplot displays continuous variables as 5-number summaries.\nerrorbar a line segment with hinges at the endpoints.\n\n\n\nPosition adjustments\n\nstack places objects with a shared baseline on top of each other.\ndodge places objects that share the same discrete position side by side\njitter adds a small random offset to objects sharing the same discrete position\nidentity does nothing, i.e. turns off position adjustment",
+    "crumbs": [
+      "Getting started",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/index.html#scales",
+    "href": "syntax/index.html#scales",
+    "title": "Syntax",
+    "section": "Scales",
+    "text": "Scales\nA scale is responsible for translating a data value to an aesthetic literal, e.g. a specific color for the fill aesthetic, or a radius in points for the size aesthetic. A scale is a combination of a specific aesthetic and a scale type\n\nAesthetics\n\nPosition aesthetics are those aesthetics related to the spatial location of the data in the coordinate system.\nColor aesthetics are related to the color of fill and stroke\nopacity is the aesthetic that determines the opacity of the color\nlinetype governs the stroke pattern of strokes\nlinewidth determines the width of strokes\nshape determines the shape of points\nsize governs the radius of points\nFaceting aesthetics are used to determine which facet panel the data belongs to\n\n\n\nScale types\n\ncontinuous scales translates a continuous input to a continuous output\ndiscrete scales translates discrete input to a discrete output\nbinned scales translate continuous input to an ordered discrete output by binning the data\nordinal scales translate discrete input to an ordered discrete output by enforcing an ordering to the input\nidentity scales passes the data through unchanged",
+    "crumbs": [
+      "Getting started",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/index.html#coordinate-systems",
+    "href": "syntax/index.html#coordinate-systems",
+    "title": "Syntax",
+    "section": "Coordinate systems",
+    "text": "Coordinate systems\nThe coordinate system defines how the abstract positional aesthetics are projected onto the screen or paper where the final plot appears. As such, it has great influence over the final look of the plot.\n\ncartesian is the classic coordinate system consisting of two perpendicular axes, one being horizontal and one being vertical\npolar interprets the primary position as the angular location relative to the center and the secondary position as the distance (radius) from the center, and this creates a circular coordinate system",
+    "crumbs": [
+      "Getting started",
+      "Overview"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/type/histogram.html",
+    "href": "syntax/layer/type/histogram.html",
+    "title": "Histogram",
+    "section": "",
+    "text": "Layers are declared with the DRAW clause. Read the documentation for this clause for a thorough description of how to use it.\nVisualise the distribution of a single continuous variable by dividing the primary axis into bins and counting the number of observations in each bin. If providing a weight then a weighted histogram is calculated instead.",
+    "crumbs": [
+      "Getting started",
+      "Layers",
+      "Types",
+      "Histogram"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/type/histogram.html#aesthetics",
+    "href": "syntax/layer/type/histogram.html#aesthetics",
+    "title": "Histogram",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the bar layer.\n\nRequired\n\nPrimary axis (e.g. x): The continuous variable to bin\n\n\n\nOptional\n\ncolour: The default colour of each bar\nstroke: The colour of the stroke around each bar. Overrides colour\nfill: The fill colour of each bar. Overrides colour\nopacity: The opacity of the bar fill\nlinewidth: The width of the stroke\nlinetype: The type of stroke, i.e. the dashing pattern",
+    "crumbs": [
+      "Getting started",
+      "Layers",
+      "Types",
+      "Histogram"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/type/histogram.html#settings",
+    "href": "syntax/layer/type/histogram.html#settings",
+    "title": "Histogram",
+    "section": "Settings",
+    "text": "Settings\n\nposition: Determines the position adjustment to use for the layer (default is 'stack')\nbins: The number of bins to calculate. Defaults to 30\nbinwidth: The width of each bin. If provided it will override the binwidth calculated from bins\nclosed: Either 'left' or 'right' (default). Determines whether the bin intervals are closed to the left or right side",
+    "crumbs": [
+      "Getting started",
+      "Layers",
+      "Types",
+      "Histogram"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/type/histogram.html#data-transformation",
+    "href": "syntax/layer/type/histogram.html#data-transformation",
+    "title": "Histogram",
+    "section": "Data transformation",
+    "text": "Data transformation\nThe histogram layer will bin the records in each group and count them. By default it will map the count to the secondary axis.\n\nProperties\n\nweight: If mapped, the sum of the weights within each bin is calculated instead of the count in each bin\n\n\n\nCalculated statistics\n\ncount: The count or, if weight have been mapped, sum of weights in each bin.\ndensity: The groupwise density, i.e. the count divided by the sum of count among all bins within each group\n\n\n\nDefault remappings\n\ncount AS &lt;secondary axis&gt;: By default the histogram will show count as the height of the bars",
+    "crumbs": [
+      "Getting started",
+      "Layers",
+      "Types",
+      "Histogram"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/type/histogram.html#orientation",
+    "href": "syntax/layer/type/histogram.html#orientation",
+    "title": "Histogram",
+    "section": "Orientation",
+    "text": "Orientation\nThe histogram has its primary axis along the binned variable. The orientation is deduced directly from the mapping. To create a horizontal histogram, you map the variable to y instead of x (assuming a default Cartesian coordinate system).",
+    "crumbs": [
+      "Getting started",
+      "Layers",
+      "Types",
+      "Histogram"
+    ]
+  },
+  {
+    "objectID": "syntax/layer/type/histogram.html#examples",
+    "href": "syntax/layer/type/histogram.html#examples",
+    "title": "Histogram",
+    "section": "Examples",
+    "text": "Examples\nShow the number of each species in the data\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x\n\n\n\n\n\nSplit the histogram in two by mapping sex to fill\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x, sex AS fill\n\n\n\n\n\nThe default is to stack multiple histograms. To compare them from a baseline of 0 set position to identity\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x, sex AS fill\n    SETTING position =&gt; 'identity'\n\n\n\n\n\nMake the two histograms the same scale by remapping to density\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x, sex AS fill\n    REMAPPING density AS y\n\n\n\n\n\nSpecify an exact binwidth if needed\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS x\n    SETTING binwidth =&gt; 100\n\n\n\n\n\nCreate a histogram along the y axis by changing the mapping\n\nVISUALISE FROM ggsql:penguins\nDRAW histogram\n    MAPPING body_mass AS y",
+    "crumbs": [
+      "Getting started",
+      "Layers",
+      "Types",
+      "Histogram"
     ]
   },
   {
