@@ -2,7 +2,7 @@
 
 use polars::prelude::DataType;
 
-use super::{ScaleTypeKind, ScaleTypeTrait, SqlTypeNames, TransformKind, OOB_CENSOR, OOB_SQUISH};
+use super::{ScaleTypeKind, ScaleTypeTrait, TransformKind, OOB_CENSOR, OOB_SQUISH};
 use crate::plot::types::{DefaultParam, DefaultParamValue};
 use crate::plot::{ArrayElement, ParameterValue};
 
@@ -162,7 +162,7 @@ impl ScaleTypeTrait for Continuous {
         column_name: &str,
         _column_dtype: &DataType,
         scale: &super::super::Scale,
-        _type_names: &SqlTypeNames,
+        dialect: &dyn super::SqlDialect,
     ) -> Option<String> {
         // Only apply if input_range is explicitly specified by user
         // (not inferred from data)
@@ -196,10 +196,12 @@ impl ScaleTypeTrait for Continuous {
                 "(CASE WHEN {} >= {} AND {} <= {} THEN {} ELSE NULL END)",
                 column_name, min, column_name, max, column_name
             )),
-            OOB_SQUISH => Some(format!(
-                "GREATEST({}, LEAST({}, {}))",
-                min, max, column_name
-            )),
+            OOB_SQUISH => {
+                let min_s = min.to_string();
+                let max_s = max.to_string();
+                let inner = dialect.sql_least(&[&max_s, column_name]);
+                Some(dialect.sql_greatest(&[&min_s, &inner]))
+            }
             _ => None, // "keep" = no transformation
         }
     }
@@ -215,11 +217,7 @@ impl std::fmt::Display for Continuous {
 mod tests {
     use super::*;
     use crate::plot::scale::Scale;
-
-    /// Helper to create default type names for tests
-    fn test_type_names() -> SqlTypeNames {
-        SqlTypeNames::default()
-    }
+    use crate::reader::AnsiDialect;
 
     #[test]
     fn test_pre_stat_transform_sql_censor() {
@@ -232,12 +230,8 @@ mod tests {
             ParameterValue::String("censor".to_string()),
         );
 
-        let sql = continuous.pre_stat_transform_sql(
-            "value",
-            &DataType::Float64,
-            &scale,
-            &test_type_names(),
-        );
+        let sql =
+            continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect);
 
         assert!(sql.is_some());
         let sql = sql.unwrap();
@@ -259,18 +253,15 @@ mod tests {
             ParameterValue::String("squish".to_string()),
         );
 
-        let sql = continuous.pre_stat_transform_sql(
-            "value",
-            &DataType::Float64,
-            &scale,
-            &test_type_names(),
-        );
+        let sql =
+            continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect);
 
         assert!(sql.is_some());
         let sql = sql.unwrap();
-        // Should generate GREATEST/LEAST for squish
-        assert!(sql.contains("GREATEST"));
-        assert!(sql.contains("LEAST"));
+        // Should generate portable scalar MAX/MIN via subquery for squish
+        assert!(sql.contains("CASE WHEN"));
+        assert!(sql.contains(">=")); // scalar_max uses >=
+        assert!(sql.contains("<=")); // scalar_min uses <=
     }
 
     #[test]
@@ -284,12 +275,8 @@ mod tests {
             ParameterValue::String("keep".to_string()),
         );
 
-        let sql = continuous.pre_stat_transform_sql(
-            "value",
-            &DataType::Float64,
-            &scale,
-            &test_type_names(),
-        );
+        let sql =
+            continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect);
 
         // Should return None for keep (no transformation)
         assert!(sql.is_none());
@@ -303,12 +290,8 @@ mod tests {
         // explicit_input_range = false (inferred from data)
         scale.explicit_input_range = false;
 
-        let sql = continuous.pre_stat_transform_sql(
-            "value",
-            &DataType::Float64,
-            &scale,
-            &test_type_names(),
-        );
+        let sql =
+            continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect);
 
         // Should return None (no OOB handling for inferred ranges)
         assert!(sql.is_none());
@@ -323,12 +306,8 @@ mod tests {
         scale.explicit_input_range = true;
         // No oob property - should use default (keep for positional)
 
-        let sql = continuous.pre_stat_transform_sql(
-            "value",
-            &DataType::Float64,
-            &scale,
-            &test_type_names(),
-        );
+        let sql =
+            continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect);
 
         // Should return None since default for positional is "keep"
         assert!(sql.is_none());
@@ -342,12 +321,8 @@ mod tests {
         scale.explicit_input_range = true;
         // No oob property - should use default (censor for non-positional)
 
-        let sql = continuous.pre_stat_transform_sql(
-            "value",
-            &DataType::Float64,
-            &scale,
-            &test_type_names(),
-        );
+        let sql =
+            continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect);
 
         // Should generate censor SQL since default for non-positional is "censor"
         assert!(sql.is_some());

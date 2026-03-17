@@ -1,0 +1,70 @@
+---
+title: "Linear line"
+---
+
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+
+The linear layer is used to draw diagonal reference lines based on a coefficient and intercept. This is useful for adding regression lines, diagonal guides, or mathematical functions to plots. The lines extend across the full extent of the x-axis, regardless of the data range. 
+The layer is named for the following formula:
+
+$$
+y = a + \beta x
+$$
+
+Where $a$ is the `intercept` and $\beta$ is the `coef`.
+
+> The linear layer doesn't have a natural extend along either axes and the scale ranges can thus not be deduced from it. If the linear layer is the only layer in the visualisation you must specify the position scale ranges manually.
+
+## Aesthetics
+The following aesthetics are recognised by the abline layer.
+
+### Required
+* `coef`: The coefficient/slope of the line i.e. the amount $y$ increases for every unit of $x$.
+* `intercept`: The intercept where the line crosses the y-axis at $x = 0$.
+
+### Optional
+* `colour`/`stroke`: The colour of the line
+* `opacity`: The opacity of the line
+* `linewidth`: The width of the line
+* `linetype`: The type of the line, i.e. the dashing pattern
+
+## Settings
+* `orientation`: The orientation of the layer, see the [Orientation section](#orientation). One of the following: 
+    * `'aligned'` to align the layer's primary axis with the coordinate system's first axis.
+    * `'transposed'` to align the layer's primary axis with the coordinate system's second axis.
+
+## Data transformation
+The linear layer does not transform its data but passes it through unchanged.
+
+## Orientation
+Linear layers use the predictor ($x$) for their primary axis and the response $y$ for its secondary axis. Since the primary axis cannot be deduced from the mapping it must be specified using the `orientation` setting. E.g. to create a vertical linear plot, you need to set `orientation => 'transposed'` to indicate that the primary layer axis follows the second axis of the coordinate system.
+
+## Examples
+
+Add a simple reference line to a scatterplot:
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+  DRAW point MAPPING bill_len AS x, bill_dep AS y
+  DRAW linear MAPPING 0.4 AS coef, -1 AS intercept
+```
+
+Add multiple reference lines with different colors from a separate dataset:
+
+```{ggsql}
+WITH lines AS (
+    SELECT * FROM (VALUES
+        (0.4, -1, 'Line A'),
+        (0.2, 8, 'Line B'),
+        (0.8, -19, 'Line C')
+    ) AS t(coef, intercept, label)
+)
+VISUALISE FROM ggsql:penguins
+  DRAW point MAPPING bill_len AS x, bill_dep AS y
+  DRAW linear
+    MAPPING 
+      coef AS coef, 
+      intercept AS intercept, 
+      label AS colour
+    FROM lines
+```

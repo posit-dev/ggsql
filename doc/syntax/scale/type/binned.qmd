@@ -4,7 +4,7 @@ title: Binned
 
 > Scales are declared with the [`SCALE` clause](../../clause/scale.qmd). Read the documentation for this clause for a thorough description of its syntax.
 
-The binned scale type maps continuous data types into a discrete output domain. It can either be used to bin continuous data for layers that needs a discrete scale, e.g. the [bar layer](../../layer/bar.qmd), or to discretize a continuous output range to make clearer visual separation between the groups. Lastly, while generally not advised, it can also be used to map continuous data to an aesthetic that is otherwise only meaningful for discrete data (e.g. `shape`). 
+The binned scale type maps continuous data types into a discrete output domain. It can either be used to bin continuous data for layers that needs a discrete scale, e.g. the [bar layer](../../layer/type/bar.qmd), or to discretize a continuous output range to make clearer visual separation between the groups. Lastly, while generally not advised, it can also be used to map continuous data to an aesthetic that is otherwise only meaningful for discrete data (e.g. `shape`). 
 
 The binned scale is never chosen automatically so it must be selected explicitly if needed using `SCALE BINNED ...`
 

@@ -1,0 +1,71 @@
+---
+title: "Rule"
+---
+
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+
+The rule layer is used to draw reference lines perpendicular to an axis at specified values. This is useful for adding thresholds, means, medians, event markers, cutoff dates or other guides to the plot. The lines span the full width or height of the panels.
+
+> The rule layer doesn't have a natural extent along the secondary axis. The secondary scale range can thus not be deduced from rule layers. If the rule layer is the only layer in the visualisation, you must specify the position scale range manually.
+
+## Aesthetics
+The following aesthetics are recognised by the rule layer.
+
+### Required
+* Primary axis (e.g. `x` or `y`): Position along the primary axis.
+
+### Optional
+* `colour`/`stroke`: The colour of the line
+* `opacity`: The opacity of the line
+* `linewidth`: The width of the line
+* `linetype`: The type of the line, i.e. the dashing pattern
+
+## Settings
+The rule layer has no additional settings.
+
+## Data transformation
+The rule layer does not transform its data but passes it through unchanged.
+
+## Orientation
+Rules are drawn perpendicular to their primary axis. The orientation is deduced directly from the mapping. To create a horizontal rule you map the values to `y` instead of `x` (assuming a default Cartesian coordinate system).
+
+## Examples
+
+Add a horizontal threshold line to a time series plot:
+
+```{ggsql}
+SELECT Date AS date, temp AS temperature
+FROM ggsql:airquality
+WHERE Month = 5
+
+VISUALISE 
+  DRAW line MAPPING date AS x, temperature AS y
+  DRAW rule MAPPING 70 AS y
+```
+
+Add a vertical line to mark a specific value:
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+  DRAW point MAPPING bill_len AS x, bill_dep AS y
+  DRAW rule MAPPING 45 AS x
+```
+
+Add multiple threshold lines with different colors:
+
+```{ggsql}
+WITH thresholds AS (
+    SELECT * FROM (VALUES
+        (70, 'Target'),
+        (80, 'Warning'),
+        (90, 'Critical')
+    ) AS t(value, label)
+)
+SELECT Date AS date, temp AS temperature
+FROM ggsql:airquality
+WHERE Month = 5
+
+VISUALISE 
+  DRAW line MAPPING date AS x, temperature AS y
+  DRAW rule MAPPING value AS y, label AS colour FROM thresholds
+```

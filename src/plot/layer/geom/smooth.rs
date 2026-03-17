@@ -1,6 +1,6 @@
 //! Smooth geom implementation
 
-use super::{DefaultAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType};
 use crate::plot::types::DefaultAestheticValue;
 use crate::Mappings;
 
@@ -24,6 +24,13 @@ impl GeomTrait for Smooth {
                 ("linetype", DefaultAestheticValue::String("solid")),
             ],
         }
+    }
+
+    fn default_params(&self) -> &'static [DefaultParam] {
+        &[DefaultParam {
+            name: "position",
+            default: DefaultParamValue::String("identity"),
+        }]
     }
 
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {

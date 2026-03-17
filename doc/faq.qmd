@@ -1,0 +1,118 @@
+---
+title: Frequently Asked Questions
+---
+
+## Getting Started
+
+::: {.callout-note collapse="true"}
+## What is ggsql?
+
+ggsql is a SQL extension for declarative data visualization based on Grammar of Graphics principles. It allows you to combine SQL data queries with visualization specifications in a single, composable syntax.
+
+```ggsql
+SELECT date, revenue, region FROM sales
+VISUALISE date AS x, revenue AS y, region AS color
+DRAW line
+```
+:::
+
+::: {.callout-note collapse="true"}
+## How do I install ggsql?
+
+See the installation instruction in the [Getting started](get_started.qmd) tutorial.
+:::
+
+::: {.callout-note collapse="true"}
+## Can I use ggsql with my existing database?
+
+ggsql is built in a modular way so we can gradually add new backends to it. Currently, ggsql works with DuckDB and SQLite, but we are planning on expanding that soon!
+:::
+
+::: {.callout-note collapse="true"}
+## Is ggsql just a new frontend for Vegalite
+
+We have designed ggsql to be modular, both when it comes to the database input and the final rendering. For the first phase of the development we have chosen to use Vegalite as a renderer as it has allowed us to iterate quickly, but we do not envision Vegalite to remain the only, nor default writer in the future.
+:::
+
+## Syntax & Usage
+
+::: {.callout-note collapse="true"}
+## What's the difference between `VISUALISE` and `VISUALIZE`?
+
+Both spellings are supported - use whichever you prefer. The grammar accepts both British (`VISUALISE`) and American (`VISUALIZE`) spellings.
+:::
+
+::: {.callout-note collapse="true"}
+## How do I create a multi-layer chart?
+
+Add multiple `DRAW` clauses to your query. Each `DRAW` creates a new layer:
+
+```ggsql
+SELECT x, y FROM data
+VISUALISE x, y
+DRAW line MAPPING x AS x, y AS y
+DRAW point MAPPING x AS x, y AS y
+```
+:::
+
+::: {.callout-note collapse="true"}
+## How do I set axis labels and a title?
+
+Use the `LABEL` clause:
+
+```ggsql
+SELECT date, revenue FROM sales
+VISUALISE date AS x, revenue AS y
+DRAW line
+LABEL title => 'Sales Over Time', x => 'Date', y => 'Revenue (USD)'
+```
+:::
+
+::: {.callout-note collapse="true"}
+## Can I use SQL queries inside the `VISUALISE` clause
+
+Some parts of the syntax are passed on directly to the database, such as the `FILTER` and `ORDER BY` clauses in `DRAW`.
+
+```ggsql
+SELECT date, revenue FROM sales
+VISUALISE date AS x, revenue AS y
+DRAW line
+DRAW point
+    FILTER revenue = max(revenue)
+```
+
+Further, any query before the `VISUALISE` clause is passed directly to the database so anything supported by your backend can go in there.
+:::
+
+::: {.callout-note collapse="true"}
+## What if I'm working with huge datasets
+
+ggsql integrates very deeply with the database backends and handles all statistical transformations as SQL queries. This means that if you need to make a histogram of 1 billion observations, you'll only ever fetch the values of each histogram bin, not the full dataset.
+:::
+
+::: {.callout-note collapse="true"}
+## Can I make interactive plots
+
+ggsql does not yet support interactive functionality like tool tips and zooming. This is a point of focus for us and we will rather get the syntax and implementation right than rush to it.
+:::
+
+## Troubleshooting
+
+::: {.callout-note collapse="true"}
+## My dates aren't formatting correctly on the x-axis
+
+Add `SCALE x VIA date` to tell ggsql to treat the x-axis as temporal data:
+
+```ggsql
+SELECT date, value FROM data
+VISUALISE date AS x, value AS y
+DRAW line
+SCALE x VIA date
+```
+:::
+
+::: {.callout-note collapse="true"}
+## How do I report a bug or request a feature?
+
+Please open an issue on our [GitHub repository](https://github.com/posit-dev/ggsql/issues).
+:::

@@ -6,6 +6,7 @@ use super::types::get_column_name;
 use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, StatResult};
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
+use crate::reader::SqlDialect;
 use crate::{DataFrame, GgsqlError, Mappings, Result};
 
 use super::types::Schema;
@@ -61,6 +62,10 @@ impl GeomTrait for Histogram {
                 name: "binwidth",
                 default: DefaultParamValue::Null,
             },
+            DefaultParam {
+                name: "position",
+                default: DefaultParamValue::String("stack"),
+            },
         ]
     }
 
@@ -80,8 +85,16 @@ impl GeomTrait for Histogram {
         group_by: &[String],
         parameters: &HashMap<String, ParameterValue>,
         execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+        dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
-        stat_histogram(query, aesthetics, group_by, parameters, execute_query)
+        stat_histogram(
+            query,
+            aesthetics,
+            group_by,
+            parameters,
+            execute_query,
+            dialect,
+        )
     }
 }
 
@@ -98,6 +111,7 @@ fn stat_histogram(
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
     execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+    dialect: &dyn SqlDialect,
 ) -> Result<StatResult> {
     // Get x column name from aesthetics
     let x_col = get_column_name(aesthetics, "pos1").ok_or_else(|| {
@@ -159,12 +173,19 @@ fn stat_histogram(
             w = bin_width
         )
     } else {
-        // Right-closed (a, b]: use CEIL - 1 with GREATEST for min value
-        format!(
-            "(GREATEST(CEIL(({x} - {min} + {w} * 0.5) / {w}) - 1, 0)) * {w} + {min} - {w} * 0.5",
+        // Right-closed (a, b]: use CEIL - 1, clamped to 0 minimum
+        let ceil_expr = format!(
+            "CEIL(({x} - {min} + {w} * 0.5) / {w}) - 1",
             x = x_col,
             min = min_val,
             w = bin_width
+        );
+        let clamped = dialect.sql_greatest(&["0", &ceil_expr]);
+        format!(
+            "({clamped}) * {w} + {min} - {w} * 0.5",
+            clamped = clamped,
+            w = bin_width,
+            min = min_val
         )
     };
     // Build the bin end expression (bin start + bin width)

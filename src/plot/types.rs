@@ -1000,46 +1000,6 @@ pub enum CastTargetType {
     Boolean,
 }
 
-/// SQL type names for casting in queries.
-///
-/// These names are database-specific and provided by the Reader trait.
-/// When a scale has a type mismatch (e.g., STRING column with
-/// explicit DATE transform), the generated SQL needs to cast values.
-#[derive(Debug, Clone, Default)]
-pub struct SqlTypeNames {
-    /// SQL type name for numeric columns (e.g., "DOUBLE")
-    pub number: Option<String>,
-    /// SQL type name for integer columns (e.g., "BIGINT")
-    pub integer: Option<String>,
-    /// SQL type name for DATE columns (e.g., "DATE")
-    pub date: Option<String>,
-    /// SQL type name for DATETIME columns (e.g., "TIMESTAMP")
-    pub datetime: Option<String>,
-    /// SQL type name for TIME columns (e.g., "TIME")
-    pub time: Option<String>,
-    /// SQL type name for STRING columns (e.g., "VARCHAR")
-    pub string: Option<String>,
-    /// SQL type name for BOOLEAN columns (e.g., "BOOLEAN")
-    pub boolean: Option<String>,
-}
-
-impl SqlTypeNames {
-    /// Get the SQL type name for a target type.
-    ///
-    /// Returns None if the type is not supported by the database.
-    pub fn for_target(&self, target: CastTargetType) -> Option<&str> {
-        match target {
-            CastTargetType::Number => self.number.as_deref(),
-            CastTargetType::Integer => self.integer.as_deref(),
-            CastTargetType::Date => self.date.as_deref(),
-            CastTargetType::DateTime => self.datetime.as_deref(),
-            CastTargetType::Time => self.time.as_deref(),
-            CastTargetType::String => self.string.as_deref(),
-            CastTargetType::Boolean => self.boolean.as_deref(),
-        }
-    }
-}
-
 impl SqlExpression {
     /// Create a new SQL expression from raw text
     pub fn new(sql: impl Into<String>) -> Self {

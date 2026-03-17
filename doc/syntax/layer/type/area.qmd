@@ -1,0 +1,89 @@
+---
+title: "Area"
+---
+
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+
+The area layer is used to display absolute amounts over a sorted x-axis. It can be seen as a [ribbon layer](ribbon.qmd) where the `ymin` is anchored at zero.
+
+## Aesthetics
+The following aesthetics are recognised by the area layer.
+
+### Required
+* Primary axis (e.g. `x`): The value of the independent variable.
+* Secondary axis (e.g. `y`): The value of the dependent variable.
+
+### Optional
+* `stroke`: The colour of the contour lines.
+* `fill`: The colour of the inner area.
+* `colour`: Shorthand for setting `stroke` and `fill` simultaneously.
+* `opacity`: The opacity of the colours.
+* `linewidth`: The width of the contour lines.
+
+## Settings
+* `position`: Determines the position adjustment to use for the layer (default is `'stack'`)
+* `orientation`: The orientation of the layer, see the [Orientation section](#orientation). One of the following: 
+    * `'aligned'` to align the layer's primary axis with the coordinate system's first axis.
+    * `'transposed'` to align the layer's primary axis with the coordinate system's second axis.
+
+## Data transformation
+The area layer sorts the data along its primary axis
+
+## Orientation
+Area plots are sorted and connected along their primary axis. Since the primary axis cannot be deduced from the mapping it must be specified using the `orientation` setting. E.g. if you wish to create a vertical area plot you need to set `orientation => 'transposed'` to indicate that the primary layer axis follows the second axis of the coordinate system.
+
+## Examples
+
+Create a typical area chart
+
+```{ggsql}
+VISUALISE FROM ggsql:airquality
+DRAW area 
+  MAPPING Date AS x, Wind AS y
+```
+
+We can reshape the data to 'long format' from our wide format.
+
+```{ggsql}
+CREATE TABLE long_airquality AS
+SELECT * FROM ggsql:airquality
+UNPIVOT(
+  Value FOR Series IN (Temp, Wind)
+) AS u;
+```
+
+Which means we can display multiple series at once, by mapping the identifier to an aesthetic.
+
+```{ggsql}
+VISUALISE Date AS x, Value AS y FROM long_airquality
+  DRAW area MAPPING Series AS colour
+```
+
+By default the areas are stacked on top of each other. If you'd rather see all with a 0 baseline set the position to identity
+
+```{ggsql}
+VISUALISE Date AS x, Value AS y, Series AS colour FROM long_airquality
+  DRAW area SETTING position => 'identity', opacity => 0.5
+```
+
+When `position => 'stack_fill'` we're plotting stacked proportions. These only make sense if every series is measured in the same absolute unit. (Wind and temperature have different units and the temperature is not absolute.)
+
+```{ggsql}
+VISUALISE Date AS x, Value AS y, Series AS colour FROM long_airquality
+  DRAW area SETTING position => 'fill'
+```
+
+An alternative is to center the stacks to create a steamgraph
+
+```{ggsql}
+VISUALISE Date AS x, Value AS y, Series AS colour FROM long_airquality
+  DRAW area SETTING position => 'stack', center => true
+```
+
+You can combine this with the `orientation` setting to make a vertical steamgraph
+
+```{ggsql}
+VISUALISE Date AS y, Value AS x, Series AS colour FROM long_airquality
+DRAW area 
+  SETTING position => 'stack', center => true, orientation => 'transposed'
+```

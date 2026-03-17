@@ -81,11 +81,18 @@ module.exports = grammar({
 
     cte_definition: $ => seq(
       $.identifier,
+      optional(seq(          // Optional column list: df(x, y, id)
+        '(',
+        $.identifier,
+        repeat(seq(',', $.identifier)),
+        ')'
+      )),
       caseInsensitive('AS'),
       '(',
       choice(
         $.with_statement,    // Allow nested CTEs
-        $.select_statement
+        $.select_statement,
+        $.subquery_body      // VALUES (...) and other non-SELECT bodies
       ),
       ')'
     ),
@@ -169,6 +176,17 @@ module.exports = grammar({
         $.with_statement,
         $.select_statement,
         $.subquery_body
+      ),
+      ')'
+    )),
+
+    // Scalar subquery for use inside expressions (e.g. function arguments)
+    // Matches (SELECT ...) or (WITH ... SELECT ...),
+    scalar_subquery: $ => prec(2, seq(
+      '(',
+      choice(
+        $.with_statement,
+        $.select_statement,
       ),
       ')'
     )),
@@ -311,6 +329,8 @@ module.exports = grammar({
       $.cast_expression,
       // Nested function call
       $.function_call,
+      // Scalar subquery: (SELECT ...) or (WITH ... SELECT ...)
+      $.scalar_subquery,
       // Arithmetic/comparison expression (binary operators)
       seq($.positional_arg, choice('+', '-', '*', '/', '%', '||', '::', '<', '>', '<=', '>=', '=', '!=', '<>'), $.positional_arg),
       // Parenthesized expression
@@ -677,7 +697,8 @@ module.exports = grammar({
     literal_value: $ => choice(
       $.string,
       $.number,
-      $.boolean
+      $.boolean,
+      $.null_literal
     ),
 
     // SCALE clause - SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]

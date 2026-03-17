@@ -166,10 +166,11 @@ fn parse_literal_value(node: &Node, source: &SourceTree) -> Result<AestheticValu
     let child = node.child(0).unwrap();
     let value = parse_value_node(&child, source, "literal")?;
 
-    // Grammar ensures literals can't be arrays or nulls, but add safety check
-    if matches!(value, ParameterValue::Array(_) | ParameterValue::Null) {
+    // Arrays cannot be used as literal values in aesthetic mappings
+    // (null is allowed as a sentinel to remove global mappings)
+    if matches!(value, ParameterValue::Array(_)) {
         return Err(GgsqlError::ParseError(
-            "Arrays and null cannot be used as literal values in aesthetic mappings".to_string(),
+            "Arrays cannot be used as literal values in aesthetic mappings".to_string(),
         ));
     }
 
@@ -485,7 +486,24 @@ fn build_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
         }
     }
 
+    // Extract position from parameters if present, otherwise use geom default
+    let position = if let Some(ParameterValue::String(pos_str)) = parameters.remove("position") {
+        pos_str.parse().unwrap()
+    } else {
+        // Check geom's default_params for position default
+        geom.default_params()
+            .iter()
+            .find(|p| p.name == "position")
+            .and_then(|p| p.to_parameter_value())
+            .and_then(|v| match v {
+                ParameterValue::String(s) => Some(s.parse().unwrap()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    };
+
     let mut layer = Layer::new(geom);
+    layer.position = position;
     layer.mappings = aesthetics;
     layer.remappings = remappings;
     layer.parameters = parameters;
@@ -547,7 +565,8 @@ fn parse_parameter_assignment(
     let (name_node, value_node) = extract_name_value_nodes(node, "parameter assignment")?;
 
     // Parse parameter name (parameter_name is just an identifier)
-    let param_name = source.get_text(&name_node);
+    // Normalize British spellings (colour -> color) just like MAPPING clauses
+    let param_name = normalise_aes_name(&source.get_text(&name_node));
 
     // Parse parameter value (parameter_value wraps the actual value node)
     let param_value = if let Some(value_child) = value_node.child(0) {
@@ -1336,7 +1355,7 @@ mod tests {
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(
             project.aesthetics,
-            vec!["theta".to_string(), "radius".to_string()]
+            vec!["radius".to_string(), "theta".to_string()]
         );
     }
 
@@ -3347,6 +3366,20 @@ mod tests {
         assert!(matches!(parsed2, AestheticValue::Literal(ParameterValue::Number(n)) if n == 42.0));
     }
 
+    #[test]
+    fn test_parse_null_literal_value() {
+        // Test null literal (used to remove global mappings)
+        let source = make_source("VISUALISE DRAW point MAPPING null AS fill");
+        let root = source.root();
+
+        let literal_node = source.find_node(&root, "(literal_value) @lit").unwrap();
+        let parsed = parse_literal_value(&literal_node, &source).unwrap();
+        assert!(matches!(
+            parsed,
+            AestheticValue::Literal(ParameterValue::Null)
+        ));
+    }
+
     // ========================================
     // Coordinate System Inference Tests
     // ========================================
@@ -3376,7 +3409,7 @@ mod tests {
         // Should infer polar projection
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(project.coord.coord_kind(), CoordKind::Polar);
-        assert_eq!(project.aesthetics, vec!["theta", "radius"]);
+        assert_eq!(project.aesthetics, vec!["radius", "theta"]);
     }
 
     #[test]
@@ -3446,5 +3479,161 @@ mod tests {
         // Should infer cartesian from positional variants
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(project.coord.coord_kind(), CoordKind::Cartesian);
+    }
+
+    // ========================================
+    // Position Adjustment Parsing Tests
+    // ========================================
+
+    #[test]
+    fn test_position_stack_from_setting() {
+        let query = r#"
+            VISUALISE
+            DRAW bar MAPPING cat AS x, val AS y, grp AS fill
+            SETTING position => 'stack'
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert_eq!(specs[0].layers.len(), 1);
+        assert_eq!(specs[0].layers[0].position, Position::stack());
+    }
+
+    #[test]
+    fn test_position_dodge_from_setting() {
+        let query = r#"
+            VISUALISE
+            DRAW bar MAPPING cat AS x, val AS y, grp AS fill
+            SETTING position => 'dodge'
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert_eq!(specs[0].layers.len(), 1);
+        assert_eq!(specs[0].layers[0].position, Position::dodge());
+    }
+
+    #[test]
+    fn test_position_jitter_from_setting() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING cat AS x, val AS y
+            SETTING position => 'jitter'
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        assert_eq!(specs[0].layers.len(), 1);
+        assert_eq!(specs[0].layers[0].position, Position::jitter());
+    }
+
+    #[test]
+    fn test_position_geom_defaults() {
+        // Bar defaults to Stack (ggplot2 behavior)
+        let query = r#"
+            VISUALISE
+            DRAW bar MAPPING cat AS x, val AS y
+        "#;
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+        assert_eq!(specs[0].layers[0].position, Position::stack());
+
+        // Point defaults to Identity
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING cat AS x, val AS y
+        "#;
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+        assert_eq!(specs[0].layers[0].position, Position::identity());
+
+        // Boxplot defaults to Dodge
+        let query = r#"
+            VISUALISE
+            DRAW boxplot MAPPING cat AS x, val AS y
+        "#;
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+        assert_eq!(specs[0].layers[0].position, Position::dodge());
+    }
+
+    // ========================================
+    // Parameter Name Normalization Tests
+    // ========================================
+
+    #[test]
+    fn test_parameter_colour_normalized_to_color() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y SETTING colour => 'red'
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        // "colour" should be normalized to "color"
+        assert!(specs[0].layers[0].parameters.contains_key("color"));
+        assert!(!specs[0].layers[0].parameters.contains_key("colour"));
+        // Color names are converted to hex codes during parsing
+        assert_eq!(
+            specs[0].layers[0].parameters.get("color"),
+            Some(&ParameterValue::String("#ff0000".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parameter_col_normalized_to_color() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y SETTING col => 'blue'
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        // "col" should be normalized to "color"
+        assert!(specs[0].layers[0].parameters.contains_key("color"));
+        assert!(!specs[0].layers[0].parameters.contains_key("col"));
+        // Color names are converted to hex codes during parsing
+        assert_eq!(
+            specs[0].layers[0].parameters.get("color"),
+            Some(&ParameterValue::String("#0000ff".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parameter_mixed_with_colour() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y SETTING colour => 'green', opacity => 0.5
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        // "colour" normalized to "color", opacity unchanged
+        assert!(specs[0].layers[0].parameters.contains_key("color"));
+        assert!(specs[0].layers[0].parameters.contains_key("opacity"));
+        // Color names are converted to hex codes during parsing
+        assert_eq!(
+            specs[0].layers[0].parameters.get("color"),
+            Some(&ParameterValue::String("#008000".to_string()))
+        );
+        assert_eq!(
+            specs[0].layers[0].parameters.get("opacity"),
+            Some(&ParameterValue::Number(0.5))
+        );
     }
 }

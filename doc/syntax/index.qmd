@@ -16,27 +16,34 @@ ggsql augments the standard SQL syntax with a number of new clauses to describe 
 ## Layers
 There are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the `DRAW` clause
 
-- [`point`](layer/point.qmd) is used to create a scatterplot layer.
-- [`line`](layer/line.qmd) is used to produce lineplots with the data sorted along the x axis.
-- [`path`](layer/path.qmd) is like `line` above but does not sort the data but plot it according to its own order.
-- [`segment`](layer/segment.qmd) connects two points with a line segment.
-- [`linear`](layer/linear.qmd) draws a long line parameterised by a coefficient and intercept.
-- [`rule`](layer/rule.qmd) draws horizontal and vertical reference lines.
-- [`area`](layer/area.qmd) is used to display series as an area chart.
-- [`ribbon`](layer/ribbon.qmd) is used to display series extrema.
-- [`polygon`](layer/polygon.qmd) is used to display arbitrary shapes as polygons.
-- [`bar`](layer/bar.qmd) creates a bar chart, optionally calculating y from the number of records in each bar.
-- [`density`](layer/density.qmd) creates univariate kernel density estimates, showing the distribution of a variable.
-- [`violin`](layer/violin.qmd) displays a rotated kernel density estimate.
-- [`histogram`](layer/histogram.qmd) bins the data along the x axis and produces a bar for each bin showing the number of records in it.
-- [`boxplot`](layer/boxplot.qmd) displays continuous variables as 5-number summaries.
-- [`errorbar`](layer/errorbar.qmd) a line segment with hinges at the endpoints.
+### Layer types
+- [`point`](layer/type/point.qmd) is used to create a scatterplot layer.
+- [`line`](layer/type/line.qmd) is used to produce lineplots with the data sorted along the x axis.
+- [`path`](layer/type/path.qmd) is like `line` above but does not sort the data but plot it according to its own order.
+- [`segment`](layer/type/segment.qmd) connects two points with a line segment.
+- [`linear`](layer/type/linear.qmd) draws a long line parameterised by a coefficient and intercept.
+- [`rule`](layer/type/rule.qmd) draws horizontal and vertical reference lines.
+- [`area`](layer/type/area.qmd) is used to display series as an area chart.
+- [`ribbon`](layer/type/ribbon.qmd) is used to display series extrema.
+- [`polygon`](layer/type/polygon.qmd) is used to display arbitrary shapes as polygons.
+- [`bar`](layer/type/bar.qmd) creates a bar chart, optionally calculating y from the number of records in each bar.
+- [`density`](layer/type/density.qmd) creates univariate kernel density estimates, showing the distribution of a variable.
+- [`violin`](layer/type/violin.qmd) displays a rotated kernel density estimate.
+- [`histogram`](layer/type/histogram.qmd) bins the data along the x axis and produces a bar for each bin showing the number of records in it.
+- [`boxplot`](layer/type/boxplot.qmd) displays continuous variables as 5-number summaries.
+- [`errorbar`](layer/type/errorbar.qmd) a line segment with hinges at the endpoints.
+
+### Position adjustments
+- [`stack`](layer/position/stack.qmd) places objects with a shared baseline on top of each other.
+- [`dodge`](layer/position/dodge.qmd) places objects that share the same discrete position side by side
+- [`jitter`](layer/position/jitter.qmd) adds a small random offset to objects sharing the same discrete position
+- [`identity`](layer/position/identity.qmd) does nothing, i.e. turns off position adjustment
 
 ## Scales
 A scale is responsible for translating a data value to an aesthetic literal, e.g. a specific color for the fill aesthetic, or a radius in points for the size aesthetic. A scale is a combination of a specific aesthetic and a scale type
 
 ### Aesthetics
-- [Position](scale/aesthetic/0_position.qmd) aesthetics are those aesthetics realted to the spatial location of the data in the coordinate system.
+- [Position](scale/aesthetic/0_position.qmd) aesthetics are those aesthetics related to the spatial location of the data in the coordinate system.
 - [Color](scale/aesthetic/1_color.qmd) aesthetics are related to the color of fill and stroke
 - [`opacity`](scale/aesthetic/2_opacity.qmd) is the aesthetic that determines the opacity of the color
 - [`linetype`](scale/aesthetic/linetype.qmd) governs the stroke pattern of strokes

@@ -13,6 +13,7 @@
 mod casting;
 mod cte;
 mod layer;
+mod position;
 mod scale;
 mod schema;
 
@@ -25,6 +26,7 @@ use crate::naming;
 use crate::parser;
 use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
 use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDataContext};
+use crate::plot::layer::is_transposed;
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
 use crate::{DataFrame, DataSource, GgsqlError, Plot, Result};
 use std::collections::{HashMap, HashSet};
@@ -141,6 +143,14 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
 // Global Mapping & Color Splitting
 // =============================================================================
 
+/// Check if an aesthetic value is a null sentinel (explicit removal marker)
+fn is_null_sentinel(value: &AestheticValue) -> bool {
+    matches!(
+        value,
+        AestheticValue::Literal(crate::plot::ParameterValue::Null)
+    )
+}
+
 /// Merge global mappings into layer aesthetics and expand wildcards
 ///
 /// This function performs smart wildcard expansion with schema awareness:
@@ -195,6 +205,12 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
 
             // Clear wildcard flag since it's been resolved
             layer.mappings.wildcard = false;
+
+            // Remove null sentinel mappings (explicit "don't inherit" markers)
+            layer
+                .mappings
+                .aesthetics
+                .retain(|_, value| !is_null_sentinel(value));
         }
     }
 }
@@ -797,6 +813,18 @@ fn collect_layer_required_columns(layer: &Layer, spec: &Plot) -> HashSet<String>
         required.insert(naming::ORDER_COLUMN.to_string());
     }
 
+    // Position offset column for position adjustments that create pos1offset
+    // This column is created by dodge/jitter positions and is not in layer.mappings
+    if layer.position.creates_pos1offset() {
+        required.insert(naming::aesthetic_column("pos1offset"));
+    }
+
+    // Position offset column for position adjustments that create pos2offset
+    // This column is created by jitter position for vertical jittering
+    if layer.position.creates_pos2offset() {
+        required.insert(naming::aesthetic_column("pos2offset"));
+    }
+
     required
 }
 
@@ -868,7 +896,7 @@ pub struct PreparedData {
 /// * `reader` - A Reader implementation for executing SQL
 pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<PreparedData> {
     let execute_query = |sql: &str| reader.execute_sql(sql);
-    let type_names = reader.sql_type_names();
+    let dialect = reader.dialect();
 
     // Parse once and create SourceTree
     let source_tree = parser::SourceTree::new(query)?;
@@ -1007,7 +1035,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 
     // Determine which columns need type casting
     let type_requirements =
-        casting::determine_type_requirements(&specs[0], &layer_type_info, &type_names);
+        casting::determine_type_requirements(&specs[0], &layer_type_info, dialect);
 
     // Update type info with post-cast dtypes
     // This ensures subsequent schema extraction and scale resolution see the correct types
@@ -1016,6 +1044,17 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
             casting::update_type_info_for_casting(&mut layer_type_info[layer_idx], requirements);
         }
     }
+
+    // Detect orientation and flip mappings BEFORE building base queries.
+    // This ensures the SQL query uses the correct aesthetic column names.
+    let scales = specs[0].scales.clone();
+    let aesthetic_ctx = specs[0].get_aesthetic_context();
+    layer::resolve_orientations(
+        &mut specs[0].layers,
+        &scales,
+        &mut layer_type_info,
+        &aesthetic_ctx,
+    );
 
     // Build layer base queries using build_layer_base_query()
     // These include: SELECT with aesthetic renames, casts from type_requirements, filters
@@ -1076,7 +1115,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
             &layer_base_queries[idx],
             &layer_schemas[idx],
             &scales,
-            &type_names,
+            dialect,
             &execute_query,
         )?;
         layer_queries.push(layer_query);
@@ -1098,30 +1137,32 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     }
 
     // Phase 3: Assign data to layers (clone only when needed)
-    // Key by (query, serialized_remappings) to detect when layers can share data
-    // Layers with identical query AND remappings share data via data_key
-    let mut config_to_key: HashMap<(String, String), String> = HashMap::new();
+    // Key by (query, serialized_remappings, orientation) to detect when layers can share data
+    // Layers with identical query AND remappings AND orientation share data via data_key
+    let mut config_to_key: HashMap<(String, String, bool), String> = HashMap::new();
 
     for (idx, q) in layer_queries.iter().enumerate() {
         let layer = &mut specs[0].layers[idx];
         let remappings_key = serde_json::to_string(&layer.remappings).unwrap_or_default();
-        let config_key = (q.clone(), remappings_key);
+        let needs_flip = is_transposed(layer);
+        let config_key = (q.clone(), remappings_key, needs_flip);
 
         if let Some(existing_key) = config_to_key.get(&config_key) {
-            // Same query AND same remappings - share data
+            // Same query AND same remappings AND same orientation - share data
             layer.data_key = Some(existing_key.clone());
         } else {
-            // Need own data entry (either first occurrence or different remappings)
+            // Need own data entry (either first occurrence or different config)
             let layer_key = naming::layer_key(idx);
             let df = query_to_result.get(q).unwrap().clone();
+
             data_map.insert(layer_key.clone(), df);
             config_to_key.insert(config_key, layer_key.clone());
             layer.data_key = Some(layer_key);
         }
     }
 
-    // Phase 4: Apply remappings (rename stat columns to prefixed aesthetic names)
-    // e.g., __ggsql_stat_count → __ggsql_aes_y__
+    // Phase 4: Apply remappings (rename stat columns and add literal columns)
+    // e.g., __ggsql_stat_count → __ggsql_aes_y__, or add __ggsql_aes_pos2end__ = 0.0
     // Note: Prefixed aesthetic names persist through the entire pipeline
     // Track processed keys to avoid duplicate work on shared datasets
     let mut processed_keys: HashSet<String> = HashSet::new();
@@ -1131,9 +1172,24 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
                 // First time seeing this data - process it
                 if let Some(df) = data_map.remove(key) {
                     let df_with_remappings = layer::apply_remappings_post_query(df, l)?;
-                    data_map.insert(key.clone(), df_with_remappings);
+                    // Apply geom post_process (e.g., violin scales offset to [0, 0.5 * width])
+                    let df_post_processed =
+                        l.geom.post_process(df_with_remappings, &l.parameters)?;
+                    data_map.insert(key.clone(), df_post_processed);
                 }
             }
+
+            // Flip remappings for Transposed orientation layers.
+            // This must happen AFTER apply_remappings_post_query (which creates columns
+            // with ALIGNED orientation names) but BEFORE update_mappings_for_remappings
+            // (which uses remapping keys to create mapping entries).
+            // Phase 4.5 will then flip the DataFrame columns to match.
+            if is_transposed(l) {
+                crate::plot::layer::orientation::flip_positional_aesthetics(
+                    &mut l.remappings.aesthetics,
+                );
+            }
+
             // Update layer mappings for all layers (even if data shared)
             l.update_mappings_for_remappings();
         }
@@ -1144,19 +1200,49 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         l.resolve_aesthetics();
     }
 
-    // Validate we have some data (every layer should have its own data)
-    if data_map.is_empty() {
-        return Err(GgsqlError::ValidationError(
-            "No data sources found. Either provide a SQL query or use MAPPING FROM in layers."
-                .to_string(),
-        ));
+    // Phase 4.5: Flip DataFrame columns for Transposed orientation layers
+    // This must happen AFTER remappings (Phase 4) because remappings create columns
+    // with ALIGNED orientation names, and the flip converts them to USER orientation.
+    // All positional columns (stat-produced and literal) are flipped together.
+    let mut flipped_keys: HashSet<String> = HashSet::new();
+    for layer in specs[0].layers.iter() {
+        if is_transposed(layer) {
+            if let Some(ref key) = layer.data_key {
+                if flipped_keys.insert(key.clone()) {
+                    // First time flipping this data key
+                    if let Some(df) = data_map.remove(key) {
+                        let flipped_df =
+                            crate::plot::layer::orientation::flip_dataframe_positional_columns(
+                                df,
+                                &aesthetic_ctx,
+                            );
+                        data_map.insert(key.clone(), flipped_df);
+                    }
+                }
+            }
+        }
     }
 
     // Create scales for aesthetics added by stat transforms (e.g., y from histogram)
     // This must happen after build_layer_query() which applies stat transforms
     // and modifies layer.mappings with new aesthetics like y → __ggsql_stat_count__
     for spec in &mut specs {
-        scale::create_missing_scales_post_stat(spec);
+        scale::create_missing_scales_post_stat(spec, &data_map)?;
+    }
+
+    // Apply position adjustments (stack, dodge) to layer data
+    // Must be after scale type inference but before full scale resolution
+    // so scales can see the adjusted values (e.g., stacked maxima)
+    for spec in &mut specs {
+        position::apply_position_adjustments(spec, &mut data_map)?;
+    }
+
+    // Validate we have some data (every layer should have its own data)
+    if data_map.is_empty() {
+        return Err(GgsqlError::ValidationError(
+            "No data sources found. Either provide a SQL query or use MAPPING FROM in layers."
+                .to_string(),
+        ));
     }
 
     // Post-process specs: compute aesthetic labels
@@ -1346,6 +1432,36 @@ mod tests {
         // Layer 1 should have 2 rows (from targets CTE)
         let layer1_df = result.data.get(&naming::layer_key(1)).unwrap();
         assert_eq!(layer1_df.height(), 2);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_layer_references_cte_with_column_aliases() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            WITH t(value, label) AS (
+                SELECT * FROM (VALUES
+                    (70, 'Target'),
+                    (80, 'Warning'),
+                    (90, 'Critical')
+                )
+            )
+            SELECT 1 AS date, 75 AS temperature
+            VISUALISE
+            DRAW line MAPPING date AS x, temperature AS y
+            DRAW rule MAPPING value AS y, label AS colour FROM t
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Layer 0: line from global data
+        let layer0_df = result.data.get(&naming::layer_key(0)).unwrap();
+        assert_eq!(layer0_df.height(), 1);
+
+        // Layer 1: rule from CTE with column aliases
+        let layer1_df = result.data.get(&naming::layer_key(1)).unwrap();
+        assert_eq!(layer1_df.height(), 3);
     }
 
     #[cfg(feature = "duckdb")]
@@ -2479,6 +2595,34 @@ mod tests {
         assert!(
             !annotation_layer.mappings.contains_key("stroke"),
             "PLACE layer should not inherit stroke from global mappings"
+        );
+    }
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_null_mapping_removes_global_aesthetic() {
+        // Global mapping sets fill=region, but second layer uses null AS fill to opt out
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT 1 as x, 2 as y, 'A' as region
+            VISUALISE x, y, region AS fill
+            DRAW point
+            DRAW line MAPPING null AS fill
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Point layer (first) should have fill inherited from global
+        let point_layer = &result.specs[0].layers[0];
+        assert!(
+            point_layer.mappings.aesthetics.contains_key("fill"),
+            "point layer should inherit fill from global mapping"
+        );
+
+        // Line layer (second) should NOT have fill because of null AS fill
+        let line_layer = &result.specs[0].layers[1];
+        assert!(
+            !line_layer.mappings.aesthetics.contains_key("fill"),
+            "line layer should not have fill due to null AS fill"
         );
     }
 }

@@ -209,13 +209,20 @@ fn apply_polar_angle_range(
     // Apply angle range to theta encoding
     if let Some(theta_enc) = enc_obj.get_mut("theta") {
         if let Some(theta_obj) = theta_enc.as_object_mut() {
-            // Set the scale range to the specified start/end angles
-            theta_obj.insert(
-                "scale".to_string(),
-                json!({
-                    "range": [start_radians, end_radians]
-                }),
-            );
+            // Merge range into existing scale object (preserving domain from expansion)
+            if let Some(scale_val) = theta_obj.get_mut("scale") {
+                if let Some(scale_obj) = scale_val.as_object_mut() {
+                    scale_obj.insert("range".to_string(), json!([start_radians, end_radians]));
+                }
+            } else {
+                // No existing scale, create new one with just range
+                theta_obj.insert(
+                    "scale".to_string(),
+                    json!({
+                        "range": [start_radians, end_radians]
+                    }),
+                );
+            }
         }
     }
 
@@ -237,35 +244,35 @@ fn apply_polar_radius_range(encoding: &mut Value, inner: f64) -> Result<()> {
         .as_object_mut()
         .ok_or_else(|| GgsqlError::WriterError("Encoding is not an object".to_string()))?;
 
-    // Apply scale range to radius encoding
+    // Use expressions for proportional sizing
+    // min(width,height)/2 is the default max radius in Vega-Lite
+    let inner_expr = format!("min(width,height)/2*{}", inner);
+    let outer_expr = "min(width,height)/2".to_string();
+    let range_value = json!([{"expr": inner_expr}, {"expr": outer_expr}]);
+
+    // Apply scale range to radius encoding (merge with existing scale)
     if let Some(radius_enc) = enc_obj.get_mut("radius") {
         if let Some(radius_obj) = radius_enc.as_object_mut() {
-            // Use expressions for proportional sizing
-            // min(width,height)/2 is the default max radius in Vega-Lite
-            let inner_expr = format!("min(width,height)/2*{}", inner);
-            let outer_expr = "min(width,height)/2".to_string();
-
-            radius_obj.insert(
-                "scale".to_string(),
-                json!({
-                    "range": [{"expr": inner_expr}, {"expr": outer_expr}]
-                }),
-            );
+            if let Some(scale_val) = radius_obj.get_mut("scale") {
+                if let Some(scale_obj) = scale_val.as_object_mut() {
+                    scale_obj.insert("range".to_string(), range_value.clone());
+                }
+            } else {
+                radius_obj.insert("scale".to_string(), json!({ "range": range_value.clone() }));
+            }
         }
     }
 
     // Also apply to radius2 if present (for arc marks)
     if let Some(radius2_enc) = enc_obj.get_mut("radius2") {
         if let Some(radius2_obj) = radius2_enc.as_object_mut() {
-            let inner_expr = format!("min(width,height)/2*{}", inner);
-            let outer_expr = "min(width,height)/2".to_string();
-
-            radius2_obj.insert(
-                "scale".to_string(),
-                json!({
-                    "range": [{"expr": inner_expr}, {"expr": outer_expr}]
-                }),
-            );
+            if let Some(scale_val) = radius2_obj.get_mut("scale") {
+                if let Some(scale_obj) = scale_val.as_object_mut() {
+                    scale_obj.insert("range".to_string(), range_value.clone());
+                }
+            } else {
+                radius2_obj.insert("scale".to_string(), json!({ "range": range_value }));
+            }
         }
     }
 

@@ -5,7 +5,8 @@
 
 use crate::naming;
 use crate::plot::scale::coerce_dtypes;
-use crate::plot::{CastTargetType, Plot, SqlTypeNames};
+use crate::plot::{CastTargetType, Plot};
+use crate::reader::SqlDialect;
 use polars::prelude::{DataType, TimeUnit};
 use std::collections::HashMap;
 
@@ -39,7 +40,7 @@ pub struct TypeRequirement {
 pub fn determine_type_requirements(
     spec: &Plot,
     layer_type_info: &[Vec<TypeInfo>],
-    type_names: &SqlTypeNames,
+    dialect: &dyn SqlDialect,
 ) -> Vec<Vec<TypeRequirement>> {
     use crate::plot::scale::TransformKind;
 
@@ -105,7 +106,7 @@ pub fn determine_type_requirements(
 
             // Check if this specific column needs casting
             if let Some(cast_target) = scale_type.required_cast_type(col_dtype, &target_dtype) {
-                if let Some(sql_type) = type_names.for_target(cast_target) {
+                if let Some(sql_type) = dialect.type_name_for(cast_target) {
                     // Don't add duplicate requirements for same column
                     if !requirements.iter().any(|r| r.column == col_name) {
                         requirements.push(TypeRequirement {
@@ -137,7 +138,7 @@ pub fn determine_type_requirements(
                     };
 
                     if needs_int_cast {
-                        if let Some(sql_type) = type_names.for_target(CastTargetType::Integer) {
+                        if let Some(sql_type) = dialect.type_name_for(CastTargetType::Integer) {
                             // Don't add duplicate requirements for same column
                             if !requirements.iter().any(|r| r.column == col_name) {
                                 requirements.push(TypeRequirement {

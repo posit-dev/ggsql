@@ -13,6 +13,49 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::io::Cursor;
 
+/// DuckDB SQL dialect with native function support.
+///
+/// Overrides SQL generation methods to use DuckDB-native functions
+/// (LEAST, GREATEST, GENERATE_SERIES, QUANTILE_CONT).
+pub struct DuckDbDialect;
+
+impl super::SqlDialect for DuckDbDialect {
+    fn sql_greatest(&self, exprs: &[&str]) -> String {
+        if exprs.len() == 1 {
+            return exprs[0].to_string();
+        }
+        format!("GREATEST({})", exprs.join(", "))
+    }
+
+    fn sql_least(&self, exprs: &[&str]) -> String {
+        if exprs.len() == 1 {
+            return exprs[0].to_string();
+        }
+        format!("LEAST({})", exprs.join(", "))
+    }
+
+    fn sql_generate_series(&self, n: usize) -> String {
+        format!(
+            "__ggsql_seq__(n) AS (SELECT generate_series FROM GENERATE_SERIES(0, {}))",
+            n - 1
+        )
+    }
+
+    fn sql_percentile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
+        let group_filter = groups
+            .iter()
+            .map(|g| format!("AND __ggsql_pct__.{g} IS NOT DISTINCT FROM __ggsql_qt__.{g}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        format!(
+            "(SELECT QUANTILE_CONT({column}, {fraction}) \
+            FROM ({from}) AS __ggsql_pct__ \
+            WHERE {column} IS NOT NULL {group_filter})"
+        )
+    }
+}
+
 /// DuckDB database reader
 ///
 /// Executes SQL queries against DuckDB databases (in-memory or file-based)
@@ -595,6 +638,10 @@ impl Reader for DuckDBReader {
 
         Ok(())
     }
+
+    fn dialect(&self) -> &dyn super::SqlDialect {
+        &DuckDbDialect
+    }
 }
 
 #[cfg(test)]
@@ -878,5 +925,151 @@ mod tests {
                 .unwrap(),
             format!("item_{}", n - 1)
         );
+    }
+
+    #[cfg(feature = "vegalite")]
+    #[test]
+    fn test_date_vegalite_temporal() {
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE date_data AS SELECT * FROM (VALUES
+                    ('2024-01-01'::DATE, 10),
+                    ('2024-01-02'::DATE, 20),
+                    ('2024-01-03'::DATE, 30)
+                ) AS t(date, value)",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute("SELECT * FROM date_data VISUALISE DRAW line MAPPING date AS x, value AS y")
+            .unwrap();
+
+        let writer = VegaLiteWriter::new();
+        let json = writer.render(&spec).unwrap();
+        assert!(
+            json.contains("\"temporal\""),
+            "Expected temporal type in Vega-Lite output: {}",
+            json
+        );
+    }
+
+    #[cfg(feature = "vegalite")]
+    #[test]
+    fn test_geom_bar_count_stat() {
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE bar_data AS SELECT * FROM (VALUES
+                    ('A'), ('B'), ('A'), ('C'), ('A'), ('B')
+                ) AS t(category)",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute("SELECT * FROM bar_data VISUALISE DRAW bar MAPPING category AS x")
+            .unwrap();
+
+        assert_eq!(spec.plot().layers.len(), 1);
+        assert!(spec.layer_data(0).is_some());
+
+        let writer = VegaLiteWriter::new();
+        let json = writer.render(&spec).unwrap();
+        assert!(
+            json.contains("\"bar\""),
+            "Expected bar mark in output: {}",
+            json
+        );
+    }
+
+    #[cfg(feature = "vegalite")]
+    #[test]
+    fn test_geom_histogram() {
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE hist_data AS SELECT generate_series * 2.0 AS value FROM GENERATE_SERIES(0, 49)",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute("SELECT * FROM hist_data VISUALISE DRAW histogram MAPPING value AS x")
+            .unwrap();
+
+        assert_eq!(spec.plot().layers.len(), 1);
+        let layer_df = spec.layer_data(0).unwrap();
+        assert!(
+            layer_df.height() < 50,
+            "Histogram should bin data: got {} rows",
+            layer_df.height()
+        );
+
+        let writer = VegaLiteWriter::new();
+        let json = writer.render(&spec).unwrap();
+        assert!(
+            json.contains("\"bar\""),
+            "Histogram should render as bar mark: {}",
+            json
+        );
+    }
+
+    #[cfg(feature = "vegalite")]
+    #[test]
+    fn test_geom_density() {
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE density_data AS SELECT generate_series * 0.5 AS value FROM GENERATE_SERIES(0, 49)",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute("SELECT * FROM density_data VISUALISE DRAW density MAPPING value AS x")
+            .unwrap();
+
+        assert_eq!(spec.plot().layers.len(), 1);
+        assert!(spec.layer_data(0).is_some());
+
+        let writer = VegaLiteWriter::new();
+        let json = writer.render(&spec).unwrap();
+        assert!(
+            json.contains("\"area\""),
+            "Density should render as area mark: {}",
+            json
+        );
+    }
+
+    #[cfg(feature = "vegalite")]
+    #[test]
+    fn test_geom_boxplot() {
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE box_data AS
+                SELECT 'A' AS grp, generate_series * 1.0 AS value FROM GENERATE_SERIES(1, 10)
+                UNION ALL
+                SELECT 'B' AS grp, generate_series * 1.0 + 4.0 AS value FROM GENERATE_SERIES(1, 10)",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute("SELECT * FROM box_data VISUALISE DRAW boxplot MAPPING grp AS x, value AS y")
+            .unwrap();
+
+        assert!(spec.layer_data(0).is_some());
+
+        let writer = VegaLiteWriter::new();
+        let json = writer.render(&spec).unwrap();
+        assert!(!json.is_empty(), "Boxplot should render successfully");
     }
 }

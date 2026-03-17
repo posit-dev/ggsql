@@ -5,8 +5,19 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 description = "Tree-sitter grammar for ggsql visualization language"
 build = "bindings/rust/build.rs"
+include = [
+    "src/**/*",
+    "bindings/**/*",
+    "test/**/*",
+    "queries/**/*",
+    "*.toml",
+    "*.json",
+    "grammar.js",
+    "setup.py",
+]
 
 [lib]
 path = "bindings/rust/lib.rs"

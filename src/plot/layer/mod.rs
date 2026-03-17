@@ -6,13 +6,25 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-// Geom is now a submodule of layer
+// Geom is a submodule of layer
 pub mod geom;
+
+// Orientation is a submodule of layer
+pub mod orientation;
+
+// Position is a submodule of layer
+pub mod position;
+
+// Re-export orientation functions and constants
+pub use orientation::is_transposed;
 
 // Re-export geom types for convenience
 pub use geom::{
     DefaultAesthetics, DefaultParam, DefaultParamValue, Geom, GeomTrait, GeomType, StatResult,
 };
+
+// Re-export position types for convenience
+pub use position::{Position, PositionTrait, PositionType};
 
 use crate::plot::types::{AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression};
 
@@ -21,6 +33,8 @@ use crate::plot::types::{AestheticValue, DataSource, Mappings, ParameterValue, S
 pub struct Layer {
     /// Geometric object type
     pub geom: Geom,
+    /// Position adjustment for overlapping elements
+    pub position: Position,
     /// All aesthetic mappings combined from multiple sources:
     ///
     /// 1. **MAPPING clause** (from query, highest precedence):
@@ -60,6 +74,11 @@ pub struct Layer {
     /// but may point to another layer's data when queries are deduplicated.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data_key: Option<String>,
+    /// Adjusted width after position adjustment (e.g., for dodged bars).
+    /// Set during execution by position::apply_position_adjustments().
+    /// Writers can use this to know the actual element width after dodging.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub adjusted_width: Option<f64>,
 }
 
 impl Layer {
@@ -67,6 +86,7 @@ impl Layer {
     pub fn new(geom: Geom) -> Self {
         Self {
             geom,
+            position: Position::default(),
             mappings: Mappings::new(),
             remappings: Mappings::new(),
             parameters: HashMap::new(),
@@ -75,7 +95,14 @@ impl Layer {
             order_by: None,
             partition_by: Vec::new(),
             data_key: None,
+            adjusted_width: None,
         }
+    }
+
+    /// Set the position adjustment
+    pub fn with_position(mut self, position: Position) -> Self {
+        self.position = position;
+        self
     }
 
     /// Set the filter expression
@@ -137,12 +164,60 @@ impl Layer {
     }
 
     /// Check if this layer has the required aesthetics for its geom
+    ///
+    /// Positional aesthetics (pos1*, pos2*) are validated bidirectionally:
+    /// requirements using pos1/pos2 slots can be satisfied by either axis assignment.
+    /// For example, requiring `pos1`, `pos2min`, `pos2max` accepts either:
+    /// - `x`, `ymin`, `ymax` (slot1→x-axis, slot2→y-axis)
+    /// - `y`, `xmin`, `xmax` (slot1→y-axis, slot2→x-axis)
     pub fn validate_required_aesthetics(&self) -> std::result::Result<(), String> {
-        for aesthetic in self.geom.aesthetics().required() {
+        use crate::plot::aesthetic::parse_positional;
+
+        let required = self.geom.aesthetics().required();
+
+        // Separate positional (with parsed slot/suffix) and non-positional requirements
+        let mut positional_reqs: Vec<(&str, u8, &str)> = Vec::new(); // (name, slot, suffix)
+        let mut other_reqs: Vec<&str> = Vec::new();
+
+        for aesthetic in &required {
+            if let Some((slot, suffix)) = parse_positional(aesthetic) {
+                positional_reqs.push((aesthetic, slot, suffix));
+            } else {
+                other_reqs.push(aesthetic);
+            }
+        }
+
+        // Validate non-positional requirements directly
+        for aesthetic in &other_reqs {
             if !self.mappings.contains_key(aesthetic) {
                 return Err(format!(
                     "Geom '{}' requires aesthetic '{}' but it was not provided",
                     self.geom, aesthetic
+                ));
+            }
+        }
+
+        // Validate positional requirements bidirectionally
+        // Try both slot assignments: (1→1, 2→2) and (1→2, 2→1)
+        if !positional_reqs.is_empty() {
+            let identity_ok = positional_reqs
+                .iter()
+                .all(|(name, _, _)| self.mappings.contains_key(name));
+
+            let swapped_ok = positional_reqs.iter().all(|(_, slot, suffix)| {
+                let new_slot = if *slot == 1 { 2 } else { 1 };
+                let remapped = format!("pos{}{}", new_slot, suffix);
+                self.mappings.contains_key(&remapped)
+            });
+
+            if !identity_ok && !swapped_ok {
+                let (missing, _, _) = positional_reqs
+                    .iter()
+                    .find(|(name, _, _)| !self.mappings.contains_key(name))
+                    .unwrap();
+                return Err(format!(
+                    "Geom '{}' requires aesthetic '{}' (or its bidirectional equivalent) but it was not provided",
+                    self.geom, missing
                 ));
             }
         }
@@ -152,8 +227,12 @@ impl Layer {
 
     /// Apply default parameter values for any params not specified by user.
     ///
-    /// Call this during execution to ensure all stat params have values.
+    /// Call this during execution to ensure all geom and position params have values.
+    /// Geom defaults are applied first, then position defaults, so geom defaults take
+    /// precedence. For example, if a geom defines width => 0.8 and the position (dodge)
+    /// defines width => 0.9, the geom's 0.8 is used.
     pub fn apply_default_params(&mut self) {
+        // Apply geom defaults first (higher priority)
         for param in self.geom.default_params() {
             if !self.parameters.contains_key(param.name) {
                 let value = match &param.default {
@@ -161,6 +240,19 @@ impl Layer {
                     DefaultParamValue::Number(n) => ParameterValue::Number(*n),
                     DefaultParamValue::Boolean(b) => ParameterValue::Boolean(*b),
                     DefaultParamValue::Null => continue, // Don't insert null defaults
+                };
+                self.parameters.insert(param.name.to_string(), value);
+            }
+        }
+
+        // Apply position defaults second (lower priority, won't override geom defaults)
+        for param in self.position.default_params() {
+            if !self.parameters.contains_key(param.name) {
+                let value = match &param.default {
+                    DefaultParamValue::String(s) => ParameterValue::String(s.to_string()),
+                    DefaultParamValue::Number(n) => ParameterValue::Number(*n),
+                    DefaultParamValue::Boolean(b) => ParameterValue::Boolean(*b),
+                    DefaultParamValue::Null => continue,
                 };
                 self.parameters.insert(param.name.to_string(), value);
             }
@@ -210,15 +302,19 @@ impl Layer {
         }
     }
 
-    /// Validate that all SETTING parameters are valid for this layer's geom
+    /// Validate that all SETTING parameters are valid for this layer's geom and position
     pub fn validate_settings(&self) -> std::result::Result<(), String> {
-        let valid = self.geom.valid_settings();
+        // Combine valid settings from both geom and position
+        let mut valid = self.geom.valid_settings();
+        valid.extend(self.position.valid_settings());
+
         for param_name in self.parameters.keys() {
             if !valid.contains(&param_name.as_str()) {
                 return Err(format!(
-                    "Invalid setting '{}' for geom '{}'. Valid settings are: {}",
+                    "Invalid setting '{}' for geom '{}' with position '{}'. Valid settings are: {}",
                     param_name,
                     self.geom,
+                    self.position,
                     valid.join(", ")
                 ));
             }

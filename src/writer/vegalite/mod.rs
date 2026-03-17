@@ -83,9 +83,6 @@ fn prepare_layer_data(
     let mut layer_renderers: Vec<Box<dyn GeomRenderer>> = Vec::new();
     let mut prepared_data: Vec<PreparedData> = Vec::new();
 
-    // Build context once for all layers
-    let context = layer::RenderContext::new(&spec.scales);
-
     for (layer_idx, layer) in spec.layers.iter().enumerate() {
         let data_key = &layer_data_keys[layer_idx];
         let df = data.get(data_key).ok_or_else(|| {
@@ -100,7 +97,7 @@ fn prepare_layer_data(
         let renderer = get_renderer(&layer.geom);
 
         // Prepare data using the renderer (handles both standard and composite cases)
-        let prepared = renderer.prepare_data(df, data_key, binned_columns, &context)?;
+        let prepared = renderer.prepare_data(df, data_key, binned_columns)?;
 
         // Add data to individual datasets based on prepared type
         match &prepared {
@@ -307,6 +304,72 @@ fn build_layer_encoding(
     // Add detail encoding for partition_by columns (grouping)
     if let Some(detail) = build_detail_encoding(&layer.partition_by) {
         encoding.insert("detail".to_string(), detail);
+    }
+
+    // Add xOffset encoding for dodged positions (pos1offset column)
+    // This column is created by position::apply_dodge() for Position::Dodge
+    // The offset values are centered around 0 (e.g., -0.3, 0, +0.3 for 3 groups)
+    // We set domain [-0.5, 0.5] to ensure the scale is symmetric and maps to full band width
+    let pos1offset_col = naming::aesthetic_column("pos1offset");
+    if df.column(&pos1offset_col).is_ok() {
+        // Map to appropriate offset channel based on coord type
+        let offset_channel = match coord_kind {
+            CoordKind::Cartesian => "xOffset",
+            CoordKind::Polar => "thetaOffset",
+        };
+        encoding.insert(
+            offset_channel.to_string(),
+            json!({
+                "field": pos1offset_col,
+                "type": "quantitative",
+                "scale": {
+                    "domain": [-0.5, 0.5]
+                }
+            }),
+        );
+    }
+
+    // Add yOffset encoding for vertical jitter (pos2offset column)
+    // This column is created by position::Jitter when pos2 axis is discrete
+    let pos2offset_col = naming::aesthetic_column("pos2offset");
+    if df.column(&pos2offset_col).is_ok() {
+        // Map to appropriate offset channel based on coord type
+        let offset_channel = match coord_kind {
+            CoordKind::Cartesian => "yOffset",
+            CoordKind::Polar => "radiusOffset",
+        };
+        encoding.insert(
+            offset_channel.to_string(),
+            json!({
+                "field": pos2offset_col,
+                "type": "quantitative",
+                "scale": {
+                    "domain": [-0.5, 0.5]
+                }
+            }),
+        );
+    }
+
+    // Disable Vega-Lite's automatic stacking - we handle position adjustments ourselves
+    // This prevents Vega-Lite from applying its own stack/dodge logic on top of ours
+    // Set stack: null on both y and y2 channels (pos2 and pos2end in our terminology)
+    let y_channel = match coord_kind {
+        CoordKind::Cartesian => "y",
+        CoordKind::Polar => "radius",
+    };
+    let y2_channel = match coord_kind {
+        CoordKind::Cartesian => "y2",
+        CoordKind::Polar => "radius2",
+    };
+    if let Some(y_enc) = encoding.get_mut(y_channel) {
+        if let Some(obj) = y_enc.as_object_mut() {
+            obj.insert("stack".to_string(), Value::Null);
+        }
+    }
+    if let Some(y2_enc) = encoding.get_mut(y2_channel) {
+        if let Some(obj) = y2_enc.as_object_mut() {
+            obj.insert("stack".to_string(), Value::Null);
+        }
     }
 
     // Apply geom-specific encoding modifications via renderer
@@ -538,13 +601,13 @@ fn get_free_scales(facet: Option<&crate::plot::Facet>) -> Option<&[crate::plot::
 ///
 /// Maps ggsql free property (boolean array) to Vega-Lite resolve.scale configuration:
 /// - `[false, false]`: shared scales (Vega-Lite default, no resolve needed)
-/// - `[true, false]`: independent pos1 scale (x or theta), shared pos2 scale
-/// - `[false, true]`: shared pos1 scale, independent pos2 scale (y or radius)
+/// - `[true, false]`: independent pos1 scale (x or radius), shared pos2 scale
+/// - `[false, true]`: shared pos1 scale, independent pos2 scale (y or theta)
 /// - `[true, true]`: independent scales for both axes
 ///
 /// The channel names depend on coord_kind:
 /// - Cartesian: pos1 -> "x", pos2 -> "y"
-/// - Polar: pos1 -> "theta", pos2 -> "radius"
+/// - Polar: pos1 -> "radius", pos2 -> "theta"
 fn apply_facet_scale_resolution(
     vl_spec: &mut Value,
     properties: &HashMap<String, ParameterValue>,
@@ -558,7 +621,7 @@ fn apply_facet_scale_resolution(
     // Determine channel names based on coord kind
     let (pos1_channel, pos2_channel) = match coord_kind {
         CoordKind::Cartesian => ("x", "y"),
-        CoordKind::Polar => ("theta", "radius"),
+        CoordKind::Polar => ("radius", "theta"),
     };
 
     // Extract booleans from the array (position-indexed)
@@ -1003,8 +1066,12 @@ impl Writer for VegaLiteWriter {
         let mut vl_spec = json!({
             "$schema": self.schema
         });
-        vl_spec["width"] = json!("container");
-        vl_spec["height"] = json!("container");
+        // Container sizing doesn't work with faceting in Vega-Lite, so only apply it
+        // for non-faceted charts
+        if spec.facet.is_none() {
+            vl_spec["width"] = json!("container");
+            vl_spec["height"] = json!("container");
+        }
 
         if let Some(labels) = &spec.labels {
             if let Some(title) = labels.labels.get("title") {
@@ -1074,11 +1141,8 @@ impl Writer for VegaLiteWriter {
             layer.validate_required_aesthetics().map_err(|e| {
                 GgsqlError::ValidationError(format!("Layer validation failed: {}", e))
             })?;
-
-            // Check SETTING parameters are valid for this geom
-            layer.validate_settings().map_err(|e| {
-                GgsqlError::ValidationError(format!("Layer validation failed: {}", e))
-            })?;
+            // Note: validate_settings() is already called during execution, before
+            // internal parameters like "orientation" are set, so we don't call it here.
         }
 
         Ok(())
@@ -1339,36 +1403,36 @@ mod tests {
             "text"
         );
 
-        // Test with polar coord kind - internal positional maps to theta/radius
+        // Test with polar coord kind - internal positional maps to radius/theta
         // regardless of the context's user-facing names
-        let polar_ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
+        let polar_ctx = AestheticContext::from_static(&["radius", "theta"], &[]);
         assert_eq!(
             map_aesthetic_name("pos1", &polar_ctx, CoordKind::Polar),
-            "theta"
+            "radius"
         );
         assert_eq!(
             map_aesthetic_name("pos2", &polar_ctx, CoordKind::Polar),
-            "radius"
-        );
-        assert_eq!(
-            map_aesthetic_name("pos1end", &polar_ctx, CoordKind::Polar),
-            "theta2"
-        );
-        assert_eq!(
-            map_aesthetic_name("pos2end", &polar_ctx, CoordKind::Polar),
-            "radius2"
-        );
-
-        // Even with custom positional names (e.g., PROJECT y, x TO polar),
-        // internal pos1/pos2 should still map to theta/radius for Vega-Lite
-        let custom_ctx = AestheticContext::from_static(&["y", "x"], &[]);
-        assert_eq!(
-            map_aesthetic_name("pos1", &custom_ctx, CoordKind::Polar),
             "theta"
         );
         assert_eq!(
-            map_aesthetic_name("pos2", &custom_ctx, CoordKind::Polar),
+            map_aesthetic_name("pos1end", &polar_ctx, CoordKind::Polar),
+            "radius2"
+        );
+        assert_eq!(
+            map_aesthetic_name("pos2end", &polar_ctx, CoordKind::Polar),
+            "theta2"
+        );
+
+        // Even with custom positional names (e.g., PROJECT y, x TO polar),
+        // internal pos1/pos2 should still map to radius/theta for Vega-Lite
+        let custom_ctx = AestheticContext::from_static(&["y", "x"], &[]);
+        assert_eq!(
+            map_aesthetic_name("pos1", &custom_ctx, CoordKind::Polar),
             "radius"
+        );
+        assert_eq!(
+            map_aesthetic_name("pos2", &custom_ctx, CoordKind::Polar),
+            "theta"
         );
     }
 

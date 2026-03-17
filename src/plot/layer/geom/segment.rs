@@ -1,6 +1,6 @@
 //! Segment geom implementation
 
-use super::{DefaultAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType};
 use crate::plot::types::DefaultAestheticValue;
 
 /// Segment geom - line segments between two points
@@ -25,6 +25,13 @@ impl GeomTrait for Segment {
                 ("linetype", DefaultAestheticValue::String("solid")),
             ],
         }
+    }
+
+    fn default_params(&self) -> &'static [DefaultParam] {
+        &[DefaultParam {
+            name: "position",
+            default: DefaultParamValue::String("identity"),
+        }]
     }
 }
 

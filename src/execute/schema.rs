@@ -145,7 +145,7 @@ pub fn extract_series_value(
 
 /// Fetch only column types (no min/max) from a query.
 ///
-/// Uses LIMIT 0 to get schema without reading data.
+/// Uses LIMIT 1 to get schema while minimally reading data.
 /// Returns `(name, dtype, is_discrete)` tuples for each column.
 ///
 /// This is the first phase of the split schema extraction approach:
@@ -157,7 +157,7 @@ where
     F: Fn(&str) -> Result<DataFrame>,
 {
     let schema_query = format!(
-        "SELECT * FROM ({}) AS {} LIMIT 0",
+        "SELECT * FROM ({}) AS {} LIMIT 1",
         query,
         naming::SCHEMA_ALIAS
     );

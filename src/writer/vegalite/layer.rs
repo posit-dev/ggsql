@@ -8,6 +8,7 @@
 //! sensible defaults for standard behavior.
 
 use crate::plot::layer::geom::GeomType;
+use crate::plot::layer::is_transposed;
 use crate::plot::ParameterValue;
 use crate::writer::vegalite::POINTS_TO_PIXELS;
 use crate::{naming, AestheticValue, DataFrame, Geom, GgsqlError, Layer, Result};
@@ -16,7 +17,7 @@ use serde_json::{json, Map, Value};
 use std::any::Any;
 use std::collections::HashMap;
 
-use super::data::{dataframe_to_values, dataframe_to_values_with_bins};
+use super::data::{dataframe_to_values, dataframe_to_values_with_bins, ROW_INDEX_COLUMN};
 
 // =============================================================================
 // Basic Geom Utilities
@@ -191,7 +192,6 @@ pub trait GeomRenderer: Send + Sync {
         df: &DataFrame,
         _data_key: &str,
         binned_columns: &HashMap<String, Vec<f64>>,
-        _context: &RenderContext,
     ) -> Result<PreparedData> {
         let values = if binned_columns.is_empty() {
             dataframe_to_values(df)?
@@ -274,11 +274,35 @@ impl GeomRenderer for BarRenderer {
             Some(ParameterValue::Number(w)) => *w,
             _ => 0.9,
         };
-        layer_spec["mark"] = json!({
-            "type": "bar",
-            "width": {"band": width},
-            "clip": true
-        });
+
+        // For horizontal bars, use "height" for band size; for vertical, use "width"
+        let is_horizontal = is_transposed(layer);
+
+        // For dodged bars, use expression-based size with the adjusted width
+        // For non-dodged bars, use band-relative size
+        let size_value = if let Some(adjusted) = layer.adjusted_width {
+            // Use bandwidth expression for dodged bars
+            let axis = if is_horizontal { "y" } else { "x" };
+            json!({"expr": format!("bandwidth('{}') * {}", axis, adjusted)})
+        } else {
+            json!({"band": width})
+        };
+
+        layer_spec["mark"] = if is_horizontal {
+            json!({
+                "type": "bar",
+                "height": size_value,
+                "baseline": "middle",
+                "clip": true
+            })
+        } else {
+            json!({
+                "type": "bar",
+                "width": size_value,
+                "align": "center",
+                "clip": true
+            })
+        };
         Ok(())
     }
 }
@@ -297,8 +321,35 @@ impl GeomRenderer for PathRenderer {
         _layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        // Use the natural data order
-        encoding.insert("order".to_string(), json!({"value": Value::Null}));
+        // Use row index field to preserve natural data order
+        encoding.insert(
+            "order".to_string(),
+            json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
+        );
+        Ok(())
+    }
+}
+
+// =============================================================================
+// Line Renderer
+// =============================================================================
+
+/// Renderer for line geom - preserves data order for correct line rendering
+pub struct LineRenderer;
+
+impl GeomRenderer for LineRenderer {
+    fn modify_encoding(
+        &self,
+        encoding: &mut Map<String, Value>,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
+        // Use row index field to preserve natural data order
+        // (we've already ordered in SQL via apply_stat_transform)
+        encoding.insert(
+            "order".to_string(),
+            json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
+        );
         Ok(())
     }
 }
@@ -381,7 +432,6 @@ impl GeomRenderer for LinearRenderer {
         df: &DataFrame,
         _data_key: &str,
         _binned_columns: &HashMap<String, Vec<f64>>,
-        _context: &RenderContext,
     ) -> Result<PreparedData> {
         // Just convert DataFrame to JSON values
         // No need to add xmin/xmax - they'll be encoded as literal values
@@ -392,39 +442,51 @@ impl GeomRenderer for LinearRenderer {
     fn modify_encoding(
         &self,
         encoding: &mut Map<String, Value>,
-        _layer: &Layer,
+        layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
         // Remove coefficient and intercept from encoding - they're only used in transforms
         encoding.remove("coef");
         encoding.remove("intercept");
 
-        // Add x/x2/y/y2 encodings for rule mark
-        // All are fields - x_min/x_max are created by transforms, y_min/y_max are computed
+        // Check orientation
+        let is_horizontal = is_transposed(layer);
+
+        // For aligned (default): x is primary axis, y is computed (secondary)
+        // For transposed: y is primary axis, x is computed (secondary)
+        let (primary, primary2, secondary, secondary2) = if is_horizontal {
+            ("y", "y2", "x", "x2")
+        } else {
+            ("x", "x2", "y", "y2")
+        };
+
+        // Add encodings for rule mark
+        // primary_min/primary_max are created by transforms (extent of the axis)
+        // secondary_min/secondary_max are computed via formula
         encoding.insert(
-            "x".to_string(),
+            primary.to_string(),
             json!({
-                "field": "x_min",
+                "field": "primary_min",
                 "type": "quantitative"
             }),
         );
         encoding.insert(
-            "x2".to_string(),
+            primary2.to_string(),
             json!({
-                "field": "x_max"
+                "field": "primary_max"
             }),
         );
         encoding.insert(
-            "y".to_string(),
+            secondary.to_string(),
             json!({
-                "field": "y_min",
+                "field": "secondary_min",
                 "type": "quantitative"
             }),
         );
         encoding.insert(
-            "y2".to_string(),
+            secondary2.to_string(),
             json!({
-                "field": "y_max"
+                "field": "secondary_max"
             }),
         );
 
@@ -434,35 +496,41 @@ impl GeomRenderer for LinearRenderer {
     fn modify_spec(
         &self,
         layer_spec: &mut Value,
-        _layer: &Layer,
+        layer: &Layer,
         context: &RenderContext,
     ) -> Result<()> {
         // Field names for coef and intercept (with aesthetic column prefix)
         let coef_field = naming::aesthetic_column("coef");
         let intercept_field = naming::aesthetic_column("intercept");
 
-        // Get x extent from scale (use pos1, the internal name for the first positional aesthetic)
-        let (x_min, x_max) = context.get_extent("pos1")?;
+        // Check orientation
+        let is_horizontal = is_transposed(layer);
+
+        // Get extent from appropriate axis:
+        // - Aligned (default): extent from pos1 (x-axis), compute y from x
+        // - Transposed: extent from pos2 (y-axis), compute x from y
+        let extent_aesthetic = if is_horizontal { "pos2" } else { "pos1" };
+        let (primary_min, primary_max) = context.get_extent(extent_aesthetic)?;
 
         // Add transforms:
-        // 1. Create constant x_min/x_max fields
-        // 2. Compute y values at those x positions
+        // 1. Create constant primary_min/primary_max fields (extent of the primary axis)
+        // 2. Compute secondary values at those primary positions: secondary = coef * primary + intercept
         let transforms = json!([
             {
-                "calculate": x_min.to_string(),
-                "as": "x_min"
+                "calculate": primary_min.to_string(),
+                "as": "primary_min"
             },
             {
-                "calculate": x_max.to_string(),
-                "as": "x_max"
+                "calculate": primary_max.to_string(),
+                "as": "primary_max"
             },
             {
-                "calculate": format!("datum.{} * datum.x_min + datum.{}", coef_field, intercept_field),
-                "as": "y_min"
+                "calculate": format!("datum.{} * datum.primary_min + datum.{}", coef_field, intercept_field),
+                "as": "secondary_min"
             },
             {
-                "calculate": format!("datum.{} * datum.x_max + datum.{}", coef_field, intercept_field),
-                "as": "y_max"
+                "calculate": format!("datum.{} * datum.primary_max + datum.{}", coef_field, intercept_field),
+                "as": "secondary_max"
             }
         ]);
 
@@ -485,60 +553,35 @@ impl GeomRenderer for LinearRenderer {
 // Ribbon Renderer
 // =============================================================================
 
-/// Renderer for ribbon geom - remaps ymin/ymax to y/y2
+/// Renderer for ribbon geom - remaps ymin/ymax to y/y2 and preserves data order
 pub struct RibbonRenderer;
 
 impl GeomRenderer for RibbonRenderer {
     fn modify_encoding(
         &self,
         encoding: &mut Map<String, Value>,
-        _layer: &Layer,
-        _context: &RenderContext,
-    ) -> Result<()> {
-        if let Some(ymax) = encoding.remove("ymax") {
-            encoding.insert("y".to_string(), ymax);
-        }
-        if let Some(ymin) = encoding.remove("ymin") {
-            encoding.insert("y2".to_string(), ymin);
-        }
-        Ok(())
-    }
-}
-
-// =============================================================================
-// Area Renderer
-// =============================================================================
-
-/// Renderer for area geom - handles stacking options
-pub struct AreaRenderer;
-
-impl GeomRenderer for AreaRenderer {
-    fn modify_encoding(
-        &self,
-        encoding: &mut Map<String, Value>,
         layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        if let Some(mut y) = encoding.remove("y") {
-            let stack_value;
-            if let Some(ParameterValue::String(stack)) = layer.parameters.get("stacking") {
-                stack_value = match stack.as_str() {
-                    "on" => json!("zero"),
-                    "off" => Value::Null,
-                    "fill" => json!("normalize"),
-                    _ => {
-                        return Err(GgsqlError::ValidationError(format!(
-                            "Area layer's `stacking` must be \"on\", \"off\" or \"fill\", not \"{}\"",
-                            stack
-                        )));
-                    }
-                }
-            } else {
-                stack_value = Value::Null
-            }
-            y["stack"] = stack_value;
-            encoding.insert("y".to_string(), y);
+        let is_horizontal = is_transposed(layer);
+
+        // Remap min/max to primary/secondary based on orientation:
+        // - Aligned (vertical): ymax→y, ymin→y2
+        // - Transposed (horizontal): xmax→x, xmin→x2
+        let (max_key, min_key, target, target2) = if is_horizontal {
+            ("xmax", "xmin", "x", "x2")
+        } else {
+            ("ymax", "ymin", "y", "y2")
+        };
+
+        if let Some(max_val) = encoding.remove(max_key) {
+            encoding.insert(target.to_string(), max_val);
         }
+        if let Some(min_val) = encoding.remove(min_key) {
+            encoding.insert(target2.to_string(), min_val);
+        }
+
+        // Note: Don't add order encoding for area marks - it interferes with rendering
         Ok(())
     }
 }
@@ -563,8 +606,11 @@ impl GeomRenderer for PolygonRenderer {
         if let Some(color) = encoding.remove("color") {
             encoding.insert("fill".to_string(), color);
         }
-        // Use the natural data order
-        encoding.insert("order".to_string(), json!({"value": Value::Null}));
+        // Use row index field to preserve natural data order
+        encoding.insert(
+            "order".to_string(),
+            json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
+        );
         Ok(())
     }
 
@@ -593,7 +639,7 @@ impl GeomRenderer for ViolinRenderer {
     fn modify_spec(
         &self,
         layer_spec: &mut Value,
-        _layer: &Layer,
+        layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
         layer_spec["mark"] = json!({
@@ -602,21 +648,32 @@ impl GeomRenderer for ViolinRenderer {
         });
         let offset_col = naming::aesthetic_column("offset");
 
-        // Mirror the density on both sides.
         // It'll be implemented as an offset.
         let violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
 
+        // Read orientation from layer (already resolved during execution)
+        let is_horizontal = is_transposed(layer);
+
+        // Continuous axis column for order calculation:
+        // - Vertical: pos2 (y-axis has continuous density values)
+        // - Horizontal: pos1 (x-axis has continuous density values)
+        let continuous_col = if is_horizontal {
+            naming::aesthetic_column("pos1")
+        } else {
+            naming::aesthetic_column("pos2")
+        };
+
         // We use an order calculation to create a proper closed shape.
-        // Right side (+ offset), sort by -y (top -> bottom)
-        // Left side (- offset), sort by +y (bottom -> top)
+        // Right side (+ offset), sort by -continuous (top -> bottom)
+        // Left side (- offset), sort by +continuous (bottom -> top)
         let calc_order = format!(
-            "datum.__violin_offset > 0 ? -datum.{y} : datum.{y}",
-            y = naming::aesthetic_column("pos2")
+            "datum.__violin_offset > 0 ? -datum.{} : datum.{}",
+            continuous_col, continuous_col
         );
 
         // Filter threshold to trim very low density regions (removes thin tails)
-        // In theory, this depends on the grid resolution and might be better
-        // handled upstream, but for now it seems not unreasonable.
+        // The offset is pre-scaled to [0, 0.5 * width] by geom post_process,
+        // but this filter still catches extremely low values.
         let filter_expr = format!("datum.{} > 0.001", offset_col);
 
         // Preserve existing transforms (e.g., source filter) and extend with violin-specific transforms
@@ -626,6 +683,9 @@ impl GeomRenderer for ViolinRenderer {
             .cloned()
             .unwrap_or_default();
 
+        // Check if pos1offset exists (from dodging) - we'll combine it with violin offset
+        let pos1offset_col = naming::aesthetic_column("pos1offset");
+
         let mut transforms = existing_transforms;
         transforms.extend(vec![
             json!({
@@ -633,12 +693,22 @@ impl GeomRenderer for ViolinRenderer {
                 "filter": filter_expr
             }),
             json!({
+                // Mirror offset on both sides (offset is pre-scaled to [0, 0.5 * width])
                 "calculate": violin_offset,
                 "as": "violin_offsets"
             }),
             json!({
                 "flatten": ["violin_offsets"],
                 "as": ["__violin_offset"]
+            }),
+            json!({
+                // Add pos1offset (dodge displacement) if it exists, otherwise use violin offset directly
+                // This positions the violin correctly when dodging
+                "calculate": format!(
+                    "datum.{pos1offset} != null ? datum.__violin_offset + datum.{pos1offset} : datum.__violin_offset",
+                    pos1offset = pos1offset_col
+                ),
+                "as": "__final_offset"
             }),
             json!({
                 "calculate": calc_order,
@@ -653,41 +723,49 @@ impl GeomRenderer for ViolinRenderer {
     fn modify_encoding(
         &self,
         encoding: &mut Map<String, Value>,
-        _layer: &Layer,
+        layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        // Ensure x is in detail encoding to create separate violins per x category
+        // Read orientation from layer (already resolved during execution)
+        let is_horizontal = is_transposed(layer);
+
+        // Categorical axis for detail encoding:
+        // - Vertical: x channel (categorical groups on x-axis)
+        // - Horizontal: y channel (categorical groups on y-axis)
+        let categorical_channel = if is_horizontal { "y" } else { "x" };
+
+        // Ensure categorical field is in detail encoding to create separate violins per category
         // This is needed because line marks with filled:true require detail to create separate paths
-        let x_field = encoding
-            .get("x")
+        let categorical_field = encoding
+            .get(categorical_channel)
             .and_then(|x| x.get("field"))
             .and_then(|f| f.as_str())
             .map(|s| s.to_string());
 
-        if let Some(x_field) = x_field {
+        if let Some(cat_field) = categorical_field {
             match encoding.get_mut("detail") {
                 Some(detail) if detail.is_object() => {
-                    // Single field object - check if it's already x, otherwise convert to array
-                    if detail.get("field").and_then(|f| f.as_str()) != Some(&x_field) {
+                    // Single field object - check if it's already the categorical field, otherwise convert to array
+                    if detail.get("field").and_then(|f| f.as_str()) != Some(&cat_field) {
                         let existing = detail.clone();
-                        *detail = json!([existing, {"field": x_field, "type": "nominal"}]);
+                        *detail = json!([existing, {"field": cat_field, "type": "nominal"}]);
                     }
                 }
                 Some(detail) if detail.is_array() => {
-                    // Array - check if x already present, add if not
+                    // Array - check if categorical field already present, add if not
                     let arr = detail.as_array_mut().unwrap();
-                    let has_x = arr
+                    let has_cat = arr
                         .iter()
-                        .any(|d| d.get("field").and_then(|f| f.as_str()) == Some(&x_field));
-                    if !has_x {
-                        arr.push(json!({"field": x_field, "type": "nominal"}));
+                        .any(|d| d.get("field").and_then(|f| f.as_str()) == Some(&cat_field));
+                    if !has_cat {
+                        arr.push(json!({"field": cat_field, "type": "nominal"}));
                     }
                 }
                 None => {
-                    // No detail encoding - add it with x field
+                    // No detail encoding - add it with categorical field
                     encoding.insert(
                         "detail".to_string(),
-                        json!({"field": x_field, "type": "nominal"}),
+                        json!({"field": cat_field, "type": "nominal"}),
                     );
                 }
                 _ => {}
@@ -718,11 +796,18 @@ impl GeomRenderer for ViolinRenderer {
             }
         }
 
+        // Offset channel:
+        // - Vertical: xOffset (offsets left/right from category)
+        // - Horizontal: yOffset (offsets up/down from category)
+        let offset_channel = if is_horizontal { "yOffset" } else { "xOffset" };
         encoding.insert(
-            "xOffset".to_string(),
+            offset_channel.to_string(),
             json!({
-                "field": "__violin_offset",
-                "type": "quantitative"
+                "field": "__final_offset",
+                "type": "quantitative",
+                "scale": {
+                    "domain": [-0.5, 0.5]
+                }
             }),
         );
         encoding.insert(
@@ -849,8 +934,6 @@ impl GeomRenderer for ErrorBarRenderer {
 
 /// Metadata for boxplot rendering
 struct BoxplotMetadata {
-    /// Grouping column names
-    grouping_cols: Vec<String>,
     /// Whether there are any outliers
     has_outliers: bool,
 }
@@ -861,30 +944,15 @@ pub struct BoxplotRenderer;
 impl BoxplotRenderer {
     /// Prepare boxplot data by splitting into type-specific datasets.
     ///
-    /// Returns a HashMap of type_suffix -> data_values, plus grouping_cols and has_outliers.
+    /// Returns a HashMap of type_suffix -> data_values, plus has_outliers flag.
     /// Type suffixes are: "lower_whisker", "upper_whisker", "box", "median", "outlier"
-    #[allow(clippy::type_complexity)]
     fn prepare_components(
         &self,
         data: &DataFrame,
         binned_columns: &HashMap<String, Vec<f64>>,
-    ) -> Result<(HashMap<String, Vec<Value>>, Vec<String>, bool)> {
+    ) -> Result<(HashMap<String, Vec<Value>>, bool)> {
         let type_col = naming::aesthetic_column("type");
         let type_col = type_col.as_str();
-        let value_col = naming::aesthetic_column("pos2");
-        let value_col = value_col.as_str();
-        let value2_col = naming::aesthetic_column("pos2end");
-        let value2_col = value2_col.as_str();
-
-        // Find grouping columns (all columns except type, value, value2)
-        let grouping_cols: Vec<String> = data
-            .get_column_names()
-            .iter()
-            .filter(|&col| {
-                col.as_str() != type_col && col.as_str() != value_col && col.as_str() != value2_col
-            })
-            .map(|s| s.to_string())
-            .collect();
 
         // Get the type column for filtering
         let type_series = data
@@ -923,7 +991,7 @@ impl BoxplotRenderer {
             type_datasets.insert(type_name.to_string(), values);
         }
 
-        Ok((type_datasets, grouping_cols, has_outliers))
+        Ok((type_datasets, has_outliers))
     }
 
     /// Render boxplot layers using filter transforms on the unified dataset.
@@ -934,22 +1002,38 @@ impl BoxplotRenderer {
         prototype: Value,
         layer: &Layer,
         base_key: &str,
-        grouping_cols: &[String],
         has_outliers: bool,
     ) -> Result<Vec<Value>> {
         let mut layers: Vec<Value> = Vec::new();
 
-        let value_col = naming::aesthetic_column("pos2");
-        let value2_col = naming::aesthetic_column("pos2end");
+        // Read orientation from layer (already resolved during execution)
+        let is_horizontal = is_transposed(layer);
 
-        let x_col = layer
+        // Value columns depend on orientation (after DataFrame column flip):
+        // - Vertical: values in pos2/pos2end (no flip)
+        // - Horizontal: values in pos1/pos1end (was pos2/pos2end before flip)
+        let (value_col, value2_col) = if is_horizontal {
+            (
+                naming::aesthetic_column("pos1"),
+                naming::aesthetic_column("pos1end"),
+            )
+        } else {
+            (
+                naming::aesthetic_column("pos2"),
+                naming::aesthetic_column("pos2end"),
+            )
+        };
+
+        // Validate x aesthetic exists (required for boxplot)
+        layer
             .mappings
             .get("pos1")
             .and_then(|x| x.column_name())
             .ok_or_else(|| {
                 GgsqlError::WriterError("Boxplot requires 'x' aesthetic mapping".to_string())
             })?;
-        let y_col = layer
+        // Validate y aesthetic exists (required for boxplot)
+        layer
             .mappings
             .get("pos2")
             .and_then(|y| y.column_name())
@@ -957,25 +1041,27 @@ impl BoxplotRenderer {
                 GgsqlError::WriterError("Boxplot requires 'y' aesthetic mapping".to_string())
             })?;
 
-        // Set orientation
-        let is_horizontal = x_col == value_col;
-        let group_col = if is_horizontal { y_col } else { x_col };
-        let offset = if is_horizontal { "yOffset" } else { "xOffset" };
         let value_var1 = if is_horizontal { "x" } else { "y" };
         let value_var2 = if is_horizontal { "x2" } else { "y2" };
 
-        // Find dodge groups (grouping cols minus the axis group col)
-        let dodge_groups: Vec<&str> = grouping_cols
-            .iter()
-            .filter(|col| col.as_str() != group_col)
-            .map(|s| s.as_str())
-            .collect();
-
         // Get width parameter
-        let mut width = 0.9;
-        if let Some(ParameterValue::Number(num)) = layer.parameters.get("width") {
-            width = *num;
-        }
+        let base_width = layer
+            .parameters
+            .get("width")
+            .and_then(|v| match v {
+                ParameterValue::Number(n) => Some(*n),
+                _ => None,
+            })
+            .unwrap_or(0.9);
+
+        // For dodged boxplots, use expression-based width with adjusted_width
+        // For non-dodged boxplots, use band-relative width
+        let axis = if is_horizontal { "y" } else { "x" };
+        let width_value = if let Some(adjusted) = layer.adjusted_width {
+            json!({"expr": format!("bandwidth('{}') * {}", axis, adjusted)})
+        } else {
+            json!({"band": base_width})
+        };
 
         // Helper to create filter transform for source selection
         let make_source_filter = |type_suffix: &str| -> Value {
@@ -1014,11 +1100,6 @@ impl BoxplotRenderer {
             );
             if points["encoding"].get("color").is_some() {
                 points["mark"]["filled"] = json!(true);
-            }
-
-            // Add dodging offset
-            if !dodge_groups.is_empty() {
-                points["encoding"][offset] = json!({"field": dodge_groups[0]});
             }
 
             layers.push(points);
@@ -1084,7 +1165,7 @@ impl BoxplotRenderer {
             "box",
             json!({
                 "type": "bar",
-                "width": {"band": width},
+                "width": width_value,
                 "align": "center"
             }),
         );
@@ -1097,20 +1178,11 @@ impl BoxplotRenderer {
             "median",
             json!({
                 "type": "tick",
-                "width": {"band": width},
+                "width": width_value,
                 "align": "center"
             }),
         );
         median_line["encoding"][value_var1] = y_encoding;
-
-        // Add dodging to all summary layers
-        if !dodge_groups.is_empty() {
-            let offset_val = json!({"field": dodge_groups[0]});
-            lower_whiskers["encoding"][offset] = offset_val.clone();
-            upper_whiskers["encoding"][offset] = offset_val.clone();
-            box_part["encoding"][offset] = offset_val.clone();
-            median_line["encoding"][offset] = offset_val;
-        }
 
         layers.push(lower_whiskers);
         layers.push(upper_whiskers);
@@ -1127,17 +1199,12 @@ impl GeomRenderer for BoxplotRenderer {
         df: &DataFrame,
         _data_key: &str,
         binned_columns: &HashMap<String, Vec<f64>>,
-        _context: &RenderContext,
     ) -> Result<PreparedData> {
-        let (components, grouping_cols, has_outliers) =
-            self.prepare_components(df, binned_columns)?;
+        let (components, has_outliers) = self.prepare_components(df, binned_columns)?;
 
         Ok(PreparedData::Composite {
             components,
-            metadata: Box::new(BoxplotMetadata {
-                grouping_cols,
-                has_outliers,
-            }),
+            metadata: Box::new(BoxplotMetadata { has_outliers }),
         })
     }
 
@@ -1163,13 +1230,7 @@ impl GeomRenderer for BoxplotRenderer {
             GgsqlError::InternalError("Failed to downcast boxplot metadata".to_string())
         })?;
 
-        self.render_layers(
-            prototype,
-            layer,
-            data_key,
-            &info.grouping_cols,
-            info.has_outliers,
-        )
+        self.render_layers(prototype, layer, data_key, info.has_outliers)
     }
 }
 
@@ -1181,18 +1242,17 @@ impl GeomRenderer for BoxplotRenderer {
 pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
     match geom.geom_type() {
         GeomType::Path => Box::new(PathRenderer),
+        GeomType::Line => Box::new(LineRenderer),
         GeomType::Bar => Box::new(BarRenderer),
-        GeomType::Area => Box::new(AreaRenderer),
         GeomType::Ribbon => Box::new(RibbonRenderer),
         GeomType::Polygon => Box::new(PolygonRenderer),
         GeomType::Boxplot => Box::new(BoxplotRenderer),
-        GeomType::Density => Box::new(AreaRenderer),
         GeomType::Violin => Box::new(ViolinRenderer),
         GeomType::Segment => Box::new(SegmentRenderer),
         GeomType::Linear => Box::new(LinearRenderer),
         GeomType::ErrorBar => Box::new(ErrorBarRenderer),
         GeomType::Rule => Box::new(RuleRenderer),
-        // All other geoms (Point, Line, Tile, etc.) use the default renderer
+        // All other geoms (Point, Area, Density, Tile, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }
 }
@@ -1307,6 +1367,69 @@ mod tests {
                 {"field": "island", "type": "nominal"},
                 {"field": "species", "type": "nominal"}
             ]))
+        );
+    }
+
+    #[test]
+    fn test_violin_mirroring() {
+        use crate::naming;
+
+        let renderer = ViolinRenderer;
+        let context = RenderContext::new(&[]);
+
+        let layer = Layer::new(crate::plot::Geom::violin());
+        let mut layer_spec = json!({
+            "mark": {"type": "line"},
+            "encoding": {
+                "x": {"field": "species", "type": "nominal"},
+                "y": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"}
+            }
+        });
+
+        renderer
+            .modify_spec(&mut layer_spec, &layer, &context)
+            .unwrap();
+
+        // Verify transforms include mirroring (violin_offsets)
+        let transforms = layer_spec["transform"].as_array().unwrap();
+
+        // Find the violin_offsets calculation (mirrors offset on both sides)
+        let mirror_calc = transforms
+            .iter()
+            .find(|t| t.get("as").and_then(|a| a.as_str()) == Some("violin_offsets"));
+        assert!(
+            mirror_calc.is_some(),
+            "Should have violin_offsets mirroring calculation"
+        );
+
+        let calc_expr = mirror_calc.unwrap()["calculate"].as_str().unwrap();
+        let offset_col = naming::aesthetic_column("offset");
+        // Should mirror the offset column: [datum.offset, -datum.offset]
+        assert!(
+            calc_expr.contains(&offset_col),
+            "Mirror calculation should use offset column: {}",
+            calc_expr
+        );
+        assert!(
+            calc_expr.contains("-datum"),
+            "Mirror calculation should negate: {}",
+            calc_expr
+        );
+
+        // Verify flatten transform exists
+        let flatten = transforms.iter().find(|t| t.get("flatten").is_some());
+        assert!(
+            flatten.is_some(),
+            "Should have flatten transform for violin_offsets"
+        );
+
+        // Verify __final_offset calculation (combines with dodge offset)
+        let final_offset = transforms
+            .iter()
+            .find(|t| t.get("as").and_then(|a| a.as_str()) == Some("__final_offset"));
+        assert!(
+            final_offset.is_some(),
+            "Should have __final_offset calculation"
         );
     }
 
@@ -1445,69 +1568,69 @@ mod tests {
         assert_eq!(
             transforms.len(),
             5,
-            "Should have 5 transforms (x_min, x_max, y_min, y_max, filter)"
+            "Should have 5 transforms (primary_min, primary_max, secondary_min, secondary_max, filter)"
         );
 
-        // Verify x_min/x_max transforms exist with consistent naming
-        let x_min_transform = transforms
+        // Verify primary_min/primary_max transforms exist with consistent naming
+        let primary_min_transform = transforms
             .iter()
-            .find(|t| t["as"] == "x_min")
-            .expect("x_min transform not found");
-        let x_max_transform = transforms
+            .find(|t| t["as"] == "primary_min")
+            .expect("primary_min transform not found");
+        let primary_max_transform = transforms
             .iter()
-            .find(|t| t["as"] == "x_max")
-            .expect("x_max transform not found");
+            .find(|t| t["as"] == "primary_max")
+            .expect("primary_max transform not found");
 
         assert!(
-            x_min_transform["calculate"].is_string(),
-            "x_min should have calculate expression"
+            primary_min_transform["calculate"].is_string(),
+            "primary_min should have calculate expression"
         );
         assert!(
-            x_max_transform["calculate"].is_string(),
-            "x_max should have calculate expression"
+            primary_max_transform["calculate"].is_string(),
+            "primary_max should have calculate expression"
         );
 
-        // Verify y_min and y_max transforms use coef and intercept with x_min/x_max
-        let y_min_transform = transforms
+        // Verify secondary_min and secondary_max transforms use coef and intercept with primary_min/primary_max
+        let secondary_min_transform = transforms
             .iter()
-            .find(|t| t["as"] == "y_min")
-            .expect("y_min transform not found");
-        let y_max_transform = transforms
+            .find(|t| t["as"] == "secondary_min")
+            .expect("secondary_min transform not found");
+        let secondary_max_transform = transforms
             .iter()
-            .find(|t| t["as"] == "y_max")
-            .expect("y_max transform not found");
+            .find(|t| t["as"] == "secondary_max")
+            .expect("secondary_max transform not found");
 
-        let y_min_calc = y_min_transform["calculate"]
+        let secondary_min_calc = secondary_min_transform["calculate"]
             .as_str()
-            .expect("y_min calculate should be string");
-        let y_max_calc = y_max_transform["calculate"]
+            .expect("secondary_min calculate should be string");
+        let secondary_max_calc = secondary_max_transform["calculate"]
             .as_str()
-            .expect("y_max calculate should be string");
+            .expect("secondary_max calculate should be string");
 
-        // Should reference coef, intercept, and x_min/x_max
+        // Should reference coef, intercept, and primary_min/primary_max
         assert!(
-            y_min_calc.contains("__ggsql_aes_coef__"),
-            "y_min should reference coef"
+            secondary_min_calc.contains("__ggsql_aes_coef__"),
+            "secondary_min should reference coef"
         );
         assert!(
-            y_min_calc.contains("__ggsql_aes_intercept__"),
-            "y_min should reference intercept"
+            secondary_min_calc.contains("__ggsql_aes_intercept__"),
+            "secondary_min should reference intercept"
         );
         assert!(
-            y_min_calc.contains("datum.x_min"),
-            "y_min should reference datum.x_min"
+            secondary_min_calc.contains("datum.primary_min"),
+            "secondary_min should reference datum.primary_min"
         );
         assert!(
-            y_max_calc.contains("__ggsql_aes_coef__"),
-            "y_max should reference coef"
+            secondary_max_calc.contains("__ggsql_aes_coef__"),
+            "secondary_max should reference coef"
         );
         assert!(
-            y_max_calc.contains("__ggsql_aes_intercept__"),
-            "y_max should reference intercept"
+            secondary_max_calc.contains("__ggsql_aes_intercept__"),
+            "secondary_max should reference intercept"
         );
         assert!(
-            y_max_calc.contains("datum.x_max"),
-            "y_max should reference datum.x_max"
+            secondary_max_calc.contains("datum.primary_max"),
+            "secondary_max should reference datum.primary_max"
         );
 
         // Verify encoding has x, x2, y, y2 with consistent field names
@@ -1520,22 +1643,22 @@ mod tests {
         assert!(encoding.contains_key("y"), "Should have y encoding");
         assert!(encoding.contains_key("y2"), "Should have y2 encoding");
 
-        // Verify consistent naming: x_min, x_max, y_min, y_max
+        // Verify consistent naming: primary_min/max for x, secondary_min/max for y (default orientation)
         assert_eq!(
-            encoding["x"]["field"], "x_min",
-            "x should reference x_min field"
+            encoding["x"]["field"], "primary_min",
+            "x should reference primary_min field"
         );
         assert_eq!(
-            encoding["x2"]["field"], "x_max",
-            "x2 should reference x_max field"
+            encoding["x2"]["field"], "primary_max",
+            "x2 should reference primary_max field"
         );
         assert_eq!(
-            encoding["y"]["field"], "y_min",
-            "y should reference y_min field"
+            encoding["y"]["field"], "secondary_min",
+            "y should reference secondary_min field"
         );
         assert_eq!(
-            encoding["y2"]["field"], "y_max",
-            "y2 should reference y_max field"
+            encoding["y2"]["field"], "secondary_max",
+            "y2 should reference secondary_max field"
         );
 
         // Verify stroke encoding exists for line_id (color aesthetic becomes stroke for rule mark)
@@ -1571,6 +1694,91 @@ mod tests {
         coefs.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
         assert_eq!(coefs, vec![1.0, 2.0, 3.0], "Should have coefs 1, 2, and 3");
+    }
+
+    #[test]
+    fn test_linear_renderer_transposed_orientation() {
+        use crate::reader::{DuckDBReader, Reader};
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        // Test that linear with transposed orientation swaps x/y axes
+        let query = r#"
+            WITH points AS (
+                SELECT * FROM (VALUES (0, 5), (5, 15), (10, 25)) AS t(x, y)
+            ),
+            lines AS (
+                SELECT * FROM (VALUES (0.4, -1, 'A')) AS t(coef, intercept, line_id)
+            )
+            SELECT * FROM points
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            DRAW linear MAPPING coef AS coef, intercept AS intercept, line_id AS color FROM lines SETTING orientation => 'transposed'
+        "#;
+
+        // Execute query
+        let reader = DuckDBReader::from_connection_string("duckdb://memory")
+            .expect("Failed to create reader");
+        let spec = reader.execute(query).expect("Failed to execute query");
+
+        // Render to Vega-Lite
+        let writer = VegaLiteWriter::new();
+        let vl_json = writer.render(&spec).expect("Failed to render spec");
+
+        // Parse JSON
+        let vl_spec: serde_json::Value =
+            serde_json::from_str(&vl_json).expect("Failed to parse Vega-Lite JSON");
+
+        // Get the linear layer (second layer)
+        let layers = vl_spec["layer"].as_array().expect("No layers found");
+        let linear_layer = &layers[1];
+
+        // Verify transforms exist
+        let transforms = linear_layer["transform"]
+            .as_array()
+            .expect("No transforms found");
+
+        // Verify primary_min/max use pos2 extent (y-axis) for transposed orientation
+        let primary_min_transform = transforms
+            .iter()
+            .find(|t| t["as"] == "primary_min")
+            .expect("primary_min transform not found");
+        let primary_max_transform = transforms
+            .iter()
+            .find(|t| t["as"] == "primary_max")
+            .expect("primary_max transform not found");
+
+        // The primary extent should come from the y-axis for transposed
+        assert!(
+            primary_min_transform["calculate"].is_string(),
+            "primary_min should have calculate expression"
+        );
+        assert!(
+            primary_max_transform["calculate"].is_string(),
+            "primary_max should have calculate expression"
+        );
+
+        // Verify encoding has y as primary axis (mapped to primary_min/max)
+        let encoding = linear_layer["encoding"]
+            .as_object()
+            .expect("No encoding found");
+
+        // For transposed orientation: y is primary (uses primary_min/max), x is secondary
+        assert_eq!(
+            encoding["y"]["field"], "primary_min",
+            "y should reference primary_min field for transposed"
+        );
+        assert_eq!(
+            encoding["y2"]["field"], "primary_max",
+            "y2 should reference primary_max field for transposed"
+        );
+        assert_eq!(
+            encoding["x"]["field"], "secondary_min",
+            "x should reference secondary_min field for transposed"
+        );
+        assert_eq!(
+            encoding["x2"]["field"], "secondary_max",
+            "x2 should reference secondary_max field for transposed"
+        );
     }
 
     #[test]
