@@ -450,7 +450,9 @@ mod tests {
 
         // Verify the SQL includes the tails constraint
         match result {
-            StatResult::Transformed { query: stat_query, .. } => {
+            StatResult::Transformed {
+                query: stat_query, ..
+            } => {
                 // The generated SQL should include the tails filtering
                 // We verify this by checking the SQL contains the bandwidth filtering
                 assert!(
