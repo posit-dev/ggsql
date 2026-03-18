@@ -75,6 +75,7 @@ pyo3 = { workspace = true, optional = true }
 [dev-dependencies]
 jsonschema = "0.44"
 proptest.workspace = true
+tempfile = "3.8"
 ureq = "3"
 
 [features]

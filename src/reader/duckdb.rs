@@ -144,34 +144,7 @@ impl DuckDBReader {
     }
 }
 
-/// Validate a table name
-fn validate_table_name(name: &str) -> Result<()> {
-    if name.is_empty() {
-        return Err(GgsqlError::ReaderError("Table name cannot be empty".into()));
-    }
-
-    // Reject characters that could break double-quoted identifiers or cause issues
-    let forbidden = ['"', '\0', '\n', '\r'];
-    for ch in forbidden {
-        if name.contains(ch) {
-            return Err(GgsqlError::ReaderError(format!(
-                "Table name '{}' contains invalid character '{}'",
-                name,
-                ch.escape_default()
-            )));
-        }
-    }
-
-    // Reasonable length limit
-    if name.len() > 128 {
-        return Err(GgsqlError::ReaderError(format!(
-            "Table name '{}' exceeds maximum length of 128 characters",
-            name
-        )));
-    }
-
-    Ok(())
-}
+use super::validate_table_name;
 
 /// Convert a Polars DataFrame to DuckDB Arrow query parameters via IPC serialization
 fn dataframe_to_arrow_params(df: DataFrame) -> Result<[usize; 2]> {

@@ -240,6 +240,42 @@ pub use sqlite::SqliteReader;
 pub use odbc::OdbcReader;
 
 // ============================================================================
+// Shared utilities
+// ============================================================================
+
+/// Validate a table name for use in SQL statements.
+///
+/// Rejects empty names, names with characters that could break double-quoted
+/// identifiers, and names exceeding 128 characters.
+pub(crate) fn validate_table_name(name: &str) -> Result<()> {
+    if name.is_empty() {
+        return Err(GgsqlError::ReaderError("Table name cannot be empty".into()));
+    }
+
+    // Reject characters that could break double-quoted identifiers or cause issues
+    let forbidden = ['"', '\0', '\n', '\r'];
+    for ch in forbidden {
+        if name.contains(ch) {
+            return Err(GgsqlError::ReaderError(format!(
+                "Table name '{}' contains invalid character '{}'",
+                name,
+                ch.escape_default()
+            )));
+        }
+    }
+
+    // Reasonable length limit
+    if name.len() > 128 {
+        return Err(GgsqlError::ReaderError(format!(
+            "Table name '{}' exceeds maximum length of 128 characters",
+            name
+        )));
+    }
+
+    Ok(())
+}
+
+// ============================================================================
 // Spec - Result of reader.execute()
 // ============================================================================
 
