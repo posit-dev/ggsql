@@ -527,4 +527,77 @@ mod tests {
         let deserialized: Geom = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.geom_type(), GeomType::Point);
     }
+
+    #[test]
+    fn test_default_remappings_are_in_aesthetics() {
+        // Test that every aesthetic in default_remappings() exists in aesthetics().defaults
+        // This ensures that remapped aesthetics are properly declared (usually as Delayed)
+
+        let all_geom_types = [
+            GeomType::Point,
+            GeomType::Line,
+            GeomType::Path,
+            GeomType::Bar,
+            GeomType::Area,
+            GeomType::Rect,
+            GeomType::Polygon,
+            GeomType::Ribbon,
+            GeomType::Histogram,
+            GeomType::Density,
+            GeomType::Smooth,
+            GeomType::Boxplot,
+            GeomType::Violin,
+            GeomType::Text,
+            GeomType::Segment,
+            GeomType::Arrow,
+            GeomType::Rule,
+            GeomType::Linear,
+            GeomType::ErrorBar,
+        ];
+
+        // This test is rigged to trigger a compiler error when new variants are added.
+        // Add the new layer to both the array above and as match arm below.
+        let _exhaustive_check = |t: GeomType| match t {
+            GeomType::Point
+            | GeomType::Line
+            | GeomType::Path
+            | GeomType::Bar
+            | GeomType::Area
+            | GeomType::Rect
+            | GeomType::Polygon
+            | GeomType::Ribbon
+            | GeomType::Histogram
+            | GeomType::Density
+            | GeomType::Smooth
+            | GeomType::Boxplot
+            | GeomType::Violin
+            | GeomType::Text
+            | GeomType::Segment
+            | GeomType::Arrow
+            | GeomType::Rule
+            | GeomType::Linear
+            | GeomType::ErrorBar => {}
+        };
+
+        for geom_type in all_geom_types {
+            let geom = Geom::from_type(geom_type);
+            let remappings = geom.default_remappings();
+            let aesthetics = geom.aesthetics();
+
+            // Collect all aesthetic names from aesthetics().defaults
+            let aesthetic_names: std::collections::HashSet<&str> =
+                aesthetics.defaults.iter().map(|(name, _)| *name).collect();
+
+            // Check each remapping name exists in aesthetics
+            for (name, _) in remappings {
+                assert!(
+                    aesthetic_names.contains(name),
+                    "Geom '{}' has '{}' in default_remappings() but not in aesthetics().defaults. \
+                     Add it as DefaultAestheticValue::Delayed if it's a stat-produced aesthetic.",
+                    geom_type,
+                    name
+                );
+            }
+        }
+    }
 }

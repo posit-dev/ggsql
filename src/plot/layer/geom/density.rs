@@ -36,6 +36,7 @@ impl GeomTrait for Density {
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("linetype", DefaultAestheticValue::String("solid")),
                 ("pos2", DefaultAestheticValue::Delayed), // Computed by stat
+                ("pos2end", DefaultAestheticValue::Delayed),
             ],
         }
     }

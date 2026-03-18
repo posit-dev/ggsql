@@ -31,6 +31,7 @@ impl GeomTrait for Histogram {
                 // pos2 and pos1end are produced by stat_histogram but not valid for manual MAPPING
                 ("pos2", DefaultAestheticValue::Delayed),
                 ("pos1end", DefaultAestheticValue::Delayed),
+                ("pos2end", DefaultAestheticValue::Delayed), // baseline value
             ],
         }
     }
