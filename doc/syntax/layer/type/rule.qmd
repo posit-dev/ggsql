@@ -4,16 +4,15 @@ title: "Rule"
 
 > Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
-The rule layer is used to draw horizontal or vertical reference lines at specified values. This is useful for adding thresholds, means, medians, avent markers, cutoff dates or other guides to the plot. The lines span the full width or height of the panels.
+The rule layer is used to draw reference lines perpendicular to an axis at specified values. This is useful for adding thresholds, means, medians, event markers, cutoff dates or other guides to the plot. The lines span the full width or height of the panels.
+
+> The rule layer doesn't have a natural extent along the secondary axis. The secondary scale range can thus not be deduced from rule layers. If the rule layer is the only layer in the visualisation, you must specify the position scale range manually.
 
 ## Aesthetics
-The following aesthetics are recognised by the hline layer.
+The following aesthetics are recognised by the rule layer.
 
 ### Required
-* `x`\*: The x-coordinate for the vertical line.
-* `y`\*: The y-coordinate for the horizontal line
-
-\* Exactly one of `x` or `y` is required, not both.
+* Primary axis (e.g. `x` or `y`): Position along the primary axis.
 
 ### Optional
 * `colour`/`stroke`: The colour of the line
@@ -27,6 +26,9 @@ The rule layer has no additional settings.
 ## Data transformation
 The rule layer does not transform its data but passes it through unchanged.
 
+## Orientation
+Rules are drawn perpendicular to their primary axis. The orientation is deduced directly from the mapping. To create a horizontal rule you map the values to `y` instead of `x` (assuming a default Cartesian coordinate system).
+
 ## Examples
 
 Add a horizontal threshold line to a time series plot:
@@ -38,7 +40,7 @@ WHERE Month = 5
 
 VISUALISE 
   DRAW line MAPPING date AS x, temperature AS y
-  DRAW rule MAPPING 70 AS y
+  PLACE rule SETTING y => 70
 ```
 
 Add a vertical line to mark a specific value:
@@ -46,10 +48,10 @@ Add a vertical line to mark a specific value:
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
   DRAW point MAPPING bill_len AS x, bill_dep AS y
-  DRAW rule MAPPING 45 AS x
+  PLACE rule SETTING x => 45
 ```
 
-Add multiple threshold lines with different colors:
+Add multiple threshold lines with different colors. Note that because we're mapping data from data, we use the `DRAW` clause instead of the `PLACE` clause.
 
 ```{ggsql}
 WITH thresholds AS (

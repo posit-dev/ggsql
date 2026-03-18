@@ -47,6 +47,10 @@ pub use super::projection::{Coord, Projection};
 // Re-export Facet types from the facet module
 pub use super::facet::{Facet, FacetLayout};
 
+// =============================================================================
+// Plot Type
+// =============================================================================
+
 /// Complete ggsql visualization specification
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Plot {
@@ -168,6 +172,7 @@ impl Plot {
     /// - Global mappings
     /// - Layer aesthetics
     /// - Layer remappings
+    /// - Layer parameters (SETTING aesthetics)
     /// - Scale aesthetics
     /// - Label keys
     pub fn transform_aesthetics_to_internal(&mut self) {
@@ -176,10 +181,21 @@ impl Plot {
         // Transform global mappings
         self.global_mappings.transform_to_internal(&ctx);
 
-        // Transform layer aesthetics and remappings
+        // Transform layer aesthetics, remappings, and parameters
         for layer in &mut self.layers {
             layer.mappings.transform_to_internal(&ctx);
             layer.remappings.transform_to_internal(&ctx);
+
+            // Transform parameter keys from user-facing to internal names
+            // This ensures position aesthetics in SETTING (e.g., x => 5) become internal (pos1 => 5)
+            let original_parameters = std::mem::take(&mut layer.parameters);
+            for (param_name, value) in original_parameters {
+                let internal_name = ctx
+                    .map_user_to_internal(&param_name)
+                    .map(|s| s.to_string())
+                    .unwrap_or(param_name);
+                layer.parameters.insert(internal_name, value);
+            }
         }
 
         // Transform scale aesthetics
@@ -503,11 +519,11 @@ mod tests {
         assert!(bar.is_supported("pos1")); // Bar accepts optional pos1
         assert_eq!(bar.required(), &[] as &[&str]); // No required aesthetics
 
-        // Text geom
+        // Text geom - requires label
         let text = Geom::text().aesthetics();
         assert!(text.is_supported("label"));
-        assert!(text.is_supported("family"));
-        assert_eq!(text.required(), &["pos1", "pos2"]);
+        assert!(text.is_supported("typeface"));
+        assert_eq!(text.required(), &["pos1", "pos2", "label"]);
 
         // Statistical geoms only require pos1
         assert_eq!(Geom::histogram().aesthetics().required(), &["pos1"]);

@@ -83,9 +83,6 @@ fn prepare_layer_data(
     let mut layer_renderers: Vec<Box<dyn GeomRenderer>> = Vec::new();
     let mut prepared_data: Vec<PreparedData> = Vec::new();
 
-    // Build context once for all layers
-    let context = layer::RenderContext::new(&spec.scales);
-
     for (layer_idx, layer) in spec.layers.iter().enumerate() {
         let data_key = &layer_data_keys[layer_idx];
         let df = data.get(data_key).ok_or_else(|| {
@@ -100,7 +97,7 @@ fn prepare_layer_data(
         let renderer = get_renderer(&layer.geom);
 
         // Prepare data using the renderer (handles both standard and composite cases)
-        let prepared = renderer.prepare_data(df, data_key, binned_columns, &context)?;
+        let prepared = renderer.prepare_data(df, layer, data_key, binned_columns)?;
 
         // Add data to individual datasets based on prepared type
         match &prepared {
@@ -283,6 +280,7 @@ fn build_layer_encoding(
             let secondary_encoding = match value {
                 AestheticValue::Column { name: col, .. } => json!({"field": col}),
                 AestheticValue::Literal(lit) => json!({"value": lit.to_json()}),
+                AestheticValue::AnnotationColumn { name: col } => json!({"field": col}),
             };
             encoding.insert(channel_name, secondary_encoding);
             continue;
@@ -352,24 +350,16 @@ fn build_layer_encoding(
         );
     }
 
-    // Disable Vega-Lite's automatic stacking - we handle position adjustments ourselves
-    // This prevents Vega-Lite from applying its own stack/dodge logic on top of ours
-    // Set stack: null on both y and y2 channels (pos2 and pos2end in our terminology)
+    // Disable Vega-Lite's automatic stacking - we handle position adjustments ourselves.
+    // This prevents Vega-Lite from applying its own stack/dodge logic on top of ours.
+    // Only set stack: null on primary position channels (y/radius) — Vega-Lite does
+    // not support 'stack' on secondary channels (y2/radius2) and Altair rejects it.
     let y_channel = match coord_kind {
         CoordKind::Cartesian => "y",
         CoordKind::Polar => "radius",
     };
-    let y2_channel = match coord_kind {
-        CoordKind::Cartesian => "y2",
-        CoordKind::Polar => "radius2",
-    };
     if let Some(y_enc) = encoding.get_mut(y_channel) {
         if let Some(obj) = y_enc.as_object_mut() {
-            obj.insert("stack".to_string(), Value::Null);
-        }
-    }
-    if let Some(y2_enc) = encoding.get_mut(y2_channel) {
-        if let Some(obj) = y2_enc.as_object_mut() {
             obj.insert("stack".to_string(), Value::Null);
         }
     }
@@ -603,13 +593,13 @@ fn get_free_scales(facet: Option<&crate::plot::Facet>) -> Option<&[crate::plot::
 ///
 /// Maps ggsql free property (boolean array) to Vega-Lite resolve.scale configuration:
 /// - `[false, false]`: shared scales (Vega-Lite default, no resolve needed)
-/// - `[true, false]`: independent pos1 scale (x or theta), shared pos2 scale
-/// - `[false, true]`: shared pos1 scale, independent pos2 scale (y or radius)
+/// - `[true, false]`: independent pos1 scale (x or radius), shared pos2 scale
+/// - `[false, true]`: shared pos1 scale, independent pos2 scale (y or theta)
 /// - `[true, true]`: independent scales for both axes
 ///
 /// The channel names depend on coord_kind:
 /// - Cartesian: pos1 -> "x", pos2 -> "y"
-/// - Polar: pos1 -> "theta", pos2 -> "radius"
+/// - Polar: pos1 -> "radius", pos2 -> "theta"
 fn apply_facet_scale_resolution(
     vl_spec: &mut Value,
     properties: &HashMap<String, ParameterValue>,
@@ -623,7 +613,7 @@ fn apply_facet_scale_resolution(
     // Determine channel names based on coord kind
     let (pos1_channel, pos2_channel) = match coord_kind {
         CoordKind::Cartesian => ("x", "y"),
-        CoordKind::Polar => ("theta", "radius"),
+        CoordKind::Polar => ("radius", "theta"),
     };
 
     // Extract booleans from the array (position-indexed)
@@ -1145,11 +1135,8 @@ impl Writer for VegaLiteWriter {
                 .map_err(|e| {
                     GgsqlError::ValidationError(format!("Layer validation failed: {}", e))
                 })?;
-
-            // Check SETTING parameters are valid for this geom
-            layer.validate_settings().map_err(|e| {
-                GgsqlError::ValidationError(format!("Layer validation failed: {}", e))
-            })?;
+            // Note: validate_settings() is already called during execution, before
+            // internal parameters like "orientation" are set, so we don't call it here.
         }
 
         Ok(())
@@ -1345,10 +1332,6 @@ mod tests {
             geom_to_mark(&Geom::area()),
             json!({"type": "area", "clip": true})
         );
-        assert_eq!(
-            geom_to_mark(&Geom::tile()),
-            json!({"type": "rect", "clip": true})
-        );
     }
 
     #[test]
@@ -1409,37 +1392,41 @@ mod tests {
             map_aesthetic_name("label", &ctx, CoordKind::Cartesian),
             "text"
         );
+        assert_eq!(
+            map_aesthetic_name("fontsize", &ctx, CoordKind::Cartesian),
+            "size"
+        );
 
-        // Test with polar coord kind - internal positional maps to theta/radius
+        // Test with polar coord kind - internal positional maps to radius/theta
         // regardless of the context's user-facing names
-        let polar_ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
+        let polar_ctx = AestheticContext::from_static(&["radius", "theta"], &[]);
         assert_eq!(
             map_aesthetic_name("pos1", &polar_ctx, CoordKind::Polar),
-            "theta"
+            "radius"
         );
         assert_eq!(
             map_aesthetic_name("pos2", &polar_ctx, CoordKind::Polar),
-            "radius"
-        );
-        assert_eq!(
-            map_aesthetic_name("pos1end", &polar_ctx, CoordKind::Polar),
-            "theta2"
-        );
-        assert_eq!(
-            map_aesthetic_name("pos2end", &polar_ctx, CoordKind::Polar),
-            "radius2"
-        );
-
-        // Even with custom positional names (e.g., PROJECT y, x TO polar),
-        // internal pos1/pos2 should still map to theta/radius for Vega-Lite
-        let custom_ctx = AestheticContext::from_static(&["y", "x"], &[]);
-        assert_eq!(
-            map_aesthetic_name("pos1", &custom_ctx, CoordKind::Polar),
             "theta"
         );
         assert_eq!(
-            map_aesthetic_name("pos2", &custom_ctx, CoordKind::Polar),
+            map_aesthetic_name("pos1end", &polar_ctx, CoordKind::Polar),
+            "radius2"
+        );
+        assert_eq!(
+            map_aesthetic_name("pos2end", &polar_ctx, CoordKind::Polar),
+            "theta2"
+        );
+
+        // Even with custom positional names (e.g., PROJECT y, x TO polar),
+        // internal pos1/pos2 should still map to radius/theta for Vega-Lite
+        let custom_ctx = AestheticContext::from_static(&["y", "x"], &[]);
+        assert_eq!(
+            map_aesthetic_name("pos1", &custom_ctx, CoordKind::Polar),
             "radius"
+        );
+        assert_eq!(
+            map_aesthetic_name("pos2", &custom_ctx, CoordKind::Polar),
+            "theta"
         );
     }
 
@@ -1529,6 +1516,73 @@ mod tests {
         assert_eq!(vl_spec["title"], "My Chart");
         assert_eq!(vl_spec["layer"][0]["mark"]["type"], "line");
         assert_eq!(vl_spec["layer"][0]["mark"]["clip"], true);
+    }
+
+    #[test]
+    fn test_fontsize_linear_scaling() {
+        use crate::plot::{ArrayElement, OutputRange, Scale, ScaleType};
+
+        let writer = VegaLiteWriter::new();
+
+        // Create spec with text geom using fontsize aesthetic
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::text())
+            .with_aesthetic(
+                "pos1".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "pos2".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            )
+            .with_aesthetic(
+                "label".to_string(),
+                AestheticValue::standard_column("label".to_string()),
+            )
+            .with_aesthetic(
+                "fontsize".to_string(),
+                AestheticValue::standard_column("value".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // Add fontsize scale with explicit range
+        let mut scale = Scale::new("fontsize");
+        scale.scale_type = Some(ScaleType::continuous());
+        scale.output_range = Some(OutputRange::Array(vec![
+            ArrayElement::Number(10.0),
+            ArrayElement::Number(20.0),
+        ]));
+        spec.scales.push(scale);
+
+        // Create DataFrame
+        let df = df! {
+            "x" => &[1, 2, 3],
+            "y" => &[1, 2, 3],
+            "label" => &["A", "B", "C"],
+            "value" => &[1.0, 2.0, 3.0],
+        }
+        .unwrap();
+
+        // Generate Vega-Lite JSON
+        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Verify fontsize maps to size channel
+        let encoding = &vl_spec["layer"][0]["encoding"];
+        assert!(encoding["size"].is_object(), "Should have size encoding");
+        assert!(
+            encoding["fontsize"].is_null(),
+            "Should not have fontsize encoding"
+        );
+
+        // Verify scale range is linear (no area conversion)
+        let scale_range = &encoding["size"]["scale"]["range"];
+        assert!(scale_range.is_array(), "Scale should have range array");
+        let range = scale_range.as_array().unwrap();
+        assert_eq!(range.len(), 2);
+        // Should be 10 and 20 converted to pixels, NOT ~31 and ~126 (which would be area-converted)
+        assert_eq!(range[0].as_f64().unwrap(), 10.0 * POINTS_TO_PIXELS);
+        assert_eq!(range[1].as_f64().unwrap(), 20.0 * POINTS_TO_PIXELS);
     }
 
     #[test]
@@ -2644,8 +2698,15 @@ mod tests {
                         enc.get("axis").is_none(),
                         "{channel} should not have 'axis': {enc}"
                     );
+                    assert!(
+                        enc.get("stack").is_none(),
+                        "{channel} should not have 'stack': {enc}"
+                    );
                 }
             }
         }
+
+        // The spec must also pass Vega-Lite schema validation
+        assert_valid_vegalite(&json_str);
     }
 }

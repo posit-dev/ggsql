@@ -221,7 +221,7 @@ mod tests {
         assert!(inferred.is_some());
         let proj = inferred.unwrap();
         assert_eq!(proj.coord.coord_kind(), CoordKind::Polar);
-        assert_eq!(proj.aesthetics, vec!["theta", "radius"]);
+        assert_eq!(proj.aesthetics, vec!["radius", "theta"]);
     }
 
     #[test]

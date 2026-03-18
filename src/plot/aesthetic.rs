@@ -30,6 +30,10 @@ use std::collections::HashMap;
 
 /// Positional aesthetic suffixes - applied to primary names to create variant aesthetics
 /// e.g., "x" + "min" = "xmin", "pos1" + "end" = "pos1end"
+///
+/// Note: "offset" is intentionally NOT included here because it's a positioning
+/// adjustment that shouldn't influence scale training or be part of aesthetic families.
+/// The `flip_positional` method handles offset correctly via prefix detection.
 pub const POSITIONAL_SUFFIXES: &[&str] = &["min", "max", "end"];
 
 // =============================================================================
@@ -54,7 +58,7 @@ pub const USER_FACET_AESTHETICS: &[&str] = &["panel", "row", "column"];
 /// - Color aesthetics: color, colour, fill, stroke, opacity
 /// - Size/shape aesthetics: size, shape, linetype, linewidth
 /// - Dimension aesthetics: width, height
-/// - Text aesthetics: label, family, fontface, hjust, vjust
+/// - Text aesthetics: label, typeface, fontweight, italic, hjust, vjust
 pub const NON_POSITIONAL: &[&str] = &[
     "color",
     "colour",
@@ -68,8 +72,10 @@ pub const NON_POSITIONAL: &[&str] = &[
     "width",
     "height",
     "label",
-    "family",
-    "fontface",
+    "typeface",
+    "fontweight",
+    "italic",
+    "fontsize",
     "hjust",
     "vjust",
 ];
@@ -334,6 +340,40 @@ impl AestheticContext {
     pub fn user_facet(&self) -> &[&'static str] {
         &self.user_facet
     }
+
+    // === Orientation Flipping ===
+
+    /// Flip a positional aesthetic to its opposite position.
+    ///
+    /// Swaps pos1 ↔ pos2 (and their suffixed variants like pos1min ↔ pos2min).
+    /// Non-positional aesthetics are returned unchanged.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+    /// assert_eq!(ctx.flip_positional("pos1"), "pos2");
+    /// assert_eq!(ctx.flip_positional("pos2min"), "pos1min");
+    /// assert_eq!(ctx.flip_positional("pos1end"), "pos2end");
+    /// assert_eq!(ctx.flip_positional("color"), "color"); // unchanged
+    /// ```
+    pub fn flip_positional(&self, name: &str) -> String {
+        // Only flip if we have exactly 2 positional aesthetics
+        if self.internal_primaries.len() != 2 {
+            return name.to_string();
+        }
+
+        // Check if it's a pos1 or pos2 variant
+        if let Some(rest) = name.strip_prefix("pos1") {
+            return format!("pos2{}", rest);
+        }
+        if let Some(rest) = name.strip_prefix("pos2") {
+            return format!("pos1{}", rest);
+        }
+
+        // Not a positional aesthetic, return unchanged
+        name.to_string()
+    }
 }
 
 /// Check if aesthetic is a user-facing facet aesthetic (panel, row, column)
@@ -392,6 +432,25 @@ pub fn is_positional_aesthetic(name: &str) -> bool {
     }
 
     false
+}
+
+/// Parse a positional aesthetic name to extract its slot number and suffix.
+///
+/// Returns `Some((slot, suffix))` for positional aesthetics:
+/// - `pos1` → (1, "")
+/// - `pos2min` → (2, "min")
+/// - `pos1end` → (1, "end")
+///
+/// Returns `None` for non-positional aesthetics.
+pub fn parse_positional(name: &str) -> Option<(u8, &str)> {
+    if !name.starts_with("pos") {
+        return None;
+    }
+    let rest = &name[3..];
+    let slot_char = rest.chars().next()?;
+    let slot = slot_char.to_digit(10)? as u8;
+    let suffix = &rest[1..];
+    Some((slot, suffix))
 }
 
 #[cfg(test)]
@@ -592,7 +651,7 @@ mod tests {
     fn test_aesthetic_context_families() {
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
 
-        // Get internal family
+        // Get internal family (offset not included - it's a positioning adjustment)
         let pos1_family = ctx.internal_positional_family("pos1").unwrap();
         let pos1_strs: Vec<&str> = pos1_family.iter().map(|s| s.as_str()).collect();
         assert_eq!(pos1_strs, vec!["pos1", "pos1min", "pos1max", "pos1end"]);
@@ -667,5 +726,21 @@ mod tests {
         // Facet
         let internal = ctx.map_user_to_internal("panel").unwrap();
         assert_eq!(ctx.map_internal_to_user(internal), "panel");
+    }
+    #[test]
+    fn test_parse_positional() {
+        // Primary positional
+        assert_eq!(parse_positional("pos1"), Some((1, "")));
+        assert_eq!(parse_positional("pos2"), Some((2, "")));
+
+        // Variants with suffixes
+        assert_eq!(parse_positional("pos1min"), Some((1, "min")));
+        assert_eq!(parse_positional("pos2max"), Some((2, "max")));
+        assert_eq!(parse_positional("pos1end"), Some((1, "end")));
+
+        // Non-positional
+        assert_eq!(parse_positional("color"), None);
+        assert_eq!(parse_positional("x"), None);
+        assert_eq!(parse_positional("xmin"), None);
     }
 }

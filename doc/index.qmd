@@ -5,22 +5,170 @@ section-divs: false
 toc: false
 lightbox: false
 repo-actions: false
+listing:
+  - id: example-carousel
+    contents: gallery/examples
+    type: grid
+    grid-columns: 6
+    image-height: 150px
+    fields: [image, title]
+    sort: "order"
+    max-items: 6
+include-in-header: 
+    text: |
+        <link href="https://fonts.googleapis.com/css2?family=Antic+Didone&display=swap" rel="stylesheet">
 ---
 
 ::: {.hero-banner}
-![](assets/hero.png){.hero-image}
 
-::: {.hero-content}
-# SQL meets Grammar of Graphics
+# <span class="hcode">QUERY</span> <span class="hviz-wrapper">![](assets/visualize.svg){.hviz aria-hidden="true"}<span class="sr-only">VISUALIZE</span></span> <span class="hund">UNDERSTAND</span>
 
-A declarative visualization language that extends SQL with powerful data visualization capabilities.
+::: {.hero-body}
+ggsql brings the elegance of the Grammar of Graphics to SQL. Write familiar queries, add visualization clauses, and see your data transform into beautiful, composable charts — no context switching, no separate tools, just SQL with superpowers.
 
 ::: {.hero-buttons}
-[Get Started](get_started.qmd){.btn .btn-secondary .btn-lg}
-[View Examples](gallery/index.qmd){.btn .btn-outline-light .btn-lg}
+[Get Started](get_started.qmd){.btn .btn-primary .btn-lg}
+[View Examples](gallery/index.qmd){.btn .btn-outline-primary .btn-lg}
+:::
 :::
 
 :::
+
+::: {.content-block .dark-bg}
+### Try it out
+
+ggsql runs in the browser as well! Edit the code and watch the plot update.
+
+```{ggsql}
+-- Regular query
+SELECT * FROM ggsql:penguins
+WHERE island = 'Biscoe'
+-- Followed by visualization declaration
+VISUALISE bill_len AS x, bill_dep AS y, body_mass AS fill
+DRAW point
+DRAW linear 
+    MAPPING 0.4 AS coef, -1 AS intercept
+SCALE BINNED fill
+LABEL
+   title => 'Relationship between bill dimensions in 3 species of penguins',
+   x => 'Bill length (mm)',
+   y => 'Bill depth (mm)'
+```
+
+:::
+
+::: {.content-block .examples-carousel}
+## Explore the examples
+
+::: {#example-carousel}
+:::
+
+[See all examples →](gallery/index.qmd){.see-all-link}
+
+:::
+
+::: {.content-block .dark-bg .install-section}
+### Install it today
+
+::: {#installer-buttons}
+<noscript>Download from [GitHub Releases](https://github.com/posit-dev/ggsql/releases)</noscript>
+:::
+
+::: {.install-cli-options}
+**Or via command line:**
+`uv pip install ggsql-jupyter && ggsql-jupyter --install`
+·
+`cargo install ggsql`
+:::
+
+```{=html}
+<script>
+(function() {
+  const repoOwner = 'posit-dev';
+  const repoName = 'ggsql';
+  const includePreReleases = true; // Set to false to only show published releases
+
+  function detectOS() {
+    const ua = navigator.userAgent.toLowerCase();
+    if (ua.includes('win')) return 'windows';
+    if (ua.includes('mac')) return 'macos';
+    if (ua.includes('linux')) return 'linux';
+    return 'unknown';
+  }
+
+  function getOSLabel(os) {
+    switch(os) {
+      case 'windows': return 'Windows';
+      case 'macos': return 'macOS';
+      case 'linux': return 'Linux';
+      default: return 'your platform';
+    }
+  }
+
+  async function loadInstallers() {
+    const container = document.getElementById('installer-buttons');
+    if (!container) return;
+
+    const os = detectOS();
+    const jupyterPattern = {
+      windows: /ggsql-jupyter.*\.(exe|msi)$/i,
+      macos: /ggsql-jupyter.*\.dmg$/i,
+      linux: /ggsql-jupyter.*\.deb$/i
+    }[os];
+    const cliPattern = {
+      windows: /^ggsql[^-].*\.(exe|msi)$/i,
+      macos: /^ggsql[^-].*\.dmg$/i,
+      linux: /^ggsql[^-].*\.deb$/i
+    }[os];
+
+    try {
+      const endpoint = includePreReleases
+        ? `https://api.github.com/repos/${repoOwner}/${repoName}/releases`
+        : `https://api.github.com/repos/${repoOwner}/${repoName}/releases/latest`;
+      const response = await fetch(endpoint);
+      if (!response.ok) throw new Error('Failed to fetch release');
+      const data = await response.json();
+      const release = includePreReleases ? data[0] : data;
+      if (!release) throw new Error('No releases found');
+
+      const version = release.tag_name;
+      const jupyterAsset = release.assets?.find(a => jupyterPattern?.test(a.name));
+      const cliAsset = release.assets?.find(a => cliPattern?.test(a.name));
+
+      container.innerHTML = `
+        <p class="install-version">${version} · ${getOSLabel(os)} · <a href="${release.html_url}">Other platforms</a></p>
+        <div class="install-buttons-row">
+          <div class="install-option">
+            <a href="${jupyterAsset?.browser_download_url || release.html_url}" class="btn btn-primary install-btn">
+              Jupyter Kernel
+            </a>
+            <p class="install-description">For Jupyter and Quarto notebooks</p>
+          </div>
+          <div class="install-option">
+            <a href="${cliAsset?.browser_download_url || release.html_url}" class="btn btn-outline-primary install-btn">
+              CLI
+            </a>
+            <p class="install-description">For terminal and scripting workflows</p>
+          </div>
+        </div>
+      `;
+    } catch (e) {
+      container.innerHTML = `
+        <a href="https://github.com/${repoOwner}/${repoName}/releases" class="btn btn-primary">
+          View Downloads on GitHub
+        </a>
+      `;
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadInstallers);
+  } else {
+    loadInstallers();
+  }
+})();
+</script>
+```
 :::
 
 ::: {.content-block}
@@ -65,35 +213,41 @@ You also avoid needing agents to launch full programming languages like Python o
 :::
 
 ::: {.feature}
-### There where you need it
+### Connect directly to your data
 
-ggsql is available where you do your data analysis:
+ggsql interfaces directly with your database. Want to create a histogram over 1 billion observations? No problem! All calculations are pushed to the database so you only extract what is needed for the visual.
+:::
+
+:::
+
+:::
+
+::: {.content-block .integrations}
+
+## Available where your data is
 
 ::: {.tool-grid}
 ::: {.tool-item}
 ![](assets/logos/positron.svg){.tool-logo}
-Positron
+[Positron](https://positron.posit.co/)
 :::
 ::: {.tool-item}
 ![](assets/logos/quarto.svg){.tool-logo}
-Quarto
+[Quarto](https://quarto.org/)
 :::
 ::: {.tool-item}
 ![](assets/logos/jupyter.svg){.tool-logo}
-Jupyter
+[Jupyter](https://jupyter.org)
 :::
 ::: {.tool-item}
 ![](assets/logos/vscode.svg){.tool-logo}
-VS Code
-:::
+[VS Code](https://code.visualstudio.com/)
 :::
 :::
 
 :::
 
-:::
-
-::: {.content-block .alt-bg}
+::: {.content-block}
 
 ::: {.cta-section}
 
@@ -112,3 +266,4 @@ Or try our [online playground](wasm/) to experience the syntax _right now_.
 :::
 
 :::
+

@@ -10,8 +10,8 @@ Polygons can be used to draw arbitrary closed shapes based on an ordered sequenc
 The following aesthetics are recognised by the polygon layer.
 
 ### Required
-* `x` Position along the x-axis.
-* `y` Position along the y-axis.
+* Primary axis (e.g. `x`): Position along the primary axis.
+* Secondary axis (e.g. `y`): Position along the secondary axis.
 
 ### Optional
 * `stroke` The colour of the contour lines.
@@ -26,6 +26,9 @@ The following aesthetics are recognised by the polygon layer.
 
 ## Data transformation
 The polygon layer does not transform its data but passes it through unchanged
+
+## Orientation
+The polygon layer has no orientation. The axes are treated symmetrically.
 
 ## Examples
 

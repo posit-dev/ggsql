@@ -10,7 +10,7 @@ Visualise the distribution of a single continuous variable by computing a kernel
 The following aesthetics are recognised by the density layer.
 
 ### Required
-* `x`: Position on the x-axis.
+* Primary axis (e.g. `x`): The continuous variable for which to estimate density.
 
 ### Optional
 * `stroke`: The colour of the contour lines.
@@ -62,7 +62,10 @@ $$
 
 ### Default remappings
 
-* `density AS y`: By default the density layer will display the computed density along the y-axis.
+* `density AS <secondary axis>`: By default the density layer will display the computed density along the secondary axis.
+
+## Orientation
+The density has its primary axis along the variable for which density is computed. The orientation can be deduced from the mapping. To create a horizontal density plot, map the variable to `y` instead of `x` (assuming a default Cartesian coordinate system).
 
 ## Examples
 

@@ -294,6 +294,10 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
     // since geom definitions use internal names for their supported/required aesthetics
     spec.transform_aesthetics_to_internal();
 
+    // Note: Annotation layer processing (moving parameters to mappings) now happens
+    // during execution in process_annotation_layer(), not during parsing.
+    // This keeps all annotation-specific logic in one place.
+
     Ok(spec)
 }
 
@@ -304,6 +308,10 @@ fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Resu
         match child.kind() {
             "draw_clause" => {
                 let layer = build_layer(&child, source)?;
+                spec.layers.push(layer);
+            }
+            "place_clause" => {
+                let layer = build_place_layer(&child, source)?;
                 spec.layers.push(layer);
             }
             "scale_clause" => {
@@ -507,6 +515,22 @@ fn build_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
     Ok(layer)
 }
 
+/// Build an annotation Layer from a place_clause node
+/// This is similar to build_layer but marks it as an annotation layer.
+/// The transformation of positional/required aesthetics from SETTING to mappings
+/// happens later in Plot::transform_aesthetics_to_internal().
+/// Syntax: PLACE geom [MAPPING col AS x, ...] [SETTING param => val, ...] [FILTER condition]
+fn build_place_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
+    // Build the layer using standard logic
+    let mut layer = build_layer(node, source)?;
+
+    // Mark as annotation layer
+    // Array recycling happens later during SQL generation in process_annotation_layer()
+    layer.source = Some(DataSource::Annotation);
+
+    Ok(layer)
+}
+
 /// Parse a setting_clause: SETTING param => value, ...
 fn parse_setting_clause(
     node: &Node,
@@ -602,7 +626,7 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
         "path" => Ok(Geom::path()),
         "bar" => Ok(Geom::bar()),
         "area" => Ok(Geom::area()),
-        "tile" => Ok(Geom::tile()),
+        "rect" => Ok(Geom::rect()),
         "polygon" => Ok(Geom::polygon()),
         "ribbon" => Ok(Geom::ribbon()),
         "histogram" => Ok(Geom::histogram()),
@@ -611,7 +635,6 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
         "boxplot" => Ok(Geom::boxplot()),
         "violin" => Ok(Geom::violin()),
         "text" => Ok(Geom::text()),
-        "label" => Ok(Geom::label()),
         "segment" => Ok(Geom::segment()),
         "arrow" => Ok(Geom::arrow()),
         "rule" => Ok(Geom::rule()),
@@ -1331,7 +1354,7 @@ mod tests {
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(
             project.aesthetics,
-            vec!["theta".to_string(), "radius".to_string()]
+            vec!["radius".to_string(), "theta".to_string()]
         );
     }
 
@@ -3329,9 +3352,10 @@ mod tests {
 
         let literal_node = source.find_node(&root, "(literal_value) @lit").unwrap();
         let parsed = parse_literal_value(&literal_node, &source).unwrap();
-        assert!(
-            matches!(parsed, AestheticValue::Literal(ParameterValue::String(ref s)) if s == "red")
-        );
+        assert!(matches!(
+            parsed,
+            AestheticValue::Literal(ParameterValue::String(ref s)) if s == "red"
+        ));
 
         // Test number literal
         let source2 = make_source("VISUALISE DRAW point MAPPING 42 AS size");
@@ -3385,7 +3409,7 @@ mod tests {
         // Should infer polar projection
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(project.coord.coord_kind(), CoordKind::Polar);
-        assert_eq!(project.aesthetics, vec!["theta", "radius"]);
+        assert_eq!(project.aesthetics, vec!["radius", "theta"]);
     }
 
     #[test]

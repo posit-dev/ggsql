@@ -10,8 +10,8 @@ use crate::plot::ArrayElement;
 
 /// ggsql 10 - default categorical palette
 pub const GGSQL10: &[&str] = &[
-    "#0067A5", "#F3C300", "#008856", "#F38400", "#875692", "#BE0032", "#A1CAF1", "#E68FAC",
-    "#8DB600", "#654522",
+    "#0067A5", "#F38400", "#008856", "#F3C300", "#875692", "#A1CAF1", "#BE0032", "#8DB600",
+    "#654522", "#E68FAC",
 ];
 
 /// Tableau 10
@@ -1482,6 +1482,37 @@ pub const NAVIA: &[&str] = &[
     "#F4F1CE", "#F6F2D0", "#F7F2D2", "#F8F2D2", "#F8F2D4", "#F9F2D6", "#FAF3D7", "#FCF3D8",
 ];
 
+/// Sequential palette (204 colors)
+/// Derived from Crameri navia with 20% of lightest colors removed
+pub const SEQUENTIAL: &[&str] = &[
+    "#021326", "#041428", "#04152B", "#04172C", "#04182D", "#041930", "#051932", "#051A33",
+    "#051B35", "#051D38", "#051E39", "#051F3B", "#05203E", "#05213F", "#052241", "#052444",
+    "#052546", "#052647", "#06274A", "#06284C", "#062A4D", "#062B50", "#062C52", "#062D53",
+    "#062E55", "#063058", "#063159", "#06325B", "#06335E", "#06345F", "#063561", "#063764",
+    "#063966", "#073967", "#073A6A", "#073B6B", "#073E6C", "#083F6E", "#083F71", "#0A4072",
+    "#0A4373", "#0B4476", "#0B4578", "#0B4679", "#0C477A", "#0C487D", "#0C4A7E", "#0D4C7F",
+    "#0D4C80", "#0E4D81", "#104E84", "#105185", "#115285", "#125286", "#135387", "#135588",
+    "#13578A", "#14588B", "#15598C", "#17598C", "#175B8C", "#185D8D", "#195E8D", "#195F8E",
+    "#1A5F8E", "#1A6090", "#1B6190", "#1D6390", "#1E6491", "#1E6591", "#1F6691", "#1F6691",
+    "#1F6791", "#206891", "#216A91", "#216B91", "#226C91", "#246C91", "#246C91", "#256D90",
+    "#266E90", "#266E90", "#267090", "#26718E", "#27718E", "#27728E", "#28728E", "#2A728D",
+    "#2A738D", "#2B748D", "#2B748C", "#2C768C", "#2C768C", "#2C778C", "#2C788C", "#2D788C",
+    "#2E798B", "#2E798B", "#30798B", "#30798A", "#317A8A", "#317B8A", "#327B88", "#327D88",
+    "#337D88", "#337E87", "#337E87", "#347F87", "#347F86", "#357F86", "#357F85", "#378085",
+    "#378085", "#388185", "#398385", "#398385", "#398484", "#398484", "#3A8584", "#3B8583",
+    "#3B8583", "#3D8581", "#3D8681", "#3E8781", "#3F8780", "#3F8880", "#3F8880", "#3F8A7F",
+    "#408A7F", "#418B7F", "#418C7F", "#438C7F", "#448C7E", "#448C7E", "#458D7D", "#468E7D",
+    "#468E7D", "#46907B", "#47917B", "#48917A", "#48927A", "#4A9279", "#4B9279", "#4C9379",
+    "#4C9479", "#4C9479", "#4D9678", "#4E9778", "#509877", "#509877", "#519976", "#529976",
+    "#529A74", "#539A74", "#549B73", "#559D73", "#579E72", "#579F72", "#589F72", "#599F72",
+    "#59A071", "#5AA171", "#5BA370", "#5DA470", "#5EA56E", "#5FA56E", "#5FA66D", "#61A76D",
+    "#63A96C", "#64AA6C", "#65AB6C", "#66AC6C", "#66AC6B", "#68AD6B", "#6AAE6A", "#6BB06A",
+    "#6CB168", "#6DB268", "#70B268", "#71B368", "#72B467", "#73B667", "#76B767", "#78B867",
+    "#79B967", "#7ABA67", "#7DBB67", "#7FBD67", "#80BF67", "#83BF67", "#85C068", "#86C168",
+    "#88C36A", "#8CC56A", "#8DC56B", "#90C66C", "#92C76C", "#94CA6D", "#98CB6E", "#99CC70",
+    "#9BCC72", "#9FCD72", "#A1CE73", "#A4D176",
+];
+
 /// Crameri nuuk (256 colors)
 /// Source: Fabio Crameri scientific colour maps
 pub const NUUK: &[&str] = &[
@@ -2020,7 +2051,8 @@ pub fn get_color_palette(name: &str) -> Option<&'static [&'static str]> {
         "lajolla" => Some(LAJOLLA),
         "lapaz" => Some(LAPAZ),
         "lipari" => Some(LIPARI),
-        "navia" | "sequential" => Some(NAVIA),
+        "navia" => Some(NAVIA),
+        "sequential" => Some(SEQUENTIAL),
         "nuuk" => Some(NUUK),
         "oslo" => Some(OSLO),
         "tokyo" => Some(TOKYO),
@@ -2221,6 +2253,18 @@ mod tests {
         assert_eq!(get_color_palette("roma").unwrap().len(), 256);
         assert_eq!(get_color_palette("vik").unwrap().len(), 256);
         assert_eq!(get_color_palette("acton").unwrap().len(), 256);
+    }
+
+    #[test]
+    fn test_sequential_palette() {
+        // Sequential is derived from navia with 20% lightest colors removed
+        assert_eq!(get_color_palette("sequential").unwrap().len(), 204);
+        assert_eq!(get_color_palette("navia").unwrap().len(), 256);
+        // First colors should match
+        assert_eq!(
+            get_color_palette("sequential").unwrap()[0],
+            get_color_palette("navia").unwrap()[0]
+        );
     }
 
     #[test]

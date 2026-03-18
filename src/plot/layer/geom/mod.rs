@@ -35,18 +35,17 @@ mod boxplot;
 mod density;
 mod errorbar;
 mod histogram;
-mod label;
 mod line;
 mod linear;
 mod path;
 mod point;
 mod polygon;
+mod rect;
 mod ribbon;
 mod rule;
 mod segment;
 mod smooth;
 mod text;
-mod tile;
 mod violin;
 
 // Re-export types
@@ -60,18 +59,17 @@ pub use boxplot::Boxplot;
 pub use density::Density;
 pub use errorbar::ErrorBar;
 pub use histogram::Histogram;
-pub use label::Label;
 pub use line::Line;
 pub use linear::Linear;
 pub use path::Path;
 pub use point::Point;
 pub use polygon::Polygon;
+pub use rect::Rect;
 pub use ribbon::Ribbon;
 pub use rule::Rule;
 pub use segment::Segment;
 pub use smooth::Smooth;
 pub use text::Text;
-pub use tile::Tile;
 pub use violin::Violin;
 
 use crate::plot::types::{DefaultAestheticValue, ParameterValue, Schema};
@@ -86,7 +84,7 @@ pub enum GeomType {
     Path,
     Bar,
     Area,
-    Tile,
+    Rect,
     Polygon,
     Ribbon,
     Histogram,
@@ -95,7 +93,6 @@ pub enum GeomType {
     Boxplot,
     Violin,
     Text,
-    Label,
     Segment,
     Arrow,
     Rule,
@@ -111,7 +108,7 @@ impl std::fmt::Display for GeomType {
             GeomType::Path => "path",
             GeomType::Bar => "bar",
             GeomType::Area => "area",
-            GeomType::Tile => "tile",
+            GeomType::Rect => "rect",
             GeomType::Polygon => "polygon",
             GeomType::Ribbon => "ribbon",
             GeomType::Histogram => "histogram",
@@ -120,7 +117,6 @@ impl std::fmt::Display for GeomType {
             GeomType::Boxplot => "boxplot",
             GeomType::Violin => "violin",
             GeomType::Text => "text",
-            GeomType::Label => "label",
             GeomType::Segment => "segment",
             GeomType::Arrow => "arrow",
             GeomType::Rule => "rule",
@@ -223,7 +219,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
     /// Returns valid parameter names for SETTING clause.
     ///
-    /// Combines supported aesthetics with non-aesthetic parameters.
+    /// Combines supported aesthetics with non-aesthetic parameters from default_params.
     fn valid_settings(&self) -> Vec<&'static str> {
         let mut valid: Vec<&'static str> = self.aesthetics().supported();
         for param in self.default_params() {
@@ -266,9 +262,9 @@ impl Geom {
         Self(Arc::new(Area))
     }
 
-    /// Create a Tile geom
-    pub fn tile() -> Self {
-        Self(Arc::new(Tile))
+    /// Create a Rect geom
+    pub fn rect() -> Self {
+        Self(Arc::new(Rect))
     }
 
     /// Create a Polygon geom
@@ -311,11 +307,6 @@ impl Geom {
         Self(Arc::new(Text))
     }
 
-    /// Create a Label geom
-    pub fn label() -> Self {
-        Self(Arc::new(Label))
-    }
-
     /// Create a Segment geom
     pub fn segment() -> Self {
         Self(Arc::new(Segment))
@@ -349,7 +340,7 @@ impl Geom {
             GeomType::Path => Self::path(),
             GeomType::Bar => Self::bar(),
             GeomType::Area => Self::area(),
-            GeomType::Tile => Self::tile(),
+            GeomType::Rect => Self::rect(),
             GeomType::Polygon => Self::polygon(),
             GeomType::Ribbon => Self::ribbon(),
             GeomType::Histogram => Self::histogram(),
@@ -358,7 +349,6 @@ impl Geom {
             GeomType::Boxplot => Self::boxplot(),
             GeomType::Violin => Self::violin(),
             GeomType::Text => Self::text(),
-            GeomType::Label => Self::label(),
             GeomType::Segment => Self::segment(),
             GeomType::Arrow => Self::arrow(),
             GeomType::Rule => Self::rule(),

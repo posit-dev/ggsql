@@ -1,7 +1,10 @@
 //! Text geom implementation
 
-use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::plot::types::DefaultAestheticValue;
+use crate::plot::{DefaultParam, DefaultParamValue, ParameterValue};
+use crate::{naming, DataFrame, Result};
+use std::collections::HashMap;
 
 /// Text geom - text labels at positions
 #[derive(Debug, Clone, Copy)]
@@ -17,23 +20,53 @@ impl GeomTrait for Text {
             defaults: &[
                 ("pos1", DefaultAestheticValue::Required),
                 ("pos2", DefaultAestheticValue::Required),
-                ("label", DefaultAestheticValue::Null),
+                ("label", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::Null),
-                ("size", DefaultAestheticValue::Number(11.0)),
+                ("fill", DefaultAestheticValue::String("black")),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
-                ("family", DefaultAestheticValue::Null),
-                ("fontface", DefaultAestheticValue::Null),
-                ("hjust", DefaultAestheticValue::Null),
-                ("vjust", DefaultAestheticValue::Null),
+                ("typeface", DefaultAestheticValue::Null),
+                ("fontsize", DefaultAestheticValue::Number(11.0)),
+                ("fontweight", DefaultAestheticValue::String("normal")), // Accepts: CSS keywords or numeric values
+                ("italic", DefaultAestheticValue::Boolean(false)),
+                ("hjust", DefaultAestheticValue::Number(0.5)),
+                ("vjust", DefaultAestheticValue::Number(0.5)),
+                ("rotation", DefaultAestheticValue::Number(0.0)),
             ],
         }
     }
 
     fn default_params(&self) -> &'static [DefaultParam] {
-        &[DefaultParam {
-            name: "position",
-            default: DefaultParamValue::String("identity"),
-        }]
+        &[
+            DefaultParam {
+                name: "offset",
+                default: DefaultParamValue::Null,
+            },
+            DefaultParam {
+                name: "format",
+                default: DefaultParamValue::Null,
+            },
+            DefaultParam {
+                name: "position",
+                default: DefaultParamValue::String("identity"),
+            },
+        ]
+    }
+
+    fn post_process(
+        &self,
+        df: DataFrame,
+        parameters: &HashMap<String, ParameterValue>,
+    ) -> Result<DataFrame> {
+        // Check if format parameter is specified
+        let format_template = match parameters.get("format") {
+            Some(ParameterValue::String(template)) => template,
+            _ => return Ok(df), // No formatting, return original
+        };
+
+        // Use format.rs helper to do the formatting
+        let label_col_name = naming::aesthetic_column("label");
+        crate::format::format_dataframe_column(&df, &label_col_name, format_template)
+            .map_err(crate::GgsqlError::ValidationError)
     }
 }
 

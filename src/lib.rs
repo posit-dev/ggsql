@@ -759,6 +759,73 @@ mod integration_tests {
     }
 
     #[test]
+    fn test_end_to_end_place_field_vs_value_encoding() {
+        // Test that PLACE annotation layers render correctly:
+        // - Positional aesthetics (x, y) as field encodings (reference columns)
+        // - Non-positional aesthetics (size, stroke) as value encodings (datum values)
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            SELECT 1 AS x, 10 AS y UNION ALL SELECT 2 AS x, 20 AS y
+            VISUALISE x, y
+            DRAW line
+            PLACE point SETTING x => 5, y => 30, size => 100, stroke => 'red'
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+
+        // Render to Vega-Lite
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        // Find the point annotation layer (should be second layer)
+        let point_layer = &vl_spec["layer"][1];
+
+        // Mark can be either a string or an object with type
+        let mark_type = if point_layer["mark"].is_string() {
+            point_layer["mark"].as_str().unwrap()
+        } else {
+            point_layer["mark"]["type"].as_str().unwrap()
+        };
+        assert_eq!(
+            mark_type, "point",
+            "Second layer should be point annotation"
+        );
+
+        let encoding = &point_layer["encoding"];
+
+        // Positional aesthetics should be field encodings (have "field" key)
+        assert!(
+            encoding["x"]["field"].is_string(),
+            "x should be a field encoding: {:?}",
+            encoding["x"]
+        );
+        assert!(
+            encoding["y"]["field"].is_string(),
+            "y should be a field encoding: {:?}",
+            encoding["y"]
+        );
+
+        // Non-positional aesthetics should be value encodings (have "value" key)
+        assert!(
+            encoding["size"]["value"].is_number(),
+            "size should be a value encoding with numeric value: {:?}",
+            encoding["size"]
+        );
+
+        // Note: stroke color goes through resolve_aesthetics and may be in different location
+        // Just verify it's present somewhere as a literal
+        let has_stroke_value = encoding
+            .get("stroke")
+            .and_then(|s| s.get("value"))
+            .is_some()
+            || point_layer["mark"].get("stroke").is_some();
+        assert!(has_stroke_value, "stroke should be present as a value");
+    }
+
+    #[test]
     fn test_end_to_end_global_constant_in_visualise() {
         // Test that global constants in VISUALISE clause work correctly
         // e.g., VISUALISE date AS x, value AS y, 'value' AS stroke
@@ -860,5 +927,71 @@ mod integration_tests {
             .collect();
         assert!(!layer0_rows.is_empty(), "Should have layer data rows");
         assert_eq!(layer0_rows[0][&stroke_col], "value");
+    }
+
+    #[test]
+    fn test_orientation_setting_rejected_with_helpful_error() {
+        // Test orientation setting behavior for different geom types
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // 1. Bar geom (has implicit orientation) - should reject
+        // Orientation is auto-detected based on mappings, not settable via SETTING
+        let query = r#"
+            SELECT 'A' as category, 10 as value
+            VISUALISE
+            DRAW bar MAPPING category AS x, value AS y SETTING orientation => 'horizontal'
+        "#;
+
+        let result = execute::prepare_data_with_reader(query, &reader);
+        match result {
+            Err(e) => {
+                let err = e.to_string();
+                assert!(
+                    err.contains("Invalid setting 'orientation'"),
+                    "Error should mention invalid setting: {}",
+                    err
+                );
+                assert!(
+                    err.contains("bar"),
+                    "Error should mention the geom type: {}",
+                    err
+                );
+            }
+            Ok(_) => panic!("Should reject orientation setting for bar geom"),
+        }
+
+        // 2. Point geom (symmetrical, no orientation concept) - should reject
+        let query2 = r#"
+            SELECT 1 as x, 2 as y
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y SETTING orientation => 'horizontal'
+        "#;
+
+        let result2 = execute::prepare_data_with_reader(query2, &reader);
+        match result2 {
+            Err(e) => {
+                let err2 = e.to_string();
+                assert!(
+                    err2.contains("Invalid setting 'orientation'"),
+                    "Error should mention invalid setting: {}",
+                    err2
+                );
+            }
+            Ok(_) => panic!("Should reject orientation setting for point geom"),
+        }
+
+        // 3. Line geom (has orientation in default_params) - should accept
+        let query3 = r#"
+            SELECT 1 as x, 2 as y
+            VISUALISE
+            DRAW line MAPPING x AS x, y AS y SETTING orientation => 'aligned'
+        "#;
+
+        let result3 = execute::prepare_data_with_reader(query3, &reader);
+        assert!(
+            result3.is_ok(),
+            "Line geom should accept orientation setting: {:?}",
+            result3.err()
+        );
     }
 }

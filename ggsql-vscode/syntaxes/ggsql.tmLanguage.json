@@ -8,6 +8,7 @@
     { "include": "#numbers" },
     { "include": "#sql-functions" },
     { "include": "#draw-clause" },
+    { "include": "#place-clause" },
     { "include": "#scale-clause" },
     { "include": "#facet-clause" },
     { "include": "#project-clause" },
@@ -217,7 +218,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         { "include": "#comments" },
         { "include": "#strings" },
@@ -249,7 +250,7 @@
       "patterns": [
         {
           "name": "support.type.aesthetic.ggsql",
-          "match": "\\b(x|y|xmin|xmax|ymin|ymax|xend|yend|weight|color|colour|fill|stroke|opacity|size|shape|linetype|linewidth|width|height|label|family|fontface|hjust|vjust|panel|row|column)\\b"
+          "match": "\\b(x|y|xmin|xmax|ymin|ymax|xend|yend|weight|color|colour|fill|stroke|opacity|size|shape|linetype|linewidth|width|height|label|typeface|fontweight|italic|hjust|vjust|panel|row|column)\\b"
         }
       ]
     },
@@ -290,11 +291,25 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "name": "support.type.geom.ggsql",
           "match": "\\b(point|line|path|bar|col|area|tile|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|linear|errorbar)\\b"
+        },
+        { "include": "#common-clause-patterns" }
+      ]
+    },
+    "place-clause": {
+      "begin": "(?i)\\b(PLACE)\\b",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.ggsql" }
+      },
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "patterns": [
+        {
+          "name": "support.type.geom.ggsql",
+          "match": "\\b(point|line|path|bar|col|area|rect|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|linear|errorbar)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]
@@ -304,7 +319,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "name": "keyword.control.scale-modifier.ggsql",
@@ -330,7 +345,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "name": "support.type.property.ggsql",
@@ -352,7 +367,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "name": "support.type.project.ggsql",
@@ -370,7 +385,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "name": "support.type.property.ggsql",
@@ -384,7 +399,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "name": "support.type.theme.ggsql",

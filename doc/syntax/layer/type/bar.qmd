@@ -13,8 +13,8 @@ The following aesthetics are recognised by the bar layer.
 The bar layer has no required aesthetics
 
 ### Optional
-* `x`: Position on the x-axis. If missing all records will be shown in the same bar
-* `y`: The height of the plot. If missing, it will be calculated by the layer
+* Primary axis (e.g. `x`): The categories to create bars for. If missing all records will be shown in the same bar
+* Secondary axis (e.g. `y`): The height of the bars. If missing, it will be calculated by the layer
 * `colour`: The default colour of each bar
 * `stroke`: The colour of the stroke around each bar. Overrides `colour`
 * `fill`: The fill colour of each bar. Overrides `colour`
@@ -27,7 +27,7 @@ The bar layer has no required aesthetics
 * `width`: The width of the bars as a proportion of the available width
 
 ## Data transformation
-If `y` has not been mapped the layer will calculate it for you.
+If the secondary axis has not been mapped the layer will calculate counts for you and display these as the secondary axis.
 
 ### Properties
 
@@ -40,7 +40,10 @@ If `y` has not been mapped the layer will calculate it for you.
 
 ### Default remappings
 
-* `count AS y`: By default the barplot will show count as the height of the bars
+* `count AS <secondary axis>`: By default the barplot will show count as the height of the bars
+
+## Orientation
+Bar plots have categories along their primary axis. The orientation is deduced directly from the mapping. To create a horizontal bar plot you map the categories to `y` instead of `x` (assuming a default Cartesian coordinate system).
 
 ## Examples
 
@@ -97,6 +100,19 @@ SCALE BINNED x
     SETTING breaks => 10
 ```
 
+Create a horizontal bar plot by changing the mapping
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW bar
+    MAPPING species AS y
+```
+
 And use with a polar coordinate system to create a pie chart
 
-**TBD**
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW bar
+    MAPPING species AS fill
+PROJECT TO polar
+```

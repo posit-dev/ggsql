@@ -13,6 +13,8 @@ $$
 
 Where $a$ is the `intercept` and $\beta$ is the `coef`.
 
+> The linear layer doesn't have a natural extend along either axes and the scale ranges can thus not be deduced from it. If the linear layer is the only layer in the visualisation you must specify the position scale ranges manually.
+
 ## Aesthetics
 The following aesthetics are recognised by the abline layer.
 
@@ -27,10 +29,15 @@ The following aesthetics are recognised by the abline layer.
 * `linetype`: The type of the line, i.e. the dashing pattern
 
 ## Settings
-The linear layer has no additional settings.
+* `orientation`: The orientation of the layer, see the [Orientation section](#orientation). One of the following: 
+    * `'aligned'` to align the layer's primary axis with the coordinate system's first axis.
+    * `'transposed'` to align the layer's primary axis with the coordinate system's second axis.
 
 ## Data transformation
 The linear layer does not transform its data but passes it through unchanged.
+
+## Orientation
+Linear layers use the predictor ($x$) for their primary axis and the response $y$ for its secondary axis. Since the primary axis cannot be deduced from the mapping it must be specified using the `orientation` setting. E.g. to create a vertical linear plot, you need to set `orientation => 'transposed'` to indicate that the primary layer axis follows the second axis of the coordinate system.
 
 ## Examples
 
@@ -39,10 +46,10 @@ Add a simple reference line to a scatterplot:
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
   DRAW point MAPPING bill_len AS x, bill_dep AS y
-  DRAW linear MAPPING 0.4 AS coef, -1 AS intercept
+  PLACE linear SETTING coef => 0.4, intercept => -1
 ```
 
-Add multiple reference lines with different colors from a separate dataset:
+Add multiple reference lines with different colors from a separate dataset. Note we're mapping from data here, so we use `DRAW` instead of `PLACE`.
 
 ```{ggsql}
 WITH lines AS (

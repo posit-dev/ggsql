@@ -8,7 +8,8 @@
 //! sensible defaults for standard behavior.
 
 use crate::plot::layer::geom::GeomType;
-use crate::plot::ParameterValue;
+use crate::plot::layer::is_transposed;
+use crate::plot::{ArrayElement, ParameterValue};
 use crate::writer::vegalite::POINTS_TO_PIXELS;
 use crate::{naming, AestheticValue, DataFrame, Geom, GgsqlError, Layer, Result};
 use polars::prelude::ChunkCompareEq;
@@ -16,7 +17,7 @@ use serde_json::{json, Map, Value};
 use std::any::Any;
 use std::collections::HashMap;
 
-use super::data::{dataframe_to_values, dataframe_to_values_with_bins};
+use super::data::{dataframe_to_values, dataframe_to_values_with_bins, ROW_INDEX_COLUMN};
 
 // =============================================================================
 // Basic Geom Utilities
@@ -31,7 +32,7 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Path => "line",
         GeomType::Bar => "bar",
         GeomType::Area => "area",
-        GeomType::Tile => "rect",
+        GeomType::Rect => "rect",
         GeomType::Ribbon => "area",
         GeomType::Polygon => "line",
         GeomType::Histogram => "bar",
@@ -39,7 +40,6 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Violin => "line",
         GeomType::Boxplot => "boxplot",
         GeomType::Text => "text",
-        GeomType::Label => "text",
         GeomType::Segment => "rule",
         GeomType::Rule => "rule",
         GeomType::Linear => "rule",
@@ -189,9 +189,9 @@ pub trait GeomRenderer: Send + Sync {
     fn prepare_data(
         &self,
         df: &DataFrame,
+        _layer: &Layer,
         _data_key: &str,
         binned_columns: &HashMap<String, Vec<f64>>,
-        _context: &RenderContext,
     ) -> Result<PreparedData> {
         let values = if binned_columns.is_empty() {
             dataframe_to_values(df)?
@@ -275,21 +275,34 @@ impl GeomRenderer for BarRenderer {
             _ => 0.9,
         };
 
-        // For dodged bars, use expression-based width with the adjusted width
-        // For non-dodged bars, use band-relative width
-        let width_value = if let Some(adjusted) = layer.adjusted_width {
+        // For horizontal bars, use "height" for band size; for vertical, use "width"
+        let is_horizontal = is_transposed(layer);
+
+        // For dodged bars, use expression-based size with the adjusted width
+        // For non-dodged bars, use band-relative size
+        let size_value = if let Some(adjusted) = layer.adjusted_width {
             // Use bandwidth expression for dodged bars
-            json!({"expr": format!("bandwidth('x') * {}", adjusted)})
+            let axis = if is_horizontal { "y" } else { "x" };
+            json!({"expr": format!("bandwidth('{}') * {}", axis, adjusted)})
         } else {
             json!({"band": width})
         };
 
-        layer_spec["mark"] = json!({
-            "type": "bar",
-            "width": width_value,
-            "align": "center",
-            "clip": true
-        });
+        layer_spec["mark"] = if is_horizontal {
+            json!({
+                "type": "bar",
+                "height": size_value,
+                "baseline": "middle",
+                "clip": true
+            })
+        } else {
+            json!({
+                "type": "bar",
+                "width": size_value,
+                "align": "center",
+                "clip": true
+            })
+        };
         Ok(())
     }
 }
@@ -308,8 +321,35 @@ impl GeomRenderer for PathRenderer {
         _layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        // Use the natural data order
-        encoding.insert("order".to_string(), json!({"value": Value::Null}));
+        // Use row index field to preserve natural data order
+        encoding.insert(
+            "order".to_string(),
+            json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
+        );
+        Ok(())
+    }
+}
+
+// =============================================================================
+// Line Renderer
+// =============================================================================
+
+/// Renderer for line geom - preserves data order for correct line rendering
+pub struct LineRenderer;
+
+impl GeomRenderer for LineRenderer {
+    fn modify_encoding(
+        &self,
+        encoding: &mut Map<String, Value>,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
+        // Use row index field to preserve natural data order
+        // (we've already ordered in SQL via apply_stat_transform)
+        encoding.insert(
+            "order".to_string(),
+            json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
+        );
         Ok(())
     }
 }
@@ -390,9 +430,9 @@ impl GeomRenderer for LinearRenderer {
     fn prepare_data(
         &self,
         df: &DataFrame,
+        _layer: &Layer,
         _data_key: &str,
         _binned_columns: &HashMap<String, Vec<f64>>,
-        _context: &RenderContext,
     ) -> Result<PreparedData> {
         // Just convert DataFrame to JSON values
         // No need to add xmin/xmax - they'll be encoded as literal values
@@ -403,39 +443,51 @@ impl GeomRenderer for LinearRenderer {
     fn modify_encoding(
         &self,
         encoding: &mut Map<String, Value>,
-        _layer: &Layer,
+        layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
         // Remove coefficient and intercept from encoding - they're only used in transforms
         encoding.remove("coef");
         encoding.remove("intercept");
 
-        // Add x/x2/y/y2 encodings for rule mark
-        // All are fields - x_min/x_max are created by transforms, y_min/y_max are computed
+        // Check orientation
+        let is_horizontal = is_transposed(layer);
+
+        // For aligned (default): x is primary axis, y is computed (secondary)
+        // For transposed: y is primary axis, x is computed (secondary)
+        let (primary, primary2, secondary, secondary2) = if is_horizontal {
+            ("y", "y2", "x", "x2")
+        } else {
+            ("x", "x2", "y", "y2")
+        };
+
+        // Add encodings for rule mark
+        // primary_min/primary_max are created by transforms (extent of the axis)
+        // secondary_min/secondary_max are computed via formula
         encoding.insert(
-            "x".to_string(),
+            primary.to_string(),
             json!({
-                "field": "x_min",
+                "field": "primary_min",
                 "type": "quantitative"
             }),
         );
         encoding.insert(
-            "x2".to_string(),
+            primary2.to_string(),
             json!({
-                "field": "x_max"
+                "field": "primary_max"
             }),
         );
         encoding.insert(
-            "y".to_string(),
+            secondary.to_string(),
             json!({
-                "field": "y_min",
+                "field": "secondary_min",
                 "type": "quantitative"
             }),
         );
         encoding.insert(
-            "y2".to_string(),
+            secondary2.to_string(),
             json!({
-                "field": "y_max"
+                "field": "secondary_max"
             }),
         );
 
@@ -445,35 +497,41 @@ impl GeomRenderer for LinearRenderer {
     fn modify_spec(
         &self,
         layer_spec: &mut Value,
-        _layer: &Layer,
+        layer: &Layer,
         context: &RenderContext,
     ) -> Result<()> {
         // Field names for coef and intercept (with aesthetic column prefix)
         let coef_field = naming::aesthetic_column("coef");
         let intercept_field = naming::aesthetic_column("intercept");
 
-        // Get x extent from scale (use pos1, the internal name for the first positional aesthetic)
-        let (x_min, x_max) = context.get_extent("pos1")?;
+        // Check orientation
+        let is_horizontal = is_transposed(layer);
+
+        // Get extent from appropriate axis:
+        // - Aligned (default): extent from pos1 (x-axis), compute y from x
+        // - Transposed: extent from pos2 (y-axis), compute x from y
+        let extent_aesthetic = if is_horizontal { "pos2" } else { "pos1" };
+        let (primary_min, primary_max) = context.get_extent(extent_aesthetic)?;
 
         // Add transforms:
-        // 1. Create constant x_min/x_max fields
-        // 2. Compute y values at those x positions
+        // 1. Create constant primary_min/primary_max fields (extent of the primary axis)
+        // 2. Compute secondary values at those primary positions: secondary = coef * primary + intercept
         let transforms = json!([
             {
-                "calculate": x_min.to_string(),
-                "as": "x_min"
+                "calculate": primary_min.to_string(),
+                "as": "primary_min"
             },
             {
-                "calculate": x_max.to_string(),
-                "as": "x_max"
+                "calculate": primary_max.to_string(),
+                "as": "primary_max"
             },
             {
-                "calculate": format!("datum.{} * datum.x_min + datum.{}", coef_field, intercept_field),
-                "as": "y_min"
+                "calculate": format!("datum.{} * datum.primary_min + datum.{}", coef_field, intercept_field),
+                "as": "secondary_min"
             },
             {
-                "calculate": format!("datum.{} * datum.x_max + datum.{}", coef_field, intercept_field),
-                "as": "y_max"
+                "calculate": format!("datum.{} * datum.primary_max + datum.{}", coef_field, intercept_field),
+                "as": "secondary_max"
             }
         ]);
 
@@ -493,25 +551,699 @@ impl GeomRenderer for LinearRenderer {
 }
 
 // =============================================================================
-// Ribbon Renderer
+// Text Renderer
 // =============================================================================
 
-/// Renderer for ribbon geom - remaps ymin/ymax to y/y2
-pub struct RibbonRenderer;
+/// Renderer for text geom - handles font properties via data splitting
+pub struct TextRenderer;
 
-impl GeomRenderer for RibbonRenderer {
+impl TextRenderer {
+    /// Analyze DataFrame columns to build font property runs using run-length encoding.
+    /// Returns:
+    /// - DataFrame where each row represents a run's font properties (family, fontweight, italic, hjust, vjust, angle)
+    /// - Vec<usize> of run lengths corresponding to each row
+    fn build_font_rle(df: &DataFrame) -> Result<(DataFrame, Vec<usize>)> {
+        use polars::prelude::*;
+
+        let nrows = df.height();
+
+        if nrows == 0 {
+            // Return empty DataFrame and empty run lengths
+            return Ok((DataFrame::default(), Vec::new()));
+        }
+
+        // Build boolean mask showing where any font property changes
+        let mut changed = BooleanChunked::full("changed".into(), false, nrows);
+        let mut font_columns: HashMap<&str, &polars::prelude::Column> = HashMap::new();
+
+        for aesthetic in [
+            "typeface",
+            "fontweight",
+            "italic",
+            "hjust",
+            "vjust",
+            "rotation",
+        ] {
+            if let Ok(col) = df.column(&naming::aesthetic_column(aesthetic)) {
+                let col_changed = col.not_equal(&col.shift(1)).map_err(|e| {
+                    GgsqlError::InternalError(format!("Failed to compare column: {}", e))
+                })?;
+                changed = &changed | &col_changed;
+                font_columns.insert(aesthetic, col);
+            }
+        }
+
+        // Extract change indices (where mask is true)
+        // shift() creates nulls at position 0, which we treat as a change point
+        let mut change_indices: Vec<usize> = Vec::new();
+        for (i, val) in changed.iter().enumerate() {
+            if val == Some(true) || val.is_none() {
+                // Treat null (from shift) or true as change point
+                change_indices.push(i);
+            }
+        }
+
+        // First row is always a change point (shift comparison is null)
+        if !change_indices.is_empty() && change_indices[0] != 0 {
+            change_indices.insert(0, 0);
+        } else if change_indices.is_empty() {
+            change_indices.push(0);
+        }
+
+        // Calculate run lengths
+        let run_lengths: Vec<usize> = change_indices
+            .iter()
+            .enumerate()
+            .map(|(i, &start)| {
+                let end = change_indices.get(i + 1).copied().unwrap_or(nrows);
+                end - start
+            })
+            .collect();
+
+        // Extract rows at change indices (only font columns)
+        let indices_ca = UInt32Chunked::from_vec(
+            "indices".into(),
+            change_indices.iter().map(|&i| i as u32).collect(),
+        );
+        let font_aesthetics = [
+            "typeface",
+            "fontweight",
+            "italic",
+            "hjust",
+            "vjust",
+            "rotation",
+        ];
+
+        let mut result_cols = Vec::new();
+        for aesthetic in font_aesthetics {
+            if let Some(col) = font_columns.get(aesthetic) {
+                let taken = col.take(&indices_ca).map_err(|e| {
+                    GgsqlError::InternalError(format!(
+                        "Failed to take indices from {}: {}",
+                        aesthetic, e
+                    ))
+                })?;
+                result_cols.push(taken);
+            }
+        }
+
+        // Create result DataFrame (only font properties, no run_length column)
+        let result_df = DataFrame::new(result_cols).map_err(|e| {
+            GgsqlError::InternalError(format!("Failed to create run DataFrame: {}", e))
+        })?;
+
+        Ok((result_df, run_lengths))
+    }
+
+    /// Convert typeface to Vega-Lite font value
+    /// Prefers literal over column value
+    fn convert_typeface(
+        literal: Option<&ParameterValue>,
+        column_value: Option<&str>,
+    ) -> Option<Value> {
+        // First select which value to use (prefer literal)
+        let value = if let Some(ParameterValue::String(s)) = literal {
+            s.as_str()
+        } else {
+            column_value?
+        };
+
+        // Then apply conversion
+        if !value.is_empty() {
+            Some(json!(value))
+        } else {
+            None
+        }
+    }
+
+    /// Convert fontweight to Vega-Lite fontWeight value
+    /// Prefers literal over column value
+    /// Accepts all CSS font-weight keywords and numeric values:
+    /// - Keywords: 'thin', 'hairline', 'extra-light', 'ultra-light', 'light',
+    ///   'normal', 'regular', 'lighter', 'medium', 'semi-bold', 'demi-bold',
+    ///   'bold', 'bolder', 'extra-bold', 'ultra-bold', 'black', 'heavy'
+    /// - Numeric values: any number
+    /// - Numeric strings from columns: '100', '400', '700', etc.
+    ///
+    /// Always outputs 'normal' or 'bold' for Vega-Lite compatibility:
+    /// - < 500 → 'normal' (thin, light, normal, regular, lighter)
+    /// - >= 500 → 'bold' (medium, semi-bold, bold, bolder, extra-bold, black, heavy)
+    fn convert_fontweight(
+        literal: Option<&ParameterValue>,
+        column_value: Option<&str>,
+    ) -> Option<Value> {
+        // First select which value to use (prefer literal)
+        let numeric = match literal {
+            Some(ParameterValue::String(s)) => {
+                // String literal: keyword or numeric string
+                Self::parse_fontweight_to_numeric(s.as_str())
+            }
+            Some(ParameterValue::Number(n)) => {
+                // Numeric literal: use directly
+                Some(*n)
+            }
+            _ => {
+                // Column value: try to parse
+                column_value.and_then(Self::parse_fontweight_to_numeric)
+            }
+        }?;
+
+        // Apply >= 500 rule to determine bold/normal
+        let is_bold = numeric >= 500.0;
+        Some(json!(if is_bold { "bold" } else { "normal" }))
+    }
+
+    /// Parse fontweight value from string to numeric value
+    fn parse_fontweight_to_numeric(value: &str) -> Option<f64> {
+        // Try parsing as number first
+        if let Ok(num) = value.parse::<f64>() {
+            return Some(num);
+        }
+
+        // Map CSS font-weight keywords to numeric values
+        // Normalize: convert to lowercase and remove hyphens for flexible matching
+        let normalized = value.to_lowercase().replace("-", "");
+        match normalized.as_str() {
+            "thin" | "hairline" => Some(100.0),
+            "extralight" | "ultralight" => Some(200.0),
+            "light" => Some(300.0),
+            "normal" | "regular" | "lighter" => Some(400.0),
+            "medium" => Some(500.0),
+            "semibold" | "demibold" => Some(600.0),
+            "bold" | "bolder" => Some(700.0),
+            "extrabold" | "ultrabold" => Some(800.0),
+            "black" | "heavy" => Some(900.0),
+            _ => None,
+        }
+    }
+
+    /// Convert italic to Vega-Lite fontStyle value
+    /// Prefers literal over column value
+    /// Accepts boolean literals or string column values ('true', 'false', '1', '0')
+    fn convert_italic(
+        literal: Option<&ParameterValue>,
+        column_value: Option<&str>,
+    ) -> Option<Value> {
+        // First select which value to use (prefer literal)
+        let value = if let Some(ParameterValue::Boolean(b)) = literal {
+            *b
+        } else if let Some(s) = column_value {
+            // Parse string to boolean
+            match s.to_lowercase().as_str() {
+                "true" | "1" => true,
+                "false" | "0" => false,
+                _ => return None,
+            }
+        } else {
+            return None;
+        };
+
+        // Convert boolean to fontStyle
+        let style = if value { "italic" } else { "normal" };
+        Some(json!(style))
+    }
+
+    /// Convert hjust to Vega-Lite align value
+    /// Prefers literal over column value
+    fn convert_hjust(
+        literal: Option<&ParameterValue>,
+        column_value: Option<&str>,
+    ) -> Option<Value> {
+        // First extract which value to use (prefer literal)
+        let value_str = match literal {
+            Some(ParameterValue::String(s)) => s.to_string(),
+            Some(ParameterValue::Number(n)) => n.to_string(),
+            _ => column_value?.to_string(),
+        };
+
+        // Then apply conversion inline
+        let align = match value_str.parse::<f64>() {
+            Ok(v) if v <= 0.25 => "left",
+            Ok(v) if v >= 0.75 => "right",
+            _ => match value_str.as_str() {
+                "left" => "left",
+                "right" => "right",
+                _ => "center",
+            },
+        };
+
+        Some(json!(align))
+    }
+
+    /// Convert vjust to Vega-Lite baseline value
+    /// Prefers literal over column value
+    fn convert_vjust(
+        literal: Option<&ParameterValue>,
+        column_value: Option<&str>,
+    ) -> Option<Value> {
+        // First extract which value to use (prefer literal)
+        let value_str = match literal {
+            Some(ParameterValue::String(s)) => s.to_string(),
+            Some(ParameterValue::Number(n)) => n.to_string(),
+            _ => column_value?.to_string(),
+        };
+
+        // Then apply conversion inline
+        let baseline = match value_str.parse::<f64>() {
+            Ok(v) if v <= 0.25 => "bottom",
+            Ok(v) if v >= 0.75 => "top",
+            _ => match value_str.as_str() {
+                "top" => "top",
+                "bottom" => "bottom",
+                _ => "middle",
+            },
+        };
+
+        Some(json!(baseline))
+    }
+
+    /// Convert rotation to Vega-Lite angle value (degrees)
+    /// Prefers literal over column value
+    /// Normalizes angles to [0, 360) range
+    fn convert_rotation(
+        literal: Option<&ParameterValue>,
+        column_value: Option<f64>,
+    ) -> Option<Value> {
+        // First select which value to use (prefer literal)
+        let value = if let Some(ParameterValue::Number(n)) = literal {
+            *n
+        } else {
+            column_value?
+        };
+
+        // Then apply conversion inline
+        let normalized = value % 360.0;
+        let angle = if normalized < 0.0 {
+            normalized + 360.0
+        } else {
+            normalized
+        };
+
+        Some(json!(angle))
+    }
+
+    /// Apply font properties to mark object from DataFrame row and layer literals
+    /// Uses literals from layer parameters if present, otherwise uses DataFrame column values
+    fn apply_font_properties(
+        mark_obj: &mut Map<String, Value>,
+        df: &DataFrame,
+        row_idx: usize,
+        layer: &Layer,
+    ) -> Result<()> {
+        // Helper to extract string column values using aesthetic column naming
+        let get_str = |aesthetic: &str| -> Option<String> {
+            let col_name = naming::aesthetic_column(aesthetic);
+            df.column(&col_name)
+                .ok()
+                .and_then(|col| col.str().ok())
+                .and_then(|ca| ca.get(row_idx))
+                .map(|s| s.to_string())
+        };
+
+        // Helper to extract numeric column values (for angle)
+        let get_f64 = |aesthetic: &str| -> Option<f64> {
+            use polars::prelude::*;
+            let col_name = naming::aesthetic_column(aesthetic);
+            let col = df.column(&col_name).ok()?;
+
+            // Try as string first (for string-encoded numbers)
+            if let Ok(ca) = col.str() {
+                return ca.get(row_idx).and_then(|s| s.parse::<f64>().ok());
+            }
+
+            // Try as numeric types directly
+            if let Ok(casted) = col.cast(&DataType::Float64) {
+                if let Ok(ca) = casted.f64() {
+                    return ca.get(row_idx);
+                }
+            }
+
+            None
+        };
+
+        // Convert and apply font properties
+        if let Some(typeface_val) = Self::convert_typeface(
+            layer.get_literal("typeface"),
+            get_str("typeface").as_deref(),
+        ) {
+            mark_obj.insert("font".to_string(), typeface_val);
+        }
+
+        if let Some(weight) = Self::convert_fontweight(
+            layer.get_literal("fontweight"),
+            get_str("fontweight").as_deref(),
+        ) {
+            mark_obj.insert("fontWeight".to_string(), weight);
+        }
+
+        if let Some(style) =
+            Self::convert_italic(layer.get_literal("italic"), get_str("italic").as_deref())
+        {
+            mark_obj.insert("fontStyle".to_string(), style);
+        }
+
+        if let Some(hjust_val) =
+            Self::convert_hjust(layer.get_literal("hjust"), get_str("hjust").as_deref())
+        {
+            mark_obj.insert("align".to_string(), hjust_val);
+        }
+
+        if let Some(vjust_val) =
+            Self::convert_vjust(layer.get_literal("vjust"), get_str("vjust").as_deref())
+        {
+            mark_obj.insert("baseline".to_string(), vjust_val);
+        }
+
+        if let Some(angle_val) =
+            Self::convert_rotation(layer.get_literal("rotation"), get_f64("rotation"))
+        {
+            mark_obj.insert("angle".to_string(), angle_val);
+        }
+
+        Ok(())
+    }
+
+    /// Build transform with source filter
+    fn build_transform_with_filter(prototype: &Value, source_key: &str) -> Vec<Value> {
+        let source_filter = json!({
+            "filter": {
+                "field": naming::SOURCE_COLUMN,
+                "equal": source_key
+            }
+        });
+
+        let existing_transforms = prototype
+            .get("transform")
+            .and_then(|t| t.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut new_transforms = vec![source_filter];
+        new_transforms.extend(existing_transforms);
+        new_transforms
+    }
+
+    /// Finalize layers as nested layer with shared encoding (works for single or multiple runs)
+    fn finalize_nested_layers(
+        &self,
+        prototype: Value,
+        data_key: &str,
+        font_runs_df: &DataFrame,
+        run_lengths: &[usize],
+        layer: &Layer,
+    ) -> Result<Vec<Value>> {
+        // Extract shared encoding from prototype
+        let shared_encoding = prototype.get("encoding").cloned();
+
+        // Build base mark object with fixed parameters
+        let mut base_mark = json!({"type": "text"});
+        if let Some(mark_map) = base_mark.as_object_mut() {
+            // Extract offset parameter (offset => [x, y] or offset => n)
+            match layer.parameters.get("offset") {
+                Some(ParameterValue::Array(offset_array)) if offset_array.len() == 2 => {
+                    // Array case: [x, y]
+                    if let ArrayElement::Number(x_offset) = offset_array[0] {
+                        mark_map.insert("xOffset".to_string(), json!(x_offset * POINTS_TO_PIXELS));
+                    }
+                    if let ArrayElement::Number(y_offset) = offset_array[1] {
+                        mark_map.insert("yOffset".to_string(), json!(-y_offset * POINTS_TO_PIXELS));
+                    }
+                }
+                Some(ParameterValue::Number(offset)) => {
+                    // Single number case: applies to both x and y
+                    mark_map.insert("xOffset".to_string(), json!(offset * POINTS_TO_PIXELS));
+                    mark_map.insert("yOffset".to_string(), json!(-offset * POINTS_TO_PIXELS));
+                }
+                _ => {}
+            }
+        }
+
+        // Build individual layers without encoding (mark + transform only)
+        // Use run_lengths to get number of runs (works even when no font columns exist)
+        let nruns = run_lengths.len();
+        let mut nested_layers: Vec<Value> = Vec::with_capacity(nruns);
+
+        for run_idx in 0..nruns {
+            let suffix = format!("_font_{}", run_idx);
+            let source_key = format!("{}{}", data_key, suffix);
+
+            // Clone base mark and apply font-specific properties
+            let mut mark_obj = base_mark.clone();
+            if let Some(mark_map) = mark_obj.as_object_mut() {
+                Self::apply_font_properties(mark_map, font_runs_df, run_idx, layer)?;
+            }
+
+            // Create layer with mark and transform (no encoding)
+            nested_layers.push(json!({
+                "mark": mark_obj,
+                "transform": Self::build_transform_with_filter(&prototype, &source_key)
+            }));
+        }
+
+        // Wrap in parent spec with shared encoding
+        let mut parent_spec = json!({"layer": nested_layers});
+
+        if let Some(encoding) = shared_encoding {
+            parent_spec["encoding"] = encoding;
+        }
+
+        Ok(vec![parent_spec])
+    }
+}
+
+impl GeomRenderer for TextRenderer {
+    fn prepare_data(
+        &self,
+        df: &DataFrame,
+        _layer: &Layer,
+        _data_key: &str,
+        binned_columns: &HashMap<String, Vec<f64>>,
+    ) -> Result<PreparedData> {
+        // Note: Label formatting is already applied via Text::post_process() during execution
+
+        // Analyze font columns to get RLE runs
+        let (font_runs_df, run_lengths) = Self::build_font_rle(df)?;
+
+        // Split data by font runs, tracking cumulative position
+        let mut components: HashMap<String, Vec<Value>> = HashMap::new();
+        let mut position = 0;
+
+        for (run_idx, &length) in run_lengths.iter().enumerate() {
+            let suffix = format!("_font_{}", run_idx);
+
+            // Slice the contiguous run from the DataFrame (more efficient than boolean masking)
+            let sliced = df.slice(position as i64, length);
+
+            let values = if binned_columns.is_empty() {
+                dataframe_to_values(&sliced)?
+            } else {
+                dataframe_to_values_with_bins(&sliced, binned_columns)?
+            };
+
+            components.insert(suffix, values);
+            position += length;
+        }
+
+        Ok(PreparedData::Composite {
+            components,
+            metadata: Box::new((font_runs_df, run_lengths)),
+        })
+    }
+
     fn modify_encoding(
         &self,
         encoding: &mut Map<String, Value>,
         _layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        if let Some(ymax) = encoding.remove("ymax") {
-            encoding.insert("y".to_string(), ymax);
+        // Remove font aesthetics from encoding - they only work as mark properties
+        for &aesthetic in &[
+            "typeface",
+            "fontweight",
+            "italic",
+            "hjust",
+            "vjust",
+            "rotation",
+        ] {
+            encoding.remove(aesthetic);
         }
+
+        // Suppress legend and scale for text encoding
+        if let Some(text_encoding) = encoding.get_mut("text") {
+            if let Some(text_obj) = text_encoding.as_object_mut() {
+                text_obj.insert("legend".to_string(), Value::Null);
+                text_obj.insert("scale".to_string(), Value::Null);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn needs_source_filter(&self) -> bool {
+        // TextRenderer handles source filtering in finalize()
+        false
+    }
+
+    fn finalize(
+        &self,
+        prototype: Value,
+        layer: &Layer,
+        data_key: &str,
+        prepared: &PreparedData,
+    ) -> Result<Vec<Value>> {
+        let PreparedData::Composite { metadata, .. } = prepared else {
+            return Err(GgsqlError::InternalError(
+                "TextRenderer::finalize called with non-composite data".to_string(),
+            ));
+        };
+
+        // Downcast metadata to font runs
+        let (font_runs_df, run_lengths) = metadata
+            .downcast_ref::<(DataFrame, Vec<usize>)>()
+            .ok_or_else(|| GgsqlError::InternalError("Failed to downcast font runs".to_string()))?;
+
+        // Generate nested layers from font runs (works for single or multiple runs)
+        self.finalize_nested_layers(prototype, data_key, font_runs_df, run_lengths, layer)
+    }
+}
+
+// =============================================================================
+// Ribbon Renderer
+// =============================================================================
+
+/// Renderer for ribbon geom - remaps ymin/ymax to y/y2 and preserves data order
+pub struct RibbonRenderer;
+
+impl GeomRenderer for RibbonRenderer {
+    fn modify_encoding(
+        &self,
+        encoding: &mut Map<String, Value>,
+        layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
+        let is_horizontal = is_transposed(layer);
+
+        // Remap min/max to primary/secondary based on orientation:
+        // - Aligned (vertical): ymax→y, ymin→y2
+        // - Transposed (horizontal): xmax→x, xmin→x2
+        let (max_key, min_key, target, target2) = if is_horizontal {
+            ("xmax", "xmin", "x", "x2")
+        } else {
+            ("ymax", "ymin", "y", "y2")
+        };
+
+        if let Some(max_val) = encoding.remove(max_key) {
+            encoding.insert(target.to_string(), max_val);
+        }
+        if let Some(min_val) = encoding.remove(min_key) {
+            encoding.insert(target2.to_string(), min_val);
+        }
+
+        // Note: Don't add order encoding for area marks - it interferes with rendering
+        Ok(())
+    }
+}
+
+// =============================================================================
+// Rect Renderer
+// =============================================================================
+
+/// Renderer for rect geom - handles continuous and discrete rectangles
+///
+/// For continuous scales: remaps xmin/xmax → x/x2, ymin/ymax → y/y2
+/// For discrete scales: keeps x/y as-is and applies width/height as band fractions
+pub struct RectRenderer;
+
+impl GeomRenderer for RectRenderer {
+    fn modify_encoding(
+        &self,
+        encoding: &mut Map<String, Value>,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
+        // Handle x-direction: continuous if has xmin/xmax, discrete otherwise
+        if let Some(xmin) = encoding.remove("xmin") {
+            encoding.insert("x".to_string(), xmin);
+        }
+        if let Some(xmax) = encoding.remove("xmax") {
+            encoding.insert("x2".to_string(), xmax);
+        }
+
+        // Handle y-direction: continuous if has ymin/ymax, discrete otherwise
         if let Some(ymin) = encoding.remove("ymin") {
-            encoding.insert("y2".to_string(), ymin);
+            encoding.insert("y".to_string(), ymin);
         }
+        if let Some(ymax) = encoding.remove("ymax") {
+            encoding.insert("y2".to_string(), ymax);
+        }
+
+        Ok(())
+    }
+
+    fn modify_spec(
+        &self,
+        layer_spec: &mut Value,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
+        let encoding = layer_spec
+            .get_mut("encoding")
+            .and_then(|e| e.as_object_mut());
+
+        let Some(encoding) = encoding else {
+            return Ok(());
+        };
+
+        // Check which directions are discrete
+        let x_is_discrete = !encoding.contains_key("x2");
+        let y_is_discrete = !encoding.contains_key("y2");
+
+        // Early return if both continuous
+        if !x_is_discrete && !y_is_discrete {
+            return Ok(());
+        }
+
+        // Build mark properties for discrete directions
+        let mut mark = json!({
+            "type": "rect",
+            "clip": true
+        });
+
+        if x_is_discrete {
+            if let Some(width_enc) = encoding.remove("width") {
+                // Check if it's a field encoding or literal value
+                if let Some(field) = width_enc.get("field").and_then(|f| f.as_str()) {
+                    // Field encoding: use expression with datum reference
+                    mark["width"] = json!({
+                        "expr": format!("datum.{} * bandwidth('x')", field)
+                    });
+                } else if let Some(value) = width_enc.get("value") {
+                    // Literal value: use band syntax
+                    mark["width"] = json!({"band": value});
+                }
+            }
+        }
+
+        if y_is_discrete {
+            if let Some(height_enc) = encoding.remove("height") {
+                // Check if it's a field encoding or literal value
+                if let Some(field) = height_enc.get("field").and_then(|f| f.as_str()) {
+                    // Field encoding: use expression with datum reference
+                    mark["height"] = json!({
+                        "expr": format!("datum.{} * bandwidth('y')", field)
+                    });
+                } else if let Some(value) = height_enc.get("value") {
+                    // Literal value: use band syntax
+                    mark["height"] = json!({"band": value});
+                }
+            }
+        }
+
+        // Only set mark if we added width or height
+        if mark.get("width").is_some() || mark.get("height").is_some() {
+            layer_spec["mark"] = mark;
+        }
+
         Ok(())
     }
 }
@@ -536,8 +1268,11 @@ impl GeomRenderer for PolygonRenderer {
         if let Some(color) = encoding.remove("color") {
             encoding.insert("fill".to_string(), color);
         }
-        // Use the natural data order
-        encoding.insert("order".to_string(), json!({"value": Value::Null}));
+        // Use row index field to preserve natural data order
+        encoding.insert(
+            "order".to_string(),
+            json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
+        );
         Ok(())
     }
 
@@ -566,7 +1301,7 @@ impl GeomRenderer for ViolinRenderer {
     fn modify_spec(
         &self,
         layer_spec: &mut Value,
-        _layer: &Layer,
+        layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
         layer_spec["mark"] = json!({
@@ -575,12 +1310,27 @@ impl GeomRenderer for ViolinRenderer {
         });
         let offset_col = naming::aesthetic_column("offset");
 
+        // It'll be implemented as an offset.
+        let violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
+
+        // Read orientation from layer (already resolved during execution)
+        let is_horizontal = is_transposed(layer);
+
+        // Continuous axis column for order calculation:
+        // - Vertical: pos2 (y-axis has continuous density values)
+        // - Horizontal: pos1 (x-axis has continuous density values)
+        let continuous_col = if is_horizontal {
+            naming::aesthetic_column("pos1")
+        } else {
+            naming::aesthetic_column("pos2")
+        };
+
         // We use an order calculation to create a proper closed shape.
-        // Right side (+ offset), sort by -y (top -> bottom)
-        // Left side (- offset), sort by +y (bottom -> top)
+        // Right side (+ offset), sort by -continuous (top -> bottom)
+        // Left side (- offset), sort by +continuous (bottom -> top)
         let calc_order = format!(
-            "datum.__violin_offset > 0 ? -datum.{y} : datum.{y}",
-            y = naming::aesthetic_column("pos2")
+            "datum.__violin_offset > 0 ? -datum.{} : datum.{}",
+            continuous_col, continuous_col
         );
 
         // Filter threshold to trim very low density regions (removes thin tails)
@@ -594,9 +1344,6 @@ impl GeomRenderer for ViolinRenderer {
             .and_then(|t| t.as_array())
             .cloned()
             .unwrap_or_default();
-
-        // Mirror the offset on both sides (offset is already scaled by post_process)
-        let violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
 
         // Check if pos1offset exists (from dodging) - we'll combine it with violin offset
         let pos1offset_col = naming::aesthetic_column("pos1offset");
@@ -638,41 +1385,49 @@ impl GeomRenderer for ViolinRenderer {
     fn modify_encoding(
         &self,
         encoding: &mut Map<String, Value>,
-        _layer: &Layer,
+        layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        // Ensure x is in detail encoding to create separate violins per x category
+        // Read orientation from layer (already resolved during execution)
+        let is_horizontal = is_transposed(layer);
+
+        // Categorical axis for detail encoding:
+        // - Vertical: x channel (categorical groups on x-axis)
+        // - Horizontal: y channel (categorical groups on y-axis)
+        let categorical_channel = if is_horizontal { "y" } else { "x" };
+
+        // Ensure categorical field is in detail encoding to create separate violins per category
         // This is needed because line marks with filled:true require detail to create separate paths
-        let x_field = encoding
-            .get("x")
+        let categorical_field = encoding
+            .get(categorical_channel)
             .and_then(|x| x.get("field"))
             .and_then(|f| f.as_str())
             .map(|s| s.to_string());
 
-        if let Some(x_field) = x_field {
+        if let Some(cat_field) = categorical_field {
             match encoding.get_mut("detail") {
                 Some(detail) if detail.is_object() => {
-                    // Single field object - check if it's already x, otherwise convert to array
-                    if detail.get("field").and_then(|f| f.as_str()) != Some(&x_field) {
+                    // Single field object - check if it's already the categorical field, otherwise convert to array
+                    if detail.get("field").and_then(|f| f.as_str()) != Some(&cat_field) {
                         let existing = detail.clone();
-                        *detail = json!([existing, {"field": x_field, "type": "nominal"}]);
+                        *detail = json!([existing, {"field": cat_field, "type": "nominal"}]);
                     }
                 }
                 Some(detail) if detail.is_array() => {
-                    // Array - check if x already present, add if not
+                    // Array - check if categorical field already present, add if not
                     let arr = detail.as_array_mut().unwrap();
-                    let has_x = arr
+                    let has_cat = arr
                         .iter()
-                        .any(|d| d.get("field").and_then(|f| f.as_str()) == Some(&x_field));
-                    if !has_x {
-                        arr.push(json!({"field": x_field, "type": "nominal"}));
+                        .any(|d| d.get("field").and_then(|f| f.as_str()) == Some(&cat_field));
+                    if !has_cat {
+                        arr.push(json!({"field": cat_field, "type": "nominal"}));
                     }
                 }
                 None => {
-                    // No detail encoding - add it with x field
+                    // No detail encoding - add it with categorical field
                     encoding.insert(
                         "detail".to_string(),
-                        json!({"field": x_field, "type": "nominal"}),
+                        json!({"field": cat_field, "type": "nominal"}),
                     );
                 }
                 _ => {}
@@ -703,8 +1458,12 @@ impl GeomRenderer for ViolinRenderer {
             }
         }
 
+        // Offset channel:
+        // - Vertical: xOffset (offsets left/right from category)
+        // - Horizontal: yOffset (offsets up/down from category)
+        let offset_channel = if is_horizontal { "yOffset" } else { "xOffset" };
         encoding.insert(
-            "xOffset".to_string(),
+            offset_channel.to_string(),
             json!({
                 "field": "__final_offset",
                 "type": "quantitative",
@@ -909,17 +1668,33 @@ impl BoxplotRenderer {
     ) -> Result<Vec<Value>> {
         let mut layers: Vec<Value> = Vec::new();
 
-        let value_col = naming::aesthetic_column("pos2");
-        let value2_col = naming::aesthetic_column("pos2end");
+        // Read orientation from layer (already resolved during execution)
+        let is_horizontal = is_transposed(layer);
 
-        let x_col = layer
+        // Value columns depend on orientation (after DataFrame column flip):
+        // - Vertical: values in pos2/pos2end (no flip)
+        // - Horizontal: values in pos1/pos1end (was pos2/pos2end before flip)
+        let (value_col, value2_col) = if is_horizontal {
+            (
+                naming::aesthetic_column("pos1"),
+                naming::aesthetic_column("pos1end"),
+            )
+        } else {
+            (
+                naming::aesthetic_column("pos2"),
+                naming::aesthetic_column("pos2end"),
+            )
+        };
+
+        // Validate x aesthetic exists (required for boxplot)
+        layer
             .mappings
             .get("pos1")
             .and_then(|x| x.column_name())
             .ok_or_else(|| {
                 GgsqlError::WriterError("Boxplot requires 'x' aesthetic mapping".to_string())
             })?;
-        // Validate y aesthetic exists (not used directly but required for boxplot)
+        // Validate y aesthetic exists (required for boxplot)
         layer
             .mappings
             .get("pos2")
@@ -928,8 +1703,6 @@ impl BoxplotRenderer {
                 GgsqlError::WriterError("Boxplot requires 'y' aesthetic mapping".to_string())
             })?;
 
-        // Set orientation
-        let is_horizontal = x_col == value_col;
         let value_var1 = if is_horizontal { "x" } else { "y" };
         let value_var2 = if is_horizontal { "x2" } else { "y2" };
 
@@ -945,8 +1718,9 @@ impl BoxplotRenderer {
 
         // For dodged boxplots, use expression-based width with adjusted_width
         // For non-dodged boxplots, use band-relative width
+        let axis = if is_horizontal { "y" } else { "x" };
         let width_value = if let Some(adjusted) = layer.adjusted_width {
-            json!({"expr": format!("bandwidth('x') * {}", adjusted)})
+            json!({"expr": format!("bandwidth('{}') * {}", axis, adjusted)})
         } else {
             json!({"band": base_width})
         };
@@ -1085,9 +1859,9 @@ impl GeomRenderer for BoxplotRenderer {
     fn prepare_data(
         &self,
         df: &DataFrame,
+        _layer: &Layer,
         _data_key: &str,
         binned_columns: &HashMap<String, Vec<f64>>,
-        _context: &RenderContext,
     ) -> Result<PreparedData> {
         let (components, has_outliers) = self.prepare_components(df, binned_columns)?;
 
@@ -1131,16 +1905,19 @@ impl GeomRenderer for BoxplotRenderer {
 pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
     match geom.geom_type() {
         GeomType::Path => Box::new(PathRenderer),
+        GeomType::Line => Box::new(LineRenderer),
         GeomType::Bar => Box::new(BarRenderer),
+        GeomType::Rect => Box::new(RectRenderer),
         GeomType::Ribbon => Box::new(RibbonRenderer),
         GeomType::Polygon => Box::new(PolygonRenderer),
         GeomType::Boxplot => Box::new(BoxplotRenderer),
         GeomType::Violin => Box::new(ViolinRenderer),
+        GeomType::Text => Box::new(TextRenderer),
         GeomType::Segment => Box::new(SegmentRenderer),
         GeomType::Linear => Box::new(LinearRenderer),
         GeomType::ErrorBar => Box::new(ErrorBarRenderer),
         GeomType::Rule => Box::new(RuleRenderer),
-        // All other geoms (Point, Line, Area, Density, Tile, etc.) use the default renderer
+        // All other geoms (Point, Area, Density, Tile, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }
 }
@@ -1256,6 +2033,1114 @@ mod tests {
                 {"field": "species", "type": "nominal"}
             ]))
         );
+    }
+
+    // =============================================================================
+    // RectRenderer Test Helpers
+    // =============================================================================
+
+    /// Helper to create a quantitative encoding entry
+    fn quant(field: &str) -> Value {
+        json!({"field": field, "type": "quantitative"})
+    }
+
+    /// Helper to create a nominal encoding entry
+    fn nominal(field: &str) -> Value {
+        json!({"field": field, "type": "nominal"})
+    }
+
+    /// Helper to create a literal value encoding
+    fn literal(val: f64) -> Value {
+        json!({"value": val})
+    }
+
+    /// Helper to create a scale encoding with explicit domain
+    /// Use same min/max for constant scales, different values for variable scales
+    fn scale(field: &str, min: f64, max: f64) -> Value {
+        json!({
+            "field": field,
+            "type": "quantitative",
+            "scale": {
+                "domain": [min, max]
+            }
+        })
+    }
+
+    /// Helper to run rect rendering pipeline (modify_encoding + modify_spec)
+    fn render_rect(encoding: &mut Map<String, Value>) -> Result<Value> {
+        let renderer = RectRenderer;
+        let layer = Layer::new(crate::plot::Geom::rect());
+        let context = RenderContext::new(&[]);
+
+        renderer.modify_encoding(encoding, &layer, &context)?;
+
+        let mut layer_spec = json!({
+            "mark": {"type": "rect", "clip": true},
+            "encoding": encoding
+        });
+
+        renderer.modify_spec(&mut layer_spec, &layer, &context)?;
+        Ok(layer_spec)
+    }
+
+    // =============================================================================
+    // RectRenderer Tests
+    // =============================================================================
+
+    #[test]
+    fn test_rect_continuous_both_axes() {
+        // Test rect with continuous scales on both axes (xmin/xmax, ymin/ymax)
+        // Should remap xmin->x, xmax->x2, ymin->y, ymax->y2
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("xmin".to_string(), quant("xmin_col"));
+        encoding.insert("xmax".to_string(), quant("xmax_col"));
+        encoding.insert("ymin".to_string(), quant("ymin_col"));
+        encoding.insert("ymax".to_string(), quant("ymax_col"));
+
+        let spec = render_rect(&mut encoding).unwrap();
+
+        // Should remap to x/x2/y/y2
+        let enc = spec["encoding"].as_object().unwrap();
+        assert_eq!(enc.get("x"), Some(&quant("xmin_col")));
+        assert_eq!(enc.get("x2"), Some(&quant("xmax_col")));
+        assert_eq!(enc.get("y"), Some(&quant("ymin_col")));
+        assert_eq!(enc.get("y2"), Some(&quant("ymax_col")));
+
+        // Original min/max should be removed
+        assert!(enc.get("xmin").is_none());
+        assert!(enc.get("xmax").is_none());
+        assert!(enc.get("ymin").is_none());
+        assert!(enc.get("ymax").is_none());
+
+        // Should not have band sizing (both continuous)
+        assert!(spec["mark"].get("width").is_none());
+        assert!(spec["mark"].get("height").is_none());
+    }
+
+    #[test]
+    fn test_rect_discrete_x_continuous_y() {
+        // Test rect with discrete x scale and continuous y scale
+        // x/width (discrete) and ymin/ymax (continuous)
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("x".to_string(), nominal("day"));
+        encoding.insert("width".to_string(), literal(0.8));
+        encoding.insert("ymin".to_string(), quant("ymin_col"));
+        encoding.insert("ymax".to_string(), quant("ymax_col"));
+
+        let spec = render_rect(&mut encoding).unwrap();
+        let enc = spec["encoding"].as_object().unwrap();
+
+        // x should remain as x (discrete)
+        assert_eq!(enc.get("x"), Some(&nominal("day")));
+
+        // y should be remapped from ymin/ymax
+        assert_eq!(enc.get("y"), Some(&quant("ymin_col")));
+        assert_eq!(enc.get("y2"), Some(&quant("ymax_col")));
+
+        // width should be removed from encoding
+        assert!(enc.get("width").is_none());
+
+        // Should have mark-level width with band sizing
+        assert_eq!(spec["mark"]["width"], json!({"band": 0.8}));
+        assert!(spec["mark"].get("height").is_none()); // y is continuous, no height
+    }
+
+    #[test]
+    fn test_rect_discrete_both_axes_literal_width() {
+        // Test rect with discrete scales on both axes with literal width/height
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("x".to_string(), nominal("day"));
+        encoding.insert("width".to_string(), literal(0.7));
+        encoding.insert("y".to_string(), nominal("hour"));
+        encoding.insert("height".to_string(), literal(0.9));
+
+        let spec = render_rect(&mut encoding).unwrap();
+        let enc = spec["encoding"].as_object().unwrap();
+
+        // x and y should remain
+        assert_eq!(enc.get("x"), Some(&nominal("day")));
+        assert_eq!(enc.get("y"), Some(&nominal("hour")));
+
+        // width/height should be removed from encoding
+        assert!(enc.get("width").is_none());
+        assert!(enc.get("height").is_none());
+
+        // Should have mark-level width and height with band sizing
+        assert_eq!(spec["mark"]["width"], json!({"band": 0.7}));
+        assert_eq!(spec["mark"]["height"], json!({"band": 0.9}));
+    }
+
+    #[test]
+    fn test_rect_discrete_both_axes_default_width() {
+        // Test rect with discrete scales on both axes without explicit width/height
+        // Should use default band size (1.0)
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("x".to_string(), nominal("day"));
+        encoding.insert("y".to_string(), nominal("hour"));
+
+        let spec = render_rect(&mut encoding).unwrap();
+
+        // With no width/height specified, should have no mark-level width/height
+        // (rects will fill the full band by default)
+        assert!(spec["mark"].get("width").is_none());
+        assert!(spec["mark"].get("height").is_none());
+    }
+
+    #[test]
+    fn test_rect_discrete_with_field_width() {
+        // Test that field-based width on discrete scales uses datum expressions
+        // (works for both variable and constant domains, or no domain)
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("x".to_string(), nominal("day"));
+        encoding.insert("width".to_string(), scale("width_col", 0.5, 0.9));
+
+        let spec = render_rect(&mut encoding).unwrap();
+
+        // Should use mark-level width with datum expression
+        assert_eq!(
+            spec["mark"]["width"],
+            json!({"expr": "datum.width_col * bandwidth('x')"})
+        );
+    }
+
+    #[test]
+    fn test_rect_continuous_x_discrete_y() {
+        // Test rect with continuous x (xmin/xmax) and discrete y (y/height)
+        let mut encoding = serde_json::Map::new();
+        encoding.insert("xmin".to_string(), quant("xmin_col"));
+        encoding.insert("xmax".to_string(), quant("xmax_col"));
+        encoding.insert("y".to_string(), nominal("category"));
+        encoding.insert("height".to_string(), literal(0.6));
+
+        let spec = render_rect(&mut encoding).unwrap();
+        let enc = spec["encoding"].as_object().unwrap();
+
+        // x should be remapped from xmin/xmax
+        assert_eq!(enc.get("x"), Some(&quant("xmin_col")));
+        assert_eq!(enc.get("x2"), Some(&quant("xmax_col")));
+
+        // y should remain as y (discrete)
+        assert_eq!(enc.get("y"), Some(&nominal("category")));
+
+        // height should be removed from encoding
+        assert!(enc.get("height").is_none());
+
+        // Should have mark-level height with band sizing
+        assert!(spec["mark"].get("width").is_none()); // x is continuous, no width
+        assert_eq!(spec["mark"]["height"], json!({"band": 0.6}));
+    }
+    #[test]
+    fn test_text_constant_font() {
+        use crate::naming;
+        use polars::prelude::*;
+
+        let renderer = TextRenderer;
+        let layer = Layer::new(crate::plot::Geom::text());
+
+        // Create DataFrame where all rows have the same font
+        let df = df! {
+            naming::aesthetic_column("x").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("y").as_str() => &[10.0, 20.0, 30.0],
+            naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
+            naming::aesthetic_column("typeface").as_str() => &["Arial", "Arial", "Arial"],
+        }
+        .unwrap();
+
+        // Prepare data - should result in single layer with _font_0 component key
+        let prepared = renderer
+            .prepare_data(&df, &layer, "test", &HashMap::new())
+            .unwrap();
+
+        match prepared {
+            PreparedData::Composite { components, .. } => {
+                // Should have single component with _font_0 key
+                assert_eq!(components.len(), 1);
+                assert!(components.contains_key("_font_0"));
+            }
+            _ => panic!("Expected Composite"),
+        }
+    }
+
+    #[test]
+    fn test_text_varying_font() {
+        use crate::naming;
+        use polars::prelude::*;
+
+        let renderer = TextRenderer;
+        let layer = Layer::new(crate::plot::Geom::text());
+
+        // Create DataFrame with different fonts per row
+        let df = df! {
+            naming::aesthetic_column("x").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("y").as_str() => &[10.0, 20.0, 30.0],
+            naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
+            naming::aesthetic_column("typeface").as_str() => &["Arial", "Courier", "Times"],
+        }
+        .unwrap();
+
+        // Prepare data - should result in multiple layers
+        let prepared = renderer
+            .prepare_data(&df, &layer, "test", &HashMap::new())
+            .unwrap();
+
+        match prepared {
+            PreparedData::Composite { components, .. } => {
+                // Should have 3 components (one per unique font) with suffix keys
+                assert_eq!(components.len(), 3);
+                assert!(components.contains_key("_font_0"));
+                assert!(components.contains_key("_font_1"));
+                assert!(components.contains_key("_font_2"));
+            }
+            _ => panic!("Expected Composite"),
+        }
+    }
+
+    #[test]
+    fn test_text_nested_layers_structure() {
+        use crate::naming;
+        use polars::prelude::*;
+
+        let renderer = TextRenderer;
+        let layer = Layer::new(crate::plot::Geom::text());
+
+        // Create DataFrame with different fonts
+        let df = df! {
+            naming::aesthetic_column("x").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("y").as_str() => &[10.0, 20.0, 30.0],
+            naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
+            naming::aesthetic_column("typeface").as_str() => &["Arial", "Courier", "Arial"],
+            naming::aesthetic_column("fontweight").as_str() => &["bold", "normal", "bold"],
+            naming::aesthetic_column("italic").as_str() => &["false", "true", "false"],
+        }
+        .unwrap();
+
+        // Prepare data
+        let prepared = renderer
+            .prepare_data(&df, &layer, "test", &HashMap::new())
+            .unwrap();
+
+        // Get the components
+        let components = match &prepared {
+            PreparedData::Composite { components, .. } => components,
+            _ => panic!("Expected Composite"),
+        };
+
+        // Should have 3 components due to non-contiguous indices
+        // (Arial+bold+not-italic at index 0, Courier+normal+italic at index 1, Arial+bold+not-italic at index 2)
+        assert_eq!(components.len(), 3);
+
+        // Build prototype spec
+        let prototype = json!({
+            "mark": {"type": "text"},
+            "encoding": {
+                "x": {"field": naming::aesthetic_column("x"), "type": "quantitative"},
+                "y": {"field": naming::aesthetic_column("y"), "type": "quantitative"},
+                "text": {"field": naming::aesthetic_column("label"), "type": "nominal"}
+            }
+        });
+
+        // Create a dummy layer
+        let layer = crate::plot::Layer::new(crate::plot::Geom::text());
+
+        // Call finalize to get layers
+        let layers = renderer
+            .finalize(prototype.clone(), &layer, "test", &prepared)
+            .unwrap();
+
+        // For multiple font groups, should return single parent spec with nested layers
+        assert_eq!(layers.len(), 1);
+
+        let parent_spec = &layers[0];
+
+        // Parent should have "layer" array
+        assert!(parent_spec.get("layer").is_some());
+        let nested_layers = parent_spec["layer"].as_array().unwrap();
+
+        // Should have 3 nested layers (one per component)
+        assert_eq!(nested_layers.len(), 3);
+
+        // Parent should have shared encoding
+        assert!(parent_spec.get("encoding").is_some());
+
+        // Each nested layer should have mark and transform, but not encoding
+        for nested_layer in nested_layers {
+            assert!(nested_layer.get("mark").is_some());
+            assert!(nested_layer.get("transform").is_some());
+            assert!(nested_layer.get("encoding").is_none());
+
+            // Mark should have font properties
+            let mark = nested_layer["mark"].as_object().unwrap();
+            assert!(mark.contains_key("fontWeight"));
+            assert!(mark.contains_key("fontStyle"));
+        }
+    }
+
+    #[test]
+    fn test_text_varying_angle() {
+        use crate::naming;
+        use polars::prelude::*;
+
+        let renderer = TextRenderer;
+        let layer = Layer::new(crate::plot::Geom::text());
+
+        // Create DataFrame with different angles
+        let df = df! {
+            naming::aesthetic_column("x").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("y").as_str() => &[10.0, 20.0, 30.0],
+            naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
+            naming::aesthetic_column("rotation").as_str() => &["0", "45", "90"],
+        }
+        .unwrap();
+
+        // Prepare data - should result in multiple layers (one per unique angle)
+        let prepared = renderer
+            .prepare_data(&df, &layer, "test", &HashMap::new())
+            .unwrap();
+
+        match &prepared {
+            PreparedData::Composite { components, .. } => {
+                // Should have 3 components (one per unique angle)
+                assert_eq!(components.len(), 3);
+                assert!(components.contains_key("_font_0"));
+                assert!(components.contains_key("_font_1"));
+                assert!(components.contains_key("_font_2"));
+            }
+            _ => panic!("Expected Composite"),
+        }
+
+        // Build prototype spec
+        let prototype = json!({
+            "mark": {"type": "text"},
+            "encoding": {
+                "x": {"field": naming::aesthetic_column("x"), "type": "quantitative"},
+                "y": {"field": naming::aesthetic_column("y"), "type": "quantitative"},
+                "text": {"field": naming::aesthetic_column("label"), "type": "nominal"}
+            }
+        });
+
+        // Create a dummy layer
+        let layer = crate::plot::Layer::new(crate::plot::Geom::text());
+
+        // Call finalize to get layers
+        let layers = renderer
+            .finalize(prototype.clone(), &layer, "test", &prepared)
+            .unwrap();
+
+        // Should return single parent spec with nested layers
+        assert_eq!(layers.len(), 1);
+
+        let parent_spec = &layers[0];
+        let nested_layers = parent_spec["layer"].as_array().unwrap();
+
+        // Should have 3 nested layers (one per unique angle)
+        assert_eq!(nested_layers.len(), 3);
+
+        // Each layer should have angle property in mark
+        for nested_layer in nested_layers {
+            let mark = nested_layer["mark"].as_object().unwrap();
+            assert!(mark.contains_key("angle")); // Vega-Lite uses "angle" property name
+        }
+    }
+
+    #[test]
+    fn test_text_varying_angle_numeric() {
+        use crate::naming;
+        use polars::prelude::*;
+
+        let renderer = TextRenderer;
+        let layer = Layer::new(crate::plot::Geom::text());
+
+        // Create DataFrame with numeric angle column (matching actual query)
+        let df = df! {
+            naming::aesthetic_column("x").as_str() => &[1, 2, 3],
+            naming::aesthetic_column("y").as_str() => &[1, 2, 3],
+            naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
+            naming::aesthetic_column("rotation").as_str() => &[0i32, 180i32, 0i32],  // integer column
+        }
+        .unwrap();
+
+        // Prepare data - should result in multiple layers (one per unique angle)
+        let prepared = renderer
+            .prepare_data(&df, &layer, "test", &HashMap::new())
+            .unwrap();
+
+        match &prepared {
+            PreparedData::Composite { components, .. } => {
+                // Should have 3 components: angle 0 at row 0, angle 180 at row 1, angle 0 at row 2
+                // Due to non-contiguous indices, rows 0 and 2 should be in separate components
+                eprintln!("Number of components: {}", components.len());
+                eprintln!(
+                    "Component keys: {:?}",
+                    components.keys().collect::<Vec<_>>()
+                );
+                assert_eq!(components.len(), 3);
+            }
+            _ => panic!("Expected Composite"),
+        }
+    }
+
+    #[test]
+    fn test_text_angle_integration() {
+        use crate::execute;
+        use crate::naming;
+        use crate::reader::DuckDBReader;
+        use crate::writer::vegalite::VegaLiteWriter;
+        use crate::writer::Writer;
+
+        // Integration test: Full pipeline from SQL query to Vega-Lite with angle aesthetic
+        // This tests that angle values properly create separate layers with angle mark properties
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Query with text geom and varying angles
+        let query = r#"
+            SELECT
+                n::INTEGER as x,
+                n::INTEGER as y,
+                chr(65 + n::INTEGER) as label,
+                CASE
+                    WHEN n = 0 THEN 0
+                    WHEN n = 1 THEN 45
+                    WHEN n = 2 THEN 90
+                    ELSE 0
+                END as rot
+            FROM generate_series(0, 2) as t(n)
+            VISUALISE x, y, label, rot AS rotation
+            DRAW text
+        "#;
+
+        // Execute and prepare data
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        assert_eq!(prepared.specs.len(), 1);
+
+        let spec = &prepared.specs[0];
+        assert_eq!(spec.layers.len(), 1);
+
+        // Generate Vega-Lite JSON
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        // Text renderer should create nested layers structure
+        assert!(
+            vl_spec["layer"].is_array(),
+            "Should have top-level layer array"
+        );
+        let top_layers = vl_spec["layer"].as_array().unwrap();
+        assert_eq!(top_layers.len(), 1, "Should have one parent text layer");
+
+        // Parent layer should have shared encoding and nested layers
+        let parent_layer = &top_layers[0];
+        assert!(
+            parent_layer["encoding"].is_object(),
+            "Parent layer should have shared encoding"
+        );
+        assert!(
+            parent_layer["layer"].is_array(),
+            "Parent layer should have nested layers"
+        );
+
+        let nested_layers = parent_layer["layer"].as_array().unwrap();
+
+        // Should have multiple nested layers (one per unique angle value)
+        // We have angles: 0, 45, 90, 0 -> but non-contiguous 0s split into separate layers
+        assert!(
+            nested_layers.len() >= 3,
+            "Should have at least 3 nested layers for different angles, got {}",
+            nested_layers.len()
+        );
+
+        // Each nested layer should have mark with angle property
+        for (idx, nested_layer) in nested_layers.iter().enumerate() {
+            let mark = nested_layer["mark"].as_object().unwrap();
+            assert!(
+                mark.contains_key("angle"), // Vega-Lite uses "angle" property name
+                "Nested layer {} mark should have angle property",
+                idx
+            );
+            assert_eq!(mark["type"], "text");
+
+            // Should have source filter transform
+            assert!(nested_layer["transform"].is_array());
+
+            // Should NOT have encoding (inherited from parent)
+            assert!(nested_layer.get("encoding").is_none());
+        }
+
+        // Verify angles are present and normalized [0, 360)
+        let angles: Vec<f64> = nested_layers
+            .iter()
+            .filter_map(|layer| {
+                layer["mark"]
+                    .as_object()
+                    .and_then(|m| m.get("angle"))
+                    .and_then(|a| a.as_f64())
+            })
+            .collect();
+
+        // Should have the three distinct angles: 0, 45, 90
+        assert!(angles.contains(&0.0), "Should have 0° angle");
+        assert!(angles.contains(&45.0), "Should have 45° angle");
+        assert!(angles.contains(&90.0), "Should have 90° angle");
+
+        // Verify data has angle column
+        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        assert!(!data_values.is_empty());
+
+        let angle_col = naming::aesthetic_column("rotation");
+        for row in data_values {
+            assert!(
+                row[&angle_col].is_number(),
+                "Data row should have numeric angle: {:?}",
+                row
+            );
+        }
+    }
+
+    #[test]
+    fn test_text_offset_parameters() {
+        use crate::execute;
+        use crate::reader::DuckDBReader;
+        use crate::writer::vegalite::VegaLiteWriter;
+        use crate::writer::Writer;
+
+        // Integration test: offset parameter should map to xOffset/yOffset
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Query with offset parameter
+        let query = r#"
+            SELECT
+                n::INTEGER as x,
+                n::INTEGER as y,
+                chr(65 + n::INTEGER) as label
+            FROM generate_series(0, 2) as t(n)
+            VISUALISE x, y, label
+            DRAW text SETTING offset => [5, -10]
+        "#;
+
+        // Execute and prepare data
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        assert_eq!(prepared.specs.len(), 1);
+
+        let spec = &prepared.specs[0];
+        assert_eq!(spec.layers.len(), 1);
+
+        // Generate Vega-Lite JSON
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        // Text renderer creates nested layers structure
+        let top_layers = vl_spec["layer"].as_array().unwrap();
+        assert_eq!(top_layers.len(), 1);
+
+        let parent_layer = &top_layers[0];
+        let nested_layers = parent_layer["layer"].as_array().unwrap();
+
+        // All nested layers should have xOffset and yOffset in mark
+        for nested_layer in nested_layers {
+            let mark = nested_layer["mark"].as_object().unwrap();
+
+            assert!(
+                mark.contains_key("xOffset"),
+                "Mark should have xOffset from offset"
+            );
+            assert_eq!(
+                mark["xOffset"].as_f64().unwrap(),
+                5.0 * POINTS_TO_PIXELS,
+                "xOffset should be 5 * POINTS_TO_PIXELS"
+            );
+
+            assert!(
+                mark.contains_key("yOffset"),
+                "Mark should have yOffset from offset"
+            );
+            assert_eq!(
+                mark["yOffset"].as_f64().unwrap(),
+                10.0 * POINTS_TO_PIXELS,
+                "yOffset should be 10 * POINTS_TO_PIXELS (negated from offset[1] = -10)"
+            );
+        }
+    }
+
+    #[test]
+    fn test_text_label_formatting() {
+        use crate::execute;
+        use crate::reader::DuckDBReader;
+        use crate::writer::vegalite::VegaLiteWriter;
+        use crate::writer::Writer;
+
+        // Integration test: format parameter should transform label values
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Query with format parameter using Title case transformation
+        let query = r#"
+            SELECT
+                n::INTEGER as x,
+                n::INTEGER as y,
+                CASE
+                    WHEN n = 0 THEN 'north region'
+                    WHEN n = 1 THEN 'south region'
+                    ELSE 'east region'
+                END as region
+            FROM generate_series(0, 2) as t(n)
+            VISUALISE x, y, region AS label
+            DRAW text SETTING format => 'Region: {:Title}'
+        "#;
+
+        // Execute and prepare data
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        assert_eq!(prepared.specs.len(), 1);
+
+        let spec = &prepared.specs[0];
+        assert_eq!(spec.layers.len(), 1);
+
+        // Generate Vega-Lite JSON
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        // Check that data has formatted labels
+        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        assert!(!data_values.is_empty());
+
+        // Verify formatted labels in the data
+        let label_col = crate::naming::aesthetic_column("label");
+
+        // Check each row has properly formatted labels
+        let labels: Vec<&str> = data_values
+            .iter()
+            .filter_map(|row| row[&label_col].as_str())
+            .collect();
+
+        assert_eq!(labels.len(), 3);
+        assert!(labels.contains(&"Region: North Region"));
+        assert!(labels.contains(&"Region: South Region"));
+        assert!(labels.contains(&"Region: East Region"));
+    }
+
+    #[test]
+    fn test_text_label_formatting_numeric() {
+        use crate::execute;
+        use crate::reader::DuckDBReader;
+        use crate::writer::vegalite::VegaLiteWriter;
+        use crate::writer::Writer;
+
+        // Test numeric formatting with printf-style format
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            SELECT
+                n::INTEGER as x,
+                n::INTEGER as y,
+                n::FLOAT * 10.5 as value
+            FROM generate_series(0, 2) as t(n)
+            VISUALISE x, y, value AS label
+            DRAW text SETTING format => '${:num %.2f}'
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &prepared.specs[0];
+
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        let label_col = crate::naming::aesthetic_column("label");
+
+        let labels: Vec<&str> = data_values
+            .iter()
+            .filter_map(|row| row[&label_col].as_str())
+            .collect();
+
+        // Should have formatted currency values
+        assert_eq!(labels.len(), 3);
+        assert!(labels.contains(&"$0.00"));
+        assert!(labels.contains(&"$10.50"));
+        assert!(labels.contains(&"$21.00"));
+    }
+
+    #[test]
+    fn test_text_setting_fontweight() {
+        use crate::execute;
+        use crate::reader::DuckDBReader;
+        use crate::writer::vegalite::VegaLiteWriter;
+        use crate::writer::Writer;
+
+        // Integration test: SETTING fontweight => 'bold' should add fontWeight to base mark
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Query with fontweight in SETTING
+        let query = r#"
+            SELECT
+                n::INTEGER as x,
+                n::INTEGER as y,
+                chr(65 + n::INTEGER) as label
+            FROM generate_series(0, 2) as t(n)
+            VISUALISE x, y, label
+            DRAW text SETTING fontweight => 'bold'
+        "#;
+
+        // Execute and prepare data
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        assert_eq!(prepared.specs.len(), 1);
+
+        let spec = &prepared.specs[0];
+        assert_eq!(spec.layers.len(), 1);
+
+        // Generate Vega-Lite JSON
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        // Text renderer creates nested layers structure
+        let top_layers = vl_spec["layer"].as_array().unwrap();
+        assert_eq!(top_layers.len(), 1);
+
+        let parent_layer = &top_layers[0];
+        let nested_layers = parent_layer["layer"].as_array().unwrap();
+
+        // All nested layers should have fontWeight: "bold" in mark (from SETTING)
+        for nested_layer in nested_layers {
+            let mark = nested_layer["mark"].as_object().unwrap();
+
+            assert!(
+                mark.contains_key("fontWeight"),
+                "Mark should have fontWeight from SETTING fontweight"
+            );
+            assert_eq!(
+                mark["fontWeight"].as_str().unwrap(),
+                "bold",
+                "fontWeight should be bold"
+            );
+        }
+    }
+
+    #[test]
+    fn test_text_setting_fontweight_numeric() {
+        use crate::execute;
+        use crate::reader::DuckDBReader;
+        use crate::writer::vegalite::VegaLiteWriter;
+        use crate::writer::Writer;
+
+        // Test numeric fontweight values (700 should map to 'bold')
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            SELECT
+                n::INTEGER as x,
+                n::INTEGER as y,
+                chr(65 + n::INTEGER) as label
+            FROM generate_series(0, 2) as t(n)
+            VISUALISE x, y, label
+            DRAW text SETTING fontweight => 700
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &prepared.specs[0];
+
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let top_layers = vl_spec["layer"].as_array().unwrap();
+        let parent_layer = &top_layers[0];
+        let nested_layers = parent_layer["layer"].as_array().unwrap();
+
+        // Numeric 700 should map to 'bold'
+        for nested_layer in nested_layers {
+            let mark = nested_layer["mark"].as_object().unwrap();
+            assert_eq!(mark["fontWeight"].as_str().unwrap(), "bold");
+        }
+    }
+
+    #[test]
+    fn test_text_setting_fontweight_numeric_normal() {
+        use crate::execute;
+        use crate::reader::DuckDBReader;
+        use crate::writer::vegalite::VegaLiteWriter;
+        use crate::writer::Writer;
+
+        // Test numeric fontweight values (400 should map to 'normal')
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            SELECT
+                n::INTEGER as x,
+                n::INTEGER as y,
+                chr(65 + n::INTEGER) as label
+            FROM generate_series(0, 2) as t(n)
+            VISUALISE x, y, label
+            DRAW text SETTING fontweight => 400
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &prepared.specs[0];
+
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let top_layers = vl_spec["layer"].as_array().unwrap();
+        let parent_layer = &top_layers[0];
+        let nested_layers = parent_layer["layer"].as_array().unwrap();
+
+        // Numeric 400 should map to 'normal'
+        for nested_layer in nested_layers {
+            let mark = nested_layer["mark"].as_object().unwrap();
+            assert_eq!(mark["fontWeight"].as_str().unwrap(), "normal");
+        }
+    }
+
+    #[test]
+    fn test_text_setting_fontweight_keywords() {
+        use crate::execute;
+        use crate::reader::DuckDBReader;
+        use crate::writer::vegalite::VegaLiteWriter;
+        use crate::writer::Writer;
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Test 'bolder' keyword (should map to 'bold')
+        let query = r#"
+            SELECT 1 as x, 1 as y, 'A' as label
+            VISUALISE x, y, label
+            DRAW text SETTING fontweight => 'bolder'
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &prepared.specs[0];
+
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let top_layers = vl_spec["layer"].as_array().unwrap();
+        let parent_layer = &top_layers[0];
+        let nested_layers = parent_layer["layer"].as_array().unwrap();
+
+        for nested_layer in nested_layers {
+            let mark = nested_layer["mark"].as_object().unwrap();
+            assert_eq!(mark["fontWeight"].as_str().unwrap(), "bold");
+        }
+
+        // Test 'lighter' keyword (should map to 'normal')
+        let query = r#"
+            SELECT 1 as x, 1 as y, 'A' as label
+            VISUALISE x, y, label
+            DRAW text SETTING fontweight => 'lighter'
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &prepared.specs[0];
+
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let top_layers = vl_spec["layer"].as_array().unwrap();
+        let parent_layer = &top_layers[0];
+        let nested_layers = parent_layer["layer"].as_array().unwrap();
+
+        for nested_layer in nested_layers {
+            let mark = nested_layer["mark"].as_object().unwrap();
+            assert_eq!(mark["fontWeight"].as_str().unwrap(), "normal");
+        }
+
+        // Test 'semi-bold' keyword (should map to 'bold' since 600 >= 500)
+        let query = r#"
+            SELECT 1 as x, 1 as y, 'A' as label
+            VISUALISE x, y, label
+            DRAW text SETTING fontweight => 'semi-bold'
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &prepared.specs[0];
+
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let top_layers = vl_spec["layer"].as_array().unwrap();
+        let parent_layer = &top_layers[0];
+        let nested_layers = parent_layer["layer"].as_array().unwrap();
+
+        for nested_layer in nested_layers {
+            let mark = nested_layer["mark"].as_object().unwrap();
+            assert_eq!(mark["fontWeight"].as_str().unwrap(), "bold");
+        }
+
+        // Test 'light' keyword (should map to 'normal' since 300 < 500)
+        let query = r#"
+            SELECT 1 as x, 1 as y, 'A' as label
+            VISUALISE x, y, label
+            DRAW text SETTING fontweight => 'light'
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &prepared.specs[0];
+
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let top_layers = vl_spec["layer"].as_array().unwrap();
+        let parent_layer = &top_layers[0];
+        let nested_layers = parent_layer["layer"].as_array().unwrap();
+
+        for nested_layer in nested_layers {
+            let mark = nested_layer["mark"].as_object().unwrap();
+            assert_eq!(mark["fontWeight"].as_str().unwrap(), "normal");
+        }
+    }
+
+    #[test]
+    fn test_fontweight_keyword_to_numeric_conversion() {
+        // Test parse_fontweight_to_numeric helper function - all CSS keywords
+
+        // 100 - thin/hairline
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("thin"),
+            Some(100.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("hairline"),
+            Some(100.0)
+        );
+
+        // 200 - extra-light/ultra-light
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("extra-light"),
+            Some(200.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("extralight"),
+            Some(200.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("ultra-light"),
+            Some(200.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("ultralight"),
+            Some(200.0)
+        );
+
+        // 300 - light
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("light"),
+            Some(300.0)
+        );
+
+        // 400 - normal/regular/lighter
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("normal"),
+            Some(400.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("regular"),
+            Some(400.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("lighter"),
+            Some(400.0)
+        );
+
+        // 500 - medium
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("medium"),
+            Some(500.0)
+        );
+
+        // 600 - semi-bold/demi-bold
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("semi-bold"),
+            Some(600.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("semibold"),
+            Some(600.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("demi-bold"),
+            Some(600.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("demibold"),
+            Some(600.0)
+        );
+
+        // 700 - bold/bolder
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("bold"),
+            Some(700.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("bolder"),
+            Some(700.0)
+        );
+
+        // 800 - extra-bold/ultra-bold
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("extra-bold"),
+            Some(800.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("extrabold"),
+            Some(800.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("ultra-bold"),
+            Some(800.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("ultrabold"),
+            Some(800.0)
+        );
+
+        // 900 - black/heavy
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("black"),
+            Some(900.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("heavy"),
+            Some(900.0)
+        );
+
+        // Case insensitive
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("BOLD"),
+            Some(700.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("Normal"),
+            Some(400.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("SEMI-BOLD"),
+            Some(600.0)
+        );
+
+        // Numeric strings pass through
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("100"),
+            Some(100.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("400"),
+            Some(400.0)
+        );
+        assert_eq!(
+            TextRenderer::parse_fontweight_to_numeric("700"),
+            Some(700.0)
+        );
+
+        // Invalid values
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric("invalid"), None);
+        assert_eq!(TextRenderer::parse_fontweight_to_numeric(""), None);
     }
 
     #[test]
@@ -1456,69 +3341,69 @@ mod tests {
         assert_eq!(
             transforms.len(),
             5,
-            "Should have 5 transforms (x_min, x_max, y_min, y_max, filter)"
+            "Should have 5 transforms (primary_min, primary_max, secondary_min, secondary_max, filter)"
         );
 
-        // Verify x_min/x_max transforms exist with consistent naming
-        let x_min_transform = transforms
+        // Verify primary_min/primary_max transforms exist with consistent naming
+        let primary_min_transform = transforms
             .iter()
-            .find(|t| t["as"] == "x_min")
-            .expect("x_min transform not found");
-        let x_max_transform = transforms
+            .find(|t| t["as"] == "primary_min")
+            .expect("primary_min transform not found");
+        let primary_max_transform = transforms
             .iter()
-            .find(|t| t["as"] == "x_max")
-            .expect("x_max transform not found");
+            .find(|t| t["as"] == "primary_max")
+            .expect("primary_max transform not found");
 
         assert!(
-            x_min_transform["calculate"].is_string(),
-            "x_min should have calculate expression"
+            primary_min_transform["calculate"].is_string(),
+            "primary_min should have calculate expression"
         );
         assert!(
-            x_max_transform["calculate"].is_string(),
-            "x_max should have calculate expression"
+            primary_max_transform["calculate"].is_string(),
+            "primary_max should have calculate expression"
         );
 
-        // Verify y_min and y_max transforms use coef and intercept with x_min/x_max
-        let y_min_transform = transforms
+        // Verify secondary_min and secondary_max transforms use coef and intercept with primary_min/primary_max
+        let secondary_min_transform = transforms
             .iter()
-            .find(|t| t["as"] == "y_min")
-            .expect("y_min transform not found");
-        let y_max_transform = transforms
+            .find(|t| t["as"] == "secondary_min")
+            .expect("secondary_min transform not found");
+        let secondary_max_transform = transforms
             .iter()
-            .find(|t| t["as"] == "y_max")
-            .expect("y_max transform not found");
+            .find(|t| t["as"] == "secondary_max")
+            .expect("secondary_max transform not found");
 
-        let y_min_calc = y_min_transform["calculate"]
+        let secondary_min_calc = secondary_min_transform["calculate"]
             .as_str()
-            .expect("y_min calculate should be string");
-        let y_max_calc = y_max_transform["calculate"]
+            .expect("secondary_min calculate should be string");
+        let secondary_max_calc = secondary_max_transform["calculate"]
             .as_str()
-            .expect("y_max calculate should be string");
+            .expect("secondary_max calculate should be string");
 
-        // Should reference coef, intercept, and x_min/x_max
+        // Should reference coef, intercept, and primary_min/primary_max
         assert!(
-            y_min_calc.contains("__ggsql_aes_coef__"),
-            "y_min should reference coef"
+            secondary_min_calc.contains("__ggsql_aes_coef__"),
+            "secondary_min should reference coef"
         );
         assert!(
-            y_min_calc.contains("__ggsql_aes_intercept__"),
-            "y_min should reference intercept"
+            secondary_min_calc.contains("__ggsql_aes_intercept__"),
+            "secondary_min should reference intercept"
         );
         assert!(
-            y_min_calc.contains("datum.x_min"),
-            "y_min should reference datum.x_min"
+            secondary_min_calc.contains("datum.primary_min"),
+            "secondary_min should reference datum.primary_min"
         );
         assert!(
-            y_max_calc.contains("__ggsql_aes_coef__"),
-            "y_max should reference coef"
+            secondary_max_calc.contains("__ggsql_aes_coef__"),
+            "secondary_max should reference coef"
         );
         assert!(
-            y_max_calc.contains("__ggsql_aes_intercept__"),
-            "y_max should reference intercept"
+            secondary_max_calc.contains("__ggsql_aes_intercept__"),
+            "secondary_max should reference intercept"
         );
         assert!(
-            y_max_calc.contains("datum.x_max"),
-            "y_max should reference datum.x_max"
+            secondary_max_calc.contains("datum.primary_max"),
+            "secondary_max should reference datum.primary_max"
         );
 
         // Verify encoding has x, x2, y, y2 with consistent field names
@@ -1531,22 +3416,22 @@ mod tests {
         assert!(encoding.contains_key("y"), "Should have y encoding");
         assert!(encoding.contains_key("y2"), "Should have y2 encoding");
 
-        // Verify consistent naming: x_min, x_max, y_min, y_max
+        // Verify consistent naming: primary_min/max for x, secondary_min/max for y (default orientation)
         assert_eq!(
-            encoding["x"]["field"], "x_min",
-            "x should reference x_min field"
+            encoding["x"]["field"], "primary_min",
+            "x should reference primary_min field"
         );
         assert_eq!(
-            encoding["x2"]["field"], "x_max",
-            "x2 should reference x_max field"
+            encoding["x2"]["field"], "primary_max",
+            "x2 should reference primary_max field"
         );
         assert_eq!(
-            encoding["y"]["field"], "y_min",
-            "y should reference y_min field"
+            encoding["y"]["field"], "secondary_min",
+            "y should reference secondary_min field"
         );
         assert_eq!(
-            encoding["y2"]["field"], "y_max",
-            "y2 should reference y_max field"
+            encoding["y2"]["field"], "secondary_max",
+            "y2 should reference secondary_max field"
         );
 
         // Verify stroke encoding exists for line_id (color aesthetic becomes stroke for rule mark)
@@ -1582,6 +3467,91 @@ mod tests {
         coefs.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
         assert_eq!(coefs, vec![1.0, 2.0, 3.0], "Should have coefs 1, 2, and 3");
+    }
+
+    #[test]
+    fn test_linear_renderer_transposed_orientation() {
+        use crate::reader::{DuckDBReader, Reader};
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        // Test that linear with transposed orientation swaps x/y axes
+        let query = r#"
+            WITH points AS (
+                SELECT * FROM (VALUES (0, 5), (5, 15), (10, 25)) AS t(x, y)
+            ),
+            lines AS (
+                SELECT * FROM (VALUES (0.4, -1, 'A')) AS t(coef, intercept, line_id)
+            )
+            SELECT * FROM points
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            DRAW linear MAPPING coef AS coef, intercept AS intercept, line_id AS color FROM lines SETTING orientation => 'transposed'
+        "#;
+
+        // Execute query
+        let reader = DuckDBReader::from_connection_string("duckdb://memory")
+            .expect("Failed to create reader");
+        let spec = reader.execute(query).expect("Failed to execute query");
+
+        // Render to Vega-Lite
+        let writer = VegaLiteWriter::new();
+        let vl_json = writer.render(&spec).expect("Failed to render spec");
+
+        // Parse JSON
+        let vl_spec: serde_json::Value =
+            serde_json::from_str(&vl_json).expect("Failed to parse Vega-Lite JSON");
+
+        // Get the linear layer (second layer)
+        let layers = vl_spec["layer"].as_array().expect("No layers found");
+        let linear_layer = &layers[1];
+
+        // Verify transforms exist
+        let transforms = linear_layer["transform"]
+            .as_array()
+            .expect("No transforms found");
+
+        // Verify primary_min/max use pos2 extent (y-axis) for transposed orientation
+        let primary_min_transform = transforms
+            .iter()
+            .find(|t| t["as"] == "primary_min")
+            .expect("primary_min transform not found");
+        let primary_max_transform = transforms
+            .iter()
+            .find(|t| t["as"] == "primary_max")
+            .expect("primary_max transform not found");
+
+        // The primary extent should come from the y-axis for transposed
+        assert!(
+            primary_min_transform["calculate"].is_string(),
+            "primary_min should have calculate expression"
+        );
+        assert!(
+            primary_max_transform["calculate"].is_string(),
+            "primary_max should have calculate expression"
+        );
+
+        // Verify encoding has y as primary axis (mapped to primary_min/max)
+        let encoding = linear_layer["encoding"]
+            .as_object()
+            .expect("No encoding found");
+
+        // For transposed orientation: y is primary (uses primary_min/max), x is secondary
+        assert_eq!(
+            encoding["y"]["field"], "primary_min",
+            "y should reference primary_min field for transposed"
+        );
+        assert_eq!(
+            encoding["y2"]["field"], "primary_max",
+            "y2 should reference primary_max field for transposed"
+        );
+        assert_eq!(
+            encoding["x"]["field"], "secondary_min",
+            "x should reference secondary_min field for transposed"
+        );
+        assert_eq!(
+            encoding["x2"]["field"], "secondary_max",
+            "x2 should reference secondary_max field for transposed"
+        );
     }
 
     #[test]

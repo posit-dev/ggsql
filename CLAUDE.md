@@ -322,23 +322,39 @@ pub enum GlobalMappingItem {
 
 pub struct Layer {
     pub geom: Geom,                  // Geometric object type
+    pub position: Position,          // Position adjustment (from SETTING position)
     pub aesthetics: HashMap<String, AestheticValue>,  // Aesthetic mappings (from MAPPING)
     pub parameters: HashMap<String, ParameterValue>,  // Geom parameters (from SETTING)
+    pub source: Option<DataSource>,  // Data source (from MAPPING ... FROM or PLACE)
     pub filter: Option<FilterExpression>,  // Layer filter (from FILTER)
     pub partition_by: Vec<String>,   // Grouping columns (from PARTITION BY)
 }
 
 pub enum Geom {
     // Basic geoms
-    Point, Line, Path, Bar, Col, Area, Tile, Polygon, Ribbon,
+    Point, Line, Path, Bar, Col, Area, Rect, Polygon, Ribbon,
     // Statistical geoms
     Histogram, Density, Smooth, Boxplot, Violin,
     // Annotation geoms
-    Text, Label, Segment, Arrow, Rule, Linear, ErrorBar,
+    Text, Segment, Arrow, Rule, Linear, ErrorBar,
+}
+
+pub enum DataSource {
+    Identifier(String),  // Table/CTE name
+    FilePath(String),    // File path (quoted)
+    Annotation,          // PLACE clause (no external data)
+}
+
+pub enum Position {
+    Identity,  // No adjustment
+    Stack,     // Stack elements (bars, areas)
+    Dodge,     // Dodge side-by-side (bars)
+    Jitter,    // Jitter points randomly
 }
 
 pub enum AestheticValue {
-    Column(String),                  // Unquoted column reference: revenue AS x
+    Column(String),                  // Column from data: revenue AS x
+    AnnotationColumn(String),        // Annotation literal (PLACE): uses identity scale
     Literal(ParameterValue),         // Quoted literal: 'value' AS fill
 }
 
@@ -1178,6 +1194,7 @@ Where `<global_mapping>` can be:
 | ----------- | ---------- | ----------------- | ----------------------------------------- |
 | `VISUALISE` | ✅ Yes     | Entry point       | `VISUALISE date AS x, revenue AS y`       |
 | `DRAW`      | ✅ Yes     | Define layers     | `DRAW line MAPPING date AS x, value AS y` |
+| `PLACE`     | ✅ Yes     | Annotation layers | `PLACE point SETTING x => 5, y => 10`     |
 | `SCALE`     | ✅ Yes     | Configure scales  | `SCALE x VIA date`                        |
 | `FACET`     | ❌ No      | Small multiples   | `FACET region`                            |
 | `PROJECT`   | ❌ No      | Coordinate system | `PROJECT TO cartesian` |
@@ -1200,7 +1217,7 @@ All clauses (MAPPING, SETTING, PARTITION BY, FILTER) are optional.
 
 **Geom Types**:
 
-- **Basic**: `point`, `line`, `path`, `bar`, `col`, `area`, `tile`, `polygon`, `ribbon`
+- **Basic**: `point`, `line`, `path`, `bar`, `col`, `area`, `rect`, `polygon`, `ribbon`
 - **Statistical**: `histogram`, `density`, `smooth`, `boxplot`, `violin`
 - **Annotation**: `text`, `label`, `segment`, `arrow`, `rule`, `linear`, `errorbar`
 
@@ -1211,7 +1228,7 @@ Maps data values (columns or literals) to visual aesthetics. Syntax: `value AS a
 - **Position**: `x`, `y`, `xmin`, `xmax`, `ymin`, `ymax`
 - **Color**: `color`, `fill`, `stroke`, `opacity`
 - **Size/Shape**: `size`, `shape`, `linetype`, `linewidth`
-- **Text**: `label`, `family`, `fontface`
+- **Text**: `label`, `typeface`, `fontweight`, `italic`
 
 **Literal vs Column**:
 
@@ -1287,6 +1304,29 @@ DRAW line
     SETTING stroke_width => 2
     PARTITION BY category, region
     FILTER year >= 2020
+```
+
+### PLACE Clause (Annotation Layers)
+
+**Syntax**:
+
+```sql
+PLACE <geom> SETTING <aesthetic/parameter> => <value>, ...
+```
+
+Creates annotation layers with literal values only (no data mappings). All aesthetics set via SETTING; supports arrays that are recycled to longest length. No FILTER/PARTITION BY/ORDER BY support.
+
+**Examples**:
+
+```sql
+-- Single annotation
+PLACE point SETTING x => 5, y => 10, color => 'red'
+
+-- Multiple annotations (array recycling)
+PLACE point SETTING x => [1, 2, 3], y => [10, 20, 30]
+
+-- Reference line
+PLACE rule SETTING x => 5, color => 'red'
 ```
 
 ### SCALE Clause

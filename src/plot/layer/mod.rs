@@ -9,8 +9,14 @@ use std::collections::HashMap;
 // Geom is a submodule of layer
 pub mod geom;
 
+// Orientation is a submodule of layer
+pub mod orientation;
+
 // Position is a submodule of layer
 pub mod position;
+
+// Re-export orientation functions and constants
+pub use orientation::is_transposed;
 
 // Re-export geom types for convenience
 pub use geom::{
@@ -22,7 +28,7 @@ pub use position::{Position, PositionTrait, PositionType};
 
 use crate::{
     plot::{
-        is_facet_aesthetic,
+        is_facet_aesthetic, parse_positional,
         types::{AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression},
     },
     AestheticContext,
@@ -179,11 +185,16 @@ impl Layer {
 
         // Check if all required aesthetics exist.
         let mut missing = Vec::new();
+        let mut positional_reqs: Vec<(&str, u8, &str)> = Vec::new();
+
         for aesthetic in self.geom.aesthetics().required() {
-            if !self.mappings.contains_key(aesthetic) {
+            if let Some((slot, suffix)) = parse_positional(aesthetic) {
+                positional_reqs.push((aesthetic, slot, suffix))
+            } else if !self.mappings.contains_key(aesthetic) {
                 missing.push(translate(aesthetic));
             }
         }
+
         if !missing.is_empty() {
             return Err(format!(
                 "Layer '{}' mapping requires the {} aesthetic{s}.",
@@ -192,6 +203,32 @@ impl Layer {
                 s = if missing.len() > 1 { "s" } else { "" }
             ));
         }
+
+        // Validate positional requirements bidirectionally
+        // Try both slot assignments: (1→1, 2→2) and (1→2, 2→1)
+        if !positional_reqs.is_empty() {
+            let identity_ok = positional_reqs
+                .iter()
+                .all(|(name, _, _)| self.mappings.contains_key(name));
+
+            let swapped_ok = positional_reqs.iter().all(|(_, slot, suffix)| {
+                let new_slot = if *slot == 1 { 2 } else { 1 };
+                let remapped = format!("pos{}{}", new_slot, suffix);
+                self.mappings.contains_key(&remapped)
+            });
+
+            if !identity_ok && !swapped_ok {
+                let (missing, _, _) = positional_reqs
+                    .iter()
+                    .find(|(name, _, _)| !self.mappings.contains_key(name))
+                    .unwrap();
+                return Err(format!(
+                    "Geom '{}' requires aesthetic '{}' (or its bidirectional equivalent) but it was not provided",
+                    self.geom, translate(missing)
+                ));
+            }
+        }
+
         // Check if any unsupported mappings are present
         let mut extra = Vec::new();
         let supported = self.geom.aesthetics().supported();
@@ -340,8 +377,12 @@ impl Layer {
                     // Column is now named with the prefixed aesthetic name
                     *name = aes_col_name;
                 }
+                AestheticValue::AnnotationColumn { name } => {
+                    // AnnotationColumn already has identity scale behavior, just update name
+                    *name = aes_col_name;
+                }
                 AestheticValue::Literal(_) => {
-                    // Literals are also columns with prefixed aesthetic name
+                    // Literals become standard columns with prefixed aesthetic name
                     // Note: literals don't have an original_name to preserve
                     *value = AestheticValue::standard_column(aes_col_name);
                 }
@@ -378,6 +419,13 @@ impl Layer {
                         name: prefixed_name,
                         original_name: original_name.clone(),
                         is_dummy: *is_dummy,
+                    }
+                }
+                AestheticValue::AnnotationColumn { .. } => {
+                    // Annotation columns can be remapped (e.g., stat transforms on annotation data)
+                    // They remain annotation columns (identity scale)
+                    AestheticValue::AnnotationColumn {
+                        name: prefixed_name,
                     }
                 }
                 AestheticValue::Literal(_) => {

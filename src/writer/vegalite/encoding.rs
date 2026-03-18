@@ -553,7 +553,7 @@ fn convert_range_element(elem: &crate::plot::ArrayElement, aesthetic: &str) -> V
                 // Size: convert radius (points) to area (pixels²)
                 "size" => json!(n * n * POINTS_TO_AREA),
                 // Linewidth: convert points to pixels
-                "linewidth" => json!(n * POINTS_TO_PIXELS),
+                "linewidth" | "fontsize" => json!(n * POINTS_TO_PIXELS),
                 // Other aesthetics: pass through unchanged
                 _ => json!(n),
             }
@@ -802,7 +802,11 @@ pub(super) fn build_encoding_channel(
             name: col,
             original_name,
             is_dummy,
-        } => build_column_encoding(aesthetic, col, original_name, *is_dummy, ctx),
+        } => build_column_encoding(aesthetic, col, original_name, *is_dummy, true, ctx),
+        AestheticValue::AnnotationColumn { name: col } => {
+            // Non-positional annotation columns use identity scale
+            build_column_encoding(aesthetic, col, &None, false, false, ctx)
+        }
         AestheticValue::Literal(lit) => build_literal_encoding(aesthetic, lit),
     }
 }
@@ -813,13 +817,14 @@ fn build_column_encoding(
     col: &str,
     original_name: &Option<String>,
     is_dummy: bool,
+    is_scaled: bool,
     ctx: &mut EncodingContext,
 ) -> Result<Value> {
     let aesthetic_ctx = ctx.spec.get_aesthetic_context();
     let primary = aesthetic_ctx
         .primary_internal_positional(aesthetic)
         .unwrap_or(aesthetic);
-    let mut identity_scale = false;
+    let mut identity_scale = !is_scaled;
 
     // Determine field type from scale or infer from data
     let field_type = determine_field_type_for_aesthetic(
@@ -933,9 +938,15 @@ fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value
                 // Size: radius (points) → area (pixels²)
                 "size" => json!(n * n * POINTS_TO_AREA),
                 // Linewidth: points → pixels
-                "linewidth" => json!(n * POINTS_TO_PIXELS),
+                "linewidth" | "fontsize" => json!(n * POINTS_TO_PIXELS),
                 _ => json!(n),
             }
+        }
+        ParameterValue::Array(_) => {
+            return Err(crate::GgsqlError::WriterError(format!(
+                "The `{aes}` SETTING must be scalar, not an array.",
+                aes = aesthetic
+            )))
         }
         _ => lit.to_json(),
     };
@@ -947,7 +958,7 @@ fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value
 /// For internal positional aesthetics (pos1, pos2, etc.), maps directly to Vega-Lite
 /// channel names based on coord type:
 /// - Cartesian: pos1 → "x", pos2 → "y"
-/// - Polar: pos1 → "theta", pos2 → "radius"
+/// - Polar: pos1 → "radius", pos2 → "theta"
 ///
 /// This ensures correct Vega-Lite channel names regardless of what the user originally
 /// called their positional aesthetics in the PROJECT clause.
@@ -971,8 +982,10 @@ pub(super) fn map_aesthetic_name(
         "linewidth" => "strokeWidth".to_string(),
         // Text aesthetics
         "label" => "text".to_string(),
+        "fontsize" => "size".to_string(),
         // All other aesthetics pass through directly
         // (fill and stroke map to Vega-Lite's separate fill/stroke channels)
+        // typeface/fontweight/italic/rotation are parsed explicitly
         _ => aesthetic.to_string(),
     }
 }
@@ -984,7 +997,7 @@ pub(super) fn map_aesthetic_name(
 fn map_positional_to_vegalite(aesthetic: &str, coord_kind: CoordKind) -> Option<String> {
     let (primary, secondary) = match coord_kind {
         CoordKind::Cartesian => ("x", "y"),
-        CoordKind::Polar => ("theta", "radius"),
+        CoordKind::Polar => ("radius", "theta"),
     };
 
     // Match internal positional aesthetic patterns

@@ -141,6 +141,10 @@ impl ScaleTypeTrait for Continuous {
                 ArrayElement::Number(1.0),
                 ArrayElement::Number(6.0),
             ])),
+            "fontsize" => Ok(Some(vec![
+                ArrayElement::Number(8.0),
+                ArrayElement::Number(20.0),
+            ])),
             "opacity" => Ok(Some(vec![
                 ArrayElement::Number(0.1),
                 ArrayElement::Number(1.0),
