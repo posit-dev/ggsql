@@ -169,7 +169,20 @@ impl Layer {
         }
     }
 
-    /// Check if this layer has the required aesthetics, and no exotic aesthetics.
+    /// Validate layer aesthetic mappings.
+    ///
+    /// Performs three checks:
+    /// 1. All required aesthetics are present
+    /// 2. Positional requirements allow bidirectional satisfaction (handles orientation flipping)
+    /// 3. No unsupported/exotic aesthetics are mapped
+    ///
+    /// # Parameters
+    /// - `context`: Optional aesthetic context for translating internal → user-facing names
+    /// - `include_delayed`: If true, allows delayed aesthetics (stat-produced). Use `true` for
+    ///   writer validation, `false` for execution validation.
+    ///
+    /// # Returns
+    /// `Ok(())` if validation passes, or `Err(message)` with a user-friendly error message.
     pub fn validate_mapping(
         &self,
         context: &Option<AestheticContext>,
@@ -219,13 +232,17 @@ impl Layer {
             });
 
             if !identity_ok && !swapped_ok {
-                let (missing, _, _) = positional_reqs
+                let (missing, slot, suffix) = positional_reqs
                     .iter()
                     .find(|(name, _, _)| !self.mappings.contains_key(name))
                     .unwrap();
+                let other_slot = if *slot == 1 { 2 } else { 1 };
+                let flipped = format!("pos{}{}", other_slot, suffix);
                 return Err(format!(
-                    "Geom '{}' requires aesthetic '{}' (or its bidirectional equivalent) but it was not provided",
-                    self.geom, translate(missing)
+                    "Layer '{}' mapping requires the aesthetic '{}' (or '{}').",
+                    self.geom,
+                    translate(missing),
+                    translate(&flipped)
                 ));
             }
         }
@@ -256,7 +273,7 @@ impl Layer {
             if is_facet_aesthetic(aesthetic) {
                 continue;
             }
-            if !supported.contains(aesthetic.as_str()) {
+            if !supported.contains(aesthetic) {
                 extra.push(translate(aesthetic));
             }
         }
