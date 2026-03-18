@@ -38,12 +38,7 @@ pub enum OdbcVariant {
 impl super::SqlDialect for OdbcDialect {
     fn sql_list_catalogs(&self) -> String {
         match self.variant {
-            OdbcVariant::Snowflake => {
-                "SELECT database_name AS catalog_name \
-                 FROM snowflake.information_schema.databases \
-                 ORDER BY database_name"
-                    .into()
-            }
+            OdbcVariant::Snowflake => "SHOW DATABASES".into(),
             _ => {
                 "SELECT DISTINCT catalog_name FROM information_schema.schemata \
                  ORDER BY catalog_name"
@@ -53,17 +48,13 @@ impl super::SqlDialect for OdbcDialect {
     }
 
     fn sql_list_schemas(&self, catalog: &str) -> String {
-        let catalog = catalog.replace('\'', "''");
         match self.variant {
             OdbcVariant::Snowflake => {
                 let catalog_ident = catalog.replace('"', "\"\"");
-                format!(
-                    "SELECT schema_name \
-                     FROM \"{catalog_ident}\".information_schema.schemata \
-                     ORDER BY schema_name"
-                )
+                format!("SHOW SCHEMAS IN DATABASE \"{catalog_ident}\"")
             }
             _ => {
+                let catalog = catalog.replace('\'', "''");
                 format!(
                     "SELECT DISTINCT schema_name FROM information_schema.schemata \
                      WHERE catalog_name = '{catalog}' ORDER BY schema_name"
@@ -73,19 +64,17 @@ impl super::SqlDialect for OdbcDialect {
     }
 
     fn sql_list_tables(&self, catalog: &str, schema: &str) -> String {
-        let schema = schema.replace('\'', "''");
         match self.variant {
             OdbcVariant::Snowflake => {
                 let catalog_ident = catalog.replace('"', "\"\"");
+                let schema_ident = schema.replace('"', "\"\"");
                 format!(
-                    "SELECT table_name, table_type \
-                     FROM \"{catalog_ident}\".information_schema.tables \
-                     WHERE table_schema = '{schema}' \
-                     ORDER BY table_name"
+                    "SHOW OBJECTS IN SCHEMA \"{catalog_ident}\".\"{schema_ident}\""
                 )
             }
             _ => {
                 let catalog = catalog.replace('\'', "''");
+                let schema = schema.replace('\'', "''");
                 format!(
                     "SELECT DISTINCT table_name, table_type FROM information_schema.tables \
                      WHERE table_catalog = '{catalog}' AND table_schema = '{schema}' \
@@ -96,20 +85,19 @@ impl super::SqlDialect for OdbcDialect {
     }
 
     fn sql_list_columns(&self, catalog: &str, schema: &str, table: &str) -> String {
-        let schema = schema.replace('\'', "''");
-        let table = table.replace('\'', "''");
         match self.variant {
             OdbcVariant::Snowflake => {
                 let catalog_ident = catalog.replace('"', "\"\"");
+                let schema_ident = schema.replace('"', "\"\"");
+                let table_ident = table.replace('"', "\"\"");
                 format!(
-                    "SELECT column_name, data_type \
-                     FROM \"{catalog_ident}\".information_schema.columns \
-                     WHERE table_schema = '{schema}' AND table_name = '{table}' \
-                     ORDER BY ordinal_position"
+                    "SHOW COLUMNS IN TABLE \"{catalog_ident}\".\"{schema_ident}\".\"{table_ident}\""
                 )
             }
             _ => {
                 let catalog = catalog.replace('\'', "''");
+                let schema = schema.replace('\'', "''");
+                let table = table.replace('\'', "''");
                 format!(
                     "SELECT column_name, data_type FROM information_schema.columns \
                      WHERE table_catalog = '{catalog}' AND table_schema = '{schema}' \

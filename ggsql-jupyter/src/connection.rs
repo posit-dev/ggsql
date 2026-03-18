@@ -65,7 +65,8 @@ fn list_catalogs(reader: &dyn Reader) -> Result<Vec<ObjectSchema>, String> {
 
     let col = df
         .column("catalog_name")
-        .map_err(|e| format!("Missing catalog_name column: {}", e))?;
+        .or_else(|_| df.column("name"))
+        .map_err(|e| format!("Missing catalog_name/name column: {}", e))?;
 
     let mut catalogs = Vec::new();
     for i in 0..df.height() {
@@ -88,7 +89,8 @@ fn list_schemas(reader: &dyn Reader, catalog: &str) -> Result<Vec<ObjectSchema>,
 
     let col = df
         .column("schema_name")
-        .map_err(|e| format!("Missing schema_name column: {}", e))?;
+        .or_else(|_| df.column("name"))
+        .map_err(|e| format!("Missing schema_name/name column: {}", e))?;
 
     let mut schemas = Vec::new();
     for i in 0..df.height() {
@@ -115,10 +117,12 @@ fn list_tables(
 
     let name_col = df
         .column("table_name")
-        .map_err(|e| format!("Missing table_name column: {}", e))?;
+        .or_else(|_| df.column("name"))
+        .map_err(|e| format!("Missing table_name/name column: {}", e))?;
     let type_col = df
         .column("table_type")
-        .map_err(|e| format!("Missing table_type column: {}", e))?;
+        .or_else(|_| df.column("kind"))
+        .map_err(|e| format!("Missing table_type/kind column: {}", e))?;
 
     let mut objects = Vec::new();
     for i in 0..df.height() {
