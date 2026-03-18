@@ -3,6 +3,9 @@
 //! This module provides query syntax and semantic validation without executing
 //! any SQL. Use this for IDE integration, syntax checking, and query inspection.
 
+pub mod sql_safety;
+pub use sql_safety::validate_sql_safety;
+
 use crate::parser;
 use crate::Result;
 
@@ -110,8 +113,16 @@ pub fn validate(query: &str) -> Result<Validated> {
     };
 
     // Extract SQL and viz portions using existing tree
-    let sql_part = source_tree.extract_sql().unwrap_or_default();
+    let sql_part = source_tree.extract_sql_unchecked().unwrap_or_default();
     let viz_part = source_tree.extract_visualise().unwrap_or_default();
+
+    // Validate SQL safety
+    if let Err(e) = validate_sql_safety(&sql_part) {
+        errors.push(ValidationError {
+            message: e.to_string(),
+            location: None,
+        });
+    }
 
     let root = source_tree.root();
     let has_visual = source_tree
@@ -125,7 +136,7 @@ pub fn validate(query: &str) -> Result<Validated> {
             visual: viz_part,
             has_visual: false,
             tree: None,
-            valid: true,
+            valid: errors.is_empty(),
             errors,
             warnings,
         });
@@ -281,5 +292,42 @@ mod tests {
         // SQL-only queries should be valid (just syntax check)
         assert!(validated.valid());
         assert!(validated.errors().is_empty());
+    }
+
+    // SQL safety tests - use DELETE/UPDATE which are supported by grammar
+    #[test]
+    fn test_validate_blocks_delete() {
+        let validated =
+            validate("DELETE FROM users VISUALISE DRAW point MAPPING 1 AS x, 1 AS y").unwrap();
+        assert!(!validated.valid());
+        assert!(
+            validated.errors()[0].message.contains("DELETE"),
+            "Expected DELETE error, got: {:?}",
+            validated.errors()
+        );
+    }
+
+    #[test]
+    fn test_validate_blocks_update() {
+        let validated =
+            validate("UPDATE users SET x = 1 VISUALISE DRAW point MAPPING 1 AS x, 1 AS y").unwrap();
+        assert!(!validated.valid());
+        assert!(
+            validated.errors()[0].message.contains("UPDATE"),
+            "Expected UPDATE error, got: {:?}",
+            validated.errors()
+        );
+    }
+
+    #[test]
+    fn test_validate_allows_keyword_in_string() {
+        let validated =
+            validate("SELECT 'DELETE' as x, 1 as y VISUALISE DRAW point MAPPING x AS x, y AS y")
+                .unwrap();
+        assert!(
+            validated.valid(),
+            "Should allow DELETE in string literal: {:?}",
+            validated.errors()
+        );
     }
 }

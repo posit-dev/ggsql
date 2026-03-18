@@ -4,6 +4,7 @@
 //! settings, and values. These are the building blocks used in AST types
 //! to capture what the user specified in their query.
 
+use crate::validate::validate_sql_safety;
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use polars::prelude::DataType;
 use serde::{Deserialize, Serialize};
@@ -835,9 +836,14 @@ pub enum CastTargetType {
 }
 
 impl SqlExpression {
-    /// Create a new SQL expression from raw text
-    pub fn new(sql: impl Into<String>) -> Self {
-        Self(sql.into())
+    /// Create a new SQL expression from raw text.
+    ///
+    /// Returns an error if the expression contains dangerous SQL patterns
+    /// (DROP, DELETE, UPDATE, INSERT, etc.)
+    pub fn new(sql: impl Into<String>) -> crate::Result<Self> {
+        let sql = sql.into();
+        validate_sql_safety(&sql)?;
+        Ok(Self(sql))
     }
 
     /// Get the raw SQL text
