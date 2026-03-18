@@ -4,7 +4,7 @@
 //! a single visualization layer (from DRAW clause) in a ggsql specification.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 // Geom is a submodule of layer
 pub mod geom;
@@ -173,7 +173,7 @@ impl Layer {
     pub fn validate_mapping(
         &self,
         context: &Option<AestheticContext>,
-        skip_supported: bool,
+        include_delayed: bool,
     ) -> std::result::Result<(), String> {
         // If there is aesthetic context, translate to user-facing form
         let translate = |aes: &str| -> String {
@@ -229,18 +229,34 @@ impl Layer {
                 ));
             }
         }
-        if skip_supported {
-            return Ok(());
+
+        let mut supported: HashSet<String> = if include_delayed {
+            self.geom.aesthetics().names()
+        } else {
+            self.geom.aesthetics().supported()
+        }
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect();
+
+        // At this point in execution we don't know orientation yet,
+        // so we'll approve both flipped and upflipped aesthetics.
+        if let Some(ctx) = context {
+            let flipped: Vec<String> = supported
+                .iter()
+                .map(|aes| ctx.flip_positional(aes))
+                .collect();
+            supported.extend(flipped);
         }
 
         // Check if any unsupported mappings are present
         let mut extra = Vec::new();
-        let supported = self.geom.aesthetics().supported();
+
         for aesthetic in self.mappings.aesthetics.keys() {
             if is_facet_aesthetic(aesthetic) {
                 continue;
             }
-            if !supported.contains(&aesthetic.as_str()) {
+            if !supported.contains(aesthetic.as_str()) {
                 extra.push(translate(aesthetic));
             }
         }
