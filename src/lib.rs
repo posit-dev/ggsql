@@ -789,7 +789,10 @@ mod integration_tests {
         } else {
             point_layer["mark"]["type"].as_str().unwrap()
         };
-        assert_eq!(mark_type, "point", "Second layer should be point annotation");
+        assert_eq!(
+            mark_type, "point",
+            "Second layer should be point annotation"
+        );
 
         let encoding = &point_layer["encoding"];
 

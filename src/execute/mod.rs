@@ -2599,7 +2599,9 @@ mod tests {
             "PLACE layer should have default fill from text geom"
         );
         match annotation_layer.mappings.aesthetics.get("fill") {
-            Some(AestheticValue::Literal(crate::plot::types::ParameterValue::String(s))) if s == "black" => {
+            Some(AestheticValue::Literal(crate::plot::types::ParameterValue::String(s)))
+                if s == "black" =>
+            {
                 // Correct: geom default fill
             }
             Some(AestheticValue::Column { name, .. }) if name == "color" => {
