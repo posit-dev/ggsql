@@ -599,7 +599,7 @@ mod tests {
     #[test]
     fn test_polar_encoding_keys_independent_of_user_names() {
         // This test verifies that polar projections always produce theta/radius encoding keys
-        // in Vega-Lite output, regardless of what positional names the user specified in PROJECT.
+        // in Vega-Lite output, regardless of what position names the user specified in PROJECT.
         // This is critical because Vega-Lite expects specific channel names for polar marks.
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
@@ -680,7 +680,7 @@ mod tests {
     #[test]
     fn test_cartesian_encoding_keys_with_custom_names() {
         // This test verifies that cartesian projections produce x/y encoding keys
-        // even when custom positional names are used in PROJECT.
+        // even when custom position names are used in PROJECT.
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         fn check_cartesian_keys(json: &serde_json::Value, test_name: &str) {
@@ -1198,8 +1198,8 @@ mod tests {
         let encoding = &layer["encoding"];
 
         // With PROJECT y, x TO cartesian:
-        // - y is pos1 (first positional), renders to VL x-axis in cartesian
-        // - x is pos2 (second positional), renders to VL y-axis in cartesian
+        // - y is pos1 (first position), renders to VL x-axis in cartesian
+        // - x is pos2 (second position), renders to VL y-axis in cartesian
         // So LABEL y => 'Category' should appear on VL x-axis, LABEL x => 'Value' on VL y-axis
         let x_title = encoding["x"]["title"].as_str();
         let y_title = encoding["y"]["title"].as_str();

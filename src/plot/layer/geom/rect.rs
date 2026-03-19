@@ -30,7 +30,7 @@ impl GeomTrait for Rect {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                // All positional aesthetics are optional inputs (Null)
+                // All position aesthetics are optional inputs (Null)
                 // They become Delayed after stat transform
                 ("pos1", DefaultAestheticValue::Null), // x (center)
                 ("pos1min", DefaultAestheticValue::Null), // xmin

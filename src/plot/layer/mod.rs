@@ -165,23 +165,23 @@ impl Layer {
 
     /// Check if this layer has the required aesthetics for its geom
     ///
-    /// Positional aesthetics (pos1*, pos2*) are validated bidirectionally:
+    /// Position aesthetics (pos1*, pos2*) are validated bidirectionally:
     /// requirements using pos1/pos2 slots can be satisfied by either axis assignment.
     /// For example, requiring `pos1`, `pos2min`, `pos2max` accepts either:
     /// - `x`, `ymin`, `ymax` (slot1→x-axis, slot2→y-axis)
     /// - `y`, `xmin`, `xmax` (slot1→y-axis, slot2→x-axis)
     pub fn validate_required_aesthetics(&self) -> std::result::Result<(), String> {
-        use crate::plot::aesthetic::parse_positional;
+        use crate::plot::aesthetic::parse_position;
 
         let required = self.geom.aesthetics().required();
 
-        // Separate positional (with parsed slot/suffix) and material requirements
-        let mut positional_reqs: Vec<(&str, u8, &str)> = Vec::new(); // (name, slot, suffix)
+        // Separate position (with parsed slot/suffix) and material requirements
+        let mut position_reqs: Vec<(&str, u8, &str)> = Vec::new(); // (name, slot, suffix)
         let mut other_reqs: Vec<&str> = Vec::new();
 
         for aesthetic in &required {
-            if let Some((slot, suffix)) = parse_positional(aesthetic) {
-                positional_reqs.push((aesthetic, slot, suffix));
+            if let Some((slot, suffix)) = parse_position(aesthetic) {
+                position_reqs.push((aesthetic, slot, suffix));
             } else {
                 other_reqs.push(aesthetic);
             }
@@ -197,21 +197,21 @@ impl Layer {
             }
         }
 
-        // Validate positional requirements bidirectionally
+        // Validate position requirements bidirectionally
         // Try both slot assignments: (1→1, 2→2) and (1→2, 2→1)
-        if !positional_reqs.is_empty() {
-            let identity_ok = positional_reqs
+        if !position_reqs.is_empty() {
+            let identity_ok = position_reqs
                 .iter()
                 .all(|(name, _, _)| self.mappings.contains_key(name));
 
-            let swapped_ok = positional_reqs.iter().all(|(_, slot, suffix)| {
+            let swapped_ok = position_reqs.iter().all(|(_, slot, suffix)| {
                 let new_slot = if *slot == 1 { 2 } else { 1 };
                 let remapped = format!("pos{}{}", new_slot, suffix);
                 self.mappings.contains_key(&remapped)
             });
 
             if !identity_ok && !swapped_ok {
-                let (missing, _, _) = positional_reqs
+                let (missing, _, _) = position_reqs
                     .iter()
                     .find(|(name, _, _)| !self.mappings.contains_key(name))
                     .unwrap();

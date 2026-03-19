@@ -13,7 +13,7 @@ mod types;
 
 pub use crate::format::apply_label_template;
 pub use crate::plot::aesthetic::{
-    is_facet_aesthetic, is_positional_aesthetic, is_user_facet_aesthetic,
+    is_facet_aesthetic, is_position_aesthetic, is_user_facet_aesthetic,
 };
 pub use crate::plot::types::CastTargetType;
 pub use crate::reader::SqlDialect;
@@ -45,8 +45,8 @@ use crate::plot::{ArrayElement, ArrayElementType};
 /// an unmapped aesthetic should get a scale with type inference (Continuous/Discrete)
 /// or an Identity scale (pass-through, no transformation).
 pub fn gets_default_scale(aesthetic: &str) -> bool {
-    // Positional aesthetics (pos1, pos1min, pos2max, etc.) - checked dynamically
-    if is_positional_aesthetic(aesthetic) {
+    // Position aesthetics (pos1, pos1min, pos2max, etc.) - checked dynamically
+    if is_position_aesthetic(aesthetic) {
         return true;
     }
 

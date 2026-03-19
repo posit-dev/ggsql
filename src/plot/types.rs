@@ -111,7 +111,7 @@ impl Mappings {
 
     /// Transform aesthetic keys from user-facing to internal names.
     ///
-    /// Uses the provided AestheticContext to map user-facing positional aesthetic names
+    /// Uses the provided AestheticContext to map user-facing position aesthetic names
     /// (e.g., "x", "y", "theta", "radius") to internal names (e.g., "pos1", "pos2").
     /// Material aesthetics (e.g., "color", "size") are left unchanged.
     pub fn transform_to_internal(&mut self, ctx: &super::AestheticContext) {
@@ -186,7 +186,7 @@ pub enum AestheticValue {
     /// Annotation column for material aesthetics (synthesized from PLACE literals)
     /// These columns are generated from user-specified literal values in visual space
     /// (e.g., color => 'red', size => 10) and use identity scales (no transformation).
-    /// Positional annotations (x, y) use Column instead since they're in data coordinate space.
+    /// Position annotations (x, y) use Column instead since they're in data coordinate space.
     AnnotationColumn { name: String },
     /// Literal value (quoted string, number, or boolean)
     Literal(ParameterValue),

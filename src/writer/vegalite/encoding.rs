@@ -3,7 +3,7 @@
 //! This module handles building Vega-Lite encoding channels from ggsql aesthetic mappings,
 //! including type inference, scale properties, and title handling.
 
-use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
+use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
 use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path, ScaleTypeKind};
 use crate::plot::{CoordKind, ParameterValue};
 use crate::{AestheticValue, DataFrame, Plot, Result};
@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::{POINTS_TO_AREA, POINTS_TO_PIXELS};
 
-/// Check if a positional aesthetic has free scales enabled.
+/// Check if a position aesthetic has free scales enabled.
 ///
 /// Maps aesthetic names to position indices:
 /// - pos1, pos1min, pos1max, pos1end -> index 0
@@ -206,7 +206,7 @@ pub(super) fn count_binned_legend_scales(spec: &Plot) -> usize {
                 .unwrap_or(false);
 
             // Check if material (legend aesthetic)
-            let is_legend_aesthetic = !is_positional_aesthetic(&scale.aesthetic);
+            let is_legend_aesthetic = !is_position_aesthetic(&scale.aesthetic);
 
             is_binned && is_legend_aesthetic
         })
@@ -367,7 +367,7 @@ fn determine_field_type_for_aesthetic(
     aesthetic_ctx: &AestheticContext,
 ) -> String {
     let primary = aesthetic_ctx
-        .primary_internal_positional(aesthetic)
+        .primary_internal_position(aesthetic)
         .unwrap_or(aesthetic);
     let inferred = infer_field_type(df, col);
 
@@ -402,7 +402,7 @@ fn apply_title_to_encoding(
     aesthetic_ctx: &AestheticContext,
 ) {
     let primary = aesthetic_ctx
-        .primary_internal_positional(aesthetic)
+        .primary_internal_position(aesthetic)
         .unwrap_or(aesthetic);
     let is_primary = aesthetic == primary;
     let primary_exists = primary_aesthetics.contains(primary);
@@ -630,7 +630,7 @@ fn apply_reverse_legend(encoding: &mut Value, scale: &crate::plot::Scale, aesthe
     }
 
     // Only for material aesthetics (those with legends)
-    if is_positional_aesthetic(aesthetic) {
+    if is_position_aesthetic(aesthetic) {
         return;
     }
 
@@ -657,8 +657,8 @@ fn apply_breaks_to_encoding(
 
     let all_values: Vec<Value> = breaks.iter().map(|e| e.to_json()).collect();
 
-    if is_positional_aesthetic(aesthetic) {
-        // For positional aesthetics (axes), filter out suppressed terminal breaks
+    if is_position_aesthetic(aesthetic) {
+        // For position aesthetics (axes), filter out suppressed terminal breaks
         let axis_values: Vec<Value> = if let Some(ref label_mapping) = scale.label_mapping {
             breaks
                 .iter()
@@ -762,7 +762,7 @@ fn apply_label_mapping_to_encoding(
 
     let label_expr = build_label_expr(&filtered_mapping, time_format, null_key.as_deref());
 
-    if is_positional_aesthetic(aesthetic) {
+    if is_position_aesthetic(aesthetic) {
         insert_axis_property(encoding, "labelExpr", json!(label_expr));
     } else {
         insert_legend_property(encoding, "labelExpr", json!(label_expr));
@@ -822,7 +822,7 @@ fn build_column_encoding(
 ) -> Result<Value> {
     let aesthetic_ctx = ctx.spec.get_aesthetic_context();
     let primary = aesthetic_ctx
-        .primary_internal_positional(aesthetic)
+        .primary_internal_position(aesthetic)
         .unwrap_or(aesthetic);
     let mut identity_scale = !is_scaled;
 
@@ -845,7 +845,7 @@ fn build_column_encoding(
         .unwrap_or(false);
 
     // Binned legend = binned + material (needs threshold scale)
-    let is_binned_legend = is_binned && !is_positional_aesthetic(aesthetic);
+    let is_binned_legend = is_binned && !is_position_aesthetic(aesthetic);
 
     // Build base encoding
     let mut encoding = json!({
@@ -853,7 +853,7 @@ fn build_column_encoding(
         "type": field_type,
     });
 
-    // bin: "binned" is only valid for positional channels in VL v6
+    // bin: "binned" is only valid for position channels in VL v6
     if is_binned && !is_binned_legend {
         encoding["bin"] = json!("binned");
     }
@@ -955,13 +955,13 @@ fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value
 
 /// Map ggsql aesthetic name to Vega-Lite encoding channel name.
 ///
-/// For internal positional aesthetics (pos1, pos2, etc.), maps directly to Vega-Lite
+/// For internal position aesthetics (pos1, pos2, etc.), maps directly to Vega-Lite
 /// channel names based on coord type:
 /// - Cartesian: pos1 → "x", pos2 → "y"
 /// - Polar: pos1 → "radius", pos2 → "theta"
 ///
 /// This ensures correct Vega-Lite channel names regardless of what the user originally
-/// called their positional aesthetics in the PROJECT clause.
+/// called their position aesthetics in the PROJECT clause.
 ///
 /// For material aesthetics, applies Vega-Lite specific mappings (e.g., linetype → strokeDash).
 pub(super) fn map_aesthetic_name(
@@ -969,9 +969,9 @@ pub(super) fn map_aesthetic_name(
     _ctx: &crate::plot::AestheticContext,
     coord_kind: CoordKind,
 ) -> String {
-    // For internal positional aesthetics, map directly to Vega-Lite channel names
+    // For internal position aesthetics, map directly to Vega-Lite channel names
     // based on coord type (ignoring user-facing names)
-    if let Some(vl_channel) = map_positional_to_vegalite(aesthetic, coord_kind) {
+    if let Some(vl_channel) = map_position_to_vegalite(aesthetic, coord_kind) {
         return vl_channel;
     }
 
@@ -990,19 +990,19 @@ pub(super) fn map_aesthetic_name(
     }
 }
 
-/// Map internal positional aesthetic to Vega-Lite channel name based on coord type.
+/// Map internal position aesthetic to Vega-Lite channel name based on coord type.
 ///
-/// Returns `Some(channel_name)` for internal positional aesthetics (pos1, pos2, etc.),
+/// Returns `Some(channel_name)` for internal position aesthetics (pos1, pos2, etc.),
 /// or `None` for material aesthetics.
-fn map_positional_to_vegalite(aesthetic: &str, coord_kind: CoordKind) -> Option<String> {
+fn map_position_to_vegalite(aesthetic: &str, coord_kind: CoordKind) -> Option<String> {
     let (primary, secondary) = match coord_kind {
         CoordKind::Cartesian => ("x", "y"),
         CoordKind::Polar => ("radius", "theta"),
     };
 
-    // Match internal positional aesthetic patterns
+    // Match internal position aesthetic patterns
     match aesthetic {
-        // Primary positional
+        // Primary position
         "pos1" => Some(primary.to_string()),
         "pos2" => Some(secondary.to_string()),
         // End variants (Vega-Lite uses x2/y2/theta2/radius2)
