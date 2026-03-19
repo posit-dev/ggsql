@@ -106,7 +106,7 @@ mod tests {
             );
             m
         };
-        // Add fill to partition_by (simulates what add_discrete_columns_to_partition_by does)
+        // Add fill to partition_by (simulates what add_mapped_columns_to_partition_by does)
         layer.partition_by = vec!["__ggsql_aes_fill__".to_string()];
         layer
     }

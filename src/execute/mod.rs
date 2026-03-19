@@ -24,10 +24,10 @@ pub use schema::TypeInfo;
 
 use crate::naming;
 use crate::parser;
-use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
+use crate::plot::aesthetic::is_positional_aesthetic;
 use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDataContext};
 use crate::plot::layer::is_transposed;
-use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
+use crate::plot::{AestheticValue, Layer, ScaleTypeKind, Schema};
 use crate::{DataFrame, DataSource, GgsqlError, Plot, Result};
 use std::collections::{HashMap, HashSet};
 
@@ -656,41 +656,21 @@ fn resolve_facet(
 }
 
 // =============================================================================
-// Discrete Column Handling
+// Mapped Column Grouping
 // =============================================================================
 
-/// Add discrete mapped columns to partition_by for all layers
+/// Add all non-positional mapped columns to partition_by for all layers.
 ///
-/// For each layer, examines all aesthetic mappings and adds any that map to
-/// discrete columns to the layer's partition_by. This ensures proper grouping
-/// for all layers, not just stat geoms.
-///
-/// Discreteness is determined by:
-/// 1. If the aesthetic has an explicit scale with a scale_type:
-///    - ScaleTypeKind::Discrete or Binned → discrete (add to partition_by)
-///    - ScaleTypeKind::Continuous → not discrete (skip)
-///    - ScaleTypeKind::Identity → fall back to schema
-/// 2. Otherwise, use schema's is_discrete flag (based on column data type)
+/// This ensures mapped columns survive stat transforms (GROUP BY), matching
+/// ggplot2's behavior where all mapped aesthetics contribute to grouping
+/// regardless of data type. Without this, integer columns mapped to
+/// fill/color/etc. would be dropped by stat transforms like bar's COUNT.
 ///
 /// Columns already in partition_by (from explicit PARTITION BY clause) are skipped.
 /// Stat-consumed aesthetics (x for bar, x for histogram) are also skipped.
-fn add_discrete_columns_to_partition_by(
-    layers: &mut [Layer],
-    layer_schemas: &[Schema],
-    scales: &[Scale],
-    aesthetic_ctx: &AestheticContext,
-) {
-    // Build a map of aesthetic -> scale for quick lookup
-    let scale_map: HashMap<&str, &Scale> =
-        scales.iter().map(|s| (s.aesthetic.as_str(), s)).collect();
-
+fn add_mapped_columns_to_partition_by(layers: &mut [Layer], layer_schemas: &[Schema]) {
     for (layer, schema) in layers.iter_mut().zip(layer_schemas.iter()) {
         let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
-        let discrete_columns: HashSet<&str> = schema
-            .iter()
-            .filter(|c| c.is_discrete)
-            .map(|c| c.name.as_str())
-            .collect();
 
         // Build set of excluded aesthetics that should not trigger auto-grouping:
         // - Stat-consumed aesthetics (transformed, not grouped)
@@ -718,40 +698,11 @@ fn add_discrete_columns_to_partition_by(
                     continue;
                 }
 
-                // Determine if this aesthetic is discrete:
-                // 1. Check if there's an explicit scale with a scale_type
-                // 2. Fall back to schema's is_discrete
-                //
-                // Discrete and Binned scales produce categorical groupings.
-                // Continuous scales don't group. Identity defers to column type.
-                let primary_aes = aesthetic_ctx
-                    .primary_internal_positional(aesthetic)
-                    .unwrap_or(aesthetic);
-                let is_discrete = if let Some(scale) = scale_map.get(primary_aes) {
-                    if let Some(ref scale_type) = scale.scale_type {
-                        match scale_type.scale_type_kind() {
-                            ScaleTypeKind::Discrete
-                            | ScaleTypeKind::Binned
-                            | ScaleTypeKind::Ordinal => true,
-                            ScaleTypeKind::Continuous => false,
-                            ScaleTypeKind::Identity => discrete_columns.contains(col),
-                        }
-                    } else {
-                        // Scale exists but no explicit type - use schema
-                        discrete_columns.contains(col)
-                    }
-                } else {
-                    // No scale for this aesthetic - use schema
-                    discrete_columns.contains(col)
-                };
-
-                // Skip if not discrete
-                if !is_discrete {
-                    continue;
-                }
-
-                // Use the prefixed aesthetic column name, since the query renames
-                // columns to prefixed names (e.g., island → __ggsql_aes_fill__)
+                // Add all non-positional, non-consumed mapped columns to partition_by.
+                // This ensures they survive stat transforms (GROUP BY), matching ggplot2
+                // where all mapped aesthetics contribute to grouping regardless of
+                // data type. Without this, integer columns mapped to fill/color/etc.
+                // would be dropped by stat transforms like bar's COUNT.
                 let aes_col_name = naming::aesthetic_column(aesthetic);
 
                 // Skip if already in partition_by
@@ -1083,15 +1034,9 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     // This must happen before apply_layer_transforms so pre_stat_transform_sql has resolved breaks
     scale::apply_pre_stat_resolve(&mut specs[0], &layer_schemas)?;
 
-    // Add discrete mapped columns to partition_by for all layers
-    let scales = specs[0].scales.clone();
-    let aesthetic_ctx = specs[0].get_aesthetic_context();
-    add_discrete_columns_to_partition_by(
-        &mut specs[0].layers,
-        &layer_schemas,
-        &scales,
-        &aesthetic_ctx,
-    );
+    // Add all non-positional mapped columns to partition_by so they survive
+    // stat transforms (GROUP BY), matching ggplot2's grouping behavior.
+    add_mapped_columns_to_partition_by(&mut specs[0].layers, &layer_schemas);
 
     // Clone scales for apply_layer_transforms
     let scales = specs[0].scales.clone();
@@ -1517,6 +1462,59 @@ mod tests {
 
         // Should have fewer rows than original (binned)
         assert!(layer_df.height() < 100);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_bar_with_integer_fill_column() {
+        // Integer columns mapped to non-positional aesthetics like fill should
+        // survive stat transforms (be included in GROUP BY), matching ggplot2
+        // behavior where all mapped aesthetics contribute to grouping.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE int_fill_test AS SELECT * FROM (VALUES
+                    ('Male', 0), ('Male', 1), ('Female', 0), ('Female', 1),
+                    ('Male', 0), ('Male', 0), ('Female', 1), ('Female', 1)
+                ) AS t(sex, survived)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT * FROM int_fill_test
+            VISUALISE
+            DRAW bar MAPPING sex AS x, survived AS fill
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Integer column mapped to fill should not cause error: {:?}",
+            result.err()
+        );
+
+        let result = result.unwrap();
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
+
+        // Should have 4 rows: Male/0, Male/1, Female/0, Female/1
+        assert_eq!(layer_df.height(), 4);
+
+        // fill column should be present
+        let fill_col = naming::aesthetic_column("fill");
+        let col_names: Vec<String> = layer_df
+            .get_column_names_str()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert!(
+            col_names.contains(&fill_col),
+            "Expected fill column '{}' in {:?}",
+            fill_col,
+            col_names
+        );
     }
 
     #[cfg(feature = "duckdb")]

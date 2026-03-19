@@ -466,7 +466,7 @@ where
     );
 
     // Build group_by columns from partition_by
-    // Note: Facet aesthetics are already in partition_by via add_discrete_columns_to_partition_by,
+    // Note: Facet aesthetics are already in partition_by via add_mapped_columns_to_partition_by,
     // so we don't add facet.get_variables() here (which would add original column names
     // instead of aesthetic column names, breaking pre-stat transforms like domain censoring).
     let mut group_by: Vec<String> = Vec::new();
