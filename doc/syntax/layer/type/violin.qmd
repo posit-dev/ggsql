@@ -34,6 +34,10 @@ The following aesthetics are recognised by the violin layer.
     * `'biweight'` or `'quartic'`
     * `'cosine'`
 * `width`: Relative width of the violins. Defaults to `0.9`.
+* `ridge`: Determines the sides of the midline where the density is displayed. One of the following:
+    * `'both'` (default) displays a complete violin both sides of the midline.
+    * `'left'` or `'top'` only displays half a violin at the left side or top side.
+    * `'right'` or `'bottom'` only displays half a violin at the right side or bottom side.
 * `tails`: Expansion rule for drawing the tails. One of the following:
     * A number setting a multiple of adjusted bandwidths to expand each group's range. Defaults to 3.
     * `null` to use the whole data range rather than group ranges.
@@ -103,3 +107,11 @@ VISUALISE species AS y, bill_dep AS x FROM ggsql:penguins
   DRAW violin
 ```
 
+A ridgeline plot (or joy plot) can be seen as a horizontal half-violin plot, or like a density plot with vertical offsets for every category.
+To achieve this outcome, you can set the `ridge` setting and adjust `width` to taste.
+
+```{ggsql}
+VISUALISE Temp AS x, Month AS y FROM ggsql:airquality
+DRAW violin SETTING width => 4, ridge => 'top'
+SCALE ORDINAL y
+```
