@@ -112,7 +112,7 @@ impl Mappings {
     /// Transform aesthetic keys from user-facing to internal names.
     ///
     /// Uses the provided AestheticContext to map user-facing positional aesthetic names
-    /// (e.g., "x", "y", "theta", "radius") to internal names (e.g., "pos1", "pos2").
+    /// (e.g., "x", "y", "angle", "radius") to internal names (e.g., "pos1", "pos2").
     /// Non-positional aesthetics (e.g., "color", "size") are left unchanged.
     pub fn transform_to_internal(&mut self, ctx: &super::AestheticContext) {
         let original_aesthetics = std::mem::take(&mut self.aesthetics);

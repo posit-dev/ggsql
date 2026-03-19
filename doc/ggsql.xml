@@ -242,7 +242,7 @@
       <item>xlim</item>
       <item>ylim</item>
       <item>ratio</item>
-      <item>theta</item>
+      <item>angle</item>
       <item>clip</item>
     </list>
 
