@@ -670,7 +670,7 @@ where
 ///
 /// For annotation layers:
 /// - Positional aesthetics (pos1, pos2): use Column (data coordinate space, participate in scales)
-/// - Non-positional aesthetics (color, size): use AnnotationColumn (visual space, identity scale)
+/// - Material aesthetics (color, size): use AnnotationColumn (visual space, identity scale)
 ///
 /// # Arguments
 ///
@@ -684,7 +684,7 @@ fn process_annotation_layer(layer: &mut Layer) -> Result<String> {
 
     // Step 1: Identify which parameters to use for annotation data
     // Only process positional aesthetics, required aesthetics, and array parameters
-    // (non-positional non-required scalars stay in parameters as geom settings)
+    // (material non-required scalars stay in parameters as geom settings)
     let required_aesthetics = layer.geom.aesthetics().required();
     let param_keys: Vec<String> = layer.parameters.keys().cloned().collect();
 
@@ -776,7 +776,7 @@ fn process_annotation_layer(layer: &mut Layer) -> Result<String> {
                 is_dummy: false,
             }
         } else {
-            // Non-positional aesthetics use AnnotationColumn (identity scale)
+            // Material aesthetics use AnnotationColumn (identity scale)
             AestheticValue::AnnotationColumn {
                 name: aesthetic.clone(), // Raw aesthetic name from VALUES clause
             }

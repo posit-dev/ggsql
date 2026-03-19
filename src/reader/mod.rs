@@ -787,7 +787,7 @@ mod tests {
     #[test]
     fn test_binned_fill_legend_renders_threshold_scale() {
         // End-to-end test for binned fill scale rendering to Vega-Lite
-        // Verifies that binned non-positional aesthetics use threshold scale type
+        // Verifies that binned material aesthetics use threshold scale type
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         // Create data with values that span the binned range

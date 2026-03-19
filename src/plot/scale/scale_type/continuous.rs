@@ -318,17 +318,17 @@ mod tests {
     }
 
     #[test]
-    fn test_pre_stat_transform_sql_default_oob_for_non_positional() {
+    fn test_pre_stat_transform_sql_default_oob_for_material() {
         let continuous = Continuous;
-        let mut scale = Scale::new("color"); // non-positional aesthetic
+        let mut scale = Scale::new("color"); // material aesthetic
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
-        // No oob property - should use default (censor for non-positional)
+        // No oob property - should use default (censor for material)
 
         let sql =
             continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect);
 
-        // Should generate censor SQL since default for non-positional is "censor"
+        // Should generate censor SQL since default for material is "censor"
         assert!(sql.is_some());
         let sql = sql.unwrap();
         assert!(sql.contains("CASE WHEN"));

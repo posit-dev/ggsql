@@ -2395,7 +2395,7 @@ mod tests {
             "y should be transformed to pos2, moved to mappings, and materialized as column"
         );
 
-        // Verify required non-positional aesthetic (label) is in mappings as AnnotationColumn
+        // Verify required material aesthetic (label) is in mappings as AnnotationColumn
         // After process_annotation_layer, required aesthetics are converted to AnnotationColumn
         assert!(
             matches!(
@@ -2405,7 +2405,7 @@ mod tests {
             "label (required) should be in mappings as AnnotationColumn with prefixed name"
         );
 
-        // Non-required, non-positional, non-array aesthetics like size may be processed
+        // Non-required, material, non-array aesthetics like size may be processed
         // by resolve_aesthetics or other downstream logic, so we don't strictly check
         // where they end up. The key point is that required/positional aesthetics are
         // correctly moved to mappings.

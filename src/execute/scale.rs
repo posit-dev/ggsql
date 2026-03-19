@@ -1432,7 +1432,7 @@ mod tests {
         assert!(pos2_family.iter().any(|s| s == "pos2end"));
         assert_eq!(pos2_family.len(), 4); // pos2, pos2min, pos2max, pos2end
 
-        // Test non-positional aesthetics don't have internal family
+        // Test material aesthetics don't have internal family
         assert!(ctx.internal_positional_family("color").is_none());
 
         // Test internal variant aesthetics don't have internal family

@@ -4,11 +4,11 @@
 //! aesthetic names in ggsql. Aesthetics are visual properties that can be mapped
 //! to data columns or set to literal values.
 //!
-//! # Positional vs Legend Aesthetics
+//! # Positional vs Material Aesthetics
 //!
 //! Aesthetics fall into two categories:
 //! - **Positional**: Map to axes (x, y, and variants like xmin, xmax, etc.)
-//! - **Legend**: Map to visual properties shown in legends (color, size, shape, etc.)
+//! - **Material**: Map to visual properties shown in legends (color, size, shape, etc.)
 //!
 //! # Aesthetic Families
 //!
@@ -52,14 +52,14 @@ pub const POSITIONAL_SUFFIXES: &[&str] = &["min", "max", "end"];
 /// - `row` → `facet1`, `column` → `facet2`
 pub const USER_FACET_AESTHETICS: &[&str] = &["panel", "row", "column"];
 
-/// Non-positional aesthetics (visual properties shown in legends or applied to marks)
+/// Material aesthetics (visual properties shown in legends or applied to marks)
 ///
 /// These include:
 /// - Color aesthetics: color, colour, fill, stroke, opacity
 /// - Size/shape aesthetics: size, shape, linetype, linewidth
 /// - Dimension aesthetics: width, height
 /// - Text aesthetics: label, typeface, fontweight, italic, hjust, vjust
-pub const NON_POSITIONAL: &[&str] = &[
+pub const MATERIAL_AESTHETICS: &[&str] = &[
     "color",
     "colour",
     "fill",
@@ -131,8 +131,8 @@ pub struct AestheticContext {
     user_facet: Vec<&'static str>,
     internal_facet: Vec<String>,
 
-    // Non-positional (static reference)
-    non_positional: &'static [&'static str],
+    // Material (static reference)
+    material: &'static [&'static str],
 }
 
 impl AestheticContext {
@@ -195,7 +195,7 @@ impl AestheticContext {
             internal_primaries,
             user_facet: facet_names.to_vec(),
             internal_facet,
-            non_positional: NON_POSITIONAL,
+            material: MATERIAL_AESTHETICS,
         }
     }
 
@@ -247,9 +247,9 @@ impl AestheticContext {
         self.internal_primaries.iter().any(|s| s == name)
     }
 
-    /// Check if aesthetic is non-positional (color, size, etc.)
-    pub fn is_non_positional(&self, name: &str) -> bool {
-        self.non_positional.contains(&name)
+    /// Check if aesthetic is material (color, size, etc.)
+    pub fn is_material(&self, name: &str) -> bool {
+        self.material.contains(&name)
     }
 
     /// Check if name is a user-facing facet aesthetic (panel, row, column)
@@ -272,14 +272,14 @@ impl AestheticContext {
     /// Get the primary aesthetic for an internal family member.
     ///
     /// e.g., "pos1min" → "pos1", "pos2end" → "pos2"
-    /// Non-positional aesthetics return themselves.
+    /// Material aesthetics return themselves.
     pub fn primary_internal_positional<'a>(&'a self, name: &'a str) -> Option<&'a str> {
         // Check internal positional (O(1) lookup)
         if let Some(primary) = self.internal_to_primary.get(name) {
             return Some(primary.as_str());
         }
-        // Non-positional aesthetics are their own primary
-        if self.is_non_positional(name) {
+        // Material aesthetics are their own primary
+        if self.is_material(name) {
             return Some(name);
         }
         None
@@ -316,7 +316,7 @@ impl AestheticContext {
     /// Flip a positional aesthetic to its opposite position.
     ///
     /// Swaps pos1 ↔ pos2 (and their suffixed variants like pos1min ↔ pos2min).
-    /// Non-positional aesthetics are returned unchanged.
+    /// Material aesthetics are returned unchanged.
     ///
     /// # Examples
     ///
@@ -411,7 +411,7 @@ pub fn is_positional_aesthetic(name: &str) -> bool {
 /// - `pos2min` → (2, "min")
 /// - `pos1end` → (1, "end")
 ///
-/// Returns `None` for non-positional aesthetics.
+/// Returns `None` for material aesthetics.
 pub fn parse_positional(name: &str) -> Option<(u8, &str)> {
     if !name.starts_with("pos") {
         return None;
@@ -487,7 +487,7 @@ mod tests {
         assert!(!is_positional_aesthetic("xmin"));
         assert!(!is_positional_aesthetic("theta"));
 
-        // Non-positional
+        // Material
         assert!(!is_positional_aesthetic("color"));
         assert!(!is_positional_aesthetic("size"));
         assert!(!is_positional_aesthetic("fill"));
@@ -549,7 +549,7 @@ mod tests {
         assert_eq!(ctx.map_user_to_internal("ymax"), Some("pos2max"));
         assert_eq!(ctx.map_user_to_internal("yend"), Some("pos2end"));
 
-        // Non-positional returns None
+        // Material returns None
         assert_eq!(ctx.map_user_to_internal("color"), None);
         assert_eq!(ctx.map_user_to_internal("fill"), None);
     }
@@ -644,7 +644,7 @@ mod tests {
         assert_eq!(parse_positional("pos2max"), Some((2, "max")));
         assert_eq!(parse_positional("pos1end"), Some((1, "end")));
 
-        // Non-positional
+        // Material
         assert_eq!(parse_positional("color"), None);
         assert_eq!(parse_positional("x"), None);
         assert_eq!(parse_positional("xmin"), None);

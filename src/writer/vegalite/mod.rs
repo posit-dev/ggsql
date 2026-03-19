@@ -1351,7 +1351,7 @@ mod tests {
             "y2"
         );
 
-        // Non-positional aesthetics pass through directly
+        // Material aesthetics pass through directly
         assert_eq!(
             map_aesthetic_name("color", &ctx, CoordKind::Cartesian),
             "color"

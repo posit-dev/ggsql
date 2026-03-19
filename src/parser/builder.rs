@@ -1003,7 +1003,7 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
             )));
         }
 
-        // Validate no conflicts with non-positional or facet aesthetics
+        // Validate no conflicts with material or facet aesthetics
         validate_positional_aesthetic_names(&aes)?;
 
         aes
@@ -1028,13 +1028,13 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
 
 /// Validate that positional aesthetic names don't conflict with reserved names
 fn validate_positional_aesthetic_names(names: &[String]) -> Result<()> {
-    use crate::plot::aesthetic::{NON_POSITIONAL, USER_FACET_AESTHETICS};
+    use crate::plot::aesthetic::{MATERIAL_AESTHETICS, USER_FACET_AESTHETICS};
 
     for name in names {
-        // Check against non-positional aesthetics
-        if NON_POSITIONAL.contains(&name.as_str()) {
+        // Check against material aesthetics
+        if MATERIAL_AESTHETICS.contains(&name.as_str()) {
             return Err(GgsqlError::ParseError(format!(
-                "PROJECT aesthetic '{}' conflicts with non-positional aesthetic. \
+                "PROJECT aesthetic '{}' conflicts with material aesthetic. \
                  Choose a different name.",
                 name
             )));
@@ -1385,7 +1385,7 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err
             .to_string()
-            .contains("conflicts with non-positional aesthetic"));
+            .contains("conflicts with material aesthetic"));
     }
 
     // ========================================

@@ -444,7 +444,7 @@ impl ScaleTypeTrait for Binned {
                     breaks.last().unwrap().clone(),
                 ];
                 // Only expand for positional aesthetics (x, y, etc.)
-                // Non-positional aesthetics (color, fill, size) don't get expansion
+                // Material aesthetics (color, fill, size) don't get expansion
                 let final_range = if super::is_positional_aesthetic(aesthetic) {
                     expand_numeric_range(&terminal_range, mult, add)
                 } else {

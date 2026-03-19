@@ -564,7 +564,7 @@ mod tests {
         assert_eq!(ctx.primary_internal_positional("pos2max"), Some("pos2"));
         assert_eq!(ctx.primary_internal_positional("pos2end"), Some("pos2"));
 
-        // Non-positional aesthetics return themselves
+        // Material aesthetics return themselves
         assert_eq!(ctx.primary_internal_positional("color"), Some("color"));
         assert_eq!(ctx.primary_internal_positional("size"), Some("size"));
         assert_eq!(ctx.primary_internal_positional("fill"), Some("fill"));
@@ -834,7 +834,7 @@ mod tests {
     }
 
     #[test]
-    fn test_label_transform_preserves_non_positional() {
+    fn test_label_transform_preserves_material() {
         // LABEL title/color should be preserved unchanged
         use crate::plot::projection::{Coord, Projection};
 
@@ -856,7 +856,7 @@ mod tests {
         spec.transform_aesthetics_to_internal();
 
         let labels = spec.labels.as_ref().unwrap();
-        // Non-positional labels should remain unchanged
+        // Material labels should remain unchanged
         assert_eq!(labels.labels.get("title"), Some(&"My Chart".to_string()));
         assert_eq!(labels.labels.get("color"), Some(&"Category".to_string()));
         // Positional label should be transformed

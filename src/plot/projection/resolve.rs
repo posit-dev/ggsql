@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use super::coord::{Coord, CoordKind};
 use super::Projection;
-use crate::plot::aesthetic::{NON_POSITIONAL, POSITIONAL_SUFFIXES};
+use crate::plot::aesthetic::{MATERIAL_AESTHETICS, POSITIONAL_SUFFIXES};
 use crate::plot::Mappings;
 
 /// Cartesian primary aesthetic names
@@ -98,8 +98,8 @@ pub fn resolve_coord(
 /// Check if an aesthetic name indicates cartesian or polar coordinate system.
 /// Updates the found flags accordingly.
 fn check_aesthetic(aesthetic: &str, found_cartesian: &mut bool, found_polar: &mut bool) {
-    // Skip non-positional aesthetics (color, size, etc.)
-    if NON_POSITIONAL.contains(&aesthetic) {
+    // Skip material aesthetics (color, size, etc.)
+    if MATERIAL_AESTHETICS.contains(&aesthetic) {
         return;
     }
 
@@ -252,11 +252,11 @@ mod tests {
     }
 
     // ========================================
-    // Test: Non-positional aesthetics ignored
+    // Test: Material aesthetics ignored
     // ========================================
 
     #[test]
-    fn test_ignore_non_positional() {
+    fn test_ignore_material() {
         let global = mappings_with(&["color", "size", "fill", "opacity"]);
         let layers: Vec<&Mappings> = vec![];
 
@@ -266,7 +266,7 @@ mod tests {
     }
 
     #[test]
-    fn test_non_positional_with_cartesian() {
+    fn test_material_with_cartesian() {
         let global = mappings_with(&["x", "y", "color", "size"]);
         let layers: Vec<&Mappings> = vec![];
 

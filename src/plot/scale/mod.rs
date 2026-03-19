@@ -55,7 +55,7 @@ pub fn gets_default_scale(aesthetic: &str) -> bool {
         return true;
     }
 
-    // Non-positional visual aesthetics that get default scales
+    // Material visual aesthetics that get default scales
     matches!(
         aesthetic,
         // Color aesthetics (color/colour/col already split to fill/stroke)

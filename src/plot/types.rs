@@ -113,7 +113,7 @@ impl Mappings {
     ///
     /// Uses the provided AestheticContext to map user-facing positional aesthetic names
     /// (e.g., "x", "y", "theta", "radius") to internal names (e.g., "pos1", "pos2").
-    /// Non-positional aesthetics (e.g., "color", "size") are left unchanged.
+    /// Material aesthetics (e.g., "color", "size") are left unchanged.
     pub fn transform_to_internal(&mut self, ctx: &super::AestheticContext) {
         let original_aesthetics = std::mem::take(&mut self.aesthetics);
         for (aesthetic, value) in original_aesthetics {
@@ -183,7 +183,7 @@ pub enum AestheticValue {
         /// Whether this is a dummy/placeholder column (e.g., for bar charts without x mapped)
         is_dummy: bool,
     },
-    /// Annotation column for non-positional aesthetics (synthesized from PLACE literals)
+    /// Annotation column for material aesthetics (synthesized from PLACE literals)
     /// These columns are generated from user-specified literal values in visual space
     /// (e.g., color => 'red', size => 10) and use identity scales (no transformation).
     /// Positional annotations (x, y) use Column instead since they're in data coordinate space.

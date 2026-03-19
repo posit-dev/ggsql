@@ -20,7 +20,7 @@ use super::{POINTS_TO_AREA, POINTS_TO_PIXELS};
 /// - pos2, pos2min, pos2max, pos2end -> index 1
 /// - etc.
 ///
-/// Returns false for non-positional aesthetics or if no free_scales array is provided.
+/// Returns false for material aesthetics or if no free_scales array is provided.
 fn is_position_free_for_aesthetic(
     aesthetic: &str,
     free_scales: Option<&[crate::plot::ArrayElement]>,
@@ -191,7 +191,7 @@ pub(super) fn build_symbol_legend_label_mapping(
     result
 }
 
-/// Count the number of binned non-positional scales in the spec.
+/// Count the number of binned material scales in the spec.
 /// This is used to determine if legends should use symbol style (which requires
 /// removing the last terminal value) or gradient style (which keeps all values).
 pub(super) fn count_binned_legend_scales(spec: &Plot) -> usize {
@@ -205,7 +205,7 @@ pub(super) fn count_binned_legend_scales(spec: &Plot) -> usize {
                 .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)
                 .unwrap_or(false);
 
-            // Check if non-positional (legend aesthetic)
+            // Check if material (legend aesthetic)
             let is_legend_aesthetic = !is_positional_aesthetic(&scale.aesthetic);
 
             is_binned && is_legend_aesthetic
@@ -505,7 +505,7 @@ fn build_scale_properties(
         apply_transform_to_scale(&mut scale_obj, transform);
     }
 
-    // Handle binned non-positional aesthetics with threshold scale
+    // Handle binned material aesthetics with threshold scale
     if ctx.is_binned_legend {
         scale_obj.insert("type".to_string(), json!("threshold"));
 
@@ -629,7 +629,7 @@ fn apply_reverse_legend(encoding: &mut Value, scale: &crate::plot::Scale, aesthe
         return;
     }
 
-    // Only for non-positional aesthetics (those with legends)
+    // Only for material aesthetics (those with legends)
     if is_positional_aesthetic(aesthetic) {
         return;
     }
@@ -804,7 +804,7 @@ pub(super) fn build_encoding_channel(
             is_dummy,
         } => build_column_encoding(aesthetic, col, original_name, *is_dummy, true, ctx),
         AestheticValue::AnnotationColumn { name: col } => {
-            // Non-positional annotation columns use identity scale
+            // Material annotation columns use identity scale
             build_column_encoding(aesthetic, col, &None, false, false, ctx)
         }
         AestheticValue::Literal(lit) => build_literal_encoding(aesthetic, lit),
@@ -844,7 +844,7 @@ fn build_column_encoding(
         .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)
         .unwrap_or(false);
 
-    // Binned legend = binned + non-positional (needs threshold scale)
+    // Binned legend = binned + material (needs threshold scale)
     let is_binned_legend = is_binned && !is_positional_aesthetic(aesthetic);
 
     // Build base encoding
@@ -963,7 +963,7 @@ fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value
 /// This ensures correct Vega-Lite channel names regardless of what the user originally
 /// called their positional aesthetics in the PROJECT clause.
 ///
-/// For non-positional aesthetics, applies Vega-Lite specific mappings (e.g., linetype → strokeDash).
+/// For material aesthetics, applies Vega-Lite specific mappings (e.g., linetype → strokeDash).
 pub(super) fn map_aesthetic_name(
     aesthetic: &str,
     _ctx: &crate::plot::AestheticContext,
@@ -975,7 +975,7 @@ pub(super) fn map_aesthetic_name(
         return vl_channel;
     }
 
-    // Non-positional aesthetics: apply Vega-Lite specific mappings
+    // Material aesthetics: apply Vega-Lite specific mappings
     match aesthetic {
         // Line aesthetics
         "linetype" => "strokeDash".to_string(),
@@ -993,7 +993,7 @@ pub(super) fn map_aesthetic_name(
 /// Map internal positional aesthetic to Vega-Lite channel name based on coord type.
 ///
 /// Returns `Some(channel_name)` for internal positional aesthetics (pos1, pos2, etc.),
-/// or `None` for non-positional aesthetics.
+/// or `None` for material aesthetics.
 fn map_positional_to_vegalite(aesthetic: &str, coord_kind: CoordKind) -> Option<String> {
     let (primary, secondary) = match coord_kind {
         CoordKind::Cartesian => ("x", "y"),

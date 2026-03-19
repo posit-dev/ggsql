@@ -175,7 +175,7 @@ impl Layer {
 
         let required = self.geom.aesthetics().required();
 
-        // Separate positional (with parsed slot/suffix) and non-positional requirements
+        // Separate positional (with parsed slot/suffix) and material requirements
         let mut positional_reqs: Vec<(&str, u8, &str)> = Vec::new(); // (name, slot, suffix)
         let mut other_reqs: Vec<&str> = Vec::new();
 
@@ -187,7 +187,7 @@ impl Layer {
             }
         }
 
-        // Validate non-positional requirements directly
+        // Validate material requirements directly
         for aesthetic in &other_reqs {
             if !self.mappings.contains_key(aesthetic) {
                 return Err(format!(
