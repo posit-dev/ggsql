@@ -6,7 +6,7 @@ use super::{
     ScaleTypeKind, ScaleTypeTrait, TransformKind, OOB_CENSOR, OOB_SQUISH, OOB_VALUES_CONTINUOUS,
 };
 use crate::plot::types::{
-    ArrayConstraint, DefaultParam, DefaultParamValue, NumberConstraint, ParamConstraint,
+    ArrayConstraint, NumberConstraint, ParamConstraint, ParamDefinition, ParamDefinitionValue,
 };
 use crate::plot::{ArrayElement, ParameterValue};
 
@@ -95,30 +95,30 @@ impl ScaleTypeTrait for Continuous {
         TransformKind::Identity
     }
 
-    fn default_properties(&self) -> &'static [DefaultParam] {
-        const PARAMS: &[DefaultParam] = &[
-            DefaultParam {
+    fn default_properties(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "expand",
-                default: DefaultParamValue::Number(super::DEFAULT_EXPAND_MULT),
+                default: ParamDefinitionValue::Number(super::DEFAULT_EXPAND_MULT),
                 // Number (multiplier >= 0) or Array of exactly 2 numbers [mult, add] (both >= 0)
                 constraint: ParamConstraint::number_or_numeric_array(
                     NumberConstraint::min(0.0),
-                    ArrayConstraint::of_numbers_len(2, NumberConstraint::min(0.0)),
+                    ArrayConstraint::of_numbers_len(NumberConstraint::min(0.0), 2),
                 ),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "oob",
-                default: DefaultParamValue::Null, // varies by aesthetic
-                constraint: ParamConstraint::string_enum(OOB_VALUES_CONTINUOUS),
+                default: ParamDefinitionValue::Null, // varies by aesthetic
+                constraint: ParamConstraint::string_option(OOB_VALUES_CONTINUOUS),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "reverse",
-                default: DefaultParamValue::Boolean(false),
+                default: ParamDefinitionValue::Boolean(false),
                 constraint: ParamConstraint::boolean(),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "breaks",
-                default: DefaultParamValue::Number(
+                default: ParamDefinitionValue::Number(
                     super::super::breaks::DEFAULT_BREAK_COUNT as f64,
                 ),
                 // Number (count >= 1), Array of numbers (explicit breaks), or String (temporal interval)
@@ -127,9 +127,9 @@ impl ScaleTypeTrait for Continuous {
                     ArrayConstraint::of_numbers(NumberConstraint::unconstrained()),
                 ),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "pretty",
-                default: DefaultParamValue::Boolean(true),
+                default: ParamDefinitionValue::Boolean(true),
                 constraint: ParamConstraint::boolean(),
             },
         ];

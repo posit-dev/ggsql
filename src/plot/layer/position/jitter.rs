@@ -18,7 +18,7 @@ use super::{
     compute_dodge_offsets, compute_group_indices, is_continuous_scale, Layer, PositionTrait,
     PositionType,
 };
-use crate::plot::types::{DefaultParam, DefaultParamValue, ParamConstraint, ParameterValue};
+use crate::plot::types::{ParamConstraint, ParamDefinition, ParamDefinitionValue, ParameterValue};
 use crate::{naming, DataFrame, GgsqlError, Plot, Result};
 use polars::prelude::*;
 use rand::Rng;
@@ -268,32 +268,32 @@ impl PositionTrait for Jitter {
         PositionType::Jitter
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        const PARAMS: &[DefaultParam] = &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "width",
-                default: DefaultParamValue::Number(0.9),
+                default: ParamDefinitionValue::Number(0.9),
                 constraint: ParamConstraint::number_range(0.0, 1.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "dodge",
-                default: DefaultParamValue::Boolean(true),
+                default: ParamDefinitionValue::Boolean(true),
                 constraint: ParamConstraint::boolean(),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "distribution",
-                default: DefaultParamValue::String("uniform"),
-                constraint: ParamConstraint::string_enum(DISTRIBUTION_VALUES),
+                default: ParamDefinitionValue::String("uniform"),
+                constraint: ParamConstraint::string_option(DISTRIBUTION_VALUES),
             },
             // Density distribution parameters (match violin/density geoms)
-            DefaultParam {
+            ParamDefinition {
                 name: "bandwidth",
-                default: DefaultParamValue::Null,
+                default: ParamDefinitionValue::Null,
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "adjust",
-                default: DefaultParamValue::Number(1.0),
+                default: ParamDefinitionValue::Number(1.0),
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
         ];
@@ -996,22 +996,28 @@ mod tests {
         let params = jitter.default_params();
         assert_eq!(params.len(), 5);
         assert_eq!(params[0].name, "width");
-        assert!(matches!(params[0].default, DefaultParamValue::Number(0.9)));
+        assert!(matches!(
+            params[0].default,
+            ParamDefinitionValue::Number(0.9)
+        ));
         assert_eq!(params[1].name, "dodge");
         assert!(matches!(
             params[1].default,
-            DefaultParamValue::Boolean(true)
+            ParamDefinitionValue::Boolean(true)
         ));
         assert_eq!(params[2].name, "distribution");
         assert!(matches!(
             params[2].default,
-            DefaultParamValue::String("uniform")
+            ParamDefinitionValue::String("uniform")
         ));
         // Density distribution parameters (match violin/density geoms)
         assert_eq!(params[3].name, "bandwidth");
-        assert!(matches!(params[3].default, DefaultParamValue::Null));
+        assert!(matches!(params[3].default, ParamDefinitionValue::Null));
         assert_eq!(params[4].name, "adjust");
-        assert!(matches!(params[4].default, DefaultParamValue::Number(1.0)));
+        assert!(matches!(
+            params[4].default,
+            ParamDefinitionValue::Number(1.0)
+        ));
     }
 
     #[test]

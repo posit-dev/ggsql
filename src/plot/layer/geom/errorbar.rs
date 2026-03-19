@@ -2,7 +2,7 @@
 
 use super::types::POSITION_VALUES;
 use super::{
-    DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, ParamConstraint,
+    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, ParamDefinitionValue,
 };
 use crate::plot::types::DefaultAestheticValue;
 
@@ -32,16 +32,16 @@ impl GeomTrait for ErrorBar {
         }
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        const PARAMS: &[DefaultParam] = &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "position",
-                default: DefaultParamValue::String("identity"),
-                constraint: ParamConstraint::string_enum(POSITION_VALUES),
+                default: ParamDefinitionValue::String("identity"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "width",
-                default: DefaultParamValue::Number(10.0),
+                default: ParamDefinitionValue::Number(10.0),
                 constraint: ParamConstraint::number_min(0.0),
             },
         ];

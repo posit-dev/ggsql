@@ -20,7 +20,7 @@ The following aesthetics are recognised by the path layer.
 * `linetype`: The type of path, i.e. the dashing pattern
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
+* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 
 ## Data transformation
 The path layer does not transform its data but passes it through unchanged

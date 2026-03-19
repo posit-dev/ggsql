@@ -2,7 +2,7 @@
 
 use crate::plot::layer::orientation::{ALIGNED, ORIENTATION_VALUES};
 use crate::plot::types::DefaultAestheticValue;
-use crate::plot::{DefaultParam, DefaultParamValue};
+use crate::plot::{ParamDefinition, ParamDefinitionValue};
 use crate::{naming, Mappings};
 
 use super::types::{ParamConstraint, POSITION_VALUES};
@@ -31,21 +31,23 @@ impl GeomTrait for Area {
         }
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
-        &[("pos2end", DefaultAestheticValue::Number(0.0))]
+    fn default_remappings(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[("pos2end", DefaultAestheticValue::Number(0.0))],
+        }
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        const PARAMS: &[DefaultParam] = &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "position",
-                default: DefaultParamValue::String("stack"),
-                constraint: ParamConstraint::string_enum(POSITION_VALUES),
+                default: ParamDefinitionValue::String("stack"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "orientation",
-                default: DefaultParamValue::String(ALIGNED),
-                constraint: ParamConstraint::string_enum(ORIENTATION_VALUES),
+                default: ParamDefinitionValue::String(ALIGNED),
+                constraint: ParamConstraint::string_option(ORIENTATION_VALUES),
             },
         ];
         PARAMS

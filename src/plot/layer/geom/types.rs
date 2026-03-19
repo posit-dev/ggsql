@@ -6,7 +6,7 @@ use crate::plot::aesthetic::parse_positional;
 use crate::{plot::types::DefaultAestheticValue, Mappings};
 
 // Re-export shared types from the central location
-pub use crate::plot::types::{DefaultParam, DefaultParamValue, ParamConstraint};
+pub use crate::plot::types::{ParamConstraint, ParamDefinition, ParamDefinitionValue};
 
 // =============================================================================
 // Common constraint value arrays

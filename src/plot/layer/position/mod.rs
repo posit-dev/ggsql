@@ -14,7 +14,7 @@ mod identity;
 mod jitter;
 mod stack;
 
-use crate::plot::types::{DefaultParam, DefaultParamValue, ParameterValue};
+use crate::plot::types::{ParamDefinition, ParamDefinitionValue, ParameterValue};
 use crate::plot::ScaleTypeKind;
 use crate::{DataFrame, Plot, Result};
 use serde::{Deserialize, Serialize};
@@ -143,7 +143,7 @@ pub trait PositionTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     fn position_type(&self) -> PositionType;
 
     /// Returns default parameter values for this position
-    fn default_params(&self) -> &'static [DefaultParam] {
+    fn default_params(&self) -> &'static [ParamDefinition] {
         &[]
     }
 
@@ -224,7 +224,7 @@ impl Position {
     }
 
     /// Get default parameters
-    pub fn default_params(&self) -> &'static [DefaultParam] {
+    pub fn default_params(&self) -> &'static [ParamDefinition] {
         self.0.default_params()
     }
 
@@ -261,10 +261,10 @@ impl Position {
         for param in self.default_params() {
             if !layer.parameters.contains_key(param.name) {
                 let value = match &param.default {
-                    DefaultParamValue::String(s) => ParameterValue::String(s.to_string()),
-                    DefaultParamValue::Number(n) => ParameterValue::Number(*n),
-                    DefaultParamValue::Boolean(b) => ParameterValue::Boolean(*b),
-                    DefaultParamValue::Null => continue,
+                    ParamDefinitionValue::String(s) => ParameterValue::String(s.to_string()),
+                    ParamDefinitionValue::Number(n) => ParameterValue::Number(*n),
+                    ParamDefinitionValue::Boolean(b) => ParameterValue::Boolean(*b),
+                    ParamDefinitionValue::Null => continue,
                 };
                 layer.parameters.insert(param.name.to_string(), value);
             }

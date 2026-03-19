@@ -20,7 +20,7 @@ pub use orientation::is_transposed;
 
 // Re-export geom types for convenience
 pub use geom::{
-    DefaultAesthetics, DefaultParam, DefaultParamValue, Geom, GeomTrait, GeomType, StatResult,
+    DefaultAesthetics, Geom, GeomTrait, GeomType, ParamDefinition, ParamDefinitionValue, StatResult,
 };
 
 // Re-export position types for convenience
@@ -238,10 +238,10 @@ impl Layer {
         for param in self.geom.default_params() {
             if !self.parameters.contains_key(param.name) {
                 let value = match &param.default {
-                    DefaultParamValue::String(s) => ParameterValue::String(s.to_string()),
-                    DefaultParamValue::Number(n) => ParameterValue::Number(*n),
-                    DefaultParamValue::Boolean(b) => ParameterValue::Boolean(*b),
-                    DefaultParamValue::Null => continue, // Don't insert null defaults
+                    ParamDefinitionValue::String(s) => ParameterValue::String(s.to_string()),
+                    ParamDefinitionValue::Number(n) => ParameterValue::Number(*n),
+                    ParamDefinitionValue::Boolean(b) => ParameterValue::Boolean(*b),
+                    ParamDefinitionValue::Null => continue, // Don't insert null defaults
                 };
                 self.parameters.insert(param.name.to_string(), value);
             }
@@ -251,10 +251,10 @@ impl Layer {
         for param in self.position.default_params() {
             if !self.parameters.contains_key(param.name) {
                 let value = match &param.default {
-                    DefaultParamValue::String(s) => ParameterValue::String(s.to_string()),
-                    DefaultParamValue::Number(n) => ParameterValue::Number(*n),
-                    DefaultParamValue::Boolean(b) => ParameterValue::Boolean(*b),
-                    DefaultParamValue::Null => continue,
+                    ParamDefinitionValue::String(s) => ParameterValue::String(s.to_string()),
+                    ParamDefinitionValue::Number(n) => ParameterValue::Number(*n),
+                    ParamDefinitionValue::Boolean(b) => ParameterValue::Boolean(*b),
+                    ParamDefinitionValue::Null => continue,
                 };
                 self.parameters.insert(param.name.to_string(), value);
             }
@@ -306,25 +306,22 @@ impl Layer {
 
     /// Validate that all SETTING parameters are valid for this layer's geom and position
     pub fn validate_settings(&self) -> std::result::Result<(), String> {
-        // Combine valid settings from both geom and position
+        // Combine valid settings from both geom and position (includes aesthetics)
         let mut valid = self.geom.valid_settings();
         valid.extend(self.position.valid_settings());
 
-        for param_name in self.parameters.keys() {
+        for (param_name, value) in self.parameters.iter() {
+            // Check if this is a valid setting at all
             if !valid.contains(&param_name.as_str()) {
                 return Err(format!(
-                    "Invalid setting '{}' for geom '{}' with position '{}'. Valid settings are: {}",
-                    param_name,
+                    "{} layer setting should be {}, not '{}'",
                     self.geom,
-                    self.position,
-                    valid.join(", ")
+                    crate::or_list_quoted(&valid, '\''),
+                    param_name
                 ));
             }
-        }
 
-        // Validate parameter values against constraints
-        for (param_name, value) in self.parameters.iter() {
-            // Check geom constraints first
+            // Validate against constraints if this is a geom param
             if let Some(param) = self
                 .geom
                 .default_params()
@@ -333,7 +330,7 @@ impl Layer {
             {
                 validate_parameter(param_name, value, &param.constraint)?;
             }
-            // Then check position constraints
+            // Or a position param
             else if let Some(param) = self
                 .position
                 .default_params()
@@ -342,6 +339,7 @@ impl Layer {
             {
                 validate_parameter(param_name, value, &param.constraint)?;
             }
+            // Otherwise it's a valid aesthetic setting (no constraint validation needed)
         }
 
         Ok(())

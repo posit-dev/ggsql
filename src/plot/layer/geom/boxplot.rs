@@ -7,8 +7,8 @@ use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::{
     naming,
     plot::{
-        geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
-        ParamConstraint, ParameterValue, StatResult,
+        geom::types::get_column_name, DefaultAestheticValue, ParamConstraint, ParamDefinition,
+        ParamDefinitionValue, ParameterValue, StatResult,
     },
     reader::SqlDialect,
     DataFrame, GgsqlError, Mappings, Result,
@@ -50,38 +50,40 @@ impl GeomTrait for Boxplot {
         true
     }
 
-    fn default_params(&self) -> &'static [super::DefaultParam] {
-        const PARAMS: &[DefaultParam] = &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [super::ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "outliers",
-                default: DefaultParamValue::Boolean(true),
+                default: ParamDefinitionValue::Boolean(true),
                 constraint: ParamConstraint::boolean(),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "coef",
-                default: DefaultParamValue::Number(1.5),
+                default: ParamDefinitionValue::Number(1.5),
                 constraint: ParamConstraint::number_min(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "width",
-                default: DefaultParamValue::Number(0.9),
+                default: ParamDefinitionValue::Number(0.9),
                 constraint: ParamConstraint::number_range(0.0, 1.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "position",
-                default: DefaultParamValue::String("dodge"),
-                constraint: ParamConstraint::string_enum(POSITION_VALUES),
+                default: ParamDefinitionValue::String("dodge"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
         ];
         PARAMS
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
-        &[
-            ("pos2", DefaultAestheticValue::Column("value")),
-            ("pos2end", DefaultAestheticValue::Column("value2")),
-            ("type", DefaultAestheticValue::Column("type")),
-        ]
+    fn default_remappings(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("pos2", DefaultAestheticValue::Column("value")),
+                ("pos2end", DefaultAestheticValue::Column("value2")),
+                ("type", DefaultAestheticValue::Column("type")),
+            ],
+        }
     }
 
     fn apply_stat_transform(
@@ -118,24 +120,14 @@ fn stat_boxplot(
         GgsqlError::ValidationError("Boxplot requires 'x' aesthetic mapping".to_string())
     })?;
 
-    // Fetch coef parameter
-    let coef = match parameters.get("coef") {
-        Some(ParameterValue::Number(num)) => num,
-        _ => {
-            return Err(GgsqlError::InternalError(
-                "The 'coef' boxplot parameter must be a numeric value.".to_string(),
-            ))
-        }
+    // Get coef parameter (validated by ParamConstraint::number_min)
+    let ParameterValue::Number(coef) = parameters.get("coef").unwrap() else {
+        unreachable!("coef validated by ParamConstraint::number_min")
     };
 
-    // Fetch outliers parameter
-    let outliers = match parameters.get("outliers") {
-        Some(ParameterValue::Boolean(draw)) => draw,
-        _ => {
-            return Err(GgsqlError::InternalError(
-                "The 'outliers' parameter must be `true` or `false`.".to_string(),
-            ))
-        }
+    // Get outliers parameter (validated by ParamConstraint::boolean)
+    let ParameterValue::Boolean(outliers) = parameters.get("outliers").unwrap() else {
+        unreachable!("outliers validated by ParamConstraint::boolean")
     };
 
     // Fix boxplots to be vertical, when we later have orientation this may change
@@ -306,23 +298,7 @@ fn boxplot_sql_append_outliers(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::AestheticValue;
     use crate::reader::AnsiDialect;
-
-    // ==================== Helper Functions ====================
-
-    fn create_basic_aesthetics() -> Mappings {
-        let mut aesthetics = Mappings::new();
-        aesthetics.insert(
-            "pos1".to_string(),
-            AestheticValue::standard_column("category".to_string()),
-        );
-        aesthetics.insert(
-            "pos2".to_string(),
-            AestheticValue::standard_column("value".to_string()),
-        );
-        aesthetics
-    }
 
     // ==================== SQL Generation Tests (Compact) ====================
 
@@ -520,97 +496,9 @@ mod tests {
         assert!(outlier_section.contains("raw.year = summary.year"));
     }
 
-    // ==================== Parameter Validation Tests ====================
-
-    #[test]
-    fn test_stat_boxplot_invalid_coef_type() {
-        let aesthetics = create_basic_aesthetics();
-        let groups = vec![];
-
-        let mut parameters = HashMap::new();
-        parameters.insert(
-            "coef".to_string(),
-            ParameterValue::String("invalid".to_string()),
-        );
-        parameters.insert("outliers".to_string(), ParameterValue::Boolean(true));
-
-        let result = stat_boxplot(
-            "SELECT * FROM data",
-            &aesthetics,
-            &groups,
-            &parameters,
-            &AnsiDialect,
-        );
-
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("coef"));
-    }
-
-    #[test]
-    fn test_stat_boxplot_missing_coef() {
-        let aesthetics = create_basic_aesthetics();
-        let groups = vec![];
-
-        let mut parameters = HashMap::new();
-        parameters.insert("outliers".to_string(), ParameterValue::Boolean(true));
-        // Missing coef
-
-        let result = stat_boxplot(
-            "SELECT * FROM data",
-            &aesthetics,
-            &groups,
-            &parameters,
-            &AnsiDialect,
-        );
-
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("coef"));
-    }
-
-    #[test]
-    fn test_stat_boxplot_invalid_outliers_type() {
-        let aesthetics = create_basic_aesthetics();
-        let groups = vec![];
-
-        let mut parameters = HashMap::new();
-        parameters.insert("coef".to_string(), ParameterValue::Number(1.5));
-        parameters.insert(
-            "outliers".to_string(),
-            ParameterValue::String("yes".to_string()),
-        );
-
-        let result = stat_boxplot(
-            "SELECT * FROM data",
-            &aesthetics,
-            &groups,
-            &parameters,
-            &AnsiDialect,
-        );
-
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("outliers"));
-    }
-
-    #[test]
-    fn test_stat_boxplot_missing_outliers() {
-        let aesthetics = create_basic_aesthetics();
-        let groups = vec![];
-
-        let mut parameters = HashMap::new();
-        parameters.insert("coef".to_string(), ParameterValue::Number(1.5));
-        // Missing outliers
-
-        let result = stat_boxplot(
-            "SELECT * FROM data",
-            &aesthetics,
-            &groups,
-            &parameters,
-            &AnsiDialect,
-        );
-
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("outliers"));
-    }
+    // NOTE: Parameter validation tests removed - validation is now handled by
+    // ParamConstraint in Layer::validate_settings() before stat_boxplot is called.
+    // Invalid/missing parameters would be caught at the constraint validation stage.
 
     // ==================== GeomTrait Implementation Tests ====================
 
@@ -653,26 +541,26 @@ mod tests {
         let outliers_param = params.iter().find(|p| p.name == "outliers").unwrap();
         assert!(matches!(
             outliers_param.default,
-            DefaultParamValue::Boolean(true)
+            ParamDefinitionValue::Boolean(true)
         ));
 
         // Find and verify coef param
         let coef_param = params.iter().find(|p| p.name == "coef").unwrap();
         assert!(
-            matches!(coef_param.default, DefaultParamValue::Number(v) if (v - 1.5).abs() < f64::EPSILON)
+            matches!(coef_param.default, ParamDefinitionValue::Number(v) if (v - 1.5).abs() < f64::EPSILON)
         );
 
         // Find and verify width param
         let width_param = params.iter().find(|p| p.name == "width").unwrap();
         assert!(
-            matches!(width_param.default, DefaultParamValue::Number(v) if (v - 0.9).abs() < f64::EPSILON)
+            matches!(width_param.default, ParamDefinitionValue::Number(v) if (v - 0.9).abs() < f64::EPSILON)
         );
 
         // Find and verify position param (boxplot defaults to dodge)
         let position_param = params.iter().find(|p| p.name == "position").unwrap();
         assert!(matches!(
             position_param.default,
-            DefaultParamValue::String("dodge")
+            ParamDefinitionValue::String("dodge")
         ));
     }
 
@@ -683,10 +571,16 @@ mod tests {
         let boxplot = Boxplot;
         let remappings = boxplot.default_remappings();
 
-        assert_eq!(remappings.len(), 3);
-        assert!(remappings.contains(&("pos2", DefaultAestheticValue::Column("value"))));
-        assert!(remappings.contains(&("pos2end", DefaultAestheticValue::Column("value2"))));
-        assert!(remappings.contains(&("type", DefaultAestheticValue::Column("type"))));
+        assert_eq!(remappings.defaults.len(), 3);
+        assert!(remappings
+            .defaults
+            .contains(&("pos2", DefaultAestheticValue::Column("value"))));
+        assert!(remappings
+            .defaults
+            .contains(&("pos2end", DefaultAestheticValue::Column("value2"))));
+        assert!(remappings
+            .defaults
+            .contains(&("type", DefaultAestheticValue::Column("type"))));
     }
 
     #[test]

@@ -5,8 +5,8 @@ use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::{
     naming,
     plot::{
-        geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
-        ParamConstraint, ParameterValue,
+        geom::types::get_column_name, DefaultAestheticValue, ParamConstraint, ParamDefinition,
+        ParamDefinitionValue, ParameterValue,
     },
     DataFrame, GgsqlError, Mappings, Result,
 };
@@ -54,47 +54,49 @@ impl GeomTrait for Violin {
         true
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        const PARAMS: &[DefaultParam] = &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "bandwidth",
-                default: DefaultParamValue::Null,
+                default: ParamDefinitionValue::Null,
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "adjust",
-                default: DefaultParamValue::Number(1.0),
+                default: ParamDefinitionValue::Number(1.0),
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "kernel",
-                default: DefaultParamValue::String("gaussian"),
-                constraint: ParamConstraint::string_enum(KERNEL_VALUES),
+                default: ParamDefinitionValue::String("gaussian"),
+                constraint: ParamConstraint::string_option(KERNEL_VALUES),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "position",
-                default: DefaultParamValue::String("dodge"),
-                constraint: ParamConstraint::string_enum(POSITION_VALUES),
+                default: ParamDefinitionValue::String("dodge"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "width",
-                default: DefaultParamValue::Number(0.9),
+                default: ParamDefinitionValue::Number(0.9),
                 constraint: ParamConstraint::number_range(0.0, 1.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "tails",
-                default: DefaultParamValue::Number(3.0),
+                default: ParamDefinitionValue::Number(3.0),
                 constraint: ParamConstraint::number_min(0.0),
             },
         ];
         PARAMS
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
-        &[
-            ("pos2", DefaultAestheticValue::Column("pos2")),
-            ("offset", DefaultAestheticValue::Column("density")),
-        ]
+    fn default_remappings(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("pos2", DefaultAestheticValue::Column("pos2")),
+                ("offset", DefaultAestheticValue::Column("density")),
+            ],
+        }
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {
@@ -405,7 +407,7 @@ mod tests {
 
         if let Some(param) = width_param {
             match param.default {
-                DefaultParamValue::Number(n) => {
+                ParamDefinitionValue::Number(n) => {
                     assert!(
                         (n - 0.9).abs() < 1e-6,
                         "Default width should be 0.9, got {}",
@@ -431,7 +433,7 @@ mod tests {
 
         if let Some(param) = tails_param {
             match param.default {
-                DefaultParamValue::Number(n) => {
+                ParamDefinitionValue::Number(n) => {
                     assert!(
                         (n - 3.0).abs() < 1e-6,
                         "Default tails should be 3.0, got {}",

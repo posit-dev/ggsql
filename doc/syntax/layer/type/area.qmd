@@ -21,8 +21,8 @@ The following aesthetics are recognised by the area layer.
 * `linewidth`: The width of the contour lines.
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'stack'`)
-* `orientation`: The orientation of the layer, see the [Orientation section](#orientation). One of the following: 
+* `position`: Position adjustment. One of `'identity'`, `'stack'` (default), `'dodge'`, or `'jitter'`
+* `orientation`: The orientation of the layer, see the [Orientation section](#orientation). One of the following:
     * `'aligned'` to align the layer's primary axis with the coordinate system's first axis.
     * `'transposed'` to align the layer's primary axis with the coordinate system's second axis.
 

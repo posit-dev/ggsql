@@ -22,7 +22,7 @@ The following aesthetics are recognised by the polygon layer.
 * `linetype` The dash pattern of the contour line.
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
+* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 
 ## Data transformation
 The polygon layer does not transform its data but passes it through unchanged

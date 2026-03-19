@@ -814,7 +814,7 @@ fn parse_scale_via_clause(node: &Node, source: &SourceTree) -> Result<Transform>
         GgsqlError::ParseError(format!(
             "Unknown transform: '{}'. Valid transforms are: {}",
             transform_name,
-            crate::plot::scale::ALL_TRANSFORM_NAMES.join(", ")
+            crate::and_list_quoted(crate::plot::scale::ALL_TRANSFORM_NAMES, '\'')
         ))
     })
 }

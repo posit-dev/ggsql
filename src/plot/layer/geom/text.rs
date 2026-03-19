@@ -2,7 +2,7 @@
 
 use super::types::POSITION_VALUES;
 use super::{
-    DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, ParamConstraint,
+    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, ParamDefinitionValue,
     ParameterValue,
 };
 use crate::plot::types::DefaultAestheticValue;
@@ -39,24 +39,24 @@ impl GeomTrait for Text {
         }
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        const PARAMS: &[DefaultParam] = &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "position",
-                default: DefaultParamValue::String("identity"),
-                constraint: ParamConstraint::string_enum(POSITION_VALUES),
+                default: ParamDefinitionValue::String("identity"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "offset",
-                default: DefaultParamValue::Null,
+                default: ParamDefinitionValue::Null,
                 constraint: ParamConstraint::number_or_numeric_array(
                     NumberConstraint::unconstrained(),
-                    ArrayConstraint::of_numbers_len(2, NumberConstraint::unconstrained()),
+                    ArrayConstraint::of_numbers_len(NumberConstraint::unconstrained(), 2),
                 ),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "format",
-                default: DefaultParamValue::Null,
+                default: ParamDefinitionValue::Null,
                 constraint: ParamConstraint::string(),
             },
         ];

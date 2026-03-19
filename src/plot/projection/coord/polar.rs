@@ -1,7 +1,7 @@
 //! Polar coordinate system implementation
 
 use super::{CoordKind, CoordTrait};
-use crate::plot::types::{DefaultParam, DefaultParamValue, ParamConstraint};
+use crate::plot::types::{ParamConstraint, ParamDefinition, ParamDefinitionValue};
 
 /// Polar coordinate system - for pie charts, rose plots
 #[derive(Debug, Clone, Copy)]
@@ -20,26 +20,26 @@ impl CoordTrait for Polar {
         &["radius", "theta"]
     }
 
-    fn default_properties(&self) -> &'static [DefaultParam] {
-        const PARAMS: &[DefaultParam] = &[
-            DefaultParam {
+    fn default_properties(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "clip",
-                default: DefaultParamValue::Boolean(true),
+                default: ParamDefinitionValue::Boolean(true),
                 constraint: ParamConstraint::boolean(),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "start",
-                default: DefaultParamValue::Number(0.0), // 0 degrees = 12 o'clock
+                default: ParamDefinitionValue::Number(0.0), // 0 degrees = 12 o'clock
                 constraint: ParamConstraint::number_range(-360.0, 360.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "end",
-                default: DefaultParamValue::Null,
+                default: ParamDefinitionValue::Null,
                 constraint: ParamConstraint::number_range(-360.0, 360.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "inner",
-                default: DefaultParamValue::Null,
+                default: ParamDefinitionValue::Null,
                 constraint: ParamConstraint::number_range(0.0, 1.0),
             },
         ];
@@ -85,7 +85,7 @@ mod tests {
         let start_param = defaults.iter().find(|p| p.name == "start").unwrap();
         assert!(matches!(
             start_param.default,
-            DefaultParamValue::Number(0.0)
+            ParamDefinitionValue::Number(0.0)
         ));
     }
 
@@ -101,8 +101,7 @@ mod tests {
         let resolved = polar.resolve_properties(&props);
         assert!(resolved.is_err());
         let err = resolved.unwrap_err();
-        assert!(err.contains("unknown"));
-        assert!(err.contains("not valid"));
+        assert!(err.contains("not 'unknown'"));
     }
 
     #[test]

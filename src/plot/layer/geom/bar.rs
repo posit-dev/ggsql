@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use super::types::{get_column_name, POSITION_VALUES};
 use super::{
-    DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, ParamConstraint,
+    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, ParamDefinitionValue,
     StatResult,
 };
 use crate::naming;
@@ -44,29 +44,31 @@ impl GeomTrait for Bar {
         }
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
-        &[
-            ("pos2", DefaultAestheticValue::Column("count")),
-            ("pos1", DefaultAestheticValue::Column("pos1")),
-            ("pos2end", DefaultAestheticValue::Number(0.0)),
-        ]
+    fn default_remappings(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("pos2", DefaultAestheticValue::Column("count")),
+                ("pos1", DefaultAestheticValue::Column("pos1")),
+                ("pos2end", DefaultAestheticValue::Number(0.0)),
+            ],
+        }
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {
         &["count", "pos1", "proportion"]
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        const PARAMS: &[DefaultParam] = &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "width",
-                default: DefaultParamValue::Number(0.9),
+                default: ParamDefinitionValue::Number(0.9),
                 constraint: ParamConstraint::number_range(0.0, 1.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "position",
-                default: DefaultParamValue::String("stack"),
-                constraint: ParamConstraint::string_enum(POSITION_VALUES),
+                default: ParamDefinitionValue::String("stack"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
         ];
         PARAMS

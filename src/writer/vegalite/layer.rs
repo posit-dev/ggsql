@@ -76,7 +76,7 @@ pub fn validate_layer_columns(layer: &Layer, data: &DataFrame, layer_idx: usize)
                     aesthetic,
                     layer_idx + 1,
                     source_desc,
-                    available_columns.join(", ")
+                    crate::and_list(&available_columns)
                 )));
             }
         }
@@ -95,7 +95,7 @@ pub fn validate_layer_columns(layer: &Layer, data: &DataFrame, layer_idx: usize)
                 col,
                 layer_idx + 1,
                 source_desc,
-                available_columns.join(", ")
+                crate::and_list(&available_columns)
             )));
         }
     }

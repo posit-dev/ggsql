@@ -7,7 +7,7 @@
 //! - If pos1 is continuous and pos2 is discrete → stack horizontally (modify pos1/pos1end)
 
 use super::{is_continuous_scale, Layer, PositionTrait, PositionType};
-use crate::plot::types::{DefaultParam, DefaultParamValue, ParamConstraint, ParameterValue};
+use crate::plot::types::{ParamConstraint, ParamDefinition, ParamDefinitionValue, ParameterValue};
 use crate::{naming, DataFrame, GgsqlError, Plot, Result};
 use polars::prelude::*;
 
@@ -37,16 +37,16 @@ impl PositionTrait for Stack {
         PositionType::Stack
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        const PARAMS: &[DefaultParam] = &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "center",
-                default: DefaultParamValue::Boolean(false),
+                default: ParamDefinitionValue::Boolean(false),
                 constraint: ParamConstraint::boolean(),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "total",
-                default: DefaultParamValue::Null,
+                default: ParamDefinitionValue::Null,
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
         ];
@@ -395,10 +395,10 @@ mod tests {
         assert_eq!(params[0].name, "center");
         assert!(matches!(
             params[0].default,
-            DefaultParamValue::Boolean(false)
+            ParamDefinitionValue::Boolean(false)
         ));
         assert_eq!(params[1].name, "total");
-        assert!(matches!(params[1].default, DefaultParamValue::Null));
+        assert!(matches!(params[1].default, ParamDefinitionValue::Null));
     }
 
     #[test]

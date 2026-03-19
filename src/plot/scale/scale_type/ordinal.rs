@@ -8,7 +8,7 @@ use polars::prelude::DataType;
 
 use super::super::transform::{Transform, TransformKind};
 use super::{ScaleTypeKind, ScaleTypeTrait};
-use crate::plot::types::{DefaultParam, DefaultParamValue, ParamConstraint};
+use crate::plot::types::{ParamConstraint, ParamDefinition, ParamDefinitionValue};
 use crate::plot::ArrayElement;
 
 /// Ordinal scale type - for ordered categorical data with interpolated output
@@ -113,14 +113,10 @@ impl ScaleTypeTrait for Ordinal {
                 return Ok(t.clone());
             } else {
                 return Err(format!(
-                    "Transform '{}' not supported for {} scale. Allowed: {}",
-                    t.name(),
+                    "{} scale transform should be {}, not '{}'",
                     self.name(),
-                    self.allowed_transforms()
-                        .iter()
-                        .map(|k| k.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
+                    crate::or_list(self.allowed_transforms()),
+                    t.name()
                 ));
             }
         }
@@ -138,11 +134,11 @@ impl ScaleTypeTrait for Ordinal {
         ))
     }
 
-    fn default_properties(&self) -> &'static [DefaultParam] {
+    fn default_properties(&self) -> &'static [ParamDefinition] {
         // Ordinal scales always censor OOB values (no OOB setting needed)
-        const PARAMS: &[DefaultParam] = &[DefaultParam {
+        const PARAMS: &[ParamDefinition] = &[ParamDefinition {
             name: "reverse",
-            default: DefaultParamValue::Boolean(false),
+            default: ParamDefinitionValue::Boolean(false),
             constraint: ParamConstraint::boolean(),
         }];
         PARAMS

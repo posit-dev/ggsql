@@ -3,7 +3,7 @@
 use super::types::POSITION_VALUES;
 use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::plot::types::DefaultAestheticValue;
-use crate::plot::{DefaultParam, DefaultParamValue, ParamConstraint};
+use crate::plot::{ParamConstraint, ParamDefinition, ParamDefinitionValue};
 use crate::{naming, Mappings};
 
 /// Ribbon geom - confidence bands and ranges
@@ -30,11 +30,11 @@ impl GeomTrait for Ribbon {
         }
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        const PARAMS: &[DefaultParam] = &[DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[ParamDefinition {
             name: "position",
-            default: DefaultParamValue::String("identity"),
-            constraint: ParamConstraint::string_enum(POSITION_VALUES),
+            default: ParamDefinitionValue::String("identity"),
+            constraint: ParamConstraint::string_option(POSITION_VALUES),
         }];
         PARAMS
     }

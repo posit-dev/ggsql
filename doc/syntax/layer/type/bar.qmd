@@ -23,8 +23,8 @@ The bar layer has no required aesthetics
 * `linetype`: The type of stroke, i.e. the dashing pattern
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'stack'`)
-* `width`: The width of the bars as a proportion of the available width
+* `position`: Position adjustment. One of `'identity'`, `'stack'` (default), `'dodge'`, or `'jitter'`
+* `width`: The width of the bars as a proportion of the available width (0 to 1)
 
 ## Data transformation
 If the secondary axis has not been mapped the layer will calculate counts for you and display these as the secondary axis.

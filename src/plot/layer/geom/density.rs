@@ -5,8 +5,8 @@ use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::{
     naming,
     plot::{
-        geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
-        ParamConstraint, ParameterValue, StatResult,
+        geom::types::get_column_name, DefaultAestheticValue, ParamConstraint, ParamDefinition,
+        ParamDefinitionValue, ParameterValue, StatResult,
     },
     reader::SqlDialect,
     GgsqlError, Mappings, Result,
@@ -57,38 +57,40 @@ impl GeomTrait for Density {
         true
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        const PARAMS: &[DefaultParam] = &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "position",
-                default: DefaultParamValue::String("identity"),
-                constraint: ParamConstraint::string_enum(POSITION_VALUES),
+                default: ParamDefinitionValue::String("identity"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "bandwidth",
-                default: DefaultParamValue::Null,
+                default: ParamDefinitionValue::Null,
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "adjust",
-                default: DefaultParamValue::Number(1.0),
+                default: ParamDefinitionValue::Number(1.0),
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "kernel",
-                default: DefaultParamValue::String("gaussian"),
-                constraint: ParamConstraint::string_enum(KERNEL_VALUES),
+                default: ParamDefinitionValue::String("gaussian"),
+                constraint: ParamConstraint::string_option(KERNEL_VALUES),
             },
         ];
         PARAMS
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
-        &[
-            ("pos1", DefaultAestheticValue::Column("pos1")),
-            ("pos2", DefaultAestheticValue::Column("density")),
-            ("pos2end", DefaultAestheticValue::Number(0.0)),
-        ]
+    fn default_remappings(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("pos1", DefaultAestheticValue::Column("pos1")),
+                ("pos2", DefaultAestheticValue::Column("density")),
+                ("pos2end", DefaultAestheticValue::Number(0.0)),
+            ],
+        }
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {

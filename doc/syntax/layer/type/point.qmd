@@ -22,7 +22,7 @@ The following aesthetics are recognised by the point layer.
 * `shape`: The shape used to draw the point
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
+* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 
 ## Data transformation
 The point layer does not transform its data but passes it through unchanged

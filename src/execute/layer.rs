@@ -505,7 +505,7 @@ where
     // Apply literal default remappings from geom defaults (e.g., y2 => 0.0 for bar baseline).
     // These apply regardless of stat transform, but only if user hasn't overridden them.
     // Defaults are always in aligned orientation.
-    for (aesthetic, default_value) in layer.geom.default_remappings() {
+    for (aesthetic, default_value) in layer.geom.default_remappings().defaults {
         // Only process literal values here (Column values are handled in Transformed branch)
         if !matches!(default_value, DefaultAestheticValue::Column(_)) {
             // Only add if user hasn't already specified this aesthetic in remappings or mappings
@@ -529,7 +529,7 @@ where
             // Build stat column -> aesthetic mappings from geom defaults for renaming
             let mut final_remappings: HashMap<String, String> = HashMap::new();
 
-            for (aesthetic, default_value) in layer.geom.default_remappings() {
+            for (aesthetic, default_value) in layer.geom.default_remappings().defaults {
                 if let DefaultAestheticValue::Column(stat_col) = default_value {
                     // Stat column mapping: stat_col -> aesthetic (for rename)
                     final_remappings.insert(stat_col.to_string(), aesthetic.to_string());

@@ -40,6 +40,7 @@ pub mod format;
 pub mod naming;
 pub mod parser;
 pub mod plot;
+pub mod util;
 
 pub mod reader;
 
@@ -60,6 +61,9 @@ pub use plot::{
 pub use plot::aesthetic::{
     is_positional_aesthetic, AestheticContext, NON_POSITIONAL, POSITIONAL_SUFFIXES,
 };
+
+// Re-export string formatting utilities
+pub use util::{and_list, and_list_quoted, or_list, or_list_quoted};
 
 // Future modules - not yet implemented
 // #[cfg(feature = "engine")]
@@ -947,17 +951,17 @@ mod integration_tests {
             Err(e) => {
                 let err = e.to_string();
                 assert!(
-                    err.contains("Invalid setting 'orientation'"),
+                    err.contains("not 'orientation'"),
                     "Error should mention invalid setting: {}",
                     err
                 );
                 assert!(
                     err.contains("bar"),
-                    "Error should mention the geom type: {}",
+                    "Error should mention the layer type: {}",
                     err
                 );
             }
-            Ok(_) => panic!("Should reject orientation setting for bar geom"),
+            Ok(_) => panic!("Should reject orientation setting for bar layer"),
         }
 
         // 2. Point geom (symmetrical, no orientation concept) - should reject
@@ -972,12 +976,12 @@ mod integration_tests {
             Err(e) => {
                 let err2 = e.to_string();
                 assert!(
-                    err2.contains("Invalid setting 'orientation'"),
+                    err2.contains("not 'orientation'"),
                     "Error should mention invalid setting: {}",
                     err2
                 );
             }
-            Ok(_) => panic!("Should reject orientation setting for point geom"),
+            Ok(_) => panic!("Should reject orientation setting for point layer"),
         }
 
         // 3. Line geom (has orientation in default_params) - should accept

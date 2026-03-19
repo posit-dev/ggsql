@@ -2,7 +2,7 @@
 
 use super::types::POSITION_VALUES;
 use super::{
-    DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, ParamConstraint,
+    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, ParamDefinitionValue,
 };
 use crate::plot::geom::types::get_column_name;
 use crate::plot::types::DefaultAestheticValue;
@@ -47,32 +47,32 @@ impl GeomTrait for Smooth {
         }
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        const PARAMS: &[DefaultParam] = &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "position",
-                default: DefaultParamValue::String("identity"),
-                constraint: ParamConstraint::string_enum(POSITION_VALUES),
+                default: ParamDefinitionValue::String("identity"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "method",
-                default: DefaultParamValue::String("nw"),
-                constraint: ParamConstraint::string_enum(METHOD_VALUES),
+                default: ParamDefinitionValue::String("nw"),
+                constraint: ParamConstraint::string_option(METHOD_VALUES),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "bandwidth",
-                default: DefaultParamValue::Null,
-                constraint: ParamConstraint::number_min(0.0),
+                default: ParamDefinitionValue::Null,
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "adjust",
-                default: DefaultParamValue::Number(1.0),
-                constraint: ParamConstraint::number_min(0.0),
+                default: ParamDefinitionValue::Number(1.0),
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "kernel",
-                default: DefaultParamValue::String("gaussian"),
-                constraint: ParamConstraint::string_enum(KERNEL_VALUES),
+                default: ParamDefinitionValue::String("gaussian"),
+                constraint: ParamConstraint::string_option(KERNEL_VALUES),
             },
         ];
         PARAMS
@@ -82,11 +82,13 @@ impl GeomTrait for Smooth {
         true
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
-        &[
-            ("pos1", DefaultAestheticValue::Column("pos1")),
-            ("pos2", DefaultAestheticValue::Column("intensity")),
-        ]
+    fn default_remappings(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("pos1", DefaultAestheticValue::Column("pos1")),
+                ("pos2", DefaultAestheticValue::Column("intensity")),
+            ],
+        }
     }
 
     fn apply_stat_transform(
@@ -99,10 +101,9 @@ impl GeomTrait for Smooth {
         _execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
         dialect: &dyn SqlDialect,
     ) -> crate::Result<super::StatResult> {
-        let Some(ParameterValue::String(method)) = parameters.get("method") else {
-            return Err(GgsqlError::ValidationError(
-                "The `method` setting must be a string.".to_string(),
-            ));
+        // Get method from parameters (validated by ParamConstraint::string_option)
+        let ParameterValue::String(method) = parameters.get("method").unwrap() else {
+            unreachable!("method validated by ParamConstraint::string_option")
         };
 
         match method.as_str() {
@@ -123,9 +124,7 @@ impl GeomTrait for Smooth {
             }
             "ols" => stat_ols(query, aesthetics, group_by),
             "tls" => stat_tls(query, aesthetics, group_by),
-            _ => Err(GgsqlError::ValidationError(
-                "The `method` setting must be 'nw', 'ols', or 'tls'.".to_string(),
-            )),
+            _ => unreachable!("method validated by ParamConstraint::string_option"),
         }
     }
 }
