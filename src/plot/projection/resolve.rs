@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use super::coord::{Coord, CoordKind};
 use super::Projection;
-use crate::plot::aesthetic::{NON_POSITIONAL, POSITIONAL_SUFFIXES};
+use crate::plot::aesthetic::{MATERIAL_AESTHETICS, POSITION_SUFFIXES};
 use crate::plot::Mappings;
 
 /// Cartesian primary aesthetic names
@@ -65,7 +65,7 @@ pub fn resolve_coord(
         // Infer polar coordinate system
         let coord = Coord::from_kind(CoordKind::Polar);
         let aesthetics = coord
-            .positional_aesthetic_names()
+            .position_aesthetic_names()
             .iter()
             .map(|s| s.to_string())
             .collect();
@@ -80,7 +80,7 @@ pub fn resolve_coord(
         // Infer cartesian coordinate system
         let coord = Coord::from_kind(CoordKind::Cartesian);
         let aesthetics = coord
-            .positional_aesthetic_names()
+            .position_aesthetic_names()
             .iter()
             .map(|s| s.to_string())
             .collect();
@@ -98,13 +98,13 @@ pub fn resolve_coord(
 /// Check if an aesthetic name indicates cartesian or polar coordinate system.
 /// Updates the found flags accordingly.
 fn check_aesthetic(aesthetic: &str, found_cartesian: &mut bool, found_polar: &mut bool) {
-    // Skip non-positional aesthetics (color, size, etc.)
-    if NON_POSITIONAL.contains(&aesthetic) {
+    // Skip material aesthetics (color, size, etc.)
+    if MATERIAL_AESTHETICS.contains(&aesthetic) {
         return;
     }
 
-    // Strip positional suffix if present (xmin -> x, thetamax -> theta)
-    let primary = strip_positional_suffix(aesthetic);
+    // Strip position suffix if present (xmin -> x, thetamax -> theta)
+    let primary = strip_position_suffix(aesthetic);
 
     // Check against cartesian primaries
     if CARTESIAN_PRIMARIES.contains(&primary) {
@@ -117,10 +117,10 @@ fn check_aesthetic(aesthetic: &str, found_cartesian: &mut bool, found_polar: &mu
     }
 }
 
-/// Strip positional suffix from an aesthetic name.
+/// Strip position suffix from an aesthetic name.
 /// e.g., "xmin" -> "x", "thetamax" -> "theta", "y" -> "y"
-fn strip_positional_suffix(name: &str) -> &str {
-    for suffix in POSITIONAL_SUFFIXES {
+fn strip_position_suffix(name: &str) -> &str {
+    for suffix in POSITION_SUFFIXES {
         if let Some(base) = name.strip_suffix(suffix) {
             return base;
         }
@@ -252,11 +252,11 @@ mod tests {
     }
 
     // ========================================
-    // Test: Non-positional aesthetics ignored
+    // Test: Material aesthetics ignored
     // ========================================
 
     #[test]
-    fn test_ignore_non_positional() {
+    fn test_ignore_material() {
         let global = mappings_with(&["color", "size", "fill", "opacity"]);
         let layers: Vec<&Mappings> = vec![];
 
@@ -266,7 +266,7 @@ mod tests {
     }
 
     #[test]
-    fn test_non_positional_with_cartesian() {
+    fn test_material_with_cartesian() {
         let global = mappings_with(&["x", "y", "color", "size"]);
         let layers: Vec<&Mappings> = vec![];
 
@@ -354,16 +354,16 @@ mod tests {
     // ========================================
 
     #[test]
-    fn test_strip_positional_suffix() {
-        assert_eq!(strip_positional_suffix("x"), "x");
-        assert_eq!(strip_positional_suffix("y"), "y");
-        assert_eq!(strip_positional_suffix("xmin"), "x");
-        assert_eq!(strip_positional_suffix("xmax"), "x");
-        assert_eq!(strip_positional_suffix("xend"), "x");
-        assert_eq!(strip_positional_suffix("ymin"), "y");
-        assert_eq!(strip_positional_suffix("ymax"), "y");
-        assert_eq!(strip_positional_suffix("theta"), "theta");
-        assert_eq!(strip_positional_suffix("thetamin"), "theta");
-        assert_eq!(strip_positional_suffix("radiusmax"), "radius");
+    fn test_strip_position_suffix() {
+        assert_eq!(strip_position_suffix("x"), "x");
+        assert_eq!(strip_position_suffix("y"), "y");
+        assert_eq!(strip_position_suffix("xmin"), "x");
+        assert_eq!(strip_position_suffix("xmax"), "x");
+        assert_eq!(strip_position_suffix("xend"), "x");
+        assert_eq!(strip_position_suffix("ymin"), "y");
+        assert_eq!(strip_position_suffix("ymax"), "y");
+        assert_eq!(strip_position_suffix("theta"), "theta");
+        assert_eq!(strip_position_suffix("thetamin"), "theta");
+        assert_eq!(strip_position_suffix("radiusmax"), "radius");
     }
 }

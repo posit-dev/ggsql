@@ -62,7 +62,8 @@ A scale is responsible for translating a data value to an aesthetic literal, e.g
 - [`identity`](scale/type/identity.qmd) scales passes the data through unchanged
 
 ## Coordinate systems
-The coordinate system defines how the abstract positional aesthetics are projected onto the screen or paper where the final plot appears. As such, it has great influence over the final look of the plot.
+The coordinate system defines how the abstract position aesthetics are projected onto the screen or paper where the final plot appears. 
+As such, it has great influence over the final look of the plot.
 
 - [`cartesian`](coord/cartesian.qmd) is the classic coordinate system consisting of two perpendicular axes, one being horizontal and one being vertical
 - [`polar`](coord/polar.qmd) interprets the primary position as the angular location relative to the center and the secondary position as the distance (radius) from the center, and this creates a circular coordinate system

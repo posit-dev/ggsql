@@ -58,7 +58,7 @@ pub use plot::{
 
 // Re-export aesthetic classification utilities
 pub use plot::aesthetic::{
-    is_positional_aesthetic, AestheticContext, NON_POSITIONAL, POSITIONAL_SUFFIXES,
+    is_position_aesthetic, AestheticContext, MATERIAL_AESTHETICS, POSITION_SUFFIXES,
 };
 
 // Future modules - not yet implemented
@@ -761,8 +761,8 @@ mod integration_tests {
     #[test]
     fn test_end_to_end_place_field_vs_value_encoding() {
         // Test that PLACE annotation layers render correctly:
-        // - Positional aesthetics (x, y) as field encodings (reference columns)
-        // - Non-positional aesthetics (size, stroke) as value encodings (datum values)
+        // - Position aesthetics (x, y) as field encodings (reference columns)
+        // - Material aesthetics (size, stroke) as value encodings (datum values)
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
@@ -796,7 +796,7 @@ mod integration_tests {
 
         let encoding = &point_layer["encoding"];
 
-        // Positional aesthetics should be field encodings (have "field" key)
+        // Position aesthetics should be field encodings (have "field" key)
         assert!(
             encoding["x"]["field"].is_string(),
             "x should be a field encoding: {:?}",
@@ -808,7 +808,7 @@ mod integration_tests {
             encoding["y"]
         );
 
-        // Non-positional aesthetics should be value encodings (have "value" key)
+        // Material aesthetics should be value encodings (have "value" key)
         assert!(
             encoding["size"]["value"].is_number(),
             "size should be a value encoding with numeric value: {:?}",

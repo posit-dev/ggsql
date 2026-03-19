@@ -34,13 +34,13 @@ pub fn create_missing_scales(spec: &mut Plot) {
     for layer in &spec.layers {
         for aesthetic in layer.mappings.aesthetics.keys() {
             let primary = aesthetic_ctx
-                .primary_internal_positional(aesthetic)
+                .primary_internal_position(aesthetic)
                 .unwrap_or(aesthetic);
             used_aesthetics.insert(primary.to_string());
         }
         for aesthetic in layer.remappings.aesthetics.keys() {
             let primary = aesthetic_ctx
-                .primary_internal_positional(aesthetic)
+                .primary_internal_position(aesthetic)
                 .unwrap_or(aesthetic);
             used_aesthetics.insert(primary.to_string());
         }
@@ -87,7 +87,7 @@ pub fn create_missing_scales_post_stat(
     for layer in &spec.layers {
         for aesthetic in layer.mappings.aesthetics.keys() {
             let primary = aesthetic_ctx
-                .primary_internal_positional(aesthetic)
+                .primary_internal_position(aesthetic)
                 .unwrap_or(aesthetic);
             current_aesthetics.insert(primary.to_string());
         }
@@ -454,7 +454,7 @@ pub fn collect_dtypes_for_aesthetic(
 ) -> Vec<polars::prelude::DataType> {
     let mut dtypes = Vec::new();
     let aesthetics_to_check = aesthetic_ctx
-        .internal_positional_family(aesthetic)
+        .internal_position_family(aesthetic)
         .map(|f| f.to_vec())
         .unwrap_or_else(|| vec![aesthetic.to_string()]);
 
@@ -544,7 +544,7 @@ pub fn find_schema_columns_for_aesthetic(
 ) -> Vec<ColumnInfo> {
     let mut infos = Vec::new();
     let aesthetics_to_check = aesthetic_ctx
-        .internal_positional_family(aesthetic)
+        .internal_position_family(aesthetic)
         .map(|f| f.to_vec())
         .unwrap_or_else(|| vec![aesthetic.to_string()]);
 
@@ -895,7 +895,7 @@ pub fn coerce_aesthetic_columns(
     aesthetic_ctx: &AestheticContext,
 ) -> Result<()> {
     let aesthetics_to_check = aesthetic_ctx
-        .internal_positional_family(aesthetic)
+        .internal_position_family(aesthetic)
         .map(|f| f.to_vec())
         .unwrap_or_else(|| vec![aesthetic.to_string()]);
 
@@ -1058,7 +1058,7 @@ pub fn find_columns_for_aesthetic<'a>(
 ) -> Vec<&'a Column> {
     let mut column_refs = Vec::new();
     let aesthetics_to_check = aesthetic_ctx
-        .internal_positional_family(aesthetic)
+        .internal_position_family(aesthetic)
         .map(|f| f.to_vec())
         .unwrap_or_else(|| vec![aesthetic.to_string()]);
 
@@ -1067,7 +1067,7 @@ pub fn find_columns_for_aesthetic<'a>(
         if let Some(df) = data_map.get(&naming::layer_key(i)) {
             for aes_name in &aesthetics_to_check {
                 if let Some(AestheticValue::Column { name, .. }) = layer.mappings.get(aes_name) {
-                    // Regular columns (data and positional annotations) participate in scale training
+                    // Regular columns (data and position annotations) participate in scale training
                     if let Ok(column) = df.column(name) {
                         column_refs.push(column);
                     }
@@ -1233,7 +1233,7 @@ pub fn find_columns_for_aesthetic_with_sources(
 ) -> Vec<(String, String)> {
     let mut results = Vec::new();
     let aesthetics_to_check = aesthetic_ctx
-        .internal_positional_family(aesthetic)
+        .internal_position_family(aesthetic)
         .map(|f| f.to_vec())
         .unwrap_or_else(|| vec![aesthetic.to_string()]);
 
@@ -1418,25 +1418,25 @@ mod tests {
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
 
         // Test internal primary aesthetics include all family members
-        let pos1_family = ctx.internal_positional_family("pos1").unwrap();
+        let pos1_family = ctx.internal_position_family("pos1").unwrap();
         assert!(pos1_family.iter().any(|s| s == "pos1"));
         assert!(pos1_family.iter().any(|s| s == "pos1min"));
         assert!(pos1_family.iter().any(|s| s == "pos1max"));
         assert!(pos1_family.iter().any(|s| s == "pos1end"));
         assert_eq!(pos1_family.len(), 4); // pos1, pos1min, pos1max, pos1end
 
-        let pos2_family = ctx.internal_positional_family("pos2").unwrap();
+        let pos2_family = ctx.internal_position_family("pos2").unwrap();
         assert!(pos2_family.iter().any(|s| s == "pos2"));
         assert!(pos2_family.iter().any(|s| s == "pos2min"));
         assert!(pos2_family.iter().any(|s| s == "pos2max"));
         assert!(pos2_family.iter().any(|s| s == "pos2end"));
         assert_eq!(pos2_family.len(), 4); // pos2, pos2min, pos2max, pos2end
 
-        // Test non-positional aesthetics don't have internal family
-        assert!(ctx.internal_positional_family("color").is_none());
+        // Test material aesthetics don't have internal family
+        assert!(ctx.internal_position_family("color").is_none());
 
         // Test internal variant aesthetics don't have internal family
-        assert!(ctx.internal_positional_family("pos1min").is_none());
+        assert!(ctx.internal_position_family("pos1min").is_none());
     }
 
     #[test]
@@ -1704,7 +1704,7 @@ mod tests {
         let mut spec = Plot::new();
         let coord = Coord::polar();
         let aesthetics = coord
-            .positional_aesthetic_names()
+            .position_aesthetic_names()
             .iter()
             .map(|s| s.to_string())
             .collect();

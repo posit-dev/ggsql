@@ -1264,7 +1264,7 @@ DRAW line MAPPING x AS x, total AS y
               (bare_identifier))
             (function_args
               (function_arg
-                (positional_arg
+                (position_arg
                   (qualified_name
                     (identifier
                       (bare_identifier))))))
@@ -1388,13 +1388,13 @@ DRAW point MAPPING interval AS x
                 (named_arg
                   name: (identifier
                     (bare_identifier))
-                  value: (positional_arg
+                  value: (position_arg
                     (number))))
               (function_arg
                 (named_arg
                   name: (identifier
                     (bare_identifier))
-                  value: (positional_arg
+                  value: (position_arg
                     (number))))))
           (identifier
             (bare_identifier))
@@ -2403,7 +2403,7 @@ SELECT CAST(sale_date AS DATE) as period FROM sales VISUALISE period AS x DRAW p
       (select_statement
         (select_body
           (cast_expression
-            (positional_arg
+            (position_arg
               (qualified_name
                 (identifier
                   (bare_identifier))))
@@ -2452,9 +2452,9 @@ SELECT SUM(TRY_CAST(price AS INTEGER)) as total FROM data VISUALISE DRAW bar MAP
               (bare_identifier))
             (function_args
               (function_arg
-                (positional_arg
+                (position_arg
                   (cast_expression
-                    (positional_arg
+                    (position_arg
                       (qualified_name
                         (identifier
                           (bare_identifier))))
@@ -2505,18 +2505,18 @@ DRAW point MAPPING x AS x
               (bare_identifier))
             (function_args
               (function_arg
-                (positional_arg
+                (position_arg
                   (function_call
                     (identifier
                       (bare_identifier))
                     (function_args
                       (function_arg
-                        (positional_arg
+                        (position_arg
                           (qualified_name
                             (identifier
                               (bare_identifier)))))))))
               (function_arg
-                (positional_arg
+                (position_arg
                   (scalar_subquery
                     (select_statement
                       (select_body
@@ -2525,7 +2525,7 @@ DRAW point MAPPING x AS x
                             (bare_identifier))
                           (function_args
                             (function_arg
-                              (positional_arg
+                              (position_arg
                                 (qualified_name
                                   (identifier
                                     (bare_identifier)))))))

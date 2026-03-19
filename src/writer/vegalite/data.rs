@@ -346,7 +346,7 @@ pub(super) fn collect_binned_columns(spec: &Plot) -> HashMap<String, Vec<f64>> {
 pub(super) fn is_binned_aesthetic(aesthetic: &str, spec: &Plot) -> bool {
     let aesthetic_ctx = spec.get_aesthetic_context();
     let primary = aesthetic_ctx
-        .primary_internal_positional(aesthetic)
+        .primary_internal_position(aesthetic)
         .unwrap_or(aesthetic);
     spec.find_scale(primary)
         .and_then(|s| s.scale_type.as_ref())

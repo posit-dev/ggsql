@@ -139,18 +139,18 @@ impl Plot {
 
     /// Build an aesthetic context from current project and facet settings
     fn build_aesthetic_context(&self) -> AestheticContext {
-        let default_positional: Vec<String> = vec!["x".to_string(), "y".to_string()];
-        let positional_names: &[String] = self
+        let default_position: Vec<String> = vec!["x".to_string(), "y".to_string()];
+        let position_names: &[String] = self
             .project
             .as_ref()
             .map(|p| p.aesthetics.as_slice())
-            .unwrap_or(&default_positional);
+            .unwrap_or(&default_position);
         let facet_names: &[&'static str] = self
             .facet
             .as_ref()
             .map(|f| f.layout.user_facet_names())
             .unwrap_or(&[]);
-        AestheticContext::new(positional_names, facet_names)
+        AestheticContext::new(position_names, facet_names)
     }
 
     /// Get the aesthetic context, creating a default one if not set
@@ -266,7 +266,7 @@ impl Plot {
             for layer in &self.layers {
                 for (aesthetic, value) in &layer.mappings.aesthetics {
                     let primary = aesthetic_ctx
-                        .primary_internal_positional(aesthetic)
+                        .primary_internal_position(aesthetic)
                         .unwrap_or(aesthetic);
                     let is_primary = aesthetic == primary;
 
@@ -555,23 +555,23 @@ mod tests {
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
 
         // Test that internal variant aesthetics map to their primary
-        assert_eq!(ctx.primary_internal_positional("pos1"), Some("pos1"));
-        assert_eq!(ctx.primary_internal_positional("pos1min"), Some("pos1"));
-        assert_eq!(ctx.primary_internal_positional("pos1max"), Some("pos1"));
-        assert_eq!(ctx.primary_internal_positional("pos1end"), Some("pos1"));
-        assert_eq!(ctx.primary_internal_positional("pos2"), Some("pos2"));
-        assert_eq!(ctx.primary_internal_positional("pos2min"), Some("pos2"));
-        assert_eq!(ctx.primary_internal_positional("pos2max"), Some("pos2"));
-        assert_eq!(ctx.primary_internal_positional("pos2end"), Some("pos2"));
+        assert_eq!(ctx.primary_internal_position("pos1"), Some("pos1"));
+        assert_eq!(ctx.primary_internal_position("pos1min"), Some("pos1"));
+        assert_eq!(ctx.primary_internal_position("pos1max"), Some("pos1"));
+        assert_eq!(ctx.primary_internal_position("pos1end"), Some("pos1"));
+        assert_eq!(ctx.primary_internal_position("pos2"), Some("pos2"));
+        assert_eq!(ctx.primary_internal_position("pos2min"), Some("pos2"));
+        assert_eq!(ctx.primary_internal_position("pos2max"), Some("pos2"));
+        assert_eq!(ctx.primary_internal_position("pos2end"), Some("pos2"));
 
-        // Non-positional aesthetics return themselves
-        assert_eq!(ctx.primary_internal_positional("color"), Some("color"));
-        assert_eq!(ctx.primary_internal_positional("size"), Some("size"));
-        assert_eq!(ctx.primary_internal_positional("fill"), Some("fill"));
+        // Material aesthetics return themselves
+        assert_eq!(ctx.primary_internal_position("color"), Some("color"));
+        assert_eq!(ctx.primary_internal_position("size"), Some("size"));
+        assert_eq!(ctx.primary_internal_position("fill"), Some("fill"));
 
         // User-facing names are not recognized as internal aesthetics
-        assert_eq!(ctx.primary_internal_positional("x"), None);
-        assert_eq!(ctx.primary_internal_positional("xmin"), None);
+        assert_eq!(ctx.primary_internal_position("x"), None);
+        assert_eq!(ctx.primary_internal_position("xmin"), None);
     }
 
     #[test]
@@ -802,7 +802,7 @@ mod tests {
         spec.transform_aesthetics_to_internal();
 
         let labels = spec.labels.as_ref().unwrap();
-        // x maps to pos2 (second positional), y maps to pos1 (first positional)
+        // x maps to pos2 (second position), y maps to pos1 (first position)
         assert_eq!(labels.labels.get("pos1"), Some(&"Value".to_string()));
         assert_eq!(labels.labels.get("pos2"), Some(&"Category".to_string()));
     }
@@ -834,7 +834,7 @@ mod tests {
     }
 
     #[test]
-    fn test_label_transform_preserves_non_positional() {
+    fn test_label_transform_preserves_material() {
         // LABEL title/color should be preserved unchanged
         use crate::plot::projection::{Coord, Projection};
 
@@ -856,10 +856,10 @@ mod tests {
         spec.transform_aesthetics_to_internal();
 
         let labels = spec.labels.as_ref().unwrap();
-        // Non-positional labels should remain unchanged
+        // Material labels should remain unchanged
         assert_eq!(labels.labels.get("title"), Some(&"My Chart".to_string()));
         assert_eq!(labels.labels.get("color"), Some(&"Category".to_string()));
-        // Positional label should be transformed
+        // Position label should be transformed
         assert_eq!(labels.labels.get("pos1"), Some(&"X Axis".to_string()));
     }
 }

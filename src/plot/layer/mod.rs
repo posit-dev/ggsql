@@ -28,7 +28,7 @@ pub use position::{Position, PositionTrait, PositionType};
 
 use crate::{
     plot::{
-        is_facet_aesthetic, parse_positional,
+        is_facet_aesthetic,
         types::{AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression},
     },
     AestheticContext,
@@ -173,7 +173,7 @@ impl Layer {
     ///
     /// Performs three checks:
     /// 1. All required aesthetics are present
-    /// 2. Positional requirements allow bidirectional satisfaction (handles orientation flipping)
+    /// 2. Position requirements allow bidirectional satisfaction (handles orientation flipping)
     /// 3. No unsupported/exotic aesthetics are mapped
     ///
     /// # Parameters
@@ -199,11 +199,11 @@ impl Layer {
 
         // Check if all required aesthetics exist.
         let mut missing = Vec::new();
-        let mut positional_reqs: Vec<(&str, u8, &str)> = Vec::new();
+        let mut position_reqs: Vec<(&str, u8, &str)> = Vec::new();
 
         for aesthetic in self.geom.aesthetics().required() {
-            if let Some((slot, suffix)) = parse_positional(aesthetic) {
-                positional_reqs.push((aesthetic, slot, suffix))
+            if let Some((slot, suffix)) = crate::plot::aesthetic::parse_position(aesthetic) {
+                position_reqs.push((aesthetic, slot, suffix))
             } else if !self.mappings.contains_key(aesthetic) {
                 missing.push(translate(aesthetic));
             }
@@ -218,11 +218,11 @@ impl Layer {
             ));
         }
 
-        // Validate positional requirements bidirectionally
+        // Validate position requirements bidirectionally
         // Try both slot assignments: (1→1, 2→2) and (1→2, 2→1)
-        if !positional_reqs.is_empty() {
+        if !position_reqs.is_empty() {
             // Pre-compute flipped versions to avoid repeated calculation
-            let pairs: Vec<_> = positional_reqs
+            let pairs: Vec<_> = position_reqs
                 .iter()
                 .map(|(name, slot, suffix)| {
                     let flipped_slot = if *slot == 1 { 2 } else { 1 };
@@ -245,7 +245,7 @@ impl Layer {
                     // Check if flipped version is present (mixed orientation case)
                     if self.mappings.contains_key(flipped) {
                         return Err(format!(
-                        "Layer '{}' has mixed positional aesthetic orientations. \
+                        "Layer '{}' has mixed position aesthetic orientations. \
                          Found '{}' but expected '{}' to match the orientation of other aesthetics.",
                         self.geom,
                         translate(flipped),
@@ -275,10 +275,7 @@ impl Layer {
         // At this point in execution we don't know orientation yet,
         // so we'll approve both flipped and upflipped aesthetics.
         if let Some(ctx) = context {
-            let flipped: Vec<String> = supported
-                .iter()
-                .map(|aes| ctx.flip_positional(aes))
-                .collect();
+            let flipped: Vec<String> = supported.iter().map(|aes| ctx.flip_position(aes)).collect();
             supported.extend(flipped);
         }
 

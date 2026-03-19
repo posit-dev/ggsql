@@ -2,7 +2,9 @@
 title: "Create small multiples with `FACET`"
 ---
 
-The `FACET` clause allows you to split your data, by one or two variables, and plot each group as a small version of the plot: a technique called 'small multiples'. The technique is great for preventing overplotting. Because each small plot shares the same positional scales by default, visual comparisons between groups become easy.
+The `FACET` clause allows you to split your data, by one or two variables, and plot each group as a small version of the plot: a technique called 'small multiples'. 
+The technique is great for preventing overplotting. 
+Because each small plot shares the same position scales by default, visual comparisons between groups become easy.
 
 ## Clause syntax
 The `FACET` syntax contains a number of subclauses that are all optional
@@ -28,7 +30,7 @@ SETTING <parameter> => <value>, ...
 
 This clause behaves much like the `SETTINGS` clause in `DRAW`, in that it allows you to fine-tune specific behavior of the faceting. The following parameters exist:
 
-* `free`: Controls whether the positional scales are independent across the small multiples. Permissible values are:
+* `free`: Controls whether the position scales are independent across the small multiples. Permissible values are:
   * `null` or omitted (default): Shared/fixed scales across all panels
   * `'x'`: Independent x-axis scale, shared y-axis scale
   * `'y'`: Shared x-axis scale, independent y-axis scale

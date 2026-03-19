@@ -320,7 +320,7 @@ pub fn filter_breaks_to_range(
 /// For `pretty=true`: Uses 1-2-5 pattern across decades (e.g., 1, 2, 5, 10, 20, 50, 100).
 /// For `pretty=false`: Returns only powers of the base (e.g., 1, 10, 100, 1000 for base 10).
 ///
-/// Non-positive values are filtered out since log is undefined for them.
+/// Material values are filtered out since log is undefined for them.
 pub fn log_breaks(min: f64, max: f64, n: usize, base: f64, pretty: bool) -> Vec<f64> {
     // Filter to positive values only
     let pos_min = if min <= 0.0 { f64::MIN_POSITIVE } else { min };

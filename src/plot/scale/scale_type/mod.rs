@@ -26,7 +26,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::transform::{Transform, TransformKind};
-use crate::plot::aesthetic::{is_facet_aesthetic, is_positional_aesthetic};
+use crate::plot::aesthetic::{is_facet_aesthetic, is_position_aesthetic};
 use crate::plot::types::{DefaultParam, DefaultParamValue};
 use crate::plot::{ArrayElement, ColumnInfo, ParameterValue};
 
@@ -542,7 +542,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
     /// Returns list of allowed properties with their default values.
     ///
-    /// Properties that vary by aesthetic (like `expand` for positional-only, or `oob`
+    /// Properties that vary by aesthetic (like `expand` for position-only, or `oob`
     /// with aesthetic-dependent defaults) should use `DefaultParamValue::Null` as their
     /// default value. The `resolve_properties()` method handles these special cases.
     ///
@@ -632,12 +632,12 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         properties: &HashMap<String, ParameterValue>,
     ) -> Result<HashMap<String, ParameterValue>, String> {
         let defaults = self.default_properties();
-        let is_positional = is_positional_aesthetic(aesthetic);
+        let is_position = is_position_aesthetic(aesthetic);
 
-        // Build allowed list, excluding "expand" for non-positional aesthetics
+        // Build allowed list, excluding "expand" for material aesthetics
         let allowed: Vec<&str> = defaults
             .iter()
-            .filter(|p| p.name != "expand" || is_positional)
+            .filter(|p| p.name != "expand" || is_position)
             .map(|p| p.name)
             .collect();
 
@@ -662,8 +662,8 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         // Start with user properties, add defaults for missing ones
         let mut resolved = properties.clone();
         for param in defaults {
-            // Skip expand for non-positional aesthetics
-            if param.name == "expand" && !is_positional {
+            // Skip expand for material aesthetics
+            if param.name == "expand" && !is_position {
                 continue;
             }
 
@@ -1384,13 +1384,13 @@ pub(super) const DEFAULT_EXPAND_ADD: f64 = 0.0;
 pub const OOB_CENSOR: &str = "censor";
 /// Out-of-bounds mode: clamp values to the closest limit
 pub const OOB_SQUISH: &str = "squish";
-/// Out-of-bounds mode: don't modify values (default for positional aesthetics)
+/// Out-of-bounds mode: don't modify values (default for position aesthetics)
 pub const OOB_KEEP: &str = "keep";
 
 /// Default oob mode for an aesthetic.
-/// Positional aesthetics default to "keep", others default to "censor".
+/// Position aesthetics default to "keep", others default to "censor".
 pub fn default_oob(aesthetic: &str) -> &'static str {
-    if is_positional_aesthetic(aesthetic) {
+    if is_position_aesthetic(aesthetic) {
         OOB_KEEP
     } else {
         OOB_CENSOR
@@ -1828,22 +1828,22 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
     // Step 2: Apply expansion to the final merged range
     // Expansion should ONLY happen when ALL conditions are met:
     // 1. Scale uses continuous input range (not discrete/ordinal scales)
-    // 2. Aesthetic is positional (x, y, xmin, xmax, etc.)
+    // 2. Aesthetic is position (x, y, xmin, xmax, etc.)
     // 3. Input range was at least partially deduced (not fully explicit)
     //
     // Then clip to the transform's valid domain to prevent invalid values
     // (e.g., expansion producing negative values for log scales)
     if let Some(range) = base_range {
-        let is_positional = is_positional_aesthetic(aesthetic);
+        let is_position = is_position_aesthetic(aesthetic);
         let is_deduced = !scale.explicit_input_range
             || input_range_has_nulls(original_user_range.as_deref().unwrap_or(&[]));
 
-        if !is_discrete_range && is_positional && is_deduced {
+        if !is_discrete_range && is_position && is_deduced {
             let expanded =
                 expand_numeric_range_selective(&range, mult, add, original_user_range.as_deref());
             scale.input_range = Some(clip_to_transform_domain(&expanded, &resolved_transform));
         } else {
-            // No expansion for discrete scales, non-positional aesthetics, or fully explicit ranges
+            // No expansion for discrete scales, material aesthetics, or fully explicit ranges
             scale.input_range = Some(range);
         }
     }
@@ -2359,7 +2359,7 @@ mod tests {
 
     #[test]
     fn test_resolve_properties_defaults() {
-        // Continuous positional: default expand
+        // Continuous position: default expand
         let props = HashMap::new();
         let resolved = ScaleType::continuous()
             .resolve_properties("pos1", &props)
@@ -2370,7 +2370,7 @@ mod tests {
             _ => panic!("Expected Number"),
         }
 
-        // Continuous non-positional: no default expand, but has oob
+        // Continuous material: no default expand, but has oob
         let resolved = ScaleType::continuous()
             .resolve_properties("color", &props)
             .unwrap();
@@ -2428,17 +2428,17 @@ mod tests {
     }
 
     #[test]
-    fn test_expand_positional_vs_non_positional() {
-        // Internal positional aesthetics (after transformation)
-        let internal_positional = [
+    fn test_expand_position_vs_material() {
+        // Internal position aesthetics (after transformation)
+        let internal_position = [
             "pos1", "pos1min", "pos1max", "pos1end", "pos2", "pos2min", "pos2max", "pos2end",
         ];
 
         let mut props = HashMap::new();
         props.insert("expand".to_string(), ParameterValue::Number(0.1));
 
-        // Positional aesthetics should allow expand
-        for aes in internal_positional.iter() {
+        // Position aesthetics should allow expand
+        for aes in internal_position.iter() {
             assert!(
                 ScaleType::continuous()
                     .resolve_properties(aes, &props)
@@ -2448,7 +2448,7 @@ mod tests {
             );
         }
 
-        // Non-positional aesthetics should reject expand
+        // Material aesthetics should reject expand
         for aes in &["color", "size", "opacity"] {
             let result = ScaleType::continuous().resolve_properties(aes, &props);
             assert!(result.is_err(), "{} should reject expand", aes);
@@ -2461,27 +2461,27 @@ mod tests {
 
     #[test]
     fn test_oob_defaults_by_aesthetic_type() {
-        // Internal positional aesthetics (after transformation)
-        let internal_positional = [
+        // Internal position aesthetics (after transformation)
+        let internal_position = [
             "pos1", "pos1min", "pos1max", "pos1end", "pos2", "pos2min", "pos2max", "pos2end",
         ];
 
         let props = HashMap::new();
 
-        // Positional aesthetics default to 'keep'
-        for aesthetic in internal_positional.iter() {
+        // Position aesthetics default to 'keep'
+        for aesthetic in internal_position.iter() {
             let resolved = ScaleType::continuous()
                 .resolve_properties(aesthetic, &props)
                 .unwrap();
             assert_eq!(
                 resolved.get("oob"),
                 Some(&ParameterValue::String("keep".into())),
-                "Positional '{}' should default to 'keep'",
+                "Position '{}' should default to 'keep'",
                 aesthetic
             );
         }
 
-        // Non-positional aesthetics default to 'censor'
+        // Material aesthetics default to 'censor'
         for aesthetic in &["color", "size", "opacity", "fill", "stroke"] {
             let resolved = ScaleType::continuous()
                 .resolve_properties(aesthetic, &props)
@@ -2489,7 +2489,7 @@ mod tests {
             assert_eq!(
                 resolved.get("oob"),
                 Some(&ParameterValue::String("censor".into())),
-                "Non-positional '{}' should default to 'censor'",
+                "Material '{}' should default to 'censor'",
                 aesthetic
             );
         }
@@ -2775,7 +2775,7 @@ mod tests {
             Some(&ParameterValue::Boolean(false))
         );
 
-        // Same for non-positional aesthetics
+        // Same for material aesthetics
         let resolved = ScaleType::continuous()
             .resolve_properties("color", &props)
             .unwrap();
@@ -2938,7 +2938,7 @@ mod tests {
     }
 
     #[test]
-    fn test_breaks_available_for_non_positional_aesthetics() {
+    fn test_breaks_available_for_material_aesthetics() {
         // breaks should work for color legends too
         let mut props = HashMap::new();
         props.insert("breaks".to_string(), ParameterValue::Number(4.0));

@@ -9,7 +9,8 @@ The continuous scale type maps various continuous data types into a continuous o
 ## Input range
 The input range for continuous scales are defined by their minimum and maximum values. These can be given explicitly or deduced from the mapped data. If `FROM` is omitted then the range of the mapped data is used. If provided as an array of length 2 then the first element will set the minimum and the second element will set the maximum. If either of these elements are `null` then that part of the range will be deduced from the data. As an example `SCALE x FROM [0, null]` will set the minimum part of the range to 0 and the maximum part to the maximal value of the mapped data.
 
-Positional aesthetics (`x` and `y`) will have their range expanded based on the `expand` setting. If values in the mapped data falls outside of the input domain the values will be changed based on the `oob` setting.
+Position aesthetics (`x` and `y`) will have their range expanded based on the `expand` setting. 
+If values in the mapped data falls outside of the input domain the values will be changed based on the `oob` setting.
 
 The input range is converted to the type defined by the transform. This means that a time range can both be given as a `%H:%M:%S` string or as a numeric giving the number of nanoseconds since midnight.
 

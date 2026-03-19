@@ -131,16 +131,16 @@ fn prepare_layer_data(
 /// - Creates layer spec with mark type
 /// - Builds transform array with source filter
 /// - Builds encoding channels for each aesthetic mapping
-/// - Handles binned positional aesthetics (x2/y2 channels)
+/// - Handles binned position aesthetics (x2/y2 channels)
 /// - Adds aesthetic parameters from SETTING as literal encodings
 /// - Adds detail encoding for partition_by columns
 /// - Applies geom-specific modifications via renderer
 /// - Finalizes layers (may expand composite geoms into multiple layers)
 ///
-/// The `free_scales` array indicates which positional aesthetics have independent scales
+/// The `free_scales` array indicates which position aesthetics have independent scales
 /// per facet panel. When a position is free, explicit domains should not be set.
 ///
-/// The `coord_kind` determines how internal positional aesthetics are mapped to
+/// The `coord_kind` determines how internal position aesthetics are mapped to
 /// Vega-Lite encoding channel names.
 fn build_layers(
     spec: &Plot,
@@ -205,15 +205,15 @@ fn build_layers(
 /// Handles:
 /// - Tracking titled aesthetic families (one title per family)
 /// - Building encoding channels for each aesthetic mapping
-/// - Binned positional aesthetics (x2/y2 channels for bin width)
+/// - Binned position aesthetics (x2/y2 channels for bin width)
 /// - Aesthetic parameters from SETTING as literal encodings
 /// - Detail encoding for partition_by columns
 /// - Geom-specific encoding modifications via renderer
 ///
-/// The `free_scales` array indicates which positional aesthetics have independent scales
+/// The `free_scales` array indicates which position aesthetics have independent scales
 /// per facet panel. When a position is free, explicit domains should not be set.
 ///
-/// The `coord_kind` determines how internal positional aesthetics (pos1, pos2) are
+/// The `coord_kind` determines how internal position aesthetics (pos1, pos2) are
 /// mapped to Vega-Lite encoding channel names (x/y for cartesian, theta/radius for polar).
 fn build_layer_encoding(
     layer: &crate::plot::Layer,
@@ -238,7 +238,7 @@ fn build_layer_encoding(
         .keys()
         .filter(|a| {
             aesthetic_ctx
-                .primary_internal_positional(a)
+                .primary_internal_position(a)
                 .map(|p| p == a.as_str())
                 .unwrap_or(false)
         })
@@ -274,7 +274,7 @@ fn build_layer_encoding(
             channel_name = "fillOpacity".to_string();
         }
 
-        // Secondary positional channels (x2, y2, theta2, radius2) only support
+        // Secondary position channels (x2, y2, theta2, radius2) only support
         // field/datum/value in Vega-Lite — not type, scale, axis, or title
         if matches!(channel_name.as_str(), "x2" | "y2" | "theta2" | "radius2") {
             let secondary_encoding = match value {
@@ -289,7 +289,7 @@ fn build_layer_encoding(
         let channel_encoding = build_encoding_channel(aesthetic, value, &mut enc_ctx)?;
         encoding.insert(channel_name, channel_encoding);
 
-        // For binned positional aesthetics (pos1, pos2), add end channel with bin_end column
+        // For binned position aesthetics (pos1, pos2), add end channel with bin_end column
         // This enables proper bin width rendering in Vega-Lite (maps to x2/y2 channels)
         if aesthetic_ctx.is_primary_internal(aesthetic) && is_binned_aesthetic(aesthetic, spec) {
             if let AestheticValue::Column { name: col, .. } = value {
@@ -1343,7 +1343,7 @@ mod tests {
         // Test with cartesian coord kind
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
 
-        // Internal positional names should map to Vega-Lite channel names based on coord kind
+        // Internal position names should map to Vega-Lite channel names based on coord kind
         assert_eq!(map_aesthetic_name("pos1", &ctx, CoordKind::Cartesian), "x");
         assert_eq!(map_aesthetic_name("pos2", &ctx, CoordKind::Cartesian), "y");
         assert_eq!(
@@ -1355,7 +1355,7 @@ mod tests {
             "y2"
         );
 
-        // Non-positional aesthetics pass through directly
+        // Material aesthetics pass through directly
         assert_eq!(
             map_aesthetic_name("color", &ctx, CoordKind::Cartesian),
             "color"
@@ -1399,7 +1399,7 @@ mod tests {
             "size"
         );
 
-        // Test with polar coord kind - internal positional maps to radius/theta
+        // Test with polar coord kind - internal position maps to radius/theta
         // regardless of the context's user-facing names
         let polar_ctx = AestheticContext::from_static(&["radius", "theta"], &[]);
         assert_eq!(
@@ -1419,7 +1419,7 @@ mod tests {
             "theta2"
         );
 
-        // Even with custom positional names (e.g., PROJECT y, x TO polar),
+        // Even with custom position names (e.g., PROJECT y, x TO polar),
         // internal pos1/pos2 should still map to radius/theta for Vega-Lite
         let custom_ctx = AestheticContext::from_static(&["y", "x"], &[]);
         assert_eq!(

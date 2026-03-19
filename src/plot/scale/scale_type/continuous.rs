@@ -271,7 +271,7 @@ mod tests {
     #[test]
     fn test_pre_stat_transform_sql_keep() {
         let continuous = Continuous;
-        let mut scale = Scale::new("x"); // positional aesthetic defaults to keep
+        let mut scale = Scale::new("x"); // position aesthetic defaults to keep
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
         scale.properties.insert(
@@ -302,33 +302,33 @@ mod tests {
     }
 
     #[test]
-    fn test_pre_stat_transform_sql_default_oob_for_positional() {
-        // NOTE: After transformation, positional aesthetics use internal names (pos1, pos2, etc.)
+    fn test_pre_stat_transform_sql_default_oob_for_position() {
+        // NOTE: After transformation, position aesthetics use internal names (pos1, pos2, etc.)
         let continuous = Continuous;
-        let mut scale = Scale::new("pos1"); // positional aesthetic (internal name)
+        let mut scale = Scale::new("pos1"); // position aesthetic (internal name)
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
-        // No oob property - should use default (keep for positional)
+        // No oob property - should use default (keep for position)
 
         let sql =
             continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect);
 
-        // Should return None since default for positional is "keep"
+        // Should return None since default for position is "keep"
         assert!(sql.is_none());
     }
 
     #[test]
-    fn test_pre_stat_transform_sql_default_oob_for_non_positional() {
+    fn test_pre_stat_transform_sql_default_oob_for_material() {
         let continuous = Continuous;
-        let mut scale = Scale::new("color"); // non-positional aesthetic
+        let mut scale = Scale::new("color"); // material aesthetic
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
-        // No oob property - should use default (censor for non-positional)
+        // No oob property - should use default (censor for material)
 
         let sql =
             continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect);
 
-        // Should generate censor SQL since default for non-positional is "censor"
+        // Should generate censor SQL since default for material is "censor"
         assert!(sql.is_some());
         let sql = sql.unwrap();
         assert!(sql.contains("CASE WHEN"));
