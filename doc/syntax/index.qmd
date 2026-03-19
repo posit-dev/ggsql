@@ -3,7 +3,7 @@ title: "Syntax"
 ---
 
 ## Main Clauses
-ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:
+ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation. Apart from `VISUALISE` needing to be the first, the order of these clauses is arbitrary, though grouping e.g. all `DRAW` clauses will lead to queries that are easier to reason about:
 
 - [`VISUALISE`](clause/visualise.qmd) initiates the visualisation part of the query
 - [`DRAW`](clause/draw.qmd) adds a new layer to the visualisation
