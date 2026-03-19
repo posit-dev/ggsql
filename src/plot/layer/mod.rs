@@ -240,27 +240,26 @@ impl Layer {
                 .iter()
                 .find(|(_, flipped)| !self.mappings.contains_key(flipped));
 
-            if identity_missing.is_some() && flipped_missing.is_some() {
-                let (missing, flipped) = identity_missing.unwrap();
-
-                // Check if flipped version is present (mixed orientation case)
-                if self.mappings.contains_key(flipped) {
-                    return Err(format!(
+            if let Some((missing, flipped)) = identity_missing {
+                if flipped_missing.is_some() {
+                    // Check if flipped version is present (mixed orientation case)
+                    if self.mappings.contains_key(flipped) {
+                        return Err(format!(
                         "Layer '{}' has mixed positional aesthetic orientations. \
                          Found '{}' but expected '{}' to match the orientation of other aesthetics.",
                         self.geom,
                         translate(flipped),
                         translate(missing)
                     ));
+                    }
+                    // Truly missing aesthetic
+                    return Err(format!(
+                        "Layer '{}' mapping requires the aesthetic '{}' (or '{}').",
+                        self.geom,
+                        translate(missing),
+                        translate(flipped)
+                    ));
                 }
-
-                // Truly missing aesthetic
-                return Err(format!(
-                    "Layer '{}' mapping requires the aesthetic '{}' (or '{}').",
-                    self.geom,
-                    translate(missing),
-                    translate(flipped)
-                ));
             }
         }
 
