@@ -67,7 +67,7 @@ pub trait CoordTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Primary positional aesthetic names for this coord.
     ///
     /// Returns the user-facing positional aesthetic names.
-    /// e.g., ["x", "y"] for cartesian, ["radius", "theta"] for polar.
+    /// e.g., ["x", "y"] for cartesian, ["radius", "angle"] for polar.
     ///
     /// These names are transformed to internal names (pos1, pos2, etc.)
     /// early in the pipeline and transformed back for output.
@@ -165,7 +165,7 @@ impl Coord {
     }
 
     /// Primary positional aesthetic names for this coord.
-    /// e.g., ["x", "y"] for cartesian, ["radius", "theta"] for polar.
+    /// e.g., ["x", "y"] for cartesian, ["radius", "angle"] for polar.
     pub fn positional_aesthetic_names(&self) -> &'static [&'static str] {
         self.0.positional_aesthetic_names()
     }
@@ -291,6 +291,6 @@ mod tests {
         assert_eq!(cartesian.positional_aesthetic_names(), &["x", "y"]);
 
         let polar = Coord::polar();
-        assert_eq!(polar.positional_aesthetic_names(), &["radius", "theta"]);
+        assert_eq!(polar.positional_aesthetic_names(), &["radius", "angle"]);
     }
 }

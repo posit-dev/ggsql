@@ -496,9 +496,6 @@ mod tests {
         assert!(outlier_section.contains("raw.year = summary.year"));
     }
 
-    // NOTE: Parameter validation tests removed - validation is now handled by
-    // ParamConstraint in Layer::validate_settings() before stat_boxplot is called.
-    // Invalid/missing parameters would be caught at the constraint validation stage.
 
     // ==================== GeomTrait Implementation Tests ====================
 

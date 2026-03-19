@@ -87,7 +87,7 @@ fn compute_default_ncol(num_levels: usize) -> i64 {
 ///
 /// * `facet` - The facet to resolve
 /// * `context` - Data context with unique values
-/// * `positional_names` - Valid positional aesthetic names (e.g., ["x", "y"] or ["theta", "radius"])
+/// * `positional_names` - Valid positional aesthetic names (e.g., ["x", "y"] or ["angle", "radius"])
 pub fn resolve_properties(
     facet: &mut Facet,
     context: &FacetDataContext,
@@ -156,7 +156,7 @@ pub fn resolve_properties(
 /// # Arguments
 ///
 /// * `facet` - The facet to validate
-/// * `positional_names` - Valid positional aesthetic names (e.g., ["x", "y"] or ["theta", "radius"])
+/// * `positional_names` - Valid positional aesthetic names (e.g., ["x", "y"] or ["angle", "radius"])
 fn validate_free_property(facet: &Facet, positional_names: &[&str]) -> Result<(), String> {
     if let Some(value) = facet.properties.get("free") {
         match value {
@@ -229,7 +229,7 @@ fn validate_free_property(facet: &Facet, positional_names: &[&str]) -> Result<()
 ///
 /// Transforms user-provided values to a boolean vector (position-indexed):
 /// - User writes: `free => 'x'` → stored as: `free => [true, false]`
-/// - User writes: `free => 'theta'` → stored as: `free => [true, false]`
+/// - User writes: `free => 'angle'` → stored as: `free => [true, false]`
 /// - User writes: `free => ['x', 'y']` → stored as: `free => [true, true]`
 /// - User writes: `free => null` or absent → stored as: `free => [false, false]`
 ///
@@ -331,7 +331,7 @@ mod tests {
     /// Default positional names for cartesian coords
     const CARTESIAN: &[&str] = &["x", "y"];
     /// Positional names for polar coords
-    const POLAR: &[&str] = &["theta", "radius"];
+    const POLAR: &[&str] = &["angle", "radius"];
 
     fn make_wrap_facet() -> Facet {
         Facet::new(FacetLayout::Wrap {
@@ -811,17 +811,17 @@ mod tests {
     // ========================================
 
     #[test]
-    fn test_free_property_theta_valid() {
+    fn test_free_property_angle_valid() {
         let mut facet = make_wrap_facet();
         facet.properties.insert(
             "free".to_string(),
-            ParameterValue::String("theta".to_string()),
+            ParameterValue::String("angle".to_string()),
         );
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, POLAR);
         assert!(result.is_ok());
-        // theta is first positional -> [true, false]
+        // angle is first positional -> [true, false]
         assert_eq!(get_free_bools(&facet), Some(vec![true, false]));
     }
 
@@ -846,7 +846,7 @@ mod tests {
         facet.properties.insert(
             "free".to_string(),
             ParameterValue::Array(vec![
-                crate::plot::ArrayElement::String("theta".to_string()),
+                crate::plot::ArrayElement::String("angle".to_string()),
                 crate::plot::ArrayElement::String("radius".to_string()),
             ]),
         );
@@ -872,16 +872,16 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("'x'"));
-        assert!(err.contains("theta") || err.contains("radius"));
+        assert!(err.contains("angle") || err.contains("radius"));
     }
 
     #[test]
     fn test_error_polar_names_in_cartesian() {
-        // theta/radius should not be valid for cartesian coords
+        // angle/radius should not be valid for cartesian coords
         let mut facet = make_wrap_facet();
         facet.properties.insert(
             "free".to_string(),
-            ParameterValue::String("theta".to_string()),
+            ParameterValue::String("angle".to_string()),
         );
 
         let context = make_context(5);
@@ -889,7 +889,7 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("'theta'"));
+        assert!(err.contains("'angle'"));
         assert!(err.contains("'x'") || err.contains("'y'"));
     }
 

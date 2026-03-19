@@ -1480,7 +1480,7 @@ PROJECT [<aesthetic>, ...] TO <coord_type> [SETTING <properties>]
 | Coord Type | Default Aesthetics | Description |
 |------------|-------------------|-------------|
 | `cartesian` | `x`, `y` | Standard x/y Cartesian coordinates |
-| `polar` | `theta`, `radius` | Polar coordinates (for pie charts, rose plots) |
+| `polar` | `angle`, `radius` | Polar coordinates (for pie charts, rose plots) |
 
 **Flipping Axes**:
 
@@ -1505,7 +1505,7 @@ Note: For axis limits, use `SCALE x FROM [min, max]` or `SCALE y FROM [min, max]
 
 **Polar**:
 
-- `theta => <aesthetic>` - Which aesthetic maps to angle (defaults to `y`)
+- No special properties (angle/radius aesthetics are used directly)
 
 **Important Notes**:
 
@@ -1534,10 +1534,10 @@ PROJECT y, x TO cartesian
 -- Custom aesthetic names
 PROJECT myX, myY TO cartesian
 
--- Polar for pie chart (using default theta/radius aesthetics)
+-- Polar for pie chart (using default angle/radius aesthetics)
 PROJECT TO polar
 
--- Polar with y/x aesthetics (y becomes theta, x becomes radius)
+-- Polar with y/x aesthetics (y becomes angle, x becomes radius)
 PROJECT y, x TO polar
 
 -- Polar with start angle offset (3 o'clock position)

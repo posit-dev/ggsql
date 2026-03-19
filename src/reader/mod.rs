@@ -652,10 +652,10 @@ mod tests {
         let json2: serde_json::Value = serde_json::from_str(&result2).unwrap();
         check_encoding_keys(&json2, "PROJECT x, y TO polar");
 
-        // Test case 3: PROJECT TO polar (default radius/theta names)
+        // Test case 3: PROJECT TO polar (default radius/angle names)
         let query3 = r#"
             SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
-            VISUALISE value AS theta, category AS fill
+            VISUALISE value AS angle, category AS fill
             DRAW bar
             PROJECT TO polar
         "#;
@@ -1220,14 +1220,14 @@ mod tests {
 
     #[test]
     fn test_label_with_polar_project() {
-        // End-to-end test: LABEL theta/radius with PROJECT TO polar
+        // End-to-end test: LABEL angle/radius with PROJECT TO polar
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let query = r#"
             SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
-            VISUALISE value AS theta, category AS fill
+            VISUALISE value AS angle, category AS fill
             DRAW bar
             PROJECT TO polar
-            LABEL theta => 'Angle', radius => 'Distance'
+            LABEL angle => 'Angle', radius => 'Distance'
         "#;
 
         let spec = reader.execute(query).unwrap();
