@@ -25,6 +25,7 @@ impl GeomTrait for Area {
                 ("opacity", DefaultAestheticValue::Number(0.8)),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("linetype", DefaultAestheticValue::String("solid")),
+                ("pos2end", DefaultAestheticValue::Delayed),
             ],
         }
     }

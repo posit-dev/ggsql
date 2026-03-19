@@ -239,6 +239,36 @@ impl AestheticContext {
         }
     }
 
+    /// Map internal aesthetic to user-facing name (reverse of map_user_to_internal).
+    ///
+    /// Position: "pos1" → "x", "pos2min" → "ymin", "pos1" → "theta" (for polar)
+    /// Facet: "facet1" → "panel" (wrap), "facet1" → "row" (grid), "facet2" → "column" (grid)
+    /// Material: "color" → "color" (unchanged)
+    ///
+    /// Returns None if the internal aesthetic is not recognized.
+    pub fn map_internal_to_user(&self, internal_aesthetic: &str) -> String {
+        // Check internal facet (facet1, facet2)
+        if let Some(idx) = self
+            .internal_facet
+            .iter()
+            .position(|i| i == internal_aesthetic)
+        {
+            return self.user_facet[idx].to_string();
+        }
+
+        // Check internal position (pos1, pos1min, pos2, etc.)
+        // Iterate through user_to_internal to find reverse mapping
+        for (user, internal) in &self.user_to_internal {
+            if internal == internal_aesthetic {
+                return user.to_string();
+            }
+        }
+
+        // Material aesthetics (color, size, etc.)
+        // Internal is the same as external
+        internal_aesthetic.to_string()
+    }
+
     // === Checking (O(1) HashMap lookups) ===
 
     /// Check if internal aesthetic is primary position (pos1, pos2, ...)
@@ -624,6 +654,70 @@ mod tests {
         assert_eq!(ctx.primary_internal_position("color"), Some("color"));
     }
 
+    #[test]
+    fn test_aesthetic_context_internal_to_user_cartesian() {
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+
+        // Primary aesthetics
+        assert_eq!(ctx.map_internal_to_user("pos1"), "x");
+        assert_eq!(ctx.map_internal_to_user("pos2"), "y");
+
+        // Variants
+        assert_eq!(ctx.map_internal_to_user("pos1min"), "xmin");
+        assert_eq!(ctx.map_internal_to_user("pos1max"), "xmax");
+        assert_eq!(ctx.map_internal_to_user("pos1end"), "xend");
+        assert_eq!(ctx.map_internal_to_user("pos2min"), "ymin");
+        assert_eq!(ctx.map_internal_to_user("pos2max"), "ymax");
+        assert_eq!(ctx.map_internal_to_user("pos2end"), "yend");
+
+        // Material aesthetics remain unchanged
+        assert_eq!(ctx.map_internal_to_user("color"), "color");
+        assert_eq!(ctx.map_internal_to_user("size"), "size");
+        assert_eq!(ctx.map_internal_to_user("fill"), "fill");
+    }
+
+    #[test]
+    fn test_aesthetic_context_internal_to_user_polar() {
+        let ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
+
+        // Primary aesthetics map to polar names
+        assert_eq!(ctx.map_internal_to_user("pos1"), "theta");
+        assert_eq!(ctx.map_internal_to_user("pos2"), "radius");
+
+        // Variants
+        assert_eq!(ctx.map_internal_to_user("pos1end"), "thetaend");
+        assert_eq!(ctx.map_internal_to_user("pos2min"), "radiusmin");
+        assert_eq!(ctx.map_internal_to_user("pos2max"), "radiusmax");
+    }
+
+    #[test]
+    fn test_aesthetic_context_internal_to_user_facets() {
+        // Wrap facet (panel)
+        let ctx_wrap = AestheticContext::from_static(&["x", "y"], &["panel"]);
+        assert_eq!(ctx_wrap.map_internal_to_user("facet1"), "panel");
+
+        // Grid facet (row, column)
+        let ctx_grid = AestheticContext::from_static(&["x", "y"], &["row", "column"]);
+        assert_eq!(ctx_grid.map_internal_to_user("facet1"), "row");
+        assert_eq!(ctx_grid.map_internal_to_user("facet2"), "column");
+    }
+
+    #[test]
+    fn test_aesthetic_context_roundtrip() {
+        // Test that user -> internal -> user roundtrips correctly
+        let ctx = AestheticContext::from_static(&["x", "y"], &["panel"]);
+
+        // Position
+        let internal = ctx.map_user_to_internal("x").unwrap();
+        assert_eq!(ctx.map_internal_to_user(internal), "x");
+
+        let internal = ctx.map_user_to_internal("ymin").unwrap();
+        assert_eq!(ctx.map_internal_to_user(internal), "ymin");
+
+        // Facet
+        let internal = ctx.map_user_to_internal("panel").unwrap();
+        assert_eq!(ctx.map_internal_to_user(internal), "panel");
+    }
     #[test]
     fn test_parse_position() {
         // Primary position

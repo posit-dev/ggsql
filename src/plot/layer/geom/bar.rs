@@ -33,6 +33,7 @@ impl GeomTrait for Bar {
             defaults: &[
                 ("pos1", DefaultAestheticValue::Null), // Optional - stat may provide
                 ("pos2", DefaultAestheticValue::Null), // Optional - stat may compute
+                ("pos2end", DefaultAestheticValue::Delayed),
                 ("weight", DefaultAestheticValue::Null),
                 ("fill", DefaultAestheticValue::String("black")),
                 ("stroke", DefaultAestheticValue::String("black")),

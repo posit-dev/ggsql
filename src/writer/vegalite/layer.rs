@@ -41,6 +41,7 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Boxplot => "boxplot",
         GeomType::Text => "text",
         GeomType::Segment => "rule",
+        GeomType::Smooth => "line",
         GeomType::Rule => "rule",
         GeomType::Linear => "rule",
         GeomType::ErrorBar => "rule",
@@ -1333,11 +1334,6 @@ impl GeomRenderer for ViolinRenderer {
             continuous_col, continuous_col
         );
 
-        // Filter threshold to trim very low density regions (removes thin tails)
-        // The offset is pre-scaled to [0, 0.5 * width] by geom post_process,
-        // but this filter still catches extremely low values.
-        let filter_expr = format!("datum.{} > 0.001", offset_col);
-
         // Preserve existing transforms (e.g., source filter) and extend with violin-specific transforms
         let existing_transforms = layer_spec
             .get("transform")
@@ -1350,10 +1346,6 @@ impl GeomRenderer for ViolinRenderer {
 
         let mut transforms = existing_transforms;
         transforms.extend(vec![
-            json!({
-                // Remove points with very low density to clean up thin tails
-                "filter": filter_expr
-            }),
             json!({
                 // Mirror offset on both sides (offset is pre-scaled to [0, 0.5 * width])
                 "calculate": violin_offset,

@@ -449,7 +449,7 @@ pub struct Theme {
 - `Layer::with_parameter(parameter, value)` - Add a geom parameter (builder pattern)
 - `Layer::get_column(aesthetic)` - Get column name for an aesthetic (if mapped to column)
 - `Layer::get_literal(aesthetic)` - Get literal value for an aesthetic (if literal)
-- `Layer::validate_required_aesthetics()` - Validate that required aesthetics are present for the geom type
+- `Layer::validate_mapping()` - Validate that required aesthetics are present for the geom type
 
 **Type conversions:**
 

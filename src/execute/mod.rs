@@ -49,14 +49,18 @@ use crate::reader::DuckDBReader;
 /// - Partition_by columns exist in schema
 /// - Remapping target aesthetics are supported by geom
 /// - Remapping source columns are valid stat columns for geom
-fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
+fn validate(
+    layers: &[Layer],
+    layer_schemas: &[Schema],
+    aesthetic_context: &Option<AestheticContext>,
+) -> Result<()> {
     for (idx, (layer, schema)) in layers.iter().zip(layer_schemas.iter()).enumerate() {
         let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
         let supported = layer.geom.aesthetics().supported();
 
         // Validate required aesthetics for this geom
         layer
-            .validate_required_aesthetics()
+            .validate_mapping(aesthetic_context, false)
             .map_err(|e| GgsqlError::ValidationError(format!("Layer {}: {}", idx + 1, e)))?;
 
         // Validate SETTING parameters are valid for this geom
@@ -1029,7 +1033,11 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 
     // Validate all layers against their schemas
     // This must happen BEFORE build_layer_query because stat transforms remove consumed aesthetics
-    validate(&specs[0].layers, &layer_schemas)?;
+    validate(
+        &specs[0].layers,
+        &layer_schemas,
+        &specs[0].aesthetic_context,
+    )?;
 
     // Create scales for all mapped aesthetics that don't have explicit SCALE clauses
     scale::create_missing_scales(&mut specs[0]);
@@ -2503,8 +2511,8 @@ mod tests {
         match result {
             Err(GgsqlError::ValidationError(msg)) => {
                 assert!(
-                    msg.contains("pos2"),
-                    "Error should mention missing pos2 aesthetic: {}",
+                    msg.contains("y"),
+                    "Error should mention missing y aesthetic: {}",
                     msg
                 );
             }
@@ -2643,6 +2651,90 @@ mod tests {
         assert!(
             !line_layer.mappings.aesthetics.contains_key("fill"),
             "line layer should not have fill due to null AS fill"
+        );
+    }
+
+    // ========================================================================
+    // Validation Error Message Tests (User-facing aesthetic names)
+    // ========================================================================
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_validation_error_shows_user_facing_names_for_missing_aesthetics() {
+        // Test that validation errors show user-facing names (x, y) instead of internal (pos1, pos2)
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE test_data AS SELECT * FROM (VALUES (1, 2)) AS t(a, b)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Query missing required aesthetic 'y' - should show 'y' not 'pos2'
+        let query = r#"
+            SELECT * FROM test_data
+            VISUALISE
+            DRAW point MAPPING a AS x
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(result.is_err(), "Expected validation error");
+
+        let err_msg = match result {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("Expected error"),
+        };
+        assert!(
+            err_msg.contains("`y`"),
+            "Error should mention user-facing name 'y', got: {}",
+            err_msg
+        );
+        assert!(
+            !err_msg.contains("pos2"),
+            "Error should not mention internal name 'pos2', got: {}",
+            err_msg
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_validation_error_shows_user_facing_names_for_unsupported_aesthetics() {
+        // Test that validation errors show user-facing names for unsupported aesthetics
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE test_data AS SELECT * FROM (VALUES (1, 2, 3)) AS t(a, b, c)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // Query with unsupported aesthetic 'xmin' for point - should show 'xmin' not 'pos1min'
+        let query = r#"
+            SELECT * FROM test_data
+            VISUALISE
+            DRAW point MAPPING a AS x, b AS y, c AS xmin
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(result.is_err(), "Expected validation error");
+
+        let err_msg = match result {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("Expected error"),
+        };
+        assert!(
+            err_msg.contains("`xmin`"),
+            "Error should mention user-facing name 'xmin', got: {}",
+            err_msg
+        );
+        assert!(
+            !err_msg.contains("pos1min"),
+            "Error should not mention internal name 'pos1min', got: {}",
+            err_msg
         );
     }
 }

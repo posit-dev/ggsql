@@ -4,7 +4,7 @@
 //! a single visualization layer (from DRAW clause) in a ggsql specification.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 // Geom is a submodule of layer
 pub mod geom;
@@ -26,7 +26,13 @@ pub use geom::{
 // Re-export position types for convenience
 pub use position::{Position, PositionTrait, PositionType};
 
-use crate::plot::types::{AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression};
+use crate::{
+    plot::{
+        is_facet_aesthetic,
+        types::{AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression},
+    },
+    AestheticContext,
+};
 
 /// A single visualization layer (from DRAW clause)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -163,65 +169,135 @@ impl Layer {
         }
     }
 
-    /// Check if this layer has the required aesthetics for its geom
+    /// Validate layer aesthetic mappings.
     ///
-    /// Position aesthetics (pos1*, pos2*) are validated bidirectionally:
-    /// requirements using pos1/pos2 slots can be satisfied by either axis assignment.
-    /// For example, requiring `pos1`, `pos2min`, `pos2max` accepts either:
-    /// - `x`, `ymin`, `ymax` (slot1→x-axis, slot2→y-axis)
-    /// - `y`, `xmin`, `xmax` (slot1→y-axis, slot2→x-axis)
-    pub fn validate_required_aesthetics(&self) -> std::result::Result<(), String> {
-        use crate::plot::aesthetic::parse_position;
+    /// Performs three checks:
+    /// 1. All required aesthetics are present
+    /// 2. Position requirements allow bidirectional satisfaction (handles orientation flipping)
+    /// 3. No unsupported/exotic aesthetics are mapped
+    ///
+    /// # Parameters
+    /// - `context`: Optional aesthetic context for translating internal → user-facing names
+    /// - `include_delayed`: If true, allows delayed aesthetics (stat-produced). Use `true` for
+    ///   writer validation, `false` for execution validation.
+    ///
+    /// # Returns
+    /// `Ok(())` if validation passes, or `Err(message)` with a user-friendly error message.
+    pub fn validate_mapping(
+        &self,
+        context: &Option<AestheticContext>,
+        include_delayed: bool,
+    ) -> std::result::Result<(), String> {
+        // If there is aesthetic context, translate to user-facing form
+        let translate = |aes: &str| -> String {
+            let name = match context {
+                Some(ctx) => ctx.map_internal_to_user(aes),
+                None => aes.to_string(),
+            };
+            format!("`{}`", name)
+        };
 
-        let required = self.geom.aesthetics().required();
+        // Check if all required aesthetics exist.
+        let mut missing = Vec::new();
+        let mut position_reqs: Vec<(&str, u8, &str)> = Vec::new();
 
-        // Separate position (with parsed slot/suffix) and material requirements
-        let mut position_reqs: Vec<(&str, u8, &str)> = Vec::new(); // (name, slot, suffix)
-        let mut other_reqs: Vec<&str> = Vec::new();
-
-        for aesthetic in &required {
-            if let Some((slot, suffix)) = parse_position(aesthetic) {
-                position_reqs.push((aesthetic, slot, suffix));
-            } else {
-                other_reqs.push(aesthetic);
+        for aesthetic in self.geom.aesthetics().required() {
+            if let Some((slot, suffix)) = crate::plot::aesthetic::parse_position(aesthetic) {
+                position_reqs.push((aesthetic, slot, suffix))
+            } else if !self.mappings.contains_key(aesthetic) {
+                missing.push(translate(aesthetic));
             }
         }
 
-        // Validate material requirements directly
-        for aesthetic in &other_reqs {
-            if !self.mappings.contains_key(aesthetic) {
-                return Err(format!(
-                    "Geom '{}' requires aesthetic '{}' but it was not provided",
-                    self.geom, aesthetic
-                ));
-            }
+        if !missing.is_empty() {
+            return Err(format!(
+                "Layer '{}' mapping requires the {} aesthetic{s}.",
+                self.geom,
+                missing.join(", "),
+                s = if missing.len() > 1 { "s" } else { "" }
+            ));
         }
 
         // Validate position requirements bidirectionally
         // Try both slot assignments: (1→1, 2→2) and (1→2, 2→1)
         if !position_reqs.is_empty() {
-            let identity_ok = position_reqs
+            // Pre-compute flipped versions to avoid repeated calculation
+            let pairs: Vec<_> = position_reqs
                 .iter()
-                .all(|(name, _, _)| self.mappings.contains_key(name));
+                .map(|(name, slot, suffix)| {
+                    let flipped_slot = if *slot == 1 { 2 } else { 1 };
+                    let flipped = format!("pos{}{}", flipped_slot, suffix);
+                    (*name, flipped)
+                })
+                .collect();
 
-            let swapped_ok = position_reqs.iter().all(|(_, slot, suffix)| {
-                let new_slot = if *slot == 1 { 2 } else { 1 };
-                let remapped = format!("pos{}{}", new_slot, suffix);
-                self.mappings.contains_key(&remapped)
-            });
+            // Find first missing aesthetic in each orientation
+            let identity_missing = pairs
+                .iter()
+                .find(|(name, _)| !self.mappings.contains_key(name));
 
-            if !identity_ok && !swapped_ok {
-                let (missing, _, _) = position_reqs
-                    .iter()
-                    .find(|(name, _, _)| !self.mappings.contains_key(name))
-                    .unwrap();
-                return Err(format!(
-                    "Geom '{}' requires aesthetic '{}' (or its bidirectional equivalent) but it was not provided",
-                    self.geom, missing
-                ));
+            let flipped_missing = pairs
+                .iter()
+                .find(|(_, flipped)| !self.mappings.contains_key(flipped));
+
+            if let Some((missing, flipped)) = identity_missing {
+                if flipped_missing.is_some() {
+                    // Check if flipped version is present (mixed orientation case)
+                    if self.mappings.contains_key(flipped) {
+                        return Err(format!(
+                        "Layer '{}' has mixed position aesthetic orientations. \
+                         Found '{}' but expected '{}' to match the orientation of other aesthetics.",
+                        self.geom,
+                        translate(flipped),
+                        translate(missing)
+                    ));
+                    }
+                    // Truly missing aesthetic
+                    return Err(format!(
+                        "Layer '{}' mapping requires the aesthetic '{}' (or '{}').",
+                        self.geom,
+                        translate(missing),
+                        translate(flipped)
+                    ));
+                }
             }
         }
 
+        let mut supported: HashSet<String> = if include_delayed {
+            self.geom.aesthetics().names()
+        } else {
+            self.geom.aesthetics().supported()
+        }
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect();
+
+        // At this point in execution we don't know orientation yet,
+        // so we'll approve both flipped and upflipped aesthetics.
+        if let Some(ctx) = context {
+            let flipped: Vec<String> = supported.iter().map(|aes| ctx.flip_position(aes)).collect();
+            supported.extend(flipped);
+        }
+
+        // Check if any unsupported mappings are present
+        let mut extra = Vec::new();
+
+        for aesthetic in self.mappings.aesthetics.keys() {
+            if is_facet_aesthetic(aesthetic) {
+                continue;
+            }
+            if !supported.contains(aesthetic) {
+                extra.push(translate(aesthetic));
+            }
+        }
+        if !extra.is_empty() {
+            return Err(format!(
+                "Layer '{}' does not support the {} mapping{s}.",
+                self.geom,
+                extra.join(", "),
+                s = if extra.len() > 1 { "s" } else { "" }
+            ));
+        }
         Ok(())
     }
 
@@ -507,5 +583,111 @@ mod tests {
                 "square".to_string()
             )))
         );
+    }
+
+    #[test]
+    fn test_validate_mapping_bidirectional_missing() {
+        // Test error message when aesthetic is completely missing (neither identity nor flipped form)
+        use crate::AestheticContext;
+
+        let mut layer = Layer::new(Geom::ribbon());
+        layer.mappings.insert(
+            "pos1".to_string(),
+            AestheticValue::standard_column("x".to_string()),
+        );
+        // Missing both pos2min and pos1min (required by ribbon)
+
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+        let result = layer.validate_mapping(&Some(ctx), false);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("ymin") && err.contains("xmin"),
+            "Expected error to mention both alternatives (ymin/xmin), got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_validate_mapping_bidirectional_mixed_orientation() {
+        // Test error message when aesthetics are present but in mixed orientations
+        use crate::AestheticContext;
+
+        let mut layer = Layer::new(Geom::ribbon());
+        layer.mappings.insert(
+            "pos1".to_string(),
+            AestheticValue::standard_column("x".to_string()),
+        );
+        layer.mappings.insert(
+            "pos2min".to_string(),
+            AestheticValue::standard_column("ymin".to_string()),
+        );
+        layer.mappings.insert(
+            "pos1max".to_string(), // This should be pos2max to match pos2min's orientation
+            AestheticValue::standard_column("xmax".to_string()),
+        );
+
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+        let result = layer.validate_mapping(&Some(ctx), false);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("mixed") && err.contains("orientation"),
+            "Expected error about mixed orientation, got: {}",
+            err
+        );
+        assert!(
+            err.contains("xmax") && err.contains("ymax"),
+            "Expected error to mention the conflicting aesthetics (xmax/ymax), got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_validate_mapping_bidirectional_identity_ok() {
+        // Test that validation passes when all requirements are in identity form
+        use crate::AestheticContext;
+
+        let mut layer = Layer::new(Geom::ribbon());
+        layer.mappings.insert(
+            "pos1".to_string(),
+            AestheticValue::standard_column("x".to_string()),
+        );
+        layer.mappings.insert(
+            "pos2min".to_string(),
+            AestheticValue::standard_column("ymin".to_string()),
+        );
+        layer.mappings.insert(
+            "pos2max".to_string(),
+            AestheticValue::standard_column("ymax".to_string()),
+        );
+
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+        let result = layer.validate_mapping(&Some(ctx), false);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_mapping_bidirectional_flipped_ok() {
+        // Test that validation passes when all requirements are in flipped form
+        use crate::AestheticContext;
+
+        let mut layer = Layer::new(Geom::ribbon());
+        layer.mappings.insert(
+            "pos2".to_string(),
+            AestheticValue::standard_column("y".to_string()),
+        );
+        layer.mappings.insert(
+            "pos1min".to_string(),
+            AestheticValue::standard_column("xmin".to_string()),
+        );
+        layer.mappings.insert(
+            "pos1max".to_string(),
+            AestheticValue::standard_column("xmax".to_string()),
+        );
+
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+        let result = layer.validate_mapping(&Some(ctx), false);
+        assert!(result.is_ok());
     }
 }

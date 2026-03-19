@@ -34,6 +34,9 @@ The following aesthetics are recognised by the violin layer.
     * `'biweight'` or `'quartic'`
     * `'cosine'`
 * `width`: Relative width of the violins. Defaults to `0.9`.
+* `tails`: Expansion rule for drawing the tails. One of the following:
+    * A number setting a multiple of adjusted bandwidths to expand each group's range. Defaults to 3.
+    * `null` to use the whole data range rather than group ranges.
 
 ## Data transformation
 A violin layer uses the same computation as a density layer. See the [density data transformation](density.qmd#data-transformation) section for details.
@@ -69,6 +72,13 @@ The `adjust` setting controls the smoothing.
 ```{ggsql}
 VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
   DRAW violin SETTING adjust => 0.1
+```
+
+The `tails` setting controls the display beyond the data range. You can set it to `0` to use the exact group's data range.
+
+```{ggsql}
+VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
+  DRAW violin SETTING tails => 0
 ```
 
 To more clearly indicate differences in group sizes, you can use the `intensity` computed variable.

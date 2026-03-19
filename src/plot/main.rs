@@ -379,12 +379,12 @@ mod tests {
             .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"))
             .with_aesthetic("pos2".to_string(), AestheticValue::standard_column("y"));
 
-        assert!(valid_point.validate_required_aesthetics().is_ok());
+        assert!(valid_point.validate_mapping(&None, false).is_ok());
 
         let invalid_point = Layer::new(Geom::point())
             .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"));
 
-        assert!(invalid_point.validate_required_aesthetics().is_err());
+        assert!(invalid_point.validate_mapping(&None, false).is_err());
 
         let valid_ribbon = Layer::new(Geom::ribbon())
             .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"))
@@ -397,7 +397,7 @@ mod tests {
                 AestheticValue::standard_column("ymax"),
             );
 
-        assert!(valid_ribbon.validate_required_aesthetics().is_ok());
+        assert!(valid_ribbon.validate_mapping(&None, false).is_ok());
     }
 
     #[test]
