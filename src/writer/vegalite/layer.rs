@@ -3219,7 +3219,9 @@ mod tests {
         fn get_violin_offset_expr(ridge: Option<&str>) -> String {
             let mut layer = Layer::new(crate::plot::Geom::violin());
             if let Some(r) = ridge {
-                layer.parameters.insert("ridge".to_string(), ParameterValue::String(r.to_string()));
+                layer
+                    .parameters
+                    .insert("ridge".to_string(), ParameterValue::String(r.to_string()));
             }
 
             let mut layer_spec = json!({
@@ -3230,12 +3232,19 @@ mod tests {
                 }
             });
 
-            ViolinRenderer.modify_spec(&mut layer_spec, &layer, &RenderContext::new(&[])).unwrap();
+            ViolinRenderer
+                .modify_spec(&mut layer_spec, &layer, &RenderContext::new(&[]))
+                .unwrap();
 
-            layer_spec["transform"].as_array().unwrap()
+            layer_spec["transform"]
+                .as_array()
+                .unwrap()
                 .iter()
                 .find(|t| t.get("as").and_then(|a| a.as_str()) == Some("violin_offsets"))
-                .unwrap()["calculate"].as_str().unwrap().to_string()
+                .unwrap()["calculate"]
+                .as_str()
+                .unwrap()
+                .to_string()
         }
 
         // Default "both" - mirrors on both sides
@@ -3243,16 +3252,29 @@ mod tests {
         assert!(
             expr.contains(&format!("[datum.{}, -datum.{}]", offset_col, offset_col))
                 || expr.contains(&format!("[-datum.{}, datum.{}]", offset_col, offset_col)),
-            "Default should mirror both sides: {}", expr
+            "Default should mirror both sides: {}",
+            expr
         );
 
         // "left" and "top" - only negative offset
-        assert_eq!(get_violin_offset_expr(Some("left")), format!("[-datum.{}]", offset_col));
-        assert_eq!(get_violin_offset_expr(Some("top")), format!("[-datum.{}]", offset_col));
+        assert_eq!(
+            get_violin_offset_expr(Some("left")),
+            format!("[-datum.{}]", offset_col)
+        );
+        assert_eq!(
+            get_violin_offset_expr(Some("top")),
+            format!("[-datum.{}]", offset_col)
+        );
 
         // "right" and "bottom" - only positive offset
-        assert_eq!(get_violin_offset_expr(Some("right")), format!("[datum.{}]", offset_col));
-        assert_eq!(get_violin_offset_expr(Some("bottom")), format!("[datum.{}]", offset_col));
+        assert_eq!(
+            get_violin_offset_expr(Some("right")),
+            format!("[datum.{}]", offset_col)
+        );
+        assert_eq!(
+            get_violin_offset_expr(Some("bottom")),
+            format!("[datum.{}]", offset_col)
+        );
     }
 
     #[test]
