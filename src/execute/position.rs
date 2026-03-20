@@ -425,4 +425,80 @@ mod tests {
             pos2end_vals, pos2_vals
         );
     }
+
+    #[test]
+    fn test_dodge_ignores_facet_columns_in_group_count() {
+        // Dodge should compute n_groups per facet panel, not globally.
+        // With fill=["X","Y"] and facet=["F1","F2"], dodge should see
+        // 2 groups (X, Y) not 4 (X-F1, X-F2, Y-F1, Y-F2).
+        //
+        // With 2 groups and default width 0.9:
+        //   adjusted_width = 0.9 / 2 = 0.45
+        //   offsets: -0.225 (group X), +0.225 (group Y)
+        //
+        // If facet columns incorrectly inflate n_groups to 4:
+        //   adjusted_width = 0.9 / 4 = 0.225
+        //   offsets would be different (spread across 4 positions)
+        let df = df! {
+            "__ggsql_aes_pos1__" => ["A", "A", "A", "A"],
+            "__ggsql_aes_pos2__" => [10.0, 20.0, 30.0, 40.0],
+            "__ggsql_aes_pos2end__" => [0.0, 0.0, 0.0, 0.0],
+            "__ggsql_aes_fill__" => ["X", "Y", "X", "Y"],
+            "__ggsql_aes_facet1__" => ["F1", "F1", "F2", "F2"],
+        }
+        .unwrap();
+
+        let mut layer = crate::plot::Layer::new(Geom::bar());
+        layer.mappings = {
+            let mut m = Mappings::new();
+            m.insert(
+                "pos1",
+                AestheticValue::standard_column("__ggsql_aes_pos1__"),
+            );
+            m.insert(
+                "pos2",
+                AestheticValue::standard_column("__ggsql_aes_pos2__"),
+            );
+            m.insert(
+                "pos2end",
+                AestheticValue::standard_column("__ggsql_aes_pos2end__"),
+            );
+            m.insert(
+                "fill",
+                AestheticValue::standard_column("__ggsql_aes_fill__"),
+            );
+            m.insert(
+                "facet1",
+                AestheticValue::standard_column("__ggsql_aes_facet1__"),
+            );
+            m
+        };
+        layer.partition_by = vec![
+            "__ggsql_aes_fill__".to_string(),
+            "__ggsql_aes_facet1__".to_string(),
+        ];
+        layer.position = Position::dodge();
+        layer.data_key = Some("__ggsql_layer_0__".to_string());
+
+        let mut spec = Plot::new();
+        spec.scales.push(make_discrete_scale("pos1"));
+        spec.scales.push(make_continuous_scale("pos2"));
+        spec.facet = Some(Facet::new(FacetLayout::Wrap {
+            variables: vec!["facet_var".to_string()],
+        }));
+        let mut data_map = HashMap::new();
+        data_map.insert("__ggsql_layer_0__".to_string(), df);
+
+        spec.layers.push(layer);
+
+        apply_position_adjustments(&mut spec, &mut data_map).unwrap();
+
+        // With 2 groups (X, Y), adjusted_width should be 0.45
+        let adjusted = spec.layers[0].adjusted_width.unwrap();
+        assert!(
+            (adjusted - 0.45).abs() < 0.001,
+            "adjusted_width should be 0.45 (2 groups), got {} (facet columns inflated group count)",
+            adjusted
+        );
+    }
 }
