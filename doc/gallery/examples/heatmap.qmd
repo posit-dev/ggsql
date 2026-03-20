@@ -1,0 +1,56 @@
+---
+title: "Heatmap"
+description: "Arranging tiles on a grid"
+image: thumbnails/bar-chart.svg
+categories: [basic, heatmap]
+order: 3
+---
+
+A heatmap visusalised data values as colors in a grid layout. 
+It makes it easy to see patterns and relationships through color intensity.
+It works best with discrete or ordinal arrangements.
+
+## Code
+
+```{ggsql}
+VISUALISE Day AS x, Month AS y, Temp AS fill FROM ggsql:airquality
+  DRAW rect
+```
+
+## Explanation
+
+* The `VISUALISE ... FROM ggsql:airquality` loads the built-in air quality dataset.
+* `Day AS x, Month AS y` defines a 2D grid 'map'. The default width and height of each cell is 1. Because these variables are contiguous whole numbers, this creates a grid.
+* `Temp AS fill` declares the 'heat' variable to display as colour intensity.
+* `DRAW rect` gives instructions 
+
+## Variations
+
+As a stylistic choice, you can set the cells to be opaque without borders.
+
+```{ggsql}
+VISUALISE Month AS y, Day AS x, Temp AS fill FROM ggsql:airquality
+  DRAW rect
+    SETTING stroke => null, opacity => 1
+```
+
+You can change the color by adapting the scale.
+
+```{ggsql}
+VISUALISE Month AS y, Day AS x, Temp AS fill FROM ggsql:airquality
+  DRAW rect
+  SCALE fill TO magma 
+    SETTING reverse => true
+```
+
+If you have centered data, you may want to use a divergent colour scale. It is important to the two extremes in `FROM` symmetrically around the midpoint.
+
+```{ggsql}
+SELECT *, 
+  Temp * 1.0 - AVG(Temp) OVER (PARTITION BY Month) AS centered 
+FROM ggsql:airquality
+
+VISUALISE Month AS y, Day AS x, centered AS fill
+  DRAW rect
+  SCALE fill FROM [-20, 20] TO vik
+```
