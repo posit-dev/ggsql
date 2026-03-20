@@ -89,9 +89,8 @@ function generateMetadata(
     const kernelPath = getKernelPath();
     const version = context.extension.packageJSON.version as string;
 
-    let base64Icon: string;
     const iconPath = path.join(context.extensionPath, 'resources', 'ggsql-icon.svg');
-    base64Icon = fs.readFileSync(iconPath).toString('base64');
+    const base64Icon = fs.readFileSync(iconPath).toString('base64');
 
     return {
         runtimeId: 'ggsql-jupyter',
