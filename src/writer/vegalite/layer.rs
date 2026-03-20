@@ -404,7 +404,20 @@ impl GeomRenderer for RuleRenderer {
     ) -> Result<()> {
         let has_x = encoding.contains_key("x");
         let has_y = encoding.contains_key("y");
-        let diagonal = encoding.contains_key("slope") && encoding.contains_key("intercept");
+
+        // Remove slope from encoding (it's never a visual encoding, only metadata)
+        // and check if it's non-zero (diagonal line)
+        let diagonal = if let Some(slope_enc) = encoding.remove("slope") {
+            slope_enc.get("field").is_some() // Field reference - assume non-zero
+                || slope_enc
+                    .get("value")
+                    .and_then(|v| v.as_f64())
+                    .map(|v| v != 0.0)
+                    .unwrap_or(false) // Literal value - check if non-zero
+        } else {
+            false
+        };
+
         if !has_x && !has_y && !diagonal {
             return Err(GgsqlError::ValidationError(
                 "The `rule` layer requires the `x` or `y` aesthetic. It currently has neither."
@@ -420,15 +433,13 @@ impl GeomRenderer for RuleRenderer {
             return Ok(());
         }
 
-        // Remove slope and intercept from encoding - they're only used in transforms
-        encoding.remove("slope");
-        encoding.remove("intercept");
+        // Determine orientation from which aesthetic is mapped:
+        // - If y is mapped: y is intercept, x varies (primary axis is x)
+        // - If x is mapped: x is intercept, y varies (primary axis is y, "horizontal")
+        let is_horizontal = has_x && !has_y;
 
-        // Check orientation
-        let is_horizontal = is_transposed(layer);
-
-        // For aligned (default): x is primary axis, y is computed (secondary)
-        // For transposed: y is primary axis, x is computed (secondary)
+        // For y mapped (not horizontal): x is primary axis (varies), y is computed (secondary)
+        // For x mapped (horizontal): y is primary axis (varies), x is computed (secondary)
         let (primary, primary2, secondary, secondary2) = if is_horizontal {
             ("y", "y2", "x", "x2")
         } else {
@@ -474,28 +485,56 @@ impl GeomRenderer for RuleRenderer {
         layer: &Layer,
         context: &RenderContext,
     ) -> Result<()> {
-        let diagonal =
-            layer.mappings.contains_key("slope") && layer.mappings.contains_key("intercept");
-        if !diagonal {
+        // Determine slope expression: either a literal value or a field reference
+        let slope_expr = match layer.mappings.get("slope") {
+            Some(AestheticValue::Literal(ParameterValue::Number(n))) if *n == 0.0 => {
+                // Slope is 0 - no diagonal
+                None
+            }
+            Some(AestheticValue::Literal(ParameterValue::Number(n))) => {
+                // Literal non-zero slope - inline the value
+                Some(n.to_string())
+            }
+            Some(AestheticValue::Column { .. }) | Some(AestheticValue::AnnotationColumn { .. }) => {
+                // Column-based slope - reference the field
+                let slope_field = naming::aesthetic_column("slope");
+                Some(format!("datum.{}", slope_field))
+            }
+            _ => {
+                // No slope mapping - no diagonal
+                None
+            }
+        };
+
+        let Some(slope_expr) = slope_expr else {
             return Ok(());
-        }
+        };
 
-        // Field names for slope and intercept (with aesthetic column prefix)
-        let slope_field = naming::aesthetic_column("slope");
-        let intercept_field = naming::aesthetic_column("intercept");
+        // Determine orientation from which positional aesthetic is mapped:
+        // By this point, x/y have been renamed to pos1/pos2 by resolve_aesthetic
+        // - If pos2 is mapped (from y): pos2 is intercept, pos1 varies (primary axis is pos1)
+        // - If pos1 is mapped (from x): pos1 is intercept, pos2 varies (primary axis is pos2, "horizontal")
+        let has_pos1 = layer.mappings.contains_key("pos1");
+        let has_pos2 = layer.mappings.contains_key("pos2");
+        let is_horizontal = has_pos1 && !has_pos2;
 
-        // Check orientation
-        let is_horizontal = is_transposed(layer);
+        // Get the intercept field (pos1 for x, pos2 for y)
+        let intercept_field = if is_horizontal {
+            naming::aesthetic_column("pos1") // x is intercept
+        } else {
+            naming::aesthetic_column("pos2") // y is intercept
+        };
 
         // Get extent from appropriate axis:
-        // - Aligned (default): extent from pos1 (x-axis), compute y from x
-        // - Transposed: extent from pos2 (y-axis), compute x from y
+        // - y mapped (not horizontal): x is primary axis (varies), y is computed
+        // - x mapped (horizontal): y is primary axis (varies), x is computed
         let extent_aesthetic = if is_horizontal { "pos2" } else { "pos1" };
         let (primary_min, primary_max) = context.get_extent(extent_aesthetic)?;
 
         // Add transforms:
         // 1. Create constant primary_min/primary_max fields (extent of the primary axis)
         // 2. Compute secondary values at those primary positions: secondary = slope * primary + intercept
+        //    (where intercept is pos1 for x-mapped or pos2 for y-mapped)
         let transforms = json!([
             {
                 "calculate": primary_min.to_string(),
@@ -506,11 +545,11 @@ impl GeomRenderer for RuleRenderer {
                 "as": "primary_max"
             },
             {
-                "calculate": format!("datum.{} * datum.primary_min + datum.{}", slope_field, intercept_field),
+                "calculate": format!("{} * datum.primary_min + datum.{}", slope_expr, intercept_field),
                 "as": "secondary_min"
             },
             {
-                "calculate": format!("datum.{} * datum.primary_max + datum.{}", slope_field, intercept_field),
+                "calculate": format!("{} * datum.primary_max + datum.{}", slope_expr, intercept_field),
                 "as": "secondary_max"
             }
         ]);
@@ -3268,12 +3307,12 @@ mod tests {
                     (2, 5, 'A'),
                     (1, 10, 'B'),
                     (3, 0, 'C')
-                ) AS t(slope, intercept, line_id)
+                ) AS t(slope, y, line_id)
             )
             SELECT * FROM points
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            DRAW rule MAPPING slope AS slope, intercept AS intercept, line_id AS color FROM lines
+            DRAW rule MAPPING slope AS slope, y AS y, line_id AS color FROM lines
         "#;
 
         // Execute query
@@ -3350,26 +3389,18 @@ mod tests {
             .as_str()
             .expect("secondary_max calculate should be string");
 
-        // Should reference slope, intercept, and primary_min/primary_max
+        // Should reference slope, pos2 (acting as intercept for y-mapped rules), and primary_min/primary_max
         assert!(
-            secondary_min_calc.contains("__ggsql_aes_slope__"),
-            "secondary_min should reference slope"
-        );
-        assert!(
-            secondary_min_calc.contains("__ggsql_aes_intercept__"),
-            "secondary_min should reference intercept"
+            secondary_min_calc.contains("__ggsql_aes_pos2__"),
+            "secondary_min should reference pos2 (y intercept)"
         );
         assert!(
             secondary_min_calc.contains("datum.primary_min"),
             "secondary_min should reference datum.primary_min"
         );
         assert!(
-            secondary_max_calc.contains("__ggsql_aes_slope__"),
-            "secondary_max should reference slope"
-        );
-        assert!(
-            secondary_max_calc.contains("__ggsql_aes_intercept__"),
-            "secondary_max should reference intercept"
+            secondary_max_calc.contains("__ggsql_aes_pos2__"),
+            "secondary_max should reference pos2 (y intercept)"
         );
         assert!(
             secondary_max_calc.contains("datum.primary_max"),
@@ -3444,22 +3475,22 @@ mod tests {
     }
 
     #[test]
-    fn test_sloped_rule_renderer_transposed_orientation() {
+    fn test_sloped_rule_renderer_horizontal_orientation() {
         use crate::reader::{DuckDBReader, Reader};
         use crate::writer::{VegaLiteWriter, Writer};
 
-        // Test that sloped rule with transposed orientation swaps x/y axes
+        // Test that sloped rule with x mapping (horizontal) infers y varies
         let query = r#"
             WITH points AS (
                 SELECT * FROM (VALUES (0, 5), (5, 15), (10, 25)) AS t(x, y)
             ),
             lines AS (
-                SELECT * FROM (VALUES (0.4, -1, 'A')) AS t(slope, intercept, line_id)
+                SELECT * FROM (VALUES (0.4, -1, 'A')) AS t(slope, x, line_id)
             )
             SELECT * FROM points
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            DRAW rule MAPPING slope AS slope, intercept AS intercept, line_id AS color FROM lines SETTING orientation => 'transposed'
+            DRAW rule MAPPING slope AS slope, x AS x, line_id AS color FROM lines
         "#;
 
         // Execute query
@@ -3484,7 +3515,7 @@ mod tests {
             .as_array()
             .expect("No transforms found");
 
-        // Verify primary_min/max use pos2 extent (y-axis) for transposed orientation
+        // Verify primary_min/max use pos2 extent (y-axis) for horizontal (x-mapped) orientation
         let primary_min_transform = transforms
             .iter()
             .find(|t| t["as"] == "primary_min")
@@ -3494,7 +3525,7 @@ mod tests {
             .find(|t| t["as"] == "primary_max")
             .expect("primary_max transform not found");
 
-        // The primary extent should come from the y-axis for transposed
+        // The primary extent should come from the y-axis for horizontal orientation
         assert!(
             primary_min_transform["calculate"].is_string(),
             "primary_min should have calculate expression"
@@ -3504,27 +3535,54 @@ mod tests {
             "primary_max should have calculate expression"
         );
 
+        // Verify secondary_min and secondary_max use pos1 (x intercept) for horizontal orientation
+        let secondary_min_transform = transforms
+            .iter()
+            .find(|t| t["as"] == "secondary_min")
+            .expect("secondary_min transform not found");
+        let secondary_max_transform = transforms
+            .iter()
+            .find(|t| t["as"] == "secondary_max")
+            .expect("secondary_max transform not found");
+
+        let secondary_min_calc = secondary_min_transform["calculate"]
+            .as_str()
+            .expect("secondary_min calculate should be string");
+        let secondary_max_calc = secondary_max_transform["calculate"]
+            .as_str()
+            .expect("secondary_max calculate should be string");
+
+        // Should reference pos1 (x intercept) for horizontal orientation
+        assert!(
+            secondary_min_calc.contains("__ggsql_aes_pos1__"),
+            "secondary_min should reference pos1 (x intercept)"
+        );
+        assert!(
+            secondary_max_calc.contains("__ggsql_aes_pos1__"),
+            "secondary_max should reference pos1 (x intercept)"
+        );
+
         // Verify encoding has y as primary axis (mapped to primary_min/max)
         let encoding = rule_layer["encoding"]
             .as_object()
             .expect("No encoding found");
 
-        // For transposed orientation: y is primary (uses primary_min/max), x is secondary
+        // For horizontal orientation (x-mapped): y is primary (uses primary_min/max), x is secondary
         assert_eq!(
             encoding["y"]["field"], "primary_min",
-            "y should reference primary_min field for transposed"
+            "y should reference primary_min field for horizontal orientation"
         );
         assert_eq!(
             encoding["y2"]["field"], "primary_max",
-            "y2 should reference primary_max field for transposed"
+            "y2 should reference primary_max field for horizontal orientation"
         );
         assert_eq!(
             encoding["x"]["field"], "secondary_min",
-            "x should reference secondary_min field for transposed"
+            "x should reference secondary_min field for horizontal orientation"
         );
         assert_eq!(
             encoding["x2"]["field"], "secondary_max",
-            "x2 should reference secondary_max field for transposed"
+            "x2 should reference secondary_max field for horizontal orientation"
         );
     }
 

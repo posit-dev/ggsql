@@ -58,7 +58,6 @@
   "vjust"
   "rotation"
   "slope"
-  "intercept"
   "panel"
   "row"
   "column"

@@ -174,7 +174,6 @@
       <item>hjust</item>
       <item>vjust</item>
       <item>slope</item>
-      <item>intercept</item>
     </list>
 
     <!-- Scale Types (only in SCALE context) -->
