@@ -47,7 +47,7 @@ WHERE island = 'Biscoe'
 VISUALISE bill_len AS x, bill_dep AS y, body_mass AS fill
 DRAW point
 PLACE rule 
-    SETTING 0.4 AS coef, -1 AS intercept
+    SETTING slope => 0.4, intercept => -1
 SCALE BINNED fill
 LABEL
    title => 'Relationship between bill dimensions in 3 species of penguins',

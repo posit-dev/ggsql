@@ -59,7 +59,7 @@ impl GeomTrait for Rule {
                     crate::plot::ParameterValue::Number(n) => *n,
                     _ => {
                         return Err(GgsqlError::ValidationError(format!(
-                            "Rule {} must be a number, not {:?}",
+                            "Rule '{}' aesthetic must be a number, not {:?}.",
                             aesthetic, value
                         )))
                     }
