@@ -29,11 +29,11 @@ pub enum Commands {
         /// The ggsql query to execute
         query: String,
 
-        /// Data source connection string
+        /// Data source connection string (duckdb://, sqlite://, polars://)
         #[arg(long, default_value = "duckdb://memory")]
         reader: String,
 
-        /// Output format
+        /// Output format (vegalite)
         #[arg(long, default_value = "vegalite")]
         writer: String,
 
@@ -51,11 +51,11 @@ pub enum Commands {
         /// Path to .sql file containing ggsql query
         file: PathBuf,
 
-        /// Data source connection string
+        /// Data source connection string (duckdb://, sqlite://, polars://)
         #[arg(long, default_value = "duckdb://memory")]
         reader: String,
 
-        /// Output format
+        /// Output format (vegalite)
         #[arg(long, default_value = "vegalite")]
         writer: String,
 
@@ -83,7 +83,7 @@ pub enum Commands {
         /// The ggsql query to validate
         query: String,
 
-        /// Data source connection string (needed for column validation)
+        /// Data source connection string for column validation (duckdb://, sqlite://, polars://)
         #[arg(long)]
         reader: Option<String>,
     },
