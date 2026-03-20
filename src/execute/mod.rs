@@ -133,7 +133,7 @@ fn validate(
                             idx + 1,
                             stat_col,
                             layer.geom,
-                            valid_stat_columns.join(", ")
+                            crate::and_list(valid_stat_columns)
                         )));
                     }
                 }

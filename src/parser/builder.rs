@@ -289,7 +289,7 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
     // This must happen after all clauses are processed (especially PROJECT and FACET)
     spec.initialize_aesthetic_context();
 
-    // Transform all aesthetic keys from user-facing (x/y or theta/radius) to internal (pos1/pos2)
+    // Transform all aesthetic keys from user-facing (x/y or angle/radius) to internal (pos1/pos2)
     // This enables generic handling throughout the pipeline and must happen before merge
     // since geom definitions use internal names for their supported/required aesthetics
     spec.transform_aesthetics_to_internal();
@@ -814,7 +814,7 @@ fn parse_scale_via_clause(node: &Node, source: &SourceTree) -> Result<Transform>
         GgsqlError::ParseError(format!(
             "Unknown transform: '{}'. Valid transforms are: {}",
             transform_name,
-            crate::plot::scale::ALL_TRANSFORM_NAMES.join(", ")
+            crate::and_list_quoted(crate::plot::scale::ALL_TRANSFORM_NAMES, '\'')
         ))
     })
 }
@@ -1343,7 +1343,7 @@ mod tests {
     fn test_project_default_aesthetics_polar() {
         let query = r#"
             VISUALISE
-            DRAW bar MAPPING category AS theta, value AS radius
+            DRAW bar MAPPING category AS angle, value AS radius
             PROJECT TO polar
         "#;
 
@@ -1354,7 +1354,7 @@ mod tests {
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(
             project.aesthetics,
-            vec!["radius".to_string(), "theta".to_string()]
+            vec!["radius".to_string(), "angle".to_string()]
         );
     }
 
@@ -3399,8 +3399,8 @@ mod tests {
     }
 
     #[test]
-    fn test_infer_polar_from_theta_radius_mappings() {
-        let query = "VISUALISE DRAW bar MAPPING cat AS theta, val AS radius";
+    fn test_infer_polar_from_angle_radius_mappings() {
+        let query = "VISUALISE DRAW bar MAPPING cat AS angle, val AS radius";
 
         let result = parse_test_query(query);
         assert!(result.is_ok());
@@ -3409,15 +3409,15 @@ mod tests {
         // Should infer polar projection
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(project.coord.coord_kind(), CoordKind::Polar);
-        assert_eq!(project.aesthetics, vec!["radius", "theta"]);
+        assert_eq!(project.aesthetics, vec!["radius", "angle"]);
     }
 
     #[test]
     fn test_explicit_project_overrides_inference() {
-        // Explicitly use cartesian even though mappings use theta
+        // Explicitly use cartesian even though mappings use angle
         let query = r#"
             VISUALISE
-            DRAW bar MAPPING cat AS theta, val AS radius
+            DRAW bar MAPPING cat AS angle, val AS radius
             PROJECT TO cartesian
         "#;
 
@@ -3432,8 +3432,8 @@ mod tests {
 
     #[test]
     fn test_conflicting_aesthetics_error() {
-        // Using both x and theta should error
-        let query = "VISUALISE DRAW point MAPPING a AS x, b AS theta";
+        // Using both x and angle should error
+        let query = "VISUALISE DRAW point MAPPING a AS x, b AS angle";
 
         let result = parse_test_query(query);
         assert!(result.is_err());

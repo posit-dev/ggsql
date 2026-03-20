@@ -140,9 +140,9 @@ SCALE x
 ## Settings
 The following settings are recognised by continuous scales:
 
-* `expand` (only for `x`/`y`): Either a scalar number or 2-length array of numbers. Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to `0.05` (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as `SCALE x FROM [0, null]` expansion will only be applied to the upper range.
+* `expand` (only for `x`/`y`): Either a scalar number or 2-element array of numbers (values must be >= 0). Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to `0.05` (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as `SCALE x FROM [0, null]` expansion will only be applied to the upper range.
 * `oob`: How should values outside of the scale input range be treated. One of `'keep'` (keep the values as-is), `'censor'` (set to `null`), or `'squish'` (set to the nearest values within the range). Default for `x`/`y` is `'keep'`, for the remaining it is `'censor'`.
-* `breaks`: Either a scalar as described in [the section on breaks](#breaks), or an array of values to place breaks at. Defaults to `5`.
+* `breaks`: Either a scalar (whole number >= 1) as described in [the section on breaks](#breaks), or an array of values to place breaks at. Defaults to `5`.
 * `pretty`: A boolean indicating which algorithm to use for automatic calculation of breaks as described in [the section on breaks](#breaks). Defaults to `true`.
 * `reverse`: A boolean indicating whether the scale direction should be reversed. Defaults to `false`.
 

@@ -649,7 +649,7 @@ PROJECT TO cartesian SETTING ratio => 1
 PROJECT TO polar (default aesthetics)
 ================================================================================
 
-VISUALISE theta, radius
+VISUALISE angle, radius
 DRAW point
 PROJECT TO polar
 
@@ -681,7 +681,7 @@ PROJECT TO polar
 PROJECT TO polar with SETTING start
 ================================================================================
 
-VISUALISE theta, radius
+VISUALISE angle, radius
 DRAW bar
 PROJECT TO polar SETTING start => 90
 

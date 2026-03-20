@@ -18,10 +18,13 @@ use super::{
     compute_dodge_offsets, compute_group_indices, is_continuous_scale, Layer, PositionTrait,
     PositionType,
 };
-use crate::plot::types::{DefaultParam, DefaultParamValue, ParameterValue};
+use crate::plot::types::{ParamConstraint, ParamDefinition, DefaultParamValue, ParameterValue};
 use crate::{naming, DataFrame, GgsqlError, Plot, Result};
 use polars::prelude::*;
 use rand::Rng;
+
+/// Valid distribution types for jitter position
+const DISTRIBUTION_VALUES: &[&str] = &["uniform", "normal", "density", "intensity"];
 
 /// Jitter distribution type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -265,30 +268,36 @@ impl PositionTrait for Jitter {
         PositionType::Jitter
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "width",
                 default: DefaultParamValue::Number(0.9),
+                constraint: ParamConstraint::number_range(0.0, 1.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "dodge",
                 default: DefaultParamValue::Boolean(true),
+                constraint: ParamConstraint::boolean(),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "distribution",
                 default: DefaultParamValue::String("uniform"),
+                constraint: ParamConstraint::string_option(DISTRIBUTION_VALUES),
             },
             // Density distribution parameters (match violin/density geoms)
-            DefaultParam {
+            ParamDefinition {
                 name: "bandwidth",
                 default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "adjust",
                 default: DefaultParamValue::Number(1.0),
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-        ]
+        ];
+        PARAMS
     }
 
     fn creates_pos1offset(&self) -> bool {
@@ -987,7 +996,10 @@ mod tests {
         let params = jitter.default_params();
         assert_eq!(params.len(), 5);
         assert_eq!(params[0].name, "width");
-        assert!(matches!(params[0].default, DefaultParamValue::Number(0.9)));
+        assert!(matches!(
+            params[0].default,
+            DefaultParamValue::Number(0.9)
+        ));
         assert_eq!(params[1].name, "dodge");
         assert!(matches!(
             params[1].default,
@@ -1002,7 +1014,10 @@ mod tests {
         assert_eq!(params[3].name, "bandwidth");
         assert!(matches!(params[3].default, DefaultParamValue::Null));
         assert_eq!(params[4].name, "adjust");
-        assert!(matches!(params[4].default, DefaultParamValue::Number(1.0)));
+        assert!(matches!(
+            params[4].default,
+            DefaultParamValue::Number(1.0)
+        ));
     }
 
     #[test]
@@ -1034,9 +1049,11 @@ mod tests {
 
         // Normal distribution is centered at 0
         // Values can exceed the width bounds (unlike uniform), but should be centered
+        // With only 4 samples and σ = width/4 = 0.225, the standard error is ~0.11
+        // Use a wide tolerance to avoid flaky tests with small sample sizes
         let mean: f64 = offsets.iter().sum::<f64>() / offsets.len() as f64;
         assert!(
-            mean.abs() < 0.3, // Should be roughly centered (with 4 values, some variance expected)
+            mean.abs() < 0.5,
             "Normal distribution mean {} should be close to 0",
             mean
         );

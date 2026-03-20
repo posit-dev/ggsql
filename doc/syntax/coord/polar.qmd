@@ -8,7 +8,7 @@ The polar coordinate system interprets its primary aesthetic as the angular posi
 The polar coordinate system has the following default positional aesthetics which will be used if no others have been provided:
 
 * **Primary**: `radius` (distance from center)
-* **Secondary**: `theta` (angular position)
+* **Secondary**: `angle` (angular position)
 
 Users can provide their own aesthetic names if needed. For example, if using `x` and `y` aesthetics:
 
@@ -16,16 +16,16 @@ Users can provide their own aesthetic names if needed. For example, if using `x`
 PROJECT y, x TO polar
 ```
 
-This maps `y` to radius and `x` to theta (angle). This is useful when converting from a cartesian coordinate system without editing all the mappings.
+This maps `y` to radius and `x` to angle. This is useful when converting from a cartesian coordinate system without editing all the mappings.
 
 ## Settings
 * `clip`: Should data be removed if it appears outside the bounds of the coordinate system. Defaults to `true`
-* `start`: The starting angle in degrees for the theta scale. Controls where "0" on the angular axis begins. Defaults to `0` (12 o'clock position).
+* `start`: The starting angle in degrees for the theta scale (-360 to 360). Controls where "0" on the angular axis begins. Defaults to `0` (12 o'clock position).
   - `0` = 12 o'clock position (top)
   - `90` = 3 o'clock position (right)
   - `-90` or `270` = 9 o'clock position (left)
   - `180` = 6 o'clock position (bottom)
-* `end`: The ending angle in degrees for the theta scale. Defaults to `start + 360` (a full circle). Use this with `start` to create partial polar plots like gauge charts or half-circle visualizations.
+* `end`: The ending angle in degrees for the theta scale (-360 to 360). Defaults to `start + 360` (a full circle). Use this with `start` to create partial polar plots like gauge charts or half-circle visualizations.
 * `inner`: The inner radius as a proportion (0 to 1) of the outer radius. Defaults to `0` (no hole). Setting this creates a donut chart where the inner portion is empty.
   - `0` = full pie (no hole)
   - `0.3` = donut with 30% hole
@@ -33,7 +33,7 @@ This maps `y` to radius and `x` to theta (angle). This is useful when converting
 
 ## Examples
 
-### Pie chart using theta/radius aesthetics
+### Pie chart using angle/radius aesthetics
 ```{ggsql}
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar

@@ -36,7 +36,7 @@ Alternatively, use only the center, which will set `height` to 1 by default.
 * `linetype`: The dash pattern of the contour line.
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
+* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 
 ## Data transformation.
 When the primary aesthetics are continuous, primary data is reparameterised to {start, end}, e.g. `xmin` and `xmax`.

@@ -26,8 +26,8 @@ Smooth layers are used to display a trendline among a series of observations.
     * `'tls'` estimates a straight trendline using total least squares method.
 
 The settings below only apply when `method => 'nw'` and are ignored when using other methods.
-* `bandwidth`: A numerical value setting the smoothing bandwidth to use. If absent (default), the bandwidth will be computed using Silverman's rule of thumb. 
-* `adjust`: A numerical value as multiplier for the `bandwidth` setting, with 1 as default.
+* `bandwidth`: Smoothing bandwidth (must be > 0). If absent (default), the bandwidth will be computed using Silverman's rule of thumb.
+* `adjust`: Multiplier for the `bandwidth` setting (must be > 0). Defaults to 1.
 * `kernel`: Determines the smoothing kernel shape. Can be one of the following:
     * `'gaussian'` (default)
     * `'epanechnikov'`

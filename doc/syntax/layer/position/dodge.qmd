@@ -12,7 +12,7 @@ Dodge doesn't have specific requirements to the scale type of the plot, but will
 ## Settings
 Apart from the settings of the layer type, setting `position => 'dodge'` will allow these additional settings:
 
-* `width`: The total width the dodging will occupy as a proportion of the space available on the scale. Defaults to 0.9 but any defaults from the layer will take precedence.
+* `width`: The total width the dodging will occupy as a proportion of the space available on the scale (0 to 1). Defaults to 0.9 but any defaults from the layer will take precedence.
 
 ## Examples
 

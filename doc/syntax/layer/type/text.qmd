@@ -32,9 +32,9 @@ The following aesthetics are recognised by the text layer.
 ## Settings
 * `offset` Position offset expressed in absolute points. Can be one of the following:
     * a single number that applies both horizontally and vertically
-    * an numeric array `[h, v]` where the first number is the horizontal offset and the second number is the vertical offset.
+    * a 2-element numeric array `[h, v]` where the first number is the horizontal offset and the second number is the vertical offset.
 * `format` Formatting specifier, see explanation below.
-* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
+* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 
 ### Format
 The `format` setting can take a string that will be used in formatting the `label` aesthetic. 

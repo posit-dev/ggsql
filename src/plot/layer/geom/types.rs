@@ -6,7 +6,17 @@ use crate::plot::aesthetic::parse_positional;
 use crate::{plot::types::DefaultAestheticValue, Mappings};
 
 // Re-export shared types from the central location
-pub use crate::plot::types::{DefaultParam, DefaultParamValue};
+pub use crate::plot::types::{ParamConstraint, ParamDefinition, DefaultParamValue};
+
+// =============================================================================
+// Common constraint value arrays
+// =============================================================================
+
+/// Standard position adjustment values for the `position` parameter
+pub const POSITION_VALUES: &[&str] = &["identity", "stack", "dodge", "jitter"];
+
+/// Closed interval side values for binned data
+pub const CLOSED_VALUES: &[&str] = &["left", "right"];
 
 /// Default aesthetic values for a geom type
 ///

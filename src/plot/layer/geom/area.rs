@@ -1,9 +1,11 @@
 //! Area geom implementation
 
-use crate::plot::layer::orientation::ALIGNED;
-use crate::plot::{types::DefaultAestheticValue, DefaultParam, DefaultParamValue};
+use crate::plot::layer::orientation::{ALIGNED, ORIENTATION_VALUES};
+use crate::plot::types::DefaultAestheticValue;
+use crate::plot::{ParamDefinition, DefaultParamValue};
 use crate::{naming, Mappings};
 
+use super::types::{ParamConstraint, POSITION_VALUES};
 use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 
 /// Area geom - filled area charts
@@ -30,21 +32,26 @@ impl GeomTrait for Area {
         }
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
-        &[("pos2end", DefaultAestheticValue::Number(0.0))]
+    fn default_remappings(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[("pos2end", DefaultAestheticValue::Number(0.0))],
+        }
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "position",
                 default: DefaultParamValue::String("stack"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "orientation",
                 default: DefaultParamValue::String(ALIGNED),
+                constraint: ParamConstraint::string_option(ORIENTATION_VALUES),
             },
-        ]
+        ];
+        PARAMS
     }
 
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {

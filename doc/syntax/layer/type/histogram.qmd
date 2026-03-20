@@ -21,9 +21,9 @@ The following aesthetics are recognised by the bar layer.
 * `linetype`: The type of stroke, i.e. the dashing pattern
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'stack'`)
-* `bins`: The number of bins to calculate. Defaults to `30`
-* `binwidth`: The width of each bin. If provided it will override the binwidth calculated from `bins`
+* `position`: Position adjustment. One of `'identity'`, `'stack'` (default), `'dodge'`, or `'jitter'`
+* `bins`: The number of bins to calculate. Whole number >= 1. Defaults to `30`
+* `binwidth`: The width of each bin (must be > 0). If provided it will override the binwidth calculated from `bins`
 * `closed`: Either `'left'` or `'right'` (default). Determines whether the bin intervals are closed to the left or right side
 
 ## Data transformation
