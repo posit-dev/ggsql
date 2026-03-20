@@ -1,7 +1,7 @@
 //! Cartesian coordinate system implementation
 
 use super::{CoordKind, CoordTrait};
-use crate::plot::types::{ParamConstraint, ParamDefinition, DefaultParamValue};
+use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
 
 /// Cartesian coordinate system - standard x/y coordinates
 #[derive(Debug, Clone, Copy)]

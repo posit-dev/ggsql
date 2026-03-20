@@ -5,8 +5,8 @@ use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::{
     naming,
     plot::{
-        geom::types::get_column_name, DefaultAestheticValue, ParamConstraint, ParamDefinition,
-        DefaultParamValue, ParameterValue,
+        geom::types::get_column_name, DefaultAestheticValue, DefaultParamValue, ParamConstraint,
+        ParamDefinition, ParameterValue,
     },
     DataFrame, GgsqlError, Mappings, Result,
 };

@@ -2,7 +2,7 @@
 
 use super::types::POSITION_VALUES;
 use super::{
-    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, DefaultParamValue,
+    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
     ParameterValue,
 };
 use crate::plot::types::DefaultAestheticValue;

@@ -1,5 +1,5 @@
 ---
-title: "Faceted Plot"
+title: "Faceted plot"
 description: "Small multiples showing data split by category"
 image: thumbnails/faceted.svg
 categories: [faceted, advanced]
@@ -29,7 +29,7 @@ LABEL
 
 ## Variations
 
-### Grid Layout with Two Variables
+### Grid layout with two variables
 
 Use `FACET rows BY cols` to create a grid layout:
 
@@ -44,7 +44,7 @@ LABEL
     y => 'Bill Depth (mm)'
 ```
 
-### Free Scales
+### Free scales
 
 Allow each facet to have independent axis scales with `SETTING free`:
 

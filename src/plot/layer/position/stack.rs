@@ -7,7 +7,7 @@
 //! - If pos1 is continuous and pos2 is discrete → stack horizontally (modify pos1/pos1end)
 
 use super::{is_continuous_scale, Layer, PositionTrait, PositionType};
-use crate::plot::types::{ParamConstraint, ParamDefinition, DefaultParamValue, ParameterValue};
+use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue};
 use crate::{naming, DataFrame, GgsqlError, Plot, Result};
 use polars::prelude::*;
 

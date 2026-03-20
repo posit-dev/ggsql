@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use super::types::{get_column_name, POSITION_VALUES};
 use super::{
-    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, DefaultParamValue,
+    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
     StatResult,
 };
 use crate::naming;

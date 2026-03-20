@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use super::transform::{Transform, TransformKind};
 use crate::plot::aesthetic::{is_facet_aesthetic, is_positional_aesthetic};
-use crate::plot::types::{validate_parameter, ParamDefinition, DefaultParamValue};
+use crate::plot::types::{validate_parameter, DefaultParamValue, ParamDefinition};
 use crate::plot::{ArrayElement, ColumnInfo, ParameterValue};
 
 // Scale type implementations

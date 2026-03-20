@@ -28,7 +28,7 @@ LABEL
 
 ## Variations
 
-### Custom Bin Count
+### Custom bin count
 
 Control the number of bins with `SETTING bins`:
 
@@ -43,7 +43,7 @@ LABEL
     y => 'Count'
 ```
 
-### Custom Bin Width
+### Custom bin width
 
 Set explicit bin width instead of count:
 
@@ -58,7 +58,7 @@ LABEL
     y => 'Count'
 ```
 
-### Density Instead of Count
+### Density instead of count
 
 Use `REMAPPING` to show density (proportion) instead of count:
 

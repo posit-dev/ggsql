@@ -1,4 +1,5 @@
 /.quarto/
 **/*.quarto_ipynb
+**/*.quarto_ipynb_*
 _site
 wasm

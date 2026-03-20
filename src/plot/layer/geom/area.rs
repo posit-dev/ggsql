@@ -2,7 +2,7 @@
 
 use crate::plot::layer::orientation::{ALIGNED, ORIENTATION_VALUES};
 use crate::plot::types::DefaultAestheticValue;
-use crate::plot::{ParamDefinition, DefaultParamValue};
+use crate::plot::{DefaultParamValue, ParamDefinition};
 use crate::{naming, Mappings};
 
 use super::types::{ParamConstraint, POSITION_VALUES};

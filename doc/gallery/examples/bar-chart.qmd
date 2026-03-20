@@ -1,5 +1,5 @@
 ---
-title: "Bar Chart"
+title: "Bar chart"
 description: "Categorical comparisons using bars"
 image: thumbnails/bar-chart.svg
 categories: [basic, bar]
@@ -31,7 +31,7 @@ LABEL
 
 ## Variations
 
-### Horizontal Bars
+### Horizontal bars
 
 Use `PROJECT y, x TO cartesian` to flip the axes for horizontal bars:
 
@@ -47,7 +47,7 @@ LABEL
     y => 'Count'
 ```
 
-### Auto-Count Bar Chart
+### Auto-count bar chart
 
 When you don't specify a y aesthetic, ggsql automatically counts occurrences:
 

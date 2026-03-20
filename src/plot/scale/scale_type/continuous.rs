@@ -6,7 +6,7 @@ use super::{
     ScaleTypeKind, ScaleTypeTrait, TransformKind, OOB_CENSOR, OOB_SQUISH, OOB_VALUES_CONTINUOUS,
 };
 use crate::plot::types::{
-    ArrayConstraint, NumberConstraint, ParamConstraint, ParamDefinition, DefaultParamValue,
+    ArrayConstraint, DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition,
 };
 use crate::plot::{ArrayElement, ParameterValue};
 

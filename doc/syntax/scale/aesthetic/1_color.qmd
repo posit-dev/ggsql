@@ -1,5 +1,5 @@
 ---
-title: "Fill and Stroke"
+title: "Fill and stroke"
 format:
   html:
     toc: true
@@ -161,7 +161,7 @@ Diverging palettes emphasize a critical midpoint with two contrasting hues on ei
 | `rdgy` | ![](examples/gradient_rdgy.svg){height=20 .lightbox} | ColorBrewer | Red-Grey |
 | `puor` | ![](examples/gradient_puor.svg){height=20 .lightbox} | ColorBrewer | Orange-Purple |
 
-#### Multi-Sequential
+#### Multi-sequential
 
 Multi-sequential palettes have multiple sequential segments, useful for categorical data with ordered subcategories.
 
@@ -226,7 +226,7 @@ Bostock, M. D3.js. [d3js.org](https://d3js.org)
 ##### Kelly's Colors
 Kelly, K.L. (1965). Twenty-two colors of maximum contrast. *Color Engineering*, 3(6), 26-27.
 
-### Choosing a Palette
+### Choosing a palette
 
 #### For general continuous data
 

@@ -76,6 +76,25 @@ function getGrammar(): Promise<IGrammar | null> {
   return grammarPromise;
 }
 
+// Define Pygments-style theme for Monaco
+monaco.editor.defineTheme("ggsql-pygments", {
+  base: "vs",
+  inherit: true,
+  rules: [
+    { token: "comment", foreground: "408080", fontStyle: "italic" },
+    { token: "string", foreground: "BA2121" },
+    { token: "number", foreground: "666666" },
+    { token: "keyword", foreground: "008000", fontStyle: "bold" },
+    { token: "type", foreground: "008000" },
+    { token: "variable", foreground: "19177C" },
+    { token: "operator", foreground: "666666" },
+    { token: "delimiter", foreground: "000000" },
+  ],
+  colors: {
+    "editor.background": "#f7f7f7",
+  },
+});
+
 let languageRegistered = false;
 
 async function ensureLanguageRegistered(): Promise<void> {
@@ -154,7 +173,7 @@ export interface EditorInstance {
   editor: monaco.editor.IStandaloneCodeEditor;
 }
 
-const LINE_HEIGHT = 19;
+const LINE_HEIGHT = 20;
 const PADDING_TOP = 8;
 const PADDING_BOTTOM = 8;
 const MAX_EDITOR_HEIGHT = 400;
@@ -176,14 +195,14 @@ export async function createEditor(
   const editor = monaco.editor.create(container, {
     value: initialValue,
     language: "ggsql",
-    theme: "vs",
+    theme: "ggsql-pygments",
     automaticLayout: true,
     minimap: { enabled: false },
     fontSize: 13,
     lineNumbers: "on",
     glyphMargin: false,
     folding: false,
-    lineNumbersMinChars: 2,
+    lineNumbersMinChars: 3,
     scrollBeyondLastLine: false,
     wordWrap: "on",
     padding: { top: PADDING_TOP, bottom: PADDING_BOTTOM },
@@ -192,9 +211,9 @@ export async function createEditor(
     hideCursorInOverviewRuler: true,
     overviewRulerBorder: false,
     scrollbar: {
-      vertical: "auto",
+      vertical: "hidden",
       horizontal: "hidden",
-      verticalScrollbarSize: 8,
+      alwaysConsumeMouseWheel: false,
     },
   });
 

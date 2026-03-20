@@ -4,7 +4,7 @@ use polars::prelude::DataType;
 
 use super::super::transform::{Transform, TransformKind};
 use super::{ScaleTypeKind, ScaleTypeTrait};
-use crate::plot::types::{ParamConstraint, ParamDefinition, DefaultParamValue};
+use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
 use crate::plot::ArrayElement;
 
 /// Discrete scale type - for categorical/discrete data

@@ -14,7 +14,7 @@ mod identity;
 mod jitter;
 mod stack;
 
-use crate::plot::types::{ParamDefinition, DefaultParamValue, ParameterValue};
+use crate::plot::types::{DefaultParamValue, ParamDefinition, ParameterValue};
 use crate::plot::ScaleTypeKind;
 use crate::{DataFrame, Plot, Result};
 use serde::{Deserialize, Serialize};

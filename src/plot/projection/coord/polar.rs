@@ -1,7 +1,7 @@
 //! Polar coordinate system implementation
 
 use super::{CoordKind, CoordTrait};
-use crate::plot::types::{ParamConstraint, ParamDefinition, DefaultParamValue};
+use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
 
 /// Polar coordinate system - for pie charts, rose plots
 #[derive(Debug, Clone, Copy)]

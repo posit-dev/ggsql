@@ -18,7 +18,7 @@ use super::{
     compute_dodge_offsets, compute_group_indices, is_continuous_scale, Layer, PositionTrait,
     PositionType,
 };
-use crate::plot::types::{ParamConstraint, ParamDefinition, DefaultParamValue, ParameterValue};
+use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue};
 use crate::{naming, DataFrame, GgsqlError, Plot, Result};
 use polars::prelude::*;
 use rand::Rng;
@@ -996,10 +996,7 @@ mod tests {
         let params = jitter.default_params();
         assert_eq!(params.len(), 5);
         assert_eq!(params[0].name, "width");
-        assert!(matches!(
-            params[0].default,
-            DefaultParamValue::Number(0.9)
-        ));
+        assert!(matches!(params[0].default, DefaultParamValue::Number(0.9)));
         assert_eq!(params[1].name, "dodge");
         assert!(matches!(
             params[1].default,
@@ -1014,10 +1011,7 @@ mod tests {
         assert_eq!(params[3].name, "bandwidth");
         assert!(matches!(params[3].default, DefaultParamValue::Null));
         assert_eq!(params[4].name, "adjust");
-        assert!(matches!(
-            params[4].default,
-            DefaultParamValue::Number(1.0)
-        ));
+        assert!(matches!(params[4].default, DefaultParamValue::Number(1.0)));
     }
 
     #[test]

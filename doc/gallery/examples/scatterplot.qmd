@@ -1,5 +1,5 @@
 ---
-title: "Scatter Plot"
+title: "Scatter plot"
 description: "Basic scatter plot mapping two numeric variables to position"
 image: thumbnails/scatterplot.svg
 categories: [basic, point]
@@ -28,7 +28,7 @@ LABEL
 
 ## Variations
 
-### With Color by Species
+### With color by species
 
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins

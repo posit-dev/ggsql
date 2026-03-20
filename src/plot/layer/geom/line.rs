@@ -1,7 +1,7 @@
 //! Line geom implementation
 
 use super::{
-    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, DefaultParamValue,
+    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
     StatResult,
 };
 use crate::plot::layer::orientation::{ALIGNED, ORIENTATION_VALUES};

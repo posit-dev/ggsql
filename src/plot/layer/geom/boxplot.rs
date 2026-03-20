@@ -7,8 +7,8 @@ use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::{
     naming,
     plot::{
-        geom::types::get_column_name, DefaultAestheticValue, ParamConstraint, ParamDefinition,
-        DefaultParamValue, ParameterValue, StatResult,
+        geom::types::get_column_name, DefaultAestheticValue, DefaultParamValue, ParamConstraint,
+        ParamDefinition, ParameterValue, StatResult,
     },
     reader::SqlDialect,
     DataFrame, GgsqlError, Mappings, Result,
@@ -495,7 +495,6 @@ mod tests {
         assert!(outlier_section.contains("raw.region = summary.region"));
         assert!(outlier_section.contains("raw.year = summary.year"));
     }
-
 
     // ==================== GeomTrait Implementation Tests ====================
 

@@ -2,7 +2,7 @@
 title: "Text"
 ---
 
-> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
 The text layer displays rows in the data as text. It can be used as a visualisation itself, or used to annotate a different layer.
 

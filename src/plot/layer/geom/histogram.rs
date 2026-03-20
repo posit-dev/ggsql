@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use super::types::{get_column_name, CLOSED_VALUES, POSITION_VALUES};
 use super::{
-    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, DefaultParamValue,
+    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
     StatResult,
 };
 use crate::naming;

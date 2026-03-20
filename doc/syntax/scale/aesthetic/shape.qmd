@@ -56,15 +56,15 @@ DRAW point
 SCALE shape TO ['star', 'bowtie', 'square-plus']
 ```
 
-### Default Palette (`closed`)
+### Default palette (`closed`)
 The default palette contains the 9 closed shapes (first nine in the table above). This is the recommended palette for most use cases, as closed shapes are more visually prominent and easier to distinguish at small sizes.
 
 While the closed shapes are most often used filled, you can also turn if fill and only draw the stroke for a lighter look.
 
-### Open Palette (`open`)
+### Open palette (`open`)
 The `open` palette contains the last 6 shapes in the table. None of these have a fill. You may use this palette when you want transparent shapes that don't obscure data.
 
-### All Shapes Palette (`shapes`)
+### All shapes palette (`shapes`)
 This palette combines the two palettes above to provide all the possible shapes. Since not all shapes have a fill you should not map fill to anything if using this palette, and you should also be aware that differentiating 15 different shapes in the same plot will require a lot of mental effort from the viewer.
 
 ### Accessibility considerations

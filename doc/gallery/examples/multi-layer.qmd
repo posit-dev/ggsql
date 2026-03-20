@@ -1,5 +1,5 @@
 ---
-title: "Multi-Layer Plot"
+title: "Multi-layer plot"
 description: "Combining multiple geometric layers in one visualization"
 image: thumbnails/multi-layer.svg
 categories: [layers, advanced]
@@ -33,7 +33,7 @@ LABEL
 
 ## Variations
 
-### Different Aesthetics Per Layer
+### Different aesthetics per layer
 
 Each layer can have its own aesthetic mappings using `MAPPING`:
 
@@ -51,7 +51,7 @@ LABEL
     y => 'Value'
 ```
 
-### Layers from Different Data Sources
+### Layers from different data sources
 
 Use `MAPPING ... FROM` to pull each layer from different CTEs:
 

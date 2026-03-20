@@ -7,7 +7,7 @@ use super::types::POSITION_VALUES;
 use super::{DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, StatResult};
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
-use crate::plot::{ParamDefinition, DefaultParamValue};
+use crate::plot::{DefaultParamValue, ParamDefinition};
 use crate::{DataFrame, GgsqlError, Mappings, Result};
 
 use super::types::Schema;

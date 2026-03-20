@@ -2,7 +2,7 @@
 //!
 //! This module defines faceting configuration for small multiples.
 
-use crate::plot::types::{ParamConstraint, ParamDefinition, DefaultParamValue};
+use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
 use crate::plot::ParameterValue;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

@@ -20,7 +20,7 @@ pub use orientation::is_transposed;
 
 // Re-export geom types for convenience
 pub use geom::{
-    DefaultAesthetics, Geom, GeomTrait, GeomType, ParamDefinition, DefaultParamValue, StatResult,
+    DefaultAesthetics, DefaultParamValue, Geom, GeomTrait, GeomType, ParamDefinition, StatResult,
 };
 
 // Re-export position types for convenience

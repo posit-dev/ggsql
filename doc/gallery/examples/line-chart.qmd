@@ -1,5 +1,5 @@
 ---
-title: "Line Chart"
+title: "Line chart"
 description: "Time series visualization with proper date scaling"
 image: thumbnails/line-chart.svg
 categories: [basic, line, time-series]
@@ -31,7 +31,7 @@ LABEL
 
 ## Variations
 
-### Multiple Lines by Category
+### Multiple lines by category
 
 ```{ggsql}
 SELECT Date, Temp, Month FROM ggsql:airquality

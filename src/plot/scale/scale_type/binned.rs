@@ -9,7 +9,7 @@ use super::{
     TransformKind, CLOSED_VALUES, OOB_CENSOR, OOB_SQUISH, OOB_VALUES_BINNED,
 };
 use crate::plot::types::{
-    ArrayConstraint, NumberConstraint, ParamConstraint, ParamDefinition, DefaultParamValue,
+    ArrayConstraint, DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition,
 };
 use crate::plot::{ArrayElement, ParameterValue};
 
