@@ -2,7 +2,7 @@
 title: "Installation"
 ---
 
-While all of the examples on this website uses the ggsql WebAssembly build to let you run it in the browser, you likely want it on your own computer, interfacing with your local data.
+While all of the examples on this website uses the ggsql WebAssembly build to let you run it in the browser, you'll likely want it on your own computer, interfacing with your local data.
 
 ggsql provides native installers for Windows, macOS, and Linux. Choose the best option for your platform below.
 
@@ -223,6 +223,7 @@ Download from [GitHub Releases](https://github.com/posit-dev/ggsql/releases)
 .icon-section {
   position: relative;
   padding-left: 5rem;
+  margin-top: 5rem
 }
 
 .section-icons {
@@ -236,10 +237,11 @@ Download from [GitHub Releases](https://github.com/posit-dev/ggsql/releases)
 </style>
 ```
 
+
 ::: {.icon-section}
 [![](../assets/logos/jupyter.svg){height=60} ![](../assets/logos/quarto.svg){height=60}]{.section-icons}
 
-### Jupyter kernel
+## Jupyter kernel
 
 To use ggsql in Jupyter or Quarto notebooks, install the Jupyter kernel using either `uv` (recommended) or `cargo`. The kernel is also part of the main installer linked to above.
 
@@ -265,7 +267,7 @@ ggsql-jupyter --install
 ::: {.icon-section}
 [![](../assets/logos/vscode.svg){height=60} ![](../assets/logos/positron.svg){height=60}]{.section-icons}
 
-### VS Code / Positron extension
+## VS Code / Positron extension
 
 For syntax highlighting and language support in VS Code or Positron, install the ggsql extension. You can either install it directly from the [extension marketplace](https://open-vsx.org/extension/ggsql/ggsql) from within the IDE or download and install it manually:
 

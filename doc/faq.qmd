@@ -19,7 +19,7 @@ DRAW line
 ::: {.callout-note collapse="true"}
 ## How do I install ggsql?
 
-See the installation instruction in the [Getting started](get_started.qmd) tutorial.
+See the installation instruction in the [Get started](get_started/installation.qmd) tutorial.
 :::
 
 ::: {.callout-note collapse="true"}
