@@ -192,14 +192,18 @@ impl ScaleTypeTrait for Continuous {
             .unwrap_or(super::default_oob(&scale.aesthetic));
 
         match oob {
-            OOB_CENSOR => Some(format!(
-                "(CASE WHEN {} >= {} AND {} <= {} THEN {} ELSE NULL END)",
-                column_name, min, column_name, max, column_name
-            )),
+            OOB_CENSOR => {
+                let quoted = format!("\"{}\"", column_name);
+                Some(format!(
+                    "(CASE WHEN {} >= {} AND {} <= {} THEN {} ELSE NULL END)",
+                    quoted, min, quoted, max, quoted
+                ))
+            }
             OOB_SQUISH => {
                 let min_s = min.to_string();
                 let max_s = max.to_string();
-                let inner = dialect.sql_least(&[&max_s, column_name]);
+                let quoted = format!("\"{}\"", column_name);
+                let inner = dialect.sql_least(&[&max_s, &quoted]);
                 Some(dialect.sql_greatest(&[&min_s, &inner]))
             }
             _ => None, // "keep" = no transformation
@@ -237,8 +241,8 @@ mod tests {
         let sql = sql.unwrap();
         // Should generate CASE WHEN for censor
         assert!(sql.contains("CASE WHEN"));
-        assert!(sql.contains("value >= 0"));
-        assert!(sql.contains("value <= 100"));
+        assert!(sql.contains("\"value\" >= 0"));
+        assert!(sql.contains("\"value\" <= 100"));
         assert!(sql.contains("ELSE NULL"));
     }
 

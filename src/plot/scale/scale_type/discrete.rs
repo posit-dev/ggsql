@@ -261,11 +261,12 @@ impl ScaleTypeTrait for Discrete {
         }
 
         // Always censor - discrete scales have no other valid OOB behavior
+        let quoted = format!("\"{}\"", column_name);
         Some(format!(
             "(CASE WHEN {} IN ({}) THEN {} ELSE NULL END)",
-            column_name,
+            quoted,
             allowed_values.join(", "),
-            column_name
+            quoted
         ))
     }
 }

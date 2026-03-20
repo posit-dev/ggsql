@@ -692,20 +692,21 @@ fn build_bin_condition(
         (if is_first { ">=" } else { ">" }, "<=")
     };
 
+    let quoted = format!("\"{}\"", column_name);
     if oob_squish && is_first && is_last {
         // Single bin with squish: capture everything
         "TRUE".to_string()
     } else if oob_squish && is_first {
         // First bin with squish: no lower bound, extends to -∞
-        format!("{} {} {}", column_name, upper_op, upper_expr)
+        format!("{} {} {}", quoted, upper_op, upper_expr)
     } else if oob_squish && is_last {
         // Last bin with squish: no upper bound, extends to +∞
-        format!("{} {} {}", column_name, lower_op, lower_expr)
+        format!("{} {} {}", quoted, lower_op, lower_expr)
     } else {
         // Normal bin with both bounds
         format!(
             "{} {} {} AND {} {} {}",
-            column_name, lower_op, lower_expr, column_name, upper_op, upper_expr
+            quoted, lower_op, lower_expr, quoted, upper_op, upper_expr
         )
     }
 }
@@ -820,10 +821,10 @@ mod tests {
 
         // Should produce CASE WHEN with bin centers 5, 15, 25
         assert!(sql.contains("CASE"));
-        assert!(sql.contains("WHEN value >= 0 AND value < 10 THEN 5"));
-        assert!(sql.contains("WHEN value >= 10 AND value < 20 THEN 15"));
+        assert!(sql.contains("WHEN \"value\" >= 0 AND \"value\" < 10 THEN 5"));
+        assert!(sql.contains("WHEN \"value\" >= 10 AND \"value\" < 20 THEN 15"));
         // Last bin should be inclusive on both ends
-        assert!(sql.contains("WHEN value >= 20 AND value <= 30 THEN 25"));
+        assert!(sql.contains("WHEN \"value\" >= 20 AND \"value\" <= 30 THEN 25"));
         assert!(sql.contains("ELSE NULL END"));
     }
 
@@ -871,8 +872,8 @@ mod tests {
             .unwrap();
 
         // closed="left": [lower, upper) except last which is [lower, upper]
-        assert!(sql.contains("col >= 0 AND col < 10"));
-        assert!(sql.contains("col >= 10 AND col <= 20")); // last bin inclusive
+        assert!(sql.contains("\"col\" >= 0 AND \"col\" < 10"));
+        assert!(sql.contains("\"col\" >= 10 AND \"col\" <= 20")); // last bin inclusive
     }
 
     #[test]
@@ -897,8 +898,8 @@ mod tests {
             .unwrap();
 
         // closed="right": first bin is [lower, upper], rest are (lower, upper]
-        assert!(sql.contains("col >= 0 AND col <= 10")); // first bin inclusive
-        assert!(sql.contains("col > 10 AND col <= 20"));
+        assert!(sql.contains("\"col\" >= 0 AND \"col\" <= 10")); // first bin inclusive
+        assert!(sql.contains("\"col\" > 10 AND \"col\" <= 20"));
     }
 
     #[test]
@@ -1156,8 +1157,8 @@ mod tests {
             sql
         );
         assert!(
-            sql.contains("value >= 0"),
-            "SQL should use raw column name. Got: {}",
+            sql.contains("\"value\" >= 0"),
+            "SQL should use quoted column name. Got: {}",
             sql
         );
         assert!(
@@ -1192,7 +1193,7 @@ mod tests {
             !sql.contains("CAST("),
             "SQL should not contain CAST when column is numeric"
         );
-        assert!(sql.contains("value >= 0"), "SQL should use raw column name");
+        assert!(sql.contains("\"value\" >= 0"), "SQL should use quoted column name");
     }
 
     #[test]
@@ -1468,9 +1469,9 @@ mod tests {
                 "left",
                 vec![0.0, 10.0, 20.0, 30.0],
                 vec![
-                    "WHEN value < 10 THEN 5",                  // First bin extends to -∞
-                    "WHEN value >= 10 AND value < 20 THEN 15", // Middle bin
-                    "WHEN value >= 20 THEN 25",                // Last bin extends to +∞
+                    "WHEN \"value\" < 10 THEN 5",                        // First bin extends to -∞
+                    "WHEN \"value\" >= 10 AND \"value\" < 20 THEN 15",   // Middle bin
+                    "WHEN \"value\" >= 20 THEN 25",                      // Last bin extends to +∞
                 ],
             ),
             // closed="right" with 3 bins (4 breaks)
@@ -1478,9 +1479,9 @@ mod tests {
                 "right",
                 vec![0.0, 10.0, 20.0, 30.0],
                 vec![
-                    "WHEN value <= 10 THEN 5",                 // First bin extends to -∞
-                    "WHEN value > 10 AND value <= 20 THEN 15", // Middle bin
-                    "WHEN value > 20 THEN 25",                 // Last bin extends to +∞
+                    "WHEN \"value\" <= 10 THEN 5",                       // First bin extends to -∞
+                    "WHEN \"value\" > 10 AND \"value\" <= 20 THEN 15",   // Middle bin
+                    "WHEN \"value\" > 20 THEN 25",                       // Last bin extends to +∞
                 ],
             ),
         ];
@@ -1541,11 +1542,11 @@ mod tests {
                 .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
                 .unwrap();
             assert!(
-                sql.contains("WHEN x < 50 THEN 25"),
+                sql.contains("WHEN \"x\" < 50 THEN 25"),
                 "Two bins: first should extend to -∞"
             );
             assert!(
-                sql.contains("WHEN x >= 50 THEN 75"),
+                sql.contains("WHEN \"x\" >= 50 THEN 75"),
                 "Two bins: last should extend to +∞"
             );
         }
@@ -1590,11 +1591,11 @@ mod tests {
             .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
             .unwrap();
         assert!(
-            sql.contains("x >= 0 AND x < 10"),
+            sql.contains("\"x\" >= 0 AND \"x\" < 10"),
             "First bin should have lower bound with censor"
         );
         assert!(
-            sql.contains("x >= 10 AND x <= 20"),
+            sql.contains("\"x\" >= 10 AND \"x\" <= 20"),
             "Last bin should have upper bound with censor"
         );
     }
@@ -1607,14 +1608,14 @@ mod tests {
             (
                 true,
                 vec![
-                    "WHEN col < 10 THEN 5",
-                    "WHEN col >= 10 AND col < 20 THEN 15",
-                    "WHEN col >= 20 THEN 25",
+                    "WHEN \"col\" < 10 THEN 5",
+                    "WHEN \"col\" >= 10 AND \"col\" < 20 THEN 15",
+                    "WHEN \"col\" >= 20 THEN 25",
                 ],
             ),
             (
                 false,
-                vec!["col >= 0 AND col < 10", "col >= 10 AND col <= 20"],
+                vec!["\"col\" >= 0 AND \"col\" < 10", "\"col\" >= 10 AND \"col\" <= 20"],
             ),
         ];
 
