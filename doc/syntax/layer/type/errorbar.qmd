@@ -21,7 +21,7 @@ The following aesthetics are recognised by the errorbar layer.
 * `linetype`: The dash pattern of the lines in the errorbar.
 
 ## Settings
-* `width`: The width of the hinges in points. Can be set to `null` to not display hinges.
+* `width`: The width of the hinges in points (must be >= 0). Defaults to 10. Can be set to `null` to not display hinges.
 
 ## Data transformation
 The errorbar layer does not transform its data but passes it through unchanged.

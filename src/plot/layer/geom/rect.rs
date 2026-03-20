@@ -3,10 +3,11 @@
 use std::collections::HashMap;
 
 use super::types::get_column_name;
-use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
+use super::types::POSITION_VALUES;
+use super::{DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, StatResult};
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
-use crate::plot::{DefaultParam, DefaultParamValue};
+use crate::plot::{ParamDefinition, DefaultParamValue};
 use crate::{DataFrame, GgsqlError, Mappings, Result};
 
 use super::types::Schema;
@@ -50,27 +51,31 @@ impl GeomTrait for Rect {
         }
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
-        &[
-            // For continuous scales: remap to min/max
-            ("pos1min", DefaultAestheticValue::Column("pos1min")),
-            ("pos1max", DefaultAestheticValue::Column("pos1max")),
-            ("pos2min", DefaultAestheticValue::Column("pos2min")),
-            ("pos2max", DefaultAestheticValue::Column("pos2max")),
-            // For discrete scales: remap to center
-            ("pos1", DefaultAestheticValue::Column("pos1")),
-            ("pos2", DefaultAestheticValue::Column("pos2")),
-            // Width/height passed through for discrete (writer validation)
-            ("width", DefaultAestheticValue::Column("width")),
-            ("height", DefaultAestheticValue::Column("height")),
-        ]
+    fn default_remappings(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                // For continuous scales: remap to min/max
+                ("pos1min", DefaultAestheticValue::Column("pos1min")),
+                ("pos1max", DefaultAestheticValue::Column("pos1max")),
+                ("pos2min", DefaultAestheticValue::Column("pos2min")),
+                ("pos2max", DefaultAestheticValue::Column("pos2max")),
+                // For discrete scales: remap to center
+                ("pos1", DefaultAestheticValue::Column("pos1")),
+                ("pos2", DefaultAestheticValue::Column("pos2")),
+                // Width/height passed through for discrete (writer validation)
+                ("width", DefaultAestheticValue::Column("width")),
+                ("height", DefaultAestheticValue::Column("height")),
+            ],
+        }
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        &[DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[ParamDefinition {
             name: "position",
             default: DefaultParamValue::String("identity"),
-        }]
+            constraint: ParamConstraint::string_option(POSITION_VALUES),
+        }];
+        PARAMS
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {

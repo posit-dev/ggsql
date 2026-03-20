@@ -1,7 +1,10 @@
 //! Line geom implementation
 
-use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, StatResult};
-use crate::plot::layer::orientation::ALIGNED;
+use super::{
+    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, DefaultParamValue,
+    StatResult,
+};
+use crate::plot::layer::orientation::{ALIGNED, ORIENTATION_VALUES};
 use crate::plot::types::DefaultAestheticValue;
 use crate::{naming, Mappings};
 
@@ -27,11 +30,13 @@ impl GeomTrait for Line {
         }
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        &[DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[ParamDefinition {
             name: "orientation",
             default: DefaultParamValue::String(ALIGNED),
-        }]
+            constraint: ParamConstraint::string_option(ORIENTATION_VALUES),
+        }];
+        PARAMS
     }
 
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {

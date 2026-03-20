@@ -23,10 +23,10 @@ The following aesthetics are recognised by the boxplot layer.
 * `shape` The shape of outlier points.
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'dodge'`)
+* `position`: Position adjustment. One of `'identity'`, `'stack'`, `'dodge'` (default), or `'jitter'`
 * `outliers`: Whether to display outliers as points. Defaults to `true`.
-* `coef`: A number indicating the length of the whiskers as a multiple of the interquartile range (IQR). Defaults to `1.5`.
-* `width`: Relative width of the boxes. Defaults to `0.9`.
+* `coef`: Length of the whiskers as a multiple of the IQR (must be >= 0). Defaults to `1.5`.
+* `width`: Relative width of the boxes (0 to 1). Defaults to `0.9`.
 
 ## Data transformation
 Per group, data will be divided into 4 quartiles and summary statistics will be derived from their extremes. 

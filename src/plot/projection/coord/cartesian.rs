@@ -1,7 +1,7 @@
 //! Cartesian coordinate system implementation
 
 use super::{CoordKind, CoordTrait};
-use crate::plot::types::{DefaultParam, DefaultParamValue};
+use crate::plot::types::{ParamConstraint, ParamDefinition, DefaultParamValue};
 
 /// Cartesian coordinate system - standard x/y coordinates
 #[derive(Debug, Clone, Copy)]
@@ -20,17 +20,20 @@ impl CoordTrait for Cartesian {
         &["x", "y"]
     }
 
-    fn default_properties(&self) -> &'static [DefaultParam] {
-        &[
-            DefaultParam {
+    fn default_properties(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "ratio",
                 default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "clip",
-                default: DefaultParamValue::Null,
+                default: DefaultParamValue::Boolean(true),
+                constraint: ParamConstraint::boolean(),
             },
-        ]
+        ];
+        PARAMS
     }
 }
 
@@ -83,7 +86,6 @@ mod tests {
         let resolved = cartesian.resolve_properties(&props);
         assert!(resolved.is_err());
         let err = resolved.unwrap_err();
-        assert!(err.contains("unknown"));
-        assert!(err.contains("not valid"));
+        assert!(err.contains("not 'unknown'"));
     }
 }

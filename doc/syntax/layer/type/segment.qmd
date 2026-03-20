@@ -25,7 +25,7 @@ If one is missing, it takes on the value of the start point.
 * `linetype`: The type of the line, i.e. the dashing pattern.
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
+* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 
 ## Data transformation
 The segment layer does not transform its data but passes it through unchanged.

@@ -20,7 +20,7 @@ pub use orientation::is_transposed;
 
 // Re-export geom types for convenience
 pub use geom::{
-    DefaultAesthetics, DefaultParam, DefaultParamValue, Geom, GeomTrait, GeomType, StatResult,
+    DefaultAesthetics, Geom, GeomTrait, GeomType, ParamDefinition, DefaultParamValue, StatResult,
 };
 
 // Re-export position types for convenience
@@ -29,7 +29,9 @@ pub use position::{Position, PositionTrait, PositionType};
 use crate::{
     plot::{
         is_facet_aesthetic, parse_positional,
-        types::{AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression},
+        types::{
+            validate_parameter, AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression,
+        },
     },
     AestheticContext,
 };
@@ -383,21 +385,42 @@ impl Layer {
 
     /// Validate that all SETTING parameters are valid for this layer's geom and position
     pub fn validate_settings(&self) -> std::result::Result<(), String> {
-        // Combine valid settings from both geom and position
+        // Combine valid settings from both geom and position (includes aesthetics)
         let mut valid = self.geom.valid_settings();
         valid.extend(self.position.valid_settings());
 
-        for param_name in self.parameters.keys() {
+        for (param_name, value) in self.parameters.iter() {
+            // Check if this is a valid setting at all
             if !valid.contains(&param_name.as_str()) {
                 return Err(format!(
-                    "Invalid setting '{}' for geom '{}' with position '{}'. Valid settings are: {}",
-                    param_name,
+                    "{} layer setting should be {}, not '{}'",
                     self.geom,
-                    self.position,
-                    valid.join(", ")
+                    crate::or_list_quoted(&valid, '\''),
+                    param_name
                 ));
             }
+
+            // Validate against constraints if this is a geom param
+            if let Some(param) = self
+                .geom
+                .default_params()
+                .iter()
+                .find(|p| p.name == param_name)
+            {
+                validate_parameter(param_name, value, &param.constraint)?;
+            }
+            // Or a position param
+            else if let Some(param) = self
+                .position
+                .default_params()
+                .iter()
+                .find(|p| p.name == param_name)
+            {
+                validate_parameter(param_name, value, &param.constraint)?;
+            }
+            // Otherwise it's a valid aesthetic setting (no constraint validation needed)
         }
+
         Ok(())
     }
 

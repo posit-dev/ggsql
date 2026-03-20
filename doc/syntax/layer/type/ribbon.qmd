@@ -22,7 +22,7 @@ The following aesthetics are recognised by the ribbon layer.
 * `linewidth`: The width of the contour lines.
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
+* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 
 ## Data transformation
 The ribbon layer sorts the data along its primary axis

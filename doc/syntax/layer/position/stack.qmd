@@ -13,7 +13,7 @@ Stack requires a continuous scale with a range mapping (e.g. either `y` + `yend`
 Apart from the settings of the layer type, setting `position => 'stack'` will allow these additional settings:
 
 * `center`: Should the full stack be centered around 0. Can be used in conjunction with area layers to create steamgraphs. Default to `false`
-* `total`: Sets a total value to which each stack height is normalised. Setting this value leads to 'fill' behaviour. Defaults to `null` (no normalisation)
+* `total`: Sets a total value to which each stack height is normalised (must be > 0 if specified). Setting this value leads to 'fill' behaviour. Defaults to `null` (no normalisation)
 
 ## Examples
 

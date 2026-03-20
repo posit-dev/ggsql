@@ -1,6 +1,9 @@
 //! Arrow geom implementation
 
-use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType};
+use super::types::POSITION_VALUES;
+use super::{
+    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, ParamDefinition, DefaultParamValue,
+};
 use crate::plot::types::DefaultAestheticValue;
 
 /// Arrow geom - line segments with arrowheads
@@ -28,11 +31,13 @@ impl GeomTrait for Arrow {
         }
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        &[DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[ParamDefinition {
             name: "position",
             default: DefaultParamValue::String("identity"),
-        }]
+            constraint: ParamConstraint::string_option(POSITION_VALUES),
+        }];
+        PARAMS
     }
 }
 

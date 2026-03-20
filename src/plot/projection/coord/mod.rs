@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::plot::types::DefaultParam;
+use crate::plot::types::{validate_parameter, ParamDefinition};
 use crate::plot::ParameterValue;
 
 // Coord type implementations
@@ -75,7 +75,7 @@ pub trait CoordTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
     /// Returns list of allowed properties with their default values.
     /// Default: empty (no properties allowed).
-    fn default_properties(&self) -> &'static [DefaultParam] {
+    fn default_properties(&self) -> &'static [ParamDefinition] {
         &[]
     }
 
@@ -86,22 +86,27 @@ pub trait CoordTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         properties: &HashMap<String, ParameterValue>,
     ) -> Result<HashMap<String, ParameterValue>, String> {
         let defaults = self.default_properties();
-        let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
 
-        // Check for unknown properties
-        for key in properties.keys() {
-            if !allowed.contains(&key.as_str()) {
-                let valid_props = if allowed.is_empty() {
-                    "none".to_string()
+        // Validate values against constraints
+        for (key, value) in properties.iter() {
+            if let Some(param) = defaults.iter().find(|p| p.name == key) {
+                validate_parameter(key, value, &param.constraint)?;
+            } else {
+                let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
+                return Err(if allowed.is_empty() {
+                    format!(
+                        "{} projection does not accept any properties, but got '{}'",
+                        self.name(),
+                        key
+                    )
                 } else {
-                    allowed.join(", ")
-                };
-                return Err(format!(
-                    "Property '{}' not valid for {} projection. Valid properties: {}",
-                    key,
-                    self.name(),
-                    valid_props
-                ));
+                    format!(
+                        "{} projection property should be {}, not '{}'",
+                        self.name(),
+                        crate::or_list_quoted(&allowed, '\''),
+                        key
+                    )
+                });
             }
         }
 
@@ -166,7 +171,7 @@ impl Coord {
     }
 
     /// Returns list of allowed properties with their default values.
-    pub fn default_properties(&self) -> &'static [DefaultParam] {
+    pub fn default_properties(&self) -> &'static [ParamDefinition] {
         self.0.default_properties()
     }
 

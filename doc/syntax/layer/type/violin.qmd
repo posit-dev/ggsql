@@ -23,9 +23,9 @@ The following aesthetics are recognised by the violin layer.
 * `linetype` The dash pattern of the contour line.
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'dodge'`)
-* `bandwidth`: A numerical value setting the smoothing bandwidth to use. If absent (default), the bandwidth will be computed using Silverman's rule of thumb.
-* `adjust`: A numerical value as multiplier for the `bandwidth` setting, with 1 as default.
+* `position`: Position adjustment. One of `'identity'`, `'stack'`, `'dodge'` (default), or `'jitter'`
+* `bandwidth`: Smoothing bandwidth (must be > 0). If absent (default), the bandwidth will be computed using Silverman's rule of thumb.
+* `adjust`: Multiplier for the `bandwidth` setting (must be > 0). Defaults to 1.
 * `kernel`: Determines the smoothing kernel shape. Can be one of the following:
     * `'gaussian'` (default)
     * `'epanechnikov'`
@@ -33,8 +33,8 @@ The following aesthetics are recognised by the violin layer.
     * `'rectangular'` or `'uniform'`
     * `'biweight'` or `'quartic'`
     * `'cosine'`
-* `width`: Relative width of the violins. Defaults to `0.9`.
-* `tails`: Expansion rule for drawing the tails. One of the following:
+* `width`: Relative width of the violins (0 to 1). Defaults to `0.9`.
+* `tails`: Expansion rule for drawing the tails (must be >= 0 if numeric). One of the following:
     * A number setting a multiple of adjusted bandwidths to expand each group's range. Defaults to 3.
     * `null` to use the whole data range rather than group ranges.
 
