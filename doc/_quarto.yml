@@ -30,7 +30,8 @@ website:
     keyboard-shortcut: []
   navbar:
     left:
-      - get_started.qmd
+      - text: Get started
+        href: get_started/installation.qmd
       - text: Syntax
         menu:
           - text: Overview
@@ -116,6 +117,10 @@ website:
       contents:
         - text: Installation
           href: get_started/installation.qmd
+        - text: The first plot
+          href: get_started/first_plot.qmd
+        - text: Grammar of graphics
+          href: get_started/grammar.qmd
 
 format:
   html:
