@@ -3387,11 +3387,11 @@ mod tests {
     }
 
     #[test]
-    fn test_linear_renderer_multiple_lines() {
+    fn test_rule_renderer_multiple_diagonal_lines() {
         use crate::reader::{DuckDBReader, Reader};
         use crate::writer::{VegaLiteWriter, Writer};
 
-        // Test that linear with 3 different coefficients renders 3 separate lines
+        // Test that rule with 3 different slopes renders 3 separate lines
         let query = r#"
             WITH points AS (
                 SELECT * FROM (VALUES (0, 5), (5, 15), (10, 25)) AS t(x, y)
@@ -3401,12 +3401,12 @@ mod tests {
                     (2, 5, 'A'),
                     (1, 10, 'B'),
                     (3, 0, 'C')
-                ) AS t(coef, intercept, line_id)
+                ) AS t(slope, intercept, line_id)
             )
             SELECT * FROM points
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            DRAW linear MAPPING coef AS coef, intercept AS intercept, line_id AS color FROM lines
+            DRAW rule MAPPING slope AS slope, intercept AS intercept, line_id AS color FROM lines
         "#;
 
         // Execute query
@@ -3422,21 +3422,21 @@ mod tests {
         let vl_spec: serde_json::Value =
             serde_json::from_str(&vl_json).expect("Failed to parse Vega-Lite JSON");
 
-        // Verify we have 2 layers (point + linear)
+        // Verify we have 2 layers (point + rule)
         let layers = vl_spec["layer"].as_array().expect("No layers found");
-        assert_eq!(layers.len(), 2, "Should have 2 layers (point + linear)");
+        assert_eq!(layers.len(), 2, "Should have 2 layers (point + rule)");
 
-        // Get the linear layer (second layer)
-        let linear_layer = &layers[1];
+        // Get the rule layer (second layer)
+        let rule_layer = &layers[1];
 
         // Verify it's a rule mark
         assert_eq!(
-            linear_layer["mark"]["type"], "rule",
-            "Linear should use rule mark"
+            rule_layer["mark"]["type"], "rule",
+            "Rule should use rule mark"
         );
 
         // Verify transforms exist
-        let transforms = linear_layer["transform"]
+        let transforms = rule_layer["transform"]
             .as_array()
             .expect("No transforms found");
 
@@ -3466,7 +3466,7 @@ mod tests {
             "primary_max should have calculate expression"
         );
 
-        // Verify secondary_min and secondary_max transforms use coef and intercept with primary_min/primary_max
+        // Verify secondary_min and secondary_max transforms use slope and intercept with primary_min/primary_max
         let secondary_min_transform = transforms
             .iter()
             .find(|t| t["as"] == "secondary_min")
@@ -3483,10 +3483,10 @@ mod tests {
             .as_str()
             .expect("secondary_max calculate should be string");
 
-        // Should reference coef, intercept, and primary_min/primary_max
+        // Should reference slope, intercept, and primary_min/primary_max
         assert!(
-            secondary_min_calc.contains("__ggsql_aes_coef__"),
-            "secondary_min should reference coef"
+            secondary_min_calc.contains("__ggsql_aes_slope__"),
+            "secondary_min should reference slope"
         );
         assert!(
             secondary_min_calc.contains("__ggsql_aes_intercept__"),
@@ -3497,8 +3497,8 @@ mod tests {
             "secondary_min should reference datum.primary_min"
         );
         assert!(
-            secondary_max_calc.contains("__ggsql_aes_coef__"),
-            "secondary_max should reference coef"
+            secondary_max_calc.contains("__ggsql_aes_slope__"),
+            "secondary_max should reference slope"
         );
         assert!(
             secondary_max_calc.contains("__ggsql_aes_intercept__"),
@@ -3510,7 +3510,7 @@ mod tests {
         );
 
         // Verify encoding has x, x2, y, y2 with consistent field names
-        let encoding = linear_layer["encoding"]
+        let encoding = rule_layer["encoding"]
             .as_object()
             .expect("No encoding found");
 
@@ -3543,52 +3543,56 @@ mod tests {
             "Should have stroke encoding for line_id"
         );
 
-        // Verify data has 3 linear rows (one per coef)
+        // Verify data has 3 rule rows (one per slope)
         let data_values = vl_spec["data"]["values"]
             .as_array()
             .expect("No data values found");
 
-        let linear_rows: Vec<_> = data_values
+        let rule_rows: Vec<_> = data_values
             .iter()
             .filter(|row| {
                 row["__ggsql_source__"] == "__ggsql_layer_1__"
-                    && row["__ggsql_aes_coef__"].is_number()
+                    && row["__ggsql_aes_slope__"].is_number()
             })
             .collect();
 
         assert_eq!(
-            linear_rows.len(),
+            rule_rows.len(),
             3,
-            "Should have 3 linear rows (3 different coefficients)"
+            "Should have 3 rule rows (3 different slopes)"
         );
 
-        // Verify we have coefs 1, 2, 3
-        let mut coefs: Vec<f64> = linear_rows
+        // Verify we have slopes 1, 2, 3
+        let mut slopes: Vec<f64> = rule_rows
             .iter()
-            .map(|row| row["__ggsql_aes_coef__"].as_f64().unwrap())
+            .map(|row| row["__ggsql_aes_slope__"].as_f64().unwrap())
             .collect();
-        coefs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        slopes.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-        assert_eq!(coefs, vec![1.0, 2.0, 3.0], "Should have coefs 1, 2, and 3");
+        assert_eq!(
+            slopes,
+            vec![1.0, 2.0, 3.0],
+            "Should have slopes 1, 2, and 3"
+        );
     }
 
     #[test]
-    fn test_linear_renderer_transposed_orientation() {
+    fn test_sloped_rule_renderer_transposed_orientation() {
         use crate::reader::{DuckDBReader, Reader};
         use crate::writer::{VegaLiteWriter, Writer};
 
-        // Test that linear with transposed orientation swaps x/y axes
+        // Test that sloped rule with transposed orientation swaps x/y axes
         let query = r#"
             WITH points AS (
                 SELECT * FROM (VALUES (0, 5), (5, 15), (10, 25)) AS t(x, y)
             ),
             lines AS (
-                SELECT * FROM (VALUES (0.4, -1, 'A')) AS t(coef, intercept, line_id)
+                SELECT * FROM (VALUES (0.4, -1, 'A')) AS t(slope, intercept, line_id)
             )
             SELECT * FROM points
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            DRAW linear MAPPING coef AS coef, intercept AS intercept, line_id AS color FROM lines SETTING orientation => 'transposed'
+            DRAW rule MAPPING slope AS slope, intercept AS intercept, line_id AS color FROM lines SETTING orientation => 'transposed'
         "#;
 
         // Execute query
@@ -3604,12 +3608,12 @@ mod tests {
         let vl_spec: serde_json::Value =
             serde_json::from_str(&vl_json).expect("Failed to parse Vega-Lite JSON");
 
-        // Get the linear layer (second layer)
+        // Get the rule layer (second layer)
         let layers = vl_spec["layer"].as_array().expect("No layers found");
-        let linear_layer = &layers[1];
+        let rule_layer = &layers[1];
 
         // Verify transforms exist
-        let transforms = linear_layer["transform"]
+        let transforms = rule_layer["transform"]
             .as_array()
             .expect("No transforms found");
 
@@ -3634,7 +3638,7 @@ mod tests {
         );
 
         // Verify encoding has y as primary axis (mapped to primary_min/max)
-        let encoding = linear_layer["encoding"]
+        let encoding = rule_layer["encoding"]
             .as_object()
             .expect("No encoding found");
 
