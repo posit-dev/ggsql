@@ -659,7 +659,7 @@ where
 
 /// Build a VALUES clause for an annotation layer with all aesthetic columns.
 ///
-/// Generates SQL like: `(VALUES (val1_row1, val2_row1), (val1_row2, val2_row2)) AS t(col1, col2)`
+/// Generates SQL like: `WITH t(col1, col2) AS (VALUES (...), (...)) SELECT * FROM t`
 ///
 /// This function:
 /// 1. Moves positional/required/array parameters from layer.parameters to layer.mappings
@@ -788,14 +788,16 @@ fn process_annotation_layer(layer: &mut Layer) -> Result<String> {
     }
 
     // Step 4: Build VALUES rows
-    let mut rows = Vec::new();
-    for i in 0..max_length {
-        let values: Vec<String> = columns.iter().map(|col| col[i].to_sql()).collect();
-        rows.push(format!("({})", values.join(", ")));
-    }
+    let values_clause = (0..max_length)
+        .map(|i| {
+            let row: Vec<String> = columns.iter().map(|col| col[i].to_sql()).collect();
+            format!("({})", row.join(", "))
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
 
-    // Step 5: Build complete SQL query
-    let values_clause = rows.join(", ");
+    // Step 5: Build complete SQL query using standard CTE form
+    // This works across all SQL backends (DuckDB, SQLite, PostgreSQL, etc.)
     let column_list = column_names
         .iter()
         .map(|c| format!("\"{}\"", c))
@@ -803,8 +805,8 @@ fn process_annotation_layer(layer: &mut Layer) -> Result<String> {
         .join(", ");
 
     let sql = format!(
-        "SELECT * FROM (VALUES {}) AS t({})",
-        values_clause, column_list
+        "WITH __ggsql_values__({}) AS (VALUES {}) SELECT * FROM __ggsql_values__",
+        column_list, values_clause
     );
 
     Ok(sql)
@@ -904,10 +906,9 @@ mod tests {
 
         let result = process_annotation_layer(&mut layer).unwrap();
 
-        // Should produce: SELECT * FROM (VALUES (...)) AS t("pos1", "pos2", "label")
-        // Uses raw aesthetic names, not prefixed names
-        assert!(result.contains("VALUES"));
+        // Uses CTE form: WITH __ggsql_values__(cols) AS (VALUES (...)) SELECT * FROM __ggsql_values__
         // Check all values are present (order may vary due to HashMap)
+        assert!(result.contains("VALUES"));
         assert!(result.contains("5"));
         assert!(result.contains("10"));
         assert!(result.contains("'Test'"));
@@ -945,12 +946,13 @@ mod tests {
         let result = process_annotation_layer(&mut layer).unwrap();
 
         // Should recycle scalar pos2 and label to match array length (3)
+        // Uses CTE form: WITH __ggsql_values__(cols) AS (VALUES (...), (...), (...)) SELECT * FROM __ggsql_values__
         assert!(result.contains("VALUES"));
         // Check that all values appear (order may vary due to HashMap)
         assert!(result.contains("1") && result.contains("2") && result.contains("3"));
         assert!(result.contains("10"));
         assert!(result.contains("'Same'"));
-        // Check row count by counting parentheses pairs in VALUES
+        // Check row count by counting value tuples (3 rows)
         assert_eq!(result.matches("), (").count() + 1, 3, "Should have 3 rows");
     }
 
@@ -1003,9 +1005,11 @@ mod tests {
         let result = process_annotation_layer(&mut layer).unwrap();
 
         // Both arrays have length 2, should work (order may vary)
+        // Uses CTE form: WITH __ggsql_values__(cols) AS (VALUES (...), (...)) SELECT * FROM __ggsql_values__
         assert!(result.contains("VALUES"));
         assert!(result.contains("1") && result.contains("2"));
         assert!(result.contains("10") && result.contains("20"));
+        // Check row count by counting value tuples (2 rows)
         assert_eq!(result.matches("), (").count() + 1, 2, "Should have 2 rows");
     }
 
