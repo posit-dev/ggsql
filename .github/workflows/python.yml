@@ -13,6 +13,13 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.10", "3.11", "3.12", "3.13"]
+        include:
+          - os: ubuntu-latest
+            delay: 140
+          - os: macos-latest
+            delay: 210
+          - os: windows-latest
+            delay: 70
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -30,6 +37,10 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Stagger start by OS
+        run: sleep ${{ matrix.delay }}s
+        shell: bash
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
