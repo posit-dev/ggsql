@@ -26,6 +26,7 @@
     "url": "https://github.com/posit-dev/ggsql"
   },
   "license": "MIT",
+  "icon": "logo.png",
   "contributes": {
     "languages": [
       {
