@@ -67,10 +67,6 @@ VISUALISE bill_dep AS x, n AS y
 
 By overlaying a thick line on a thin line, you can create a candlestick chart.
 
-::: {.callout-note}
-This example uses DuckDB-specific `FIRST()` and `LAST()` aggregate functions.
-:::
-
 ```{ggsql}
 SELECT
   FIRST(Date) AS date,
