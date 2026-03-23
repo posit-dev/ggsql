@@ -29,7 +29,7 @@ pub enum Commands {
         /// The ggsql query to execute
         query: String,
 
-        /// Data source connection string (duckdb://, sqlite://, polars://)
+        /// Data source connection string (duckdb://, sqlite://)
         #[arg(long, default_value = "duckdb://memory")]
         reader: String,
 
@@ -51,7 +51,7 @@ pub enum Commands {
         /// Path to .sql file containing ggsql query
         file: PathBuf,
 
-        /// Data source connection string (duckdb://, sqlite://, polars://)
+        /// Data source connection string (duckdb://, sqlite://)
         #[arg(long, default_value = "duckdb://memory")]
         reader: String,
 
@@ -165,23 +165,6 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
         #[cfg(not(feature = "duckdb"))]
         {
             eprintln!("DuckDB reader not compiled in. Rebuild with --features duckdb");
-            std::process::exit(1);
-        }
-    } else if reader.starts_with("polars://") {
-        #[cfg(feature = "polars-sql")]
-        {
-            let r = match ggsql::reader::PolarsReader::from_connection_string(&reader) {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("Failed to create reader: {}", e);
-                    std::process::exit(1);
-                }
-            };
-            exec_with_reader(&query, &r, &writer, output, verbose);
-        }
-        #[cfg(not(feature = "polars-sql"))]
-        {
-            eprintln!("Polars reader not compiled in. Rebuild with --features polars-sql");
             std::process::exit(1);
         }
     } else if reader.starts_with("sqlite://") {

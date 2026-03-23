@@ -79,7 +79,6 @@ ureq = "3"
 default = ["duckdb", "sqlite", "vegalite", "ipc", "parquet", "builtin-data"]
 ipc = ["polars/ipc"]
 duckdb = ["dep:duckdb", "dep:arrow"]
-polars-sql = ["polars/sql"]
 parquet = ["polars/parquet"]
 postgres = ["dep:postgres"]
 sqlite = ["dep:rusqlite"]
@@ -88,7 +87,7 @@ ggplot2 = []
 builtin-data = []
 python = ["dep:pyo3"]
 rest-api = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tracing", "dep:tracing-subscriber", "duckdb", "vegalite"]
-all-readers = ["duckdb", "postgres", "sqlite", "polars-sql"]
+all-readers = ["duckdb", "postgres", "sqlite"]
 all-writers = ["vegalite", "ggplot2", "plotters"]
 
 # cargo-packager configuration for cross-platform installers

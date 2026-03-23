@@ -206,9 +206,6 @@ impl SqlDialect for AnsiDialect {}
 #[cfg(feature = "duckdb")]
 pub mod duckdb;
 
-#[cfg(feature = "polars-sql")]
-pub mod polars_sql;
-
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 
@@ -218,9 +215,6 @@ mod spec;
 
 #[cfg(feature = "duckdb")]
 pub use duckdb::DuckDBReader;
-
-#[cfg(feature = "polars-sql")]
-pub use polars_sql::PolarsReader;
 
 #[cfg(feature = "sqlite")]
 pub use sqlite::SqliteReader;

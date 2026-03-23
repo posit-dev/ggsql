@@ -306,8 +306,7 @@ pub fn apply_pre_stat_transform(
     // aesthetic_schema (aesthetic columns added by build_layer_base_query).
     // The base query produces SELECT *, col AS __ggsql_aes_x__, ... so the
     // actual SQL output has both, but they come from different schema sources.
-    // This avoids SELECT * EXCLUDE which has portability issues
-    // (Polars SQL silently drops re-added columns with the same name).
+    // This avoids SELECT * EXCLUDE which has portability issues across SQL backends.
     let mut seen: HashSet<&str> = HashSet::new();
     let combined_cols = full_schema.iter().chain(aesthetic_schema.iter());
 
@@ -606,30 +605,11 @@ where
             if stat_rename_exprs.is_empty() {
                 transformed_query
             } else {
-                // If the transformed query uses CTEs (WITH ... SELECT ...),
-                // we can't wrap it in a subquery because Polars SQL doesn't
-                // support CTEs inside subqueries. Instead, split into CTE
-                // prefix + trailing SELECT, then append the trailing SELECT
-                // as another CTE and add the rename SELECT on top.
-                if let Some((cte_prefix, trailing_select)) =
-                    crate::parser::SourceTree::new(&transformed_query)
-                        .ok()
-                        .as_ref()
-                        .and_then(super::cte::split_with_query)
-                {
-                    format!(
-                        "{}, __ggsql_stat__ AS ({}) SELECT *, {} FROM __ggsql_stat__",
-                        cte_prefix,
-                        trailing_select,
-                        stat_rename_exprs.join(", ")
-                    )
-                } else {
-                    format!(
-                        "SELECT *, {} FROM ({}) AS __ggsql_stat__",
-                        stat_rename_exprs.join(", "),
-                        transformed_query
-                    )
-                }
+                format!(
+                    "SELECT *, {} FROM ({}) AS __ggsql_stat__",
+                    stat_rename_exprs.join(", "),
+                    transformed_query
+                )
             }
         }
         StatResult::Identity => query,
