@@ -9,7 +9,7 @@ Linewidth are given as bare numbers and measured in points. The following code s
 
 ```ggsql
 DRAW line
-    SETTING linewidth => 3
+  SETTING linewidth => 3
 ```
 
 ## Palettes

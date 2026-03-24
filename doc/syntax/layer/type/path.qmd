@@ -48,35 +48,41 @@ Simple example path.
 
 ```{ggsql}
 VISUALISE x, y FROM df
-  DRAW path
+DRAW path
 ```
 
 Contrary to `line` drawings, `path` is not forced to follow the order along the axis.
 
 ```{ggsql}
 VISUALISE x, y FROM df
-  DRAW path MAPPING 'Path' AS colour
-  DRAW line MAPPING 'Line' AS colour
+DRAW path 
+  MAPPING 'Path' AS colour
+DRAW line 
+  MAPPING 'Line' AS colour
 ```
 
 Groups of individual paths can be declared via `PARTITION BY`.
 
 ```{ggsql}
 VISUALISE x, y FROM df
-  DRAW path PARTITION BY id
+DRAW path 
+  PARTITION BY id
 ```
 
 Invoking a group through discrete aesthetics works as well.
 
 ```{ggsql}
 VISUALISE x, y FROM df
-  DRAW path MAPPING id AS colour
+DRAW path 
+  MAPPING id AS colour
 ```
 
 Compared to polygons, paths don't close their shapes and fill their interiors.
 
 ```{ggsql}
 VISUALISE x, y FROM df
-  DRAW polygon MAPPING 'Polygon' AS stroke
-  DRAW path MAPPING 'Path' AS stroke
+DRAW polygon 
+  MAPPING 'Polygon' AS stroke
+DRAW path 
+  MAPPING 'Path' AS stroke
 ```

@@ -9,7 +9,7 @@ The `PROJECT` syntax contains a number of subclauses
 
 ```ggsql
 PROJECT <aesthetic>, ... TO <coordinate-system>
-    SETTING <parameter> => <value>, ...
+  SETTING <parameter> => <value>, ...
 ```
 
 The comma-separated list of `aesthetic` names are optional but allows you to define the names of the positional aesthetics in the plot. If omitted, the default aesthetic names of the coordinate system is used. The order given matters as the first name is used for the primary aesthetic, the second name for the secondary aesthetic and so on. For instance, using `PROJECT y, x TO cartesian` will flip the plot as anything mapped to `y` will now relate to the horizontal axis, and anything mapped to `x` will relate to the vertical axis. Note that it is not allowed to use the name of already established aesthetics as positional aesthetics, e.g. `PROJECT fill, stroke TO polar` is not allowed.

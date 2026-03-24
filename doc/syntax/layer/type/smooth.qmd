@@ -121,8 +121,8 @@ The default `method => 'nw'` might be too coarse for timeseries.
 ```{ggsql}
 SELECT *, EPOCH(Date) AS numdate FROM ggsql:airquality
 VISUALISE numdate AS x, Temp AS y
-  DRAW point
-  DRAW smooth
+DRAW point
+DRAW smooth
 ```
 
 You can make the fit more granular by reducing the bandwidth, for example using `adjust`.
@@ -130,24 +130,33 @@ You can make the fit more granular by reducing the bandwidth, for example using 
 ```{ggsql}
 SELECT *, EPOCH(Date) AS numdate FROM ggsql:airquality
 VISUALISE numdate AS x, Temp AS y
-  DRAW point
-  DRAW smooth SETTING adjust => 0.2
+DRAW point
+DRAW smooth 
+  SETTING adjust => 0.2
 ```
 
 There is a subtle difference between the ordinary and total least squares method.
 
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
-   DRAW point
-   DRAW smooth MAPPING 'Ordinary' AS colour SETTING method => 'ols'
-   DRAW smooth MAPPING 'Total' AS colour SETTING method => 'tls'
+DRAW point
+DRAW smooth 
+  MAPPING 'Ordinary' AS colour 
+  SETTING method => 'ols'
+DRAW smooth 
+  MAPPING 'Total' AS colour 
+  SETTING method => 'tls'
 ```
 
 Simpson's Paradox is a case where a trend of combined groups is reversed when groups are considered separately.
 
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y, species AS stroke FROM ggsql:penguins
-   DRAW point SETTING opacity => 0
-   DRAW smooth SETTING method => 'ols'
-   DRAW smooth MAPPING 'All' AS stroke SETTING method => 'ols'
+DRAW point 
+  SETTING opacity => 0
+DRAW smooth 
+  SETTING method => 'ols'
+DRAW smooth 
+  MAPPING 'All' AS stroke 
+  SETTING method => 'ols'
 ```

@@ -10,9 +10,11 @@ ggsql allows you to write queries that combine SQL data retrieval with visualiza
 SELECT date, revenue, region
 FROM sales
 WHERE year = 2024
+
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
-SCALE x SETTING breaks => 'month'
+SCALE x
+  SETTING breaks => 'month'
 LABEL title => 'Sales by Region'
 ```
 

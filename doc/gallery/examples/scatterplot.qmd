@@ -14,9 +14,9 @@ A scatter plot displays the relationship between two numeric variables by mappin
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 LABEL
-    title => 'Penguin Bill Dimensions',
-    x => 'Bill Length (mm)',
-    y => 'Bill Depth (mm)'
+  title => 'Penguin Bill Dimensions',
+  x => 'Bill Length (mm)',
+  y => 'Bill Depth (mm)'
 ```
 
 ## Explanation
@@ -34,7 +34,7 @@ LABEL
 VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
 DRAW point
 LABEL
-    title => 'Penguin Bill Dimensions by Species',
-    x => 'Bill Length (mm)',
-    y => 'Bill Depth (mm)'
+  title => 'Penguin Bill Dimensions by Species',
+  x => 'Bill Length (mm)',
+  y => 'Bill Depth (mm)'
 ```

@@ -16,9 +16,9 @@ VISUALISE bill_len AS x, bill_dep AS y
 DRAW point
 FACET species
 LABEL
-    title => 'Bill Dimensions by Species',
-    x => 'Bill Length (mm)',
-    y => 'Bill Depth (mm)'
+  title => 'Bill Dimensions by Species',
+  x => 'Bill Length (mm)',
+  y => 'Bill Depth (mm)'
 ```
 
 ## Explanation
@@ -39,9 +39,9 @@ VISUALISE bill_len AS x, bill_dep AS y
 DRAW point
 FACET species BY island
 LABEL
-    title => 'Bill Dimensions by Species and Island',
-    x => 'Bill Length (mm)',
-    y => 'Bill Depth (mm)'
+  title => 'Bill Dimensions by Species and Island',
+  x => 'Bill Length (mm)',
+  y => 'Bill Depth (mm)'
 ```
 
 ### Free scales
@@ -54,7 +54,7 @@ VISUALISE bill_len AS x, bill_dep AS y
 DRAW point
 FACET species SETTING free => 'y'
 LABEL
-    title => 'Bill Dimensions (Free Y Scale)',
-    x => 'Bill Length (mm)',
-    y => 'Bill Depth (mm)'
+  title => 'Bill Dimensions (Free Y Scale)',
+  x => 'Bill Length (mm)',
+  y => 'Bill Depth (mm)'
 ```

@@ -50,19 +50,21 @@ Simple example polygon.
 
 ```{ggsql}
 VISUALISE x, y FROM df
-  DRAW polygon
+DRAW polygon
 ```
 
 Groups of individual polygons can be declared via `PARTITION BY`.
 
 ```{ggsql}
 VISUALISE x, y FROM df
-  DRAW polygon PARTITION BY id
+DRAW polygon 
+  PARTITION BY id
 ```
 
 Invoking a group through discrete aesthetics works as well.
 
 ```{ggsql}
 VISUALISE x, y FROM df
-  DRAW polygon MAPPING id AS colour
+DRAW polygon 
+  MAPPING id AS colour
 ```

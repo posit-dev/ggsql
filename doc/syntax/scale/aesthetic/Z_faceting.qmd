@@ -16,11 +16,11 @@ Since panels are discrete by nature it is not possible to have a continuous scal
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 FACET Date 
-    SETTING free => 'x'
+  SETTING free => 'x'
 SCALE panel
-    SETTING breaks => 'month'
+  SETTING breaks => 'month'
 SCALE x 
-    SETTING breaks => 'weeks'
+  SETTING breaks => 'weeks'
 ```
 
 In order to show data where the facet variable is null, it is necessary to explicitly include `null` in the input range of a facet aesthetic scale. Just like discrete positional aesthetics. You can also use `RENAMING` on the scale to customize facet strip labels.
@@ -30,5 +30,5 @@ VISUALISE sex AS x FROM ggsql:penguins
 DRAW bar
 FACET species
 SCALE panel FROM ['Adelie', null]
-    RENAMING null => 'The rest'
+  RENAMING null => 'The rest'
 ```

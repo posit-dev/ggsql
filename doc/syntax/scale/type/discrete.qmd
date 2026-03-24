@@ -84,7 +84,7 @@ There is only one setting relevant for discrete scales:
 VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
 DRAW point
 SCALE color FROM ['Adelie', 'Chinstrap', 'Gentoo']
-    SETTING reverse => true
+  SETTING reverse => true
 ```
 
 ## Renaming
@@ -106,7 +106,7 @@ You can combine formatting with direct renaming in which case the direct renamin
 VISUALISE sex AS x FROM ggsql:penguins
 DRAW bar
 SCALE x
-    RENAMING 'null' => 'missing'
+  RENAMING 'null' => 'missing'
 SCALE y FROM [0, null]
 ```
 
@@ -116,7 +116,7 @@ SCALE y FROM [0, null]
 VISUALISE species AS x FROM ggsql:penguins
 DRAW bar
 SCALE x 
-    RENAMING * => 'Species: {}'
+  RENAMING * => 'Species: {}'
 SCALE y FROM [0, null]
 ```
 
@@ -126,5 +126,5 @@ SCALE y FROM [0, null]
 VISUALISE bill_len AS x, bill_dep AS y, sex AS color FROM ggsql:penguins
 DRAW point
 SCALE color
-    RENAMING * => '{:Title}'
+  RENAMING * => '{:Title}'
 ```

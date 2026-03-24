@@ -40,18 +40,19 @@ Segments are useful when you have known start and end points of the data. For ex
 ```{ggsql}
 WITH edges AS (
   SELECT * FROM (VALUES
-      (0, 0, 1, 1, 'A'),
-      (1, 1, 2, 1, 'A'),
-      (2, 1, 3, 0, 'A'),
-      (0, 3, 1, 2, 'B'),
-      (1, 2, 2, 2, 'B'),
-      (2, 2, 3, 3, 'B'),
-      (1, 1, 1, 2, 'C'),
-      (2, 2, 2, 1, 'C')
+    (0, 0, 1, 1, 'A'),
+    (1, 1, 2, 1, 'A'),
+    (2, 1, 3, 0, 'A'),
+    (0, 3, 1, 2, 'B'),
+    (1, 2, 2, 2, 'B'),
+    (2, 2, 3, 3, 'B'),
+    (1, 1, 1, 2, 'C'),
+    (2, 2, 2, 1, 'C')
   ) AS t(x, y, xend, yend, type)
 )
 VISUALISE x, y, xend, yend FROM edges
-  DRAW segment MAPPING type AS stroke
+DRAW segment 
+  MAPPING type AS stroke
 ```
 
 You can use segments as part of a lollipop chart by anchoring one of the ends to 0.
@@ -59,12 +60,13 @@ Note that `xend` is missing and has taken up the value of `x`.
 
 ```{ggsql}
 SELECT ROUND(bill_dep) AS bill_dep, COUNT(*) AS n 
-  FROM ggsql:penguins 
-  GROUP BY ROUND(bill_dep)
+FROM ggsql:penguins 
+GROUP BY ROUND(bill_dep)
 
 VISUALISE bill_dep AS x, n AS y
-  DRAW segment MAPPING 0 AS yend
-  DRAW point
+DRAW segment 
+  MAPPING 0 AS yend
+DRAW point
 ```
 
 By overlaying a thick line on a thin line, you can create a candlestick chart.
@@ -84,9 +86,9 @@ FROM ggsql:airquality
 GROUP BY WEEKOFYEAR(Date)
 
 VISUALISE date AS x, trend AS colour
-  DRAW segment 
-    MAPPING open AS y, close AS yend
-    SETTING linewidth => 5
-  DRAW segment 
-    MAPPING low AS y, high AS yend
+DRAW segment 
+  MAPPING open AS y, close AS yend
+  SETTING linewidth => 5
+DRAW segment 
+  MAPPING low AS y, high AS yend
 ```

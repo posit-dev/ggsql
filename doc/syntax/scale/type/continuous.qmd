@@ -125,7 +125,7 @@ SCALE y VIA log
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 SCALE y
-    SETTING breaks => 5, pretty => false
+  SETTING breaks => 5, pretty => false
 ```
 
 #### Using an interval size for temporal breaks
@@ -134,7 +134,7 @@ SCALE y
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 SCALE x
-    SETTING breaks => '2 months'
+  SETTING breaks => '2 months'
 ```
 
 ## Settings
@@ -154,7 +154,7 @@ The following settings are recognised by continuous scales:
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x 
-    SETTING expand => [0.0, 10]
+  SETTING expand => [0.0, 10]
 ```
 
 #### Squish all y values to show them in the margin of the plot
@@ -163,7 +163,7 @@ SCALE x
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE y FROM [15, 20]
-    SETTING oob => 'squish'
+  SETTING oob => 'squish'
 ```
 
 #### Set breaks explicitly
@@ -172,7 +172,7 @@ SCALE y FROM [15, 20]
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x 
-    SETTING breaks => [37, 42, 55]
+  SETTING breaks => [37, 42, 55]
 ```
 
 #### Reverse the x axis
@@ -181,7 +181,7 @@ SCALE x
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x 
-    SETTING reverse => true
+  SETTING reverse => true
 ```
 
 ## Renaming
@@ -203,7 +203,7 @@ You can combine formatting with direct renaming in which case the direct renamin
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x 
-    RENAMING 50 => 'Fifty'
+  RENAMING 50 => 'Fifty'
 ```
 
 #### Adding suffix to break labels
@@ -212,7 +212,7 @@ SCALE x
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x 
-    RENAMING * => '{} mm'
+  RENAMING * => '{} mm'
 ```
 
 #### Using a formatter to control temporal formats
@@ -221,7 +221,7 @@ SCALE x
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 SCALE x
-    RENAMING * => '{:time %B}'
+  RENAMING * => '{:time %B}'
 ```
 
 #### Using a formatter to control number formats
@@ -230,5 +230,5 @@ SCALE x
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x
-    RENAMING * => '{:num %.3e}'
+  RENAMING * => '{:num %.3e}'
 ```

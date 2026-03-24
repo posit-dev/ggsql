@@ -9,7 +9,7 @@ The `FACET` syntax contains a number of subclauses that are all optional
 
 ```ggsql
 FACET <column> BY <column>
-    SETTING <parameter> => <value>, ...
+  SETTING <parameter> => <value>, ...
 ```
 
 The first `column` is mandatory. It names a column in the layer data that will be used for splitting the data. If the layer data does not contain the column the behavior for that layer depends on the `missing` parameter of the facet.
@@ -44,7 +44,8 @@ To customize facet strip labels (e.g., renaming categories), use the `RENAMING` 
 
 ```ggsql
 FACET region
-SCALE panel RENAMING 'N' => 'North', 'S' => 'South'
+SCALE panel 
+  RENAMING 'N' => 'North', 'S' => 'South'
 ```
 
 See the [facet scale documentation](../scale/aesthetic/Z_faceting.qmd) for more details on label customization.

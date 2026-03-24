@@ -48,25 +48,28 @@ Classic errorbar with point at centre.
 
 ```{ggsql}
 VISUALISE species AS x FROM penguin_summary
-  DRAW errorbar MAPPING low AS ymax, high AS ymin
-  DRAW point MAPPING mean AS y
+DRAW errorbar 
+  MAPPING low AS ymax, high AS ymin
+DRAW point 
+  MAPPING mean AS y
 ```
 
 Dynamite plot using bars instead of points, using extra wide hinges.
 
 ```{ggsql}
 VISUALISE species AS x FROM penguin_summary
-  DRAW errorbar 
-    MAPPING low AS ymax, high AS ymin
-    SETTING width => 40
-  DRAW bar MAPPING mean AS y
+DRAW errorbar 
+  MAPPING low AS ymax, high AS ymin
+  SETTING width => 40
+DRAW bar 
+  MAPPING mean AS y
 ```
 
 The hinges can be omitted by setting `null` as width.
 
 ```{ggsql}
 VISUALISE species AS x FROM penguin_summary
-  DRAW errorbar 
-    MAPPING low AS ymax, high AS ymin
-    SETTING width => null
+DRAW errorbar 
+  MAPPING low AS ymax, high AS ymin
+  SETTING width => null
 ```

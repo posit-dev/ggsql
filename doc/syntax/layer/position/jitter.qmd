@@ -37,7 +37,7 @@ Use jittering to better see the individual points
 ```{ggsql}
 VISUALISE species AS x, bill_dep AS y, sex AS fill FROM ggsql:penguins
 DRAW point
-    SETTING position => 'jitter'
+  SETTING position => 'jitter'
 ```
 
 By default, dodging is applied to separate the groups. Turn this off if you want the jitter to occupy the same space regardless of grouping
@@ -45,7 +45,7 @@ By default, dodging is applied to separate the groups. Turn this off if you want
 ```{ggsql}
 VISUALISE species AS x, bill_dep AS y, sex AS fill FROM ggsql:penguins
 DRAW point
-    SETTING position => 'jitter', dodge => false
+  SETTING position => 'jitter', dodge => false
 ```
 
 Use a `'density'` distribution to also indicate the distribution shape with the jitter
@@ -53,7 +53,7 @@ Use a `'density'` distribution to also indicate the distribution shape with the 
 ```{ggsql}
 VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
-    SETTING position => 'jitter', distribution => 'density'
+  SETTING position => 'jitter', distribution => 'density'
 ```
 
 When both axes are discrete the dodging follows a grid
@@ -61,7 +61,7 @@ When both axes are discrete the dodging follows a grid
 ```{ggsql}
 VISUALISE species AS x, sex AS y, body_mass AS fill FROM ggsql:penguins
 DRAW point
-    SETTING position => 'jitter'
+  SETTING position => 'jitter'
 SCALE BINNED fill
-    SETTING breaks => 4, pretty => false
+  SETTING breaks => 4, pretty => false
 ```
