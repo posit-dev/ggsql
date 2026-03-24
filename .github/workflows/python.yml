@@ -53,6 +53,12 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Check Rust formatting
+        run: cargo fmt --package ggsql-python -- --check
+
+      - name: Clippy
+        run: cargo clippy --package ggsql-python -- -D warnings
+
       - name: Build wheel
         uses: PyO3/maturin-action@v1
         with:
@@ -78,21 +84,3 @@ jobs:
       - name: Run tests
         shell: bash
         run: pytest ggsql-python/tests/ -v
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install tree-sitter-cli
-        run: npm install -g tree-sitter-cli
-
-      - name: Check Rust formatting
-        run: cargo fmt --package ggsql-python -- --check
-
-      - name: Clippy
-        run: cargo clippy --package ggsql-python -- -D warnings
