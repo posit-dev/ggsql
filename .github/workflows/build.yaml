@@ -29,26 +29,42 @@ jobs:
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
 
+      - name: Install LLVM
+        run: sudo apt-get install -y llvm
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Caching
         uses: Swatinem/rust-cache@v2
         with:
+          prefix-key: v4-rust
           shared-key: ${{ runner.os }}-build
           cache-on-failure: true
 
+      - name: Run Rust formatting check
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+
       - name: Build with cargo
-        run: cargo build --verbose
+        run: cargo build --all-targets
 
       - name: Run tree-sitter tests
         working-directory: tree-sitter-ggsql
         run: tree-sitter test
 
       - name: Run Rust tests
-        if: success()
         run: cargo test --lib --bins
 
-      - name: Run Rust formatting check
-        if: success()
-        run: cargo fmt --all -- --check
+      - name: Build WASM library
+        working-directory: ggsql-wasm/library
+        run: npm install && npm run build
+
+      - name: Build WASM package
+        working-directory: ggsql-wasm
+        run: wasm-pack build --target web --profile wasm --no-opt

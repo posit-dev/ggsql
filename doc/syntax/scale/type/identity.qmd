@@ -22,11 +22,12 @@ SCALE IDENTITY size
 
 ```{ggsql}
 WITH t(category, value, style) AS (VALUES
-    ('A', 45, 'forestgreen'),
-    ('B', 72, '#3401e3'),
-    ('C', 38, 'hsl(150deg 30% 60%)')
+  ('A', 45, 'forestgreen'),
+  ('B', 72, '#3401e3'),
+  ('C', 38, 'hsl(150deg 30% 60%)')
 )
 SELECT * FROM t
+
 VISUALISE category AS x, value AS y, style AS fill
 DRAW bar
 SCALE IDENTITY fill

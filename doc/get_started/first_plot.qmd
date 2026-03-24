@@ -7,11 +7,12 @@ The code below shows a simple ggsql example. But it is not just a static piece o
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y, species AS fill FROM ggsql:penguins
 DRAW point
-SCALE x RENAMING * => '{} mm'
+SCALE x 
+  RENAMING * => '{} mm'
 LABEL
-   title => 'Relationship between bill dimensions in 3 species of penguins',
-   x => 'Bill length',
-   y => 'Bill depth'
+  title => 'Relationship between bill dimensions in 3 species of penguins',
+  x => 'Bill length',
+  y => 'Bill depth'
 ```
 
 Congratulations! You have started your journey with ggsql! All examples you see on this site will be interactive. Please experiment to your heart's content. If you want a more dedicated exploration experience head to [our playground](wasm/) which provides a simple IDE with a number of examples to try out.

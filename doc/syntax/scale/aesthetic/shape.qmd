@@ -29,7 +29,7 @@ You can use these names directly when setting the shape of a point:
 
 ```ggsql
 DRAW point
-    SETTING shape => 'star'
+  SETTING shape => 'star'
 ```
 
 ## Palettes
@@ -41,8 +41,8 @@ Palettes are used by giving them as names in the `TO` clause:
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
 DRAW point
-    MAPPING bill_dep AS x, body_mass AS y, species AS shape
-    SETTING linewidth => 1, size => 5
+  MAPPING bill_dep AS x, body_mass AS y, species AS shape
+  SETTING linewidth => 1, size => 5
 SCALE shape TO open
 ```
 
@@ -51,8 +51,8 @@ Instead of using a named palette you can create one on the fly using an array of
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
 DRAW point
-    MAPPING bill_dep AS x, body_mass AS y, species AS shape
-    SETTING linewidth => 1, size => 5
+  MAPPING bill_dep AS x, body_mass AS y, species AS shape
+  SETTING linewidth => 1, size => 5
 SCALE shape TO ['star', 'bowtie', 'square-plus']
 ```
 

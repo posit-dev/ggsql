@@ -50,8 +50,10 @@ Add multiple `DRAW` clauses to your query. Each `DRAW` creates a new layer:
 ```ggsql
 SELECT x, y FROM data
 VISUALISE x, y
-DRAW line MAPPING x AS x, y AS y
-DRAW point MAPPING x AS x, y AS y
+DRAW line 
+  MAPPING x AS x, y AS y
+DRAW point 
+  MAPPING x AS x, y AS y
 ```
 :::
 
@@ -64,7 +66,10 @@ Use the `LABEL` clause:
 SELECT date, revenue FROM sales
 VISUALISE date AS x, revenue AS y
 DRAW line
-LABEL title => 'Sales Over Time', x => 'Date', y => 'Revenue (USD)'
+LABEL 
+  title => 'Sales Over Time', 
+  x => 'Date', 
+  y => 'Revenue (USD)'
 ```
 :::
 
@@ -78,7 +83,7 @@ SELECT date, revenue FROM sales
 VISUALISE date AS x, revenue AS y
 DRAW line
 DRAW point
-    FILTER revenue = max(revenue)
+  FILTER revenue = max(revenue)
 ```
 
 Further, any query before the `VISUALISE` clause is passed directly to the database so anything supported by your backend can go in there.

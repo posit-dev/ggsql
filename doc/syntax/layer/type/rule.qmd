@@ -39,31 +39,37 @@ FROM ggsql:airquality
 WHERE Month = 5
 
 VISUALISE 
-  DRAW line MAPPING date AS x, temperature AS y
-  PLACE rule SETTING y => 70
+DRAW line 
+  MAPPING date AS x, temperature AS y
+PLACE rule 
+  SETTING y => 70
 ```
 
 Add a vertical line to mark a specific value:
 
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
-  DRAW point MAPPING bill_len AS x, bill_dep AS y
-  PLACE rule SETTING x => 45
+DRAW point 
+  MAPPING bill_len AS x, bill_dep AS y
+PLACE rule 
+  SETTING x => 45
 ```
 
 Add multiple threshold lines with different colors. Note that because we're mapping data from data, we use the `DRAW` clause instead of the `PLACE` clause.
 
 ```{ggsql}
 WITH thresholds(value, label) AS (VALUES
-    (70, 'Target'),
-    (80, 'Warning'),
-    (90, 'Critical')
+  (70, 'Target'),
+  (80, 'Warning'),
+  (90, 'Critical')
 )
 SELECT Date AS date, temp AS temperature
 FROM ggsql:airquality
 WHERE Month = 5
 
 VISUALISE 
-  DRAW line MAPPING date AS x, temperature AS y
-  DRAW rule MAPPING value AS y, label AS colour FROM thresholds
+DRAW line 
+  MAPPING date AS x, temperature AS y
+DRAW rule 
+  MAPPING value AS y, label AS colour FROM thresholds
 ```

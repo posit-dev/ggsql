@@ -34,6 +34,7 @@ jobs:
       - name: Caching
         uses: Swatinem/rust-cache@v2
         with:
+          prefix-key: v4-rust
           shared-key: ${{ runner.os }}-R-CMD-Check
           cache-on-failure: true
 

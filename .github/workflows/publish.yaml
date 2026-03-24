@@ -8,11 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-wasm:
-    uses: ./.github/workflows/wasm.yaml
-
   publish-website:
-    needs: build-wasm
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -26,12 +22,6 @@ jobs:
           sudo docker image prune --all --force
           sudo docker builder prune -a
 
-      - name: Download WASM demo artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: wasm-demo
-          path: doc/wasm
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -40,14 +30,24 @@ jobs:
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
 
+      - name: Install LLVM
+        run: sudo apt-get install -y llvm
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Caching
         uses: Swatinem/rust-cache@v2
         with:
+          prefix-key: v4-rust
           shared-key: ${{ runner.os }}-publish
           cache-on-failure: true
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+
+      - name: Install wasm-opt
+        run: cargo install wasm-opt
 
       - name: Setup quarto
         uses: quarto-dev/quarto-actions/setup@v2
@@ -62,6 +62,26 @@ jobs:
 
       - name: Install Jupyter kernel
         run: ./target/release/ggsql-jupyter --install
+
+      - name: Build WASM library
+        working-directory: ggsql-wasm/library
+        run: npm install && npm run build
+
+      - name: Build WASM package
+        working-directory: ggsql-wasm
+        run: wasm-pack build --target web --profile wasm --no-opt
+
+      - name: Optimise WASM binary
+        working-directory: ggsql-wasm
+        run: wasm-opt pkg/ggsql_wasm_bg.wasm -o pkg/ggsql_wasm_bg.wasm -Oz --all-features
+
+      - name: Build WASM demo
+        working-directory: ggsql-wasm/demo
+        run: npm install && npm run build
+
+      - name: Copying output to doc/wasm...
+        working-directory: ggsql-wasm/demo
+        run: cp -r dist ../../doc/wasm
 
       - name: Render and Publish
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'

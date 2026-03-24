@@ -49,7 +49,8 @@ WITH edges(x, y, xend, yend, type) AS (VALUES
     (2, 2, 2, 1, 'C')
 )
 VISUALISE x, y, xend, yend FROM edges
-  DRAW segment MAPPING type AS stroke
+DRAW segment 
+  MAPPING type AS stroke
 ```
 
 You can use segments as part of a lollipop chart by anchoring one of the ends to 0.
@@ -57,12 +58,13 @@ Note that `xend` is missing and has taken up the value of `x`.
 
 ```{ggsql}
 SELECT ROUND(bill_dep) AS bill_dep, COUNT(*) AS n 
-  FROM ggsql:penguins 
-  GROUP BY ROUND(bill_dep)
+FROM ggsql:penguins 
+GROUP BY ROUND(bill_dep)
 
 VISUALISE bill_dep AS x, n AS y
-  DRAW segment MAPPING 0 AS yend
-  DRAW point
+DRAW segment 
+  MAPPING 0 AS yend
+DRAW point
 ```
 
 By overlaying a thick line on a thin line, you can create a candlestick chart.
@@ -82,9 +84,9 @@ FROM ggsql:airquality
 GROUP BY Week
 
 VISUALISE date AS x, trend AS colour
-  DRAW segment 
-    MAPPING open AS y, close AS yend
-    SETTING linewidth => 5
-  DRAW segment 
-    MAPPING low AS y, high AS yend
+DRAW segment 
+  MAPPING open AS y, close AS yend
+  SETTING linewidth => 5
+DRAW segment 
+  MAPPING low AS y, high AS yend
 ```
