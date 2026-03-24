@@ -281,14 +281,14 @@ impl Reader for SqliteReader {
             .next()
             .map_err(|e| GgsqlError::ReaderError(format!("Failed to fetch row: {}", e)))?
         {
-            for col_idx in 0..column_count {
+            for (col_idx, col_vec) in col_values.iter_mut().enumerate().take(column_count) {
                 let value: rusqlite::types::Value = row.get(col_idx).map_err(|e| {
                     GgsqlError::ReaderError(format!(
                         "Failed to get value at column {}: {}",
                         col_idx, e
                     ))
                 })?;
-                col_values[col_idx].push(value);
+                col_vec.push(value);
             }
         }
 
