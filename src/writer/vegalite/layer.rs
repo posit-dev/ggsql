@@ -1540,20 +1540,20 @@ impl GeomRenderer for ErrorBarRenderer {
         let mut layers = vec![layer_spec.clone()];
 
         // Determine if this is a vertical or horizontal error bar and set up parameters
-        let is_vertical = layer_spec["encoding"]["x2"].is_null();
+        let is_vertical = !is_transposed(layer);
         let (orient, position, min_field, max_field) = if is_vertical {
             (
                 "horizontal",
                 "y",
-                naming::aesthetic_column("ymin"),
-                naming::aesthetic_column("ymax"),
+                naming::aesthetic_column("pos2min"),
+                naming::aesthetic_column("pos2max"),
             )
         } else {
             (
                 "vertical",
                 "x",
-                naming::aesthetic_column("xmin"),
-                naming::aesthetic_column("xmax"),
+                naming::aesthetic_column("pos1min"),
+                naming::aesthetic_column("pos1max"),
             )
         };
 
