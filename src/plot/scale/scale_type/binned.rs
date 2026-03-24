@@ -338,11 +338,9 @@ impl ScaleTypeTrait for Binned {
                     Some(InputRange::Continuous(r)) => Some(r.as_slice()),
                     _ => scale.input_range.as_deref(),
                 };
-                if let Some(breaks) = self.resolve_breaks(
-                    break_range,
-                    &scale.properties,
-                    scale.transform.as_ref(),
-                ) {
+                if let Some(breaks) =
+                    self.resolve_breaks(break_range, &scale.properties, scale.transform.as_ref())
+                {
                     // For binned implicit, keep all breaks (they extend past data).
                     // For binned explicit, filter to input range.
                     let filtered = if binned_implicit {
