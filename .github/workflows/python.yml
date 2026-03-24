@@ -45,7 +45,7 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: v2-rust
+          prefix-key: v3-rust
           shared-key: ${{ matrix.os }}-python
           cache-on-failure: true
 

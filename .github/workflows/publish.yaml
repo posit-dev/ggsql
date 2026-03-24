@@ -39,7 +39,7 @@ jobs:
       - name: Caching
         uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: v2-rust
+          prefix-key: v3-rust
           shared-key: ${{ runner.os }}-publish
           cache-on-failure: true
 
