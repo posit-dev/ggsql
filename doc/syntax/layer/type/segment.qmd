@@ -38,8 +38,7 @@ The segment layer has no orientations. The axes are treated symmetrically.
 Segments are useful when you have known start and end points of the data. For example in a graph
 
 ```{ggsql}
-WITH edges AS (
-  SELECT * FROM (VALUES
+WITH edges(x, y, xend, yend, type) AS (VALUES
     (0, 0, 1, 1, 'A'),
     (1, 1, 2, 1, 'A'),
     (2, 1, 3, 0, 'A'),
@@ -48,7 +47,6 @@ WITH edges AS (
     (2, 2, 3, 3, 'B'),
     (1, 1, 1, 2, 'C'),
     (2, 2, 2, 1, 'C')
-  ) AS t(x, y, xend, yend, type)
 )
 VISUALISE x, y, xend, yend FROM edges
 DRAW segment 
@@ -83,7 +81,7 @@ SELECT
     ELSE 'warmer'
   END AS trend
 FROM ggsql:airquality
-GROUP BY WEEKOFYEAR(Date)
+GROUP BY Week
 
 VISUALISE date AS x, trend AS colour
 DRAW segment 

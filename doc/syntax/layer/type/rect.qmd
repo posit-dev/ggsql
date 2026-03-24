@@ -2,7 +2,7 @@
 title: "Rectangle"
 ---
 
-> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
 Rectangles can be used to draw heatmaps or indicate ranges.
 
@@ -82,7 +82,7 @@ SELECT
   MIN(Temp) AS min,
   MAX(Temp) AS max
 FROM ggsql:airquality
-GROUP BY WEEKOFYEAR(Date)
+GROUP BY Week
 
 VISUALISE start AS xmin, end AS xmax, min AS ymin, max AS ymax
 DRAW rect

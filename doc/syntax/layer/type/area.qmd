@@ -46,10 +46,9 @@ We can reshape the data to 'long format' from our wide format.
 
 ```{ggsql}
 CREATE TABLE long_airquality AS
-SELECT * FROM ggsql:airquality
-UNPIVOT(
-  Value FOR Series IN (Temp, Wind)
-) AS u;
+SELECT Date, 'Temp' AS Series, Temp AS Value FROM ggsql:airquality
+UNION ALL
+SELECT Date, 'Wind' AS Series, Wind AS Value FROM ggsql:airquality;
 ```
 
 Which means we can display multiple series at once, by mapping the identifier to an aesthetic.

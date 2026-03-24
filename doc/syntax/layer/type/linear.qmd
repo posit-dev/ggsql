@@ -54,12 +54,10 @@ PLACE linear
 Add multiple reference lines with different colors from a separate dataset. Note we're mapping from data here, so we use `DRAW` instead of `PLACE`.
 
 ```{ggsql}
-WITH lines AS (
-  SELECT * FROM (VALUES
-    (0.4, -1, 'Line A'),
-    (0.2, 8, 'Line B'),
-    (0.8, -19, 'Line C')
-  ) AS t(coef, intercept, label)
+WITH lines(coef, intercept, label) AS (VALUES
+  (0.4, -1, 'Line A'),
+  (0.2, 8, 'Line B'),
+  (0.8, -19, 'Line C')
 )
 VISUALISE FROM ggsql:penguins
 DRAW point 

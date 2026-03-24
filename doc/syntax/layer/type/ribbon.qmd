@@ -44,13 +44,13 @@ Ribbon plots are great for showing the range of some aggregation.
 
 ```{ggsql}
 // Weekly aggregation of temperature
-SELECT 
-  WEEKOFYEAR(Date) AS Week, 
-  MAX(Temp) AS MaxTemp, 
-  MEAN(Temp) AS MeanTemp,
-  MIN(Temp) AS MinTemp 
+SELECT
+  Week,
+  MAX(Temp) AS MaxTemp,
+  AVG(Temp) AS MeanTemp,
+  MIN(Temp) AS MinTemp
 FROM ggsql:airquality
-GROUP BY WEEKOFYEAR(Date)
+GROUP BY Week
 
 VISUALISE Week AS x
 DRAW ribbon 

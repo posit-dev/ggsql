@@ -58,12 +58,10 @@ PLACE rule
 Add multiple threshold lines with different colors. Note that because we're mapping data from data, we use the `DRAW` clause instead of the `PLACE` clause.
 
 ```{ggsql}
-WITH thresholds AS (
-  SELECT * FROM (VALUES
-    (70, 'Target'),
-    (80, 'Warning'),
-    (90, 'Critical')
-  ) AS t(value, label)
+WITH thresholds(value, label) AS (VALUES
+  (70, 'Target'),
+  (80, 'Warning'),
+  (90, 'Critical')
 )
 SELECT Date AS date, temp AS temperature
 FROM ggsql:airquality

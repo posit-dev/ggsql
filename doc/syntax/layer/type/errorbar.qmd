@@ -35,13 +35,13 @@ The orientation of errorbar layers is deduced directly from the mapping, because
 #| code-fold: true
 #| code-summary: "Create example data"
 CREATE TABLE penguin_summary AS
-SELECT
-  species,
-  MEAN(bill_dep) - STDDEV(bill_dep) AS low,
-  MEAN(bill_dep) AS mean,
-  MEAN(bill_dep) + STDDEV(bill_dep) AS high
-FROM ggsql:penguins
-GROUP BY species
+WITH stats AS (
+  SELECT species, AVG(bill_dep) AS mean
+  FROM ggsql:penguins
+  GROUP BY species
+)
+SELECT species, mean - 1.5 AS low, mean, mean + 1.5 AS high
+FROM stats
 ```
 
 Classic errorbar with point at centre.

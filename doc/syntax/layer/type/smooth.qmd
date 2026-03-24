@@ -2,7 +2,7 @@
 title: "Smooth"
 ---
 
-> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
 Smooth layers are used to display a trendline among a series of observations.
 
@@ -119,8 +119,8 @@ The default `method => 'nw'` might be too coarse for timeseries.
 <!-- Ideally, we would just use the date here directly but we currently require numeric data -->
 
 ```{ggsql}
-SELECT *, EPOCH(Date) AS numdate FROM ggsql:airquality
-VISUALISE numdate AS x, Temp AS y
+SELECT * FROM ggsql:airquality
+VISUALISE Epoch AS x, Temp AS y
 DRAW point
 DRAW smooth
 ```
@@ -128,8 +128,8 @@ DRAW smooth
 You can make the fit more granular by reducing the bandwidth, for example using `adjust`.
 
 ```{ggsql}
-SELECT *, EPOCH(Date) AS numdate FROM ggsql:airquality
-VISUALISE numdate AS x, Temp AS y
+SELECT * FROM ggsql:airquality
+VISUALISE Epoch AS x, Temp AS y
 DRAW point
 DRAW smooth 
   SETTING adjust => 0.2
