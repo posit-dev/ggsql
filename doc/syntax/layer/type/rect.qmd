@@ -66,8 +66,11 @@ DRAW rect
 If `x` is continuous, then `width` can be variable. Likewise for `y` and `height`.
 
 ```{ggsql}
-SELECT *, Temp / (SELECT MAX(Temp) FROM ggsql:airquality) AS norm_temp 
+SELECT 
+  *, 
+  CAST(Temp AS REAL) / (SELECT MAX(Temp) FROM ggsql:airquality) AS norm_temp 
 FROM ggsql:airquality
+
 VISUALISE Day AS x, Month AS y, Temp AS colour
 DRAW rect 
   MAPPING norm_temp AS width, norm_temp AS height

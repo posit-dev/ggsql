@@ -3,7 +3,7 @@
 //! This module handles building SQL queries for layers, applying pre-stat
 //! transformations, stat transforms, and post-query operations.
 
-use crate::plot::aesthetic::AestheticContext;
+use crate::plot::aesthetic::{self, AestheticContext};
 use crate::plot::layer::is_transposed;
 use crate::plot::layer::orientation::{flip_positional_aesthetics, resolve_orientation};
 use crate::plot::{
@@ -579,6 +579,20 @@ where
                     let original_name = consumed_original_names
                         .get(aesthetic)
                         .cloned()
+                        .or_else(|| {
+                            // For variant positional aesthetics (e.g., pos1min, pos2max),
+                            // fall back to the primary aesthetic's original name (pos1, pos2).
+                            // This ensures rect's expanded min/max aesthetics inherit the
+                            // original column name from the user's x/y mapping.
+                            aesthetic::parse_positional(aesthetic).and_then(|(slot, suffix)| {
+                                if !suffix.is_empty() {
+                                    let primary = format!("pos{}", slot);
+                                    consumed_original_names.get(&primary).cloned()
+                                } else {
+                                    None
+                                }
+                            })
+                        })
                         .or_else(|| Some(stat.clone()));
 
                     let value = AestheticValue::Column {
