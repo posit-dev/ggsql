@@ -64,8 +64,11 @@ VISUALISE Day AS x, Month AS y, Temp AS colour FROM ggsql:airquality
 If `x` is continuous, then `width` can be variable. Likewise for `y` and `height`.
 
 ```{ggsql}
-SELECT *, Temp / (SELECT MAX(Temp) FROM ggsql:airquality) AS norm_temp 
+SELECT 
+  *, 
+  CAST(Temp AS REAL) / (SELECT MAX(Temp) FROM ggsql:airquality) AS norm_temp 
 FROM ggsql:airquality
+
 VISUALISE 
     Day AS x, 
     Month AS y, 
