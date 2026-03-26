@@ -1,0 +1,16 @@
+---
+title: The rest of the owl
+---
+
+We have covered the three most important concepts of the ggsql syntax: `VISUALISE`, `DRAW`, and `SCALE`. Now it's time to learn how to draw the rest of the owl.
+
+![](../assets/how_to_owl.png)
+
+Thankfully, we will give you a bit more help than the illustration above in understanding the last bits of ggsql.
+
+## Coordinate systems
+In the earlier section we talked about position aesthetics being special because they are being orchestrated by the coordinate system
+
+## Faceting
+
+## Labelling

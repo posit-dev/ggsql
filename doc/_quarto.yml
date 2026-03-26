@@ -123,6 +123,10 @@ website:
           href: get_started/grammar.qmd
         - text: Anatomy of ggsql
           href: get_started/anatomy.qmd
+        - text: Tooling
+          href: get_started/tooling.qmd
+        - text: The rest of the owl
+          href: get_started/the_rest.qmd
 
 format:
   html:

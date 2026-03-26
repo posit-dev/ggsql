@@ -186,7 +186,21 @@ fn build_layers(
         layer_spec["transform"] = json!(transforms);
 
         // Build encoding for this layer (pass free scales and coord kind)
-        let encoding = build_layer_encoding(layer, df, spec, free_scales, coord_kind)?;
+        let mut encoding = build_layer_encoding(layer, df, spec, free_scales, coord_kind)?;
+
+        // For point marks, remove fill: null from encoding — Vega-Lite point marks
+        // are unfilled by default, so omitting it achieves the same visual result
+        // without making legend symbols (e.g., size) invisible. Other mark types
+        // (bar, area, etc.) are filled by default, so fill: null must be preserved.
+        if layer.geom.geom_type() == crate::plot::layer::geom::GeomType::Point
+            && encoding
+                .get("fill")
+                .and_then(|v| v.get("value"))
+                .is_some_and(|v| v.is_null())
+        {
+            encoding.remove("fill");
+        }
+
         layer_spec["encoding"] = Value::Object(encoding);
 
         // Apply geom-specific spec modifications via renderer
