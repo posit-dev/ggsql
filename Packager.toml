@@ -1,0 +1,11 @@
+name = "ggsql"
+
+[[bin]]
+name = "ggsql"
+path = "target/release/ggsql"
+main = true
+
+[[bin]]
+name = "ggsql-jupyter"
+path = "target/release/ggsql-jupyter"
+main = false
