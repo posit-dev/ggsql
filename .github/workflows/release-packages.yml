@@ -63,8 +63,15 @@ jobs:
         uses: ./.github/workflows/actions/sign-files
         with:
           paths: |
-            ./target/release/packager/*.exe
-            ./target/release/packager/*.msi
+            ./src/target/release/packager/*.exe
+            ./src/target/release/packager/*.msi
+        env:
+          # environment variables required to sign with signtool
+          SM_HOST: ${{ secrets.SM_HOST }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY }}
+          SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE_B64 }}
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+          SM_CLIENT_CERT_FINGERPRINT: ${{ secrets.SM_CLIENT_CERT_FINGERPRINT }}
 
       - name: Upload NSIS installer
         uses: actions/upload-artifact@v4
@@ -120,7 +127,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ggsql-macos-dmg
-          path: target/release/packager/*.dmg
+          path: src/target/release/packager/*.dmg
           retention-days: 30
 
   build-linux:
@@ -167,5 +174,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ggsql-linux-deb
-          path: target/release/packager/*.deb
+          path: src/target/release/packager/*.deb
           retention-days: 30
