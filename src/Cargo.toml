@@ -108,6 +108,7 @@ copyright = "Copyright (c) 2026 ggsql Team"
 # Binaries to include in the package
 binaries = [
   { path = "ggsql", main = true },
+  { path = "ggsql-jupyter", main = false },
 ]
 
 # Resources to bundle (optional)
