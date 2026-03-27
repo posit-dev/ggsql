@@ -108,6 +108,15 @@ jobs:
         with:
           targets: x86_64-apple-darwin, aarch64-apple-darwin
 
+      - name: Set up Apple notarization key
+        run: |
+          mkdir -p ~/.private_keys
+          echo -n "$APPLE_API_KEY_BASE64" | base64 --decode -o ~/.private_keys/AuthKey_${APPLE_API_KEY}.p8
+          chmod 600 ~/.private_keys/AuthKey_${APPLE_API_KEY}.p8
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.GWS_APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY: ${{ secrets.GWS_APPLE_API_KEY }}
+
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
 
@@ -116,12 +125,22 @@ jobs:
 
       - name: Build DMG installer (x86_64)
         run: cargo packager --release --formats dmg
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.GWS_APPLE_SIGN_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.GWS_APPLE_SIGN_PW }}
+          APPLE_API_KEY: ${{ secrets.GWS_APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.GWS_APPLE_API_ISSUER }}
 
       - name: Build ggsql binary (aarch64)
         run: cargo build --release --bin ggsql --bin ggsql-jupyter --target aarch64-apple-darwin
 
       - name: Build DMG installer (aarch64)
         run: cargo packager --release --target aarch64-apple-darwin --formats dmg
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.GWS_APPLE_SIGN_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.GWS_APPLE_SIGN_PW }}
+          APPLE_API_KEY: ${{ secrets.GWS_APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.GWS_APPLE_API_ISSUER }}
 
       - name: Upload DMG installers
         uses: actions/upload-artifact@v4
