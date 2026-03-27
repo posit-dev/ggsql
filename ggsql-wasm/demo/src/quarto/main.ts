@@ -19,6 +19,7 @@ interface CellInfo {
   error: string | null;
   editor: EditorInstance | null;
   errorDisplay: HTMLElement | null;
+  errorTimerId: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -117,6 +118,7 @@ function gatherCells(): CellInfo[] {
       error: null,
       editor: null,
       errorDisplay: null,
+      errorTimerId: null,
     });
   }
 
@@ -246,14 +248,50 @@ async function applyEditors(
   }
 }
 
+const ERROR_DELAY_MS = 1000;
+
+function clearError(cell: CellInfo): void {
+  if (cell.errorTimerId !== null) {
+    clearTimeout(cell.errorTimerId);
+    cell.errorTimerId = null;
+  }
+  const el = cell.errorDisplay!;
+  el.innerHTML = "";
+  el.classList.remove("visible", "collapsed");
+}
+
+function showError(cell: CellInfo, message: string): void {
+  clearError(cell);
+  cell.errorTimerId = window.setTimeout(() => {
+    cell.errorTimerId = null;
+    const el = cell.errorDisplay!;
+    el.innerHTML = "";
+
+    const toggle = document.createElement("span");
+    toggle.className = "ggsql-error-toggle";
+    toggle.textContent = "\u25B6";
+
+    const text = document.createElement("span");
+    text.className = "ggsql-error-text";
+    text.textContent = message;
+
+    el.appendChild(toggle);
+    el.appendChild(text);
+    el.classList.add("visible", "collapsed");
+
+    el.onclick = () => {
+      const isCollapsed = el.classList.toggle("collapsed");
+      toggle.textContent = isCollapsed ? "\u25B6" : "\u25BC";
+    };
+  }, ERROR_DELAY_MS);
+}
+
 async function executeCell(
   cell: CellInfo,
   editorInst: EditorInstance,
   ctx: WasmContextManager
 ): Promise<void> {
-  const errorDisplay = cell.errorDisplay!;
-  errorDisplay.textContent = "";
-  errorDisplay.classList.remove("visible");
+  clearError(cell);
 
   const currentQuery = rewriteCsvRefs(editorInst.getValue());
 
@@ -270,8 +308,7 @@ async function executeCell(
       ctx.executeSql(currentQuery);
     }
   } catch (e: any) {
-    errorDisplay.textContent = String(e);
-    errorDisplay.classList.add("visible");
+    showError(cell, String(e));
   }
 }
 

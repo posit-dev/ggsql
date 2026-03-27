@@ -24,11 +24,37 @@
   color: #AE2012;
   background: #FFF0ED;
   border-top: 1px solid #E5A4A0;
-  white-space: pre-wrap;
-  word-break: break-word;
   display: none;
+  cursor: pointer;
+  gap: 6px;
+  align-items: flex-start;
 }
 
 .ggsql-error-display.visible {
-  display: block;
+  display: flex;
+}
+
+.ggsql-error-toggle {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1.6;
+  user-select: none;
+  width: 1em;
+  text-align: center;
+}
+
+.ggsql-error-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.ggsql-error-display.collapsed .ggsql-error-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ggsql-error-display:not(.collapsed) .ggsql-error-text {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
