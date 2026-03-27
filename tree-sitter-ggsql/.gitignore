@@ -1,6 +1,5 @@
 # Rust artifacts
 target/
-Cargo.lock
 
 # Node artifacts
 build/
