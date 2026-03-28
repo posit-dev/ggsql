@@ -2,7 +2,7 @@
   "name": "ggsql",
   "displayName": "ggsql",
   "description": "Syntax highlighting and language runtime for ggsql - SQL with declarative visualization",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "publisher": "ggsql",
   "engines": {
     "vscode": "^1.75.0"
