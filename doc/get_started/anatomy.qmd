@@ -36,7 +36,7 @@ Bringing all of these things together, a `VISUALISE` clause could look like this
 VISUALISE body_mass AS x, bill_len AS y FROM ggsql:penguins
 ```
 
-### DRAW
+### `DRAW`
 Following `VISUALISE` you'd usually provide one or more [`DRAW`](../syntax/clause/draw.qmd) clauses which will define your layer. The `DRAW` clause is arguably the most complex clause, but the basic usage is straightforward: You provide the type of the layer, any additional mapping if needed, and perhaps modify the settings of the layer. To achieve this we employ the `MAPPING` and `SETTING` clauses.
 
 The input to the `MAPPING` clause looks exactly like what we saw above for the `VISUALISE` clause. You can provide mappings and optionally a data source if you want the layer to use a data source different from the global data. The `SETTING` clause allows you to both *set* aesthetics as well as set parameters specific to the layer (e.g. number of bins in a histogram).
@@ -58,7 +58,7 @@ but, if mappings and data source have already been taken care off, it can be as 
 DRAW point
 ```
 
-### SCALE
+### `SCALE`
 As [described above](#scales) ggsql automatically creates a default for mapped aesthetics and if those suit your need there is no reason to modify them. However, if change is needed you do it with the [`SCALE`](../syntax/clause/scale.qmd) clause. 
 
 The clause both allows you to set the type of scale, the input range, the output range, and transform, and let you control breaks and label formatting. So, the clause can end up with a lot of information but the syntax has been designed so it reads very natural. Further, every part is optional and can be left out if the default fits. An example of a rather complex `SCALE` clause could be:
@@ -90,5 +90,12 @@ SCALE BINNED size TO [4, 15]
 ```
 
 In the above we create a global mapping of bill_len to the `x` aesthetic and bill_dep to the `y` aesthetic using the built-in penguins dataset. We use `DRAW` to create two layers: A point layer for a scatter plot and a smooth layer for regression lines. For the point layer we _map_ the body_mass to size to create a bubble chart and _set_ the fill aesthetic to be empty (`null`) so only the outline is shown. For the smooth layer we set the layer parameter `method` to `'ols'` to estimate a straight regression line. Lastly, we modify the stroke scale to use the dark2 palette from the ColorBrewer project and apply a binned scale to size that goes from 4pt to 15pt with 4 breaks (resulting in 3 bins).
+
+While the query above may feel like a mouthful, remember that most visualizations are much simpler:
+
+```{ggsql}
+VISUALISE body_mass AS x FROM ggsql:penguins
+DRAW histogram
+```
 
 In the next section we will introduce the remaining parts of the grammar and the related syntax, but the parts covered here will already take you a very long way.

@@ -1077,11 +1077,35 @@ impl Writer for VegaLiteWriter {
         if spec.facet.is_none() {
             vl_spec["width"] = json!("container");
             vl_spec["height"] = json!("container");
+        } else {
+            // Faceted charts need explicit numeric dimensions (moved into inner spec
+            // by apply_faceting). Arc marks especially need this since their radius
+            // range is [0, min(width, height) / 2] — without dimensions, arcs are invisible.
+            let is_polar = spec
+                .project
+                .as_ref()
+                .is_some_and(|p| p.coord.coord_kind() == CoordKind::Polar);
+            if is_polar {
+                vl_spec["width"] = json!(350);
+                vl_spec["height"] = json!(350);
+            }
         }
 
         if let Some(labels) = &spec.labels {
-            if let Some(title) = labels.labels.get("title") {
-                vl_spec["title"] = json!(title);
+            let title = labels.labels.get("title");
+            let subtitle = labels.labels.get("subtitle");
+            match (title, subtitle) {
+                (Some(t), Some(st)) => {
+                    // Vega-Lite uses an object for title + subtitle
+                    vl_spec["title"] = json!({"text": t, "subtitle": st});
+                }
+                (Some(t), None) => {
+                    vl_spec["title"] = json!(t);
+                }
+                (None, Some(st)) => {
+                    vl_spec["title"] = json!({"text": "", "subtitle": st});
+                }
+                (None, None) => {}
             }
         }
 
