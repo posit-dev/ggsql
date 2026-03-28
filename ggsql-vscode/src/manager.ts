@@ -28,6 +28,30 @@ interface KernelCandidate {
 }
 
 /**
+ * Try to resolve a binary name to its absolute path via the system PATH.
+ * Returns the original value if resolution fails or the path is already absolute.
+ */
+function resolveToAbsolutePath(binaryPath: string): string {
+    if (path.isAbsolute(binaryPath)) {
+        return binaryPath;
+    }
+    try {
+        const cmd = process.platform === 'win32' ? 'where' : 'which';
+        const resolved = cp.execFileSync(cmd, [binaryPath], {
+            encoding: 'utf8',
+            timeout: 5000,
+        }).trim().split(/\r?\n/)[0];
+        if (resolved && path.isAbsolute(resolved)) {
+            log(`Resolved '${binaryPath}' to '${resolved}'`);
+            return resolved;
+        }
+    } catch {
+        log(`Could not resolve '${binaryPath}' to absolute path, using as-is`);
+    }
+    return binaryPath;
+}
+
+/**
  * Discover all available ggsql-jupyter kernel binaries
  *
  * Checks in priority order:
@@ -94,7 +118,7 @@ function discoverKernelPaths(): KernelCandidate[] {
     }
 
     // 4. PATH fallback (last resort)
-    candidates.push({ kernelPath: binaryName, source: 'Path' });
+    candidates.push({ kernelPath: resolveToAbsolutePath(binaryName), source: 'Path' });
 
     // Deduplicate by resolved absolute path
     const seen = new Set<string>();
@@ -317,30 +341,6 @@ function writeKernelJson(kernelDir: string, kernelPath: string): void {
 }
 
 /**
- * Try to resolve a binary name to its absolute path via the system PATH.
- * Returns the original value if resolution fails.
- */
-function resolveKernelPath(kernelPath: string): string {
-    if (path.isAbsolute(kernelPath)) {
-        return kernelPath;
-    }
-    try {
-        const cmd = process.platform === 'win32' ? 'where' : 'which';
-        const resolved = cp.execFileSync(cmd, [kernelPath], {
-            encoding: 'utf8',
-            timeout: 5000,
-        }).trim().split(/\r?\n/)[0];
-        if (resolved && path.isAbsolute(resolved)) {
-            log(`Resolved '${kernelPath}' to '${resolved}'`);
-            return resolved;
-        }
-    } catch {
-        log(`Could not resolve '${kernelPath}' to absolute path, using as-is`);
-    }
-    return kernelPath;
-}
-
-/**
  * Ensure a Jupyter kernel spec is installed so that external tools like
  * Quarto can discover ggsql. Called from session creation/restoration.
  *
@@ -348,7 +348,7 @@ function resolveKernelPath(kernelPath: string): string {
  * user-level kernelspec directory.
  */
 function ensureKernelSpecInstalled(kernelPath: string): void {
-    writeKernelJson(getJupyterKernelDir(), resolveKernelPath(kernelPath));
+    writeKernelJson(getJupyterKernelDir(), kernelPath);
 }
 
 /**
@@ -396,7 +396,7 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
                     // the user kernelspec dir immediately so that Quarto/Jupyter
                     // can discover ggsql even if no session is ever started.
                     if (candidate.source === 'System') {
-                        writeKernelJson(getUserJupyterKernelDir(), resolveKernelPath(candidate.kernelPath));
+                        writeKernelJson(getUserJupyterKernelDir(), candidate.kernelPath);
                     }
 
                     const metadata = generateMetadata(context, candidate);
