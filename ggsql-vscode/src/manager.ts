@@ -9,9 +9,13 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as cp from 'child_process';
+import * as crypto from 'crypto';
 import type * as positron from '@posit-dev/positron';
 import type { JupyterKernelSpec, JupyterSession, JupyterKernel, PositronSupervisorApi } from './types';
 import { log } from './extension';
+
+/** Where a kernel candidate was discovered */
+type KernelSource = 'Setting' | 'Jupyter' | 'System' | 'Path';
 
 /**
  * A discovered ggsql-jupyter kernel candidate
@@ -20,7 +24,7 @@ interface KernelCandidate {
     /** Absolute path to the ggsql-jupyter binary (or bare name for PATH fallback) */
     kernelPath: string;
     /** Human-readable label for where this was found */
-    source: string;
+    source: KernelSource;
 }
 
 /**
@@ -42,7 +46,7 @@ function discoverKernelPaths(): KernelCandidate[] {
     const config = vscode.workspace.getConfiguration('ggsql');
     const configuredPath = config.get<string>('kernelPath', '');
     if (configuredPath && configuredPath.trim() !== '') {
-        candidates.push({ kernelPath: configuredPath, source: 'setting' });
+        candidates.push({ kernelPath: configuredPath, source: 'Setting' });
     }
 
     // 2. Jupyter kernelspec locations
@@ -52,6 +56,11 @@ function discoverKernelPaths(): KernelCandidate[] {
         path.join(homeDir, 'Library', 'Jupyter', 'kernels', 'ggsql', binaryName),
         // User kernelspec (Linux)
         path.join(homeDir, '.local', 'share', 'jupyter', 'kernels', 'ggsql', binaryName),
+        // User kernelspec (Windows)
+        path.join(
+            process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'),
+            'jupyter', 'kernels', 'ggsql', binaryName
+        ),
         // System kernelspec (macOS)
         path.join('/usr', 'local', 'share', 'jupyter', 'kernels', 'ggsql', binaryName),
         // System kernelspec (Linux)
@@ -137,15 +146,15 @@ async function isKernelAccessible(kernelPath: string): Promise<boolean> {
 function generateMetadata(
     context: vscode.ExtensionContext,
     candidate: KernelCandidate,
-    index: number
 ): positron.LanguageRuntimeMetadata {
     const version = context.extension.packageJSON.version as string;
 
     const iconPath = path.join(context.extensionPath, 'resources', 'ggsql-icon.svg');
     const base64Icon = fs.readFileSync(iconPath).toString('base64');
 
+    const pathHash = crypto.createHash('sha256').update(candidate.kernelPath).digest('hex').substring(0, 12);
     return {
-        runtimeId: index === 0 ? 'ggsql-jupyter' : `ggsql-jupyter-${index}`,
+        runtimeId: `ggsql-${pathHash}`,
         runtimePath: candidate.kernelPath,
         runtimeName: `ggsql (${candidate.source})`,
         runtimeShortName: 'ggsql',
@@ -284,7 +293,7 @@ function writeKernelJson(kernelDir: string, kernelPath: string): void {
         argv: [kernelPath, '-f', '{connection_file}'],
         display_name: 'ggsql',
         language: 'ggsql',
-        interrupt_mode: 'message',
+        interrupt_mode: 'signal',
         env: { RUST_LOG: 'error' },
         metadata: { debugger: false }
     };
@@ -308,16 +317,49 @@ function writeKernelJson(kernelDir: string, kernelPath: string): void {
 }
 
 /**
- * Install a Jupyter kernel spec for ggsql so that external tools like Quarto
- * can discover it via `jupyter kernelspec list`.
- *
- * Writes kernel.json to the appropriate Jupyter kernelspec directory: the
- * active virtualenv/conda env if detected, otherwise the user-level dir.
- *
- * @param kernelPath Absolute path to the ggsql-jupyter binary
+ * Try to resolve a binary name to its absolute path via the system PATH.
+ * Returns the original value if resolution fails.
  */
-function installJupyterKernelSpec(kernelPath: string): void {
-    writeKernelJson(getJupyterKernelDir(), kernelPath);
+function resolveKernelPath(kernelPath: string): string {
+    if (path.isAbsolute(kernelPath)) {
+        return kernelPath;
+    }
+    try {
+        const cmd = process.platform === 'win32' ? 'where' : 'which';
+        const resolved = cp.execFileSync(cmd, [kernelPath], {
+            encoding: 'utf8',
+            timeout: 5000,
+        }).trim().split(/\r?\n/)[0];
+        if (resolved && path.isAbsolute(resolved)) {
+            log(`Resolved '${kernelPath}' to '${resolved}'`);
+            return resolved;
+        }
+    } catch {
+        log(`Could not resolve '${kernelPath}' to absolute path, using as-is`);
+    }
+    return kernelPath;
+}
+
+/**
+ * Ensure a Jupyter kernel spec is installed so that external tools like
+ * Quarto can discover ggsql. Called from session creation/restoration.
+ *
+ * Writes to the active virtualenv/conda env if detected, otherwise the
+ * user-level kernelspec directory.
+ */
+function ensureKernelSpecInstalled(kernelPath: string): void {
+    writeKernelJson(getJupyterKernelDir(), resolveKernelPath(kernelPath));
+}
+
+/**
+ * Create the dynamic state for a ggsql runtime session.
+ */
+function createDynState(): positron.LanguageRuntimeDynState {
+    return {
+        inputPrompt: 'ggsql> ',
+        continuationPrompt: '... ',
+        sessionName: 'ggsql',
+    };
 }
 
 /**
@@ -347,7 +389,6 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
             const candidates = discoverKernelPaths();
             log(`Found ${candidates.length} kernel candidate(s)`);
 
-            let index = 0;
             for (const candidate of candidates) {
                 const accessible = await isKernelAccessible(candidate.kernelPath);
                 if (accessible) {
@@ -355,13 +396,12 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
                     // the user kernelspec dir immediately so that Quarto/Jupyter
                     // can discover ggsql even if no session is ever started.
                     if (candidate.source === 'System') {
-                        writeKernelJson(getUserJupyterKernelDir(), candidate.kernelPath);
+                        writeKernelJson(getUserJupyterKernelDir(), resolveKernelPath(candidate.kernelPath));
                     }
 
-                    const metadata = generateMetadata(context, candidate, index);
+                    const metadata = generateMetadata(context, candidate);
                     log(`Yielding runtime: ${metadata.runtimeName} (${metadata.runtimeId}) at ${candidate.kernelPath}`);
                     yield metadata;
-                    index++;
                 } else {
                     log(`Skipping inaccessible kernel: ${candidate.kernelPath}`);
                 }
@@ -408,15 +448,10 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
         // Create the kernel spec using the runtime's kernel path
         const kernelSpec = createKernelSpec(runtimeMetadata.runtimePath, workspacePath);
 
-        // Create the dynamic state
-        const dynState: positron.LanguageRuntimeDynState = {
-            inputPrompt: 'ggsql> ',
-            continuationPrompt: '... ',
-            sessionName: 'ggsql'
-        };
+        const dynState = createDynState();
 
         // Advertise this kernel to external tools (Quarto, Jupyter)
-        installJupyterKernelSpec(runtimeMetadata.runtimePath);
+        ensureKernelSpecInstalled(runtimeMetadata.runtimePath);
 
         // Create the session using the supervisor
         const session = await supervisorApi.createSession(
@@ -455,14 +490,10 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
 
         const supervisorApi = await supervisorExt.activate();
 
-        const dynState: positron.LanguageRuntimeDynState = {
-            inputPrompt: 'ggsql> ',
-            continuationPrompt: '... ',
-            sessionName: 'ggsql'
-        };
+        const dynState = createDynState();
 
         // Re-advertise this kernel on restore
-        installJupyterKernelSpec(runtimeMetadata.runtimePath);
+        ensureKernelSpecInstalled(runtimeMetadata.runtimePath);
 
         const session = await supervisorApi.restoreSession(
             runtimeMetadata,
