@@ -196,9 +196,15 @@ fn convert_polar_to_cartesian(
             .ok_or_else(|| GgsqlError::WriterError("Layer has no encoding object".to_string()))?;
 
         let (r_field, r_domain, r_title) = extract_polar_channel(encoding, "radius")?;
-        let (theta_field, theta_domain, theta_title) =
-            extract_polar_channel(encoding, "theta")?;
-        (r_field, r_domain, r_title, theta_field, theta_domain, theta_title)
+        let (theta_field, theta_domain, theta_title) = extract_polar_channel(encoding, "theta")?;
+        (
+            r_field,
+            r_domain,
+            r_title,
+            theta_field,
+            theta_domain,
+            theta_title,
+        )
     };
 
     // Phase 2: Build calculate transforms for polar→cartesian conversion
@@ -321,9 +327,7 @@ fn extract_polar_channel(
     let field = channel_enc
         .get("field")
         .and_then(|f| f.as_str())
-        .ok_or_else(|| {
-            GgsqlError::WriterError(format!("'{}' encoding missing 'field'", channel))
-        })?
+        .ok_or_else(|| GgsqlError::WriterError(format!("'{}' encoding missing 'field'", channel)))?
         .to_string();
 
     // Extract domain from scale, with fallback to [0, 1]
