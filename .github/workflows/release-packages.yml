@@ -117,6 +117,16 @@ jobs:
           APPLE_API_KEY_BASE64: ${{ secrets.GWS_APPLE_API_KEY_BASE64 }}
           APPLE_API_KEY: ${{ secrets.GWS_APPLE_API_KEY }}
 
+      - name: Configure macOS installer signing
+        env:
+          APPLE_SIGN_IDENTITY: ${{ secrets.GWS_APPLE_SIGN_IDENTITY }}
+        run: |
+          cat <<EOF >> src/Cargo.toml
+
+          [package.metadata.packager.macos]
+          signing-identity = "${APPLE_SIGN_IDENTITY}"
+          EOF
+
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
 
