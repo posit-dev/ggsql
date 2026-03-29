@@ -11,7 +11,7 @@ import * as path from 'path';
 import * as cp from 'child_process';
 import * as crypto from 'crypto';
 import type * as positron from '@posit-dev/positron';
-import type { JupyterKernelSpec, JupyterSession, JupyterKernel, PositronSupervisorApi } from './types';
+import type { JupyterKernelSpec, PositronSupervisorApi } from './types';
 import { log } from './extension';
 
 /** Where a kernel candidate was discovered */
@@ -197,70 +197,16 @@ function generateMetadata(
 /**
  * Create a Jupyter kernel spec for ggsql-jupyter
  *
- * Uses the startKernel callback to manually start the kernel process,
- * giving us more control over the launch process.
- *
  * @param kernelPath - Path to the ggsql-jupyter executable
- * @param workspacePath - Optional workspace path to use as the kernel's working directory
  */
-function createKernelSpec(kernelPath: string, workspacePath?: string): JupyterKernelSpec {
+function createKernelSpec(kernelPath: string): JupyterKernelSpec {
     return {
-        // argv is empty when using startKernel callback
-        argv: [],
+        argv: [kernelPath, '-f', '{connection_file}'],
         display_name: 'ggsql',
         language: 'ggsql',
         interrupt_mode: 'signal',
-        env: {},
+        env: { RUST_LOG: 'error' },
         kernel_protocol_version: '5.3',
-        startKernel: async (session: JupyterSession, kernel: JupyterKernel) => {
-            kernel.log(`Starting ggsql kernel with connection file: ${session.state.connectionFile}`);
-            kernel.log(`Working directory: ${workspacePath ?? 'inherited from parent'}`);
-
-            const connectionFile = session.state.connectionFile;
-
-            // Start the kernel process
-            const proc = cp.spawn(kernelPath, ['-f', connectionFile], {
-                stdio: ['ignore', 'pipe', 'pipe'],
-                detached: false,
-                cwd: workspacePath
-            });
-
-            // Log stdout and stderr
-            proc.stdout?.on('data', (data) => {
-                const msg = data.toString();
-                kernel.log(msg);
-            });
-
-            proc.stderr?.on('data', (data) => {
-                const msg = data.toString();
-                kernel.log(msg);
-            });
-
-            proc.on('error', (err) => {
-                const msg = `Failed to start kernel: ${err.message}`;
-                kernel.log(msg);
-                throw new Error(msg);
-            });
-
-            proc.on('exit', (code, signal) => {
-                kernel.log(`Kernel exited (code: ${code}, signal: ${signal})`);
-            });
-
-            // Wait a moment for the kernel to start binding sockets
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            // Check if process is still running
-            if (proc.exitCode !== null) {
-                throw new Error(`Kernel process exited immediately with code ${proc.exitCode}`);
-            }
-
-            kernel.log('Connecting to kernel session...');
-
-            // Connect to the session
-            await kernel.connectToSession(session);
-
-            kernel.log('Connected to ggsql kernel');
-        }
     };
 }
 
@@ -441,12 +387,8 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
         // Ensure the extension is activated
         const supervisorApi = await supervisorExt.activate();
 
-        // Get workspace path for kernel's working directory
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        const workspacePath = workspaceFolders?.[0]?.uri.fsPath;
-
         // Create the kernel spec using the runtime's kernel path
-        const kernelSpec = createKernelSpec(runtimeMetadata.runtimePath, workspacePath);
+        const kernelSpec = createKernelSpec(runtimeMetadata.runtimePath);
 
         const dynState = createDynState();
 
