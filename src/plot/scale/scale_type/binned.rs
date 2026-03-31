@@ -1229,7 +1229,10 @@ mod tests {
             !sql.contains("CAST("),
             "SQL should not contain CAST when column is numeric"
         );
-        assert!(sql.contains("\"value\" >= 0"), "SQL should use quoted column name");
+        assert!(
+            sql.contains("\"value\" >= 0"),
+            "SQL should use quoted column name"
+        );
     }
 
     #[test]
@@ -1505,9 +1508,9 @@ mod tests {
                 "left",
                 vec![0.0, 10.0, 20.0, 30.0],
                 vec![
-                    "WHEN \"value\" < 10 THEN 5",                        // First bin extends to -∞
-                    "WHEN \"value\" >= 10 AND \"value\" < 20 THEN 15",   // Middle bin
-                    "WHEN \"value\" >= 20 THEN 25",                      // Last bin extends to +∞
+                    "WHEN \"value\" < 10 THEN 5", // First bin extends to -∞
+                    "WHEN \"value\" >= 10 AND \"value\" < 20 THEN 15", // Middle bin
+                    "WHEN \"value\" >= 20 THEN 25", // Last bin extends to +∞
                 ],
             ),
             // closed="right" with 3 bins (4 breaks)
@@ -1515,9 +1518,9 @@ mod tests {
                 "right",
                 vec![0.0, 10.0, 20.0, 30.0],
                 vec![
-                    "WHEN \"value\" <= 10 THEN 5",                       // First bin extends to -∞
-                    "WHEN \"value\" > 10 AND \"value\" <= 20 THEN 15",   // Middle bin
-                    "WHEN \"value\" > 20 THEN 25",                       // Last bin extends to +∞
+                    "WHEN \"value\" <= 10 THEN 5", // First bin extends to -∞
+                    "WHEN \"value\" > 10 AND \"value\" <= 20 THEN 15", // Middle bin
+                    "WHEN \"value\" > 20 THEN 25", // Last bin extends to +∞
                 ],
             ),
         ];
@@ -1651,7 +1654,10 @@ mod tests {
             ),
             (
                 false,
-                vec!["\"col\" >= 0 AND \"col\" < 10", "\"col\" >= 10 AND \"col\" <= 20"],
+                vec![
+                    "\"col\" >= 0 AND \"col\" < 10",
+                    "\"col\" >= 10 AND \"col\" <= 20",
+                ],
             ),
         ];
 

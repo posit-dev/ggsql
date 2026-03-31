@@ -184,4 +184,3 @@ pub fn update_type_info_for_casting(type_info: &mut [TypeInfo], requirements: &[
         }
     }
 }
-

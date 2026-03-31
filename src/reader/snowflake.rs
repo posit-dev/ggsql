@@ -25,8 +25,6 @@ impl super::SqlDialect for SnowflakeDialect {
         let catalog_ident = catalog.replace('"', "\"\"");
         let schema_ident = schema.replace('"', "\"\"");
         let table_ident = table.replace('"', "\"\"");
-        format!(
-            "SHOW COLUMNS IN TABLE \"{catalog_ident}\".\"{schema_ident}\".\"{table_ident}\""
-        )
+        format!("SHOW COLUMNS IN TABLE \"{catalog_ident}\".\"{schema_ident}\".\"{table_ident}\"")
     }
 }

@@ -100,8 +100,7 @@ pub trait SqlDialect {
 
     /// SQL to list catalog names. Returns rows with column `catalog_name`.
     fn sql_list_catalogs(&self) -> String {
-        "SELECT DISTINCT catalog_name FROM information_schema.schemata ORDER BY catalog_name"
-            .into()
+        "SELECT DISTINCT catalog_name FROM information_schema.schemata ORDER BY catalog_name".into()
     }
 
     /// SQL to list schema names within a catalog. Returns rows with column `schema_name`.
@@ -186,7 +185,10 @@ pub trait SqlDialect {
         // Uses NTILE(4) to divide data into quartiles, then interpolates between boundaries.
         let group_filter = groups
             .iter()
-            .map(|g| { let q = crate::naming::quote_ident(g); format!("AND \"__ggsql_pct__\".{q} IS NOT DISTINCT FROM \"__ggsql_qt__\".{q}") })
+            .map(|g| {
+                let q = crate::naming::quote_ident(g);
+                format!("AND \"__ggsql_pct__\".{q} IS NOT DISTINCT FROM \"__ggsql_qt__\".{q}")
+            })
             .collect::<Vec<_>>()
             .join(" ");
 
@@ -474,9 +476,10 @@ pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<Spec> {
 
     let prepared_data = prepare_data_with_reader(query, reader)?;
 
-    let plot = prepared_data.specs.into_iter().next().ok_or_else(|| {
-        GgsqlError::ValidationError("No visualization spec found".to_string())
-    })?;
+    let plot =
+        prepared_data.specs.into_iter().next().ok_or_else(|| {
+            GgsqlError::ValidationError("No visualization spec found".to_string())
+        })?;
 
     let layer_sql = vec![None; plot.layers.len()];
     let stat_sql = vec![None; plot.layers.len()];

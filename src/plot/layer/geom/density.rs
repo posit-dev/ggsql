@@ -459,8 +459,10 @@ fn build_grid_cte(
                     format!("full_grid.{q} IS NOT DISTINCT FROM bandwidth.{q}")
                 })
                 .collect();
-            let grid_groups_select: Vec<String> =
-                groups.iter().map(|g| format!("full_grid.{}", naming::quote_ident(g))).collect();
+            let grid_groups_select: Vec<String> = groups
+                .iter()
+                .map(|g| format!("full_grid.{}", naming::quote_ident(g)))
+                .collect();
 
             format!(
                 "{seq_cte},
@@ -517,7 +519,10 @@ fn compute_density(
     } else {
         group_by
             .iter()
-            .map(|g| { let q = naming::quote_ident(g); format!("data.{q} IS NOT DISTINCT FROM bandwidth.{q}") })
+            .map(|g| {
+                let q = naming::quote_ident(g);
+                format!("data.{q} IS NOT DISTINCT FROM bandwidth.{q}")
+            })
             .collect::<Vec<String>>()
             .join(" AND ")
     };
@@ -528,7 +533,10 @@ fn compute_density(
     } else {
         let grid_data_conds: Vec<String> = group_by
             .iter()
-            .map(|g| { let q = naming::quote_ident(g); format!("grid.{q} IS NOT DISTINCT FROM data.{q}") })
+            .map(|g| {
+                let q = naming::quote_ident(g);
+                format!("grid.{q} IS NOT DISTINCT FROM data.{q}")
+            })
             .collect();
         format!("WHERE {}", grid_data_conds.join(" AND "))
     };
@@ -542,7 +550,10 @@ fn compute_density(
     );
 
     // Build group-related SQL fragments
-    let grid_groups: Vec<String> = group_by.iter().map(|g| format!("grid.{}", naming::quote_ident(g))).collect();
+    let grid_groups: Vec<String> = group_by
+        .iter()
+        .map(|g| format!("grid.{}", naming::quote_ident(g)))
+        .collect();
     let aggregation = format!(
         "GROUP BY grid.x{grid_group_by}
         ORDER BY grid.x{grid_group_by}",

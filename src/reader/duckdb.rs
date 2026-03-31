@@ -44,7 +44,10 @@ impl super::SqlDialect for DuckDbDialect {
     fn sql_percentile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
         let group_filter = groups
             .iter()
-            .map(|g| { let q = crate::naming::quote_ident(g); format!("AND \"__ggsql_pct__\".{q} IS NOT DISTINCT FROM \"__ggsql_qt__\".{q}") })
+            .map(|g| {
+                let q = crate::naming::quote_ident(g);
+                format!("AND \"__ggsql_pct__\".{q} IS NOT DISTINCT FROM \"__ggsql_qt__\".{q}")
+            })
             .collect::<Vec<_>>()
             .join(" ");
 

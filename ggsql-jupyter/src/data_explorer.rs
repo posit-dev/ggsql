@@ -71,7 +71,7 @@ impl DataExplorerState {
         let table = &path[2];
 
         let table_path = format!(
-            "\"{}\".\"{}\".\"{}\""  ,
+            "\"{}\".\"{}\".\"{}\"",
             catalog.replace('"', "\"\""),
             schema.replace('"', "\"\""),
             table.replace('"', "\"\""),
@@ -252,10 +252,7 @@ impl DataExplorerState {
                     .get("first_index")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(0) as usize;
-                let last = spec
-                    .get("last_index")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0) as usize;
+                let last = spec.get("last_index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
                 (first, last)
             })
             .unwrap_or((0, 0));
@@ -265,16 +262,20 @@ impl DataExplorerState {
         // Collect requested column indices
         let col_indices: Vec<usize> = selections
             .iter()
-            .filter_map(|sel| sel.get("column_index").and_then(|v| v.as_u64()).map(|n| n as usize))
+            .filter_map(|sel| {
+                sel.get("column_index")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize)
+            })
             .collect();
 
         // Build column list for SELECT
         let col_names: Vec<String> = col_indices
             .iter()
             .filter_map(|&idx| {
-                self.columns.get(idx).map(|col| {
-                    format!("\"{}\"", col.name.replace('"', "\"\""))
-                })
+                self.columns
+                    .get(idx)
+                    .map(|col| format!("\"{}\"", col.name.replace('"', "\"\"")))
             })
             .collect();
 
@@ -508,13 +509,11 @@ impl DataExplorerState {
                 })
         };
 
-        let get_i64 = |name: &str| -> Option<i64> {
-            get_str(name).and_then(|s| s.parse::<i64>().ok())
-        };
+        let get_i64 =
+            |name: &str| -> Option<i64> { get_str(name).and_then(|s| s.parse::<i64>().ok()) };
 
-        let get_f64 = |name: &str| -> Option<f64> {
-            get_str(name).and_then(|s| s.parse::<f64>().ok())
-        };
+        let get_f64 =
+            |name: &str| -> Option<f64> { get_str(name).and_then(|s| s.parse::<f64>().ok()) };
 
         let mut result = json!({});
 
@@ -552,8 +551,7 @@ impl DataExplorerState {
                     // DuckDB, NTILE fallback on other backends)
                     let col_name = col.name.replace('"', "\"\"");
                     let from_query = format!("SELECT * FROM {}", self.table_path);
-                    let median_expr =
-                        dialect.sql_percentile(&col_name, 0.5, &from_query, &[]);
+                    let median_expr = dialect.sql_percentile(&col_name, 0.5, &from_query, &[]);
                     let median_sql = format!("SELECT {} AS \"median_val\"", median_expr);
                     if let Ok(median_df) = reader.execute_sql(&median_sql) {
                         if let Some(v) = median_df
@@ -825,10 +823,7 @@ impl DataExplorerState {
         params: &Value,
         reader: &dyn Reader,
     ) -> Option<Value> {
-        let limit = params
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(8) as usize;
+        let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(8) as usize;
 
         let quoted_col = format!("\"{}\"", col.name.replace('"', "\"\""));
 
@@ -975,9 +970,11 @@ fn clean_type_name(type_name: &str) -> String {
                     "FIXED" => {
                         let scale = obj.get("scale").and_then(|v| v.as_i64()).unwrap_or(0);
                         if scale > 0 {
-                            format!("NUMBER({},{})",
+                            format!(
+                                "NUMBER({},{})",
                                 obj.get("precision").and_then(|v| v.as_i64()).unwrap_or(38),
-                                scale)
+                                scale
+                            )
                         } else {
                             "NUMBER".to_string()
                         }
