@@ -189,7 +189,9 @@ impl DataExplorerState {
                     "support_status": "supported",
                     "supported_types": [
                         {"profile_type": "null_count", "support_status": "supported"},
-                        {"profile_type": "summary_stats", "support_status": "supported"}
+                        {"profile_type": "summary_stats", "support_status": "supported"},
+                        {"profile_type": "small_histogram", "support_status": "supported"},
+                        {"profile_type": "small_frequency_table", "support_status": "supported"}
                     ]
                 },
                 "set_sort_columns": {
@@ -395,6 +397,8 @@ impl DataExplorerState {
 
         let mut wants_null_count = false;
         let mut wants_summary = false;
+        let mut histogram_params: Option<&Value> = None;
+        let mut freq_table_params: Option<&Value> = None;
         for spec in specs {
             match spec
                 .get("profile_type")
@@ -403,6 +407,8 @@ impl DataExplorerState {
             {
                 "null_count" => wants_null_count = true,
                 "summary_stats" => wants_summary = true,
+                "small_histogram" => histogram_params = spec.get("params"),
+                "small_frequency_table" => freq_table_params = spec.get("params"),
                 _ => {}
             }
         }
@@ -416,7 +422,7 @@ impl DataExplorerState {
         let mut select_parts = Vec::new();
         if wants_null_count {
             select_parts.push(format!(
-                "SUM(CASE WHEN {} IS NULL THEN 1 ELSE 0 END) AS null_count",
+                "SUM(CASE WHEN {} IS NULL THEN 1 ELSE 0 END) AS \"null_count\"",
                 quoted_col
             ));
         }
@@ -424,47 +430,47 @@ impl DataExplorerState {
             match display {
                 "integer" | "floating" => {
                     let float_type = dialect.number_type_name().unwrap_or("DOUBLE PRECISION");
-                    select_parts.push(format!("MIN({}) AS min_val", quoted_col));
-                    select_parts.push(format!("MAX({}) AS max_val", quoted_col));
+                    select_parts.push(format!("MIN({}) AS \"min_val\"", quoted_col));
+                    select_parts.push(format!("MAX({}) AS \"max_val\"", quoted_col));
                     select_parts.push(format!(
-                        "AVG(CAST({} AS {})) AS mean_val",
+                        "AVG(CAST({} AS {})) AS \"mean_val\"",
                         quoted_col, float_type
                     ));
                     // Stddev: fetch raw aggregates, compute in Rust
                     select_parts.push(format!(
-                        "SUM(CAST({c} AS {t}) * CAST({c} AS {t})) AS sum_sq",
+                        "SUM(CAST({c} AS {t}) * CAST({c} AS {t})) AS \"sum_sq\"",
                         c = quoted_col,
                         t = float_type
                     ));
                     select_parts.push(format!(
-                        "SUM(CAST({} AS {})) AS sum_val",
+                        "SUM(CAST({} AS {})) AS \"sum_val\"",
                         quoted_col, float_type
                     ));
-                    select_parts.push(format!("COUNT({}) AS cnt", quoted_col));
+                    select_parts.push(format!("COUNT({}) AS \"cnt\"", quoted_col));
                 }
                 "boolean" => {
                     let true_lit = dialect.sql_boolean_literal(true);
                     let false_lit = dialect.sql_boolean_literal(false);
                     select_parts.push(format!(
-                        "SUM(CASE WHEN {} = {} THEN 1 ELSE 0 END) AS true_count",
+                        "SUM(CASE WHEN {} = {} THEN 1 ELSE 0 END) AS \"true_count\"",
                         quoted_col, true_lit
                     ));
                     select_parts.push(format!(
-                        "SUM(CASE WHEN {} = {} THEN 1 ELSE 0 END) AS false_count",
+                        "SUM(CASE WHEN {} = {} THEN 1 ELSE 0 END) AS \"false_count\"",
                         quoted_col, false_lit
                     ));
                 }
                 "string" => {
-                    select_parts.push(format!("COUNT(DISTINCT {}) AS num_unique", quoted_col));
+                    select_parts.push(format!("COUNT(DISTINCT {}) AS \"num_unique\"", quoted_col));
                     select_parts.push(format!(
-                        "SUM(CASE WHEN {} = '' THEN 1 ELSE 0 END) AS num_empty",
+                        "SUM(CASE WHEN {} = '' THEN 1 ELSE 0 END) AS \"num_empty\"",
                         quoted_col
                     ));
                 }
                 "date" | "datetime" => {
-                    select_parts.push(format!("MIN({}) AS min_val", quoted_col));
-                    select_parts.push(format!("MAX({}) AS max_val", quoted_col));
-                    select_parts.push(format!("COUNT(DISTINCT {}) AS num_unique", quoted_col));
+                    select_parts.push(format!("MIN({}) AS \"min_val\"", quoted_col));
+                    select_parts.push(format!("MAX({}) AS \"max_val\"", quoted_col));
+                    select_parts.push(format!("COUNT(DISTINCT {}) AS \"num_unique\"", quoted_col));
                 }
                 _ => {}
             }
@@ -547,7 +553,7 @@ impl DataExplorerState {
                     let from_query = format!("SELECT * FROM {}", self.table_path);
                     let median_expr =
                         dialect.sql_percentile(&col_name, 0.5, &from_query, &[]);
-                    let median_sql = format!("SELECT {} AS median_val", median_expr);
+                    let median_sql = format!("SELECT {} AS \"median_val\"", median_expr);
                     if let Ok(median_df) = reader.execute_sql(&median_sql) {
                         if let Some(v) = median_df
                             .column("median_val")
@@ -624,7 +630,261 @@ impl DataExplorerState {
             result["summary_stats"] = stats;
         }
 
+        // Compute histogram if requested (only for numeric types)
+        if let Some(params) = histogram_params {
+            if matches!(display, "integer" | "floating") {
+                if let Some(hist) = self.compute_histogram(col, params, reader) {
+                    result["small_histogram"] = hist;
+                }
+            }
+        }
+
+        // Compute frequency table if requested (for string/boolean types)
+        if let Some(params) = freq_table_params {
+            if matches!(display, "string" | "boolean") {
+                if let Some(ft) = self.compute_frequency_table(col, params, reader) {
+                    result["small_frequency_table"] = ft;
+                }
+            }
+        }
+
         result
+    }
+
+    /// Compute a histogram for a numeric column.
+    fn compute_histogram(
+        &self,
+        col: &ColumnInfo,
+        params: &Value,
+        reader: &dyn Reader,
+    ) -> Option<Value> {
+        let max_bins = params
+            .get("num_bins")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(20) as usize;
+
+        if max_bins == 0 {
+            return None;
+        }
+
+        let dialect = reader.dialect();
+        let float_type = dialect.number_type_name().unwrap_or("DOUBLE PRECISION");
+        let quoted_col = format!("\"{}\"", col.name.replace('"', "\"\""));
+        let is_integer = col.type_display == "integer";
+
+        // Get min, max, count in one query
+        let bounds_sql = format!(
+            "SELECT \
+                MIN(CAST({c} AS {t})) AS \"min_val\", \
+                MAX(CAST({c} AS {t})) AS \"max_val\", \
+                COUNT({c}) AS \"cnt\" \
+             FROM {table} WHERE {c} IS NOT NULL",
+            c = quoted_col,
+            t = float_type,
+            table = self.table_path,
+        );
+
+        let bounds_df = reader.execute_sql(&bounds_sql).ok()?;
+        let get_f64 = |name: &str| -> Option<f64> {
+            bounds_df
+                .column(name)
+                .ok()
+                .and_then(|c| c.get(0).ok())
+                .and_then(|v| {
+                    if v.is_null() {
+                        None
+                    } else {
+                        format!("{}", v).trim_matches('"').parse::<f64>().ok()
+                    }
+                })
+        };
+
+        let min_val = get_f64("min_val")?;
+        let max_val = get_f64("max_val")?;
+        let count = get_f64("cnt").unwrap_or(0.0) as usize;
+
+        // Handle edge case: all values identical
+        if (max_val - min_val).abs() < f64::EPSILON {
+            return Some(json!({
+                "bin_edges": [format!("{}", min_val), format!("{}", max_val)],
+                "bin_counts": [count as i64],
+                "quantiles": []
+            }));
+        }
+
+        // Determine actual bin count using Sturges' formula, capped at max_bins.
+        // For integers, also cap at (max - min + 1) to avoid sub-unit bins.
+        let mut num_bins = if count > 1 {
+            ((count as f64).log2().ceil() as usize + 1).max(1)
+        } else {
+            1
+        };
+        if is_integer {
+            let int_range = (max_val - min_val) as usize + 1;
+            num_bins = num_bins.min(int_range);
+        }
+        num_bins = num_bins.min(max_bins).max(1);
+
+        let bin_width = (max_val - min_val) / num_bins as f64;
+
+        // Bin the data using FLOOR. Clamp the last bin to num_bins-1 so
+        // max value doesn't create an extra bin.
+        let hist_sql = format!(
+            "SELECT \
+                CASE \
+                    WHEN \"bin\" >= {num_bins} THEN {last_bin} \
+                    ELSE \"bin\" \
+                END AS \"clamped_bin\", \
+                COUNT(*) AS \"cnt\" \
+             FROM ( \
+                SELECT FLOOR((CAST({c} AS {t}) - {min}) / {width}) AS \"bin\" \
+                FROM {table} \
+                WHERE {c} IS NOT NULL \
+             ) AS \"__bins__\" \
+             GROUP BY \"clamped_bin\" \
+             ORDER BY \"clamped_bin\"",
+            c = quoted_col,
+            t = float_type,
+            table = self.table_path,
+            min = min_val,
+            width = bin_width,
+            num_bins = num_bins,
+            last_bin = num_bins - 1,
+        );
+
+        let hist_df = reader.execute_sql(&hist_sql).ok()?;
+
+        // Build bin_edges: num_bins + 1 edges
+        let bin_edges: Vec<String> = (0..=num_bins)
+            .map(|i| format!("{}", min_val + i as f64 * bin_width))
+            .collect();
+
+        // Build bin_counts: fill from query results (sparse bins get 0)
+        let mut bin_counts = vec![0i64; num_bins];
+        let bin_col = hist_df.column("clamped_bin").ok()?;
+        let cnt_col = hist_df.column("cnt").ok()?;
+        for i in 0..hist_df.height() {
+            if let (Ok(bin_val), Ok(cnt_val)) = (bin_col.get(i), cnt_col.get(i)) {
+                let bin_str = format!("{}", bin_val);
+                // Parse bin index — may be float (e.g., "3.0") on some backends
+                if let Ok(bin_idx) = bin_str.parse::<f64>() {
+                    let idx = bin_idx as usize;
+                    if idx < num_bins {
+                        let count_str = format!("{}", cnt_val);
+                        bin_counts[idx] = count_str.parse::<i64>().unwrap_or(0);
+                    }
+                }
+            }
+        }
+
+        // Compute requested quantiles
+        let quantiles_param = params
+            .get("quantiles")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut quantile_results = Vec::new();
+        let from_query = format!("SELECT * FROM {}", self.table_path);
+        let col_name = col.name.replace('"', "\"\"");
+        for q in &quantiles_param {
+            if let Some(q_val) = q.as_f64() {
+                let expr = dialect.sql_percentile(&col_name, q_val, &from_query, &[]);
+                let q_sql = format!("SELECT {} AS \"q_val\"", expr);
+                if let Ok(q_df) = reader.execute_sql(&q_sql) {
+                    if let Some(v) = q_df
+                        .column("q_val")
+                        .ok()
+                        .and_then(|c| c.get(0).ok())
+                        .and_then(|v| {
+                            if v.is_null() {
+                                None
+                            } else {
+                                Some(format!("{}", v).trim_matches('"').to_string())
+                            }
+                        })
+                    {
+                        quantile_results.push(json!({"q": q_val, "value": v}));
+                    }
+                }
+            }
+        }
+
+        Some(json!({
+            "bin_edges": bin_edges,
+            "bin_counts": bin_counts,
+            "quantiles": quantile_results
+        }))
+    }
+
+    /// Compute a frequency table for a string or boolean column.
+    fn compute_frequency_table(
+        &self,
+        col: &ColumnInfo,
+        params: &Value,
+        reader: &dyn Reader,
+    ) -> Option<Value> {
+        let limit = params
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(8) as usize;
+
+        let quoted_col = format!("\"{}\"", col.name.replace('"', "\"\""));
+
+        let sql = format!(
+            "SELECT {c} AS \"value\", COUNT(*) AS \"count\" \
+             FROM {table} \
+             WHERE {c} IS NOT NULL \
+             GROUP BY {c} \
+             ORDER BY COUNT(*) DESC \
+             LIMIT {limit}",
+            c = quoted_col,
+            table = self.table_path,
+            limit = limit,
+        );
+
+        let df = reader.execute_sql(&sql).ok()?;
+
+        let val_col = df.column("value").ok()?;
+        let cnt_col = df.column("count").ok()?;
+
+        let mut values = Vec::new();
+        let mut counts = Vec::new();
+        let mut top_total: i64 = 0;
+
+        for i in 0..df.height() {
+            if let (Ok(v), Ok(c)) = (val_col.get(i), cnt_col.get(i)) {
+                let val_str = format!("{}", v).trim_matches('"').to_string();
+                let count: i64 = format!("{}", c).parse().unwrap_or(0);
+                values.push(Value::String(val_str));
+                counts.push(count);
+                top_total += count;
+            }
+        }
+
+        // Compute other_count: total non-null rows minus the top-K sum
+        let count_sql = format!(
+            "SELECT COUNT({c}) AS \"total\" FROM {table}",
+            c = quoted_col,
+            table = self.table_path,
+        );
+        let other_count = reader
+            .execute_sql(&count_sql)
+            .ok()
+            .and_then(|df| {
+                df.column("total")
+                    .ok()
+                    .and_then(|c| c.get(0).ok())
+                    .and_then(|v| format!("{}", v).parse::<i64>().ok())
+            })
+            .map(|total| total - top_total)
+            .unwrap_or(0);
+
+        Some(json!({
+            "values": values,
+            "counts": counts,
+            "other_count": other_count
+        }))
     }
 }
 
