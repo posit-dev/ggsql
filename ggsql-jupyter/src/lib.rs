@@ -3,6 +3,7 @@
 //! This module exposes the internal components for testing.
 
 pub mod connection;
+pub mod data_explorer;
 pub mod display;
 pub mod executor;
 pub mod message;

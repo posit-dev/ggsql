@@ -4,6 +4,7 @@
 //! handling kernel_info, execute, and shutdown requests.
 
 use crate::connection;
+use crate::data_explorer::{DataExplorerState, RpcResponse};
 use crate::display::format_display_data;
 use crate::executor::{self, ExecutionResult, QueryExecutor};
 use crate::message::{ConnectionInfo, JupyterMessage, MessageHeader};
@@ -11,6 +12,7 @@ use anyhow::Result;
 use hmac::{Hmac, Mac};
 use serde_json::{json, Value};
 use sha2::Sha256;
+use std::collections::HashMap;
 use zeromq::{PubSocket, RepSocket, RouterSocket, Socket, SocketRecv, SocketSend};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -34,6 +36,8 @@ pub struct KernelServer {
     ui_comm_id: Option<String>,
     plot_comm_id: Option<String>,
     connection_comm_id: Option<String>,
+    // Open data explorer comms (comm_id → state)
+    data_explorer_comms: HashMap<String, DataExplorerState>,
 }
 
 impl KernelServer {
@@ -95,6 +99,7 @@ impl KernelServer {
             ui_comm_id: None,
             plot_comm_id: None,
             connection_comm_id: None,
+            data_explorer_comms: HashMap::new(),
         };
 
         // Send initial "starting" status on IOPub
@@ -612,6 +617,11 @@ impl KernelServer {
                 self.handle_connection_rpc(method, rpc_id, comm_id, parent, identities)
                     .await?;
             }
+            // Handle positron.dataExplorer requests
+            else if self.data_explorer_comms.contains_key(comm_id) {
+                self.handle_data_explorer_rpc(method, rpc_id, comm_id, parent, identities)
+                    .await?;
+            }
             // Unknown comm
             else {
                 tracing::warn!("Message for unknown comm_id: {}", comm_id);
@@ -655,6 +665,11 @@ impl KernelServer {
         if let Some(id) = &self.connection_comm_id {
             if target_name.is_none() || target_name == Some("positron.connection") {
                 comms[id] = json!({"target_name": "positron.connection"});
+            }
+        }
+        for id in self.data_explorer_comms.keys() {
+            if target_name.is_none() || target_name == Some("positron.dataExplorer") {
+                comms[id] = json!({"target_name": "positron.dataExplorer"});
             }
         }
 
@@ -703,6 +718,8 @@ impl KernelServer {
         } else if Some(comm_id.to_string()) == self.connection_comm_id {
             tracing::info!("Closing positron.connection comm");
             self.connection_comm_id = None;
+        } else if self.data_explorer_comms.remove(comm_id).is_some() {
+            tracing::info!("Closing data explorer comm: {}", comm_id);
         } else {
             tracing::warn!("Close for unknown comm_id: {}", comm_id);
         }
@@ -820,7 +837,55 @@ impl KernelServer {
                 json!(has_data)
             }
             "get_icon" => json!(""),
-            "preview_object" => json!(null),
+            "preview_object" => {
+                let path: Vec<String> = params["path"]
+                    .as_array()
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| {
+                                v.get("name")
+                                    .and_then(|n| n.as_str())
+                                    .map(|s| s.to_string())
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                match DataExplorerState::open(self.executor.reader(), &path) {
+                    Ok(state) => {
+                        let de_comm_id = uuid::Uuid::new_v4().to_string();
+                        let title = path.last().cloned().unwrap_or_default();
+
+                        // Send comm_open on iopub to open the data viewer
+                        let msg = self.create_message(
+                            "comm_open",
+                            json!({
+                                "comm_id": de_comm_id,
+                                "target_name": "positron.dataExplorer",
+                                "data": {
+                                    "title": title
+                                }
+                            }),
+                            Some(parent),
+                        );
+                        let zmq_msg =
+                            self.serialize_message_with_topic(&msg, "comm_open")?;
+                        self.iopub.send(zmq_msg).await?;
+
+                        tracing::info!(
+                            "Opened data explorer comm: {} for {}",
+                            de_comm_id,
+                            title
+                        );
+                        self.data_explorer_comms
+                            .insert(de_comm_id, state);
+                    }
+                    Err(e) => {
+                        tracing::error!("preview_object failed: {}", e);
+                    }
+                }
+                json!(null)
+            }
             "get_metadata" => {
                 let uri = self.executor.reader_uri();
                 json!({
@@ -851,6 +916,62 @@ impl KernelServer {
             identities,
         )
         .await?;
+
+        Ok(())
+    }
+
+    /// Handle JSON-RPC requests on a data explorer comm
+    async fn handle_data_explorer_rpc(
+        &mut self,
+        method: &str,
+        rpc_id: &Value,
+        comm_id: &str,
+        parent: &JupyterMessage,
+        identities: &[Vec<u8>],
+    ) -> Result<()> {
+        tracing::info!("Data explorer RPC: {}", method);
+
+        let params = &parent.content["data"]["params"];
+
+        let RpcResponse { result, event } =
+            if let Some(state) = self.data_explorer_comms.get(comm_id) {
+                state.handle_rpc(method, params, self.executor.reader())
+            } else {
+                RpcResponse::reply(json!(null))
+            };
+
+        // Send the RPC reply
+        self.send_shell_reply(
+            "comm_msg",
+            json!({
+                "comm_id": comm_id,
+                "data": {
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "result": result
+                }
+            }),
+            parent,
+            identities,
+        )
+        .await?;
+
+        // Send async event on iopub if present (e.g. return_column_profiles)
+        if let Some(evt) = event {
+            self.send_iopub(
+                "comm_msg",
+                json!({
+                    "comm_id": comm_id,
+                    "data": {
+                        "jsonrpc": "2.0",
+                        "method": evt.method,
+                        "params": evt.params
+                    }
+                }),
+                parent,
+            )
+            .await?;
+        }
 
         Ok(())
     }

@@ -3,6 +3,7 @@
 //! A Jupyter kernel for executing ggsql queries with rich Vega-Lite visualizations.
 
 mod connection;
+mod data_explorer;
 mod display;
 mod executor;
 mod kernel;
