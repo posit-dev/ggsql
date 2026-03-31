@@ -78,7 +78,7 @@ impl DataExplorerState {
         );
 
         // Get row count
-        let count_sql = format!("SELECT COUNT(*) AS n FROM {}", table_path);
+        let count_sql = format!("SELECT COUNT(*) AS \"n\" FROM {}", table_path);
         let count_df = reader
             .execute_sql(&count_sql)
             .map_err(|e| format!("Failed to count rows: {}", e))?;
@@ -110,8 +110,9 @@ impl DataExplorerState {
         for i in 0..columns_df.height() {
             if let (Ok(name_val), Ok(type_val)) = (name_col.get(i), type_col.get(i)) {
                 let name = name_val.to_string().trim_matches('"').to_string();
-                let type_name = type_val.to_string().trim_matches('"').to_string();
-                let type_display = sql_type_to_display(&type_name).to_string();
+                let raw_type = type_val.to_string().trim_matches('"').to_string();
+                let type_display = sql_type_to_display(&raw_type).to_string();
+                let type_name = clean_type_name(&raw_type);
                 columns.push(ColumnInfo {
                     name,
                     type_name,
@@ -888,8 +889,39 @@ impl DataExplorerState {
     }
 }
 
-/// Map a SQL type name (from information_schema) to a Positron display type.
+/// Map a SQL type name (from information_schema or SHOW COLUMNS) to a Positron display type.
+///
+/// Handles both simple type names (e.g. "INTEGER", "VARCHAR") and Snowflake's
+/// JSON format (e.g. `{"type":"FIXED","precision":38,"scale":0,...}`).
 fn sql_type_to_display(type_name: &str) -> &'static str {
+    // Handle Snowflake JSON type format
+    if type_name.starts_with('{') {
+        if let Ok(obj) = serde_json::from_str::<Value>(type_name) {
+            if let Some(t) = obj.get("type").and_then(|v| v.as_str()) {
+                return match t {
+                    "FIXED" => {
+                        let scale = obj.get("scale").and_then(|v| v.as_i64()).unwrap_or(0);
+                        if scale > 0 {
+                            "floating"
+                        } else {
+                            "integer"
+                        }
+                    }
+                    "REAL" | "FLOAT" => "floating",
+                    "TEXT" => "string",
+                    "BOOLEAN" => "boolean",
+                    "DATE" => "date",
+                    "TIMESTAMP_NTZ" | "TIMESTAMP_LTZ" | "TIMESTAMP_TZ" => "datetime",
+                    "TIME" => "time",
+                    "BINARY" => "string",
+                    "VARIANT" | "OBJECT" | "ARRAY" => "string",
+                    _ => "unknown",
+                };
+            }
+        }
+    }
+
+    // Simple type names (DuckDB, PostgreSQL, SQLite, etc.)
     let upper = type_name.to_uppercase();
     let upper = upper.as_str();
 
@@ -929,6 +961,33 @@ fn sql_type_to_display(type_name: &str) -> &'static str {
     }
 
     "unknown"
+}
+
+/// Clean up a raw type name for display in the schema response.
+///
+/// For Snowflake JSON types, extracts the `type` field (e.g. "NUMBER", "TEXT").
+/// For simple type names, returns as-is.
+fn clean_type_name(type_name: &str) -> String {
+    if type_name.starts_with('{') {
+        if let Ok(obj) = serde_json::from_str::<Value>(type_name) {
+            if let Some(t) = obj.get("type").and_then(|v| v.as_str()) {
+                return match t {
+                    "FIXED" => {
+                        let scale = obj.get("scale").and_then(|v| v.as_i64()).unwrap_or(0);
+                        if scale > 0 {
+                            format!("NUMBER({},{})",
+                                obj.get("precision").and_then(|v| v.as_i64()).unwrap_or(38),
+                                scale)
+                        } else {
+                            "NUMBER".to_string()
+                        }
+                    }
+                    other => other.to_string(),
+                };
+            }
+        }
+    }
+    type_name.to_string()
 }
 
 #[cfg(test)]
