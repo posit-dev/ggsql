@@ -22,16 +22,14 @@ pub enum ExecutionResult {
         spec: String, // Vega-Lite JSON
     },
     /// Connection changed via meta-command
-    ConnectionChanged {
-        uri: String,
-        display_name: String,
-    },
+    ConnectionChanged { uri: String, display_name: String },
 }
 
 /// Create a reader from a connection URI string.
 ///
 /// Supported schemes:
 /// - `duckdb://memory` or `duckdb://<path>` (always available)
+/// - `sqlite://<path>` (requires `sqlite` feature)
 /// - `odbc://...` (requires `odbc` feature)
 pub fn create_reader(uri: &str) -> Result<Box<dyn Reader + Send>> {
     use ggsql::reader::connection::ConnectionInfo;
@@ -43,22 +41,22 @@ pub fn create_reader(uri: &str) -> Result<Box<dyn Reader + Send>> {
             Ok(Box::new(reader))
         }
         ConnectionInfo::DuckDBFile(path) => {
-            let reader =
-                DuckDBReader::from_connection_string(&format!("duckdb://{}", path))?;
+            let reader = DuckDBReader::from_connection_string(&format!("duckdb://{}", path))?;
             Ok(Box::new(reader))
         }
         #[cfg(feature = "odbc")]
         ConnectionInfo::ODBC(conn_str) => {
-            let reader = ggsql::reader::OdbcReader::from_connection_string(
-                &format!("odbc://{}", conn_str),
-            )?;
+            let reader =
+                ggsql::reader::OdbcReader::from_connection_string(&format!("odbc://{}", conn_str))?;
             Ok(Box::new(reader))
         }
-        _ => anyhow::bail!(
-            "Unsupported reader type for connection string: {}. \
-             Only DuckDB connections are currently supported in ggsql-jupyter.",
-            uri
-        ),
+        #[cfg(feature = "sqlite")]
+        ConnectionInfo::SQLite(path) => {
+            let reader =
+                ggsql::reader::SqliteReader::from_connection_string(&format!("sqlite://{}", path))?;
+            Ok(Box::new(reader))
+        }
+        _ => anyhow::bail!("Unsupported reader type for connection string: {}", uri),
     }
 }
 
@@ -69,6 +67,12 @@ pub fn display_name_for_uri(uri: &str) -> String {
     }
     if let Some(path) = uri.strip_prefix("duckdb://") {
         return format!("DuckDB ({})", path);
+    }
+    if let Some(path) = uri.strip_prefix("sqlite://") {
+        if path.is_empty() {
+            return "SQLite (memory)".to_string();
+        }
+        return format!("SQLite ({})", path);
     }
     if let Some(odbc) = uri.strip_prefix("odbc://") {
         // Try to extract driver name from ODBC string
@@ -91,11 +95,16 @@ pub fn type_name_for_uri(uri: &str) -> String {
     if uri.starts_with("duckdb://") {
         return "DuckDB".to_string();
     }
+    if uri.starts_with("sqlite://") {
+        return "SQLite".to_string();
+    }
     if let Some(odbc) = uri.strip_prefix("odbc://") {
         if odbc.to_lowercase().contains("driver=snowflake") {
             return "Snowflake".to_string();
         }
-        if odbc.to_lowercase().contains("driver={postgresql}") || odbc.to_lowercase().contains("driver=postgresql") {
+        if odbc.to_lowercase().contains("driver={postgresql}")
+            || odbc.to_lowercase().contains("driver=postgresql")
+        {
             return "PostgreSQL".to_string();
         }
         return "ODBC".to_string();
@@ -109,6 +118,12 @@ pub fn host_for_uri(uri: &str) -> String {
         return "memory".to_string();
     }
     if let Some(path) = uri.strip_prefix("duckdb://") {
+        return path.to_string();
+    }
+    if let Some(path) = uri.strip_prefix("sqlite://") {
+        if path.is_empty() {
+            return "memory".to_string();
+        }
         return path.to_string();
     }
     if let Some(odbc) = uri.strip_prefix("odbc://") {
@@ -129,11 +144,9 @@ const META_CONNECT_PREFIX: &str = "-- @connect:";
 /// Parse a `-- @connect: <uri>` meta-command, returning the URI if present.
 pub fn parse_meta_command(code: &str) -> Option<String> {
     let trimmed = code.trim();
-    if let Some(rest) = trimmed.strip_prefix(META_CONNECT_PREFIX) {
-        Some(rest.trim().to_string())
-    } else {
-        None
-    }
+    trimmed
+        .strip_prefix(META_CONNECT_PREFIX)
+        .map(|rest| rest.trim().to_string())
 }
 
 /// Query executor maintaining persistent database connection
@@ -195,10 +208,7 @@ impl QueryExecutor {
             tracing::info!("Meta-command: switching reader to {}", uri);
             self.swap_reader(&uri)?;
             let display_name = display_name_for_uri(&uri);
-            return Ok(ExecutionResult::ConnectionChanged {
-                uri,
-                display_name,
-            });
+            return Ok(ExecutionResult::ConnectionChanged { uri, display_name });
         }
 
         // 1. Validate to check if there's a visualization

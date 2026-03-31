@@ -59,6 +59,7 @@ uuid = { version = "1.0", features = ["v4"] }
 [features]
 default = []
 odbc = ["ggsql/odbc"]
+sqlite = ["ggsql/sqlite"]
 
 [dev-dependencies]
 # Test utilities

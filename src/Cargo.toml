@@ -79,7 +79,7 @@ tempfile = "3.8"
 ureq = "3"
 
 [features]
-default = ["duckdb", "sqlite", "vegalite", "ipc", "parquet", "builtin-data"]
+default = ["duckdb", "sqlite", "vegalite", "ipc", "parquet", "builtin-data", "odbc"]
 ipc = ["polars/ipc"]
 duckdb = ["dep:duckdb", "dep:arrow"]
 parquet = ["polars/parquet"]
