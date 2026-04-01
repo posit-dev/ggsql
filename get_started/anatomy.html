@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.1">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>The anatomy of ggsql – ggsql</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<link href="../get_started/tooling.html" rel="next">
+<link href="../get_started/grammar.html" rel="prev">
+<link href="../assets/icon.svg" rel="icon" type="image/svg+xml">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-a36260601fbdf6a4904b36220d3e3906.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-a36260601fbdf6a4904b36220d3e3906.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-a36260601fbdf6a4904b36220d3e3906.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-ae3a23e5fff51768ec3dc754f784de44.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-bb8758b6ba4144100911e1d00292335d.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-ae3a23e5fff51768ec3dc754f784de44.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [],
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+<script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
+<!-- Privacy-friendly analytics by Plausible -->
+<script async="" src="https://plausible.io/js/pa-eH2pS73nQmBLURrhxXgML.js"></script>
+<script>
+    window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+    plausible.init()
+</script>
+
+
+<meta property="og:title" content="The anatomy of ggsql – ggsql">
+<meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
+<meta property="og:image" content="https://ggsql.org/get_started/assets/logo.png">
+<meta property="og:site_name" content="ggsql">
+<meta property="og:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
+handle is made up of the classic database silo icon and is coloured in a
+gradient teal.
+">
+<meta name="twitter:title" content="The anatomy of ggsql – ggsql">
+<meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
+<meta name="twitter:image" content="https://ggsql.org/get_started/assets/logo.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
+handle is made up of the classic database silo icon and is coloured in a
+gradient teal.
+">
+</head>
+
+<body class="nav-sidebar floating nav-fixed fullcontent quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a href="../index.html" class="navbar-brand navbar-brand-logo">
+    <img src="../assets/icon.svg" alt="" class="navbar-logo light-content">
+    <img src="../assets/icon.svg" alt="" class="navbar-logo dark-content">
+    </a>
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">ggsql</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link active" href="../get_started/installation.html" aria-current="page"> 
+<span class="menu-text">Get started</span></a>
+  </li>  
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-syntax" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Syntax</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-syntax">    
+        <li>
+    <a class="dropdown-item" href="../syntax/index.html">
+ <span class="dropdown-text">Overview</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/visualise.html">
+ <span class="dropdown-text"><code>VISUALISE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/draw.html">
+ <span class="dropdown-text"><code>DRAW</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/place.html">
+ <span class="dropdown-text"><code>PLACE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/scale.html">
+ <span class="dropdown-text"><code>SCALE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/facet.html">
+ <span class="dropdown-text"><code>FACET</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/project.html">
+ <span class="dropdown-text"><code>PROJECT</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/label.html">
+ <span class="dropdown-text"><code>LABEL</code></span></a>
+  </li>  
+    </ul>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../gallery/index.html"> 
+<span class="menu-text">Gallery</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../faq.html"> 
+<span class="menu-text">FAQ</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../wasm/index.html"> 
+<span class="menu-text">Playground</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+    <div class="dropdown">
+      <a href="" title="" id="quarto-navigation-tool-dropdown-0" class="quarto-navigation-tool dropdown-toggle px-1" data-bs-toggle="dropdown" aria-expanded="false" role="link" aria-label=""><i class="bi bi-github"></i></a>
+      <ul class="dropdown-menu" aria-labelledby="quarto-navigation-tool-dropdown-0">
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/ggsql-dev/ggsql">
+            Source Code
+            </a>
+          </li>
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/ggsql-dev/ggsql/issues">
+            Report a Bug
+            </a>
+          </li>
+      </ul>
+    </div>
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../get_started/anatomy.html">Anatomy of ggsql</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+  <div id="quarto-announcement" data-announcement-id="a3e2a40f560b81649f1436c0b08f2025" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
+<p>ggsql is still in early development and all functionality is subject to change</p>
+</div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../get_started/installation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Installation</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../get_started/first_plot.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">The first plot</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../get_started/grammar.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Grammar of graphics</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../get_started/anatomy.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Anatomy of ggsql</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../get_started/tooling.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Tooling</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../get_started/the_rest.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">The rest of the owl</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">The anatomy of ggsql</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<p>With a slight bit of knowledge about the grammar of graphics, let’s dive into how the concepts are present in ggsql, starting with some key concepts and moving on to how it is reflected in the syntax.</p>
+<section id="layers" class="level2">
+<h2 class="anchored" data-anchor-id="layers">Layers</h2>
+<p>ggsql is composable, allowing you to create arbitrarily complex visualizations. Central to this is the concept of layers. A layer is a single visual encoding of some underlying data, e.g.&nbsp;<a href="../syntax/layer/type/point.html">points</a> for a scatterplot, or <a href="../syntax/layer/type/bar.html">bars</a> for a barplot. You can have multiple layers in which case they are stacked on top of each other in the order they are declared (i.e.&nbsp;a layer declared last will be on top and overlap any layer declared before it). A scatterplot with a regression line consist of two layers: A <a href="../syntax/layer/type/point.html">point</a> layer and a <a href="../syntax/layer/type/smooth.html">smooth</a> layer.</p>
+<p>Layers may show data directly, e.g.&nbsp;a <a href="../syntax/layer/type/point.html">point</a> layer will show each observation as a point, or it may apply a statistical transformation and show the result of that, e.g.&nbsp;a <a href="../syntax/layer/type/histogram.html">histogram</a> layer will bin and count your data before showing the result as bars.</p>
+</section>
+<section id="aesthetics" class="level2">
+<h2 class="anchored" data-anchor-id="aesthetics">Aesthetics</h2>
+<p>You will encounter aesthetics throughout the documentation and it is arguably one of the most important concepts to get right. Aesthetics are the things that describe the visual entities that makes up a layer, e.g.&nbsp;the <a href="../syntax/scale/aesthetic/1_color.html">color</a> of a point, the <a href="../syntax/scale/aesthetic/linewidth.html">linewidth</a> of a line, and the <a href="../syntax/scale/aesthetic/2_opacity.html">opacity</a> of a polygon.</p>
+<p>There are two types of aesthetics: position aesthetics and material aesthetics. The former are related to <em>where</em> an entity is <em>placed</em> and is deeply connected to the coordinate system of the plot. The latter are related to <em>how</em> the entity <em>looks</em>.</p>
+<p>Aesthetics can either be <em>mapped</em> or <em>set</em>. You use mapping if you want the aesthetic to be related to values in your data, e.g.&nbsp;have fill color be controlled by a category column from your dataset. You use setting when you wish to fix an aesthetic to a specific value, not related to your data, e.g.&nbsp;you want to set linewidth to 2pt.</p>
+</section>
+<section id="scales" class="level2">
+<h2 class="anchored" data-anchor-id="scales">Scales</h2>
+<p>When you map data to an aesthetic it will seldom have values that are meaningful for the aesthetic. Consider mapping <code>region</code> to <code>fill</code> because you wish the fill color shows the geographical region the data pertains to. <code>region</code> might contain values such as <code>Asia</code>, <code>Europe</code>, and <code>South America</code> which are not meaningful color values. How do you translate these values into something the aesthetic understands?</p>
+<p>The answer is using a scale. When mapping an aesthetic it will automatically be scaled by a default scale to ensure that the aesthetic receives values it understands, but you can take control of the scaling and e.g.&nbsp;use a different color palette.</p>
+</section>
+<section id="the-syntax" class="level2">
+<h2 class="anchored" data-anchor-id="the-syntax">The syntax</h2>
+<p>Before we move on, let’s examine how the concepts we have just described are reflected in the ggsql syntax. Often these will be enough for your basic visualization needs.</p>
+<section id="visualise" class="level3">
+<h3 class="anchored" data-anchor-id="visualise"><code>VISUALISE</code></h3>
+<p>Every ggsql query starts with a <a href="../syntax/clause/visualise.html"><code>VISUALISE</code></a> (or <code>VISUALIZE</code>) clause. It denotes that we are exiting regular SQL syntax and entering ggsql.</p>
+<p>While <code>VISUALISE</code> can stand on its own as a demarcation line between the regular and the visual query, you can also pass it a list of aesthetic mappings which will define the default mapping for the layers so that you don’t have to repeat it for every layer. Lastly, if you do not have a initial SQL query you can name a data source for your plot.</p>
+<p>Bringing all of these things together, a <code>VISUALISE</code> clause could look like this:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">--       |---------- mapping ----------|--- data source ---|</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> body_mass <span class="kw">AS</span> <span class="at">x</span>, bill_len <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="draw" class="level3">
+<h3 class="anchored" data-anchor-id="draw"><code>DRAW</code></h3>
+<p>Following <code>VISUALISE</code> you’d usually provide one or more <a href="../syntax/clause/draw.html"><code>DRAW</code></a> clauses which will define your layer. The <code>DRAW</code> clause is arguably the most complex clause, but the basic usage is straightforward: You provide the type of the layer, any additional mapping if needed, and perhaps modify the settings of the layer. To achieve this we employ the <code>MAPPING</code> and <code>SETTING</code> clauses.</p>
+<p>The input to the <code>MAPPING</code> clause looks exactly like what we saw above for the <code>VISUALISE</code> clause. You can provide mappings and optionally a data source if you want the layer to use a data source different from the global data. The <code>SETTING</code> clause allows you to both <em>set</em> aesthetics as well as set parameters specific to the layer (e.g.&nbsp;number of bins in a histogram).</p>
+<p>Bringing all of this together a <code>DRAW</code> clause could look like this:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">--  |- type --|</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">histogram</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co">--       |-- mapping --|</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> bill_len AS <span class="at">x</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="co">--       |-- setting ---|- parameter -|</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> <span class="at">stroke</span> <span class="op">=&gt;</span> null, bins <span class="op">=&gt;</span> <span class="dv">20</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>but, if mappings and data source have already been taken care of, it can be as simple as</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="scale" class="level3">
+<h3 class="anchored" data-anchor-id="scale"><code>SCALE</code></h3>
+<p>As <a href="#scales">described above</a>, ggsql automatically creates a default for mapped aesthetics and if those suit your needs there is no reason to modify them. However, if change is needed you do it with the <a href="../syntax/clause/scale.html"><code>SCALE</code></a> clause.</p>
+<p>The clause allows you to set the type of scale, the input range, the output range, the transformation, and lets you control breaks and label formatting. So, the clause can end up with a lot of information but the syntax has been designed so it reads very natural. Further, every part is optional and can be left out if the default fits. An example of a rather complex <code>SCALE</code> clause could be:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">ORDINAL</span> <span class="at">fill</span> <span class="kw">FROM</span> [<span class="st">'Low'</span>, <span class="st">'Mid'</span>, <span class="st">'High'</span>] <span class="kw">TO</span> <span class="dt">viridis</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> <span class="at">breaks</span> <span class="op">=&gt;</span> <span class="dv">6</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>But, if you are only interested in changing e.g.&nbsp;the palette it can be as simple as:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">fill</span> <span class="kw">TO</span> <span class="dt">viridis</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
+<section id="example" class="level2">
+<h2 class="anchored" data-anchor-id="example">Example</h2>
+<p>Using the things we have just learned we can combine it all to a complete query consisting of multiple layers and custom scales:</p>
+<div id="64efa37b" class="cell" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span>, species <span class="kw">AS</span> <span class="at">stroke</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span> </span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> body_mass AS <span class="at">size</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> <span class="at">fill</span> <span class="op">=&gt;</span> null</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">smooth</span> </span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> method <span class="op">=&gt;</span> <span class="st">'ols'</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">stroke</span> <span class="kw">TO</span> dark2</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">size</span> <span class="kw">TO</span> [<span class="dv">4</span>, <span class="dv">15</span>]</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> <span class="at">breaks</span> <span class="op">=&gt;</span> <span class="dv">4</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="1">
+<div id="vis-1775062212313"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":39.1,"__ggsql_aes_pos2__":18.7,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.5,"__ggsql_aes_pos2__":17.4,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.3,"__ggsql_aes_pos2__":18.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":null,"__ggsql_aes_pos2__":null,"__ggsql_aes_size__":null,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.7,"__ggsql_aes_pos2__":19.3,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.3,"__ggsql_aes_pos2__":20.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":38.9,"__ggsql_aes_pos2__":17.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.2,"__ggsql_aes_pos2__":19.6,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":34.1,"__ggsql_aes_pos2__":18.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.0,"__ggsql_aes_pos2__":20.2,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.8,"__ggsql_aes_pos2__":17.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.8,"__ggsql_aes_pos2__":17.3,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":41.1,"__ggsql_aes_pos2__":17.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":38.6,"__ggsql_aes_pos2__":21.2,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":13,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":34.6,"__ggsql_aes_pos2__":21.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":14,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.6,"__ggsql_aes_pos2__":17.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":15,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":38.7,"__ggsql_aes_pos2__":19.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":16,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.5,"__ggsql_aes_pos2__":20.7,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":17,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":34.4,"__ggsql_aes_pos2__":18.4,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":18,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.0,"__ggsql_aes_pos2__":21.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":19,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.8,"__ggsql_aes_pos2__":18.3,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":20,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.7,"__ggsql_aes_pos2__":18.7,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":21,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":35.9,"__ggsql_aes_pos2__":19.2,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":22,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":38.2,"__ggsql_aes_pos2__":18.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":23,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":38.8,"__ggsql_aes_pos2__":17.2,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":24,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":35.3,"__ggsql_aes_pos2__":18.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":25,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.6,"__ggsql_aes_pos2__":18.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":26,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.5,"__ggsql_aes_pos2__":17.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":27,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.9,"__ggsql_aes_pos2__":18.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":28,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.5,"__ggsql_aes_pos2__":18.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":29,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.5,"__ggsql_aes_pos2__":16.7,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":30,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.2,"__ggsql_aes_pos2__":18.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":31,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.5,"__ggsql_aes_pos2__":17.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":32,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.9,"__ggsql_aes_pos2__":18.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":33,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.4,"__ggsql_aes_pos2__":17.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":34,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.2,"__ggsql_aes_pos2__":21.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":35,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":38.8,"__ggsql_aes_pos2__":20.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":36,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.2,"__ggsql_aes_pos2__":18.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":37,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.6,"__ggsql_aes_pos2__":19.3,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":38,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.8,"__ggsql_aes_pos2__":19.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":39,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.5,"__ggsql_aes_pos2__":18.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":40,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.8,"__ggsql_aes_pos2__":18.4,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":41,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.0,"__ggsql_aes_pos2__":18.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":42,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":44.1,"__ggsql_aes_pos2__":19.7,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":43,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.0,"__ggsql_aes_pos2__":16.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":44,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.6,"__ggsql_aes_pos2__":18.8,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":45,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":41.1,"__ggsql_aes_pos2__":19.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":46,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.5,"__ggsql_aes_pos2__":18.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":47,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.0,"__ggsql_aes_pos2__":17.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":48,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.3,"__ggsql_aes_pos2__":21.2,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":49,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.6,"__ggsql_aes_pos2__":17.7,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":50,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.1,"__ggsql_aes_pos2__":18.9,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":51,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":35.0,"__ggsql_aes_pos2__":17.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":52,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.0,"__ggsql_aes_pos2__":19.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":53,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":34.5,"__ggsql_aes_pos2__":18.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":54,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":41.4,"__ggsql_aes_pos2__":18.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":55,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.0,"__ggsql_aes_pos2__":17.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":56,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.6,"__ggsql_aes_pos2__":18.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":57,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.5,"__ggsql_aes_pos2__":16.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":58,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.6,"__ggsql_aes_pos2__":19.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":59,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":35.7,"__ggsql_aes_pos2__":16.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":60,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":41.3,"__ggsql_aes_pos2__":21.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":61,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.6,"__ggsql_aes_pos2__":17.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":62,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":41.1,"__ggsql_aes_pos2__":18.2,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":63,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.4,"__ggsql_aes_pos2__":17.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":64,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":41.6,"__ggsql_aes_pos2__":18.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":65,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":35.5,"__ggsql_aes_pos2__":16.2,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":66,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":41.1,"__ggsql_aes_pos2__":19.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":67,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":35.9,"__ggsql_aes_pos2__":16.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":68,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":41.8,"__ggsql_aes_pos2__":19.4,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":69,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":33.5,"__ggsql_aes_pos2__":19.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":70,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.7,"__ggsql_aes_pos2__":18.4,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":71,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.6,"__ggsql_aes_pos2__":17.2,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":72,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.8,"__ggsql_aes_pos2__":18.9,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":73,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":35.5,"__ggsql_aes_pos2__":17.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":74,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.8,"__ggsql_aes_pos2__":18.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":75,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.9,"__ggsql_aes_pos2__":16.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":76,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.2,"__ggsql_aes_pos2__":19.4,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":77,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.2,"__ggsql_aes_pos2__":16.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":78,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.1,"__ggsql_aes_pos2__":19.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":79,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":34.6,"__ggsql_aes_pos2__":17.2,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":80,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.9,"__ggsql_aes_pos2__":17.6,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":81,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.7,"__ggsql_aes_pos2__":18.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":82,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":35.1,"__ggsql_aes_pos2__":19.4,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":83,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.3,"__ggsql_aes_pos2__":17.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":84,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":41.3,"__ggsql_aes_pos2__":20.3,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":85,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.3,"__ggsql_aes_pos2__":19.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":86,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.9,"__ggsql_aes_pos2__":18.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":87,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":38.3,"__ggsql_aes_pos2__":19.2,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":88,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":38.9,"__ggsql_aes_pos2__":18.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":89,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":35.7,"__ggsql_aes_pos2__":18.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":90,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":41.1,"__ggsql_aes_pos2__":18.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":91,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":34.0,"__ggsql_aes_pos2__":17.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":92,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.6,"__ggsql_aes_pos2__":18.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":93,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.2,"__ggsql_aes_pos2__":17.3,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":94,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.8,"__ggsql_aes_pos2__":18.9,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":95,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":38.1,"__ggsql_aes_pos2__":18.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":96,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.3,"__ggsql_aes_pos2__":18.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":97,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":33.1,"__ggsql_aes_pos2__":16.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":98,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":43.2,"__ggsql_aes_pos2__":18.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":99,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":35.0,"__ggsql_aes_pos2__":17.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":100,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":41.0,"__ggsql_aes_pos2__":20.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":101,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.7,"__ggsql_aes_pos2__":16.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":102,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.8,"__ggsql_aes_pos2__":20.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":103,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.9,"__ggsql_aes_pos2__":18.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":104,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.7,"__ggsql_aes_pos2__":18.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":105,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":38.6,"__ggsql_aes_pos2__":17.2,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":106,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":38.2,"__ggsql_aes_pos2__":20.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":107,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":38.1,"__ggsql_aes_pos2__":17.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":108,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":43.2,"__ggsql_aes_pos2__":19.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":109,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":38.1,"__ggsql_aes_pos2__":16.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":110,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.6,"__ggsql_aes_pos2__":20.3,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":111,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.7,"__ggsql_aes_pos2__":17.7,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":112,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.2,"__ggsql_aes_pos2__":19.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":113,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.6,"__ggsql_aes_pos2__":20.7,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":114,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.7,"__ggsql_aes_pos2__":18.3,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":115,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":38.6,"__ggsql_aes_pos2__":17.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":116,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.3,"__ggsql_aes_pos2__":20.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":117,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":35.7,"__ggsql_aes_pos2__":17.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":118,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":41.1,"__ggsql_aes_pos2__":18.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":119,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.2,"__ggsql_aes_pos2__":17.2,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":120,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.7,"__ggsql_aes_pos2__":19.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":121,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.2,"__ggsql_aes_pos2__":17.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":122,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":41.4,"__ggsql_aes_pos2__":18.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":123,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":35.2,"__ggsql_aes_pos2__":15.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":124,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.6,"__ggsql_aes_pos2__":19.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":125,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":38.8,"__ggsql_aes_pos2__":17.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":126,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":41.5,"__ggsql_aes_pos2__":18.3,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":127,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.0,"__ggsql_aes_pos2__":17.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":128,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":44.1,"__ggsql_aes_pos2__":18.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":129,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":38.5,"__ggsql_aes_pos2__":17.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":130,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":43.1,"__ggsql_aes_pos2__":19.2,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":131,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.8,"__ggsql_aes_pos2__":18.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":132,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.5,"__ggsql_aes_pos2__":18.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":133,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":38.1,"__ggsql_aes_pos2__":17.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":134,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":41.1,"__ggsql_aes_pos2__":17.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":135,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":35.6,"__ggsql_aes_pos2__":17.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":136,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.2,"__ggsql_aes_pos2__":20.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":137,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.0,"__ggsql_aes_pos2__":16.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":138,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.7,"__ggsql_aes_pos2__":17.9,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":139,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.2,"__ggsql_aes_pos2__":17.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":140,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.6,"__ggsql_aes_pos2__":17.2,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":141,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":32.1,"__ggsql_aes_pos2__":15.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":142,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.7,"__ggsql_aes_pos2__":17.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":143,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.3,"__ggsql_aes_pos2__":16.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":144,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.0,"__ggsql_aes_pos2__":18.7,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":145,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":39.2,"__ggsql_aes_pos2__":18.6,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":146,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.6,"__ggsql_aes_pos2__":18.4,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":147,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.0,"__ggsql_aes_pos2__":17.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":148,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.8,"__ggsql_aes_pos2__":18.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":149,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.0,"__ggsql_aes_pos2__":17.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":150,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":41.5,"__ggsql_aes_pos2__":18.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":151,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.1,"__ggsql_aes_pos2__":13.2,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":152,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.0,"__ggsql_aes_pos2__":16.3,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":153,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":48.7,"__ggsql_aes_pos2__":14.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":154,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.0,"__ggsql_aes_pos2__":15.2,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":155,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":47.6,"__ggsql_aes_pos2__":14.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":156,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.5,"__ggsql_aes_pos2__":13.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":157,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.4,"__ggsql_aes_pos2__":14.6,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":158,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.7,"__ggsql_aes_pos2__":15.3,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":159,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":43.3,"__ggsql_aes_pos2__":13.4,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":160,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.8,"__ggsql_aes_pos2__":15.4,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":161,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.9,"__ggsql_aes_pos2__":13.7,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":162,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.0,"__ggsql_aes_pos2__":16.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":163,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.5,"__ggsql_aes_pos2__":13.7,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":164,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":48.4,"__ggsql_aes_pos2__":14.6,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":165,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.8,"__ggsql_aes_pos2__":14.6,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":166,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.3,"__ggsql_aes_pos2__":15.7,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":167,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.0,"__ggsql_aes_pos2__":13.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":168,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.2,"__ggsql_aes_pos2__":15.2,"__ggsql_aes_size__":7000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":169,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.2,"__ggsql_aes_pos2__":14.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":170,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":48.7,"__ggsql_aes_pos2__":15.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":171,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.2,"__ggsql_aes_pos2__":14.3,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":172,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.1,"__ggsql_aes_pos2__":14.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":173,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.5,"__ggsql_aes_pos2__":14.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":174,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.3,"__ggsql_aes_pos2__":15.8,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":175,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.9,"__ggsql_aes_pos2__":13.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":176,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.1,"__ggsql_aes_pos2__":15.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":177,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":44.5,"__ggsql_aes_pos2__":14.3,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":178,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":47.8,"__ggsql_aes_pos2__":15.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":179,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":48.2,"__ggsql_aes_pos2__":14.3,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":180,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.0,"__ggsql_aes_pos2__":15.3,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":181,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":47.3,"__ggsql_aes_pos2__":15.3,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":182,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.8,"__ggsql_aes_pos2__":14.2,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":183,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.1,"__ggsql_aes_pos2__":14.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":184,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":59.6,"__ggsql_aes_pos2__":17.0,"__ggsql_aes_size__":7000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":185,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.1,"__ggsql_aes_pos2__":14.8,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":186,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":48.4,"__ggsql_aes_pos2__":16.3,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":187,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.6,"__ggsql_aes_pos2__":13.7,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":188,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":44.4,"__ggsql_aes_pos2__":17.3,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":189,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":44.0,"__ggsql_aes_pos2__":13.6,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":190,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":48.7,"__ggsql_aes_pos2__":15.7,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":191,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.7,"__ggsql_aes_pos2__":13.7,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":192,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.6,"__ggsql_aes_pos2__":16.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":193,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.3,"__ggsql_aes_pos2__":13.7,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":194,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.6,"__ggsql_aes_pos2__":15.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":195,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.5,"__ggsql_aes_pos2__":15.9,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":196,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":43.6,"__ggsql_aes_pos2__":13.9,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":197,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.5,"__ggsql_aes_pos2__":13.9,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":198,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.5,"__ggsql_aes_pos2__":15.9,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":199,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":44.9,"__ggsql_aes_pos2__":13.3,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":200,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.2,"__ggsql_aes_pos2__":15.8,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":201,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.6,"__ggsql_aes_pos2__":14.2,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":202,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":48.5,"__ggsql_aes_pos2__":14.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":203,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.1,"__ggsql_aes_pos2__":14.4,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":204,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.1,"__ggsql_aes_pos2__":15.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":205,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.5,"__ggsql_aes_pos2__":14.4,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":206,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.0,"__ggsql_aes_pos2__":15.4,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":207,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":43.8,"__ggsql_aes_pos2__":13.9,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":208,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.5,"__ggsql_aes_pos2__":15.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":209,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":43.2,"__ggsql_aes_pos2__":14.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":210,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.4,"__ggsql_aes_pos2__":15.3,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":211,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.3,"__ggsql_aes_pos2__":13.8,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":212,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.2,"__ggsql_aes_pos2__":14.9,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":213,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.7,"__ggsql_aes_pos2__":13.9,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":214,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":54.3,"__ggsql_aes_pos2__":15.7,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":215,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.8,"__ggsql_aes_pos2__":14.2,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":216,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.8,"__ggsql_aes_pos2__":16.8,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":217,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.2,"__ggsql_aes_pos2__":14.4,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":218,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.5,"__ggsql_aes_pos2__":16.2,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":219,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":43.5,"__ggsql_aes_pos2__":14.2,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":220,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.7,"__ggsql_aes_pos2__":15.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":221,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":47.7,"__ggsql_aes_pos2__":15.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":222,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.4,"__ggsql_aes_pos2__":15.6,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":223,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":48.2,"__ggsql_aes_pos2__":15.6,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":224,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.5,"__ggsql_aes_pos2__":14.8,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":225,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.4,"__ggsql_aes_pos2__":15.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":226,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":48.6,"__ggsql_aes_pos2__":16.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":227,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":47.5,"__ggsql_aes_pos2__":14.2,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":228,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":51.1,"__ggsql_aes_pos2__":16.3,"__ggsql_aes_size__":7000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":229,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.2,"__ggsql_aes_pos2__":13.8,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":230,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.2,"__ggsql_aes_pos2__":16.4,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":231,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.1,"__ggsql_aes_pos2__":14.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":232,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":52.5,"__ggsql_aes_pos2__":15.6,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":233,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":47.4,"__ggsql_aes_pos2__":14.6,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":234,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.0,"__ggsql_aes_pos2__":15.9,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":235,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":44.9,"__ggsql_aes_pos2__":13.8,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":236,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.8,"__ggsql_aes_pos2__":17.3,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":237,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":43.4,"__ggsql_aes_pos2__":14.4,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":238,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":51.3,"__ggsql_aes_pos2__":14.2,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":239,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":47.5,"__ggsql_aes_pos2__":14.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":240,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":52.1,"__ggsql_aes_pos2__":17.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":241,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":47.5,"__ggsql_aes_pos2__":15.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":242,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":52.2,"__ggsql_aes_pos2__":17.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":243,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.5,"__ggsql_aes_pos2__":14.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":244,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.5,"__ggsql_aes_pos2__":16.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":245,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":44.5,"__ggsql_aes_pos2__":14.7,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":246,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.8,"__ggsql_aes_pos2__":15.7,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":247,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.4,"__ggsql_aes_pos2__":15.8,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":248,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.9,"__ggsql_aes_pos2__":14.6,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":249,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":48.4,"__ggsql_aes_pos2__":14.4,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":250,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":51.1,"__ggsql_aes_pos2__":16.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":251,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":48.5,"__ggsql_aes_pos2__":15.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":252,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":55.9,"__ggsql_aes_pos2__":17.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":253,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":47.2,"__ggsql_aes_pos2__":15.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":254,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.1,"__ggsql_aes_pos2__":15.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":255,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":47.3,"__ggsql_aes_pos2__":13.8,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":256,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.8,"__ggsql_aes_pos2__":16.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":257,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":41.7,"__ggsql_aes_pos2__":14.7,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":258,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":53.4,"__ggsql_aes_pos2__":15.8,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":259,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":43.3,"__ggsql_aes_pos2__":14.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":260,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":48.1,"__ggsql_aes_pos2__":15.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":261,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.5,"__ggsql_aes_pos2__":15.2,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":262,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.8,"__ggsql_aes_pos2__":15.9,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":263,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":43.5,"__ggsql_aes_pos2__":15.2,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":264,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":51.5,"__ggsql_aes_pos2__":16.3,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":265,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.2,"__ggsql_aes_pos2__":14.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":266,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":55.1,"__ggsql_aes_pos2__":16.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":267,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":44.5,"__ggsql_aes_pos2__":15.7,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":268,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":48.8,"__ggsql_aes_pos2__":16.2,"__ggsql_aes_size__":7000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":269,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":47.2,"__ggsql_aes_pos2__":13.7,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":270,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":null,"__ggsql_aes_pos2__":null,"__ggsql_aes_size__":null,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":271,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.8,"__ggsql_aes_pos2__":14.3,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":272,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.4,"__ggsql_aes_pos2__":15.7,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":273,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.2,"__ggsql_aes_pos2__":14.8,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":274,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.9,"__ggsql_aes_pos2__":16.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":275,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.5,"__ggsql_aes_pos2__":17.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":276,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.0,"__ggsql_aes_pos2__":19.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":277,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":51.3,"__ggsql_aes_pos2__":19.2,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":278,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.4,"__ggsql_aes_pos2__":18.7,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":279,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":52.7,"__ggsql_aes_pos2__":19.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":280,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.2,"__ggsql_aes_pos2__":17.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":281,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.1,"__ggsql_aes_pos2__":18.2,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":282,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":51.3,"__ggsql_aes_pos2__":18.2,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":283,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.0,"__ggsql_aes_pos2__":18.9,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":284,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":51.3,"__ggsql_aes_pos2__":19.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":285,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.6,"__ggsql_aes_pos2__":17.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":286,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":51.7,"__ggsql_aes_pos2__":20.3,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":287,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":47.0,"__ggsql_aes_pos2__":17.3,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":288,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":52.0,"__ggsql_aes_pos2__":18.1,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":289,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.9,"__ggsql_aes_pos2__":17.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":290,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.5,"__ggsql_aes_pos2__":19.6,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":291,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.3,"__ggsql_aes_pos2__":20.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":292,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":58.0,"__ggsql_aes_pos2__":17.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":293,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.4,"__ggsql_aes_pos2__":18.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":294,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.2,"__ggsql_aes_pos2__":18.2,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":295,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.4,"__ggsql_aes_pos2__":17.3,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":296,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":48.5,"__ggsql_aes_pos2__":17.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":297,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":43.2,"__ggsql_aes_pos2__":16.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":298,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.6,"__ggsql_aes_pos2__":19.4,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":299,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.7,"__ggsql_aes_pos2__":17.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":300,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":52.0,"__ggsql_aes_pos2__":19.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":301,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.5,"__ggsql_aes_pos2__":18.4,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":302,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.5,"__ggsql_aes_pos2__":19.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":303,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.4,"__ggsql_aes_pos2__":17.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":304,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":52.8,"__ggsql_aes_pos2__":20.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":305,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":40.9,"__ggsql_aes_pos2__":16.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":306,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":54.2,"__ggsql_aes_pos2__":20.8,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":307,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.5,"__ggsql_aes_pos2__":16.7,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":308,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":51.0,"__ggsql_aes_pos2__":18.8,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":309,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.7,"__ggsql_aes_pos2__":18.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":310,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":47.5,"__ggsql_aes_pos2__":16.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":311,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":47.6,"__ggsql_aes_pos2__":18.3,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":312,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":52.0,"__ggsql_aes_pos2__":20.7,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":313,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.9,"__ggsql_aes_pos2__":16.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":314,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":53.5,"__ggsql_aes_pos2__":19.9,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":315,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.0,"__ggsql_aes_pos2__":19.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":316,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.2,"__ggsql_aes_pos2__":17.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":317,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.9,"__ggsql_aes_pos2__":19.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":318,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.5,"__ggsql_aes_pos2__":17.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":319,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.9,"__ggsql_aes_pos2__":17.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":320,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.8,"__ggsql_aes_pos2__":18.5,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":321,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.1,"__ggsql_aes_pos2__":17.9,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":322,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.0,"__ggsql_aes_pos2__":19.6,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":323,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":51.5,"__ggsql_aes_pos2__":18.7,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":324,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.8,"__ggsql_aes_pos2__":17.3,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":325,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":48.1,"__ggsql_aes_pos2__":16.4,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":326,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":51.4,"__ggsql_aes_pos2__":19.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":327,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.7,"__ggsql_aes_pos2__":17.3,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":328,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.7,"__ggsql_aes_pos2__":19.7,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":329,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":42.5,"__ggsql_aes_pos2__":17.3,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":330,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":52.2,"__ggsql_aes_pos2__":18.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":331,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.2,"__ggsql_aes_pos2__":16.6,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":332,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.3,"__ggsql_aes_pos2__":19.9,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":333,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.2,"__ggsql_aes_pos2__":18.8,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":334,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.6,"__ggsql_aes_pos2__":19.4,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":335,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":51.9,"__ggsql_aes_pos2__":19.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":336,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":46.8,"__ggsql_aes_pos2__":16.5,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":337,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":45.7,"__ggsql_aes_pos2__":17.0,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":338,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":55.8,"__ggsql_aes_pos2__":19.8,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":339,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":43.5,"__ggsql_aes_pos2__":18.1,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":340,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":49.6,"__ggsql_aes_pos2__":18.2,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":341,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.8,"__ggsql_aes_pos2__":19.0,"__ggsql_aes_size__":5000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":342,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":50.2,"__ggsql_aes_pos2__":18.7,"__ggsql_aes_size__":3000,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":343,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":32.1,"__ggsql_aes_pos2__":17.149707106762243,"__ggsql_aes_size__":null,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":344,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":40.9,"__ggsql_aes_pos2__":13.62914193235018,"__ggsql_aes_size__":null,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":345,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":40.9,"__ggsql_aes_pos2__":16.65759963088249,"__ggsql_aes_size__":null,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":346,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":46.0,"__ggsql_aes_pos2__":19.635504566794612,"__ggsql_aes_size__":null,"__ggsql_aes_stroke__":"Adelie","__ggsql_row_index__":347,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":59.6,"__ggsql_aes_pos2__":17.45973110197271,"__ggsql_aes_size__":null,"__ggsql_aes_stroke__":"Gentoo","__ggsql_row_index__":348,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":58.0,"__ggsql_aes_pos2__":20.45742011134558,"__ggsql_aes_size__":null,"__ggsql_aes_stroke__":"Chinstrap","__ggsql_row_index__":349,"__ggsql_source__":"__ggsql_layer_1__"}]},"height":"container","layer":[{"encoding":{"detail":[{"field":"__ggsql_aes_size__","type":"nominal"},{"field":"__ggsql_aes_stroke__","type":"nominal"}],"fillOpacity":{"value":0.8},"shape":{"value":"circle"},"size":{"field":"__ggsql_aes_size__","legend":{"labelExpr":"datum.label == '4000 – 6000' ? '4000 – 6000' : datum.label == '≥ 6000' ? '6000 – 8000' : datum.label == '2000 – 4000' ? '2000 – 4000' : datum.label","values":[2000.0,4000.0,6000.0]},"scale":{"domain":[4000.0,6000.0],"range":[89.36085770210966,504.0510879759623,1256.637061435917],"type":"threshold"},"title":"body_mass","type":"quantitative"},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#1b9e77","#d95f02","#7570b3"]},"title":"species","type":"nominal"},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[30.725,60.975],"zero":false},"title":"bill_len","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '18' ? '18' : datum.label == '14' ? '14' : datum.label == '20' ? '20' : datum.label == '16' ? '16' : datum.label","values":[14.0,16.0,18.0,20.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[12.68,21.92],"zero":false},"stack":null,"title":"bill_dep","type":"quantitative"}},"mark":{"clip":true,"type":"point"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_stroke__","type":"nominal"},"opacity":{"value":1.0},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#1b9e77","#d95f02","#7570b3"]},"title":"species","type":"nominal"},"strokeDash":{"value":[]},"strokeWidth":{"value":2.6666666666666665},"x":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[30.725,60.975],"zero":false},"title":"bill_len","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '18' ? '18' : datum.label == '14' ? '14' : datum.label == '20' ? '20' : datum.label == '16' ? '16' : datum.label","values":[14.0,16.0,18.0,20.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[12.68,21.92],"zero":false},"stack":null,"title":"bill_dep","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_1__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1775062212313';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>In the above we create a global mapping of bill_len to the <code>x</code> aesthetic and bill_dep to the <code>y</code> aesthetic using the built-in penguins dataset. We use <code>DRAW</code> to create two layers: A point layer for a scatter plot and a smooth layer for regression lines. For the point layer we <em>map</em> the body_mass to size to create a bubble chart and <em>set</em> the fill aesthetic to be empty (<code>null</code>) so only the outline is shown. For the smooth layer we set the layer parameter <code>method</code> to <code>'ols'</code> to estimate a straight regression line. Lastly, we modify the stroke scale to use the dark2 palette from the ColorBrewer project and apply a binned scale to <code>size</code> that goes from 4pt to 15pt with 4 breaks (resulting in 3 bins).</p>
+<p>While the query above may feel like a mouthful, remember that most visualizations are much simpler:</p>
+<div id="903e527c" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> body_mass <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">histogram</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<div id="vis-1775062212337"></div>
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":2637.93103448275,"__ggsql_aes_pos1end__":2762.06896551725,"__ggsql_aes_pos2__":3.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":2762.06896551725,"__ggsql_aes_pos1end__":2886.20689655175,"__ggsql_aes_pos2__":2.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":2886.20689655175,"__ggsql_aes_pos1end__":3010.34482758625,"__ggsql_aes_pos2__":8.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":3010.34482758625,"__ggsql_aes_pos1end__":3134.4827586207502,"__ggsql_aes_pos2__":6.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":3134.48275862075,"__ggsql_aes_pos1end__":3258.62068965525,"__ggsql_aes_pos2__":16.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":3258.62068965525,"__ggsql_aes_pos1end__":3382.75862068975,"__ggsql_aes_pos2__":17.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":3382.75862068975,"__ggsql_aes_pos1end__":3506.89655172425,"__ggsql_aes_pos2__":28.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":3506.89655172425,"__ggsql_aes_pos1end__":3631.03448275875,"__ggsql_aes_pos2__":20.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":3631.03448275875,"__ggsql_aes_pos1end__":3755.17241379325,"__ggsql_aes_pos2__":27.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":3755.1724137932497,"__ggsql_aes_pos1end__":3879.3103448277498,"__ggsql_aes_pos2__":19.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":3879.3103448277498,"__ggsql_aes_pos1end__":4003.44827586225,"__ggsql_aes_pos2__":26.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":4003.44827586225,"__ggsql_aes_pos1end__":4127.58620689675,"__ggsql_aes_pos2__":12.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":4127.58620689675,"__ggsql_aes_pos1end__":4251.72413793125,"__ggsql_aes_pos2__":16.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":4251.72413793125,"__ggsql_aes_pos1end__":4375.86206896575,"__ggsql_aes_pos2__":12.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":13,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":4375.86206896575,"__ggsql_aes_pos1end__":4500.00000000025,"__ggsql_aes_pos2__":17.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":14,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":4500.00000000025,"__ggsql_aes_pos1end__":4624.13793103475,"__ggsql_aes_pos2__":8.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":15,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":4624.13793103475,"__ggsql_aes_pos1end__":4748.27586206925,"__ggsql_aes_pos2__":17.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":16,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":4748.275862069249,"__ggsql_aes_pos1end__":4872.413793103749,"__ggsql_aes_pos2__":13.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":17,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":4872.413793103749,"__ggsql_aes_pos1end__":4996.5517241382495,"__ggsql_aes_pos2__":10.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":18,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":4996.5517241382495,"__ggsql_aes_pos1end__":5120.68965517275,"__ggsql_aes_pos2__":12.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":19,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":5120.68965517275,"__ggsql_aes_pos1end__":5244.82758620725,"__ggsql_aes_pos2__":6.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":20,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":5244.82758620725,"__ggsql_aes_pos1end__":5368.96551724175,"__ggsql_aes_pos2__":10.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":21,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":5368.96551724175,"__ggsql_aes_pos1end__":5493.10344827625,"__ggsql_aes_pos2__":6.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":22,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":5493.10344827625,"__ggsql_aes_pos1end__":5617.24137931075,"__ggsql_aes_pos2__":13.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":23,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":5617.24137931075,"__ggsql_aes_pos1end__":5741.37931034525,"__ggsql_aes_pos2__":8.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":24,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":5741.37931034525,"__ggsql_aes_pos1end__":5865.51724137975,"__ggsql_aes_pos2__":6.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":25,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":5865.51724137975,"__ggsql_aes_pos1end__":5989.65517241425,"__ggsql_aes_pos2__":2.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":26,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":5989.65517241425,"__ggsql_aes_pos1end__":6113.79310344875,"__ggsql_aes_pos2__":3.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":27,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":6237.93103448325,"__ggsql_aes_pos1end__":6362.06896551775,"__ggsql_aes_pos2__":1.0,"__ggsql_aes_pos2end__":0.0,"__ggsql_row_index__":28,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"x":{"axis":{"labelExpr":"datum.label == '4000' ? '4000' : datum.label == '5000' ? '5000' : datum.label == '3000' ? '3000' : datum.label == '6000' ? '6000' : datum.label","values":[3000.0,4000.0,5000.0,6000.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[2451.724137931,6548.2758620695],"zero":false},"title":"body_mass","type":"quantitative"},"x2":{"field":"__ggsql_aes_pos1end__"},"y":{"axis":{"labelExpr":"datum.label == '20' ? '20' : datum.label == '10' ? '10' : datum.label == '0' ? '0' : datum.label","values":[0.0,10.0,20.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-1.4,29.4],"zero":false},"stack":null,"title":"count","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__"}},"mark":{"clip":true,"type":"bar"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1775062212337';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>In the next section we will introduce the remaining parts of the grammar and the related syntax, but the parts covered here will already take you a very long way.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/ggsql\.org");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+<nav class="page-navigation">
+  <div class="nav-page nav-page-previous">
+      <a href="../get_started/grammar.html" class="pagination-link" aria-label="Grammar of graphics">
+        <i class="bi bi-arrow-left-short"></i> <span class="nav-page-text">Grammar of graphics</span>
+      </a>          
+  </div>
+  <div class="nav-page nav-page-next">
+      <a href="../get_started/tooling.html" class="pagination-link" aria-label="Tooling">
+        <span class="nav-page-text">Tooling</span> <i class="bi bi-arrow-right-short"></i>
+      </a>
+  </div>
+</nav>
+</div> <!-- /content -->
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer><script type="module">
+  const offset = document.querySelector('meta[name="quarto:offset"]')?.content || './';
+  const base = offset + 'wasm/';
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = base + 'quarto.css';
+  document.head.appendChild(link);
+  import(base + 'quarto.js');
+</script>
+
+
+
+
+</body></html>
