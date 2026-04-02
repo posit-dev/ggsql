@@ -6,9 +6,6 @@ members = [
     "ggsql-python",
     "ggsql-wasm"
 ]
-exclude = [
-    "ggsql-R/src/rust",
-]
 # ggsql-python is excluded from default builds because it's a PyO3 extension
 # that requires Python dev headers. Build it separately with maturin.
 default-members = [

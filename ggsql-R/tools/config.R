@@ -1,6 +1,10 @@
 # Note: Any variables prefixed with `.` are used for text
 # replacement in the Makevars.in and Makevars.win.in
 
+# Bootstrap: copy workspace crates into the R package if needed
+source("tools/bootstrap.R")
+bootstrap_rust_workspace()
+
 # check the packages MSRV first
 source("tools/msrv.R")
 
