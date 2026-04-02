@@ -31,7 +31,12 @@ csscolorparser.workspace = true
 palette.workspace = true
 
 # Data processing
-polars = { workspace = true, features = ["lazy", "sql"] }
+polars = { workspace = true, features = [
+    "lazy",
+    "cum_agg",
+    "dtype-full",
+    "timezones",
+] }
 polars-ops.workspace = true
 
 # Readers

@@ -177,8 +177,28 @@ pub fn validate(query: &str) -> Result<Validated> {
             // Check required aesthetics
             // Note: Without schema data, we can only check if mappings exist,
             // not if the columns are valid. We skip this check for wildcards.
-            if !layer.mappings.wildcard {
-                if let Err(e) = layer.validate_mapping(&plot.aesthetic_context, false) {
+            let has_wildcard = layer.mappings.wildcard || plot.global_mappings.wildcard;
+            if !has_wildcard {
+                // Merge global mappings into a temporary copy so validation
+                // accounts for aesthetics inherited from the VISUALISE clause
+                let mut merged = layer.clone();
+                let supported = layer.geom.aesthetics().supported();
+                for (aesthetic, value) in &plot.global_mappings.aesthetics {
+                    let is_color_alias = matches!(aesthetic.as_str(), "color" | "colour");
+                    let is_facet_aesthetic =
+                        crate::plot::scale::is_facet_aesthetic(aesthetic.as_str());
+                    if supported.contains(&aesthetic.as_str())
+                        || is_color_alias
+                        || is_facet_aesthetic
+                    {
+                        merged
+                            .mappings
+                            .aesthetics
+                            .entry(aesthetic.clone())
+                            .or_insert(value.clone());
+                    }
+                }
+                if let Err(e) = merged.validate_mapping(&plot.aesthetic_context, false) {
                     errors.push(ValidationError {
                         message: format!("{}: {}", context, e),
                         location: None,

@@ -50,5 +50,4 @@
                 (8.7, 22.3)
             ) AS t(x, y)
           ) TO 'data.csv' (HEADER, DELIMITER ',')
-      ## 2
 

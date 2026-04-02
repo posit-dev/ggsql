@@ -1,46 +1,61 @@
+# Package-level environment for persistent reader across knitr chunks
+ggsql_env <- new.env(parent = emptyenv())
+
+get_engine_reader <- function() {
+  if (is.null(ggsql_env$reader)) {
+    ggsql_env$reader <- duckdb_reader()
+  }
+  ggsql_env$reader
+}
 
 ggsql_engine <- function(options) {
-  # Write a temporary file with the query
-  tmp <- basename(tempfile("ggsql", ".", paste0(".", "gsql")))
-  on.exit(unlink(tmp))
-  writeLines(options$code, tmp)
-
-  out <- ''
-
-  # Format and evaluate system command
-  if (options$eval) {
-    cmd <- sprintf("ggsql run %s", paste(tmp, options$engine.opts))
-    out <- system(cmd, intern=TRUE)
+  if (!options$eval) {
+    return(knitr::engine_output(options, options$code, ""))
   }
 
-  # If the command failed, we don't have a vegalite schema and we exit early
-  is_schema <- !is.na(out[2]) && startsWith(trimws(out[2]), "\"$schema")
-  if (!is_schema) {
+  query <- paste(options$code, collapse = "\n")
+  reader <- get_engine_reader()
 
-    out <- rlang::try_fetch(
-      utils::read.csv(text = out),
-      error = function(cnd) out
-    )
-    # Excludes dummy table when creating new table in chunk
-    is_proper_dataframe <- is.data.frame(out) &&
-      !(identical(colnames(out), "Count") && nrow(out) == 1)
-    if (is_proper_dataframe) {
-      out <- knitr::kable(out)
-      options$results <- "asis"
+  result <- tryCatch(
+    ggsql_engine_eval(query, reader, options),
+    error = function(cnd) {
+      knitr::engine_output(options, options$code, conditionMessage(cnd))
     }
+  )
+
+  result
+}
+
+ggsql_engine_eval <- function(query, reader, options) {
+  validated <- ggsql_validate(query)
+
+  if (!validated$has_visual) {
+    # Plain SQL: execute and render as table
+    df <- ggsql_execute_sql(reader, query)
+    # Suppress output for DDL/DML statements that return metadata rows
+    # (e.g., COPY TO returns a "Count" column)
+    is_result <- nrow(df) > 0 && ncol(df) > 0 &&
+      !identical(names(df), "Count")
+    if (!is_result) {
+      return(knitr::engine_output(options, options$code, ""))
+    }
+    out <- knitr::kable(df)
+    options$results <- "asis"
     return(knitr::engine_output(options, options$code, out))
   }
 
-  # Interpret output as-is, i.e. raw html/pandoc
+  # Visualization query: execute, render to Vega-Lite, display as widget
+  spec <- ggsql_execute(reader, query)
+  writer <- vegalite_writer()
+  json <- ggsql_render(writer, spec)
+
   options$results <- "asis"
 
-  # Render the spec as html chunk to include
-  widget <- vegawidget::as_vegaspec(paste0(out, collapse = "\n"))
+  widget <- vegawidget::as_vegaspec(json)
   out <- knitr::knit_print(widget, options = options)
 
   # When we cannot include widgets, we are handed a screenshot that we
-  # must include as a png file.
-  # This happens in static formats, like PDF
+  # must include as a png file (e.g. in PDF output)
   if (inherits(out, "html_screenshot")) {
     file_path <- knitr::sew(out, options = options)
     return(knitr::engine_output(options, out = list(file_path)))
