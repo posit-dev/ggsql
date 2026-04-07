@@ -1313,8 +1313,8 @@ impl GeomRenderer for ViolinRenderer {
 
         // It'll be implemented as an offset.
         let mut violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
-        if let Some(ParameterValue::String(ridge)) = layer.parameters.get("ridge") {
-            match ridge.as_str() {
+        if let Some(ParameterValue::String(align)) = layer.parameters.get("align") {
+            match align.as_str() {
                 "left" | "top" => {
                     violin_offset = format!("[-datum.{offset}]", offset = offset_col);
                 }
@@ -3237,7 +3237,7 @@ mod tests {
             if let Some(r) = ridge {
                 layer
                     .parameters
-                    .insert("ridge".to_string(), ParameterValue::String(r.to_string()));
+                    .insert("align".to_string(), ParameterValue::String(r.to_string()));
             }
 
             let mut layer_spec = json!({

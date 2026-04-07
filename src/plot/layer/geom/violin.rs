@@ -84,7 +84,7 @@ impl GeomTrait for Violin {
                 constraint: ParamConstraint::number_range(0.0, 1.0),
             },
             ParamDefinition {
-                name: "ridge",
+                name: "align",
                 default: DefaultParamValue::String("center"),
                 constraint: ParamConstraint::string_option(ALIGN_VALUES),
             },
