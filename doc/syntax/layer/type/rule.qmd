@@ -24,9 +24,7 @@ The following aesthetics are recognised by the rule layer.
 * `linetype`: The type of the line, i.e. the dashing pattern
 
 ## Settings
-* `orientation`: The orientation of the layer, see the [Orientation section](#orientation). One of the following: 
-    * `'aligned'` to align the layer's primary axis with the coordinate system's first axis.
-    * `'transposed'` to align the layer's primary axis with the coordinate system's second axis.
+* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 
 ## Data transformation
 
