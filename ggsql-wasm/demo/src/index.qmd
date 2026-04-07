@@ -5,10 +5,20 @@ section-divs: false
 toc: false
 lightbox: false
 repo-actions: false
-include-in-header: 
+include-in-header:
   - text: |
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <link rel="stylesheet" href="bundle.css" />
+      <script>
+        // Set navbar height CSS variable for proper playground sizing
+        document.addEventListener('DOMContentLoaded', () => {
+          const header = document.getElementById('quarto-header');
+          if (header) {
+            const height = header.offsetHeight;
+            document.documentElement.style.setProperty('--quarto-navbar-height', height + 'px');
+          }
+        });
+      </script>
 include-after-body: 
   - text: |
       <script type="module" src="bundle.js"></script>

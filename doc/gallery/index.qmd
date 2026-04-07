@@ -1,5 +1,5 @@
 ---
-title: Example Gallery
+title: Example gallery
 listing:
   contents: examples
   type: grid

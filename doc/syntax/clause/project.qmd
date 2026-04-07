@@ -9,7 +9,7 @@ The `PROJECT` syntax contains a number of subclauses
 
 ```ggsql
 PROJECT <aesthetic>, ... TO <coordinate-system>
-    SETTING <parameter> => <value>, ...
+  SETTING <parameter> => <value>, ...
 ```
 
 The comma-separated list of `aesthetic` names are optional but allows you to define the names of the positional aesthetics in the plot. If omitted, the default aesthetic names of the coordinate system is used. The order given matters as the first name is used for the primary aesthetic, the second name for the secondary aesthetic and so on. For instance, using `PROJECT y, x TO cartesian` will flip the plot as anything mapped to `y` will now relate to the horizontal axis, and anything mapped to `x` will relate to the vertical axis. Note that it is not allowed to use the name of already established aesthetics as positional aesthetics, e.g. `PROJECT fill, stroke TO polar` is not allowed.
@@ -32,6 +32,6 @@ This clause behaves much like the `SETTINGS` clause in `DRAW`, in that it allows
 If you do not provide a `PROJECT` clause then the coordinate system will be picked for you based on the mappings in your query. The logic is as follows
 
 * If `x`, `y` or any of their variants are mapped to, a Cartesian coordinate system is used
-* If `theta`, `radius` or any of their variants are mapped to, a polar coordinate system is used
+* If `angle`, `radius` or any of their variants are mapped to, a polar coordinate system is used
 * If none of the above applies, the plot defaults to a Cartesian coordinate system
-* If multiple applies (e.g. mapping to both x and theta) an error is thrown
+* If multiple applies (e.g. mapping to both x and angle) an error is thrown

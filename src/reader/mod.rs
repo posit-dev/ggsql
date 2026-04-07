@@ -163,6 +163,41 @@ pub trait SqlDialect {
             ))"
         )
     }
+
+    /// SQL literal for a date value (days since Unix epoch).
+    fn sql_date_literal(&self, days_since_epoch: i32) -> String {
+        format!(
+            "CAST(DATE '1970-01-01' + INTERVAL {} DAY AS DATE)",
+            days_since_epoch
+        )
+    }
+
+    /// SQL literal for a datetime value (microseconds since Unix epoch).
+    fn sql_datetime_literal(&self, microseconds_since_epoch: i64) -> String {
+        format!(
+            "TIMESTAMP '1970-01-01 00:00:00' + INTERVAL {} MICROSECOND",
+            microseconds_since_epoch
+        )
+    }
+
+    /// SQL literal for a time value (nanoseconds since midnight).
+    fn sql_time_literal(&self, nanoseconds_since_midnight: i64) -> String {
+        let seconds = nanoseconds_since_midnight / 1_000_000_000;
+        let nanos = nanoseconds_since_midnight % 1_000_000_000;
+        format!(
+            "TIME '00:00:00' + INTERVAL {} SECOND + INTERVAL {} NANOSECOND",
+            seconds, nanos
+        )
+    }
+
+    /// SQL literal for a boolean value.
+    fn sql_boolean_literal(&self, value: bool) -> String {
+        if value {
+            "TRUE".to_string()
+        } else {
+            "FALSE".to_string()
+        }
+    }
 }
 
 pub struct AnsiDialect;
@@ -170,9 +205,6 @@ impl SqlDialect for AnsiDialect {}
 
 #[cfg(feature = "duckdb")]
 pub mod duckdb;
-
-#[cfg(feature = "polars-sql")]
-pub mod polars_sql;
 
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
@@ -183,9 +215,6 @@ mod spec;
 
 #[cfg(feature = "duckdb")]
 pub use duckdb::DuckDBReader;
-
-#[cfg(feature = "polars-sql")]
-pub use polars_sql::PolarsReader;
 
 #[cfg(feature = "sqlite")]
 pub use sqlite::SqliteReader;
@@ -652,10 +681,10 @@ mod tests {
         let json2: serde_json::Value = serde_json::from_str(&result2).unwrap();
         check_encoding_keys(&json2, "PROJECT x, y TO polar");
 
-        // Test case 3: PROJECT TO polar (default radius/theta names)
+        // Test case 3: PROJECT TO polar (default radius/angle names)
         let query3 = r#"
             SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
-            VISUALISE value AS theta, category AS fill
+            VISUALISE value AS angle, category AS fill
             DRAW bar
             PROJECT TO polar
         "#;
@@ -1220,14 +1249,14 @@ mod tests {
 
     #[test]
     fn test_label_with_polar_project() {
-        // End-to-end test: LABEL theta/radius with PROJECT TO polar
+        // End-to-end test: LABEL angle/radius with PROJECT TO polar
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let query = r#"
             SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
-            VISUALISE value AS theta, category AS fill
+            VISUALISE value AS angle, category AS fill
             DRAW bar
             PROJECT TO polar
-            LABEL theta => 'Angle', radius => 'Distance'
+            LABEL angle => 'Angle', radius => 'Distance'
         "#;
 
         let spec = reader.execute(query).unwrap();

@@ -25,7 +25,7 @@ If one is missing, it takes on the value of the start point.
 * `linetype`: The type of the line, i.e. the dashing pattern.
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
+* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 
 ## Data transformation
 The segment layer does not transform its data but passes it through unchanged.
@@ -38,20 +38,19 @@ The segment layer has no orientations. The axes are treated symmetrically.
 Segments are useful when you have known start and end points of the data. For example in a graph
 
 ```{ggsql}
-WITH edges AS (
-  SELECT * FROM (VALUES
-      (0, 0, 1, 1, 'A'),
-      (1, 1, 2, 1, 'A'),
-      (2, 1, 3, 0, 'A'),
-      (0, 3, 1, 2, 'B'),
-      (1, 2, 2, 2, 'B'),
-      (2, 2, 3, 3, 'B'),
-      (1, 1, 1, 2, 'C'),
-      (2, 2, 2, 1, 'C')
-  ) AS t(x, y, xend, yend, type)
+WITH edges(x, y, xend, yend, type) AS (VALUES
+    (0, 0, 1, 1, 'A'),
+    (1, 1, 2, 1, 'A'),
+    (2, 1, 3, 0, 'A'),
+    (0, 3, 1, 2, 'B'),
+    (1, 2, 2, 2, 'B'),
+    (2, 2, 3, 3, 'B'),
+    (1, 1, 1, 2, 'C'),
+    (2, 2, 2, 1, 'C')
 )
 VISUALISE x, y, xend, yend FROM edges
-  DRAW segment MAPPING type AS stroke
+DRAW segment 
+  MAPPING type AS stroke
 ```
 
 You can use segments as part of a lollipop chart by anchoring one of the ends to 0.
@@ -59,12 +58,13 @@ Note that `xend` is missing and has taken up the value of `x`.
 
 ```{ggsql}
 SELECT ROUND(bill_dep) AS bill_dep, COUNT(*) AS n 
-  FROM ggsql:penguins 
-  GROUP BY ROUND(bill_dep)
+FROM ggsql:penguins 
+GROUP BY ROUND(bill_dep)
 
 VISUALISE bill_dep AS x, n AS y
-  DRAW segment MAPPING 0 AS yend
-  DRAW point
+DRAW segment 
+  MAPPING 0 AS yend
+DRAW point
 ```
 
 By overlaying a thick line on a thin line, you can create a candlestick chart.
@@ -81,12 +81,12 @@ SELECT
     ELSE 'warmer'
   END AS trend
 FROM ggsql:airquality
-GROUP BY WEEKOFYEAR(Date)
+GROUP BY Week
 
 VISUALISE date AS x, trend AS colour
-  DRAW segment 
-    MAPPING open AS y, close AS yend
-    SETTING linewidth => 5
-  DRAW segment 
-    MAPPING low AS y, high AS yend
+DRAW segment 
+  MAPPING open AS y, close AS yend
+  SETTING linewidth => 5
+DRAW segment 
+  MAPPING low AS y, high AS yend
 ```

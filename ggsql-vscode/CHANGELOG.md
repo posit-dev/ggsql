@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.1.9
+
+Pre-alpha release.
+
+- Improvements to website (#225, #247, #260, #261, #263)
+- Add bidirectionality to layers (#183)
+- Text layer (#155)
+- Rectangles (#168)
+- Fix: remove invalid `stack` property from secondary position channels (#237)
+- Update color palettes (#198)
+- Annotations (#172)
+- Smooth layer (#223)
+- Validate mapping (#230)
+- Change dimension name to angle (#243)
+- Add input validation (#235)
+- CI: Audit node packages, update ESLint & uri-js, update Node in workflows (#246)
+- Allow for using other readers in ggsql cli (#251)
+- Fix: compute position stacking per-facet-panel instead of globally (#245)
+- Add logo and update README.md for the VSCode/Positron extension (#255)
+- Fix warnings/errors in wasm sysroot (#253)
+- Universal query for place (#249)
+- Tweaks to avoid cache rate limit (#258, #266, #267, #273)
+- Various rect fixes (#262)
+- Last batch of housekeeping (#265)
+- Add code links to docs (#269)
+
 ## 0.1.8
 
 - Initial pre-alpha release.

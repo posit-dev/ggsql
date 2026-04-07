@@ -11,7 +11,7 @@ Sizes are given as bare numbers and measured in points. The following code will 
 
 ```ggsql
 DRAW point
-    SETTING size => 3
+  SETTING size => 3
 ```
 
 ## Palettes

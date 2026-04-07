@@ -1,5 +1,5 @@
 ---
-title: "Multi-Layer Plot"
+title: "Multi-layer plot"
 description: "Combining multiple geometric layers in one visualization"
 image: thumbnails/multi-layer.svg
 categories: [layers, advanced]
@@ -14,14 +14,14 @@ Multi-layer plots combine different geometric elements (geoms) to create richer 
 SELECT Date, Temp FROM ggsql:airquality
 VISUALISE Date AS x, Temp AS y
 DRAW line
-    SETTING color => 'steelblue'
+  SETTING color => 'steelblue'
 DRAW point
-    SETTING size => 4, color => 'darkblue'
+  SETTING size => 4, color => 'darkblue'
 SCALE x VIA date
 LABEL
-    title => 'Temperature with Line and Points',
-    x => 'Date',
-    y => 'Temperature (F)'
+  title => 'Temperature with Line and Points',
+  x => 'Date',
+  y => 'Temperature (F)'
 ```
 
 ## Explanation
@@ -33,7 +33,7 @@ LABEL
 
 ## Variations
 
-### Different Aesthetics Per Layer
+### Different aesthetics per layer
 
 Each layer can have its own aesthetic mappings using `MAPPING`:
 
@@ -41,36 +41,36 @@ Each layer can have its own aesthetic mappings using `MAPPING`:
 SELECT Date, Temp, Ozone FROM ggsql:airquality
 VISUALISE Date AS x
 DRAW line
-    MAPPING Temp AS y, 'Temperature' AS color
+  MAPPING Temp AS y, 'Temperature' AS color
 DRAW line
-    MAPPING Ozone AS y, 'Ozone' AS color
+  MAPPING Ozone AS y, 'Ozone' AS color
 SCALE x VIA date
 LABEL
-    title => 'Temperature and Ozone Over Time',
-    x => 'Date',
-    y => 'Value'
+  title => 'Temperature and Ozone Over Time',
+  x => 'Date',
+  y => 'Value'
 ```
 
-### Layers from Different Data Sources
+### Layers from different data sources
 
 Use `MAPPING ... FROM` to pull each layer from different CTEs:
 
 ```{ggsql}
 WITH temps AS (
-    SELECT Date, Temp as value FROM ggsql:airquality
+  SELECT Date, Temp as value FROM ggsql:airquality
 ),
 ozone AS (
-    SELECT Date, Ozone as value FROM ggsql:airquality WHERE Ozone IS NOT NULL
+  SELECT Date, Ozone as value FROM ggsql:airquality WHERE Ozone IS NOT NULL
 )
 VISUALISE
 DRAW line
-    MAPPING Date AS x, value AS y, 'Temperature' AS color FROM temps
+  MAPPING Date AS x, value AS y, 'Temperature' AS color FROM temps
 DRAW point
-    MAPPING Date AS x, value AS y, 'Ozone' AS color FROM ozone
-    SETTING size => 3
+  MAPPING Date AS x, value AS y, 'Ozone' AS color FROM ozone
+  SETTING size => 3
 SCALE x VIA date
 LABEL
-    title => 'Temperature vs Ozone',
-    x => 'Date',
-    y => 'Value'
+  title => 'Temperature vs Ozone',
+  x => 'Date',
+  y => 'Value'
 ```

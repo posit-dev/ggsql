@@ -36,6 +36,9 @@ pub const ALIGNED: &str = "aligned";
 /// Orientation value for transposed/horizontal orientation.
 pub const TRANSPOSED: &str = "transposed";
 
+/// Valid orientation values for constraint validation.
+pub const ORIENTATION_VALUES: &[&str] = &[ALIGNED, TRANSPOSED];
+
 /// Determine effective orientation for a layer.
 ///
 /// Returns explicit orientation if set via SETTING, otherwise auto-detects

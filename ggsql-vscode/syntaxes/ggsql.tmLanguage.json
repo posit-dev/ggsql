@@ -375,7 +375,7 @@
         },
         {
           "name": "support.type.property.ggsql",
-          "match": "\\b(xlim|ylim|ratio|theta|clip)\\b"
+          "match": "\\b(xlim|ylim|ratio|angle|clip)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]
