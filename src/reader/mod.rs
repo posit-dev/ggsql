@@ -285,15 +285,13 @@ pub use odbc::OdbcReader;
 
 /// Validate a table name for use in SQL statements.
 ///
-/// Rejects empty names, names with characters that could break double-quoted
-/// identifiers, and names exceeding 128 characters.
+/// Rejects empty names and names containing null bytes or newlines.
 pub(crate) fn validate_table_name(name: &str) -> Result<()> {
     if name.is_empty() {
         return Err(GgsqlError::ReaderError("Table name cannot be empty".into()));
     }
 
-    // Reject characters that could break double-quoted identifiers or cause issues
-    let forbidden = ['"', '\0', '\n', '\r'];
+    let forbidden = ['\0', '\n', '\r'];
     for ch in forbidden {
         if name.contains(ch) {
             return Err(GgsqlError::ReaderError(format!(
@@ -302,14 +300,6 @@ pub(crate) fn validate_table_name(name: &str) -> Result<()> {
                 ch.escape_default()
             )));
         }
-    }
-
-    // Reasonable length limit
-    if name.len() > 128 {
-        return Err(GgsqlError::ReaderError(format!(
-            "Table name '{}' exceeds maximum length of 128 characters",
-            name
-        )));
     }
 
     Ok(())

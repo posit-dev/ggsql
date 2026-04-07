@@ -755,13 +755,10 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("cannot be empty"));
 
-        // Name with double quote
+        // Name with double quote should succeed (quote_ident escapes it)
         let result = reader.register("bad\"name", df.clone(), false);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("invalid character"));
+        assert!(result.is_ok());
+        reader.unregister("bad\"name").unwrap();
 
         // Name with null byte
         let result = reader.register("bad\0name", df.clone(), false);
@@ -770,15 +767,6 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("invalid character"));
-
-        // Name too long
-        let long_name = "a".repeat(200);
-        let result = reader.register(&long_name, df, false);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("exceeds maximum length"));
     }
 
     #[test]

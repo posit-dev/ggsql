@@ -176,7 +176,7 @@ fn validate_table_name(name: &str) -> Result<()> {
         return Err(GgsqlError::ReaderError("Table name cannot be empty".into()));
     }
 
-    let forbidden = ['"', '\0', '\n', '\r'];
+    let forbidden = ['\0', '\n', '\r'];
     for ch in forbidden {
         if name.contains(ch) {
             return Err(GgsqlError::ReaderError(format!(
@@ -185,13 +185,6 @@ fn validate_table_name(name: &str) -> Result<()> {
                 ch.escape_default()
             )));
         }
-    }
-
-    if name.len() > 128 {
-        return Err(GgsqlError::ReaderError(format!(
-            "Table name '{}' exceeds maximum length of 128 characters",
-            name
-        )));
     }
 
     Ok(())
@@ -743,12 +736,10 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("cannot be empty"));
 
+        // Name with double quote should succeed (quote_ident escapes it)
         let result = reader.register("bad\"name", df.clone(), false);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("invalid character"));
+        assert!(result.is_ok());
+        reader.unregister("bad\"name").unwrap();
 
         let result = reader.register("bad\0name", df.clone(), false);
         assert!(result.is_err());
@@ -756,14 +747,6 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("invalid character"));
-
-        let long_name = "a".repeat(200);
-        let result = reader.register(&long_name, df, false);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("exceeds maximum length"));
     }
 
     #[test]
