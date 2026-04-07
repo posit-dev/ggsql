@@ -111,10 +111,10 @@ DRAW violin
 ```
 
 A ridgeline plot (or joy plot) can be seen as a horizontal half-violin plot, or like a density plot with vertical offsets for every category.
-To achieve this outcome, you can set the `ridge` setting and adjust `width` to taste.
+To achieve this outcome, you can set the `align` setting and adjust `width` to taste.
 
 ```{ggsql}
 VISUALISE Temp AS x, Month AS y FROM ggsql:airquality
-DRAW violin SETTING width => 4, ridge => 'top'
+DRAW violin SETTING width => 4, align => 'top'
 SCALE ORDINAL y
 ```
