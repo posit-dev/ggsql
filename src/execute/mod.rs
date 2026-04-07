@@ -174,6 +174,7 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             }
 
             let supported = layer.geom.aesthetics().supported();
+            let all_names = layer.geom.aesthetics().names();
             let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
 
             // 1. First merge explicit global aesthetics (layer overrides global)
@@ -181,10 +182,13 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             // because split_color_aesthetic will convert them to fill/stroke later
             // Note: facet aesthetics (panel, row, column) are also accepted,
             // as they apply to all layers regardless of geom support
+            // Note: Use all_names (not supported) so that Delayed aesthetics like
+            // pos2 on histogram can be targeted by explicit global mappings, matching
+            // the behavior of layer-level MAPPING
             for (aesthetic, value) in &spec.global_mappings.aesthetics {
                 let is_color_alias = matches!(aesthetic.as_str(), "color" | "colour");
                 let is_facet_aesthetic = crate::plot::scale::is_facet_aesthetic(aesthetic.as_str());
-                if supported.contains(&aesthetic.as_str()) || is_color_alias || is_facet_aesthetic {
+                if all_names.contains(&aesthetic.as_str()) || is_color_alias || is_facet_aesthetic {
                     layer
                         .mappings
                         .aesthetics
