@@ -25,7 +25,7 @@ const KERNEL_VALUES: &[&str] = &[
     "cosine",
 ];
 
-const ALIGN_VALUES: &[&str] = &["center", "centre", "left", "top", "right", "bottom"];
+const SIDE_VALUES: &[&str] = &["both", "left", "top", "right", "bottom"];
 
 /// Violin geom - violin plots (mirrored density)
 #[derive(Debug, Clone, Copy)]
@@ -85,9 +85,9 @@ impl GeomTrait for Violin {
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
             ParamDefinition {
-                name: "align",
-                default: DefaultParamValue::String("center"),
-                constraint: ParamConstraint::string_option(ALIGN_VALUES),
+                name: "side",
+                default: DefaultParamValue::String("both"),
+                constraint: ParamConstraint::string_option(SIDE_VALUES),
             },
             ParamDefinition {
                 name: "tails",
