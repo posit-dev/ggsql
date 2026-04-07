@@ -154,8 +154,8 @@ fn list_columns(
 
     let name_col = find_column(&df, &["column_name"])
         .map_err(|e| format!("Missing column_name column: {}", e))?;
-    let type_col = find_column(&df, &["data_type"])
-        .map_err(|e| format!("Missing data_type column: {}", e))?;
+    let type_col =
+        find_column(&df, &["data_type"]).map_err(|e| format!("Missing data_type column: {}", e))?;
 
     let mut fields = Vec::new();
     for i in 0..df.height() {
