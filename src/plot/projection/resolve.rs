@@ -103,7 +103,7 @@ fn check_aesthetic(aesthetic: &str, found_cartesian: &mut bool, found_polar: &mu
         return;
     }
 
-    // Strip positional suffix if present (xmin -> x, anglemax -> angle)
+    // Strip position suffix if present (xmin -> x, anglemax -> angle)
     let primary = strip_position_suffix(aesthetic);
 
     // Check against cartesian primaries
@@ -120,7 +120,7 @@ fn check_aesthetic(aesthetic: &str, found_cartesian: &mut bool, found_polar: &mu
 /// Strip position suffix from an aesthetic name.
 /// e.g., "xmin" -> "x", "anglemax" -> "angle", "y" -> "y"
 fn strip_position_suffix(name: &str) -> &str {
-    for suffix in POSITIONAL_SUFFIXES {
+    for suffix in POSITION_SUFFIXES {
         if let Some(base) = name.strip_suffix(suffix) {
             return base;
         }

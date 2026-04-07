@@ -204,7 +204,7 @@ impl Layer {
         let mut position_reqs: Vec<(&str, u8, &str)> = Vec::new();
 
         for aesthetic in self.geom.aesthetics().required() {
-            if let Some((slot, suffix)) = crate::plot::aesthetic::parse_position(aesthetic) {
+            if let Some((slot, suffix)) = parse_position(aesthetic) {
                 position_reqs.push((aesthetic, slot, suffix))
             } else if !self.mappings.contains_key(aesthetic) {
                 missing.push(translate(aesthetic));

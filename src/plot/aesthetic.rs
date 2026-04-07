@@ -331,7 +331,7 @@ impl AestheticContext {
     }
 
     /// Get user position aesthetics (x, y or angle, radius or custom names)
-    pub fn user_positional(&self) -> &[String] {
+    pub fn user_position(&self) -> &[String] {
         &self.user_primaries
     }
 
@@ -510,7 +510,7 @@ mod tests {
         assert!(is_position_aesthetic("pos1end"));
         assert!(is_position_aesthetic("pos2end"));
 
-        // User-facing names are NOT positional (handled by AestheticContext)
+        // User-facing names are NOT position (handled by AestheticContext)
         assert!(!is_position_aesthetic("x"));
         assert!(!is_position_aesthetic("y"));
         assert!(!is_position_aesthetic("xmin"));
@@ -546,7 +546,7 @@ mod tests {
     fn test_aesthetic_context_polar() {
         let ctx = AestheticContext::from_static(&["angle", "radius"], &[]);
 
-        // User positional names
+        // User position names
         assert_eq!(ctx.user_position(), &["angle", "radius"]);
 
         // Primary internal names

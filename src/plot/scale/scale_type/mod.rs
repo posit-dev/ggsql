@@ -647,7 +647,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             // Property not found or not allowed for this aesthetic type
             let allowed: Vec<&str> = defaults
                 .iter()
-                .filter(|p| p.name != "expand" || is_positional)
+                .filter(|p| p.name != "expand" || is_position)
                 .map(|p| p.name)
                 .collect();
             return Err(if allowed.is_empty() {

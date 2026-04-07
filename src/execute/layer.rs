@@ -580,11 +580,11 @@ where
                         .get(aesthetic)
                         .cloned()
                         .or_else(|| {
-                            // For variant positional aesthetics (e.g., pos1min, pos2max),
+                            // For variant position aesthetics (e.g., pos1min, pos2max),
                             // fall back to the primary aesthetic's original name (pos1, pos2).
                             // This ensures rect's expanded min/max aesthetics inherit the
                             // original column name from the user's x/y mapping.
-                            aesthetic::parse_positional(aesthetic).and_then(|(slot, suffix)| {
+                            aesthetic::parse_position(aesthetic).and_then(|(slot, suffix)| {
                                 if !suffix.is_empty() {
                                     let primary = format!("pos{}", slot);
                                     consumed_original_names.get(&primary).cloned()
