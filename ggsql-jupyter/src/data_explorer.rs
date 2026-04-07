@@ -1,8 +1,7 @@
 //! Data explorer backend for the Positron data viewer.
 //!
 //! Implements the `positron.dataExplorer` comm protocol, providing SQL-backed
-//! paginated data access. No full table load — each `get_data_values` request
-//! issues a `SELECT ... LIMIT/OFFSET` query.
+//! paginated data access.
 
 use ggsql::reader::Reader;
 use serde_json::{json, Value};
@@ -139,6 +138,7 @@ impl DataExplorerState {
             "get_schema" => RpcResponse::reply(self.get_schema(params)),
             "get_data_values" => RpcResponse::reply(self.get_data_values(params, reader)),
             "get_column_profiles" => self.get_column_profiles(params, reader),
+            // TODO: Implement filters, sorting, and searching.
             "set_row_filters" => {
                 // Stub: accept but ignore filters, return current shape
                 RpcResponse::reply(json!({
@@ -420,7 +420,6 @@ impl DataExplorerState {
         let display = col.type_display.as_str();
 
         // Build a single SQL query that computes all needed aggregates.
-        // All expressions use ANSI SQL or existing dialect methods.
         let mut select_parts = Vec::new();
         if wants_null_count {
             select_parts.push(format!(
@@ -547,8 +546,7 @@ impl DataExplorerState {
                             number_stats["stdev"] = json!(format!("{}", stdev));
                         }
                     }
-                    // Median via dialect's sql_percentile (uses QUANTILE_CONT on
-                    // DuckDB, NTILE fallback on other backends)
+                    // Median via dialect's sql_percentile
                     let col_name = col.name.replace('"', "\"\"");
                     let from_query = format!("SELECT * FROM {}", self.table_path);
                     let median_expr = dialect.sql_percentile(&col_name, 0.5, &from_query, &[]);

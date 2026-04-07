@@ -36,7 +36,6 @@ pub struct KernelServer {
     ui_comm_id: Option<String>,
     plot_comm_id: Option<String>,
     connection_comm_id: Option<String>,
-    // Open data explorer comms (comm_id → state)
     data_explorer_comms: HashMap<String, DataExplorerState>,
 }
 
