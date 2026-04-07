@@ -2,9 +2,9 @@
 
 use polars::prelude::DataType;
 
-use crate::naming;
 use super::super::transform::{Transform, TransformKind};
 use super::{ScaleTypeKind, ScaleTypeTrait};
+use crate::naming;
 use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
 use crate::plot::ArrayElement;
 

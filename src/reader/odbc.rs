@@ -5,11 +5,11 @@
 
 use crate::reader::Reader;
 use crate::{naming, DataFrame, GgsqlError, Result};
+use odbc_api::sys::{Date as OdbcDate, Time as OdbcTime, Timestamp as OdbcTimestamp};
 use odbc_api::{
     buffers::{AnyBuffer, AnySlice, BufferDesc, ColumnarBuffer},
     ConnectionOptions, Cursor, DataType as OdbcDataType, Environment,
 };
-use odbc_api::sys::{Date as OdbcDate, Time as OdbcTime, Timestamp as OdbcTimestamp};
 use polars::prelude::*;
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -318,7 +318,14 @@ impl ColumnBuilder {
                 Self::Float32(Vec::new())
             }
             OdbcDataType::Double | OdbcDataType::Float { .. } => Self::Float64(Vec::new()),
-            OdbcDataType::Numeric { scale: 0, precision } | OdbcDataType::Decimal { scale: 0, precision } => {
+            OdbcDataType::Numeric {
+                scale: 0,
+                precision,
+            }
+            | OdbcDataType::Decimal {
+                scale: 0,
+                precision,
+            } => {
                 if *precision < 10 {
                     Self::Int32(Vec::new())
                 } else if *precision < 19 {
@@ -376,9 +383,10 @@ impl ColumnBuilder {
                 }));
             }
             (Self::Text(v), AnySlice::WText(view)) => {
-                v.extend(view.iter().map(|opt| {
-                    opt.map(|chars| String::from_utf16_lossy(chars.into()))
-                }));
+                v.extend(
+                    view.iter()
+                        .map(|opt| opt.map(|chars| String::from_utf16_lossy(chars.into()))),
+                );
             }
             // Decimal/Numeric with scale > 0 bound as text → parse to f64
             (Self::Float64(v), AnySlice::Text(view)) => {
@@ -458,11 +466,10 @@ impl ColumnBuilder {
 }
 
 fn odbc_date_to_days(d: &OdbcDate) -> Option<i32> {
-    chrono::NaiveDate::from_ymd_opt(d.year as i32, d.month as u32, d.day as u32)
-        .map(|date| {
-            let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
-            (date - epoch).num_days() as i32
-        })
+    chrono::NaiveDate::from_ymd_opt(d.year as i32, d.month as u32, d.day as u32).map(|date| {
+        let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+        (date - epoch).num_days() as i32
+    })
 }
 
 fn odbc_time_to_nanos(t: &OdbcTime) -> i64 {
@@ -512,8 +519,7 @@ fn cursor_to_dataframe(mut cursor: impl Cursor) -> Result<DataFrame> {
             GgsqlError::ReaderError(format!("Failed to get column {} type: {}", i, e))
         })?;
 
-        let desc = BufferDesc::from_data_type(data_type, true)
-            .unwrap_or(text_fallback);
+        let desc = BufferDesc::from_data_type(data_type, true).unwrap_or(text_fallback);
 
         col_names.push(name);
         col_types.push(data_type);

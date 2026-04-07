@@ -371,7 +371,11 @@ impl Reader for SqliteReader {
             })
             .collect();
 
-        let create_sql = format!("CREATE TABLE {} ({})", naming::quote_ident(name), col_defs.join(", "));
+        let create_sql = format!(
+            "CREATE TABLE {} ({})",
+            naming::quote_ident(name),
+            col_defs.join(", ")
+        );
         self.conn.execute(&create_sql, []).map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to create table '{}': {}", name, e))
         })?;

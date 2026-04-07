@@ -54,7 +54,10 @@ pub fn layer_source_query(
         None => {
             // Layer uses global data
             debug_assert!(has_global, "Layer has no source and no global data");
-            Ok(format!("SELECT * FROM {}", naming::quote_ident(&naming::global_table())))
+            Ok(format!(
+                "SELECT * FROM {}",
+                naming::quote_ident(&naming::global_table())
+            ))
         }
     }
 }
@@ -110,16 +113,26 @@ pub fn build_layer_select_list(
                     // Cast and rename to prefixed aesthetic name
                     format!(
                         "CAST({} AS {}) AS {}",
-                        naming::quote_ident(name), req.sql_type_name, naming::quote_ident(&aes_col_name)
+                        naming::quote_ident(name),
+                        req.sql_type_name,
+                        naming::quote_ident(&aes_col_name)
                     )
                 } else {
                     // Just rename to prefixed aesthetic name
-                    format!("{} AS {}", naming::quote_ident(name), naming::quote_ident(&aes_col_name))
+                    format!(
+                        "{} AS {}",
+                        naming::quote_ident(name),
+                        naming::quote_ident(&aes_col_name)
+                    )
                 }
             }
             AestheticValue::Literal(lit) => {
                 // Literals become columns with prefixed aesthetic name
-                format!("{} AS {}", lit.to_sql(dialect), naming::quote_ident(&aes_col_name))
+                format!(
+                    "{} AS {}",
+                    lit.to_sql(dialect),
+                    naming::quote_ident(&aes_col_name)
+                )
             }
         };
 
@@ -611,7 +624,11 @@ where
                     final_remappings.get(stat).map(|aes| {
                         let stat_col = naming::stat_column(stat);
                         let prefixed_aes = naming::aesthetic_column(aes);
-                        format!("{} AS {}", naming::quote_ident(&stat_col), naming::quote_ident(&prefixed_aes))
+                        format!(
+                            "{} AS {}",
+                            naming::quote_ident(&stat_col),
+                            naming::quote_ident(&prefixed_aes)
+                        )
                     })
                 })
                 .collect();

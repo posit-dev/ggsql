@@ -46,9 +46,11 @@ impl super::SqlDialect for DuckDbDialect {
             .iter()
             .map(|g| {
                 let q = naming::quote_ident(g);
-                format!("AND {pct}.{q} IS NOT DISTINCT FROM {qt}.{q}",
+                format!(
+                    "AND {pct}.{q} IS NOT DISTINCT FROM {qt}.{q}",
                     pct = naming::quote_ident("__ggsql_pct__"),
-                    qt = naming::quote_ident("__ggsql_qt__"))
+                    qt = naming::quote_ident("__ggsql_qt__")
+                )
             })
             .collect::<Vec<_>>()
             .join(" ");
@@ -560,7 +562,8 @@ impl Reader for DuckDBReader {
             let params = dataframe_to_arrow_params(df)?;
             let sql = format!(
                 "{} TEMP TABLE {} AS SELECT * FROM arrow(?, ?)",
-                create_or_replace, naming::quote_ident(name)
+                create_or_replace,
+                naming::quote_ident(name)
             );
             self.conn.execute(&sql, params).map_err(|e| {
                 GgsqlError::ReaderError(format!("Failed to register table '{}': {}", name, e))
@@ -571,7 +574,8 @@ impl Reader for DuckDBReader {
             let params = dataframe_to_arrow_params(first_chunk)?;
             let create_sql = format!(
                 "{} TEMP TABLE {} AS SELECT * FROM arrow(?, ?)",
-                create_or_replace, naming::quote_ident(name)
+                create_or_replace,
+                naming::quote_ident(name)
             );
             self.conn.execute(&create_sql, params).map_err(|e| {
                 GgsqlError::ReaderError(format!("Failed to register table '{}': {}", name, e))
@@ -582,7 +586,10 @@ impl Reader for DuckDBReader {
                 let chunk_size = std::cmp::min(MAX_ARROW_BATCH_ROWS, total_rows - offset);
                 let chunk = df.slice(offset as i64, chunk_size);
                 let params = dataframe_to_arrow_params(chunk)?;
-                let insert_sql = format!("INSERT INTO {} SELECT * FROM arrow(?, ?)", naming::quote_ident(name));
+                let insert_sql = format!(
+                    "INSERT INTO {} SELECT * FROM arrow(?, ?)",
+                    naming::quote_ident(name)
+                );
                 self.conn.execute(&insert_sql, params).map_err(|e| {
                     GgsqlError::ReaderError(format!(
                         "Failed to insert chunk into table '{}': {}",

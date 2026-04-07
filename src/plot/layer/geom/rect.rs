@@ -174,8 +174,16 @@ fn process_direction(
 
     // Build SELECT parts using the stat columns
     let select_parts = vec![
-        format!("{} AS {}", expr_1, naming::quote_ident(&naming::stat_column(&stat_cols[0]))),
-        format!("{} AS {}", expr_2, naming::quote_ident(&naming::stat_column(&stat_cols[1]))),
+        format!(
+            "{} AS {}",
+            expr_1,
+            naming::quote_ident(&naming::stat_column(&stat_cols[0]))
+        ),
+        format!(
+            "{} AS {}",
+            expr_2,
+            naming::quote_ident(&naming::stat_column(&stat_cols[1]))
+        ),
     ];
 
     Ok((select_parts, stat_cols))

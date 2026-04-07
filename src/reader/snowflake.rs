@@ -17,10 +17,19 @@ impl super::SqlDialect for SnowflakeDialect {
     }
 
     fn sql_list_tables(&self, catalog: &str, schema: &str) -> String {
-        format!("SHOW OBJECTS IN SCHEMA {}.{}", naming::quote_ident(catalog), naming::quote_ident(schema))
+        format!(
+            "SHOW OBJECTS IN SCHEMA {}.{}",
+            naming::quote_ident(catalog),
+            naming::quote_ident(schema)
+        )
     }
 
     fn sql_list_columns(&self, catalog: &str, schema: &str, table: &str) -> String {
-        format!("SHOW COLUMNS IN TABLE {}.{}.{}", naming::quote_ident(catalog), naming::quote_ident(schema), naming::quote_ident(table))
+        format!(
+            "SHOW COLUMNS IN TABLE {}.{}.{}",
+            naming::quote_ident(catalog),
+            naming::quote_ident(schema),
+            naming::quote_ident(table)
+        )
     }
 }
