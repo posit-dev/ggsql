@@ -1144,7 +1144,7 @@ mod tests {
                     "Should not generate empty VALUES clause"
                 );
                 assert!(
-                    sql.contains("VALUES") && sql.contains("AS t("),
+                    sql.contains("VALUES") && sql.contains("WITH __ggsql_values__"),
                     "Should have VALUES with at least one column"
                 );
                 // Should contain the dummy column
