@@ -3,6 +3,7 @@
 //! Implements the `positron.dataExplorer` comm protocol, providing SQL-backed
 //! paginated data access.
 
+use crate::util::find_column;
 use ggsql::reader::Reader;
 use serde_json::{json, Value};
 
@@ -98,11 +99,9 @@ impl DataExplorerState {
             .execute_sql(&columns_sql)
             .map_err(|e| format!("Failed to list columns: {}", e))?;
 
-        let name_col = columns_df
-            .column("column_name")
+        let name_col = find_column(&columns_df, &["column_name"])
             .map_err(|e| format!("Missing column_name: {}", e))?;
-        let type_col = columns_df
-            .column("data_type")
+        let type_col = find_column(&columns_df, &["data_type"])
             .map_err(|e| format!("Missing data_type: {}", e))?;
 
         let mut columns = Vec::new();

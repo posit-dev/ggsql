@@ -8,6 +8,7 @@ mod display;
 mod executor;
 mod kernel;
 mod message;
+mod util;
 
 use anyhow::{Context, Result};
 use clap::Parser;

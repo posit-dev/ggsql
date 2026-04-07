@@ -4,6 +4,7 @@
 //! backend-specific queries (e.g. `information_schema` for DuckDB/PostgreSQL,
 //! `sqlite_master` / `PRAGMA` for SQLite).
 
+use crate::util::find_column;
 use ggsql::reader::Reader;
 use serde::Serialize;
 use serde_json::Value;
@@ -63,9 +64,7 @@ fn list_catalogs(reader: &dyn Reader) -> Result<Vec<ObjectSchema>, String> {
         .execute_sql(&sql)
         .map_err(|e| format!("Failed to list catalogs: {}", e))?;
 
-    let col = df
-        .column("catalog_name")
-        .or_else(|_| df.column("name"))
+    let col = find_column(&df, &["catalog_name", "name"])
         .map_err(|e| format!("Missing catalog_name/name column: {}", e))?;
 
     let mut catalogs = Vec::new();
@@ -87,9 +86,7 @@ fn list_schemas(reader: &dyn Reader, catalog: &str) -> Result<Vec<ObjectSchema>,
         .execute_sql(&sql)
         .map_err(|e| format!("Failed to list schemas: {}", e))?;
 
-    let col = df
-        .column("schema_name")
-        .or_else(|_| df.column("name"))
+    let col = find_column(&df, &["schema_name", "name"])
         .map_err(|e| format!("Missing schema_name/name column: {}", e))?;
 
     let mut schemas = Vec::new();
@@ -115,13 +112,9 @@ fn list_tables(
         .execute_sql(&sql)
         .map_err(|e| format!("Failed to list tables: {}", e))?;
 
-    let name_col = df
-        .column("table_name")
-        .or_else(|_| df.column("name"))
+    let name_col = find_column(&df, &["table_name", "name"])
         .map_err(|e| format!("Missing table_name/name column: {}", e))?;
-    let type_col = df
-        .column("table_type")
-        .or_else(|_| df.column("kind"))
+    let type_col = find_column(&df, &["table_type", "kind"])
         .map_err(|e| format!("Missing table_type/kind column: {}", e))?;
 
     let mut objects = Vec::new();
@@ -131,8 +124,13 @@ fn list_tables(
             let table_type = type_val.to_string().trim_matches('"').to_uppercase();
             let kind = if table_type.contains("VIEW") {
                 "view"
-            } else {
+            } else if table_type == "TABLE"
+                || table_type == "BASE TABLE"
+                || table_type.contains("TABLE")
+            {
                 "table"
+            } else {
+                continue; // Skip non-table/view objects (stages, procedures, etc.)
             };
             objects.push(ObjectSchema {
                 name,
@@ -154,11 +152,9 @@ fn list_columns(
         .execute_sql(&sql)
         .map_err(|e| format!("Failed to list columns: {}", e))?;
 
-    let name_col = df
-        .column("column_name")
+    let name_col = find_column(&df, &["column_name"])
         .map_err(|e| format!("Missing column_name column: {}", e))?;
-    let type_col = df
-        .column("data_type")
+    let type_col = find_column(&df, &["data_type"])
         .map_err(|e| format!("Missing data_type column: {}", e))?;
 
     let mut fields = Vec::new();
