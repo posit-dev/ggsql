@@ -3,7 +3,7 @@
 //! This module handles building SQL queries for layers, applying pre-stat
 //! transformations, stat transforms, and post-query operations.
 
-use crate::plot::aesthetic::AestheticContext;
+use crate::plot::aesthetic::{self, AestheticContext};
 use crate::plot::layer::is_transposed;
 use crate::plot::layer::orientation::{flip_positional_aesthetics, resolve_orientation};
 use crate::plot::{
@@ -31,11 +31,12 @@ pub fn layer_source_query(
     layer: &mut Layer,
     materialized_ctes: &HashSet<String>,
     has_global: bool,
+    dialect: &dyn SqlDialect,
 ) -> Result<String> {
     match &layer.source {
         Some(crate::DataSource::Annotation) => {
             // Annotation layers: process parameters and return complete VALUES clause (with on-the-fly recycling)
-            process_annotation_layer(layer)
+            process_annotation_layer(layer, dialect)
         }
         Some(crate::DataSource::Identifier(name)) => {
             // Regular table or CTE
@@ -84,6 +85,7 @@ pub fn layer_source_query(
 pub fn build_layer_select_list(
     layer: &Layer,
     type_requirements: &[TypeRequirement],
+    dialect: &dyn SqlDialect,
 ) -> Vec<String> {
     let mut select_exprs = Vec::new();
 
@@ -117,7 +119,7 @@ pub fn build_layer_select_list(
             }
             AestheticValue::Literal(lit) => {
                 // Literals become columns with prefixed aesthetic name
-                format!("{} AS \"{}\"", lit.to_sql(), aes_col_name)
+                format!("{} AS \"{}\"", lit.to_sql(dialect), aes_col_name)
             }
         };
 
@@ -304,8 +306,7 @@ pub fn apply_pre_stat_transform(
     // aesthetic_schema (aesthetic columns added by build_layer_base_query).
     // The base query produces SELECT *, col AS __ggsql_aes_x__, ... so the
     // actual SQL output has both, but they come from different schema sources.
-    // This avoids SELECT * EXCLUDE which has portability issues
-    // (Polars SQL silently drops re-added columns with the same name).
+    // This avoids SELECT * EXCLUDE which has portability issues across SQL backends.
     let mut seen: HashSet<&str> = HashSet::new();
     let combined_cols = full_schema.iter().chain(aesthetic_schema.iter());
 
@@ -356,13 +357,14 @@ pub fn build_layer_base_query(
     layer: &Layer,
     source_query: &str,
     type_requirements: &[TypeRequirement],
+    dialect: &dyn SqlDialect,
 ) -> String {
     // Annotation layers now go through the same pipeline as regular layers.
     // The source_query for annotations is a VALUES clause with raw column names,
     // and this function wraps it with SELECT expressions that rename to prefixed aesthetic names.
 
     // Build SELECT list with aesthetic renames, casts
-    let select_exprs = build_layer_select_list(layer, type_requirements);
+    let select_exprs = build_layer_select_list(layer, type_requirements, dialect);
     let select_clause = if select_exprs.is_empty() {
         "*".to_string()
     } else {
@@ -577,6 +579,20 @@ where
                     let original_name = consumed_original_names
                         .get(aesthetic)
                         .cloned()
+                        .or_else(|| {
+                            // For variant positional aesthetics (e.g., pos1min, pos2max),
+                            // fall back to the primary aesthetic's original name (pos1, pos2).
+                            // This ensures rect's expanded min/max aesthetics inherit the
+                            // original column name from the user's x/y mapping.
+                            aesthetic::parse_positional(aesthetic).and_then(|(slot, suffix)| {
+                                if !suffix.is_empty() {
+                                    let primary = format!("pos{}", slot);
+                                    consumed_original_names.get(&primary).cloned()
+                                } else {
+                                    None
+                                }
+                            })
+                        })
                         .or_else(|| Some(stat.clone()));
 
                     let value = AestheticValue::Column {
@@ -603,30 +619,11 @@ where
             if stat_rename_exprs.is_empty() {
                 transformed_query
             } else {
-                // If the transformed query uses CTEs (WITH ... SELECT ...),
-                // we can't wrap it in a subquery because Polars SQL doesn't
-                // support CTEs inside subqueries. Instead, split into CTE
-                // prefix + trailing SELECT, then append the trailing SELECT
-                // as another CTE and add the rename SELECT on top.
-                if let Some((cte_prefix, trailing_select)) =
-                    crate::parser::SourceTree::new(&transformed_query)
-                        .ok()
-                        .as_ref()
-                        .and_then(super::cte::split_with_query)
-                {
-                    format!(
-                        "{}, __ggsql_stat__ AS ({}) SELECT *, {} FROM __ggsql_stat__",
-                        cte_prefix,
-                        trailing_select,
-                        stat_rename_exprs.join(", ")
-                    )
-                } else {
-                    format!(
-                        "SELECT *, {} FROM ({}) AS __ggsql_stat__",
-                        stat_rename_exprs.join(", "),
-                        transformed_query
-                    )
-                }
+                format!(
+                    "SELECT *, {} FROM ({}) AS __ggsql_stat__",
+                    stat_rename_exprs.join(", "),
+                    transformed_query
+                )
             }
         }
         StatResult::Identity => query,
@@ -659,7 +656,7 @@ where
 
 /// Build a VALUES clause for an annotation layer with all aesthetic columns.
 ///
-/// Generates SQL like: `(VALUES (val1_row1, val2_row1), (val1_row2, val2_row2)) AS t(col1, col2)`
+/// Generates SQL like: `WITH t(col1, col2) AS (VALUES (...), (...)) SELECT * FROM t`
 ///
 /// This function:
 /// 1. Moves positional/required/array parameters from layer.parameters to layer.mappings
@@ -679,7 +676,7 @@ where
 /// # Returns
 ///
 /// A complete SQL expression ready to use as a FROM clause
-fn process_annotation_layer(layer: &mut Layer) -> Result<String> {
+fn process_annotation_layer(layer: &mut Layer, dialect: &dyn SqlDialect) -> Result<String> {
     use crate::plot::ArrayElement;
 
     // Step 1: Identify which parameters to use for annotation data
@@ -801,14 +798,15 @@ fn process_annotation_layer(layer: &mut Layer) -> Result<String> {
     }
 
     // Step 5: Build VALUES rows
-    let mut rows = Vec::new();
-    for i in 0..max_length {
-        let values: Vec<String> = columns.iter().map(|col| col[i].to_sql()).collect();
-        rows.push(format!("({})", values.join(", ")));
-    }
+    let values_clause = (0..max_length)
+        .map(|i| {
+            let row: Vec<String> = columns.iter().map(|col| col[i].to_sql(dialect)).collect();
+            format!("({})", row.join(", "))
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
 
     // Step 6: Build complete SQL query
-    let values_clause = rows.join(", ");
     let column_list = column_names
         .iter()
         .map(|c| format!("\"{}\"", c))
@@ -816,8 +814,8 @@ fn process_annotation_layer(layer: &mut Layer) -> Result<String> {
         .join(", ");
 
     let sql = format!(
-        "SELECT * FROM (VALUES {}) AS t({})",
-        values_clause, column_list
+        "WITH __ggsql_values__({}) AS (VALUES {}) SELECT * FROM __ggsql_values__",
+        column_list, values_clause
     );
 
     Ok(sql)
@@ -898,6 +896,7 @@ pub fn resolve_orientations(
 mod tests {
     use super::*;
     use crate::plot::{ArrayElement, DataSource, Geom, Layer, ParameterValue};
+    use crate::reader::AnsiDialect;
 
     #[test]
     fn test_annotation_single_scalar() {
@@ -915,12 +914,11 @@ mod tests {
             ParameterValue::String("Test".to_string()),
         );
 
-        let result = process_annotation_layer(&mut layer).unwrap();
+        let result = process_annotation_layer(&mut layer, &AnsiDialect).unwrap();
 
-        // Should produce: SELECT * FROM (VALUES (...)) AS t("pos1", "pos2", "label")
-        // Uses raw aesthetic names, not prefixed names
-        assert!(result.contains("VALUES"));
+        // Uses CTE form: WITH __ggsql_values__(cols) AS (VALUES (...)) SELECT * FROM __ggsql_values__
         // Check all values are present (order may vary due to HashMap)
+        assert!(result.contains("VALUES"));
         assert!(result.contains("5"));
         assert!(result.contains("10"));
         assert!(result.contains("'Test'"));
@@ -955,7 +953,7 @@ mod tests {
             ParameterValue::String("Same".to_string()),
         );
 
-        let result = process_annotation_layer(&mut layer).unwrap();
+        let result = process_annotation_layer(&mut layer, &AnsiDialect).unwrap();
 
         // Should recycle scalar pos2 and label to match array length (3)
         assert!(result.contains("VALUES"));
@@ -963,7 +961,7 @@ mod tests {
         assert!(result.contains("1") && result.contains("2") && result.contains("3"));
         assert!(result.contains("10"));
         assert!(result.contains("'Same'"));
-        // Check row count by counting parentheses pairs in VALUES
+        // Check row count by counting value tuples (3 rows)
         assert_eq!(result.matches("), (").count() + 1, 3, "Should have 3 rows");
     }
 
@@ -984,7 +982,7 @@ mod tests {
             ParameterValue::Array(vec![ArrayElement::Number(10.0), ArrayElement::Number(20.0)]),
         );
 
-        let result = process_annotation_layer(&mut layer);
+        let result = process_annotation_layer(&mut layer, &AnsiDialect);
 
         // Should error with mismatched lengths
         assert!(result.is_err());
@@ -1013,12 +1011,13 @@ mod tests {
             ParameterValue::Array(vec![ArrayElement::Number(10.0), ArrayElement::Number(20.0)]),
         );
 
-        let result = process_annotation_layer(&mut layer).unwrap();
+        let result = process_annotation_layer(&mut layer, &AnsiDialect).unwrap();
 
         // Both arrays have length 2, should work (order may vary)
         assert!(result.contains("VALUES"));
         assert!(result.contains("1") && result.contains("2"));
         assert!(result.contains("10") && result.contains("20"));
+        // Check row count by counting value tuples (2 rows)
         assert_eq!(result.matches("), (").count() + 1, 2, "Should have 2 rows");
     }
 
@@ -1037,7 +1036,7 @@ mod tests {
             ParameterValue::String("Text".to_string()),
         );
 
-        let result = process_annotation_layer(&mut layer).unwrap();
+        let result = process_annotation_layer(&mut layer, &AnsiDialect).unwrap();
 
         // Should handle different types (order may vary)
         assert!(result.contains("VALUES"));
@@ -1134,7 +1133,7 @@ mod tests {
             .parameters
             .insert("linewidth".to_string(), ParameterValue::Number(2.0));
 
-        let result = process_annotation_layer(&mut layer);
+        let result = process_annotation_layer(&mut layer, &AnsiDialect);
 
         // Should generate valid SQL with a dummy column
         match result {

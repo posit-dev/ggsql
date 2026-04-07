@@ -63,10 +63,7 @@ Additional groups will dodge the boxplots.
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
 DRAW boxplot
-  MAPPING 
-    species AS x, 
-    bill_len AS y,
-    island AS stroke
+  MAPPING species AS x, bill_len AS y, island AS stroke
 ```
 
 Narrow boxes by shrinking the `width` parameter.

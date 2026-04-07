@@ -11,7 +11,7 @@ Opacity has no unit and goes from 0 (fully transparent) to 1 (fully opaque). You
 
 ```ggsql
 DRAW point
-    SETTING opacity => 0.2
+  SETTING opacity => 0.2
 ```
 
 ## Palettes

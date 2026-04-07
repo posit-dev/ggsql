@@ -15,8 +15,8 @@
 //! - `normal`: normal/Gaussian distribution with ~95% of points within the width
 
 use super::{
-    compute_dodge_offsets, compute_group_indices, is_continuous_scale, Layer, PositionTrait,
-    PositionType,
+    compute_dodge_offsets, compute_group_indices, is_continuous_scale, non_facet_partition_cols,
+    Layer, PositionTrait, PositionType,
 };
 use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue};
 use crate::{naming, DataFrame, GgsqlError, Plot, Result};
@@ -491,9 +491,11 @@ fn apply_jitter(df: DataFrame, layer: &Layer, spec: &Plot) -> Result<DataFrame> 
     let mut rng = rand::thread_rng();
     let n_rows = df.height();
 
-    // Compute group info for dodge-first behavior
+    // Compute group info for dodge-first behavior, excluding facet columns
+    // so group count reflects within-panel groups
+    let group_cols = non_facet_partition_cols(&layer.partition_by, spec);
     let group_info = if dodge {
-        compute_group_indices(&df, &layer.partition_by)?
+        compute_group_indices(&df, &group_cols)?
     } else {
         None
     };

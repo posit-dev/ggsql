@@ -44,29 +44,34 @@ PROJECT TO polar
 ```{ggsql}
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
-PROJECT TO polar SETTING start => 90
+PROJECT TO polar 
+  SETTING start => 90
 ```
 
 ### Pie chart starting at 9 o'clock
 ```{ggsql}
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
-PROJECT TO polar SETTING start => -90
+PROJECT TO polar 
+  SETTING start => -90
 ```
 
 ### Half-circle gauge chart
 ```{ggsql}
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
-PROJECT TO polar SETTING start => -90, end => 90
+PROJECT TO polar 
+  SETTING start => -90, end => 90
 ```
-This creates a gauge chart spanning from the 9 o'clock to 3 o'clock position (a 180° arc at the top).
+
+This creates a gauge chart spanning from the 9 o'clock to 3 o'clock position (a 180° arc at the top). Note that scale expansion is applied by default so the data does not fill the whole half-circle.
 
 ### Three-quarter pie chart
 ```{ggsql}
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
-PROJECT TO polar SETTING end => 270
+PROJECT TO polar 
+  SETTING end => 270
 ```
 This creates a pie chart using only 270° (three-quarters of a circle), starting from 0° (12 o'clock) and ending at 270° (9 o'clock).
 
@@ -74,7 +79,8 @@ This creates a pie chart using only 270° (three-quarters of a circle), starting
 ```{ggsql}
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
-PROJECT TO polar SETTING inner => 0.5
+PROJECT TO polar 
+  SETTING inner => 0.5
 ```
 This creates a donut chart where the inner 50% of the radius is empty, leaving a ring-shaped visualization.
 
@@ -82,7 +88,8 @@ This creates a donut chart where the inner 50% of the radius is empty, leaving a
 ```{ggsql}
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
-PROJECT TO polar SETTING inner => 0.3
+PROJECT TO polar 
+  SETTING inner => 0.3
 ```
 This creates a donut chart with a smaller hole (30% of the radius).
 
@@ -90,6 +97,7 @@ This creates a donut chart with a smaller hole (30% of the radius).
 ```{ggsql}
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
-PROJECT TO polar SETTING start => -90, end => 90, inner => 0.5
+PROJECT TO polar 
+  SETTING start => -90, end => 90, inner => 0.5
 ```
 This combines the `start`, `end`, and `inner` settings to create a half-circle donut chart (gauge style) spanning from 9 o'clock to 3 o'clock with a 50% hole.

@@ -332,11 +332,15 @@ impl ScaleTypeTrait for Binned {
         match scale.properties.get("breaks") {
             Some(ParameterValue::Number(_)) => {
                 // Scalar count → calculate actual breaks and store as Array
-                if let Some(breaks) = self.resolve_breaks(
-                    scale.input_range.as_deref(),
-                    &scale.properties,
-                    scale.transform.as_ref(),
-                ) {
+                // Use raw data range (not expanded input_range) so breaks align
+                // to actual data extent; expansion happens later in step 5b.
+                let break_range = match &context.range {
+                    Some(InputRange::Continuous(r)) => Some(r.as_slice()),
+                    _ => scale.input_range.as_deref(),
+                };
+                if let Some(breaks) =
+                    self.resolve_breaks(break_range, &scale.properties, scale.transform.as_ref())
+                {
                     // For binned implicit, keep all breaks (they extend past data).
                     // For binned explicit, filter to input range.
                     let filtered = if binned_implicit {
@@ -387,7 +391,13 @@ impl ScaleTypeTrait for Binned {
                 };
 
                 if let Some(interval) = TemporalInterval::create_from_str(interval_str) {
-                    if let Some(ref range) = scale.input_range {
+                    // Use raw data range (not expanded input_range) so breaks align
+                    // to actual data extent; expansion happens later in step 5b.
+                    let break_range: Option<&[ArrayElement]> = match &context.range {
+                        Some(InputRange::Continuous(r)) => Some(r.as_slice()),
+                        _ => scale.input_range.as_deref(),
+                    };
+                    if let Some(range) = break_range {
                         let breaks: Vec<ArrayElement> = match resolved_transform.transform_kind() {
                             TransformKind::Date => {
                                 let min = range[0].to_f64().unwrap_or(0.0) as i32;
@@ -422,10 +432,18 @@ impl ScaleTypeTrait for Binned {
                                 .iter()
                                 .map(|elem| resolved_transform.parse_value(elem))
                                 .collect();
-                            // Filter to input range
-                            let filtered = super::super::super::breaks::filter_breaks_to_range(
-                                &converted, range,
-                            );
+                            // Only filter to input range when user provided explicit FROM clause
+                            let filtered = if scale.explicit_input_range {
+                                if let Some(ref ir) = scale.input_range {
+                                    super::super::super::breaks::filter_breaks_to_range(
+                                        &converted, ir,
+                                    )
+                                } else {
+                                    converted
+                                }
+                            } else {
+                                converted
+                            };
                             scale
                                 .properties
                                 .insert("breaks".to_string(), ParameterValue::Array(filtered));

@@ -312,23 +312,24 @@ impl KernelServer {
             Ok(exec_result) => {
                 // Send execute_result (not display_data)
                 // Per Jupyter spec: execute_result includes execution_count
+                // Only send if there's something to display (DDL returns None)
                 if !silent {
-                    let display_data = format_display_data(exec_result);
+                    if let Some(display_data) = format_display_data(exec_result) {
+                        // Build message content, including output_location if present
+                        let mut content = json!({
+                            "execution_count": self.execution_count,
+                            "data": display_data["data"],
+                            "metadata": display_data["metadata"]
+                        });
 
-                    // Build message content, including output_location if present
-                    let mut content = json!({
-                        "execution_count": self.execution_count,
-                        "data": display_data["data"],
-                        "metadata": display_data["metadata"]
-                    });
+                        // Add output_location for Positron routing (e.g., to Plots pane)
+                        if let Some(location) = display_data.get("output_location") {
+                            content["output_location"] = location.clone();
+                            tracing::info!("Setting output_location: {}", location);
+                        }
 
-                    // Add output_location for Positron routing (e.g., to Plots pane)
-                    if let Some(location) = display_data.get("output_location") {
-                        content["output_location"] = location.clone();
-                        tracing::info!("Setting output_location: {}", location);
+                        self.send_iopub("execute_result", content, parent).await?;
                     }
-
-                    self.send_iopub("execute_result", content, parent).await?;
                 }
 
                 // Send execute_reply

@@ -6,7 +6,10 @@
 //! - If only pos2 is discrete → dodge vertically (pos2offset)
 //! - If both are discrete → 2D grid dodge (both offsets, arranged in a grid)
 
-use super::{compute_dodge_offsets, is_continuous_scale, Layer, PositionTrait, PositionType};
+use super::{
+    compute_dodge_offsets, is_continuous_scale, non_facet_partition_cols, Layer, PositionTrait,
+    PositionType,
+};
 use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue};
 use crate::{naming, DataFrame, GgsqlError, Plot, Result};
 use polars::prelude::*;
@@ -159,8 +162,10 @@ fn apply_dodge_with_width(
         return Ok((df, None));
     }
 
-    // Compute group indices
-    let group_info = match compute_group_indices(&df, &layer.partition_by)? {
+    // Compute group indices, excluding facet columns so group count
+    // reflects within-panel groups (not cross-panel composites)
+    let group_cols = non_facet_partition_cols(&layer.partition_by, spec);
+    let group_info = match compute_group_indices(&df, &group_cols)? {
         Some(info) => info,
         None => return Ok((df, None)),
     };

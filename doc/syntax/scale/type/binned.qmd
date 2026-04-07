@@ -109,7 +109,7 @@ If you wish to scale by the radius (not advised) you should do so using the `squ
 VISUALISE body_mass AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x
-    SETTING pretty => false
+  SETTING pretty => false
 ```
 
 #### Use a date transform to bin on months
@@ -118,7 +118,7 @@ SCALE BINNED x
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW boxplot
 SCALE BINNED x VIA date
-    SETTING breaks => 'month'
+  SETTING breaks => 'month'
 ```
 
 ## Settings
@@ -139,9 +139,9 @@ The following settings are recognised by binned scales:
 VISUALISE body_mass AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x
-    SETTING 
-        oob => 'squish', 
-        breaks => [4000, 4250, 4500, 4750, 5000, 5250, 5500]
+  SETTING 
+    oob => 'squish', 
+    breaks => [4000, 4250, 4500, 4750, 5000, 5250, 5500]
 ```
 
 ## Renaming
@@ -167,8 +167,8 @@ If `oob => 'squish'` then the terminal labels are formatted as e.g. "≥ 10" to 
 ```{ggsql}
 VISUALISE bill_dep AS x FROM ggsql:penguins
 DRAW bar
-SCALE BINNED x 
-    RENAMING 50 => 'Fifty'
+SCALE BINNED x
+  RENAMING 20 => 'Twenty'
 ```
 
 #### Adding suffix to break labels
@@ -177,7 +177,7 @@ SCALE BINNED x
 VISUALISE bill_dep AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x 
-    RENAMING * => '{} mm'
+  RENAMING * => '{} mm'
 ```
 
 #### Using a formatter to control number formats
@@ -186,5 +186,5 @@ SCALE BINNED x
 VISUALISE bill_dep AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x
-    RENAMING * => '{:num %.1f}'
+  RENAMING * => '{:num %.1f}'
 ```

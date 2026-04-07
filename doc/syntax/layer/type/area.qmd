@@ -46,38 +46,41 @@ We can reshape the data to 'long format' from our wide format.
 
 ```{ggsql}
 CREATE TABLE long_airquality AS
-SELECT * FROM ggsql:airquality
-UNPIVOT(
-  Value FOR Series IN (Temp, Wind)
-) AS u;
+SELECT Date, 'Temp' AS Series, Temp AS Value FROM ggsql:airquality
+UNION ALL
+SELECT Date, 'Wind' AS Series, Wind AS Value FROM ggsql:airquality;
 ```
 
 Which means we can display multiple series at once, by mapping the identifier to an aesthetic.
 
 ```{ggsql}
 VISUALISE Date AS x, Value AS y FROM long_airquality
-  DRAW area MAPPING Series AS colour
+DRAW area 
+  MAPPING Series AS colour
 ```
 
 By default the areas are stacked on top of each other. If you'd rather see all with a 0 baseline set the position to identity
 
 ```{ggsql}
 VISUALISE Date AS x, Value AS y, Series AS colour FROM long_airquality
-  DRAW area SETTING position => 'identity', opacity => 0.5
+DRAW area 
+  SETTING position => 'identity', opacity => 0.5
 ```
 
-When `position => 'stack_fill'` we're plotting stacked proportions. These only make sense if every series is measured in the same absolute unit. (Wind and temperature have different units and the temperature is not absolute.)
+Whith the default `position => 'stack'` we can normalise the total so that each stack totals to the same value. These only make sense if every series is measured in the same absolute unit. (Wind and temperature have different units and the temperature is not absolute.)
 
 ```{ggsql}
 VISUALISE Date AS x, Value AS y, Series AS colour FROM long_airquality
-  DRAW area SETTING position => 'fill'
+DRAW area 
+  SETTING total => 100
 ```
 
 An alternative is to center the stacks to create a steamgraph
 
 ```{ggsql}
 VISUALISE Date AS x, Value AS y, Series AS colour FROM long_airquality
-  DRAW area SETTING position => 'stack', center => true
+DRAW area 
+  SETTING position => 'stack', center => true
 ```
 
 You can combine this with the `orientation` setting to make a vertical steamgraph

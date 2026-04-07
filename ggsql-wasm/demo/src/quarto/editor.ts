@@ -6,6 +6,7 @@ import {
 } from "vscode-oniguruma";
 import { Registry, parseRawGrammar, type IGrammar } from "vscode-textmate";
 import { WASM_BASE } from "../wasmBase";
+import { registerGgsqlLinks } from "./links";
 
 // Must be set before any Monaco editor is created
 (self as any).MonacoEnvironment = {
@@ -97,7 +98,7 @@ monaco.editor.defineTheme("ggsql-pygments", {
 
 let languageRegistered = false;
 
-async function ensureLanguageRegistered(): Promise<void> {
+async function ensureLanguageRegistered(siteRoot: string): Promise<void> {
   if (languageRegistered) return;
   languageRegistered = true;
 
@@ -149,6 +150,8 @@ async function ensureLanguageRegistered(): Promise<void> {
       },
     });
   }
+
+  registerGgsqlLinks(siteRoot);
 }
 
 // TextMate state wrapper for Monaco
@@ -173,24 +176,15 @@ export interface EditorInstance {
   editor: monaco.editor.IStandaloneCodeEditor;
 }
 
-const LINE_HEIGHT = 20;
 const PADDING_TOP = 8;
 const PADDING_BOTTOM = 8;
-const MAX_EDITOR_HEIGHT = 400;
-
-function editorHeight(lineCount: number): number {
-  const contentHeight = lineCount * LINE_HEIGHT + PADDING_TOP + PADDING_BOTTOM;
-  return Math.min(contentHeight, MAX_EDITOR_HEIGHT);
-}
 
 export async function createEditor(
   container: HTMLElement,
-  initialValue: string
+  initialValue: string,
+  siteRoot: string = "./"
 ): Promise<EditorInstance> {
-  await ensureLanguageRegistered();
-
-  const lineCount = initialValue.split("\n").length;
-  container.style.height = editorHeight(lineCount) + "px";
+  await ensureLanguageRegistered(siteRoot);
 
   const editor = monaco.editor.create(container, {
     value: initialValue,
@@ -198,6 +192,7 @@ export async function createEditor(
     theme: "ggsql-pygments",
     automaticLayout: true,
     minimap: { enabled: false },
+    hover: { delay: 500 },
     fontSize: 13,
     lineNumbers: "on",
     glyphMargin: false,
@@ -219,8 +214,8 @@ export async function createEditor(
 
   // Auto-resize editor height to content
   editor.onDidContentSizeChange(() => {
-    const newLineCount = editor.getModel()?.getLineCount() || lineCount;
-    container.style.height = editorHeight(newLineCount) + "px";
+    const contentHeight = editor.getContentHeight();
+    container.style.height = contentHeight + "px";
     editor.layout();
   });
 

@@ -36,26 +36,26 @@ A ribbon plot with arbitrary values as minima/maxima
 
 ```{ggsql}
 VISUALISE FROM ggsql:airquality
-  DRAW ribbon
-    MAPPING Date AS x, Wind AS ymin, Temp AS ymax
+DRAW ribbon
+  MAPPING Date AS x, Wind AS ymin, Temp AS ymax
 ```
 
 Ribbon plots are great for showing the range of some aggregation.
 
 ```{ggsql}
 // Weekly aggregation of temperature
-SELECT 
-  WEEKOFYEAR(Date) AS Week, 
-  MAX(Temp) AS MaxTemp, 
-  MEAN(Temp) AS MeanTemp,
-  MIN(Temp) AS MinTemp 
+SELECT
+  Week,
+  MAX(Temp) AS MaxTemp,
+  AVG(Temp) AS MeanTemp,
+  MIN(Temp) AS MinTemp
 FROM ggsql:airquality
-GROUP BY WEEKOFYEAR(Date)
+GROUP BY Week
 
 VISUALISE Week AS x
-  DRAW ribbon 
-    MAPPING MinTemp AS ymin, MaxTemp AS ymax
-    SETTING opacity => 0.5
-  DRAW line
-    MAPPING MeanTemp AS y
+DRAW ribbon 
+  MAPPING MinTemp AS ymin, MaxTemp AS ymax
+  SETTING opacity => 0.5
+DRAW line
+  MAPPING MeanTemp AS y
 ```

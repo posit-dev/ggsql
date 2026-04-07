@@ -899,8 +899,13 @@ fn build_column_encoding(
         (serde_json::Map::new(), false)
     };
 
-    // Position scales don't include zero by default
-    if aesthetic_ctx.is_primary_internal(aesthetic) {
+    // Position scales don't include zero by default — but only when we set
+    // an explicit domain. With free facet scales (no domain), VL computes
+    // the domain from data values. Setting zero:false in that case can exclude
+    // 0 from the domain, breaking charts with pre-computed stacking (y2/theta2
+    // starts at 0). Let VL's defaults handle it instead.
+    let is_free = is_position_free_for_aesthetic(aesthetic, ctx.free_scales);
+    if aesthetic_ctx.is_primary_internal(aesthetic) && !is_free {
         scale_obj.insert("zero".to_string(), json!(false));
     }
 

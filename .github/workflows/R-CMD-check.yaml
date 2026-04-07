@@ -36,6 +36,7 @@ jobs:
         with:
           shared-key: ${{ runner.os }}-R-CMD-Check
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Check disk space
         run: df -h

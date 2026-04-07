@@ -4,6 +4,7 @@
 //! settings, and values. These are the building blocks used in AST types
 //! to capture what the user specified in their query.
 
+use crate::reader::SqlDialect;
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use polars::prelude::DataType;
 use serde::{Deserialize, Serialize};
@@ -670,38 +671,14 @@ impl ArrayElement {
     /// Convert this element to a SQL literal string.
     ///
     /// Used for generating SQL expressions from literal values.
-    pub fn to_sql(&self) -> String {
+    pub fn to_sql(&self, dialect: &dyn SqlDialect) -> String {
         match self {
             Self::String(s) => format!("'{}'", s.replace('\'', "''")),
             Self::Number(n) => n.to_string(),
-            Self::Boolean(b) => {
-                if *b {
-                    "TRUE".to_string()
-                } else {
-                    "FALSE".to_string()
-                }
-            }
-            Self::Date(d) => {
-                // Convert days since epoch to DATE
-                // Use CAST to ensure result is DATE type, not TIMESTAMP
-                format!("CAST(DATE '1970-01-01' + INTERVAL {} DAY AS DATE)", d)
-            }
-            Self::DateTime(dt) => {
-                // Convert microseconds since epoch to TIMESTAMP
-                format!(
-                    "TIMESTAMP '1970-01-01 00:00:00' + INTERVAL {} MICROSECOND",
-                    dt
-                )
-            }
-            Self::Time(t) => {
-                // Convert nanoseconds since midnight to TIME
-                let seconds = t / 1_000_000_000;
-                let nanos = t % 1_000_000_000;
-                format!(
-                    "TIME '00:00:00' + INTERVAL {} SECOND + INTERVAL {} NANOSECOND",
-                    seconds, nanos
-                )
-            }
+            Self::Boolean(b) => dialect.sql_boolean_literal(*b),
+            Self::Date(d) => dialect.sql_date_literal(*d),
+            Self::DateTime(dt) => dialect.sql_datetime_literal(*dt),
+            Self::Time(t) => dialect.sql_time_literal(*t),
             Self::Null => "NULL".to_string(),
         }
     }
@@ -923,17 +900,11 @@ impl ParameterValue {
     ///
     /// Only supports scalar values (String, Number, Boolean, Null).
     /// Arrays are handled separately in annotation layer VALUES clause generation.
-    pub fn to_sql(&self) -> String {
+    pub fn to_sql(&self, dialect: &dyn SqlDialect) -> String {
         match self {
             ParameterValue::String(s) => format!("'{}'", s.replace('\'', "''")),
             ParameterValue::Number(n) => n.to_string(),
-            ParameterValue::Boolean(b) => {
-                if *b {
-                    "TRUE".to_string()
-                } else {
-                    "FALSE".to_string()
-                }
-            }
+            ParameterValue::Boolean(b) => dialect.sql_boolean_literal(*b),
             ParameterValue::Array(_) => {
                 panic!("ParameterValue::to_sql() does not support arrays. Arrays in annotation layers should be handled via VALUES clause generation.")
             }
