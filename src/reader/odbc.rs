@@ -369,13 +369,13 @@ impl ColumnBuilder {
                 v.extend(s.map(|opt| opt.map(|b| b.as_bool())));
             }
             (Self::Date(v), AnySlice::NullableDate(s)) => {
-                v.extend(s.map(|opt| opt.and_then(|d| odbc_date_to_days(d))));
+                v.extend(s.map(|opt| opt.and_then(odbc_date_to_days)));
             }
             (Self::Time(v), AnySlice::NullableTime(s)) => {
-                v.extend(s.map(|opt| opt.map(|t| odbc_time_to_nanos(t))));
+                v.extend(s.map(|opt| opt.map(odbc_time_to_nanos)));
             }
             (Self::Timestamp(v), AnySlice::NullableTimestamp(s)) => {
-                v.extend(s.map(|opt| opt.and_then(|ts| odbc_timestamp_to_micros(ts))));
+                v.extend(s.map(|opt| opt.and_then(odbc_timestamp_to_micros)));
             }
             (Self::Text(v), AnySlice::Text(view)) => {
                 v.extend(view.iter().map(|opt| {
