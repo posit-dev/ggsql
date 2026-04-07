@@ -11,7 +11,7 @@ name = 'ggsql'
 
 [dependencies]
 extendr-api = '0.8.1'
-ggsql-lib = { path = "../ggsql-lib", default-features = false, features = ["duckdb", "vegalite"], package = "ggsql" }
+ggsql-lib = { path = "../ggsql-lib", default-features = false, features = ["duckdb", "vegalite", "builtin-data"], package = "ggsql" }
 polars = { version = "0.52", default-features = false, features = ["ipc_streaming"] }
 serde_json = "1.0"
 

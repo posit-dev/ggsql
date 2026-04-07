@@ -24,10 +24,11 @@ Imports:
     knitr,
     nanoarrow,
     R6,
-    rlang,
-    vegawidget
+    rlang
 Suggests:
     png,
+    reticulate,
+    vegawidget,
     rsvg,
     testthat (>= 3.0.0),
     V8,

@@ -48,6 +48,111 @@ test_that("engine does not return a table when merely creating data", {
   expect_snapshot(cat(out))
 })
 
+# --- Data reference tests (r: and py: prefixes) ---
+
+test_that("r: prefix resolves R objects", {
+  # Put data into the knitr global environment
+  assign("test_df", mtcars[1:5, c("mpg", "disp")], envir = knitr::knit_global())
+  on.exit(rm("test_df", envir = knitr::knit_global()))
+
+  query <- "SELECT mpg, disp FROM r:test_df"
+  out <- run_query(query)
+  expect_snapshot(cat(out))
+})
+
+test_that("r: prefix works in visualisation queries", {
+  assign("test_df", mtcars[1:5, c("mpg", "disp")], envir = knitr::knit_global())
+  on.exit(rm("test_df", envir = knitr::knit_global()))
+
+  query <- c(
+    "SELECT * FROM r:test_df",
+    "VISUALISE mpg AS x, disp AS y",
+    "DRAW point"
+  )
+  out <- run_query(query, dev = "png")
+  expect_type(out, "character")
+  expect_length(out, 1L)
+})
+
+test_that("r: prefix errors for missing objects", {
+  query <- "SELECT * FROM r:nonexistent_object_xyz"
+  out <- run_query(query)
+  expect_match(out, "not found", ignore.case = TRUE)
+})
+
+test_that("r: prefix errors for non-data-frame objects", {
+  assign("not_a_df", "just a string", envir = knitr::knit_global())
+  on.exit(rm("not_a_df", envir = knitr::knit_global()))
+
+  query <- "SELECT * FROM r:not_a_df"
+  out <- run_query(query)
+  expect_match(out, "data frame", ignore.case = TRUE)
+})
+
+test_that("multiple r: refs in one query work", {
+  assign("df_a", data.frame(id = 1:3, x = 10:12), envir = knitr::knit_global())
+  assign("df_b", data.frame(id = 1:3, y = 20:22), envir = knitr::knit_global())
+  on.exit({
+    rm("df_a", envir = knitr::knit_global())
+    rm("df_b", envir = knitr::knit_global())
+  })
+
+  query <- "SELECT a.id, a.x, b.y FROM r:df_a a JOIN r:df_b b ON a.id = b.id"
+  out <- run_query(query)
+  expect_snapshot(cat(out))
+})
+
+# --- output.var and sql proxy tests ---
+
+test_that("output.var captures SQL result as data frame", {
+  query <- "SELECT 1 AS x, 2 AS y"
+  run_query(query, output.var = "captured_df")
+  df <- get("captured_df", envir = knitr::knit_global())
+  on.exit(rm("captured_df", envir = knitr::knit_global()))
+
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), 1)
+  expect_equal(names(df), c("x", "y"))
+})
+
+test_that("output.var captures Vega-Lite JSON for viz queries", {
+  assign("test_df", mtcars[1:5, c("mpg", "disp")], envir = knitr::knit_global())
+  on.exit(rm(list = c("test_df", "captured_json"), envir = knitr::knit_global()),
+    add = TRUE
+  )
+
+  query <- c(
+    "SELECT * FROM r:test_df",
+    "VISUALISE mpg AS x, disp AS y",
+    "DRAW point"
+  )
+  run_query(query, output.var = "captured_json")
+  json <- get("captured_json", envir = knitr::knit_global())
+
+  expect_type(json, "character")
+  expect_match(json, "vega-lite")
+})
+
+test_that("sql proxy can access registered tables", {
+  reader <- get_engine_reader()
+  ggsql_register(reader, mtcars[1:3, c("mpg", "disp")], "proxy_test")
+
+  sql_obj <- get("sql", envir = knitr::knit_global())
+  df <- sql_obj$proxy_test
+  expect_s3_class(df, "data.frame")
+  expect_equal(nrow(df), 3)
+  expect_equal(names(df), c("mpg", "disp"))
+})
+
+test_that("sql proxy names() lists tables", {
+  reader <- get_engine_reader()
+  ggsql_register(reader, data.frame(a = 1), "names_test")
+
+  sql_obj <- get("sql", envir = knitr::knit_global())
+  tbl_names <- names(sql_obj)
+  expect_true("names_test" %in% tbl_names)
+})
+
 test_that("we can knit a mixed-chunk document", {
   skip_if_not_installed("withr")
 
@@ -66,6 +171,9 @@ test_that("we can knit a mixed-chunk document", {
 
   out <- knitr::knit(input = in_file, output = out_file, quiet = TRUE)
   expect_equal(out_file, out)
+  expect_true(file.exists(out))
 
-  expect_snapshot_file(out)
+  # Check that visualization was rendered (contains vega-embed script)
+  content <- readLines(out)
+  expect_true(any(grepl("vega-embed", content)))
 })
