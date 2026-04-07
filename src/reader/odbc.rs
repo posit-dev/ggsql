@@ -4,7 +4,7 @@
 //! SQL Server, etc.) using the `odbc-api` crate.
 
 use crate::reader::Reader;
-use crate::{DataFrame, GgsqlError, Result};
+use crate::{naming, DataFrame, GgsqlError, Result};
 use odbc_api::{buffers::TextRowSet, ConnectionOptions, Cursor, Environment};
 use polars::prelude::*;
 use std::cell::RefCell;
@@ -124,7 +124,7 @@ impl Reader for OdbcReader {
         super::validate_table_name(name)?;
 
         if replace {
-            let drop_sql = format!("DROP TABLE IF EXISTS \"{}\"", name);
+            let drop_sql = format!("DROP TABLE IF EXISTS {}", naming::quote_ident(name));
             // Ignore errors from DROP — table may not exist
             let _ = self.connection.execute(&drop_sql, (), None);
         }
@@ -133,11 +133,11 @@ impl Reader for OdbcReader {
         let schema = df.schema();
         let col_defs: Vec<String> = schema
             .iter()
-            .map(|(col_name, dtype)| format!("\"{}\" {}", col_name, polars_dtype_to_sql(dtype)))
+            .map(|(col_name, dtype)| format!("{} {}", naming::quote_ident(col_name), polars_dtype_to_sql(dtype)))
             .collect();
         let create_sql = format!(
-            "CREATE TEMPORARY TABLE \"{}\" ({})",
-            name,
+            "CREATE TEMPORARY TABLE {} ({})",
+            naming::quote_ident(name),
             col_defs.join(", ")
         );
         self.connection
@@ -252,7 +252,7 @@ impl Reader for OdbcReader {
             )));
         }
 
-        let sql = format!("DROP TABLE IF EXISTS \"{}\"", name);
+        let sql = format!("DROP TABLE IF EXISTS {}", naming::quote_ident(name));
         self.connection.execute(&sql, (), None).map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to unregister table '{}': {}", name, e))
         })?;

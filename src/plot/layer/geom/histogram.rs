@@ -229,30 +229,34 @@ fn stat_histogram(
     let stat_count = naming::stat_column("count");
     let stat_density = naming::stat_column("density");
 
+    let q_bin = naming::quote_ident(&stat_bin);
+    let q_bin_end = naming::quote_ident(&stat_bin_end);
+    let q_count = naming::quote_ident(&stat_count);
+    let q_density = naming::quote_ident(&stat_density);
     let (binned_select, final_select) = if group_by.is_empty() {
         (
             format!(
-                "{} AS \"{}\", {} AS \"{}\", {} AS \"{}\"",
-                bin_expr, stat_bin, bin_end_expr, stat_bin_end, agg_expr, stat_count
+                "{} AS {}, {} AS {}, {} AS {}",
+                bin_expr, q_bin, bin_end_expr, q_bin_end, agg_expr, q_count
             ),
             format!(
-                "*, \"{count}\" * 1.0 / SUM(\"{count}\") OVER () AS \"{density}\"",
-                count = stat_count,
-                density = stat_density
+                "*, {count} * 1.0 / SUM({count}) OVER () AS {density}",
+                count = q_count,
+                density = q_density
             ),
         )
     } else {
         let grp_cols = group_by.join(", ");
         (
             format!(
-                "{}, {} AS \"{}\", {} AS \"{}\", {} AS \"{}\"",
-                grp_cols, bin_expr, stat_bin, bin_end_expr, stat_bin_end, agg_expr, stat_count
+                "{}, {} AS {}, {} AS {}, {} AS {}",
+                grp_cols, bin_expr, q_bin, bin_end_expr, q_bin_end, agg_expr, q_count
             ),
             format!(
-                "*, \"{count}\" * 1.0 / SUM(\"{count}\") OVER (PARTITION BY {grp}) AS \"{density}\"",
-                count = stat_count,
+                "*, {count} * 1.0 / SUM({count}) OVER (PARTITION BY {grp}) AS {density}",
+                count = q_count,
                 grp = grp_cols,
-                density = stat_density
+                density = q_density
             ),
         )
     };

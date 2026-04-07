@@ -4,7 +4,7 @@
 //! Works on both native targets and wasm32-unknown-unknown (via sqlite-wasm-rs).
 
 use crate::reader::Reader;
-use crate::{DataFrame, GgsqlError, Result};
+use crate::{naming, DataFrame, GgsqlError, Result};
 use chrono::Datelike;
 use polars::prelude::*;
 use rusqlite::Connection;
@@ -271,7 +271,7 @@ impl Reader for SqliteReader {
         {
             let dataset_names = super::data::extract_builtin_dataset_names(sql)?;
             for name in &dataset_names {
-                let table_name = crate::naming::builtin_data_table(name);
+                let table_name = naming::builtin_data_table(name);
                 if !self.table_exists(&table_name) {
                     let df = super::data::load_builtin_dataframe(name)?;
                     self.register(&table_name, df, true)?;
@@ -354,7 +354,7 @@ impl Reader for SqliteReader {
 
         if self.table_exists(name) {
             if replace {
-                let sql = format!("DROP TABLE IF EXISTS \"{}\"", name);
+                let sql = format!("DROP TABLE IF EXISTS {}", naming::quote_ident(name));
                 self.conn.execute(&sql, []).map_err(|e| {
                     GgsqlError::ReaderError(format!("Failed to drop table '{}': {}", name, e))
                 })?;
@@ -374,11 +374,11 @@ impl Reader for SqliteReader {
             .map(|col| {
                 let col_name = col.name().to_string();
                 let col_type = polars_type_to_sqlite(col.dtype());
-                format!("\"{}\" {}", col_name, col_type)
+                format!("{} {}", naming::quote_ident(&col_name), col_type)
             })
             .collect();
 
-        let create_sql = format!("CREATE TABLE \"{}\" ({})", name, col_defs.join(", "));
+        let create_sql = format!("CREATE TABLE {} ({})", naming::quote_ident(name), col_defs.join(", "));
         self.conn.execute(&create_sql, []).map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to create table '{}': {}", name, e))
         })?;
@@ -456,7 +456,7 @@ impl Reader for SqliteReader {
             )));
         }
 
-        let sql = format!("DROP TABLE IF EXISTS \"{}\"", name);
+        let sql = format!("DROP TABLE IF EXISTS {}", naming::quote_ident(name));
         self.conn.execute(&sql, []).map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to unregister table '{}': {}", name, e))
         })?;

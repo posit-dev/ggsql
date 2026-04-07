@@ -21,12 +21,18 @@ pub type TypeInfo = (String, DataType, bool);
 pub fn build_minmax_query(source_query: &str, column_names: &[&str]) -> String {
     let min_exprs: Vec<String> = column_names
         .iter()
-        .map(|name| format!("MIN(\"{}\") AS \"{}\"", name, name))
+        .map(|name| {
+            let q = naming::quote_ident(name);
+            format!("MIN({q}) AS {q}")
+        })
         .collect();
 
     let max_exprs: Vec<String> = column_names
         .iter()
-        .map(|name| format!("MAX(\"{}\") AS \"{}\"", name, name))
+        .map(|name| {
+            let q = naming::quote_ident(name);
+            format!("MAX({q}) AS {q}")
+        })
         .collect();
 
     format!(

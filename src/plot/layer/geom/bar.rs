@@ -179,57 +179,60 @@ fn stat_bar_count(
             if schema_columns.contains(weight_col) {
                 // weight column exists - use SUM (but still call it "count")
                 format!(
-                    "SUM({}) AS \"{}\"",
+                    "SUM({}) AS {}",
                     naming::quote_ident(weight_col),
-                    stat_count
+                    naming::quote_ident(&stat_count)
                 )
             } else {
                 // weight mapped but column doesn't exist - fall back to COUNT
                 // (this shouldn't happen with upfront validation, but handle gracefully)
-                format!("COUNT(*) AS \"{}\"", stat_count)
+                format!("COUNT(*) AS {}", naming::quote_ident(&stat_count))
             }
         } else {
             // Shouldn't happen (not literal, not column), fall back to COUNT
-            format!("COUNT(*) AS \"{}\"", stat_count)
+            format!("COUNT(*) AS {}", naming::quote_ident(&stat_count))
         }
     } else {
         // weight not mapped - use COUNT
-        format!("COUNT(*) AS \"{}\"", stat_count)
+        format!("COUNT(*) AS {}", naming::quote_ident(&stat_count))
     };
 
     // Build the query based on whether x is mapped or not
     // Use two-stage query: first GROUP BY, then calculate proportion with window function
     let (transformed_query, stat_columns, dummy_columns, consumed_aesthetics) = if use_dummy_x {
         // x is not mapped - use dummy constant, no GROUP BY on x
+        let q_x = naming::quote_ident(&stat_x);
+        let q_count = naming::quote_ident(&stat_count);
+        let q_prop = naming::quote_ident(&stat_proportion);
         let (grouped_select, final_select) = if group_by.is_empty() {
             (
                 format!(
-                    "'{dummy}' AS \"{x}\", {agg}",
+                    "'{dummy}' AS {x}, {agg}",
                     dummy = stat_dummy_value,
-                    x = stat_x,
+                    x = q_x,
                     agg = agg_expr
                 ),
                 format!(
-                    "*, \"{count}\" * 1.0 / SUM(\"{count}\") OVER () AS \"{prop}\"",
-                    count = stat_count,
-                    prop = stat_proportion
+                    "*, {count} * 1.0 / SUM({count}) OVER () AS {prop}",
+                    count = q_count,
+                    prop = q_prop
                 ),
             )
         } else {
             let grp_cols = group_by.join(", ");
             (
                 format!(
-                    "{g}, '{dummy}' AS \"{x}\", {agg}",
+                    "{g}, '{dummy}' AS {x}, {agg}",
                     g = grp_cols,
                     dummy = stat_dummy_value,
-                    x = stat_x,
+                    x = q_x,
                     agg = agg_expr
                 ),
                 format!(
-                    "*, \"{count}\" * 1.0 / SUM(\"{count}\") OVER (PARTITION BY {grp}) AS \"{prop}\"",
-                    count = stat_count,
+                    "*, {count} * 1.0 / SUM({count}) OVER (PARTITION BY {grp}) AS {prop}",
+                    count = q_count,
                     grp = grp_cols,
-                    prop = stat_proportion
+                    prop = q_prop
                 ),
             )
         };
@@ -280,13 +283,15 @@ fn stat_bar_count(
         };
 
         // Keep original x column name, only add the aggregated stat column
+        let q_count = naming::quote_ident(&stat_count);
+        let q_prop = naming::quote_ident(&stat_proportion);
         let (grouped_select, final_select) = if group_by.is_empty() {
             (
                 format!("{x}, {agg}", x = x_col, agg = agg_expr),
                 format!(
-                    "*, \"{count}\" * 1.0 / SUM(\"{count}\") OVER () AS \"{prop}\"",
-                    count = stat_count,
-                    prop = stat_proportion
+                    "*, {count} * 1.0 / SUM({count}) OVER () AS {prop}",
+                    count = q_count,
+                    prop = q_prop
                 ),
             )
         } else {
@@ -294,10 +299,10 @@ fn stat_bar_count(
             (
                 format!("{g}, {x}, {agg}", g = grp_cols, x = x_col, agg = agg_expr),
                 format!(
-                    "*, \"{count}\" * 1.0 / SUM(\"{count}\") OVER (PARTITION BY {grp}) AS \"{prop}\"",
-                    count = stat_count,
+                    "*, {count} * 1.0 / SUM({count}) OVER (PARTITION BY {grp}) AS {prop}",
+                    count = q_count,
                     grp = grp_cols,
-                    prop = stat_proportion
+                    prop = q_prop
                 ),
             )
         };

@@ -234,9 +234,10 @@ pub fn aesthetic_column(aesthetic: &str) -> String {
 /// ```
 /// use ggsql::naming;
 /// assert_eq!(naming::quote_ident("__ggsql_aes_x__"), "\"__ggsql_aes_x__\"");
+/// assert_eq!(naming::quote_ident("has\"quote"), "\"has\"\"quote\"");
 /// ```
 pub fn quote_ident(name: &str) -> String {
-    format!("\"{}\"", name)
+    format!("\"{}\"", name.replace('"', "\"\""))
 }
 
 // ============================================================================

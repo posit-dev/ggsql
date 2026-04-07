@@ -3,7 +3,7 @@
 //! Provides a reader for DuckDB databases with direct Polars DataFrame integration.
 
 use crate::reader::{connection::ConnectionInfo, Reader};
-use crate::{DataFrame, GgsqlError, Result};
+use crate::{naming, DataFrame, GgsqlError, Result};
 use arrow::ipc::reader::FileReader;
 use duckdb::vtab::arrow::{arrow_recordbatch_to_query_params, ArrowVTab};
 use duckdb::{params, Connection};
@@ -45,13 +45,15 @@ impl super::SqlDialect for DuckDbDialect {
         let group_filter = groups
             .iter()
             .map(|g| {
-                let q = crate::naming::quote_ident(g);
-                format!("AND \"__ggsql_pct__\".{q} IS NOT DISTINCT FROM \"__ggsql_qt__\".{q}")
+                let q = naming::quote_ident(g);
+                format!("AND {pct}.{q} IS NOT DISTINCT FROM {qt}.{q}",
+                    pct = naming::quote_ident("__ggsql_pct__"),
+                    qt = naming::quote_ident("__ggsql_qt__"))
             })
             .collect::<Vec<_>>()
             .join(" ");
 
-        let quoted_column = crate::naming::quote_ident(column);
+        let quoted_column = naming::quote_ident(column);
         format!(
             "(SELECT QUANTILE_CONT({column}, {fraction}) \
             FROM ({from}) AS \"__ggsql_pct__\" \
@@ -580,7 +582,7 @@ impl Reader for DuckDBReader {
                 let chunk_size = std::cmp::min(MAX_ARROW_BATCH_ROWS, total_rows - offset);
                 let chunk = df.slice(offset as i64, chunk_size);
                 let params = dataframe_to_arrow_params(chunk)?;
-                let insert_sql = format!("INSERT INTO \"{}\" SELECT * FROM arrow(?, ?)", name);
+                let insert_sql = format!("INSERT INTO {} SELECT * FROM arrow(?, ?)", naming::quote_ident(name));
                 self.conn.execute(&insert_sql, params).map_err(|e| {
                     GgsqlError::ReaderError(format!(
                         "Failed to insert chunk into table '{}': {}",
@@ -606,7 +608,7 @@ impl Reader for DuckDBReader {
         }
 
         // Drop the temp table
-        let sql = format!("DROP TABLE IF EXISTS \"{}\"", name);
+        let sql = format!("DROP TABLE IF EXISTS {}", naming::quote_ident(name));
         self.conn.execute(&sql, []).map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to unregister table '{}': {}", name, e))
         })?;

@@ -185,7 +185,7 @@ pub fn rewrite_namespaced_sql(sql: &str) -> Result<String, GgsqlError> {
                 replacements.push((
                     node.start_byte(),
                     node.end_byte(),
-                    format!("\"{}\"", naming::builtin_data_table(name)),
+                    naming::quote_ident(&naming::builtin_data_table(name)),
                 ));
             }
         }

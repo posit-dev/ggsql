@@ -3,7 +3,7 @@
 //! These types are used by all geom implementations and are shared across the module.
 
 use crate::plot::aesthetic::parse_positional;
-use crate::{plot::types::DefaultAestheticValue, Mappings};
+use crate::{naming, plot::types::DefaultAestheticValue, Mappings};
 
 // Re-export shared types from the central location
 pub use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
@@ -152,7 +152,7 @@ pub fn get_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String>
 
 /// Helper to extract a double-quoted column name for use in SQL expressions.
 pub fn get_quoted_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String> {
-    get_column_name(aesthetics, aesthetic).map(|n| crate::naming::quote_ident(&n))
+    get_column_name(aesthetics, aesthetic).map(|n| naming::quote_ident(&n))
 }
 
 #[cfg(test)]

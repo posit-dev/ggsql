@@ -94,7 +94,7 @@ pub fn transform_cte_references(sql: &str, cte_names: &HashSet<String>) -> Strin
     let mut result = sql.to_string();
 
     for cte_name in cte_names {
-        let temp_table_name = format!("\"{}\"", naming::cte_table(cte_name));
+        let temp_table_name = naming::quote_ident(&naming::cte_table(cte_name));
 
         // Replace table references: FROM cte_name, JOIN cte_name, cte_name.column
         // Use word boundary matching to avoid replacing substrings
@@ -370,8 +370,8 @@ mod tests {
                 vec![
                     "FROM \"__ggsql_cte_sales_",
                     "JOIN \"__ggsql_cte_targets_",
-                    "\"__ggsql_cte_sales_",  // qualified reference sales.date
-                    "\"__ggsql_cte_targets_", // qualified reference targets.revenue
+                    "__ggsql_cte_sales_",  // qualified reference sales.date
+                    "__ggsql_cte_targets_", // qualified reference targets.revenue
                 ],
                 None,
             ),
@@ -379,7 +379,7 @@ mod tests {
             (
                 "WHERE sales.date > '2024-01-01' AND sales.revenue > 100",
                 vec!["sales"],
-                vec!["\"__ggsql_cte_sales_"],
+                vec!["__ggsql_cte_sales_"],
                 None,
             ),
             // No matching CTE (unchanged)

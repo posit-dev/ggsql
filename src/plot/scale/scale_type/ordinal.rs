@@ -6,6 +6,7 @@
 
 use polars::prelude::DataType;
 
+use crate::naming;
 use super::super::transform::{Transform, TransformKind};
 use super::{ScaleTypeKind, ScaleTypeTrait};
 use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
@@ -291,7 +292,7 @@ impl ScaleTypeTrait for Ordinal {
         }
 
         // Always censor - ordinal scales have no other valid OOB behavior
-        let quoted = format!("\"{}\"", column_name);
+        let quoted = naming::quote_ident(column_name);
         Some(format!(
             "(CASE WHEN {} IN ({}) THEN {} ELSE NULL END)",
             quoted,

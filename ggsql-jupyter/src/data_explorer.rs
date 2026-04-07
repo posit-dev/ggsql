@@ -275,7 +275,7 @@ impl DataExplorerState {
             .filter_map(|&idx| {
                 self.columns
                     .get(idx)
-                    .map(|col| format!("\"{}\"", col.name.replace('"', "\"\"")))
+                    .map(|col| ggsql::naming::quote_ident(&col.name))
             })
             .collect();
 
@@ -416,7 +416,7 @@ impl DataExplorerState {
         }
 
         let dialect = reader.dialect();
-        let quoted_col = format!("\"{}\"", col.name.replace('"', "\"\""));
+        let quoted_col = ggsql::naming::quote_ident(&col.name);
         let display = col.type_display.as_str();
 
         // Build a single SQL query that computes all needed aggregates.
@@ -666,7 +666,7 @@ impl DataExplorerState {
 
         let dialect = reader.dialect();
         let float_type = dialect.number_type_name().unwrap_or("DOUBLE PRECISION");
-        let quoted_col = format!("\"{}\"", col.name.replace('"', "\"\""));
+        let quoted_col = ggsql::naming::quote_ident(&col.name);
         let is_integer = col.type_display == "integer";
 
         // Get min, max, count in one query
@@ -823,7 +823,7 @@ impl DataExplorerState {
     ) -> Option<Value> {
         let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(8) as usize;
 
-        let quoted_col = format!("\"{}\"", col.name.replace('"', "\"\""));
+        let quoted_col = ggsql::naming::quote_ident(&col.name);
 
         let sql = format!(
             "SELECT {c} AS \"value\", COUNT(*) AS \"count\" \

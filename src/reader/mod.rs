@@ -36,7 +36,7 @@ use std::collections::HashMap;
 use crate::execute::prepare_data_with_reader;
 use crate::plot::{CastTargetType, Plot};
 use crate::validate::{validate, ValidationWarning};
-use crate::{DataFrame, GgsqlError, Result};
+use crate::{naming, DataFrame, GgsqlError, Result};
 
 // =============================================================================
 // SQL Dialect
@@ -186,15 +186,17 @@ pub trait SqlDialect {
         let group_filter = groups
             .iter()
             .map(|g| {
-                let q = crate::naming::quote_ident(g);
-                format!("AND \"__ggsql_pct__\".{q} IS NOT DISTINCT FROM \"__ggsql_qt__\".{q}")
+                let q = naming::quote_ident(g);
+                format!("AND {pct}.{q} IS NOT DISTINCT FROM {qt}.{q}",
+                    pct = naming::quote_ident("__ggsql_pct__"),
+                    qt = naming::quote_ident("__ggsql_qt__"))
             })
             .collect::<Vec<_>>()
             .join(" ");
 
         let lo_tile = (fraction * 4.0).ceil() as usize;
         let hi_tile = lo_tile + 1;
-        let quoted_column = crate::naming::quote_ident(column);
+        let quoted_column = naming::quote_ident(column);
 
         format!(
             "(SELECT (\
