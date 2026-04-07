@@ -5,7 +5,11 @@
 
 use crate::reader::Reader;
 use crate::{naming, DataFrame, GgsqlError, Result};
-use odbc_api::{buffers::TextRowSet, ConnectionOptions, Cursor, Environment};
+use odbc_api::{
+    buffers::{AnyBuffer, AnySlice, BufferDesc, ColumnarBuffer},
+    ConnectionOptions, Cursor, DataType as OdbcDataType, Environment,
+};
+use odbc_api::sys::{Date as OdbcDate, Time as OdbcTime, Timestamp as OdbcTimestamp};
 use polars::prelude::*;
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -64,8 +68,6 @@ impl OdbcReader {
     /// Create a new ODBC reader from a `odbc://` connection URI.
     ///
     /// The URI format is `odbc://` followed by the raw ODBC connection string.
-    /// For Snowflake with Posit Workbench credentials, the reader will
-    /// automatically detect and inject OAuth tokens.
     pub fn from_connection_string(uri: &str) -> Result<Self> {
         let conn_str = uri
             .strip_prefix("odbc://")
@@ -133,7 +135,13 @@ impl Reader for OdbcReader {
         let schema = df.schema();
         let col_defs: Vec<String> = schema
             .iter()
-            .map(|(col_name, dtype)| format!("{} {}", naming::quote_ident(col_name), polars_dtype_to_sql(dtype)))
+            .map(|(col_name, dtype)| {
+                format!(
+                    "{} {}",
+                    naming::quote_ident(col_name),
+                    polars_dtype_to_sql(dtype)
+                )
+            })
             .collect();
         let create_sql = format!(
             "CREATE TEMPORARY TABLE {} ({})",
@@ -284,7 +292,200 @@ fn polars_dtype_to_sql(dtype: &DataType) -> &'static str {
     }
 }
 
-/// Convert an ODBC cursor to a Polars DataFrame by fetching all rows as text.
+/// Column builder that accumulates typed values across batches.
+enum ColumnBuilder {
+    Int8(Vec<Option<i8>>),
+    Int16(Vec<Option<i16>>),
+    Int32(Vec<Option<i32>>),
+    Int64(Vec<Option<i64>>),
+    Float32(Vec<Option<f32>>),
+    Float64(Vec<Option<f64>>),
+    Boolean(Vec<Option<bool>>),
+    Date(Vec<Option<i32>>),
+    Time(Vec<Option<i64>>),
+    Timestamp(Vec<Option<i64>>),
+    Text(Vec<Option<String>>),
+}
+
+impl ColumnBuilder {
+    fn from_odbc_type(data_type: &OdbcDataType) -> Self {
+        match data_type {
+            OdbcDataType::TinyInt => Self::Int8(Vec::new()),
+            OdbcDataType::SmallInt => Self::Int16(Vec::new()),
+            OdbcDataType::Integer => Self::Int32(Vec::new()),
+            OdbcDataType::BigInt => Self::Int64(Vec::new()),
+            OdbcDataType::Real | OdbcDataType::Float { precision: 0..=24 } => {
+                Self::Float32(Vec::new())
+            }
+            OdbcDataType::Double | OdbcDataType::Float { .. } => Self::Float64(Vec::new()),
+            OdbcDataType::Numeric { scale: 0, precision } | OdbcDataType::Decimal { scale: 0, precision } => {
+                if *precision < 10 {
+                    Self::Int32(Vec::new())
+                } else if *precision < 19 {
+                    Self::Int64(Vec::new())
+                } else {
+                    Self::Float64(Vec::new())
+                }
+            }
+            OdbcDataType::Numeric { .. } | OdbcDataType::Decimal { .. } => {
+                Self::Float64(Vec::new())
+            }
+            OdbcDataType::Bit => Self::Boolean(Vec::new()),
+            OdbcDataType::Date => Self::Date(Vec::new()),
+            OdbcDataType::Time { .. } => Self::Time(Vec::new()),
+            OdbcDataType::Timestamp { .. } => Self::Timestamp(Vec::new()),
+            _ => Self::Text(Vec::new()),
+        }
+    }
+
+    fn append_from_slice(&mut self, slice: AnySlice<'_>) -> std::result::Result<(), String> {
+        match (self, slice) {
+            (Self::Int8(v), AnySlice::NullableI8(s)) => {
+                v.extend(s.map(|opt| opt.copied()));
+            }
+            (Self::Int16(v), AnySlice::NullableI16(s)) => {
+                v.extend(s.map(|opt| opt.copied()));
+            }
+            (Self::Int32(v), AnySlice::NullableI32(s)) => {
+                v.extend(s.map(|opt| opt.copied()));
+            }
+            (Self::Int64(v), AnySlice::NullableI64(s)) => {
+                v.extend(s.map(|opt| opt.copied()));
+            }
+            (Self::Float32(v), AnySlice::NullableF32(s)) => {
+                v.extend(s.map(|opt| opt.copied()));
+            }
+            (Self::Float64(v), AnySlice::NullableF64(s)) => {
+                v.extend(s.map(|opt| opt.copied()));
+            }
+            (Self::Boolean(v), AnySlice::NullableBit(s)) => {
+                v.extend(s.map(|opt| opt.map(|b| b.as_bool())));
+            }
+            (Self::Date(v), AnySlice::NullableDate(s)) => {
+                v.extend(s.map(|opt| opt.and_then(|d| odbc_date_to_days(d))));
+            }
+            (Self::Time(v), AnySlice::NullableTime(s)) => {
+                v.extend(s.map(|opt| opt.map(|t| odbc_time_to_nanos(t))));
+            }
+            (Self::Timestamp(v), AnySlice::NullableTimestamp(s)) => {
+                v.extend(s.map(|opt| opt.and_then(|ts| odbc_timestamp_to_micros(ts))));
+            }
+            (Self::Text(v), AnySlice::Text(view)) => {
+                v.extend(view.iter().map(|opt| {
+                    opt.and_then(|bytes| std::str::from_utf8(bytes).ok().map(|s| s.to_string()))
+                }));
+            }
+            (Self::Text(v), AnySlice::WText(view)) => {
+                v.extend(view.iter().map(|opt| {
+                    opt.map(|chars| String::from_utf16_lossy(chars.into()))
+                }));
+            }
+            // Decimal/Numeric with scale > 0 bound as text → parse to f64
+            (Self::Float64(v), AnySlice::Text(view)) => {
+                v.extend(view.iter().map(|opt| {
+                    opt.and_then(|bytes| {
+                        std::str::from_utf8(bytes)
+                            .ok()
+                            .and_then(|s| s.parse::<f64>().ok())
+                    })
+                }));
+            }
+            // Decimal with scale=0 bound as i32/i64 text fallback
+            (Self::Int32(v), AnySlice::Text(view)) => {
+                v.extend(view.iter().map(|opt| {
+                    opt.and_then(|bytes| {
+                        std::str::from_utf8(bytes)
+                            .ok()
+                            .and_then(|s| s.parse::<i32>().ok())
+                    })
+                }));
+            }
+            (Self::Int64(v), AnySlice::Text(view)) => {
+                v.extend(view.iter().map(|opt| {
+                    opt.and_then(|bytes| {
+                        std::str::from_utf8(bytes)
+                            .ok()
+                            .and_then(|s| s.parse::<i64>().ok())
+                    })
+                }));
+            }
+            (builder, _slice) => {
+                let builder_type = match builder {
+                    Self::Int8(_) => "Int8",
+                    Self::Int16(_) => "Int16",
+                    Self::Int32(_) => "Int32",
+                    Self::Int64(_) => "Int64",
+                    Self::Float32(_) => "Float32",
+                    Self::Float64(_) => "Float64",
+                    Self::Boolean(_) => "Boolean",
+                    Self::Date(_) => "Date",
+                    Self::Time(_) => "Time",
+                    Self::Timestamp(_) => "Timestamp",
+                    Self::Text(_) => "Text",
+                };
+                return Err(format!(
+                    "ODBC type mismatch: expected {builder_type} buffer but driver returned a different type"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn into_series(self, name: &str) -> Series {
+        match self {
+            Self::Int8(v) => Series::new(name.into(), v),
+            Self::Int16(v) => Series::new(name.into(), v),
+            Self::Int32(v) => Series::new(name.into(), v),
+            Self::Int64(v) => Series::new(name.into(), v),
+            Self::Float32(v) => Series::new(name.into(), v),
+            Self::Float64(v) => Series::new(name.into(), v),
+            Self::Boolean(v) => Series::new(name.into(), v),
+            Self::Date(v) => {
+                let ca = Int32Chunked::new(name.into(), &v);
+                ca.into_date().into_series()
+            }
+            Self::Time(v) => {
+                let ca = Int64Chunked::new(name.into(), &v);
+                ca.into_time().into_series()
+            }
+            Self::Timestamp(v) => {
+                let ca = Int64Chunked::new(name.into(), &v);
+                ca.into_datetime(TimeUnit::Microseconds, None).into_series()
+            }
+            Self::Text(v) => Series::new(name.into(), v),
+        }
+    }
+}
+
+fn odbc_date_to_days(d: &OdbcDate) -> Option<i32> {
+    chrono::NaiveDate::from_ymd_opt(d.year as i32, d.month as u32, d.day as u32)
+        .map(|date| {
+            let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+            (date - epoch).num_days() as i32
+        })
+}
+
+fn odbc_time_to_nanos(t: &OdbcTime) -> i64 {
+    let h = t.hour as i64;
+    let m = t.minute as i64;
+    let s = t.second as i64;
+    (h * 3600 + m * 60 + s) * 1_000_000_000
+}
+
+fn odbc_timestamp_to_micros(ts: &OdbcTimestamp) -> Option<i64> {
+    chrono::NaiveDate::from_ymd_opt(ts.year as i32, ts.month as u32, ts.day as u32)
+        .and_then(|date| {
+            date.and_hms_nano_opt(
+                ts.hour as u32,
+                ts.minute as u32,
+                ts.second as u32,
+                ts.fraction,
+            )
+        })
+        .map(|dt| dt.and_utc().timestamp_micros())
+}
+
+/// Convert an ODBC cursor to a Polars DataFrame using typed buffers.
 fn cursor_to_dataframe(mut cursor: impl Cursor) -> Result<DataFrame> {
     let col_count = cursor
         .num_result_cols()
@@ -296,93 +497,62 @@ fn cursor_to_dataframe(mut cursor: impl Cursor) -> Result<DataFrame> {
             .map_err(|e| GgsqlError::ReaderError(e.to_string()));
     }
 
-    // Collect column names
+    // Collect column names and types, build buffer descriptors
     let mut col_names = Vec::with_capacity(col_count);
+    let mut col_types = Vec::with_capacity(col_count);
+    let mut descs = Vec::with_capacity(col_count);
+
+    let text_fallback = BufferDesc::Text { max_str_len: 65536 };
+
     for i in 1..=col_count as u16 {
         let name = cursor.col_name(i).map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to get column {} name: {}", i, e))
         })?;
+        let data_type = cursor.col_data_type(i).map_err(|e| {
+            GgsqlError::ReaderError(format!("Failed to get column {} type: {}", i, e))
+        })?;
+
+        let desc = BufferDesc::from_data_type(data_type, true)
+            .unwrap_or(text_fallback);
+
         col_names.push(name);
+        col_types.push(data_type);
+        descs.push(desc);
     }
 
-    // Fetch all rows as text into column-oriented vectors
+    // Create typed columnar buffer and column builders
     let batch_size = 1000;
-    let max_str_len = 4096;
-    let mut columns: Vec<Vec<Option<String>>> = vec![Vec::new(); col_count];
+    let mut builders: Vec<ColumnBuilder> = col_types
+        .iter()
+        .map(ColumnBuilder::from_odbc_type)
+        .collect();
 
-    let mut row_set = TextRowSet::for_cursor(batch_size, &mut cursor, Some(max_str_len))
-        .map_err(|e| GgsqlError::ReaderError(format!("Failed to create row set: {}", e)))?;
+    let mut buffer = ColumnarBuffer::<AnyBuffer>::from_descs(batch_size, descs);
 
     let mut block_cursor = cursor
-        .bind_buffer(&mut row_set)
+        .bind_buffer(&mut buffer)
         .map_err(|e| GgsqlError::ReaderError(format!("Failed to bind buffer: {}", e)))?;
 
     while let Some(batch) = block_cursor
         .fetch()
         .map_err(|e| GgsqlError::ReaderError(format!("Failed to fetch batch: {}", e)))?
     {
-        let num_rows = batch.num_rows();
-        for (col_idx, column) in columns.iter_mut().enumerate() {
-            for row_idx in 0..num_rows {
-                let value = batch
-                    .at_as_str(col_idx, row_idx)
-                    .ok()
-                    .flatten()
-                    .map(|s| s.to_string());
-                column.push(value);
-            }
+        for (col_idx, builder) in builders.iter_mut().enumerate() {
+            let slice = batch.column(col_idx);
+            builder.append_from_slice(slice).map_err(|e| {
+                GgsqlError::ReaderError(format!("Column '{}': {}", col_names[col_idx], e))
+            })?;
         }
     }
 
-    // Build Polars Series from the text data, attempting type inference
+    // Convert builders to Polars Series
     let series: Vec<Column> = col_names
         .iter()
-        .zip(columns.iter())
-        .map(|(name, values)| {
-            // Try to parse as numeric first, then fall back to string
-            let series = if let Some(int_series) = try_parse_integers(name, values) {
-                int_series
-            } else if let Some(float_series) = try_parse_floats(name, values) {
-                float_series
-            } else {
-                // Fall back to string
-                Series::new(
-                    name.into(),
-                    values
-                        .iter()
-                        .map(|v| v.as_deref())
-                        .collect::<Vec<Option<&str>>>(),
-                )
-            };
-            Column::from(series)
-        })
+        .zip(builders)
+        .map(|(name, builder)| Column::from(builder.into_series(name)))
         .collect();
 
     DataFrame::new(series).map_err(|e| GgsqlError::ReaderError(e.to_string()))
-}
-
-/// Try to parse all non-null values as i64.
-fn try_parse_integers(name: &str, values: &[Option<String>]) -> Option<Series> {
-    let parsed: Vec<Option<i64>> = values
-        .iter()
-        .map(|v| match v {
-            None => Some(None),
-            Some(s) => s.parse::<i64>().ok().map(Some),
-        })
-        .collect::<Option<Vec<_>>>()?;
-    Some(Series::new(name.into(), parsed))
-}
-
-/// Try to parse all non-null values as f64.
-fn try_parse_floats(name: &str, values: &[Option<String>]) -> Option<Series> {
-    let parsed: Vec<Option<f64>> = values
-        .iter()
-        .map(|v| match v {
-            None => Some(None),
-            Some(s) => s.parse::<f64>().ok().map(Some),
-        })
-        .collect::<Option<Vec<_>>>()?;
-    Some(Series::new(name.into(), parsed))
 }
 
 // ============================================================================
