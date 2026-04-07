@@ -126,7 +126,7 @@ SCALE y VIA log
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 SCALE y
-    SETTING breaks => 5, pretty => false
+  SETTING breaks => 5, pretty => false
 ```
 
 #### Using an interval size for temporal breaks
@@ -135,15 +135,15 @@ SCALE y
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 SCALE x
-    SETTING breaks => '2 months'
+  SETTING breaks => '2 months'
 ```
 
 ## Settings
 The following settings are recognised by continuous scales:
 
-* `expand` (only for `x`/`y`): Either a scalar number or 2-length array of numbers. Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to `0.05` (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as `SCALE x FROM [0, null]` expansion will only be applied to the upper range.
+* `expand` (only for `x`/`y`): Either a scalar number or 2-element array of numbers (values must be >= 0). Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to `0.05` (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as `SCALE x FROM [0, null]` expansion will only be applied to the upper range.
 * `oob`: How should values outside of the scale input range be treated. One of `'keep'` (keep the values as-is), `'censor'` (set to `null`), or `'squish'` (set to the nearest values within the range). Default for `x`/`y` is `'keep'`, for the remaining it is `'censor'`.
-* `breaks`: Either a scalar as described in [the section on breaks](#breaks), or an array of values to place breaks at. Defaults to `5`.
+* `breaks`: Either a scalar (whole number >= 1) as described in [the section on breaks](#breaks), or an array of values to place breaks at. Defaults to `5`.
 * `pretty`: A boolean indicating which algorithm to use for automatic calculation of breaks as described in [the section on breaks](#breaks). Defaults to `true`.
 * `reverse`: A boolean indicating whether the scale direction should be reversed. Defaults to `false`.
 
@@ -155,7 +155,7 @@ The following settings are recognised by continuous scales:
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x 
-    SETTING expand => [0.0, 10]
+  SETTING expand => [0.0, 10]
 ```
 
 #### Squish all y values to show them in the margin of the plot
@@ -164,7 +164,7 @@ SCALE x
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE y FROM [15, 20]
-    SETTING oob => 'squish'
+  SETTING oob => 'squish'
 ```
 
 #### Set breaks explicitly
@@ -173,7 +173,7 @@ SCALE y FROM [15, 20]
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x 
-    SETTING breaks => [37, 42, 55]
+  SETTING breaks => [37, 42, 55]
 ```
 
 #### Reverse the x axis
@@ -182,7 +182,7 @@ SCALE x
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x 
-    SETTING reverse => true
+  SETTING reverse => true
 ```
 
 ## Renaming
@@ -204,7 +204,7 @@ You can combine formatting with direct renaming in which case the direct renamin
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x 
-    RENAMING 50 => 'Fifty'
+  RENAMING 50 => 'Fifty'
 ```
 
 #### Adding suffix to break labels
@@ -213,7 +213,7 @@ SCALE x
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x 
-    RENAMING * => '{} mm'
+  RENAMING * => '{} mm'
 ```
 
 #### Using a formatter to control temporal formats
@@ -222,7 +222,7 @@ SCALE x
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 SCALE x
-    RENAMING * => '{:time %B}'
+  RENAMING * => '{:time %B}'
 ```
 
 #### Using a formatter to control number formats
@@ -231,5 +231,5 @@ SCALE x
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x
-    RENAMING * => '{:num %.3e}'
+  RENAMING * => '{:num %.3e}'
 ```

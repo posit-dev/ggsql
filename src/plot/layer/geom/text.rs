@@ -1,8 +1,12 @@
 //! Text geom implementation
 
-use super::{DefaultAesthetics, GeomTrait, GeomType};
+use super::types::POSITION_VALUES;
+use super::{
+    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
+    ParameterValue,
+};
 use crate::plot::types::DefaultAestheticValue;
-use crate::plot::{DefaultParam, DefaultParamValue, ParameterValue};
+use crate::plot::{ArrayConstraint, NumberConstraint};
 use crate::{naming, DataFrame, Result};
 use std::collections::HashMap;
 
@@ -35,21 +39,28 @@ impl GeomTrait for Text {
         }
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        &[
-            DefaultParam {
-                name: "offset",
-                default: DefaultParamValue::Null,
-            },
-            DefaultParam {
-                name: "format",
-                default: DefaultParamValue::Null,
-            },
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "position",
                 default: DefaultParamValue::String("identity"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
-        ]
+            ParamDefinition {
+                name: "offset",
+                default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_or_numeric_array(
+                    NumberConstraint::unconstrained(),
+                    ArrayConstraint::of_numbers_len(NumberConstraint::unconstrained(), 2),
+                ),
+            },
+            ParamDefinition {
+                name: "format",
+                default: DefaultParamValue::Null,
+                constraint: ParamConstraint::string(),
+            },
+        ];
+        PARAMS
     }
 
     fn post_process(

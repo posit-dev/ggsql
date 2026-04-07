@@ -10,7 +10,7 @@ The `PLACE` clause takes just a type and a setting clause, all of them required.
 
 ```ggsql
 PLACE <layer-type>
-    SETTING <parameter/aesthetic> => <value>, ...
+  SETTING <parameter/aesthetic> => <value>, ...
 ```
 
 Like `DRAW`, the layer type is required and specifies the type of layer to draw, like `point` or `text`.

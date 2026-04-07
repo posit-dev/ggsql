@@ -15,7 +15,7 @@ pub struct Projection {
     pub coord: Coord,
     /// Position aesthetic names (resolved: explicit or coord defaults)
     /// Always populated after building - never empty.
-    /// e.g., ["x", "y"] for cartesian, ["radius", "theta"] for polar,
+    /// e.g., ["x", "y"] for cartesian, ["radius", "angle"] for polar,
     /// or custom names like ["a", "b"] if user specifies them.
     pub aesthetics: Vec<String>,
     /// Projection-specific options

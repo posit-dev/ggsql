@@ -186,7 +186,21 @@ fn build_layers(
         layer_spec["transform"] = json!(transforms);
 
         // Build encoding for this layer (pass free scales and coord kind)
-        let encoding = build_layer_encoding(layer, df, spec, free_scales, coord_kind)?;
+        let mut encoding = build_layer_encoding(layer, df, spec, free_scales, coord_kind)?;
+
+        // For point marks, remove fill: null from encoding — Vega-Lite point marks
+        // are unfilled by default, so omitting it achieves the same visual result
+        // without making legend symbols (e.g., size) invisible. Other mark types
+        // (bar, area, etc.) are filled by default, so fill: null must be preserved.
+        if layer.geom.geom_type() == crate::plot::layer::geom::GeomType::Point
+            && encoding
+                .get("fill")
+                .and_then(|v| v.get("value"))
+                .is_some_and(|v| v.is_null())
+        {
+            encoding.remove("fill");
+        }
+
         layer_spec["encoding"] = Value::Object(encoding);
 
         // Apply geom-specific spec modifications via renderer
@@ -1063,11 +1077,35 @@ impl Writer for VegaLiteWriter {
         if spec.facet.is_none() {
             vl_spec["width"] = json!("container");
             vl_spec["height"] = json!("container");
+        } else {
+            // Faceted charts need explicit numeric dimensions (moved into inner spec
+            // by apply_faceting). Arc marks especially need this since their radius
+            // range is [0, min(width, height) / 2] — without dimensions, arcs are invisible.
+            let is_polar = spec
+                .project
+                .as_ref()
+                .is_some_and(|p| p.coord.coord_kind() == CoordKind::Polar);
+            if is_polar {
+                vl_spec["width"] = json!(350);
+                vl_spec["height"] = json!(350);
+            }
         }
 
         if let Some(labels) = &spec.labels {
-            if let Some(title) = labels.labels.get("title") {
-                vl_spec["title"] = json!(title);
+            let title = labels.labels.get("title");
+            let subtitle = labels.labels.get("subtitle");
+            match (title, subtitle) {
+                (Some(t), Some(st)) => {
+                    // Vega-Lite uses an object for title + subtitle
+                    vl_spec["title"] = json!({"text": t, "subtitle": st});
+                }
+                (Some(t), None) => {
+                    vl_spec["title"] = json!(t);
+                }
+                (None, Some(st)) => {
+                    vl_spec["title"] = json!({"text": "", "subtitle": st});
+                }
+                (None, None) => {}
             }
         }
 

@@ -275,25 +275,35 @@ int vsnprintf(char *restrict buffer, size_t buffsz, const char *restrict format,
 }
 
 int fclose(FILE *stream) {
+  (void)stream;
   return 0;
 }
 
 FILE* fdopen(int fd, const char *mode) {
+  (void)fd;
+  (void)mode;
   return 0;
 }
 
 int fputc(int c, FILE *stream) {
+  (void)stream;
   return c;
 }
 
 int fputs(const char *restrict str, FILE *restrict stream) {
+  (void)str;
+  (void)stream;
   return 0;
 }
 
 size_t fwrite(const void *restrict buffer, size_t size, size_t nmemb, FILE *restrict stream) {
+  (void)buffer;
+  (void)stream;
   return size * nmemb;
 }
 
 int fprintf(FILE *restrict stream, const char *restrict format, ...) {
+  (void)stream;
+  (void)format;
   return 0;
 }

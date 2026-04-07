@@ -1,5 +1,5 @@
 ---
-title: "Fill and Stroke"
+title: "Fill and stroke"
 format:
   html:
     toc: true
@@ -13,14 +13,14 @@ In addition to the `fill` and `stroke` aesthetics there is also a `color` meta-a
 
 ```ggsql
 DRAW bar
-    SETTING color => 'red'
+  SETTING color => 'red'
 ```
 
 whereas this will set the fill to red and stroke to black
 
 ```ggsql
 DRAW bar
-    SETTING color => 'red', stroke => 'black'
+  SETTING color => 'red', stroke => 'black'
 ```
 
 The same logic applies when defining a scale. Defining a `color` scale creates two scales, one for `fill` and one for `stroke`, with the same settings (unless either are defined explicitly). For instance, the following
@@ -44,7 +44,7 @@ Literal color values are used in three places in ggsql. Either when setting an a
 
 ```ggsql
 DRAW line
-    SETTING stroke => '#FF0000'
+  SETTING stroke => '#FF0000'
 ```
 
 when you define the output range of a fill or stroke scale manually, e.g.
@@ -67,8 +67,8 @@ Palettes are used by giving them as names in the `TO` clause:
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
 DRAW point
-    MAPPING bill_dep AS x, body_mass AS y, species AS fill
-    SETTING stroke => null
+  MAPPING bill_dep AS x, body_mass AS y, species AS fill
+  SETTING stroke => null
 SCALE color TO category10
 ```
 
@@ -77,8 +77,8 @@ Instead of using a named palette you can create one on the fly using an array of
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
 DRAW point
-    MAPPING bill_dep AS x, body_mass AS y, flipper_len AS fill
-    SETTING stroke => null
+  MAPPING bill_dep AS x, body_mass AS y, flipper_len AS fill
+  SETTING stroke => null
 SCALE color TO ['antiquewhite', 'firebrick']
 ```
 
@@ -161,7 +161,7 @@ Diverging palettes emphasize a critical midpoint with two contrasting hues on ei
 | `rdgy` | ![](examples/gradient_rdgy.svg){height=20 .lightbox} | ColorBrewer | Red-Grey |
 | `puor` | ![](examples/gradient_puor.svg){height=20 .lightbox} | ColorBrewer | Orange-Purple |
 
-#### Multi-Sequential
+#### Multi-sequential
 
 Multi-sequential palettes have multiple sequential segments, useful for categorical data with ordered subcategories.
 
@@ -226,7 +226,7 @@ Bostock, M. D3.js. [d3js.org](https://d3js.org)
 ##### Kelly's Colors
 Kelly, K.L. (1965). Twenty-two colors of maximum contrast. *Color Engineering*, 3(6), 26-27.
 
-### Choosing a Palette
+### Choosing a palette
 
 #### For general continuous data
 

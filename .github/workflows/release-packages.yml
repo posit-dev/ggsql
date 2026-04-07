@@ -21,7 +21,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
@@ -31,24 +31,46 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: windows-release
-
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
 
       - name: Build ggsql binary
-        run: cargo build --release --package ggsql --bin ggsql
+        run: cargo build --release --bin ggsql --bin ggsql-jupyter
+
+      - name: Sign files before making NSIS and MSI installer
+        id: sign-files
+        uses: ./.github/workflows/actions/sign-files
+        with:
+          paths: |
+            ./target/release/ggsql.exe
+            ./target/release/ggsql-jupyter.exe
+        env:
+          # environment variables required to sign with signtool
+          SM_HOST: ${{ secrets.SM_HOST }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY }}
+          SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE_B64 }}
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+          SM_CLIENT_CERT_FINGERPRINT: ${{ secrets.SM_CLIENT_CERT_FINGERPRINT }}
 
       - name: Build NSIS installer
         run: cargo packager --release --formats nsis
-        working-directory: src
 
       - name: Build MSI installer
         run: cargo packager --release --formats wix
-        working-directory: src
+
+      - name: Sign installers
+        uses: ./.github/workflows/actions/sign-files
+        with:
+          paths: |
+            ./src/target/release/packager/*.exe
+            ./src/target/release/packager/*.msi
+        env:
+          # environment variables required to sign with signtool
+          SM_HOST: ${{ secrets.SM_HOST }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY }}
+          SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE_B64 }}
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+          SM_CLIENT_CERT_FINGERPRINT: ${{ secrets.SM_CLIENT_CERT_FINGERPRINT }}
 
       - name: Upload NSIS installer
         uses: actions/upload-artifact@v4
@@ -75,7 +97,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
@@ -85,27 +107,50 @@ jobs:
         with:
           targets: x86_64-apple-darwin, aarch64-apple-darwin
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: macos-release
+      - name: Set up Apple notarization key
+        run: |
+          mkdir -p ~/.private_keys
+          echo -n "$APPLE_API_KEY_BASE64" | base64 --decode -o ~/.private_keys/AuthKey_${APPLE_API_KEY}.p8
+          chmod 600 ~/.private_keys/AuthKey_${APPLE_API_KEY}.p8
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.GWS_APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY: ${{ secrets.GWS_APPLE_API_KEY }}
+
+      - name: Configure macOS installer signing
+        env:
+          APPLE_SIGN_IDENTITY: ${{ secrets.GWS_APPLE_SIGN_IDENTITY }}
+        run: |
+          cat <<EOF >> src/Cargo.toml
+
+          [package.metadata.packager.macos]
+          signing-identity = "${APPLE_SIGN_IDENTITY}"
+          entitlements = "entitlements.plist"
+          EOF
 
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
 
       - name: Build ggsql binary (x86_64)
-        run: cargo build --release --package ggsql --bin ggsql
+        run: cargo build --release --bin ggsql --bin ggsql-jupyter
 
       - name: Build DMG installer (x86_64)
         run: cargo packager --release --formats dmg
-        working-directory: src
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.GWS_APPLE_SIGN_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.GWS_APPLE_SIGN_PW }}
+          APPLE_API_KEY: ${{ secrets.GWS_APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.GWS_APPLE_API_ISSUER }}
 
       - name: Build ggsql binary (aarch64)
-        run: cargo build --release --package ggsql --bin ggsql --target aarch64-apple-darwin
+        run: cargo build --release --bin ggsql --bin ggsql-jupyter --target aarch64-apple-darwin
 
       - name: Build DMG installer (aarch64)
         run: cargo packager --release --target aarch64-apple-darwin --formats dmg
-        working-directory: src
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.GWS_APPLE_SIGN_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.GWS_APPLE_SIGN_PW }}
+          APPLE_API_KEY: ${{ secrets.GWS_APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.GWS_APPLE_API_ISSUER }}
 
       - name: Upload DMG installers
         uses: actions/upload-artifact@v4
@@ -125,7 +170,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
@@ -134,11 +179,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-gnu
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: linux-release
 
       - name: Install system dependencies
         run: |
@@ -154,11 +194,10 @@ jobs:
         run: cargo install cargo-packager --locked
 
       - name: Build ggsql binary
-        run: cargo build --release --package ggsql --bin ggsql
+        run: cargo build --release --bin ggsql --bin ggsql-jupyter
 
       - name: Build Debian package
         run: cargo packager --release --formats deb
-        working-directory: src
 
       - name: Upload Debian package
         uses: actions/upload-artifact@v4
@@ -181,18 +220,13 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: cargo-publish
 
       - name: Get crates.io publish token
         uses: rust-lang/crates-io-auth-action@v1

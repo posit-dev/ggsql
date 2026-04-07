@@ -49,7 +49,9 @@ mod text;
 mod violin;
 
 // Re-export types
-pub use types::{DefaultAesthetics, DefaultParam, DefaultParamValue, StatResult};
+pub use types::{
+    DefaultAesthetics, DefaultParamValue, ParamConstraint, ParamDefinition, StatResult,
+};
 
 // Re-export geom structs for direct access if needed
 pub use area::Area;
@@ -72,7 +74,7 @@ pub use smooth::Smooth;
 pub use text::Text;
 pub use violin::Violin;
 
-use crate::plot::types::{DefaultAestheticValue, ParameterValue, Schema};
+use crate::plot::types::{ParameterValue, Schema};
 use crate::reader::SqlDialect;
 
 /// Enum of all geom types for pattern matching and serialization
@@ -145,8 +147,8 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// - `DefaultAestheticValue::Number(0.0)` - maps a literal value to the aesthetic
     ///
     /// These defaults can be overridden by a REMAPPING clause.
-    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
-        &[]
+    fn default_remappings(&self) -> DefaultAesthetics {
+        DefaultAesthetics { defaults: &[] }
     }
 
     /// Returns valid stat column names that can be used in REMAPPING (early validation).
@@ -167,7 +169,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Returns non-aesthetic parameters with their default values.
     ///
     /// These control stat behavior (e.g., bins for histogram).
-    fn default_params(&self) -> &'static [DefaultParam] {
+    fn default_params(&self) -> &'static [ParamDefinition] {
         &[]
     }
 
@@ -368,7 +370,7 @@ impl Geom {
     }
 
     /// Get default remappings
-    pub fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
+    pub fn default_remappings(&self) -> DefaultAesthetics {
         self.0.default_remappings()
     }
 
@@ -378,7 +380,7 @@ impl Geom {
     }
 
     /// Get default parameters
-    pub fn default_params(&self) -> &'static [DefaultParam] {
+    pub fn default_params(&self) -> &'static [ParamDefinition] {
         self.0.default_params()
     }
 
@@ -589,7 +591,7 @@ mod tests {
                 aesthetics.defaults.iter().map(|(name, _)| *name).collect();
 
             // Check each remapping name exists in aesthetics
-            for (name, _) in remappings {
+            for (name, _) in remappings.defaults {
                 assert!(
                     aesthetic_names.contains(name),
                     "Geom '{}' has '{}' in default_remappings() but not in aesthetics().defaults. \

@@ -110,7 +110,7 @@ If you wish to scale by the radius (not advised) you should do so using the `squ
 VISUALISE body_mass AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x
-    SETTING pretty => false
+  SETTING pretty => false
 ```
 
 #### Use a date transform to bin on months
@@ -119,15 +119,15 @@ SCALE BINNED x
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW boxplot
 SCALE BINNED x VIA date
-    SETTING breaks => 'month'
+  SETTING breaks => 'month'
 ```
 
 ## Settings
 The following settings are recognised by binned scales:
 
-* `expand` (only for `x`/`y`): Either a scalar number or 2-length array of numbers. Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to `0.05` (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as `SCALE x FROM [0, null]` expansion will only be applied to the upper range.
+* `expand` (only for `x`/`y`): Either a scalar number or 2-element array of numbers (values must be >= 0). Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to `0.05` (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as `SCALE x FROM [0, null]` expansion will only be applied to the upper range.
 * `oob`: How should values outside of the scale input range be treated. One of `'censor'` (set to `null`), or `'squish'` (set to the nearest bin). Default is `'censor'`. When set to `'squish'` the terminal bin labels will be removed to reflect that they extend to -Inf and Inf.
-* `breaks`: Either a scalar as described in [the section on breaks](#breaks), or an array of values to place breaks at. Defaults to `5`.
+* `breaks`: Either a scalar (whole number >= 1) as described in [the section on breaks](#breaks), or an array of values to place breaks at. Defaults to `5`.
 * `pretty`: A boolean indicating which algorithm to use for automatic calculation of breaks as described in [the section on breaks](#breaks). Defaults to `true`.
 * `reverse`: A boolean indicating whether the scale direction should be reversed. Defaults to `false`.
 * `closed`: Either `'left'` or `'right'`. Determines which bin a value will be part of when it lies on the boundary. Defaults to `'left'`
@@ -140,9 +140,9 @@ The following settings are recognised by binned scales:
 VISUALISE body_mass AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x
-    SETTING 
-        oob => 'squish', 
-        breaks => [4000, 4250, 4500, 4750, 5000, 5250, 5500]
+  SETTING 
+    oob => 'squish', 
+    breaks => [4000, 4250, 4500, 4750, 5000, 5250, 5500]
 ```
 
 ## Renaming
@@ -168,8 +168,8 @@ If `oob => 'squish'` then the terminal labels are formatted as e.g. "≥ 10" to 
 ```{ggsql}
 VISUALISE bill_dep AS x FROM ggsql:penguins
 DRAW bar
-SCALE BINNED x 
-    RENAMING 50 => 'Fifty'
+SCALE BINNED x
+  RENAMING 20 => 'Twenty'
 ```
 
 #### Adding suffix to break labels
@@ -178,7 +178,7 @@ SCALE BINNED x
 VISUALISE bill_dep AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x 
-    RENAMING * => '{} mm'
+  RENAMING * => '{} mm'
 ```
 
 #### Using a formatter to control number formats
@@ -187,5 +187,5 @@ SCALE BINNED x
 VISUALISE bill_dep AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x
-    RENAMING * => '{:num %.1f}'
+  RENAMING * => '{:num %.1f}'
 ```

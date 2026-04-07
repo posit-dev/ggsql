@@ -672,8 +672,8 @@ module.exports = grammar({
       // Position aesthetics (cartesian)
       'x', 'y', 'xmin', 'xmax', 'ymin', 'ymax', 'xend', 'yend',
       // Position aesthetics (polar)
-      'theta', 'radius', 'thetamin', 'thetamax', 'radiusmin', 'radiusmax',
-      'thetaend', 'radiusend',
+      'angle', 'radius', 'anglemin', 'anglemax', 'radiusmin', 'radiusmax',
+      'angleend', 'radiusend',
       // Aggregation aesthetic (for bar charts)
       'weight',
       // Color aesthetics
@@ -793,8 +793,8 @@ module.exports = grammar({
     //   PROJECT TO cartesian (defaults to x, y)
     //   PROJECT x, y TO cartesian (explicit aesthetics)
     //   PROJECT a, b TO cartesian (custom aesthetic names)
-    //   PROJECT TO polar (defaults to theta, radius)
-    //   PROJECT theta, radius TO polar (explicit aesthetics)
+    //   PROJECT TO polar (defaults to angle, radius)
+    //   PROJECT angle, radius TO polar (explicit aesthetics)
     //   PROJECT TO cartesian SETTING clip => true
     project_clause: $ => seq(
       caseInsensitive('PROJECT'),

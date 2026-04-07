@@ -32,7 +32,7 @@ pub use super::types::{
 
 // Re-export Geom and related types from the layer::geom module
 pub use super::layer::geom::{
-    DefaultAesthetics, DefaultParam, DefaultParamValue, Geom, GeomTrait, GeomType, StatResult,
+    DefaultAesthetics, DefaultParamValue, Geom, GeomTrait, GeomType, ParamDefinition, StatResult,
 };
 
 // Re-export Layer from the layer module
@@ -809,18 +809,18 @@ mod tests {
 
     #[test]
     fn test_label_transform_with_polar_project() {
-        // LABEL theta/radius with polar should transform to pos1/pos2
+        // LABEL angle/radius with polar should transform to pos1/pos2
         use crate::plot::projection::{Coord, Projection};
 
         let mut spec = Plot::new();
         spec.project = Some(Projection {
             coord: Coord::polar(),
-            aesthetics: vec!["theta".to_string(), "radius".to_string()],
+            aesthetics: vec!["angle".to_string(), "radius".to_string()],
             properties: HashMap::new(),
         });
         spec.labels = Some(Labels {
             labels: HashMap::from([
-                ("theta".to_string(), "Angle".to_string()),
+                ("angle".to_string(), "Angle".to_string()),
                 ("radius".to_string(), "Distance".to_string()),
             ]),
         });

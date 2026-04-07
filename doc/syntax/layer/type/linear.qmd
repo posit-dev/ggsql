@@ -45,26 +45,23 @@ Add a simple reference line to a scatterplot:
 
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
-  DRAW point MAPPING bill_len AS x, bill_dep AS y
-  PLACE linear SETTING coef => 0.4, intercept => -1
+DRAW point 
+  MAPPING bill_len AS x, bill_dep AS y
+PLACE linear 
+  SETTING coef => 0.4, intercept => -1
 ```
 
 Add multiple reference lines with different colors from a separate dataset. Note we're mapping from data here, so we use `DRAW` instead of `PLACE`.
 
 ```{ggsql}
-WITH lines AS (
-    SELECT * FROM (VALUES
-        (0.4, -1, 'Line A'),
-        (0.2, 8, 'Line B'),
-        (0.8, -19, 'Line C')
-    ) AS t(coef, intercept, label)
+WITH lines(coef, intercept, label) AS (VALUES
+  (0.4, -1, 'Line A'),
+  (0.2, 8, 'Line B'),
+  (0.8, -19, 'Line C')
 )
 VISUALISE FROM ggsql:penguins
-  DRAW point MAPPING bill_len AS x, bill_dep AS y
-  DRAW linear
-    MAPPING 
-      coef AS coef, 
-      intercept AS intercept, 
-      label AS colour
-    FROM lines
+DRAW point 
+  MAPPING bill_len AS x, bill_dep AS y
+DRAW linear
+  MAPPING coef AS coef, intercept AS intercept, label AS colour FROM lines
 ```

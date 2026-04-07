@@ -1,5 +1,5 @@
 ---
-title: "Bar Chart"
+title: "Bar chart"
 description: "Categorical comparisons using bars"
 image: thumbnails/bar-chart.svg
 categories: [basic, bar]
@@ -16,9 +16,9 @@ GROUP BY species
 VISUALISE species AS x, count AS y, species AS fill
 DRAW bar
 LABEL
-    title => 'Penguin Count by Species',
-    x => 'Species',
-    y => 'Count'
+  title => 'Penguin Count by Species',
+  x => 'Species',
+  y => 'Count'
 ```
 
 ## Explanation
@@ -31,7 +31,7 @@ LABEL
 
 ## Variations
 
-### Horizontal Bars
+### Horizontal bars
 
 Use `PROJECT y, x TO cartesian` to flip the axes for horizontal bars:
 
@@ -42,12 +42,12 @@ VISUALISE species AS x, count AS y, species AS fill
 DRAW bar
 PROJECT y, x TO cartesian
 LABEL
-    title => 'Penguin Count by Species',
-    x => 'Species',
-    y => 'Count'
+  title => 'Penguin Count by Species',
+  x => 'Species',
+  y => 'Count'
 ```
 
-### Auto-Count Bar Chart
+### Auto-count bar chart
 
 When you don't specify a y aesthetic, ggsql automatically counts occurrences:
 
@@ -56,7 +56,7 @@ SELECT species FROM ggsql:penguins
 VISUALISE species AS x
 DRAW bar
 LABEL
-    title => 'Penguin Distribution',
-    x => 'Species',
-    y => 'Count'
+  title => 'Penguin Distribution',
+  x => 'Species',
+  y => 'Count'
 ```

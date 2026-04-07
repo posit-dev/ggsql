@@ -6,8 +6,11 @@
 //! - If only pos2 is discrete → dodge vertically (pos2offset)
 //! - If both are discrete → 2D grid dodge (both offsets, arranged in a grid)
 
-use super::{compute_dodge_offsets, is_continuous_scale, Layer, PositionTrait, PositionType};
-use crate::plot::types::{DefaultParam, DefaultParamValue, ParameterValue};
+use super::{
+    compute_dodge_offsets, is_continuous_scale, non_facet_partition_cols, Layer, PositionTrait,
+    PositionType,
+};
+use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue};
 use crate::{naming, DataFrame, GgsqlError, Plot, Result};
 use polars::prelude::*;
 use std::collections::HashMap;
@@ -95,11 +98,13 @@ impl PositionTrait for Dodge {
         PositionType::Dodge
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        &[DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[ParamDefinition {
             name: "width",
             default: DefaultParamValue::Number(0.9),
-        }]
+            constraint: ParamConstraint::number_range(0.0, 1.0),
+        }];
+        PARAMS
     }
 
     fn creates_pos1offset(&self) -> bool {
@@ -157,8 +162,10 @@ fn apply_dodge_with_width(
         return Ok((df, None));
     }
 
-    // Compute group indices
-    let group_info = match compute_group_indices(&df, &layer.partition_by)? {
+    // Compute group indices, excluding facet columns so group count
+    // reflects within-panel groups (not cross-panel composites)
+    let group_cols = non_facet_partition_cols(&layer.partition_by, spec);
+    let group_info = match compute_group_indices(&df, &group_cols)? {
         Some(info) => info,
         None => return Ok((df, None)),
     };

@@ -15,7 +15,7 @@ extern void tree_sitter_debug_message(const char *, size_t);
 #define PAGESIZE 0x10000
 #define MAX_HEAP_SIZE (1024 * 1024 * 1024)
 
-typedef struct {
+typedef struct Region {
   size_t size;
   struct Region *next;
   char data[0];

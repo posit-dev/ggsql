@@ -133,7 +133,7 @@ fn validate(
                             idx + 1,
                             stat_col,
                             layer.geom,
-                            valid_stat_columns.join(", ")
+                            crate::and_list(valid_stat_columns)
                         )));
                     }
                 }
@@ -166,6 +166,7 @@ fn is_null_sentinel(value: &AestheticValue) -> bool {
 /// 4. Moreover it propagates 'color' to 'fill' and 'stroke'
 fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema]) {
     for spec in specs {
+        let aesthetic_ctx = spec.get_aesthetic_context();
         for (layer, schema) in spec.layers.iter_mut().zip(layer_schemas.iter()) {
             // Skip annotation layers - they don't inherit global mappings
             if matches!(layer.source, Some(DataSource::Annotation)) {
@@ -196,13 +197,15 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             let has_wildcard = layer.mappings.wildcard || spec.global_mappings.wildcard;
             if has_wildcard {
                 for aes in &supported {
-                    // Only create mapping if column exists in the schema
-                    if schema_columns.contains(*aes) {
+                    // Convert internal name to user-facing name for schema matching
+                    let user_name = aesthetic_ctx.map_internal_to_user(aes);
+                    // Only create mapping if the user-facing column exists in the schema
+                    if schema_columns.contains(user_name.as_str()) {
                         layer
                             .mappings
                             .aesthetics
                             .entry(crate::parser::builder::normalise_aes_name(aes))
-                            .or_insert(AestheticValue::standard_column(*aes));
+                            .or_insert(AestheticValue::standard_column(&user_name));
                     }
                 }
             }
@@ -975,7 +978,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     let layer_source_queries: Vec<String> = specs[0]
         .layers
         .iter_mut()
-        .map(|l| layer::layer_source_query(l, &materialized_ctes, has_global_table))
+        .map(|l| layer::layer_source_query(l, &materialized_ctes, has_global_table, dialect))
         .collect::<Result<Vec<_>>>()?;
 
     // Get types for each layer from source queries (Phase 1: types only, no min/max yet)
@@ -1076,7 +1079,12 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         .iter()
         .enumerate()
         .map(|(idx, l)| {
-            layer::build_layer_base_query(l, &layer_source_queries[idx], &type_requirements[idx])
+            layer::build_layer_base_query(
+                l,
+                &layer_source_queries[idx],
+                &type_requirements[idx],
+                dialect,
+            )
         })
         .collect();
 

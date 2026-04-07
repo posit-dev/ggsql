@@ -4,7 +4,7 @@ title: Faceting
 
 ggsql provides one or two aesthetics related to faceting. These are special in the sense that they do not alter the display of the single data values, but rather alter in which plot they appear. While it is possible to map to these aesthetics in a layer they are most often applied globally as part of the [`FACET` clause](../../clause/facet.qmd).
 
-The aesthetics provided are either `panel` (for 1-dimensional faceting) or `row` and `column` (for 2-dimensional faceting). These aesthetics have to compatible with the facet clause: it is not possible to map to `panel` in a 2-dimensional faceting plot nor is it possible to map `row` and `column` in a 1-dimensional plot.
+The aesthetics provided are either `panel` (for 1-dimensional faceting) or `row` and `column` (for 2-dimensional faceting). These aesthetics have to be compatible with the facet clause: it is not possible to map to `panel` in a 2-dimensional faceting plot nor is it possible to map `row` and `column` in a 1-dimensional plot.
 
 ## Literal values
 Scales for facet aesthetics never use an output range and always relate to the input range. This means that no concept of literal values applies.
@@ -16,11 +16,11 @@ Since panels are discrete by nature it is not possible to have a continuous scal
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 FACET Date 
-    SETTING free => 'x'
+  SETTING free => 'x'
 SCALE panel
-    SETTING breaks => 'month'
+  SETTING breaks => 'month'
 SCALE x 
-    SETTING breaks => 'weeks'
+  SETTING breaks => 'weeks'
 ```
 
 In order to show data where the facet variable is null, it is necessary to explicitly include `null` in the input range of a facet aesthetic scale. 
@@ -31,5 +31,5 @@ VISUALISE sex AS x FROM ggsql:penguins
 DRAW bar
 FACET species
 SCALE panel FROM ['Adelie', null]
-    RENAMING null => 'The rest'
+  RENAMING null => 'The rest'
 ```

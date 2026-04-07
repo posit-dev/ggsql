@@ -19,7 +19,7 @@
 //! # Internal vs User-Facing Aesthetics
 //!
 //! The pipeline uses internal position aesthetic names (pos1, pos2, etc.) that are
-//! transformed from user-facing names (x/y or theta/radius) early in the pipeline
+//! transformed from user-facing names (x/y or angle/radius) early in the pipeline
 //! and transformed back for output. This is handled by `AestheticContext`.
 
 use std::collections::HashMap;
@@ -87,7 +87,7 @@ pub const MATERIAL_AESTHETICS: &[&str] = &[
 /// Comprehensive context for aesthetic operations.
 ///
 /// Uses HashMaps for efficient O(1) lookups between user-facing and internal aesthetic names.
-/// Used to transform between user-facing aesthetic names (x/y or theta/radius)
+/// Used to transform between user-facing aesthetic names (x/y or angle/radius)
 /// and internal names (pos1/pos2), as well as facet aesthetics (panel/row/column)
 /// to internal facet names (facet1/facet2).
 ///
@@ -102,8 +102,8 @@ pub const MATERIAL_AESTHETICS: &[&str] = &[
 /// assert_eq!(ctx.map_user_to_internal("ymin"), Some("pos2min"));
 ///
 /// // For polar coords
-/// let ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
-/// assert_eq!(ctx.map_user_to_internal("theta"), Some("pos1"));
+/// let ctx = AestheticContext::from_static(&["angle", "radius"], &[]);
+/// assert_eq!(ctx.map_user_to_internal("angle"), Some("pos1"));
 /// assert_eq!(ctx.map_user_to_internal("radius"), Some("pos2"));
 ///
 /// // With facets
@@ -211,7 +211,7 @@ impl AestheticContext {
 
     /// Map user aesthetic (position or facet) to internal name.
     ///
-    /// Position: "x" → "pos1", "ymin" → "pos2min", "theta" → "pos1"
+    /// Position: "x" → "pos1", "ymin" → "pos2min", "angle" → "pos1"
     /// Facet: "panel" → "facet1", "row" → "facet1", "column" → "facet2"
     ///
     /// Note: Facet mappings work regardless of whether a FACET clause exists,
@@ -241,7 +241,7 @@ impl AestheticContext {
 
     /// Map internal aesthetic to user-facing name (reverse of map_user_to_internal).
     ///
-    /// Position: "pos1" → "x", "pos2min" → "ymin", "pos1" → "theta" (for polar)
+    /// Position: "pos1" → "x", "pos2min" → "ymin", "pos1" → "angle" (for polar)
     /// Facet: "facet1" → "panel" (wrap), "facet1" → "row" (grid), "facet2" → "column" (grid)
     /// Material: "color" → "color" (unchanged)
     ///
@@ -330,8 +330,8 @@ impl AestheticContext {
         &self.internal_primaries
     }
 
-    /// Get user position aesthetics (x, y or theta, radius or custom names)
-    pub fn user_position(&self) -> &[String] {
+    /// Get user position aesthetics (x, y or angle, radius or custom names)
+    pub fn user_positional(&self) -> &[String] {
         &self.user_primaries
     }
 
@@ -510,11 +510,11 @@ mod tests {
         assert!(is_position_aesthetic("pos1end"));
         assert!(is_position_aesthetic("pos2end"));
 
-        // User-facing names are NOT position (handled by AestheticContext)
+        // User-facing names are NOT positional (handled by AestheticContext)
         assert!(!is_position_aesthetic("x"));
         assert!(!is_position_aesthetic("y"));
         assert!(!is_position_aesthetic("xmin"));
-        assert!(!is_position_aesthetic("theta"));
+        assert!(!is_position_aesthetic("angle"));
 
         // Material
         assert!(!is_position_aesthetic("color"));
@@ -544,10 +544,10 @@ mod tests {
 
     #[test]
     fn test_aesthetic_context_polar() {
-        let ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
+        let ctx = AestheticContext::from_static(&["angle", "radius"], &[]);
 
-        // User position names
-        assert_eq!(ctx.user_position(), &["theta", "radius"]);
+        // User positional names
+        assert_eq!(ctx.user_position(), &["angle", "radius"]);
 
         // Primary internal names
         let primary: Vec<&str> = ctx.internal_position().iter().map(|s| s.as_str()).collect();
@@ -577,12 +577,12 @@ mod tests {
 
     #[test]
     fn test_aesthetic_context_polar_mapping() {
-        let ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
+        let ctx = AestheticContext::from_static(&["angle", "radius"], &[]);
 
         // User to internal
-        assert_eq!(ctx.map_user_to_internal("theta"), Some("pos1"));
+        assert_eq!(ctx.map_user_to_internal("angle"), Some("pos1"));
         assert_eq!(ctx.map_user_to_internal("radius"), Some("pos2"));
-        assert_eq!(ctx.map_user_to_internal("thetaend"), Some("pos1end"));
+        assert_eq!(ctx.map_user_to_internal("angleend"), Some("pos1end"));
         assert_eq!(ctx.map_user_to_internal("radiusmin"), Some("pos2min"));
     }
 
@@ -678,14 +678,14 @@ mod tests {
 
     #[test]
     fn test_aesthetic_context_internal_to_user_polar() {
-        let ctx = AestheticContext::from_static(&["theta", "radius"], &[]);
+        let ctx = AestheticContext::from_static(&["angle", "radius"], &[]);
 
         // Primary aesthetics map to polar names
-        assert_eq!(ctx.map_internal_to_user("pos1"), "theta");
+        assert_eq!(ctx.map_internal_to_user("pos1"), "angle");
         assert_eq!(ctx.map_internal_to_user("pos2"), "radius");
 
         // Variants
-        assert_eq!(ctx.map_internal_to_user("pos1end"), "thetaend");
+        assert_eq!(ctx.map_internal_to_user("pos1end"), "angleend");
         assert_eq!(ctx.map_internal_to_user("pos2min"), "radiusmin");
         assert_eq!(ctx.map_internal_to_user("pos2max"), "radiusmax");
     }

@@ -2,8 +2,11 @@
 
 use std::collections::HashMap;
 
-use super::types::get_column_name;
-use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, StatResult};
+use super::types::{get_column_name, CLOSED_VALUES, POSITION_VALUES};
+use super::{
+    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
+    StatResult,
+};
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
 use crate::reader::SqlDialect;
@@ -36,38 +39,45 @@ impl GeomTrait for Histogram {
         }
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
-        &[
-            ("pos1", DefaultAestheticValue::Column("bin")),
-            ("pos1end", DefaultAestheticValue::Column("bin_end")),
-            ("pos2", DefaultAestheticValue::Column("count")),
-            ("pos2end", DefaultAestheticValue::Number(0.0)),
-        ]
+    fn default_remappings(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("pos1", DefaultAestheticValue::Column("bin")),
+                ("pos1end", DefaultAestheticValue::Column("bin_end")),
+                ("pos2", DefaultAestheticValue::Column("count")),
+                ("pos2end", DefaultAestheticValue::Number(0.0)),
+            ],
+        }
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {
         &["bin", "bin_end", "count", "density"]
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "bins",
                 default: DefaultParamValue::Number(30.0),
+                constraint: ParamConstraint::count(1.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "closed",
                 default: DefaultParamValue::String("right"),
+                constraint: ParamConstraint::string_option(CLOSED_VALUES),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "binwidth",
                 default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "position",
                 default: DefaultParamValue::String("stack"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
-        ]
+        ];
+        PARAMS
     }
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {
@@ -119,23 +129,17 @@ fn stat_histogram(
         GgsqlError::ValidationError("Histogram requires 'x' aesthetic mapping".to_string())
     })?;
 
-    // Get bins from parameters (default: 30)
-    let bins = parameters
-        .get("bins")
-        .and_then(|p| match p {
-            ParameterValue::Number(n) => Some(*n as usize),
-            _ => None,
-        })
-        .expect("bins is not the correct format. Expected a number");
+    // Get bins from parameters (default: 30, validated by constraint)
+    let ParameterValue::Number(bins) = parameters.get("bins").unwrap() else {
+        unreachable!("bins validated by ParamConstraint::count")
+    };
+    let bins = *bins as usize;
 
-    // Get closed parameter (default: "right")
-    let closed = parameters
-        .get("closed")
-        .and_then(|p| match p {
-            ParameterValue::String(s) => Some(s.as_str()),
-            _ => None,
-        })
-        .expect("closed is not the correct format. Expected a string");
+    // Get closed parameter (default: "right", validated by constraint)
+    let ParameterValue::String(closed) = parameters.get("closed").unwrap() else {
+        unreachable!("closed validated by ParamConstraint::string_option")
+    };
+    let closed = closed.as_str();
 
     // Get binwidth from parameters (default: None - use bins to calculate)
     let explicit_binwidth = parameters.get("binwidth").and_then(|p| match p {

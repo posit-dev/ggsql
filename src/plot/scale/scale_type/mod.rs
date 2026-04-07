@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use super::transform::{Transform, TransformKind};
 use crate::plot::aesthetic::{is_facet_aesthetic, is_position_aesthetic};
-use crate::plot::types::{DefaultParam, DefaultParamValue};
+use crate::plot::types::{validate_parameter, DefaultParamValue, ParamDefinition};
 use crate::plot::{ArrayElement, ColumnInfo, ParameterValue};
 
 // Scale type implementations
@@ -547,7 +547,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// default value. The `resolve_properties()` method handles these special cases.
     ///
     /// Default: empty (no properties allowed).
-    fn default_properties(&self) -> &'static [DefaultParam] {
+    fn default_properties(&self) -> &'static [ParamDefinition] {
         &[]
     }
 
@@ -609,14 +609,10 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                     Ok(t.clone())
                 } else {
                     Err(format!(
-                        "Transform '{}' not supported for {} scale. Allowed: {}",
-                        t.name(),
+                        "{} scale transform should be {}, not '{}'",
                         self.name(),
-                        self.allowed_transforms()
-                            .iter()
-                            .map(|k| k.to_string())
-                            .collect::<Vec<_>>()
-                            .join(", ")
+                        crate::or_list(self.allowed_transforms()),
+                        t.name()
                     ))
                 }
             }
@@ -634,29 +630,40 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         let defaults = self.default_properties();
         let is_position = is_position_aesthetic(aesthetic);
 
-        // Build allowed list, excluding "expand" for material aesthetics
-        let allowed: Vec<&str> = defaults
-            .iter()
-            .filter(|p| p.name != "expand" || is_position)
-            .map(|p| p.name)
-            .collect();
+        // Validate values against constraints
+        for (key, value) in properties.iter() {
+            // Check if property is allowed for this aesthetic type
+            let is_expand_on_non_position = key == "expand" && !is_position;
 
-        // Check for unknown properties
-        for key in properties.keys() {
-            if !allowed.contains(&key.as_str()) {
-                if allowed.is_empty() {
-                    return Err(format!(
-                        "{} scale does not support any SETTING properties",
-                        self.name()
-                    ));
+            // Find the parameter definition and validate if allowed
+            let param = defaults.iter().find(|p| p.name == key);
+            if let Some(param) = param {
+                if !is_expand_on_non_position {
+                    validate_parameter(key, value, &param.constraint)?;
+                    continue;
                 }
-                return Err(format!(
-                    "{} scale does not support SETTING '{}'. Allowed: {}",
-                    self.name(),
-                    key,
-                    allowed.join(", ")
-                ));
             }
+
+            // Property not found or not allowed for this aesthetic type
+            let allowed: Vec<&str> = defaults
+                .iter()
+                .filter(|p| p.name != "expand" || is_positional)
+                .map(|p| p.name)
+                .collect();
+            return Err(if allowed.is_empty() {
+                format!(
+                    "{} scale does not accept any properties, but got '{}'",
+                    self.name(),
+                    key
+                )
+            } else {
+                format!(
+                    "{} scale property should be {}, not '{}'",
+                    self.name(),
+                    crate::or_list_quoted(&allowed, '\''),
+                    key
+                )
+            });
         }
 
         // Start with user properties, add defaults for missing ones
@@ -680,10 +687,8 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             }
         }
 
-        // Validate oob value if present
+        // Additional semantic validation for oob (scale-specific restrictions beyond the constraint)
         if let Some(ParameterValue::String(oob)) = resolved.get("oob") {
-            validate_oob(oob)?;
-
             // Discrete and Ordinal scales only support "censor" - no way to map unmapped values to output
             let kind = self.scale_type_kind();
             if (kind == ScaleTypeKind::Discrete || kind == ScaleTypeKind::Ordinal)
@@ -694,16 +699,6 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                      values outside the input range have no corresponding output value.",
                     self.name(),
                     oob
-                ));
-            }
-
-            // Binned scales support "censor" and "squish", but not "keep"
-            // Values outside bins have no bin to map to, but can be squished to nearest bin edge
-            if kind == ScaleTypeKind::Binned && oob == OOB_KEEP {
-                return Err(format!(
-                    "{} scale does not support oob='keep'. Use 'censor' to exclude values \
-                     outside bins, or 'squish' to clamp them to the nearest bin edge.",
-                    self.name()
                 ));
             }
         }
@@ -1387,6 +1382,13 @@ pub const OOB_SQUISH: &str = "squish";
 /// Out-of-bounds mode: don't modify values (default for position aesthetics)
 pub const OOB_KEEP: &str = "keep";
 
+/// Valid OOB values for continuous scales (all three options)
+pub const OOB_VALUES_CONTINUOUS: &[&str] = &[OOB_CENSOR, OOB_SQUISH, OOB_KEEP];
+/// Valid OOB values for binned scales (keep is not supported)
+pub const OOB_VALUES_BINNED: &[&str] = &[OOB_CENSOR, OOB_SQUISH];
+/// Valid closed side values for binned data
+pub const CLOSED_VALUES: &[&str] = &["left", "right"];
+
 /// Default oob mode for an aesthetic.
 /// Position aesthetics default to "keep", others default to "censor".
 pub fn default_oob(aesthetic: &str) -> &'static str {
@@ -1394,17 +1396,6 @@ pub fn default_oob(aesthetic: &str) -> &'static str {
         OOB_KEEP
     } else {
         OOB_CENSOR
-    }
-}
-
-/// Validate oob value is one of the allowed modes.
-pub(super) fn validate_oob(value: &str) -> Result<(), String> {
-    match value {
-        OOB_CENSOR | OOB_SQUISH | OOB_KEEP => Ok(()),
-        _ => Err(format!(
-            "Invalid oob value '{}'. Must be 'censor', 'squish', or 'keep'",
-            value
-        )),
     }
 }
 
@@ -2338,9 +2329,7 @@ mod tests {
         expand_props.insert("expand".to_string(), ParameterValue::Number(0.1));
         let result = ScaleType::discrete().resolve_properties("color", &expand_props);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .contains("does not support SETTING 'expand'"));
+        assert!(result.unwrap_err().contains("not 'expand'"));
 
         // Identity rejects any property
         let result = ScaleType::identity().resolve_properties("x", &expand_props);
@@ -2354,7 +2343,12 @@ mod tests {
         );
         let result = ScaleType::binned().resolve_properties("x", &keep_props);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("does not support oob='keep'"));
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("not 'keep'"),
+            "Expected error about invalid oob value, got: {}",
+            err
+        );
     }
 
     #[test]
@@ -2519,7 +2513,11 @@ mod tests {
         let result = ScaleType::continuous().resolve_properties("x", &props);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("Invalid oob value"));
+        assert!(
+            err.contains("not 'invalid'"),
+            "Expected error about invalid oob value, got: {}",
+            err
+        );
     }
 
     #[test]
@@ -2557,9 +2555,7 @@ mod tests {
             .is_err());
         let result = ScaleType::discrete().resolve_properties("color", &oob_props);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .contains("does not support SETTING 'oob'"));
+        assert!(result.unwrap_err().contains("not 'oob'"));
 
         // Discrete has no oob in resolved (implicit censor)
         let resolved = ScaleType::discrete()
@@ -2668,7 +2664,7 @@ mod tests {
         let log = Transform::log();
         let result = ScaleType::discrete().resolve_transform("color", Some(&log), None, None);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("not supported"));
+        assert!(result.unwrap_err().contains("not 'log'"));
 
         // Discrete accepts string and bool
         for (transform, expected_kind) in [
@@ -2923,9 +2919,7 @@ mod tests {
 
         let result = ScaleType::discrete().resolve_properties("x", &props);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .contains("does not support SETTING 'breaks'"));
+        assert!(result.unwrap_err().contains("not 'breaks'"));
     }
 
     #[test]

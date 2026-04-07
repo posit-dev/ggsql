@@ -22,7 +22,7 @@ The following aesthetics are recognised by the point layer.
 * `shape`: The shape used to draw the point
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
+* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 
 ## Data transformation
 The point layer does not transform its data but passes it through unchanged
@@ -37,7 +37,7 @@ Create a classic scatterplot
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
 DRAW point
-    MAPPING bill_len AS x, bill_dep AS y, species AS fill
+  MAPPING bill_len AS x, bill_dep AS y, species AS fill
 ```
 
 Map to size to create a bubble chart
@@ -45,7 +45,7 @@ Map to size to create a bubble chart
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
 DRAW point
-    MAPPING bill_len AS x, bill_dep AS y, body_mass AS size
+  MAPPING bill_len AS x, bill_dep AS y, body_mass AS size
 ```
 
 Use filter to only plot a subset of the data
@@ -53,19 +53,22 @@ Use filter to only plot a subset of the data
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
 DRAW point
-    MAPPING bill_len AS x, bill_dep AS y, species AS fill
-    FILTER sex = 'female'
+  MAPPING bill_len AS x, bill_dep AS y, species AS fill
+  FILTER sex = 'female'
 ```
+
+When points are plotted on a discrete scale you will likely see a lot of overplotting. Use jitter position to introduce a bit of random offset to counter that.
 
 ```{ggsql}
 VISUALISE species AS x, sex AS y, island AS fill FROM ggsql:penguins
 DRAW point
-    SETTING position => 'jitter', distribution => 'normal'
+  SETTING position => 'jitter', distribution => 'normal'
 ```
 
 Use density distribution for a violin-like jitter effect, where jitter width scales with local data density.
 
 ```{ggsql}
 VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
-DRAW point SETTING position => 'jitter', distribution => 'density'
+DRAW point 
+  SETTING position => 'jitter', distribution => 'density'
 ```
