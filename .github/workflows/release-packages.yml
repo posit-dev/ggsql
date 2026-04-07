@@ -124,6 +124,7 @@ jobs:
 
           [package.metadata.packager.macos]
           signing-identity = "${APPLE_SIGN_IDENTITY}"
+          entitlements = "entitlements.plist"
           EOF
 
       - name: Install cargo-packager

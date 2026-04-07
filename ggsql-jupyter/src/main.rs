@@ -128,7 +128,9 @@ fn install_kernel(user: bool, sys_prefix: bool) -> Result<()> {
         "display_name": "ggsql",
         "language": "ggsql",
         "interrupt_mode": "signal",
-        "env": {},
+        "env": {
+            "RUST_LOG": "error"
+        },
         "metadata": {
             "debugger": false
         }

@@ -271,3 +271,8 @@ Or try our [online playground](wasm/) to experience the syntax _right now_.
 
 :::
 
+```{=html}
+<canvas id="bg-lines" aria-hidden="true"></canvas>
+<script src="bg-lines.js"></script>
+```
+

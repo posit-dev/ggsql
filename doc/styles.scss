@@ -41,7 +41,20 @@ body:has(.hero-banner) {
   background-attachment: fixed;
 }
 
+// Animated background line charts canvas
+#bg-lines {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .hero-banner {
+  position: relative;
+  z-index: 1;
   width: 100%;
   padding: 4rem 2rem;
   background: transparent;
@@ -100,6 +113,21 @@ body:has(.hero-banner) {
     line-height: 1.2;
     letter-spacing: -0.02em;
     text-align: left;
+  }
+
+  // Blurred backdrop behind hero text to stay readable over animated lines
+  h1, .hero-body > p {
+    position: relative;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -30px -40px;
+      background: var(--brand-paleteal, #DEF1EB);
+      filter: blur(20px);
+      z-index: -1;
+      border-radius: 50%;
+    }
   }
 
   .hero-body {
@@ -162,6 +190,8 @@ body:has(.hero-banner) {
 
 
 .content-block {
+  position: relative;
+  z-index: 1;
   max-width: 1200px;
   margin: 2rem auto;
   padding: 4rem 2rem 2rem;
@@ -514,6 +544,20 @@ body:has(.hero-banner) {
 .cta-section {
   text-align: center;
   padding: 2rem 0;
+
+  h2, > p {
+    position: relative;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -30px -40px;
+      background: var(--brand-paleteal, #DEF1EB);
+      filter: blur(20px);
+      z-index: -1;
+      border-radius: 50%;
+    }
+  }
 
   h2 {
     margin-bottom: 1rem;
