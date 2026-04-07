@@ -78,9 +78,9 @@ impl super::SqlDialect for SqliteDialect {
 
     fn sql_list_tables(&self, catalog: &str, _schema: &str) -> String {
         format!(
-            "SELECT name AS table_name, type AS table_type FROM \"{}\".sqlite_master \
+            "SELECT name AS table_name, type AS table_type FROM {}.sqlite_master \
              WHERE type IN ('table', 'view') ORDER BY name",
-            catalog.replace('"', "\"\"")
+            naming::quote_ident(catalog)
         )
     }
 
@@ -387,8 +387,8 @@ impl Reader for SqliteReader {
         if df.height() > 0 {
             let placeholders: Vec<&str> = vec!["?"; df.width()];
             let insert_sql = format!(
-                "INSERT INTO \"{}\" VALUES ({})",
-                name,
+                "INSERT INTO {} VALUES ({})",
+                naming::quote_ident(name),
                 placeholders.join(", ")
             );
 

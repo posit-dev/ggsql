@@ -567,9 +567,9 @@ fn compute_density(
         format!("{},", quoted.join(", "))
     };
 
-    let x_column = naming::stat_column(value_aesthetic);
-    let intensity_column = naming::stat_column("intensity");
-    let density_column = naming::stat_column("density");
+    let x_column = naming::quote_ident(&naming::stat_column(value_aesthetic));
+    let intensity_column = naming::quote_ident(&naming::stat_column("intensity"));
+    let density_column = naming::quote_ident(&naming::stat_column("density"));
 
     // Generate the density computation query
     format!(
@@ -577,15 +577,15 @@ fn compute_density(
         {data_cte},
         {grid_cte}
         SELECT
-          \"{x_column}\",
+          {x_column},
           {groups}
-          \"{intensity_column}\",
-          \"{intensity_column}\" / \"__norm\" AS \"{density_column}\"
+          {intensity_column},
+          {intensity_column} / \"__norm\" AS {density_column}
         FROM (
           SELECT
-            grid.x AS \"{x_column}\",
+            grid.x AS {x_column},
             {grid_groups}
-            {kernel} AS \"{intensity_column}\",
+            {kernel} AS {intensity_column},
             SUM(data.weight) AS \"__norm\"
           {join_logic}
           {aggregation}

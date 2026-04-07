@@ -70,10 +70,10 @@ impl DataExplorerState {
         let table = &path[2];
 
         let table_path = format!(
-            "\"{}\".\"{}\".\"{}\"",
-            catalog.replace('"', "\"\""),
-            schema.replace('"', "\"\""),
-            table.replace('"', "\"\""),
+            "{}.{}.{}",
+            ggsql::naming::quote_ident(catalog),
+            ggsql::naming::quote_ident(schema),
+            ggsql::naming::quote_ident(table),
         );
 
         // Get row count

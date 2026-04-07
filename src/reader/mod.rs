@@ -187,9 +187,11 @@ pub trait SqlDialect {
             .iter()
             .map(|g| {
                 let q = naming::quote_ident(g);
-                format!("AND {pct}.{q} IS NOT DISTINCT FROM {qt}.{q}",
+                format!(
+                    "AND {pct}.{q} IS NOT DISTINCT FROM {qt}.{q}",
                     pct = naming::quote_ident("__ggsql_pct__"),
-                    qt = naming::quote_ident("__ggsql_qt__"))
+                    qt = naming::quote_ident("__ggsql_qt__")
+                )
             })
             .collect::<Vec<_>>()
             .join(" ");
@@ -467,7 +469,7 @@ pub trait Reader {
     }
 }
 
-/// Execute a ggsql query using any reader (object-safe entry point).
+/// Execute a ggsql query using any reader
 ///
 /// This is the shared implementation behind `Reader::execute()`. Concrete
 /// readers delegate to this so the trait stays object-safe (no `Self: Sized`

@@ -559,8 +559,8 @@ impl Reader for DuckDBReader {
             // Small DataFrame: register in a single batch
             let params = dataframe_to_arrow_params(df)?;
             let sql = format!(
-                "{} TEMP TABLE \"{}\" AS SELECT * FROM arrow(?, ?)",
-                create_or_replace, name
+                "{} TEMP TABLE {} AS SELECT * FROM arrow(?, ?)",
+                create_or_replace, naming::quote_ident(name)
             );
             self.conn.execute(&sql, params).map_err(|e| {
                 GgsqlError::ReaderError(format!("Failed to register table '{}': {}", name, e))
@@ -570,8 +570,8 @@ impl Reader for DuckDBReader {
             let first_chunk = df.slice(0, MAX_ARROW_BATCH_ROWS);
             let params = dataframe_to_arrow_params(first_chunk)?;
             let create_sql = format!(
-                "{} TEMP TABLE \"{}\" AS SELECT * FROM arrow(?, ?)",
-                create_or_replace, name
+                "{} TEMP TABLE {} AS SELECT * FROM arrow(?, ?)",
+                create_or_replace, naming::quote_ident(name)
             );
             self.conn.execute(&create_sql, params).map_err(|e| {
                 GgsqlError::ReaderError(format!("Failed to register table '{}': {}", name, e))

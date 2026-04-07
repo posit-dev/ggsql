@@ -54,7 +54,7 @@ pub fn layer_source_query(
         None => {
             // Layer uses global data
             debug_assert!(has_global, "Layer has no source and no global data");
-            Ok(format!("SELECT * FROM \"{}\"", naming::global_table()))
+            Ok(format!("SELECT * FROM {}", naming::quote_ident(&naming::global_table())))
         }
     }
 }

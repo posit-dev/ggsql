@@ -67,8 +67,8 @@ pub fn register_builtin_datasets_duckdb(
         }
 
         let create_sql = format!(
-            "CREATE TABLE IF NOT EXISTS \"{}\" AS SELECT * FROM read_parquet('{}')",
-            table_name,
+            "CREATE TABLE IF NOT EXISTS {} AS SELECT * FROM read_parquet('{}')",
+            naming::quote_ident(&table_name),
             tmp_path.display()
         );
 

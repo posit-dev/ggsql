@@ -152,8 +152,8 @@ impl Reader for OdbcReader {
             let num_cols = df.width();
             let placeholders: Vec<&str> = vec!["?"; num_cols];
             let insert_sql = format!(
-                "INSERT INTO \"{}\" VALUES ({})",
-                name,
+                "INSERT INTO {} VALUES ({})",
+                naming::quote_ident(name),
                 placeholders.join(", ")
             );
 
