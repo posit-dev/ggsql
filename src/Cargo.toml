@@ -16,11 +16,6 @@ path = "lib.rs"
 name = "ggsql"
 path = "cli.rs"
 
-[[bin]]
-name = "ggsql-rest"
-path = "rest.rs"
-required-features = ["rest-api"]
-
 [dependencies]
 # Parsing
 tree-sitter.workspace = true
@@ -60,13 +55,6 @@ sprintf = "0.4"
 const_format.workspace = true
 uuid.workspace = true
 
-# Web server (optional)
-axum = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true, features = ["full"] }
-tower-http = { workspace = true, optional = true }
-tracing = { workspace = true, optional = true }
-tracing-subscriber = { workspace = true, optional = true }
-
 # Python bindings (future)
 pyo3 = { workspace = true, optional = true }
 
@@ -86,7 +74,6 @@ vegalite = []
 ggplot2 = []
 builtin-data = []
 python = ["dep:pyo3"]
-rest-api = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tracing", "dep:tracing-subscriber", "duckdb", "vegalite"]
 all-readers = ["duckdb", "postgres", "sqlite"]
 all-writers = ["vegalite", "ggplot2", "plotters"]
 

@@ -643,81 +643,6 @@ impl Writer for VegaLiteWriter {
 
 ---
 
-### 4. REST API (`src/rest.rs`)
-
-**Responsibility**: HTTP interface for executing ggsql queries.
-
-**Technology**: Axum web framework with CORS support
-
-**Endpoints**:
-
-```rust
-// POST /api/v1/query - Execute ggsql query
-// Request:
-{
-  "query": "SELECT ... VISUALISE ...",
-  "reader": "duckdb://memory",  // optional, default
-  "writer": "vegalite"            // optional, default
-}
-
-// Response (success):
-{
-  "status": "success",
-  "data": {
-    "spec": { /* Vega-Lite JSON */ },
-    "metadata": {
-      "rows": 100,
-      "columns": ["date", "revenue", "region", "..."],
-      "global_mapping": "Mappings",
-      "layers": 2
-    }
-  }
-}
-
-// Response (error):
-{
-  "status": "error",
-  "error": {
-    "type": "ParseError",
-    "message": "..."
-  }
-}
-```
-
-**Additional Endpoints**:
-
-- `GET /` - Root endpoint (returns API information and status)
-- `POST /api/v1/parse` - Parse query and return AST (debugging)
-- `GET /api/v1/health` - Health check
-- `GET /api/v1/version` - Version info
-
-**CORS Configuration**: Allows cross-origin requests for web frontends
-
-**CLI Options**:
-
-```bash
-# Basic usage
-ggsql-rest --host 127.0.0.1 --port 3334
-
-# With sample data (pre-loaded products, sales, employees tables)
-ggsql-rest --load-sample-data
-
-# Load custom data files (CSV, Parquet, JSON)
-ggsql-rest --load-data data.csv --load-data other.parquet
-
-# Configure CORS origins
-ggsql-rest --cors-origin "http://localhost:5173,http://localhost:3000"
-```
-
-**Sample Data Loading**:
-
-- `--load-sample-data`: Loads built-in sample data (products, sales, employees)
-- `--load-data <file>`: Loads data from CSV, Parquet, or JSON files into in-memory database
-- Multiple `--load-data` flags can be used to load multiple files
-- Pre-loaded data persists for the lifetime of the server session
-
----
-
 ### 5. CLI (`src/cli.rs`)
 
 **Responsibility**: Command-line interface for local query execution.
@@ -1059,12 +984,6 @@ ggsql uses Cargo feature flags to enable optional functionality and reduce binar
 - `plotters` - Enable plotters-based rendering (planned, not implemented)
 - `all-writers` - Enable all writer implementations
 
-**API features**:
-
-- `rest-api` - Enable REST API server (`ggsql-rest` binary)
-  - Includes: `axum`, `tokio`, `tower-http`, `tracing`, `duckdb`, `vegalite`
-  - Required for building `ggsql-rest` server
-
 **Python bindings**:
 
 - `ggsql-python` - Python bindings via PyO3 (separate crate, not a feature flag)
@@ -1078,9 +997,6 @@ cargo build --no-default-features
 # With specific features
 cargo build --features "duckdb,vegalite"
 
-# REST API server
-cargo build --bin ggsql-rest --features rest-api
-
 # All features
 cargo build --all-features
 ```
@@ -1092,7 +1008,6 @@ cargo build --all-features
 - `duckdb` → `duckdb` crate
 - `postgres` → `postgres` crate (future)
 - `sqlite` → `rusqlite` crate (future)
-- `rest-api` → `axum`, `tokio`, `tower-http`, `tracing`, `tracing-subscriber`
 - `ggsql-python` → `pyo3`, `narwhals`, `altair` (separate workspace crate)
 
 ---
@@ -1112,7 +1027,6 @@ ggsql uses [cargo-packager](https://github.com/crabnebula-dev/cargo-packager) to
 **What Gets Packaged**:
 
 - ✅ `ggsql` CLI binary only
-- ❌ `ggsql-rest` API server (install separately with `cargo install ggsql --features rest-api`)
 - ❌ `ggsql-jupyter` kernel (install separately with `cargo install ggsql-jupyter`)
 
 ### Release Process
@@ -1140,6 +1054,7 @@ ggsql uses [cargo-packager](https://github.com/crabnebula-dev/cargo-packager) to
    - Generate release notes
 
 **Manual Workflow Trigger** (for testing):
+
 ```bash
 gh workflow run release-installers.yml
 ```
@@ -1199,7 +1114,7 @@ Where `<global_mapping>` can be:
 | `PLACE`     | ✅ Yes     | Annotation layers | `PLACE point SETTING x => 5, y => 10`     |
 | `SCALE`     | ✅ Yes     | Configure scales  | `SCALE x VIA date`                        |
 | `FACET`     | ❌ No      | Small multiples   | `FACET region`                            |
-| `PROJECT`   | ❌ No      | Coordinate system | `PROJECT TO cartesian` |
+| `PROJECT`   | ❌ No      | Coordinate system | `PROJECT TO cartesian`                    |
 | `LABEL`     | ❌ No      | Text labels       | `LABEL title => 'My Chart', x => 'Date'`  |
 | `THEME`     | ❌ No      | Visual styling    | `THEME minimal`                           |
 
@@ -1488,10 +1403,10 @@ PROJECT [<aesthetic>, ...] TO <coord_type>
 
 **Coordinate Types**:
 
-| Coord Type | Default Aesthetics | Description |
-|------------|-------------------|-------------|
-| `cartesian` | `x`, `y` | Standard x/y Cartesian coordinates |
-| `polar` | `angle`, `radius` | Polar coordinates (for pie charts, rose plots) |
+| Coord Type  | Default Aesthetics | Description                                    |
+| ----------- | ------------------ | ---------------------------------------------- |
+| `cartesian` | `x`, `y`           | Standard x/y Cartesian coordinates             |
+| `polar`     | `angle`, `radius`  | Polar coordinates (for pie charts, rose plots) |
 
 **Flipping Axes**:
 
