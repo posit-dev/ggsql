@@ -11,7 +11,28 @@
   box-shadow: 0 0 0 2px rgba(0, 95, 115, 0.15);
 }
 .ggsql-editor-container {
+  position: relative;
   width: 100%;
+}
+.ggsql-editor-watermark {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 32px;
+  height: 32px;
+  opacity: 0.5;
+  filter: grayscale(1);
+  pointer-events: none;
+  z-index: 10;
+  animation: ggsql-pulse 5s linear infinite;
+}
+@keyframes ggsql-pulse {
+  0%, 100% {
+    transform: scale(0.95);
+  }
+  50% {
+    transform: scale(1.1);
+  }
 }
 .ggsql-error-display {
   padding: 6px 10px;
