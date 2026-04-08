@@ -36,8 +36,8 @@ The following aesthetics are recognised by the violin layer.
 * `width`: Relative width of the violins (0 to 1). Defaults to `0.9`.
 * `side`: Determines the sides of the midline where the density is displayed. One of the following:
     * `'both'` (default) displays a complete violin both sides of the midline.
-    * `'left'` or `'top'` only displays half a violin at the left side or top side.
-    * `'right'` or `'bottom'` only displays half a violin at the right side or bottom side.
+    * `'left'` or `'bottom'` only displays half a violin at the left side or bottom side.
+    * `'right'` or `'top'` only displays half a violin at the right side or top side.
 * `tails`: Expansion rule for drawing the tails (must be >= 0 if numeric). One of the following:
     * A number setting a multiple of adjusted bandwidths to expand each group's range. Defaults to 3.
     * `null` to use the whole data range rather than group ranges.

@@ -1311,22 +1311,23 @@ impl GeomRenderer for ViolinRenderer {
         });
         let offset_col = naming::aesthetic_column("offset");
 
+        // Read orientation from layer (already resolved during execution)
+        let is_horizontal = is_transposed(layer);
+
         // It'll be implemented as an offset.
         let mut violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
         if let Some(ParameterValue::String(side)) = layer.parameters.get("side") {
-            match side.as_str() {
-                "left" | "top" => {
-                    violin_offset = format!("[-datum.{offset}]", offset = offset_col);
-                }
-                "right" | "bottom" => {
-                    violin_offset = format!("[datum.{offset}]", offset = offset_col);
-                }
-                _ => {}
-            }
+            let positive = if is_horizontal {
+                matches!(side.as_str(), "bottom" | "left")
+            } else {
+                matches!(side.as_str(), "top" | "right")
+            };
+            violin_offset = if positive {
+                format!("[datum.{offset}]", offset = offset_col)
+            } else {
+                format!("[-datum.{offset}]", offset = offset_col)
+            };
         }
-
-        // Read orientation from layer (already resolved during execution)
-        let is_horizontal = is_transposed(layer);
 
         // Continuous axis column for order calculation:
         // - Vertical: pos2 (y-axis has continuous density values)
