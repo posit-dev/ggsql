@@ -218,8 +218,10 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Adjust layer mappings and parameters based on geom-specific logic.
     ///
     /// This method is called during layer execution to allow geoms to customize
-    /// how aesthetics and parameters should be treated. The default implementation
-    /// does nothing.
+    /// how aesthetics and parameters should be treated.
+    /// This is called after parameters are validated, which allows for internal
+    /// parameters.
+    /// The default implementation does nothing.
     fn setup_layer(
         &self,
         _mappings: &mut Mappings,
