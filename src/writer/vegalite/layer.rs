@@ -3235,7 +3235,7 @@ mod tests {
 
         let offset_col = naming::aesthetic_column("offset");
 
-        fn get_violin_offset_expr(ridge: Option<&str>) -> String {
+        fn get_violin_offset_expr(ridge: Option<&str>, is_horizontal: bool) -> String {
             let mut layer = Layer::new(crate::plot::Geom::violin());
             if let Some(r) = ridge {
                 layer
@@ -3243,13 +3243,31 @@ mod tests {
                     .insert("side".to_string(), ParameterValue::String(r.to_string()));
             }
 
-            let mut layer_spec = json!({
-                "mark": {"type": "line"},
-                "encoding": {
-                    "x": {"field": "species", "type": "nominal"},
-                    "y": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"}
-                }
-            });
+            // Set orientation parameter for horizontal case
+            if is_horizontal {
+                layer.parameters.insert(
+                    "orientation".to_string(),
+                    ParameterValue::String("transposed".to_string()),
+                );
+            }
+
+            let mut layer_spec = if is_horizontal {
+                json!({
+                    "mark": {"type": "line"},
+                    "encoding": {
+                        "x": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"},
+                        "y": {"field": "species", "type": "nominal"}
+                    }
+                })
+            } else {
+                json!({
+                    "mark": {"type": "line"},
+                    "encoding": {
+                        "x": {"field": "species", "type": "nominal"},
+                        "y": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"}
+                    }
+                })
+            };
 
             ViolinRenderer
                 .modify_spec(&mut layer_spec, &layer, &RenderContext::new(&[]))
@@ -3266,8 +3284,8 @@ mod tests {
                 .to_string()
         }
 
-        // Default "both" - mirrors on both sides
-        let expr = get_violin_offset_expr(None);
+        // Default "both" - mirrors on both sides (vertical orientation)
+        let expr = get_violin_offset_expr(None, false);
         assert!(
             expr.contains(&format!("[datum.{}, -datum.{}]", offset_col, offset_col))
                 || expr.contains(&format!("[-datum.{}, datum.{}]", offset_col, offset_col)),
@@ -3275,24 +3293,46 @@ mod tests {
             expr
         );
 
-        // "left" and "top" - only negative offset
+        // Vertical orientation (default): x=nominal, y=quantitative
+        // "left" and "bottom" - only negative offset
         assert_eq!(
-            get_violin_offset_expr(Some("left")),
+            get_violin_offset_expr(Some("left"), false),
             format!("[-datum.{}]", offset_col)
         );
         assert_eq!(
-            get_violin_offset_expr(Some("top")),
+            get_violin_offset_expr(Some("bottom"), false),
             format!("[-datum.{}]", offset_col)
         );
 
-        // "right" and "bottom" - only positive offset
+        // "right" and "top" - only positive offset
         assert_eq!(
-            get_violin_offset_expr(Some("right")),
+            get_violin_offset_expr(Some("right"), false),
             format!("[datum.{}]", offset_col)
         );
         assert_eq!(
-            get_violin_offset_expr(Some("bottom")),
+            get_violin_offset_expr(Some("top"), false),
             format!("[datum.{}]", offset_col)
+        );
+
+        // Horizontal orientation: x=quantitative, y=nominal
+        // "bottom" and "left" - only positive offset
+        assert_eq!(
+            get_violin_offset_expr(Some("bottom"), true),
+            format!("[datum.{}]", offset_col)
+        );
+        assert_eq!(
+            get_violin_offset_expr(Some("left"), true),
+            format!("[datum.{}]", offset_col)
+        );
+
+        // "top" and "right" - only negative offset
+        assert_eq!(
+            get_violin_offset_expr(Some("top"), true),
+            format!("[-datum.{}]", offset_col)
+        );
+        assert_eq!(
+            get_violin_offset_expr(Some("right"), true),
+            format!("[-datum.{}]", offset_col)
         );
     }
 
