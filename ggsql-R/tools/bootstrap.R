@@ -14,21 +14,21 @@ bootstrap_rust_workspace <- function() {
     return(invisible())
   }
 
-  # Locate the monorepo root relative to the R package directory
-  repo_root <- normalizePath("..", mustWork = FALSE)
+  # Locate the monorepo root by walking up the directory tree
+  repo_root <- find_repo_root()
+
+  if (is.null(repo_root)) {
+    stop(
+      "Cannot find ggsql monorepo root.\n",
+      "Either build from the monorepo or use a source tarball created with R CMD build.",
+      call. = FALSE
+    )
+  }
 
   ggsql_src <- file.path(repo_root, "src")
   ts_src <- file.path(repo_root, "tree-sitter-ggsql")
   root_cargo <- file.path(repo_root, "Cargo.toml")
   root_lock <- file.path(repo_root, "Cargo.lock")
-
-  if (!file.exists(file.path(ggsql_src, "Cargo.toml"))) {
-    stop(
-      "Cannot find ggsql Rust crate at '", ggsql_src, "'.\n",
-      "Either build from the monorepo or use a source tarball created with R CMD build.",
-      call. = FALSE
-    )
-  }
 
   message("Bootstrap: copying workspace crates into R package...")
 
@@ -47,6 +47,26 @@ bootstrap_rust_workspace <- function() {
   create_workspace_toml(root_cargo)
 
   message("Bootstrap: done.")
+}
+
+find_repo_root <- function() {
+  # Walk up from the current directory looking for the ggsql workspace Cargo.toml
+  dir <- normalizePath(".", mustWork = FALSE)
+  for (i in seq_len(10)) {
+    candidate <- file.path(dir, "Cargo.toml")
+    if (file.exists(candidate)) {
+      lines <- readLines(candidate, n = 50, warn = FALSE)
+      # Check if this is the workspace root (has [workspace] and ggsql member)
+      if (any(grepl("^\\[workspace\\]", lines)) &&
+          any(grepl('path = "src"', lines, fixed = TRUE))) {
+        return(dir)
+      }
+    }
+    parent <- dirname(dir)
+    if (parent == dir) break
+    dir <- parent
+  }
+  NULL
 }
 
 copy_dir <- function(from, to) {
