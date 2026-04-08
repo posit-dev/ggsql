@@ -47,6 +47,25 @@ impl GeomTrait for Rule {
         if !has_diagonal_slope {
             return Ok(());
         }
+        parameters.insert("diagonal".to_string(), ParameterValue::Boolean(true));
+
+        // Determine orientation from which intercept is present.
+        // We override the bidirectionality algorithm here since it uses
+        // scales to determine orientation. We can't rely on that here,
+        // because diagonal lines purposefully use AnnotationColumns to
+        // avoid training the scale.
+        let orientation = if mappings.contains_key("pos1") {
+            // x-intercept → pos2 varies
+            crate::plot::layer::orientation::TRANSPOSED
+        } else {
+            // y-intercept → pos1 varies (or default)
+            crate::plot::layer::orientation::ALIGNED
+        };
+
+        parameters.insert(
+            "orientation".to_string(),
+            ParameterValue::String(orientation.to_string()),
+        );
 
         // For diagonal rules, convert pos1/pos2 to AnnotationColumn so they don't participate in scale training
         // The position value is the intercept, not the actual extent of the line

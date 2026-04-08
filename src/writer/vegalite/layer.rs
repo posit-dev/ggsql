@@ -399,7 +399,7 @@ impl GeomRenderer for RuleRenderer {
     fn modify_encoding(
         &self,
         encoding: &mut Map<String, Value>,
-        _layer: &Layer,
+        layer: &Layer,
         context: &RenderContext,
     ) -> Result<()> {
         let has_x = encoding.contains_key("x");
@@ -407,16 +407,10 @@ impl GeomRenderer for RuleRenderer {
 
         // Remove slope from encoding (it's never a visual encoding, only metadata)
         // and check if it's non-zero (diagonal line)
-        let diagonal = if let Some(slope_enc) = encoding.remove("slope") {
-            slope_enc.get("field").is_some() // Field reference - assume non-zero
-                || slope_enc
-                    .get("value")
-                    .and_then(|v| v.as_f64())
-                    .map(|v| v != 0.0)
-                    .unwrap_or(false) // Literal value - check if non-zero
-        } else {
-            false
-        };
+        let diagonal = matches!(
+            layer.parameters.get("diagonal"),
+            Some(ParameterValue::Boolean(true))
+        );
 
         if !has_x && !has_y && !diagonal {
             return Err(GgsqlError::ValidationError(
@@ -433,25 +427,17 @@ impl GeomRenderer for RuleRenderer {
             return Ok(());
         }
 
-        // Determine orientation from which aesthetic is mapped:
-        // - If y is mapped: y is intercept, x varies (primary axis is x)
-        // - If x is mapped: x is intercept, y varies (primary axis is y, "horizontal")
-        let is_horizontal = has_x && !has_y;
-
-        // For y mapped (not horizontal): x is primary axis (varies), y is computed (secondary)
-        // For x mapped (horizontal): y is primary axis (varies), x is computed (secondary)
-        let (primary, primary2, secondary, secondary2) = if is_horizontal {
-            ("y", "y2", "x", "x2")
+        // Use layer's pre-computed orientation
+        let (primary, primary2, secondary, secondary2, extent_aes) = if is_transposed(layer) {
+            ("y", "y2", "x", "x2", "pos2")
         } else {
-            ("x", "x2", "y", "y2")
+            ("x", "x2", "y", "y2", "pos1")
         };
-
-        let mut primary_enco = json!({"field": "primary_min", "type": "quantitative"});
 
         // Get primary axis extent from context to set explicit scale domain
         // This prevents an axis drift
-        let extent_aesthetic = if is_horizontal { "pos2" } else { "pos1" };
-        if let Ok((min, max)) = context.get_extent(extent_aesthetic) {
+        let mut primary_enco = json!({"field": "primary_min", "type": "quantitative"});
+        if let Ok((min, max)) = context.get_extent(extent_aes) {
             primary_enco["scale"] = json!({"domain": [min, max]})
         };
 
@@ -513,26 +499,16 @@ impl GeomRenderer for RuleRenderer {
             return Ok(());
         };
 
-        // Determine orientation from which positional aesthetic is mapped:
-        // By this point, x/y have been renamed to pos1/pos2 by resolve_aesthetic
-        // - If pos2 is mapped (from y): pos2 is intercept, pos1 varies (primary axis is pos1)
-        // - If pos1 is mapped (from x): pos1 is intercept, pos2 varies (primary axis is pos2, "horizontal")
-        let has_pos1 = layer.mappings.contains_key("pos1");
-        let has_pos2 = layer.mappings.contains_key("pos2");
-        let is_horizontal = has_pos1 && !has_pos2;
-
-        // Get the intercept field (pos1 for x, pos2 for y)
-        let intercept_field = if is_horizontal {
-            naming::aesthetic_column("pos1") // x is intercept
+        let (intercept_field, extent_aes) = if is_transposed(layer) {
+            // x is intercept
+            (naming::aesthetic_column("pos1"), "pos2")
         } else {
-            naming::aesthetic_column("pos2") // y is intercept
+            // y is intercept
+            (naming::aesthetic_column("pos2"), "pos1")
         };
 
         // Get extent from appropriate axis:
-        // - y mapped (not horizontal): x is primary axis (varies), y is computed
-        // - x mapped (horizontal): y is primary axis (varies), x is computed
-        let extent_aesthetic = if is_horizontal { "pos2" } else { "pos1" };
-        let (primary_min, primary_max) = context.get_extent(extent_aesthetic)?;
+        let (primary_min, primary_max) = context.get_extent(extent_aes)?;
 
         // Add transforms:
         // 1. Create constant primary_min/primary_max fields (extent of the primary axis)

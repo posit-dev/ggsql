@@ -1020,16 +1020,6 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     // because transformation happens in builder.rs right after parsing
     merge_global_mappings_into_layers(&mut specs, &layer_schemas);
 
-    // Allow geoms to adjust mappings based on their specific logic
-    // (e.g., rule geom converts pos1/pos2 to AnnotationColumn when slope is present)
-    for spec in &mut specs {
-        for layer in &mut spec.layers {
-            layer
-                .geom
-                .setup_layer(&mut layer.mappings, &mut layer.parameters)?;
-        }
-    }
-
     // Split 'color' aesthetic to 'fill' and 'stroke' early in the pipeline
     // This must happen before validation so fill/stroke are validated (not color)
     for spec in &mut specs {
@@ -1071,6 +1061,16 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         &layer_schemas,
         &specs[0].aesthetic_context,
     )?;
+
+    // Allow geoms to adjust mappings based on their specific logic
+    // (e.g., rule geom converts pos1/pos2 to AnnotationColumn when slope is present)
+    for spec in &mut specs {
+        for layer in &mut spec.layers {
+            layer
+                .geom
+                .setup_layer(&mut layer.mappings, &mut layer.parameters)?;
+        }
+    }
 
     // Create scales for all mapped aesthetics that don't have explicit SCALE clauses
     scale::create_missing_scales(&mut specs[0]);
