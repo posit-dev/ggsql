@@ -1394,6 +1394,8 @@ impl GeomRenderer for ViolinRenderer {
         // Read orientation from layer (already resolved during execution)
         let is_horizontal = is_transposed(layer);
 
+        encoding.remove("offset");
+
         // Categorical axis for detail encoding:
         // - Vertical: x channel (categorical groups on x-axis)
         // - Horizontal: y channel (categorical groups on y-axis)
