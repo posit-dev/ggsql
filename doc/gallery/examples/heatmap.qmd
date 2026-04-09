@@ -22,7 +22,7 @@ VISUALISE Day AS x, Month AS y, Temp AS fill FROM ggsql:airquality
 * The `VISUALISE ... FROM ggsql:airquality` loads the built-in air quality dataset.
 * `Day AS x, Month AS y` defines a 2D grid 'map'. The default width and height of each cell is 1. Because these variables are contiguous whole numbers, this creates a grid.
 * `Temp AS fill` declares the 'heat' variable to display as colour intensity.
-* `DRAW rect` gives instructions 
+* `DRAW rect` gives instructions to draw a rectangle layer.
 
 ## Variations
 
