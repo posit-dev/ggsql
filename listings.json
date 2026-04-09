@@ -1,6 +1,6 @@
 [
   {
-    "listing": "/gallery/index.html",
+    "listing": "/index.html",
     "items": [
       "/gallery/examples/scatterplot.html",
       "/gallery/examples/line-chart.html",
@@ -11,7 +11,7 @@
     ]
   },
   {
-    "listing": "/index.html",
+    "listing": "/gallery/index.html",
     "items": [
       "/gallery/examples/scatterplot.html",
       "/gallery/examples/line-chart.html",

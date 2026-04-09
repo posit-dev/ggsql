@@ -45,9 +45,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-a36260601fbdf6a4904b36220d3e3906.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../../site_libs/bootstrap/bootstrap-45af3f7fa62cfd53c9ba66fef88ce393.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../../../site_libs/bootstrap/bootstrap-dark-7f6f16d4a61aa8c2bdeb8ab7db0872fc.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
-<link href="../../../site_libs/bootstrap/bootstrap-45af3f7fa62cfd53c9ba66fef88ce393.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-b068bd8fbd0943443b2767a143b5203c.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark-c0e6253991c03487a1849754f0ab8899.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-b068bd8fbd0943443b2767a143b5203c.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -614,11 +614,11 @@ gradient teal.
 </header>
 
 
-<p>Position aesthetics relate data to placement in the coordinate system of the plot. All layers need at least one of each positional aesthetic mapped in order to show its data. However, the layer may compute positional aesthetics from the mapping. For example, a bar plot calculates the <code>y</code> aesthetic by counting the number of records in each group defined by the mapped <code>x</code> aesthetic.</p>
-<p>In the above we use <code>x</code>and <code>y</code> as examples of position aesthetics but in reality the position aesthetic names are defined by the coordinate system in use. A Cartesian coordinate system recognizes <code>x</code> and <code>y</code> whereas a polar coordinate system recognizes <code>radius</code> and <code>angle</code>. You can implicitly choose the coordinate system by mapping to the aesthetics that it uses, i.e.&nbsp;if you map to <code>radius</code> and <code>angle</code> then a polar coordinate system will be chosen for you.</p>
+<p>Position aesthetics relate data to placement in the coordinate system of the plot. All layers need at least one of each position aesthetic mapped in order to show its data. However, the layer may compute position aesthetics from the mapping. For example, a bar plot calculates the <code>y</code> aesthetic by counting the number of records in each group defined by the mapped <code>x</code> aesthetic.</p>
+<p>In the above we use <code>x</code>and <code>y</code> as examples of position aesthetics, but in reality the position aesthetic names are defined by the coordinate system in use. A Cartesian coordinate system recognizes <code>x</code> and <code>y</code> whereas a polar coordinate system recognizes <code>radius</code> and <code>angle</code>. You can implicitly choose the coordinate system by mapping to the aesthetics that it uses, i.e.&nbsp;if you map to <code>radius</code> and <code>angle</code> then a polar coordinate system will be chosen for you.</p>
 <section id="literal-values" class="level2">
 <h2 class="anchored" data-anchor-id="literal-values">Literal values</h2>
-<p>Scales for position aesthetics never use an output range and always relate to the input range. This is a practical decision by ggsql because different writers may treat the positional aesthetic in different ways. <a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a></p>
+<p>Scales for position aesthetics never use an output range and always relate to the input range. This is a practical decision by ggsql because different writers may treat the position aesthetic in different ways. <a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a></p>
 <div class="callout callout-style-default callout-note callout-titled">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
@@ -635,13 +635,13 @@ Note
 </section>
 <section id="aesthetic-families" class="level2">
 <h2 class="anchored" data-anchor-id="aesthetic-families">Aesthetic families</h2>
-<p>Positional aesthetics have variants defined by a suffix attached to the primary name (e.g.&nbsp;<code>x</code>). The recognized suffixes are:</p>
+<p>Position aesthetics have variants defined by a suffix attached to the primary name (e.g.&nbsp;<code>x</code>). The recognized suffixes are:</p>
 <ul>
 <li><code>end</code></li>
 <li><code>min</code></li>
 <li><code>max</code></li>
 </ul>
-<p>Which version of an aesthetic to use depends on the layer, but all aesthetics within a family is scaled by the same scale, which is named after its primary aesthetic. This means that even when rendering a layer that only uses <code>xmin</code> and <code>xmax</code>, you will still scale it by writing <code>SCALE x ...</code> and label it by writing <code>LABEL x =&gt; ...</code></p>
+<p>Which version of an aesthetic to use depends on the layer. All aesthetics within a family use the same scale, which is named after its primary aesthetic. This means that even when rendering a layer that only uses <code>xmin</code> and <code>xmax</code>, you will still scale it by writing <code>SCALE x ...</code> and label it by writing <code>LABEL x =&gt; ...</code></p>
 
 
 </section>
@@ -650,7 +650,7 @@ Note
 <div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document" role="doc-endnotes"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
 
 <ol>
-<li id="fn1"><p>In reality one could easily think of positional literal values as either normalized position along the x or y axis, or absolute units of distance from the bottom left corner of the coordinate system.<a href="#fnref1" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn1"><p>In reality one could easily think of position literal values as either normalized position along the x or y axis, or absolute units of distance from the bottom left corner of the coordinate system.<a href="#fnref1" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
 </ol>
 </section></div></main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
