@@ -58,9 +58,10 @@ uuid = { version = "1.0", features = ["v4"] }
 
 [features]
 default = ["all-readers"]
-all-readers = ["sqlite", "odbc"]
+all-readers = ["sqlite", "odbc", "duckdb"]
 odbc = ["ggsql/odbc"]
 sqlite = ["ggsql/sqlite"]
+duckdb = ["ggsql/duckdb"]
 
 [dev-dependencies]
 # Test utilities
