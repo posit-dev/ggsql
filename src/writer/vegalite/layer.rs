@@ -1312,19 +1312,21 @@ impl GeomRenderer for ViolinRenderer {
         let is_horizontal = is_transposed(layer);
 
         // It'll be implemented as an offset.
-        let mut violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
-        if let Some(ParameterValue::String(side)) = layer.parameters.get("side") {
-            let positive = if is_horizontal {
-                matches!(side.as_str(), "bottom" | "left")
-            } else {
-                matches!(side.as_str(), "top" | "right")
-            };
-            violin_offset = if positive {
-                format!("[datum.{offset}]", offset = offset_col)
-            } else {
-                format!("[-datum.{offset}]", offset = offset_col)
-            };
-        }
+        let violin_offset = match layer.parameters.get("side") {
+            Some(ParameterValue::String(side)) if side != "both" => {
+                let positive = if is_horizontal {
+                    matches!(side.as_str(), "bottom" | "left")
+                } else {
+                    matches!(side.as_str(), "top" | "right")
+                };
+                if positive {
+                    format!("[datum.{offset}]", offset = offset_col)
+                } else {
+                    format!("[-datum.{offset}]", offset = offset_col)
+                }
+            }
+            _ => format!("[datum.{offset}, -datum.{offset}]", offset = offset_col),
+        };
 
         // Continuous axis column for order calculation:
         // - Vertical: pos2 (y-axis has continuous density values)
@@ -3286,6 +3288,24 @@ mod tests {
             expr.contains(&format!("[datum.{}, -datum.{}]", offset_col, offset_col))
                 || expr.contains(&format!("[-datum.{}, datum.{}]", offset_col, offset_col)),
             "Default should mirror both sides: {}",
+            expr
+        );
+
+        // Explicit "both" - mirrors on both sides (vertical orientation)
+        let expr = get_violin_offset_expr(Some("both"), false);
+        assert!(
+            expr.contains(&format!("[datum.{}, -datum.{}]", offset_col, offset_col))
+                || expr.contains(&format!("[-datum.{}, datum.{}]", offset_col, offset_col)),
+            "Explicit 'both' should mirror both sides (vertical): {}",
+            expr
+        );
+
+        // Explicit "both" - mirrors on both sides (horizontal orientation)
+        let expr = get_violin_offset_expr(Some("both"), true);
+        assert!(
+            expr.contains(&format!("[datum.{}, -datum.{}]", offset_col, offset_col))
+                || expr.contains(&format!("[-datum.{}, datum.{}]", offset_col, offset_col)),
+            "Explicit 'both' should mirror both sides (horizontal): {}",
             expr
         );
 

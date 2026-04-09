@@ -5,7 +5,7 @@
 
 use crate::plot::aesthetic::{self, AestheticContext};
 use crate::plot::layer::is_transposed;
-use crate::plot::layer::orientation::{flip_positional_aesthetics, resolve_orientation};
+use crate::plot::layer::orientation::{flip_position_aesthetics, resolve_orientation};
 use crate::plot::{
     AestheticValue, DefaultAestheticValue, Layer, ParameterValue, Scale, Schema, StatResult,
 };
@@ -436,7 +436,7 @@ pub fn apply_layer_transforms<F>(
 where
     F: Fn(&str) -> Result<DataFrame>,
 {
-    use crate::plot::layer::orientation::flip_positional_aesthetics;
+    use crate::plot::layer::orientation::flip_position_aesthetics;
 
     // Clone order_by early to avoid borrow conflicts
     let order_by = layer.order_by.clone();
@@ -514,7 +514,7 @@ where
     // We flip them to aligned orientation so they're uniform with defaults.
     // At the end, we flip everything back together.
     if needs_flip {
-        flip_positional_aesthetics(&mut layer.remappings.aesthetics);
+        flip_position_aesthetics(&mut layer.remappings.aesthetics);
     }
 
     // Apply literal default remappings from geom defaults (e.g., y2 => 0.0 for bar baseline).
@@ -593,11 +593,11 @@ where
                         .get(aesthetic)
                         .cloned()
                         .or_else(|| {
-                            // For variant positional aesthetics (e.g., pos1min, pos2max),
+                            // For variant position aesthetics (e.g., pos1min, pos2max),
                             // fall back to the primary aesthetic's original name (pos1, pos2).
                             // This ensures rect's expanded min/max aesthetics inherit the
                             // original column name from the user's x/y mapping.
-                            aesthetic::parse_positional(aesthetic).and_then(|(slot, suffix)| {
+                            aesthetic::parse_position(aesthetic).and_then(|(slot, suffix)| {
                                 if !suffix.is_empty() {
                                     let primary = format!("pos{}", slot);
                                     consumed_original_names.get(&primary).cloned()
@@ -652,7 +652,7 @@ where
     // later in mod.rs after apply_remappings_post_query creates the columns,
     // so that Phase 4.5 can flip those columns along with everything else.
     if needs_flip {
-        flip_positional_aesthetics(&mut layer.mappings.aesthetics);
+        flip_position_aesthetics(&mut layer.mappings.aesthetics);
 
         // Normalize mapping column names to match their aesthetic keys.
         // After flipping, pos1 might point to __ggsql_aes_pos2__ (and vice versa).
@@ -676,15 +676,15 @@ where
 /// Generates SQL like: `WITH t(col1, col2) AS (VALUES (...), (...)) SELECT * FROM t`
 ///
 /// This function:
-/// 1. Moves positional/required/array parameters from layer.parameters to layer.mappings
+/// 1. Moves position/required/array parameters from layer.parameters to layer.mappings
 /// 2. Handles array recycling on-the-fly (determines max length, replicates scalars)
 /// 3. Validates that all arrays have compatible lengths (1 or max)
 /// 4. Builds the VALUES clause with raw aesthetic column names
 /// 5. Converts parameter values to Column/AnnotationColumn mappings
 ///
 /// For annotation layers:
-/// - Positional aesthetics (pos1, pos2): use Column (data coordinate space, participate in scales)
-/// - Non-positional aesthetics (color, size): use AnnotationColumn (visual space, identity scale)
+/// - Position aesthetics (pos1, pos2): use Column (data coordinate space, participate in scales)
+/// - Material aesthetics (color, size): use AnnotationColumn (visual space, identity scale)
 ///
 /// # Arguments
 ///
@@ -697,8 +697,8 @@ fn process_annotation_layer(layer: &mut Layer, dialect: &dyn SqlDialect) -> Resu
     use crate::plot::ArrayElement;
 
     // Step 1: Identify which parameters to use for annotation data
-    // Only process positional aesthetics, required aesthetics, and array parameters
-    // (non-positional non-required scalars stay in parameters as geom settings)
+    // Only process position aesthetics, required aesthetics, and array parameters
+    // (material non-required scalars stay in parameters as geom settings)
     let required_aesthetics = layer.geom.aesthetics().required();
     let param_keys: Vec<String> = layer.parameters.keys().cloned().collect();
 
@@ -720,13 +720,13 @@ fn process_annotation_layer(layer: &mut Layer, dialect: &dyn SqlDialect) -> Resu
             continue;
         }
 
-        // Check if this is a positional aesthetic OR a required aesthetic OR an array
-        let is_positional = crate::plot::aesthetic::is_positional_aesthetic(&param_name);
+        // Check if this is a position aesthetic OR a required aesthetic OR an array
+        let is_position = crate::plot::aesthetic::is_position_aesthetic(&param_name);
         let is_required = required_aesthetics.contains(&param_name.as_str());
         let is_array = matches!(value, ParameterValue::Array(_));
 
-        // Only process positional/required/array parameters
-        if is_positional || is_required || is_array {
+        // Only process position/required/array parameters
+        if is_position || is_required || is_array {
             annotation_params.push((param_name.clone(), value.clone()));
         }
     }
@@ -794,16 +794,16 @@ fn process_annotation_layer(layer: &mut Layer, dialect: &dyn SqlDialect) -> Resu
         }
 
         // Create final mapping directly (no intermediate Literal step)
-        let is_positional = crate::plot::aesthetic::is_positional_aesthetic(aesthetic);
-        let mapping_value = if is_positional {
-            // Positional aesthetics use Column (participate in scales)
+        let is_position = crate::plot::aesthetic::is_position_aesthetic(aesthetic);
+        let mapping_value = if is_position {
+            // Position aesthetics use Column (participate in scales)
             AestheticValue::Column {
                 name: aesthetic.clone(), // Raw aesthetic name from VALUES clause
                 original_name: None,
                 is_dummy: false,
             }
         } else {
-            // Non-positional aesthetics use AnnotationColumn (identity scale)
+            // Material aesthetics use AnnotationColumn (identity scale)
             AestheticValue::AnnotationColumn {
                 name: aesthetic.clone(), // Raw aesthetic name from VALUES clause
             }
@@ -840,7 +840,7 @@ fn process_annotation_layer(layer: &mut Layer, dialect: &dyn SqlDialect) -> Resu
 
 /// Normalize mapping column names to match their aesthetic keys after flip-back.
 ///
-/// After flipping positional aesthetics, the mapping values (column names) may not match the keys.
+/// After flipping position aesthetics, the mapping values (column names) may not match the keys.
 /// For example, pos1 might point to `__ggsql_aes_pos2__`.
 /// This function updates the column names so pos1 → `__ggsql_aes_pos1__`, etc.
 ///
@@ -852,7 +852,7 @@ fn normalize_mapping_column_names(layer: &mut Layer) {
         .mappings
         .aesthetics
         .keys()
-        .filter(|aes| crate::plot::aesthetic::is_positional_aesthetic(aes))
+        .filter(|aes| crate::plot::aesthetic::is_position_aesthetic(aes))
         .cloned()
         .collect();
 
@@ -893,12 +893,12 @@ pub fn resolve_orientations(
             ParameterValue::String(orientation.to_string()),
         );
         if is_transposed(layer) {
-            flip_positional_aesthetics(&mut layer.mappings.aesthetics);
+            flip_position_aesthetics(&mut layer.mappings.aesthetics);
             // Also flip column names in type_info to match the flipped mappings
             if layer_idx < layer_type_info.len() {
                 for (name, _, _) in &mut layer_type_info[layer_idx] {
                     if let Some(aesthetic) = naming::extract_aesthetic_name(name) {
-                        let flipped = aesthetic_ctx.flip_positional(aesthetic);
+                        let flipped = aesthetic_ctx.flip_position(aesthetic);
                         if flipped != aesthetic {
                             *name = naming::aesthetic_column(&flipped);
                         }

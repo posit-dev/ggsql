@@ -5,7 +5,7 @@ title: Polar
 The polar coordinate system interprets its primary aesthetic as the angular position relative to the center, and the secondary aesthetic as the distance from the center. It is most often used for pie-charts and radar plots.
 
 ## Default aesthetics
-The polar coordinate system has the following default positional aesthetics which will be used if no others have been provided:
+The polar coordinate system has the following default position aesthetics which will be used if no others have been provided:
 
 * **Primary**: `radius` (distance from center)
 * **Secondary**: `angle` (angular position)

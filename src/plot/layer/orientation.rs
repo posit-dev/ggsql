@@ -1,7 +1,7 @@
 //! Layer orientation detection and mapping flipping.
 //!
 //! This module provides orientation detection for geoms with implicit orientation
-//! (bar, histogram, boxplot, violin, density, ribbon) and handles flipping positional
+//! (bar, histogram, boxplot, violin, density, ribbon) and handles flipping position
 //! aesthetic mappings before stat computation.
 //!
 //! # Orientation
@@ -25,7 +25,7 @@
 
 use super::geom::GeomType;
 use super::Layer;
-use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
+use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
 use crate::plot::scale::ScaleTypeKind;
 use crate::plot::{AestheticValue, Mappings, Scale};
 use crate::{naming, DataFrame};
@@ -104,8 +104,8 @@ pub fn geom_has_implicit_orientation(geom: &GeomType) -> bool {
 ///
 /// Applies unified rules in order:
 ///
-/// 0. **Remapping without mapping**: If no positional mappings exist but remappings
-///    target a positional axis, the remapping target is the value axis:
+/// 0. **Remapping without mapping**: If no position mappings exist but remappings
+///    target a position axis, the remapping target is the value axis:
 ///    - Remapping to pos1 only → Transposed (pos1 is value axis, main axis must be pos2)
 ///    - Remapping to pos2 only → Aligned (pos2 is value axis, main axis is pos1)
 ///
@@ -128,7 +128,7 @@ fn detect_from_scales(
     mappings: &Mappings,
     remappings: &Mappings,
 ) -> &'static str {
-    // Check for positional mappings
+    // Check for position mappings
     let has_pos1_mapping = mappings.contains_key("pos1");
     let has_pos2_mapping = mappings.contains_key("pos2");
 
@@ -152,7 +152,7 @@ fn detect_from_scales(
     let has_pos2 = pos2_scale.is_some();
 
     // Rule 1: Single scale present - that axis is primary
-    // Only apply when there are explicit positional mappings; otherwise the user
+    // Only apply when there are explicit position mappings; otherwise the user
     // is just customizing a scale (e.g., SCALE y SETTING expand) without intending
     // to change orientation. The geom's default_remappings will define orientation.
     if has_pos1_mapping || has_pos2_mapping {
@@ -220,7 +220,7 @@ fn is_discrete_scale(scale: &Scale) -> bool {
     })
 }
 
-/// Swap positional aesthetic pairs in an aesthetics map.
+/// Swap position aesthetic pairs in an aesthetics map.
 ///
 /// Swaps the following pairs:
 /// - pos1 ↔ pos2
@@ -230,7 +230,7 @@ fn is_discrete_scale(scale: &Scale) -> bool {
 /// - pos1offset ↔ pos2offset
 ///
 /// Used for both mappings and remappings when handling transposed orientation.
-pub fn flip_positional_aesthetics(
+pub fn flip_position_aesthetics(
     aesthetics: &mut std::collections::HashMap<String, AestheticValue>,
 ) {
     const PAIRS: [(&str, &str); 5] = [
@@ -254,14 +254,14 @@ pub fn flip_positional_aesthetics(
     }
 }
 
-/// Flip positional column names in a DataFrame for Transposed orientation layers.
+/// Flip position column names in a DataFrame for Transposed orientation layers.
 ///
 /// Swaps column names like `__ggsql_aes_pos1__` ↔ `__ggsql_aes_pos2__` so that
 /// the data matches the flipped mapping names.
 ///
 /// This is called after query execution for layers with Transposed orientation,
 /// in coordination with `normalize_mapping_column_names` which updates the mappings.
-pub fn flip_dataframe_positional_columns(
+pub fn flip_dataframe_position_columns(
     df: DataFrame,
     aesthetic_ctx: &AestheticContext,
 ) -> DataFrame {
@@ -273,8 +273,8 @@ pub fn flip_dataframe_positional_columns(
         .iter()
         .filter_map(|col_name| {
             naming::extract_aesthetic_name(col_name).and_then(|aesthetic| {
-                if is_positional_aesthetic(aesthetic) {
-                    let flipped = aesthetic_ctx.flip_positional(aesthetic);
+                if is_position_aesthetic(aesthetic) {
+                    let flipped = aesthetic_ctx.flip_position(aesthetic);
                     if flipped != aesthetic {
                         return Some((col_name.to_string(), naming::aesthetic_column(&flipped)));
                     }
@@ -403,7 +403,7 @@ mod tests {
 
     #[test]
     fn test_resolve_orientation_scale_only_no_flip() {
-        // Scale specification without positional mapping shouldn't flip orientation
+        // Scale specification without position mapping shouldn't flip orientation
         // Real-world: `VISUALISE FROM data DRAW bar SCALE y SETTING expand => [...]`
         // The bar stat will produce pos1=category, pos2=count → should stay Aligned
         let layer = Layer::new(Geom::bar());
@@ -411,7 +411,7 @@ mod tests {
         scale.scale_type = Some(ScaleType::continuous());
         let scales = vec![scale];
 
-        // Without positional mappings, scale existence doesn't imply orientation
+        // Without position mappings, scale existence doesn't imply orientation
         assert_eq!(resolve_orientation(&layer, &scales), ALIGNED);
     }
 
@@ -442,7 +442,7 @@ mod tests {
     }
 
     #[test]
-    fn test_flip_positional_aesthetics() {
+    fn test_flip_position_aesthetics() {
         let mut layer = Layer::new(Geom::bar());
         layer.mappings.insert(
             "pos1".to_string(),
@@ -457,7 +457,7 @@ mod tests {
             AestheticValue::standard_column("x2".to_string()),
         );
 
-        flip_positional_aesthetics(&mut layer.mappings.aesthetics);
+        flip_position_aesthetics(&mut layer.mappings.aesthetics);
 
         // pos1 ↔ pos2
         assert_eq!(
@@ -477,15 +477,15 @@ mod tests {
     }
 
     #[test]
-    fn test_flip_positional_aesthetics_empty() {
+    fn test_flip_position_aesthetics_empty() {
         let mut layer = Layer::new(Geom::point());
         // No crash with empty mappings
-        flip_positional_aesthetics(&mut layer.mappings.aesthetics);
+        flip_position_aesthetics(&mut layer.mappings.aesthetics);
         assert!(layer.mappings.aesthetics.is_empty());
     }
 
     #[test]
-    fn test_flip_positional_aesthetics_partial() {
+    fn test_flip_position_aesthetics_partial() {
         let mut layer = Layer::new(Geom::bar());
         // Only pos1 mapped
         layer.mappings.insert(
@@ -493,7 +493,7 @@ mod tests {
             AestheticValue::standard_column("x".to_string()),
         );
 
-        flip_positional_aesthetics(&mut layer.mappings.aesthetics);
+        flip_position_aesthetics(&mut layer.mappings.aesthetics);
 
         // pos1 moves to pos2
         assert!(layer.mappings.get("pos1").is_none());
@@ -701,7 +701,7 @@ mod tests {
     #[test]
     fn test_resolve_orientation_mapping_overrides_remapping() {
         // Bar with pos1 mapping AND pos1 remapping → mapping takes precedence
-        // The remapping rule only applies when NO positional mappings exist
+        // The remapping rule only applies when NO position mappings exist
         let mut layer = Layer::new(Geom::bar());
         layer.mappings.insert(
             "pos1".to_string(),

@@ -517,7 +517,7 @@ fn build_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
 
 /// Build an annotation Layer from a place_clause node
 /// This is similar to build_layer but marks it as an annotation layer.
-/// The transformation of positional/required aesthetics from SETTING to mappings
+/// The transformation of position/required aesthetics from SETTING to mappings
 /// happens later in Plot::transform_aesthetics_to_internal().
 /// Syntax: PLACE geom [MAPPING col AS x, ...] [SETTING param => val, ...] [FILTER condition]
 fn build_place_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
@@ -992,7 +992,7 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
     // Resolve aesthetics: use provided or fall back to coord defaults
     let aesthetics = if let Some(aes) = user_aesthetics {
         // Validate aesthetic count matches coord requirements
-        let expected = coord.positional_aesthetic_names().len();
+        let expected = coord.position_aesthetic_names().len();
         if aes.len() != expected {
             return Err(GgsqlError::ParseError(format!(
                 "PROJECT {} requires {} aesthetics, got {}",
@@ -1002,14 +1002,14 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
             )));
         }
 
-        // Validate no conflicts with non-positional or facet aesthetics
-        validate_positional_aesthetic_names(&aes)?;
+        // Validate no conflicts with material or facet aesthetics
+        validate_position_aesthetic_names(&aes)?;
 
         aes
     } else {
         // Use coord defaults - resolved immediately at build time
         coord
-            .positional_aesthetic_names()
+            .position_aesthetic_names()
             .iter()
             .map(|s| s.to_string())
             .collect()
@@ -1025,15 +1025,15 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
     })
 }
 
-/// Validate that positional aesthetic names don't conflict with reserved names
-fn validate_positional_aesthetic_names(names: &[String]) -> Result<()> {
-    use crate::plot::aesthetic::{NON_POSITIONAL, USER_FACET_AESTHETICS};
+/// Validate that position aesthetic names don't conflict with reserved names
+fn validate_position_aesthetic_names(names: &[String]) -> Result<()> {
+    use crate::plot::aesthetic::{MATERIAL_AESTHETICS, USER_FACET_AESTHETICS};
 
     for name in names {
-        // Check against non-positional aesthetics
-        if NON_POSITIONAL.contains(&name.as_str()) {
+        // Check against material aesthetics
+        if MATERIAL_AESTHETICS.contains(&name.as_str()) {
             return Err(GgsqlError::ParseError(format!(
-                "PROJECT aesthetic '{}' conflicts with non-positional aesthetic. \
+                "PROJECT aesthetic '{}' conflicts with material aesthetic. \
                  Choose a different name.",
                 name
             )));
@@ -1302,7 +1302,7 @@ mod tests {
 
     #[test]
     fn test_project_custom_aesthetics() {
-        // Use identifiers as custom positional aesthetics in PROJECT
+        // Use identifiers as custom position aesthetics in PROJECT
         // Note: Custom aesthetics in PROJECT don't need to match grammar's aesthetic_name
         // since project_aesthetics uses identifier nodes, not aesthetic_name
         let query = r#"
@@ -1384,7 +1384,7 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err
             .to_string()
-            .contains("conflicts with non-positional aesthetic"));
+            .contains("conflicts with material aesthetic"));
     }
 
     // ========================================
@@ -3441,8 +3441,8 @@ mod tests {
     }
 
     #[test]
-    fn test_no_positional_keeps_default() {
-        // Only color mapping, no positional aesthetics
+    fn test_no_position_keeps_default() {
+        // Only color mapping, no position aesthetics
         let query = "VISUALISE DRAW point MAPPING region AS color";
 
         let result = parse_test_query(query);
@@ -3450,7 +3450,7 @@ mod tests {
         let specs = result.unwrap();
 
         // Should have no explicit project (defaults will be used later)
-        // The resolve_coord returns None when no positional aesthetics found
+        // The resolve_coord returns None when no position aesthetics found
         assert!(specs[0].project.is_none());
     }
 
@@ -3475,7 +3475,7 @@ mod tests {
         assert!(result.is_ok());
         let specs = result.unwrap();
 
-        // Should infer cartesian from positional variants
+        // Should infer cartesian from position variants
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(project.coord.coord_kind(), CoordKind::Cartesian);
     }

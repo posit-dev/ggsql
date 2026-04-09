@@ -24,7 +24,7 @@ pub use schema::TypeInfo;
 
 use crate::naming;
 use crate::parser;
-use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
+use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
 use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDataContext};
 use crate::plot::layer::is_transposed;
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
@@ -711,10 +711,10 @@ fn add_discrete_columns_to_partition_by(
         excluded_aesthetics.insert("label");
 
         for (aesthetic, value) in &layer.mappings.aesthetics {
-            // Skip positional aesthetics - these should not trigger auto-grouping.
-            // Stats that need to group by positional aesthetics (like bar/histogram)
+            // Skip position aesthetics - these should not trigger auto-grouping.
+            // Stats that need to group by position aesthetics (like bar/histogram)
             // already handle this themselves via stat_consumed_aesthetics().
-            if is_positional_aesthetic(aesthetic) {
+            if is_position_aesthetic(aesthetic) {
                 continue;
             }
 
@@ -736,7 +736,7 @@ fn add_discrete_columns_to_partition_by(
                 // Discrete and Binned scales produce categorical groupings.
                 // Continuous scales don't group. Identity defers to column type.
                 let primary_aes = aesthetic_ctx
-                    .primary_internal_positional(aesthetic)
+                    .primary_internal_position(aesthetic)
                     .unwrap_or(aesthetic);
                 let is_discrete = if let Some(scale) = scale_map.get(primary_aes) {
                     if let Some(ref scale_type) = scale.scale_type {
@@ -1239,7 +1239,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
             // (which uses remapping keys to create mapping entries).
             // Phase 4.5 will then flip the DataFrame columns to match.
             if is_transposed(l) {
-                crate::plot::layer::orientation::flip_positional_aesthetics(
+                crate::plot::layer::orientation::flip_position_aesthetics(
                     &mut l.remappings.aesthetics,
                 );
             }
@@ -1257,7 +1257,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // Phase 4.5: Flip DataFrame columns for Transposed orientation layers
     // This must happen AFTER remappings (Phase 4) because remappings create columns
     // with ALIGNED orientation names, and the flip converts them to USER orientation.
-    // All positional columns (stat-produced and literal) are flipped together.
+    // All position columns (stat-produced and literal) are flipped together.
     let mut flipped_keys: HashSet<String> = HashSet::new();
     for layer in specs[0].layers.iter() {
         if is_transposed(layer) {
@@ -1266,7 +1266,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
                     // First time flipping this data key
                     if let Some(df) = data_map.remove(key) {
                         let flipped_df =
-                            crate::plot::layer::orientation::flip_dataframe_positional_columns(
+                            crate::plot::layer::orientation::flip_dataframe_position_columns(
                                 df,
                                 &aesthetic_ctx,
                             );
@@ -1312,11 +1312,11 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
 
     // Resolve facet properties (after data is available)
     for spec in &mut specs {
-        // Get positional aesthetic names from the aesthetic context (coord-specific)
+        // Get position aesthetic names from the aesthetic context (coord-specific)
         // This must be done before mutably borrowing facet
-        let positional_names: Vec<String> = spec.get_aesthetic_context().user_positional().to_vec();
+        let position_names: Vec<String> = spec.get_aesthetic_context().user_position().to_vec();
         // Convert to &str slice for resolve_facet_properties
-        let positional_refs: Vec<&str> = positional_names.iter().map(|s| s.as_str()).collect();
+        let position_refs: Vec<&str> = position_names.iter().map(|s| s.as_str()).collect();
 
         if let Some(ref mut facet) = spec.facet {
             // Get the first layer's data for computing facet defaults
@@ -1332,7 +1332,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
                 .map(|aes| naming::aesthetic_column(aes))
                 .collect();
             let context = FacetDataContext::from_dataframe(facet_df, &aesthetic_cols);
-            resolve_facet_properties(facet, &context, &positional_refs)
+            resolve_facet_properties(facet, &context, &position_refs)
                 .map_err(|e| GgsqlError::ValidationError(format!("Facet: {}", e)))?;
         }
     }
@@ -2428,7 +2428,7 @@ mod tests {
             "Annotation layer should have exactly 1 row"
         );
 
-        // Verify positional aesthetics are moved from SETTING to mappings with transformed names
+        // Verify position aesthetics are moved from SETTING to mappings with transformed names
         // They become Column references (not Literals) so they can participate in scale training
         assert!(
             matches!(
@@ -2445,7 +2445,7 @@ mod tests {
             "y should be transformed to pos2, moved to mappings, and materialized as column"
         );
 
-        // Verify required non-positional aesthetic (label) is in mappings as AnnotationColumn
+        // Verify required material aesthetic (label) is in mappings as AnnotationColumn
         // After process_annotation_layer, required aesthetics are converted to AnnotationColumn
         assert!(
             matches!(
@@ -2455,9 +2455,9 @@ mod tests {
             "label (required) should be in mappings as AnnotationColumn with prefixed name"
         );
 
-        // Non-required, non-positional, non-array aesthetics like size may be processed
+        // Non-required, material, non-array aesthetics like size may be processed
         // by resolve_aesthetics or other downstream logic, so we don't strictly check
-        // where they end up. The key point is that required/positional aesthetics are
+        // where they end up. The key point is that required/position aesthetics are
         // correctly moved to mappings.
     }
 
