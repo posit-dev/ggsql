@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
-use super::types::get_column_name;
 use super::types::POSITION_VALUES;
+use super::types::{get_column_name, get_quoted_column_name};
 use super::{DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, StatResult};
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
@@ -130,15 +130,17 @@ fn process_direction(
         _ => unreachable!("axis must be 'x' or 'y'"),
     };
 
-    // Get column names from MAPPING, with SETTING fallback for size
-    let center = get_column_name(aesthetics, center_aes);
-    let min = get_column_name(aesthetics, min_aes);
-    let max = get_column_name(aesthetics, max_aes);
-    let size = get_column_name(aesthetics, size_aes)
+    // Get unquoted center name for schema lookup
+    let center_unquoted = get_column_name(aesthetics, center_aes);
+    let center = center_unquoted.as_deref().map(naming::quote_ident);
+    let min = get_quoted_column_name(aesthetics, min_aes);
+    let max = get_quoted_column_name(aesthetics, max_aes);
+    // SETTING fallback for size is a literal value, no quoting needed.
+    let size = get_quoted_column_name(aesthetics, size_aes)
         .or_else(|| parameters.get(size_aes).map(|v| v.to_string()));
 
     // Detect if discrete by checking schema
-    let is_discrete = center
+    let is_discrete = center_unquoted
         .as_ref()
         .and_then(|col| schema.iter().find(|c| &c.name == col))
         .map(|c| c.is_discrete)
@@ -172,8 +174,16 @@ fn process_direction(
 
     // Build SELECT parts using the stat columns
     let select_parts = vec![
-        format!("{} AS {}", expr_1, naming::stat_column(&stat_cols[0])),
-        format!("{} AS {}", expr_2, naming::stat_column(&stat_cols[1])),
+        format!(
+            "{} AS {}",
+            expr_1,
+            naming::quote_ident(&naming::stat_column(&stat_cols[0]))
+        ),
+        format!(
+            "{} AS {}",
+            expr_2,
+            naming::quote_ident(&naming::stat_column(&stat_cols[1]))
+        ),
     ];
 
     Ok((select_parts, stat_cols))
@@ -208,7 +218,7 @@ fn stat_rect(
     let mut select_parts: Vec<String> = schema
         .iter()
         .filter(|col| !consumed_columns.contains(&col.name))
-        .map(|col| col.name.clone())
+        .map(|col| naming::quote_ident(&col.name))
         .collect();
 
     // Add X direction SELECT parts and collect stat columns
@@ -223,7 +233,7 @@ fn stat_rect(
 
     // Build transformed query
     let transformed_query = format!(
-        "SELECT {} FROM ({}) AS __ggsql_rect_stat__",
+        "SELECT {} FROM ({}) AS \"__ggsql_rect_stat__\"",
         select_list, query
     );
 
@@ -446,44 +456,44 @@ mod tests {
             (
                 "xmin + xmax",
                 vec!["pos1min", "pos1max"],
-                "__ggsql_aes_pos1min__",
-                "__ggsql_aes_pos1max__",
+                "\"__ggsql_aes_pos1min__\"",
+                "\"__ggsql_aes_pos1max__\"",
             ),
             (
                 "x + width",
                 vec!["pos1", "width"],
-                "(__ggsql_aes_pos1__ - __ggsql_aes_width__ / 2.0)",
-                "(__ggsql_aes_pos1__ + __ggsql_aes_width__ / 2.0)",
+                "(\"__ggsql_aes_pos1__\" - \"__ggsql_aes_width__\" / 2.0)",
+                "(\"__ggsql_aes_pos1__\" + \"__ggsql_aes_width__\" / 2.0)",
             ),
             (
                 "x only (default width 1.0)",
                 vec!["pos1"],
-                "(__ggsql_aes_pos1__ - 0.5)",
-                "(__ggsql_aes_pos1__ + 0.5)",
+                "(\"__ggsql_aes_pos1__\" - 0.5)",
+                "(\"__ggsql_aes_pos1__\" + 0.5)",
             ),
             (
                 "x + xmin",
                 vec!["pos1", "pos1min"],
-                "__ggsql_aes_pos1min__",
-                "(2 * __ggsql_aes_pos1__ - __ggsql_aes_pos1min__)",
+                "\"__ggsql_aes_pos1min__\"",
+                "(2 * \"__ggsql_aes_pos1__\" - \"__ggsql_aes_pos1min__\")",
             ),
             (
                 "x + xmax",
                 vec!["pos1", "pos1max"],
-                "(2 * __ggsql_aes_pos1__ - __ggsql_aes_pos1max__)",
-                "__ggsql_aes_pos1max__",
+                "(2 * \"__ggsql_aes_pos1__\" - \"__ggsql_aes_pos1max__\")",
+                "\"__ggsql_aes_pos1max__\"",
             ),
             (
                 "xmin + width",
                 vec!["pos1min", "width"],
-                "__ggsql_aes_pos1min__",
-                "(__ggsql_aes_pos1min__ + __ggsql_aes_width__)",
+                "\"__ggsql_aes_pos1min__\"",
+                "(\"__ggsql_aes_pos1min__\" + \"__ggsql_aes_width__\")",
             ),
             (
                 "xmax + width",
                 vec!["pos1max", "width"],
-                "(__ggsql_aes_pos1max__ - __ggsql_aes_width__)",
-                "__ggsql_aes_pos1max__",
+                "(\"__ggsql_aes_pos1max__\" - \"__ggsql_aes_width__\")",
+                "\"__ggsql_aes_pos1max__\"",
             ),
         ];
 
@@ -522,7 +532,7 @@ mod tests {
                 let stat_pos1min = naming::stat_column("pos1min");
                 let stat_pos1max = naming::stat_column("pos1max");
                 assert!(
-                    query.contains(&format!("{} AS {}", expected_min, stat_pos1min)),
+                    query.contains(&format!("{} AS \"{}\"", expected_min, stat_pos1min)),
                     "{}: Expected '{} AS {}' in query, got: {}",
                     name,
                     expected_min,
@@ -530,7 +540,7 @@ mod tests {
                     query
                 );
                 assert!(
-                    query.contains(&format!("{} AS {}", expected_max, stat_pos1max)),
+                    query.contains(&format!("{} AS \"{}\"", expected_max, stat_pos1max)),
                     "{}: Expected '{} AS {}' in query, got: {}",
                     name,
                     expected_max,
@@ -562,38 +572,38 @@ mod tests {
             (
                 "ymin + ymax",
                 vec!["pos2min", "pos2max"],
-                "__ggsql_aes_pos2min__",
-                "__ggsql_aes_pos2max__",
+                "\"__ggsql_aes_pos2min__\"",
+                "\"__ggsql_aes_pos2max__\"",
             ),
             (
                 "y + height",
                 vec!["pos2", "height"],
-                "(__ggsql_aes_pos2__ - __ggsql_aes_height__ / 2.0)",
-                "(__ggsql_aes_pos2__ + __ggsql_aes_height__ / 2.0)",
+                "(\"__ggsql_aes_pos2__\" - \"__ggsql_aes_height__\" / 2.0)",
+                "(\"__ggsql_aes_pos2__\" + \"__ggsql_aes_height__\" / 2.0)",
             ),
             (
                 "y + ymin",
                 vec!["pos2", "pos2min"],
-                "__ggsql_aes_pos2min__",
-                "(2 * __ggsql_aes_pos2__ - __ggsql_aes_pos2min__)",
+                "\"__ggsql_aes_pos2min__\"",
+                "(2 * \"__ggsql_aes_pos2__\" - \"__ggsql_aes_pos2min__\")",
             ),
             (
                 "y + ymax",
                 vec!["pos2", "pos2max"],
-                "(2 * __ggsql_aes_pos2__ - __ggsql_aes_pos2max__)",
-                "__ggsql_aes_pos2max__",
+                "(2 * \"__ggsql_aes_pos2__\" - \"__ggsql_aes_pos2max__\")",
+                "\"__ggsql_aes_pos2max__\"",
             ),
             (
                 "ymin + height",
                 vec!["pos2min", "height"],
-                "__ggsql_aes_pos2min__",
-                "(__ggsql_aes_pos2min__ + __ggsql_aes_height__)",
+                "\"__ggsql_aes_pos2min__\"",
+                "(\"__ggsql_aes_pos2min__\" + \"__ggsql_aes_height__\")",
             ),
             (
                 "ymax + height",
                 vec!["pos2max", "height"],
-                "(__ggsql_aes_pos2max__ - __ggsql_aes_height__)",
-                "__ggsql_aes_pos2max__",
+                "(\"__ggsql_aes_pos2max__\" - \"__ggsql_aes_height__\")",
+                "\"__ggsql_aes_pos2max__\"",
             ),
         ];
 
@@ -632,7 +642,7 @@ mod tests {
                 let stat_pos2min = naming::stat_column("pos2min");
                 let stat_pos2max = naming::stat_column("pos2max");
                 assert!(
-                    query.contains(&format!("{} AS {}", expected_min, stat_pos2min)),
+                    query.contains(&format!("{} AS \"{}\"", expected_min, stat_pos2min)),
                     "{}: Expected '{} AS {}' in query, got: {}",
                     name,
                     expected_min,
@@ -640,7 +650,7 @@ mod tests {
                     query
                 );
                 assert!(
-                    query.contains(&format!("{} AS {}", expected_max, stat_pos2max)),
+                    query.contains(&format!("{} AS \"{}\"", expected_max, stat_pos2max)),
                     "{}: Expected '{} AS {}' in query, got: {}",
                     name,
                     expected_max,
@@ -687,8 +697,8 @@ mod tests {
             ..
         }) = result
         {
-            assert!(query.contains("__ggsql_aes_pos1__ AS __ggsql_stat_pos1"));
-            assert!(query.contains("__ggsql_aes_width__ AS __ggsql_stat_width"));
+            assert!(query.contains("\"__ggsql_aes_pos1__\" AS \"__ggsql_stat_pos1"));
+            assert!(query.contains("\"__ggsql_aes_width__\" AS \"__ggsql_stat_width"));
             assert!(stat_columns.contains(&"pos1".to_string()));
             assert!(stat_columns.contains(&"width".to_string()));
             assert!(stat_columns.contains(&"pos2min".to_string()));
@@ -718,8 +728,8 @@ mod tests {
             ..
         }) = result
         {
-            assert!(query.contains("__ggsql_aes_pos2__ AS __ggsql_stat_pos2"));
-            assert!(query.contains("__ggsql_aes_height__ AS __ggsql_stat_height"));
+            assert!(query.contains("\"__ggsql_aes_pos2__\" AS \"__ggsql_stat_pos2"));
+            assert!(query.contains("\"__ggsql_aes_height__\" AS \"__ggsql_stat_height"));
             assert!(stat_columns.contains(&"pos1min".to_string()));
             assert!(stat_columns.contains(&"pos1max".to_string()));
             assert!(stat_columns.contains(&"pos2".to_string()));
@@ -749,10 +759,10 @@ mod tests {
             ..
         }) = result
         {
-            assert!(query.contains("__ggsql_aes_pos1__ AS __ggsql_stat_pos1"));
-            assert!(query.contains("__ggsql_aes_width__ AS __ggsql_stat_width"));
-            assert!(query.contains("__ggsql_aes_pos2__ AS __ggsql_stat_pos2"));
-            assert!(query.contains("__ggsql_aes_height__ AS __ggsql_stat_height"));
+            assert!(query.contains("\"__ggsql_aes_pos1__\" AS \"__ggsql_stat_pos1"));
+            assert!(query.contains("\"__ggsql_aes_width__\" AS \"__ggsql_stat_width"));
+            assert!(query.contains("\"__ggsql_aes_pos2__\" AS \"__ggsql_stat_pos2"));
+            assert!(query.contains("\"__ggsql_aes_height__\" AS \"__ggsql_stat_height"));
             assert_eq!(stat_columns.len(), 4);
         }
     }
@@ -782,8 +792,8 @@ mod tests {
                 stat_columns,
                 ..
             } => {
-                assert!(query.contains("(__ggsql_aes_pos1__ - 0.5)"));
-                assert!(query.contains("(__ggsql_aes_pos1__ + 0.5)"));
+                assert!(query.contains("(\"__ggsql_aes_pos1__\" - 0.5)"));
+                assert!(query.contains("(\"__ggsql_aes_pos1__\" + 0.5)"));
                 assert!(stat_columns.contains(&"pos1min".to_string()));
                 assert!(stat_columns.contains(&"pos1max".to_string()));
             }
@@ -852,7 +862,7 @@ mod tests {
                 stat_columns,
                 ..
             } => {
-                assert!(query.contains("1.0 AS __ggsql_stat_width"));
+                assert!(query.contains("1.0 AS \"__ggsql_stat_width"));
                 assert!(stat_columns.contains(&"width".to_string()));
             }
             _ => panic!("Expected Transformed"),
@@ -879,12 +889,12 @@ mod tests {
         assert!(result.is_ok());
 
         if let Ok(StatResult::Transformed { query, .. }) = result {
-            // Should include fill column (non-consumed aesthetic from schema)
-            assert!(query.contains("__ggsql_aes_fill__"));
+            // Should include fill column (non-consumed aesthetic from schema, quoted)
+            assert!(query.contains("\"__ggsql_aes_fill__\""));
             // Should NOT include width/height as pass-through (they're consumed)
             // They should only appear as stat columns
-            assert!(query.contains("__ggsql_aes_width__ AS __ggsql_stat_width"));
-            assert!(query.contains("__ggsql_aes_height__ AS __ggsql_stat_height"));
+            assert!(query.contains("\"__ggsql_aes_width__\" AS \"__ggsql_stat_width"));
+            assert!(query.contains("\"__ggsql_aes_height__\" AS \"__ggsql_stat_height"));
         }
     }
 
@@ -909,8 +919,8 @@ mod tests {
 
         if let Ok(StatResult::Transformed { query, .. }) = result {
             // Should use SETTING values as SQL literals
-            assert!(query.contains("0.7 AS __ggsql_stat_width"));
-            assert!(query.contains("0.9 AS __ggsql_stat_height"));
+            assert!(query.contains("0.7 AS \"__ggsql_stat_width"));
+            assert!(query.contains("0.9 AS \"__ggsql_stat_height"));
         }
     }
 }

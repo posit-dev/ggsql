@@ -199,9 +199,14 @@ function generateMetadata(
  *
  * @param kernelPath - Path to the ggsql-jupyter executable
  */
-function createKernelSpec(kernelPath: string): JupyterKernelSpec {
+function createKernelSpec(kernelPath: string, readerUri?: string): JupyterKernelSpec {
+    const argv = [kernelPath, '-f', '{connection_file}'];
+    if (readerUri) {
+        argv.push('--reader', readerUri);
+    }
+
     return {
-        argv: [kernelPath, '-f', '{connection_file}'],
+        argv,
         display_name: 'ggsql',
         language: 'ggsql',
         interrupt_mode: 'signal',

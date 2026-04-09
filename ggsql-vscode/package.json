@@ -77,6 +77,9 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint src --ext ts"
   },
+  "dependencies": {
+    "toml": "^3.0.0"
+  },
   "devDependencies": {
     "@posit-dev/positron": "^0.2.2",
     "@types/node": "^18.x",

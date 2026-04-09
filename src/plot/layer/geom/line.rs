@@ -56,7 +56,7 @@ impl GeomTrait for Line {
         // Line geom needs ordering by pos1 (domain axis) for proper rendering
         let order_col = naming::aesthetic_column("pos1");
         Ok(StatResult::Transformed {
-            query: format!("{} ORDER BY \"{}\"", query, order_col),
+            query: format!("{} ORDER BY {}", query, naming::quote_ident(&order_col)),
             stat_columns: vec![],
             dummy_columns: vec![],
             consumed_aesthetics: vec![],

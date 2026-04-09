@@ -4,7 +4,7 @@ use super::types::POSITION_VALUES;
 use super::{
     DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
 };
-use crate::plot::geom::types::get_column_name;
+use crate::plot::geom::types::get_quoted_column_name;
 use crate::plot::types::DefaultAestheticValue;
 use crate::plot::{ParameterValue, StatResult};
 use crate::reader::SqlDialect;
@@ -136,10 +136,10 @@ impl std::fmt::Display for Smooth {
 }
 
 fn stat_ols(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<StatResult> {
-    let x_col = get_column_name(aesthetics, "pos1").ok_or_else(|| {
+    let x_col = get_quoted_column_name(aesthetics, "pos1").ok_or_else(|| {
         GgsqlError::ValidationError("Smooth requires 'pos1' aesthetic".to_string())
     })?;
-    let y_col = get_column_name(aesthetics, "pos2").ok_or_else(|| {
+    let y_col = get_quoted_column_name(aesthetics, "pos2").ok_or_else(|| {
         GgsqlError::ValidationError("Smooth requires 'pos2' aesthetic".to_string())
     })?;
 
@@ -184,8 +184,8 @@ fn stat_ols(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<S
         x = x_col,
         y = y_col,
         data = query,
-        x_out = naming::stat_column("pos1"),
-        y_out = naming::stat_column("intensity"), // We name this 'intensity' to be consistent with the nadaraya-watson kernel
+        x_out = naming::quote_ident(&naming::stat_column("pos1")),
+        y_out = naming::quote_ident(&naming::stat_column("intensity")), // We name this 'intensity' to be consistent with the nadaraya-watson kernel
         group_by = group_by_clause
     );
 
@@ -198,10 +198,10 @@ fn stat_ols(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<S
 }
 
 fn stat_tls(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<StatResult> {
-    let x_col = get_column_name(aesthetics, "pos1").ok_or_else(|| {
+    let x_col = get_quoted_column_name(aesthetics, "pos1").ok_or_else(|| {
         GgsqlError::ValidationError("Smooth requires 'pos1' aesthetic".to_string())
     })?;
-    let y_col = get_column_name(aesthetics, "pos2").ok_or_else(|| {
+    let y_col = get_quoted_column_name(aesthetics, "pos2").ok_or_else(|| {
         GgsqlError::ValidationError("Smooth requires 'pos2' aesthetic".to_string())
     })?;
 
@@ -257,8 +257,8 @@ fn stat_tls(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<S
         x = x_col,
         y = y_col,
         data = query,
-        x_out = naming::stat_column("pos1"),
-        y_out = naming::stat_column("intensity"),
+        x_out = naming::quote_ident(&naming::stat_column("pos1")),
+        y_out = naming::quote_ident(&naming::stat_column("intensity")),
         group_by = group_by_clause
     );
 

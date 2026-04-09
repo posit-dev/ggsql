@@ -3394,7 +3394,7 @@ mod tests {
         let dialect = AnsiDialect;
         assert_eq!(
             dialect.type_name_for(CastTargetType::Number),
-            Some("DOUBLE")
+            Some("DOUBLE PRECISION")
         );
         assert_eq!(
             dialect.type_name_for(CastTargetType::Integer),

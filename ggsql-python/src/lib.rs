@@ -164,6 +164,10 @@ impl Reader for PyReaderBridge {
         })
     }
 
+    fn execute(&self, query: &str) -> ggsql::Result<ggsql::reader::Spec> {
+        ggsql::reader::execute_with_reader(self, query)
+    }
+
     fn dialect(&self) -> &dyn ggsql::reader::SqlDialect {
         &ANSI_DIALECT
     }

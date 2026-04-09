@@ -2,10 +2,13 @@
 //!
 //! A Jupyter kernel for executing ggsql queries with rich Vega-Lite visualizations.
 
+mod connection;
+mod data_explorer;
 mod display;
 mod executor;
 mod kernel;
 mod message;
+mod util;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -21,6 +24,10 @@ struct Args {
     /// Path to the Jupyter connection file
     #[arg(short = 'f', long = "connection-file")]
     connection_file: Option<String>,
+
+    /// Database connection URI (e.g. "duckdb://memory")
+    #[arg(long, default_value = "duckdb://memory")]
+    reader: String,
 
     /// Install the kernel spec
     #[arg(long)]
@@ -69,7 +76,7 @@ async fn main() -> Result<()> {
     tracing::info!("Creating kernel server");
 
     // Create and run kernel
-    let mut kernel = kernel::KernelServer::new(connection).await?;
+    let mut kernel = kernel::KernelServer::new(connection, &args.reader).await?;
 
     tracing::info!("Kernel ready, starting event loop");
 
