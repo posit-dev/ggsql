@@ -1710,25 +1710,19 @@ impl BoxplotRenderer {
 
         let value_var1 = if is_horizontal { "x" } else { "y" };
         let value_var2 = if is_horizontal { "x2" } else { "y2" };
+        let axis = if is_horizontal { "y" } else { "x" };
 
         // Get width parameter
-        let base_width = layer
-            .parameters
-            .get("width")
-            .and_then(|v| match v {
-                ParameterValue::Number(n) => Some(*n),
-                _ => None,
-            })
-            .unwrap_or(0.9);
-
-        // For dodged boxplots, use expression-based width with adjusted_width
-        // For non-dodged boxplots, use band-relative width
-        let axis = if is_horizontal { "y" } else { "x" };
-        let width_value = if let Some(adjusted) = layer.adjusted_width {
-            json!({"expr": format!("bandwidth('{}') * {}", axis, adjusted)})
-        } else {
-            json!({"band": base_width})
+        let width = match layer.adjusted_width {
+            // The adjusted width comes from position adjustments
+            Some(adjusted) => adjusted,
+            _ => match layer.parameters.get("width") {
+                // Fallback to width parameter value if there is no adjustment
+                Some(ParameterValue::Number(n)) => *n,
+                _ => 0.9,
+            },
         };
+        let width_value = json!({"expr": format!("bandwidth('{}') * {}", axis, width)});
 
         // Helper to create filter transform for source selection
         let make_source_filter = |type_suffix: &str| -> Value {
