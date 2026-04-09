@@ -28,7 +28,7 @@ VISUALISE species AS x, bill_len AS y FROM ggsql:penguins
 
 ### Dodging
 
-You can refine groups beyond the categorical variable, and the violins will be displayed in a dodged way.
+You can refine groups beyond the axis categorical variable, and the violins will be displayed in a dodged way.
 
 ```{ggsql}
 VISUALISE species AS x, bill_len AS y, island AS colour FROM ggsql:penguins
