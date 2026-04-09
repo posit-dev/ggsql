@@ -22,7 +22,7 @@ The following aesthetics are recognised by the polygon layer.
 * `linetype` The dash pattern of the contour line.
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
+* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 
 ## Data transformation
 The polygon layer does not transform its data but passes it through unchanged
@@ -36,33 +36,36 @@ The polygon layer has no orientation. The axes are treated symmetrically.
 #| code-fold: true
 #| code-summary: "Create example data"
 CREATE TABLE df AS
-SELECT * FROM (VALUES
+WITH t(x, y, id) AS (VALUES
   (1.0, 1.0, 'A'),
   (1.0, 3.0, 'A'),
   (2.0, 1.0, 'A'),
   (2.0, 3.0, 'B'),
   (3.0, 1.0, 'B'),
-  (3.0, 3.0, 'B'),
-) AS t(x, y, id)
+  (3.0, 3.0, 'B')
+)
+SELECT * FROM t
 ```
 
 Simple example polygon.
 
 ```{ggsql}
 VISUALISE x, y FROM df
-  DRAW polygon
+DRAW polygon
 ```
 
 Groups of individual polygons can be declared via `PARTITION BY`.
 
 ```{ggsql}
 VISUALISE x, y FROM df
-  DRAW polygon PARTITION BY id
+DRAW polygon 
+  PARTITION BY id
 ```
 
 Invoking a group through discrete aesthetics works as well.
 
 ```{ggsql}
 VISUALISE x, y FROM df
-  DRAW polygon MAPPING id AS colour
+DRAW polygon 
+  MAPPING id AS colour
 ```

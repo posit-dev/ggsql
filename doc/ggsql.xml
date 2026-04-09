@@ -143,7 +143,6 @@
       <item>segment</item>
       <item>arrow</item>
       <item>rule</item>
-      <item>linear</item>
       <item>errorbar</item>
     </list>
 
@@ -174,6 +173,7 @@
       <item>italic</item>
       <item>hjust</item>
       <item>vjust</item>
+      <item>slope</item>
     </list>
 
     <!-- Scale Types (only in SCALE context) -->
@@ -242,7 +242,7 @@
       <item>xlim</item>
       <item>ylim</item>
       <item>ratio</item>
-      <item>theta</item>
+      <item>angle</item>
       <item>clip</item>
     </list>
 

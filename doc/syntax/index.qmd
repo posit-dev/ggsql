@@ -2,8 +2,8 @@
 title: "Syntax"
 ---
 
-## Main Clauses
-ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation:
+## Main clauses
+ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation. Apart from `VISUALISE` needing to be the first, the order of these clauses is arbitrary, though grouping e.g. all `DRAW` clauses will lead to queries that are easier to reason about:
 
 - [`VISUALISE`](clause/visualise.qmd) initiates the visualisation part of the query
 - [`DRAW`](clause/draw.qmd) adds a new layer to the visualisation
@@ -21,12 +21,11 @@ There are many different layers to choose from when visualising your data. Some 
 - [`line`](layer/type/line.qmd) is used to produce lineplots with the data sorted along the x axis.
 - [`path`](layer/type/path.qmd) is like `line` above but does not sort the data but plot it according to its own order.
 - [`segment`](layer/type/segment.qmd) connects two points with a line segment.
-- [`linear`](layer/type/linear.qmd) draws a long line parameterised by a coefficient and intercept.
 - [`rule`](layer/type/rule.qmd) draws horizontal and vertical reference lines.
 - [`area`](layer/type/area.qmd) is used to display series as an area chart.
 - [`ribbon`](layer/type/ribbon.qmd) is used to display series extrema.
 - [`polygon`](layer/type/polygon.qmd) is used to display arbitrary shapes as polygons.
-- [`text`](layer/text.qmd) is used to render datapoints as text.
+- [`text`](layer/type/text.qmd) is used to render datapoints as text.
 - [`bar`](layer/type/bar.qmd) creates a bar chart, optionally calculating y from the number of records in each bar.
 - [`density`](layer/type/density.qmd) creates univariate kernel density estimates, showing the distribution of a variable.
 - [`violin`](layer/type/violin.qmd) displays a rotated kernel density estimate.

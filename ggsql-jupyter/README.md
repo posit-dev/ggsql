@@ -122,6 +122,7 @@ UNION ALL
 SELECT 2, 4, 'A'
 UNION ALL
 SELECT 3, 3, 'B'
+
 VISUALISE x, y, category AS color
 DRAW point
 ```
@@ -133,9 +134,11 @@ SELECT
     '2024-01-01'::DATE + INTERVAL (n) DAY as date,
     n * 10 as revenue
 FROM generate_series(0, 30) as t(n)
+
 VISUALISE date AS x, revenue AS y
 DRAW line
-SCALE x SETTING type => 'date'
+SCALE x
+  SETTING type => 'date'
 LABEL title => 'Revenue Growth', x => 'Date', y => 'Revenue ($)'
 ```
 
@@ -144,9 +147,12 @@ LABEL title => 'Revenue Growth', x => 'Date', y => 'Revenue ($)'
 ```sql
 SELECT x, x*x as y, x*x*x as z
 FROM generate_series(1, 10) as t(x)
+
 VISUALISE x AS x
-DRAW line MAPPING y AS y
-DRAW line MAPPING z AS y
+DRAW line
+  MAPPING y AS y
+DRAW line
+  MAPPING z AS y
 LABEL title => 'Polynomial Functions'
 ```
 
@@ -165,9 +171,9 @@ Cell 1:
 ```sql
 CREATE TABLE products AS
 SELECT * FROM (VALUES
-    (1, 'Widget', 10.99),
-    (2, 'Gadget', 24.99),
-    (3, 'Doohickey', 5.99)
+  (1, 'Widget', 10.99),
+  (2, 'Gadget', 24.99),
+  (3, 'Doohickey', 5.99)
 ) AS t(id, name, price)
 ```
 

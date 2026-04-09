@@ -6,6 +6,7 @@ import {
 } from "vscode-oniguruma";
 import { Registry, parseRawGrammar, type IGrammar } from "vscode-textmate";
 import { WASM_BASE } from "../wasmBase";
+import { registerGgsqlLinks } from "./links";
 
 // Must be set before any Monaco editor is created
 (self as any).MonacoEnvironment = {
@@ -76,9 +77,28 @@ function getGrammar(): Promise<IGrammar | null> {
   return grammarPromise;
 }
 
+// Define Pygments-style theme for Monaco
+monaco.editor.defineTheme("ggsql-pygments", {
+  base: "vs",
+  inherit: true,
+  rules: [
+    { token: "comment", foreground: "408080", fontStyle: "italic" },
+    { token: "string", foreground: "BA2121" },
+    { token: "number", foreground: "666666" },
+    { token: "keyword", foreground: "008000", fontStyle: "bold" },
+    { token: "type", foreground: "008000" },
+    { token: "variable", foreground: "19177C" },
+    { token: "operator", foreground: "666666" },
+    { token: "delimiter", foreground: "000000" },
+  ],
+  colors: {
+    "editor.background": "#f7f7f7",
+  },
+});
+
 let languageRegistered = false;
 
-async function ensureLanguageRegistered(): Promise<void> {
+async function ensureLanguageRegistered(siteRoot: string): Promise<void> {
   if (languageRegistered) return;
   languageRegistered = true;
 
@@ -130,6 +150,8 @@ async function ensureLanguageRegistered(): Promise<void> {
       },
     });
   }
+
+  registerGgsqlLinks(siteRoot);
 }
 
 // TextMate state wrapper for Monaco
@@ -154,36 +176,28 @@ export interface EditorInstance {
   editor: monaco.editor.IStandaloneCodeEditor;
 }
 
-const LINE_HEIGHT = 19;
 const PADDING_TOP = 8;
 const PADDING_BOTTOM = 8;
-const MAX_EDITOR_HEIGHT = 400;
-
-function editorHeight(lineCount: number): number {
-  const contentHeight = lineCount * LINE_HEIGHT + PADDING_TOP + PADDING_BOTTOM;
-  return Math.min(contentHeight, MAX_EDITOR_HEIGHT);
-}
 
 export async function createEditor(
   container: HTMLElement,
-  initialValue: string
+  initialValue: string,
+  siteRoot: string = "./"
 ): Promise<EditorInstance> {
-  await ensureLanguageRegistered();
-
-  const lineCount = initialValue.split("\n").length;
-  container.style.height = editorHeight(lineCount) + "px";
+  await ensureLanguageRegistered(siteRoot);
 
   const editor = monaco.editor.create(container, {
     value: initialValue,
     language: "ggsql",
-    theme: "vs",
+    theme: "ggsql-pygments",
     automaticLayout: true,
     minimap: { enabled: false },
+    hover: { delay: 500 },
     fontSize: 13,
     lineNumbers: "on",
     glyphMargin: false,
     folding: false,
-    lineNumbersMinChars: 2,
+    lineNumbersMinChars: 3,
     scrollBeyondLastLine: false,
     wordWrap: "on",
     padding: { top: PADDING_TOP, bottom: PADDING_BOTTOM },
@@ -192,16 +206,16 @@ export async function createEditor(
     hideCursorInOverviewRuler: true,
     overviewRulerBorder: false,
     scrollbar: {
-      vertical: "auto",
+      vertical: "hidden",
       horizontal: "hidden",
-      verticalScrollbarSize: 8,
+      alwaysConsumeMouseWheel: false,
     },
   });
 
   // Auto-resize editor height to content
   editor.onDidContentSizeChange(() => {
-    const newLineCount = editor.getModel()?.getLineCount() || lineCount;
-    container.style.height = editorHeight(newLineCount) + "px";
+    const contentHeight = editor.getContentHeight();
+    container.style.height = contentHeight + "px";
     editor.layout();
   });
 

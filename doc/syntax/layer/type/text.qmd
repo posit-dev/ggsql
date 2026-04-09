@@ -2,7 +2,7 @@
 title: "Text"
 ---
 
-> Layers are declared with the [`DRAW` clause](../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
 The text layer displays rows in the data as text. It can be used as a visualisation itself, or used to annotate a different layer.
 
@@ -32,9 +32,9 @@ The following aesthetics are recognised by the text layer.
 ## Settings
 * `offset` Position offset expressed in absolute points. Can be one of the following:
     * a single number that applies both horizontally and vertically
-    * an numeric array `[h, v]` where the first number is the horizontal offset and the second number is the vertical offset.
+    * a 2-element numeric array `[h, v]` where the first number is the horizontal offset and the second number is the vertical offset.
 * `format` Formatting specifier, see explanation below.
-* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
+* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 
 ### Format
 The `format` setting can take a string that will be used in formatting the `label` aesthetic. 
@@ -77,7 +77,8 @@ Standard drawing data points as labels.
 
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
-DRAW text MAPPING island AS label
+DRAW text 
+  MAPPING island AS label
 ```
 
 You can use the `format` setting to tweak the display of the label.
@@ -94,15 +95,12 @@ Setting font properties. Colours are typically mapped to the fill.
 ```{ggsql}                                                                                         
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW text 
-  MAPPING 
-    island AS label, 
-    species AS fill,
-    flipper_len AS fontsize
-  SETTING
-    opacity => 0.8,
-    fontweight => 'bold',
+  MAPPING island AS label, species AS fill, flipper_len AS fontsize
+  SETTING 
+    opacity => 0.8, 
+    fontweight => 'bold', 
     typeface => 'Times New Roman'
-  SCALE fontsize TO [6, 20]
+SCALE fontsize TO [6, 20]
 ```
 
 The 'stroke' aesthetic is applied to the outline of the text.
@@ -119,10 +117,10 @@ Labelling precomputed bars with the data value.
 ```{ggsql}
 SELECT island, COUNT(*) AS n FROM ggsql:penguins GROUP BY island
 VISUALISE island AS x, n AS y
-  DRAW bar
-  DRAW text
-    MAPPING n AS label
-    SETTING vjust => 'top', offset => [0, -11], fill => 'white'
+DRAW bar
+DRAW text
+  MAPPING n AS label
+  SETTING vjust => 'top', offset => [0, -11], fill => 'white'
 ```
 
 If you label bars at the extreme end, you may need to expand the scale to accommodate the labels.
@@ -130,19 +128,20 @@ If you label bars at the extreme end, you may need to expand the scale to accomm
 ```{ggsql}
 SELECT island, COUNT(*) AS n FROM ggsql:penguins GROUP BY island
 VISUALISE island AS x, n AS y
-  DRAW bar
-  DRAW text
-    MAPPING n AS label
-    SETTING vjust => 'bottom', offset => [0, 11]
-  SCALE y FROM [0, 200]
+DRAW bar
+DRAW text
+  MAPPING n AS label
+  SETTING vjust => 'bottom', offset => [0, 11]
+SCALE y FROM [0, 200]
 ```
 
 You can use `PLACE` to annotate a plot directly without needing to map data.
 
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
-  DRAW point MAPPING species AS colour
-  PLACE text SETTING
+DRAW point MAPPING species AS colour
+PLACE text 
+  SETTING
     label => ['Adelie', 'Chinstrap', 'Gentoo'],
     x => [40, 50, 50],
     y => [19, 19, 15]

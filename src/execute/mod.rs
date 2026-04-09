@@ -133,7 +133,7 @@ fn validate(
                             idx + 1,
                             stat_col,
                             layer.geom,
-                            valid_stat_columns.join(", ")
+                            crate::and_list(valid_stat_columns)
                         )));
                     }
                 }
@@ -166,6 +166,7 @@ fn is_null_sentinel(value: &AestheticValue) -> bool {
 /// 4. Moreover it propagates 'color' to 'fill' and 'stroke'
 fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema]) {
     for spec in specs {
+        let aesthetic_ctx = spec.get_aesthetic_context();
         for (layer, schema) in spec.layers.iter_mut().zip(layer_schemas.iter()) {
             // Skip annotation layers - they don't inherit global mappings
             if matches!(layer.source, Some(DataSource::Annotation)) {
@@ -173,6 +174,7 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             }
 
             let supported = layer.geom.aesthetics().supported();
+            let all_names = layer.geom.aesthetics().names();
             let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
 
             // 1. First merge explicit global aesthetics (layer overrides global)
@@ -180,10 +182,13 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             // because split_color_aesthetic will convert them to fill/stroke later
             // Note: facet aesthetics (panel, row, column) are also accepted,
             // as they apply to all layers regardless of geom support
+            // Note: Use all_names (not supported) so that Delayed aesthetics like
+            // pos2 on histogram can be targeted by explicit global mappings, matching
+            // the behavior of layer-level MAPPING
             for (aesthetic, value) in &spec.global_mappings.aesthetics {
                 let is_color_alias = matches!(aesthetic.as_str(), "color" | "colour");
                 let is_facet_aesthetic = crate::plot::scale::is_facet_aesthetic(aesthetic.as_str());
-                if supported.contains(&aesthetic.as_str()) || is_color_alias || is_facet_aesthetic {
+                if all_names.contains(&aesthetic.as_str()) || is_color_alias || is_facet_aesthetic {
                     layer
                         .mappings
                         .aesthetics
@@ -196,13 +201,15 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             let has_wildcard = layer.mappings.wildcard || spec.global_mappings.wildcard;
             if has_wildcard {
                 for aes in &supported {
-                    // Only create mapping if column exists in the schema
-                    if schema_columns.contains(*aes) {
+                    // Convert internal name to user-facing name for schema matching
+                    let user_name = aesthetic_ctx.map_internal_to_user(aes);
+                    // Only create mapping if the user-facing column exists in the schema
+                    if schema_columns.contains(user_name.as_str()) {
                         layer
                             .mappings
                             .aesthetics
                             .entry(crate::parser::builder::normalise_aes_name(aes))
-                            .or_insert(AestheticValue::standard_column(*aes));
+                            .or_insert(AestheticValue::standard_column(&user_name));
                     }
                 }
             }
@@ -839,6 +846,8 @@ fn collect_layer_required_columns(layer: &Layer, spec: &Plot) -> HashSet<String>
 /// Prune columns from a DataFrame to only include required columns.
 ///
 /// Columns that don't exist in the DataFrame are silently ignored.
+/// If no required columns exist in the DataFrame (e.g., annotation layers with only
+/// literal aesthetics), returns a 0-column DataFrame with the same row count.
 fn prune_dataframe(df: &DataFrame, required: &HashSet<String>) -> Result<DataFrame> {
     let columns_to_keep: Vec<String> = df
         .get_column_names()
@@ -848,10 +857,28 @@ fn prune_dataframe(df: &DataFrame, required: &HashSet<String>) -> Result<DataFra
         .collect();
 
     if columns_to_keep.is_empty() {
-        return Err(GgsqlError::InternalError(format!(
-            "No columns remain after pruning. Required columns: {:?}",
-            required
-        )));
+        // Return a 0-column DataFrame with the same row count
+        // This happens for annotation layers with only literal aesthetics (e.g., PLACE rule SETTING slope => 0.4)
+        // The row count determines how many marks to draw; aesthetics come from Literal values in mappings
+        let row_count = df.height();
+
+        if row_count > 0 {
+            // Create a 0-column DataFrame with the correct row count
+            // We do this by creating a dummy column and then dropping it
+            use polars::prelude::df;
+            let with_rows = df! {
+                "__dummy__" => vec![0i32; row_count]
+            }
+            .map_err(|e| GgsqlError::InternalError(format!("Failed to create DataFrame: {}", e)))?;
+
+            let result = with_rows.drop("__dummy__").map_err(|e| {
+                GgsqlError::InternalError(format!("Failed to drop dummy column: {}", e))
+            })?;
+            return Ok(result);
+        } else {
+            // 0 rows - just return empty DataFrame
+            return Ok(DataFrame::default());
+        }
     }
 
     df.select(&columns_to_keep)
@@ -975,7 +1002,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     let layer_source_queries: Vec<String> = specs[0]
         .layers
         .iter_mut()
-        .map(|l| layer::layer_source_query(l, &materialized_ctes, has_global_table))
+        .map(|l| layer::layer_source_query(l, &materialized_ctes, has_global_table, dialect))
         .collect::<Result<Vec<_>>>()?;
 
     // Get types for each layer from source queries (Phase 1: types only, no min/max yet)
@@ -1039,6 +1066,16 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         &specs[0].aesthetic_context,
     )?;
 
+    // Allow geoms to adjust mappings based on their specific logic
+    // (e.g., rule geom converts pos1/pos2 to AnnotationColumn when slope is present)
+    for spec in &mut specs {
+        for layer in &mut spec.layers {
+            layer
+                .geom
+                .setup_layer(&mut layer.mappings, &mut layer.parameters)?;
+        }
+    }
+
     // Create scales for all mapped aesthetics that don't have explicit SCALE clauses
     scale::create_missing_scales(&mut specs[0]);
 
@@ -1076,7 +1113,12 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         .iter()
         .enumerate()
         .map(|(idx, l)| {
-            layer::build_layer_base_query(l, &layer_source_queries[idx], &type_requirements[idx])
+            layer::build_layer_base_query(
+                l,
+                &layer_source_queries[idx],
+                &type_requirements[idx],
+                dialect,
+            )
         })
         .collect();
 

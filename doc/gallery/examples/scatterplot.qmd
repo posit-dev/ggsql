@@ -1,5 +1,5 @@
 ---
-title: "Scatter Plot"
+title: "Scatter plot"
 description: "Basic scatter plot mapping two numeric variables to position"
 image: thumbnails/scatterplot.svg
 categories: [basic, point]
@@ -15,9 +15,9 @@ This is one of the most fundamental visualization types for exploring correlatio
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 LABEL
-    title => 'Penguin Bill Dimensions',
-    x => 'Bill Length (mm)',
-    y => 'Bill Depth (mm)'
+  title => 'Penguin Bill Dimensions',
+  x => 'Bill Length (mm)',
+  y => 'Bill Depth (mm)'
 ```
 
 ## Explanation
@@ -29,7 +29,7 @@ LABEL
 
 ## Variations
 
-### With color by Species
+### With color by species
 
 We're adding `species AS color` to the mapping to colour the points by species.
 
@@ -37,9 +37,9 @@ We're adding `species AS color` to the mapping to colour the points by species.
 VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
 DRAW point
 LABEL
-    title => 'Penguin Bill Dimensions by Species',
-    x => 'Bill Length (mm)',
-    y => 'Bill Depth (mm)'
+  title => 'Penguin Bill Dimensions by Species',
+  x => 'Bill Length (mm)',
+  y => 'Bill Depth (mm)'
 ```
 
 The color palette can be changed by detailing the `SCALE color` clause.

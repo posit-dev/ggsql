@@ -51,7 +51,7 @@ The `categorical` palette is the default palette for discrete linetype scales. I
 ### Sequential palette
 The `sequential` palette is the default for binned and ordinal linetype scales. It consists of up to 15 patterns with increasing amount of "on" and decreasing amount of "off". This creates a visual progression from sparse (low ink) to solid (100% ink).
 
-#### Example: 5-Level Sequential
+#### Example: 5-level sequential
 
 | Level | Pattern | Ink Density | Description |
 |-------|---------|-------------|-------------|

@@ -24,11 +24,11 @@ include-in-header:
 # <span class="hcode">QUERY</span> <span class="hviz-wrapper">![](assets/visualize.svg){.hviz aria-hidden="true"}<span class="sr-only">VISUALIZE</span></span> <span class="hund">UNDERSTAND</span>
 
 ::: {.hero-body}
-ggsql brings the elegance of the Grammar of Graphics to SQL. Write familiar queries, add visualization clauses, and see your data transform into beautiful, composable charts — no context switching, no separate tools, just SQL with superpowers.
+ggsql brings the elegance of the [Grammar of Graphics](get_started/grammar.qmd) to SQL. Write familiar queries, add visualization clauses, and see your data transform into beautiful, composable charts — no context switching, no separate tools, just SQL with superpowers.
 
 ::: {.hero-buttons}
-[Get Started](get_started.qmd){.btn .btn-primary .btn-lg}
-[View Examples](gallery/index.qmd){.btn .btn-outline-primary .btn-lg}
+[Get started](get_started/installation.qmd){.btn .btn-primary .btn-lg}
+[View examples](gallery/index.qmd){.btn .btn-outline-primary .btn-lg}
 :::
 :::
 
@@ -37,8 +37,6 @@ ggsql brings the elegance of the Grammar of Graphics to SQL. Write familiar quer
 ::: {.content-block .dark-bg}
 ### Try it out
 
-ggsql runs in the browser as well! Edit the code and watch the plot update.
-
 ```{ggsql}
 -- Regular query
 SELECT * FROM ggsql:penguins
@@ -46,13 +44,13 @@ WHERE island = 'Biscoe'
 -- Followed by visualization declaration
 VISUALISE bill_len AS x, bill_dep AS y, body_mass AS fill
 DRAW point
-DRAW linear 
-    MAPPING 0.4 AS coef, -1 AS intercept
+PLACE rule 
+  SETTING slope => 0.4, y => -1
 SCALE BINNED fill
 LABEL
-   title => 'Relationship between bill dimensions in 3 species of penguins',
-   x => 'Bill length (mm)',
-   y => 'Bill depth (mm)'
+  title => 'Relationship between bill dimensions in 3 species of penguins',
+  x => 'Bill length (mm)',
+  y => 'Bill depth (mm)'
 ```
 
 :::
@@ -70,15 +68,29 @@ LABEL
 ::: {.content-block .dark-bg .install-section}
 ### Install it today
 
-::: {#installer-buttons}
+::: {.install-columns}
+::: {.install-col .install-col-left}
+::: {#installer-recommended}
 <noscript>Download from [GitHub Releases](https://github.com/posit-dev/ggsql/releases)</noscript>
 :::
 
-::: {.install-cli-options}
-**Or via command line:**
-`uv pip install ggsql-jupyter && ggsql-jupyter --install`
-·
-`cargo install ggsql`
+[Other platforms](get_started/installation.qmd){.other-platforms-link}
+:::
+
+::: {.install-divider}
+[or]{.divider-text}
+:::
+
+::: {.install-col .install-col-right}
+```bash
+# Jupyter kernel
+uv tool install ggsql-jupyter
+ggsql-jupyter --install
+
+# CLI
+uv tool install ggsql
+```
+:::
 :::
 
 ```{=html}
@@ -86,7 +98,7 @@ LABEL
 (function() {
   const repoOwner = 'posit-dev';
   const repoName = 'ggsql';
-  const includePreReleases = true; // Set to false to only show published releases
+  const includePreReleases = true;
 
   function detectOS() {
     const ua = navigator.userAgent.toLowerCase();
@@ -96,30 +108,30 @@ LABEL
     return 'unknown';
   }
 
-  function getOSLabel(os) {
-    switch(os) {
-      case 'windows': return 'Windows';
-      case 'macos': return 'macOS';
-      case 'linux': return 'Linux';
-      default: return 'your platform';
-    }
+  function getOSIcon(os) {
+    const icons = {
+      windows: 'bi-windows',
+      macos: 'bi-apple',
+      linux: 'bi-ubuntu'
+    };
+    return icons[os] ? `<i class="bi ${icons[os]}"></i>` : '';
   }
 
-  async function loadInstallers() {
-    const container = document.getElementById('installer-buttons');
+  const patterns = {
+    windows_exe: /^ggsql[_-]\d.*x64.*-setup\.exe$/i,
+    macos: /^ggsql[_-]\d.*(aarch64|arm64).*\.dmg$/i,
+    linux: /^ggsql[_-]\d.*amd64.*\.deb$/i
+  };
+
+  function findAsset(assets, pattern) {
+    return assets?.find(a => pattern?.test(a.name));
+  }
+
+  async function loadInstaller() {
+    const container = document.getElementById('installer-recommended');
     if (!container) return;
 
     const os = detectOS();
-    const jupyterPattern = {
-      windows: /ggsql-jupyter.*\.(exe|msi)$/i,
-      macos: /ggsql-jupyter.*\.dmg$/i,
-      linux: /ggsql-jupyter.*\.deb$/i
-    }[os];
-    const cliPattern = {
-      windows: /^ggsql[^-].*\.(exe|msi)$/i,
-      macos: /^ggsql[^-].*\.dmg$/i,
-      linux: /^ggsql[^-].*\.deb$/i
-    }[os];
 
     try {
       const endpoint = includePreReleases
@@ -132,29 +144,25 @@ LABEL
       if (!release) throw new Error('No releases found');
 
       const version = release.tag_name;
-      const jupyterAsset = release.assets?.find(a => jupyterPattern?.test(a.name));
-      const cliAsset = release.assets?.find(a => cliPattern?.test(a.name));
+      const assets = release.assets || [];
+
+      let asset;
+      if (os === 'windows') {
+        asset = findAsset(assets, patterns.windows_exe);
+      } else if (os === 'macos') {
+        asset = findAsset(assets, patterns.macos);
+      } else if (os === 'linux') {
+        asset = findAsset(assets, patterns.linux);
+      }
 
       container.innerHTML = `
-        <p class="install-version">${version} · ${getOSLabel(os)} · <a href="${release.html_url}">Other platforms</a></p>
-        <div class="install-buttons-row">
-          <div class="install-option">
-            <a href="${jupyterAsset?.browser_download_url || release.html_url}" class="btn btn-primary install-btn">
-              Jupyter Kernel
-            </a>
-            <p class="install-description">For Jupyter and Quarto notebooks</p>
-          </div>
-          <div class="install-option">
-            <a href="${cliAsset?.browser_download_url || release.html_url}" class="btn btn-outline-primary install-btn">
-              CLI
-            </a>
-            <p class="install-description">For terminal and scripting workflows</p>
-          </div>
-        </div>
+        <a href="${asset?.browser_download_url || release.html_url}" class="btn btn-primary install-btn">
+          ${getOSIcon(os)} Download ggsql ${version}
+        </a>
       `;
     } catch (e) {
       container.innerHTML = `
-        <a href="https://github.com/${repoOwner}/${repoName}/releases" class="btn btn-primary">
+        <a href="https://github.com/${repoOwner}/${repoName}/releases" class="btn btn-primary install-btn">
           View Downloads on GitHub
         </a>
       `;
@@ -162,9 +170,9 @@ LABEL
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', loadInstallers);
+    document.addEventListener('DOMContentLoaded', loadInstaller);
   } else {
-    loadInstallers();
+    loadInstaller();
   }
 })();
 </script>
@@ -177,7 +185,7 @@ LABEL
 ::: {.features}
 
 ::: {.feature}
-### Familiar Syntax
+### Familiar syntax
 
 Write standard SQL queries and seamlessly extend them with visualization clauses. Your existing SQL knowledge transfers directly.
 
@@ -191,9 +199,9 @@ DRAW line
 :::
 
 ::: {.feature}
-### Grammar of Graphics
+### Grammar of graphics
 
-Compose visualizations from independent layers, scales, and coordinates. Mix and match components for powerful custom visuals.
+Compose visualizations from independent layers, scales, and coordinates. Mix and match components for powerful custom visuals. The [grammar of graphics](get_started/grammar.qmd) provides you with a single mental model for every type of plot.
 
 ```{.ggsql .code-example}
 VISUALISE date AS x FROM sales
@@ -205,7 +213,7 @@ FACET region
 :::
 
 ::: {.feature}
-### Built for Humans _and_ AI
+### Built for humans _and_ AI
 
 The structured syntax makes it easy for AI agents to write, and for you to read, adjust, and verify.
 
@@ -228,20 +236,16 @@ ggsql interfaces directly with your database. Want to create a histogram over 1 
 
 ::: {.tool-grid}
 ::: {.tool-item}
-![](assets/logos/positron.svg){.tool-logo}
-[Positron](https://positron.posit.co/)
+[![](assets/logos/positron.svg){.tool-logo} Positron](get_started/installation.qmd#vs-code--positron-extension)
 :::
 ::: {.tool-item}
-![](assets/logos/quarto.svg){.tool-logo}
-[Quarto](https://quarto.org/)
+[![](assets/logos/quarto.svg){.tool-logo} Quarto](get_started/installation.qmd#jupyter-kernel)
 :::
 ::: {.tool-item}
-![](assets/logos/jupyter.svg){.tool-logo}
-[Jupyter](https://jupyter.org)
+[![](assets/logos/jupyter.svg){.tool-logo} Jupyter](get_started/installation.qmd#jupyter-kernel)
 :::
 ::: {.tool-item}
-![](assets/logos/vscode.svg){.tool-logo}
-[VS Code](https://code.visualstudio.com/)
+[![](assets/logos/vscode.svg){.tool-logo} VS Code](get_started/installation.qmd#vs-code--positron-extension)
 :::
 :::
 
@@ -256,9 +260,9 @@ ggsql interfaces directly with your database. Want to create a histogram over 1 
 Install ggsql and start creating visualizations in minutes.
 
 ::: {.cta-buttons}
-[Installation](get_started.qmd){.btn .btn-primary .btn-lg}
+[Installation](get_started/installation.qmd){.btn .btn-primary .btn-lg}
 [Documentation](syntax/index.qmd){.btn .btn-outline-primary .btn-lg}
-[Examples](examples.qmd){.btn .btn-outline-secondary .btn-lg}
+[Examples](gallery/index.qmd){.btn .btn-outline-secondary .btn-lg}
 :::
 
 Or try our [online playground](wasm/) to experience the syntax _right now_.
@@ -266,4 +270,9 @@ Or try our [online playground](wasm/) to experience the syntax _right now_.
 :::
 
 :::
+
+```{=html}
+<canvas id="bg-lines" aria-hidden="true"></canvas>
+<script src="bg-lines.js"></script>
+```
 

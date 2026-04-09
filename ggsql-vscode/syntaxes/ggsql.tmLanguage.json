@@ -250,7 +250,7 @@
       "patterns": [
         {
           "name": "support.type.aesthetic.ggsql",
-          "match": "\\b(x|y|xmin|xmax|ymin|ymax|xend|yend|weight|color|colour|fill|stroke|opacity|size|shape|linetype|linewidth|width|height|label|typeface|fontweight|italic|hjust|vjust|panel|row|column)\\b"
+          "match": "\\b(x|y|xmin|xmax|ymin|ymax|xend|yend|weight|color|colour|fill|stroke|opacity|size|shape|linetype|linewidth|width|height|label|typeface|fontweight|italic|hjust|vjust|slope|panel|row|column)\\b"
         }
       ]
     },
@@ -295,7 +295,7 @@
       "patterns": [
         {
           "name": "support.type.geom.ggsql",
-          "match": "\\b(point|line|path|bar|col|area|tile|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|linear|errorbar)\\b"
+          "match": "\\b(point|line|path|bar|col|area|tile|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|errorbar)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]
@@ -309,7 +309,7 @@
       "patterns": [
         {
           "name": "support.type.geom.ggsql",
-          "match": "\\b(point|line|path|bar|col|area|rect|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|linear|errorbar)\\b"
+          "match": "\\b(point|line|path|bar|col|area|rect|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|errorbar)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]
@@ -375,7 +375,7 @@
         },
         {
           "name": "support.type.property.ggsql",
-          "match": "\\b(xlim|ylim|ratio|theta|clip)\\b"
+          "match": "\\b(xlim|ylim|ratio|angle|clip)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]

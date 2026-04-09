@@ -39,6 +39,23 @@ function scopeToMonacoToken(scopes: string[]): string {
   return "";
 }
 
+// Define Pygments-style theme for Monaco
+monaco.editor.defineTheme("ggsql-pygments", {
+  base: "vs",
+  inherit: true,
+  rules: [
+    { token: "comment", foreground: "408080", fontStyle: "italic" },
+    { token: "string", foreground: "BA2121" },
+    { token: "number", foreground: "666666" },
+    { token: "keyword", foreground: "008000", fontStyle: "bold" },
+    { token: "type", foreground: "008000" },
+    { token: "variable", foreground: "19177C" },
+    { token: "operator", foreground: "666666" },
+    { token: "delimiter", foreground: "000000" },
+  ],
+  colors: {},
+});
+
 async function initTextMateGrammar(): Promise<IGrammar | null> {
   // Load oniguruma WASM
   const onigWasm = await fetch(WASM_BASE + "onig.wasm");
@@ -127,7 +144,7 @@ export class EditorManager {
     this.editor = monaco.editor.create(container, {
       value: initialValue,
       language: "ggsql",
-      theme: "vs",
+      theme: "ggsql-pygments",
       automaticLayout: true,
       minimap: { enabled: false },
       fontSize: 14,

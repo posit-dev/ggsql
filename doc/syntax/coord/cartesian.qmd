@@ -20,7 +20,7 @@ assuming they do not try to use a name that is already being used by any facet o
 
 ## Settings
 * `clip`: Should data be removed if it appears outside the bounds of the coordinate system. Defaults to `true`
-* `ratio`: The aspect ratio between the steps on the vertical and horizontal axis. Defaults to `null` (no enforced aspect ratio)
+* `ratio`: The aspect ratio between the steps on the vertical and horizontal axis (must be > 0 if specified). Defaults to `null` (no enforced aspect ratio)
 
 ## Examples
 

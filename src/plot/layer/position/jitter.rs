@@ -15,13 +15,16 @@
 //! - `normal`: normal/Gaussian distribution with ~95% of points within the width
 
 use super::{
-    compute_dodge_offsets, compute_group_indices, is_continuous_scale, Layer, PositionTrait,
-    PositionType,
+    compute_dodge_offsets, compute_group_indices, is_continuous_scale, non_facet_partition_cols,
+    Layer, PositionTrait, PositionType,
 };
-use crate::plot::types::{DefaultParam, DefaultParamValue, ParameterValue};
+use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue};
 use crate::{naming, DataFrame, GgsqlError, Plot, Result};
 use polars::prelude::*;
 use rand::Rng;
+
+/// Valid distribution types for jitter position
+const DISTRIBUTION_VALUES: &[&str] = &["uniform", "normal", "density", "intensity"];
 
 /// Jitter distribution type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -265,30 +268,36 @@ impl PositionTrait for Jitter {
         PositionType::Jitter
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "width",
                 default: DefaultParamValue::Number(0.9),
+                constraint: ParamConstraint::number_range(0.0, 1.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "dodge",
                 default: DefaultParamValue::Boolean(true),
+                constraint: ParamConstraint::boolean(),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "distribution",
                 default: DefaultParamValue::String("uniform"),
+                constraint: ParamConstraint::string_option(DISTRIBUTION_VALUES),
             },
             // Density distribution parameters (match violin/density geoms)
-            DefaultParam {
+            ParamDefinition {
                 name: "bandwidth",
                 default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "adjust",
                 default: DefaultParamValue::Number(1.0),
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-        ]
+        ];
+        PARAMS
     }
 
     fn creates_pos1offset(&self) -> bool {
@@ -482,9 +491,11 @@ fn apply_jitter(df: DataFrame, layer: &Layer, spec: &Plot) -> Result<DataFrame> 
     let mut rng = rand::thread_rng();
     let n_rows = df.height();
 
-    // Compute group info for dodge-first behavior
+    // Compute group info for dodge-first behavior, excluding facet columns
+    // so group count reflects within-panel groups
+    let group_cols = non_facet_partition_cols(&layer.partition_by, spec);
     let group_info = if dodge {
-        compute_group_indices(&df, &layer.partition_by)?
+        compute_group_indices(&df, &group_cols)?
     } else {
         None
     };
@@ -1034,9 +1045,11 @@ mod tests {
 
         // Normal distribution is centered at 0
         // Values can exceed the width bounds (unlike uniform), but should be centered
+        // With only 4 samples and σ = width/4 = 0.225, the standard error is ~0.11
+        // Use a wide tolerance to avoid flaky tests with small sample sizes
         let mean: f64 = offsets.iter().sum::<f64>() / offsets.len() as f64;
         assert!(
-            mean.abs() < 0.3, // Should be roughly centered (with 4 values, some variance expected)
+            mean.abs() < 0.5,
             "Normal distribution mean {} should be close to 0",
             mean
         );

@@ -1,5 +1,5 @@
 ---
-title: "Faceted Plot"
+title: "Faceted plot"
 description: "Small multiples showing data split by category"
 image: thumbnails/faceted.svg
 categories: [faceted, advanced]
@@ -16,9 +16,9 @@ VISUALISE bill_len AS x, bill_dep AS y
 DRAW point
 FACET species
 LABEL
-    title => 'Bill Dimensions by Species',
-    x => 'Bill Length (mm)',
-    y => 'Bill Depth (mm)'
+  title => 'Bill Dimensions by Species',
+  x => 'Bill Length (mm)',
+  y => 'Bill Depth (mm)'
 ```
 
 ## Explanation
@@ -29,7 +29,7 @@ LABEL
 
 ## Variations
 
-### Grid Layout with Two Variables
+### Grid layout with two variables
 
 Use `FACET rows BY cols` to create a grid layout:
 
@@ -39,12 +39,12 @@ VISUALISE bill_len AS x, bill_dep AS y
 DRAW point
 FACET species BY island
 LABEL
-    title => 'Bill Dimensions by Species and Island',
-    x => 'Bill Length (mm)',
-    y => 'Bill Depth (mm)'
+  title => 'Bill Dimensions by Species and Island',
+  x => 'Bill Length (mm)',
+  y => 'Bill Depth (mm)'
 ```
 
-### Free Scales
+### Free scales
 
 Allow each facet to have independent axis scales with `SETTING free`:
 
@@ -54,7 +54,7 @@ VISUALISE bill_len AS x, bill_dep AS y
 DRAW point
 FACET species SETTING free => 'y'
 LABEL
-    title => 'Bill Dimensions (Free Y Scale)',
-    x => 'Bill Length (mm)',
-    y => 'Bill Depth (mm)'
+  title => 'Bill Dimensions (Free Y Scale)',
+  x => 'Bill Length (mm)',
+  y => 'Bill Depth (mm)'
 ```

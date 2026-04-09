@@ -16,11 +16,6 @@ path = "lib.rs"
 name = "ggsql"
 path = "cli.rs"
 
-[[bin]]
-name = "ggsql-rest"
-path = "rest.rs"
-required-features = ["rest-api"]
-
 [dependencies]
 # Parsing
 tree-sitter.workspace = true
@@ -60,13 +55,6 @@ sprintf = "0.4"
 const_format.workspace = true
 uuid.workspace = true
 
-# Web server (optional)
-axum = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true, features = ["full"] }
-tower-http = { workspace = true, optional = true }
-tracing = { workspace = true, optional = true }
-tracing-subscriber = { workspace = true, optional = true }
-
 # Python bindings (future)
 pyo3 = { workspace = true, optional = true }
 
@@ -79,7 +67,6 @@ ureq = "3"
 default = ["duckdb", "sqlite", "vegalite", "ipc", "parquet", "builtin-data"]
 ipc = ["polars/ipc"]
 duckdb = ["dep:duckdb", "dep:arrow"]
-polars-sql = ["polars/sql"]
 parquet = ["polars/parquet"]
 postgres = ["dep:postgres"]
 sqlite = ["dep:rusqlite"]
@@ -87,8 +74,7 @@ vegalite = []
 ggplot2 = []
 builtin-data = []
 python = ["dep:pyo3"]
-rest-api = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tracing", "dep:tracing-subscriber", "duckdb", "vegalite"]
-all-readers = ["duckdb", "postgres", "sqlite", "polars-sql"]
+all-readers = ["duckdb", "postgres", "sqlite"]
 all-writers = ["vegalite", "ggplot2", "plotters"]
 
 # cargo-packager configuration for cross-platform installers
@@ -109,6 +95,7 @@ copyright = "Copyright (c) 2026 ggsql Team"
 # Binaries to include in the package
 binaries = [
   { path = "ggsql", main = true },
+  { path = "ggsql-jupyter", main = false },
 ]
 
 # Resources to bundle (optional)

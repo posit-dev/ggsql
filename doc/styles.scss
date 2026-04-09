@@ -41,7 +41,20 @@ body:has(.hero-banner) {
   background-attachment: fixed;
 }
 
+// Animated background line charts canvas
+#bg-lines {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .hero-banner {
+  position: relative;
+  z-index: 1;
   width: 100%;
   padding: 4rem 2rem;
   background: transparent;
@@ -100,6 +113,21 @@ body:has(.hero-banner) {
     line-height: 1.2;
     letter-spacing: -0.02em;
     text-align: left;
+  }
+
+  // Blurred backdrop behind hero text to stay readable over animated lines
+  h1, .hero-body > p {
+    position: relative;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -30px -40px;
+      background: var(--brand-paleteal, #DEF1EB);
+      filter: blur(20px);
+      z-index: -1;
+      border-radius: 50%;
+    }
   }
 
   .hero-body {
@@ -162,6 +190,8 @@ body:has(.hero-banner) {
 
 
 .content-block {
+  position: relative;
+  z-index: 1;
   max-width: 1200px;
   margin: 2rem auto;
   padding: 4rem 2rem 2rem;
@@ -231,13 +261,13 @@ body:has(.hero-banner) {
   grid-template-rows: auto 1fr;
   column-gap: 2rem;
   row-gap: 0.75rem;
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(249, 249, 249, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-radius: 16px;
   padding: 2rem;
   box-shadow: 0 8px 32px rgba(0, 95, 115, 0.1);
-  border: 1px solid rgba(148, 210, 189, 0.4);
+  border: 1px solid rgba(249, 249, 249, 0.5);
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 
   &:hover {
@@ -402,80 +432,132 @@ body:has(.hero-banner) {
 .install-section {
   text-align: center;
 
-  .install-grid {
-    display: grid;
-    grid-template-columns: 1fr;
+  .install-columns {
+    display: flex;
+    flex-direction: column;
     gap: 2rem;
+    align-items: center;
     margin-top: 1.5rem;
 
-    @media (min-width: 600px) {
-      grid-template-columns: 1fr 1fr;
-      gap: 3rem;
+    @media (min-width: 700px) {
+      flex-direction: row;
+      justify-content: center;
+      align-items: stretch;
+      gap: 0;
     }
   }
 
-  .install-column {
-    h4 {
-      font-size: 1.1rem;
-      margin-bottom: 1rem;
-      opacity: 0.9;
+  .install-col {
+    flex: 1;
+    max-width: 320px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .install-col-left {
+    align-items: center;
+  }
+
+  .install-col-right {
+    text-align: left;
+
+    > p:first-child {
+      margin-bottom: 0.75rem;
     }
 
     pre {
-      text-align: left;
-      font-size: 0.9rem;
-    }
-  }
-
-  #installer-buttons {
-    .install-version {
-      margin-bottom: 1.5rem;
-      font-size: 0.95rem;
-      opacity: 0.8;
-    }
-
-    .install-buttons-row {
-      display: flex;
-      gap: 2rem;
-      justify-content: center;
-      flex-wrap: wrap;
-    }
-
-    .install-option {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .install-btn {
-      min-width: 160px;
-    }
-
-    .install-description {
+      margin: 0;
       font-size: 0.85rem;
-      opacity: 0.7;
+      text-align: left;
+    }
+
+    .sourceCode {
       margin: 0;
     }
   }
 
-  .install-cli-options {
-    margin-top: 1.5rem;
-    font-size: 0.9rem;
-    opacity: 0.85;
+  .install-divider {
+    display: none;
 
-    code {
-      background: rgba(0, 95, 115, 0.08);
-      padding: 0.2em 0.5em;
-      border-radius: 4px;
-      font-size: 0.85em;
+    @media (min-width: 700px) {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 0 2rem;
+      position: relative;
+
+      &::before,
+      &::after {
+        content: '';
+        position: absolute;
+        left: 50%;
+        width: 1px;
+        background: rgba(0, 95, 115, 0.2);
+      }
+
+      &::before {
+        top: 0;
+        bottom: calc(50% + 1rem);
+      }
+
+      &::after {
+        top: calc(50% + 1rem);
+        bottom: 0;
+      }
+
+      > p {
+        margin: 0;
+      }
+
+      .divider-text {
+        font-size: 0.85rem;
+        color: var(--brand-darkteal);
+        opacity: 0.7;
+      }
     }
+  }
+
+  #installer-recommended {
+    margin-bottom: 1rem;
+
+    .install-btn {
+      min-width: 200px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+
+      .bi {
+        font-size: 1.3em;
+      }
+    }
+  }
+
+  .other-platforms-link {
+    font-size: 0.9rem;
+    opacity: 0.8;
   }
 }
 
 .cta-section {
   text-align: center;
   padding: 2rem 0;
+
+  h2, > p {
+    position: relative;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -30px -40px;
+      background: var(--brand-paleteal, #DEF1EB);
+      filter: blur(20px);
+      z-index: -1;
+      border-radius: 50%;
+    }
+  }
 
   h2 {
     margin-bottom: 1rem;

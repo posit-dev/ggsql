@@ -7,7 +7,7 @@
 body {
   font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont,
     "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background: #F9F9F9;
   color: #001219;
@@ -17,7 +17,7 @@ body {
   display: grid;
   grid-template-columns: 200px 1fr 1fr;
   grid-template-rows: 1fr 150px;
-  height: 100vh;
+  height: calc(100dvh - var(--quarto-navbar-height, 0px));
   gap: 1px;
   background: #005F73;
   border-top: 2px solid #005F73;
@@ -31,7 +31,7 @@ body {
 #status {
   font-size: 12px;
   padding: 3px 10px;
-  border-radius: 3px;
+  border-radius: 0;
   background: #F9F9F9;
   color: #005F73;
 }
@@ -73,6 +73,7 @@ body {
 
 .table-list {
   list-style: none;
+  padding-left: 0;
 }
 
 .table-item {
@@ -119,11 +120,11 @@ body {
 
 .file-input-label {
   display: block;
-  padding: 6px 8px;
+  padding: 6px 12px;
   background: #005F73;
   color: #F9F9F9;
   text-align: center;
-  border-radius: 3px;
+  border-radius: 50rem;
   cursor: pointer;
   font-size: 12px;
   margin-bottom: 6px;
@@ -150,15 +151,15 @@ body {
 .example-button {
   display: block;
   width: 100%;
-  padding: 5px 8px;
+  padding: 5px 12px;
   margin: 3px 0;
   background: #F9F9F9;
   border: 1px solid #94D2BD;
   color: #001219;
-  border-radius: 3px;
+  border-radius: 50rem;
   cursor: pointer;
   font-size: 12px;
-  text-align: left;
+  text-align: center;
 }
 
 .example-button:hover {

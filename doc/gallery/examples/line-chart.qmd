@@ -1,5 +1,5 @@
 ---
-title: "Line Chart"
+title: "Line chart"
 description: "Time series visualization with proper date scaling"
 image: thumbnails/line-chart.svg
 categories: [basic, line, time-series]
@@ -16,9 +16,9 @@ VISUALISE Date AS x, Temp AS y
 DRAW line
 SCALE x VIA date
 LABEL
-    title => 'Daily Temperature',
-    x => 'Date',
-    y => 'Temperature (F)'
+  title => 'Daily Temperature',
+  x => 'Date',
+  y => 'Temperature (F)'
 ```
 
 ## Explanation
@@ -31,7 +31,7 @@ LABEL
 
 ## Variations
 
-### Multiple Lines by Category
+### Multiple lines by category
 
 ```{ggsql}
 SELECT Date, Temp, Month FROM ggsql:airquality
@@ -39,7 +39,7 @@ VISUALISE Date AS x, Temp AS y, Month AS color
 DRAW line
 SCALE x VIA date
 LABEL
-    title => 'Daily Temperature by Month',
-    x => 'Date',
-    y => 'Temperature (F)'
+  title => 'Daily Temperature by Month',
+  x => 'Date',
+  y => 'Temperature (F)'
 ```

@@ -21,9 +21,9 @@ The following aesthetics are recognised by the density layer.
 * `linetype` The dash pattern of the contour line.
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
-* `bandwidth`: A numerical value setting the smoothing bandwidth to use. If absent (default), the bandwidth will be computed using Silverman's rule of thumb.
-* `adjust`: A numerical value as multiplier for the `bandwidth` setting, with 1 as default.
+* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
+* `bandwidth`: Smoothing bandwidth (must be > 0). If absent (default), the bandwidth will be computed using Silverman's rule of thumb.
+* `adjust`: Multiplier for the `bandwidth` setting (must be > 0). Defaults to 1.
 * `kernel`: Determines the smoothing kernel shape. Can be one of the following:
     * `'gaussian'` (default)
     * `'epanechnikov'`
@@ -73,38 +73,42 @@ A typical KDE computation with different groups:
 
 ```{ggsql}
 VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
-  DRAW density
+DRAW density
 ```
 
 Changing the relative bandwidth through the `adjust` setting.
 
 ```{ggsql}
 VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
-  DRAW density SETTING adjust => 0.1
+DRAW density 
+  SETTING adjust => 0.1
 ```
 
 Stacking the different groups instead of overlaying them.
 
 ```{ggsql}
 VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
-  DRAW density SETTING position => 'stack'
+DRAW density 
+  SETTING position => 'stack'
 ```
 
 Using weighted estimates by mapping a column to the optional weight aesthetic. Note that the difference in output is subtle.
 
 ```{ggsql}
 VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
-  DRAW density MAPPING body_mass AS weight
+DRAW density 
+  MAPPING body_mass AS weight
 ```
 
 If you want to compare a histogram and a density layer, you can use the `intensity` computed variable to match the histogram scale.
 
 ```{ggsql}
 VISUALISE bill_len AS x FROM ggsql:penguins
-  DRAW histogram SETTING opacity => 0.5
-  DRAW density
-    REMAPPING intensity AS y
-    SETTING opacity => 0.5
+DRAW histogram 
+  SETTING opacity => 0.5
+DRAW density
+  REMAPPING intensity AS y
+  SETTING opacity => 0.5
 ```
 
 Using the intensity rather than the density also portrays differences in group sizes better. 
@@ -112,6 +116,7 @@ Note the relative height of the groups.
 
 ```{ggsql}
 VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
-  DRAW density REMAPPING intensity AS y
+DRAW density 
+  REMAPPING intensity AS y
 ```
 

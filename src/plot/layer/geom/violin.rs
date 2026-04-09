@@ -1,16 +1,31 @@
 //! Violin geom implementation
 
+use super::types::POSITION_VALUES;
 use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::{
     naming,
     plot::{
-        geom::types::get_column_name, DefaultAestheticValue, DefaultParam, DefaultParamValue,
-        ParameterValue,
+        geom::types::get_column_name, DefaultAestheticValue, DefaultParamValue, ParamConstraint,
+        ParamDefinition, ParameterValue,
     },
     DataFrame, GgsqlError, Mappings, Result,
 };
 use polars::prelude::*;
 use std::collections::HashMap;
+
+/// Valid kernel types for violin density estimation
+const KERNEL_VALUES: &[&str] = &[
+    "gaussian",
+    "epanechnikov",
+    "triangular",
+    "rectangular",
+    "uniform",
+    "biweight",
+    "quartic",
+    "cosine",
+];
+
+const SIDE_VALUES: &[&str] = &["both", "left", "top", "right", "bottom"];
 
 /// Violin geom - violin plots (mirrored density)
 #[derive(Debug, Clone, Copy)]
@@ -41,40 +56,55 @@ impl GeomTrait for Violin {
         true
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "bandwidth",
                 default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "adjust",
                 default: DefaultParamValue::Number(1.0),
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "kernel",
                 default: DefaultParamValue::String("gaussian"),
+                constraint: ParamConstraint::string_option(KERNEL_VALUES),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "position",
                 default: DefaultParamValue::String("dodge"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "width",
                 default: DefaultParamValue::Number(0.9),
+                // We allow >1 width to make ridgeline plots
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
+                name: "side",
+                default: DefaultParamValue::String("both"),
+                constraint: ParamConstraint::string_option(SIDE_VALUES),
+            },
+            ParamDefinition {
                 name: "tails",
                 default: DefaultParamValue::Number(3.0),
+                constraint: ParamConstraint::number_min(0.0),
             },
-        ]
+        ];
+        PARAMS
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
-        &[
-            ("pos2", DefaultAestheticValue::Column("pos2")),
-            ("offset", DefaultAestheticValue::Column("density")),
-        ]
+    fn default_remappings(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("pos2", DefaultAestheticValue::Column("pos2")),
+                ("offset", DefaultAestheticValue::Column("density")),
+            ],
+        }
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {

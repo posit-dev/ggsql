@@ -14,7 +14,7 @@ mod identity;
 mod jitter;
 mod stack;
 
-use crate::plot::types::{DefaultParam, DefaultParamValue, ParameterValue};
+use crate::plot::types::{DefaultParamValue, ParamDefinition, ParameterValue};
 use crate::plot::ScaleTypeKind;
 use crate::{DataFrame, Plot, Result};
 use serde::{Deserialize, Serialize};
@@ -104,6 +104,32 @@ pub fn compute_dodge_offsets(
     }
 }
 
+/// Filter facet columns out of partition_by for position adjustments that
+/// compute group indices (dodge, jitter).
+///
+/// Facet columns in partition_by inflate the group count — e.g., 2 fill groups
+/// across 2 facet panels would be seen as 4 composite groups instead of 2.
+/// Position adjustments should operate per-panel, so facet columns must be excluded.
+pub fn non_facet_partition_cols(partition_by: &[String], spec: &Plot) -> Vec<String> {
+    let facet_cols: std::collections::HashSet<String> = spec
+        .facet
+        .as_ref()
+        .map(|f| {
+            f.layout
+                .internal_facet_names()
+                .into_iter()
+                .map(|aes| crate::naming::aesthetic_column(&aes))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    partition_by
+        .iter()
+        .filter(|col| !facet_cols.contains(*col))
+        .cloned()
+        .collect()
+}
+
 // Re-export position implementations
 pub use dodge::{compute_group_indices, Dodge, GroupIndices};
 pub use identity::Identity;
@@ -143,7 +169,7 @@ pub trait PositionTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     fn position_type(&self) -> PositionType;
 
     /// Returns default parameter values for this position
-    fn default_params(&self) -> &'static [DefaultParam] {
+    fn default_params(&self) -> &'static [ParamDefinition] {
         &[]
     }
 
@@ -224,7 +250,7 @@ impl Position {
     }
 
     /// Get default parameters
-    pub fn default_params(&self) -> &'static [DefaultParam] {
+    pub fn default_params(&self) -> &'static [ParamDefinition] {
         self.0.default_params()
     }
 

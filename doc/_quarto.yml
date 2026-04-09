@@ -20,7 +20,7 @@ website:
   announcement:
     icon: info-circle
     dismissable: true
-    content: "ggsql is still in early development and all functionality are subject to change"
+    content: "ggsql is still in early development and all functionality is subject to change"
     type: primary
     position: below-navbar
   twitter-card:
@@ -30,7 +30,8 @@ website:
     keyboard-shortcut: []
   navbar:
     left:
-      - get_started.qmd
+      - text: Get started
+        href: get_started/installation.qmd
       - text: Syntax
         menu:
           - text: Overview
@@ -65,54 +66,72 @@ website:
           - text: Report a Bug
             href: https://github.com/ggsql-dev/ggsql/issues
   sidebar:
-    id: syntax
-    title: Syntax
-    style: "floating"
-    search: true
-    logo: false
-    contents:
-      - text: Overview
-        href: syntax/index.qmd
-      - section: "Main clauses"
-        contents:
-          - text: "`VISUALISE`"
-            href: syntax/clause/visualise.qmd
-          - text: "`DRAW`"
-            href: syntax/clause/draw.qmd
-          - text: "`PLACE`"
-            href: syntax/clause/place.qmd
-          - text: "`SCALE`"
-            href: syntax/clause/scale.qmd
-          - text: "`FACET`"
-            href: syntax/clause/facet.qmd
-          - text: "`PROJECT`"
-            href: syntax/clause/project.qmd
-          - text: "`LABEL`"
-            href: syntax/clause/label.qmd
-      - section: Layers
-        contents:
-          - section: Types
-            contents:
-              - auto: syntax/layer/type/*
-          - section: Position adjustment
-            contents:
-              - auto: syntax/layer/position/*
-      - section: Scales
-        contents:
-          - section: Types
-            contents:
-              - auto: syntax/scale/type/*
-          - section: Aesthetics
-            contents:
-              - auto: syntax/scale/aesthetic/*
-      - section: Coordinate systems
-        contents:
-          - auto: syntax/coord/*
-
+    - id: syntax
+      title: Syntax
+      style: "floating"
+      search: true
+      logo: false
+      contents:
+        - text: Overview
+          href: syntax/index.qmd
+        - section: "Main clauses"
+          contents:
+            - text: "`VISUALISE`"
+              href: syntax/clause/visualise.qmd
+            - text: "`DRAW`"
+              href: syntax/clause/draw.qmd
+            - text: "`PLACE`"
+              href: syntax/clause/place.qmd
+            - text: "`SCALE`"
+              href: syntax/clause/scale.qmd
+            - text: "`FACET`"
+              href: syntax/clause/facet.qmd
+            - text: "`PROJECT`"
+              href: syntax/clause/project.qmd
+            - text: "`LABEL`"
+              href: syntax/clause/label.qmd
+        - section: Layers
+          contents:
+            - section: Types
+              contents:
+                - auto: syntax/layer/type/*
+            - section: Position adjustment
+              contents:
+                - auto: syntax/layer/position/*
+        - section: Scales
+          contents:
+            - section: Types
+              contents:
+                - auto: syntax/scale/type/*
+            - section: Aesthetics
+              contents:
+                - auto: syntax/scale/aesthetic/*
+        - section: Coordinate systems
+          contents:
+            - auto: syntax/coord/*
+    - id: get_started
+      title: Get started
+      style: "floating"
+      search: false
+      logo: false
+      contents:
+        - text: Installation
+          href: get_started/installation.qmd
+        - text: The first plot
+          href: get_started/first_plot.qmd
+        - text: Grammar of graphics
+          href: get_started/grammar.qmd
+        - text: Anatomy of ggsql
+          href: get_started/anatomy.qmd
+        - text: Tooling
+          href: get_started/tooling.qmd
+        - text: The rest of the owl
+          href: get_started/the_rest.qmd
 
 format:
   html:
     lightbox: auto
+    highlight-style: pygments
     syntax-definitions:
       - ggsql.xml
     theme:

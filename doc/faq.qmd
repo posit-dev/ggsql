@@ -1,8 +1,8 @@
 ---
-title: Frequently Asked Questions
+title: Frequently asked questions
 ---
 
-## Getting Started
+## Getting started
 
 ::: {.callout-note collapse="true"}
 ## What is ggsql?
@@ -19,7 +19,7 @@ DRAW line
 ::: {.callout-note collapse="true"}
 ## How do I install ggsql?
 
-See the installation instruction in the [Getting started](get_started.qmd) tutorial.
+See the installation instruction in the [Get started](get_started/installation.qmd) tutorial.
 :::
 
 ::: {.callout-note collapse="true"}
@@ -34,7 +34,7 @@ ggsql is built in a modular way so we can gradually add new backends to it. Curr
 We have designed ggsql to be modular, both when it comes to the database input and the final rendering. For the first phase of the development we have chosen to use Vegalite as a renderer as it has allowed us to iterate quickly, but we do not envision Vegalite to remain the only, nor default writer in the future.
 :::
 
-## Syntax & Usage
+## Syntax & usage
 
 ::: {.callout-note collapse="true"}
 ## What's the difference between `VISUALISE` and `VISUALIZE`?
@@ -50,8 +50,10 @@ Add multiple `DRAW` clauses to your query. Each `DRAW` creates a new layer:
 ```ggsql
 SELECT x, y FROM data
 VISUALISE x, y
-DRAW line MAPPING x AS x, y AS y
-DRAW point MAPPING x AS x, y AS y
+DRAW line 
+  MAPPING x AS x, y AS y
+DRAW point 
+  MAPPING x AS x, y AS y
 ```
 :::
 
@@ -64,7 +66,10 @@ Use the `LABEL` clause:
 SELECT date, revenue FROM sales
 VISUALISE date AS x, revenue AS y
 DRAW line
-LABEL title => 'Sales Over Time', x => 'Date', y => 'Revenue (USD)'
+LABEL 
+  title => 'Sales Over Time', 
+  x => 'Date', 
+  y => 'Revenue (USD)'
 ```
 :::
 
@@ -78,7 +83,7 @@ SELECT date, revenue FROM sales
 VISUALISE date AS x, revenue AS y
 DRAW line
 DRAW point
-    FILTER revenue = max(revenue)
+  FILTER revenue = max(revenue)
 ```
 
 Further, any query before the `VISUALISE` clause is passed directly to the database so anything supported by your backend can go in there.

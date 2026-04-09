@@ -25,7 +25,6 @@
   "segment"
   "arrow"
   "rule"
-  "linear"
   "errorbar"
 ] @type.builtin
 
@@ -58,6 +57,7 @@
   "hjust"
   "vjust"
   "rotation"
+  "slope"
   "panel"
   "row"
   "column"

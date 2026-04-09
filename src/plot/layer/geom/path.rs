@@ -1,6 +1,9 @@
 //! Path geom implementation
 
-use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType};
+use super::types::POSITION_VALUES;
+use super::{
+    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
+};
 use crate::plot::types::DefaultAestheticValue;
 
 /// Path geom - connected line segments in order
@@ -25,11 +28,13 @@ impl GeomTrait for Path {
         }
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        &[DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[ParamDefinition {
             name: "position",
             default: DefaultParamValue::String("identity"),
-        }]
+            constraint: ParamConstraint::string_option(POSITION_VALUES),
+        }];
+        PARAMS
     }
 }
 

@@ -36,7 +36,6 @@ mod density;
 mod errorbar;
 mod histogram;
 mod line;
-mod linear;
 mod path;
 mod point;
 mod polygon;
@@ -49,7 +48,9 @@ mod text;
 mod violin;
 
 // Re-export types
-pub use types::{DefaultAesthetics, DefaultParam, DefaultParamValue, StatResult};
+pub use types::{
+    DefaultAesthetics, DefaultParamValue, ParamConstraint, ParamDefinition, StatResult,
+};
 
 // Re-export geom structs for direct access if needed
 pub use area::Area;
@@ -60,7 +61,6 @@ pub use density::Density;
 pub use errorbar::ErrorBar;
 pub use histogram::Histogram;
 pub use line::Line;
-pub use linear::Linear;
 pub use path::Path;
 pub use point::Point;
 pub use polygon::Polygon;
@@ -72,7 +72,7 @@ pub use smooth::Smooth;
 pub use text::Text;
 pub use violin::Violin;
 
-use crate::plot::types::{DefaultAestheticValue, ParameterValue, Schema};
+use crate::plot::types::{ParameterValue, Schema};
 use crate::reader::SqlDialect;
 
 /// Enum of all geom types for pattern matching and serialization
@@ -96,7 +96,6 @@ pub enum GeomType {
     Segment,
     Arrow,
     Rule,
-    Linear,
     ErrorBar,
 }
 
@@ -120,7 +119,6 @@ impl std::fmt::Display for GeomType {
             GeomType::Segment => "segment",
             GeomType::Arrow => "arrow",
             GeomType::Rule => "rule",
-            GeomType::Linear => "linear",
             GeomType::ErrorBar => "errorbar",
         };
         write!(f, "{}", s)
@@ -145,8 +143,8 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// - `DefaultAestheticValue::Number(0.0)` - maps a literal value to the aesthetic
     ///
     /// These defaults can be overridden by a REMAPPING clause.
-    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
-        &[]
+    fn default_remappings(&self) -> DefaultAesthetics {
+        DefaultAesthetics { defaults: &[] }
     }
 
     /// Returns valid stat column names that can be used in REMAPPING (early validation).
@@ -167,7 +165,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Returns non-aesthetic parameters with their default values.
     ///
     /// These control stat behavior (e.g., bins for histogram).
-    fn default_params(&self) -> &'static [DefaultParam] {
+    fn default_params(&self) -> &'static [ParamDefinition] {
         &[]
     }
 
@@ -215,6 +213,21 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         _parameters: &HashMap<String, ParameterValue>,
     ) -> Result<DataFrame> {
         Ok(df)
+    }
+
+    /// Adjust layer mappings and parameters based on geom-specific logic.
+    ///
+    /// This method is called during layer execution to allow geoms to customize
+    /// how aesthetics and parameters should be treated.
+    /// This is called after parameters are validated, which allows for internal
+    /// parameters.
+    /// The default implementation does nothing.
+    fn setup_layer(
+        &self,
+        _mappings: &mut Mappings,
+        _parameters: &mut HashMap<String, ParameterValue>,
+    ) -> Result<()> {
+        Ok(())
     }
 
     /// Returns valid parameter names for SETTING clause.
@@ -322,11 +335,6 @@ impl Geom {
         Self(Arc::new(Rule))
     }
 
-    /// Create an Linear geom
-    pub fn linear() -> Self {
-        Self(Arc::new(Linear))
-    }
-
     /// Create an ErrorBar geom
     pub fn errorbar() -> Self {
         Self(Arc::new(ErrorBar))
@@ -352,7 +360,6 @@ impl Geom {
             GeomType::Segment => Self::segment(),
             GeomType::Arrow => Self::arrow(),
             GeomType::Rule => Self::rule(),
-            GeomType::Linear => Self::linear(),
             GeomType::ErrorBar => Self::errorbar(),
         }
     }
@@ -368,7 +375,7 @@ impl Geom {
     }
 
     /// Get default remappings
-    pub fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
+    pub fn default_remappings(&self) -> DefaultAesthetics {
         self.0.default_remappings()
     }
 
@@ -378,7 +385,7 @@ impl Geom {
     }
 
     /// Get default parameters
-    pub fn default_params(&self) -> &'static [DefaultParam] {
+    pub fn default_params(&self) -> &'static [ParamDefinition] {
         self.0.default_params()
     }
 
@@ -422,6 +429,15 @@ impl Geom {
         parameters: &HashMap<String, ParameterValue>,
     ) -> Result<DataFrame> {
         self.0.post_process(df, parameters)
+    }
+
+    /// Adjust layer mappings and parameters based on geom-specific logic
+    pub fn setup_layer(
+        &self,
+        mappings: &mut Mappings,
+        parameters: &mut HashMap<String, ParameterValue>,
+    ) -> Result<()> {
+        self.0.setup_layer(mappings, parameters)
     }
 
     /// Get valid settings
@@ -551,7 +567,6 @@ mod tests {
             GeomType::Segment,
             GeomType::Arrow,
             GeomType::Rule,
-            GeomType::Linear,
             GeomType::ErrorBar,
         ];
 
@@ -575,7 +590,6 @@ mod tests {
             | GeomType::Segment
             | GeomType::Arrow
             | GeomType::Rule
-            | GeomType::Linear
             | GeomType::ErrorBar => {}
         };
 
@@ -589,7 +603,7 @@ mod tests {
                 aesthetics.defaults.iter().map(|(name, _)| *name).collect();
 
             // Check each remapping name exists in aesthetics
-            for (name, _) in remappings {
+            for (name, _) in remappings.defaults {
                 assert!(
                     aesthetic_names.contains(name),
                     "Geom '{}' has '{}' in default_remappings() but not in aesthetics().defaults. \

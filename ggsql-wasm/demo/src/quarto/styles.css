@@ -14,7 +14,26 @@
 }
 
 .ggsql-editor-container {
+  position: relative;
   width: 100%;
+}
+
+.ggsql-editor-watermark {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 32px;
+  height: 32px;
+  opacity: 0.5;
+  filter: grayscale(1);
+  pointer-events: none;
+  z-index: 10;
+  animation: ggsql-pulse 5s linear infinite;
+}
+
+@keyframes ggsql-pulse {
+  0%, 100% { transform: scale(0.95); }
+  50% { transform: scale(1.1); }
 }
 
 .ggsql-error-display {
@@ -24,11 +43,41 @@
   color: #AE2012;
   background: #FFF0ED;
   border-top: 1px solid #E5A4A0;
-  white-space: pre-wrap;
-  word-break: break-word;
   display: none;
+  cursor: pointer;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.ggsql-editor-wrapper .monaco-editor .overflow-guard {
+  touch-action: pan-y !important;
 }
 
 .ggsql-error-display.visible {
-  display: block;
+  display: flex;
+}
+
+.ggsql-error-toggle {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1.6;
+  user-select: none;
+  width: 1em;
+  text-align: center;
+}
+
+.ggsql-error-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.ggsql-error-display.collapsed .ggsql-error-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ggsql-error-display:not(.collapsed) .ggsql-error-text {
+  white-space: pre-wrap;
+  word-break: break-word;
 }

@@ -15,9 +15,9 @@ SELECT Temp FROM ggsql:airquality
 VISUALISE Temp AS x
 DRAW histogram
 LABEL
-    title => 'Temperature Distribution',
-    x => 'Temperature (F)',
-    y => 'Count'
+  title => 'Temperature Distribution',
+  x => 'Temperature (F)',
+  y => 'Count'
 ```
 
 ## Explanation
@@ -28,7 +28,7 @@ LABEL
 
 ## Variations
 
-### Custom Bin Count
+### Custom bin count
 
 Control the number of bins with `SETTING bins`:
 
@@ -36,14 +36,14 @@ Control the number of bins with `SETTING bins`:
 SELECT Temp FROM ggsql:airquality
 VISUALISE Temp AS x
 DRAW histogram
-    SETTING bins => 15
+  SETTING bins => 15
 LABEL
-    title => 'Temperature Distribution (15 bins)',
-    x => 'Temperature (F)',
-    y => 'Count'
+  title => 'Temperature Distribution (15 bins)',
+  x => 'Temperature (F)',
+  y => 'Count'
 ```
 
-### Custom Bin Width
+### Custom bin width
 
 Set explicit bin width instead of count:
 
@@ -51,14 +51,14 @@ Set explicit bin width instead of count:
 SELECT Temp FROM ggsql:airquality
 VISUALISE Temp AS x
 DRAW histogram
-    SETTING binwidth => 5
+  SETTING binwidth => 5
 LABEL
-    title => 'Temperature Distribution (5 degree bins)',
-    x => 'Temperature (F)',
-    y => 'Count'
+  title => 'Temperature Distribution (5 degree bins)',
+  x => 'Temperature (F)',
+  y => 'Count'
 ```
 
-### Density Instead of Count
+### Density instead of count
 
 Use `REMAPPING` to show density (proportion) instead of count:
 
@@ -66,9 +66,9 @@ Use `REMAPPING` to show density (proportion) instead of count:
 SELECT Temp FROM ggsql:airquality
 VISUALISE Temp AS x
 DRAW histogram
-    REMAPPING density AS y
+  REMAPPING density AS y
 LABEL
-    title => 'Temperature Density',
-    x => 'Temperature (F)',
-    y => 'Density'
+  title => 'Temperature Density',
+  x => 'Temperature (F)',
+  y => 'Density'
 ```
