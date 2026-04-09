@@ -213,6 +213,13 @@ async function applyEditors(
 
     const editorContainer = document.createElement("div");
     editorContainer.className = "ggsql-editor-container";
+    const watermark = document.createElement("img");
+    watermark.className = "ggsql-editor-watermark";
+    watermark.src = SITE_ROOT + "assets/icon.svg";
+    watermark.alt = "";
+    watermark.setAttribute("aria-hidden", "true");
+    editorContainer.appendChild(watermark);
+
     wrapper.appendChild(editorContainer);
 
     const errorDisplay = document.createElement("div");

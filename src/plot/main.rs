@@ -538,12 +538,6 @@ mod tests {
         // Segment/arrow require endpoints
         assert_eq!(Geom::segment().aesthetics().required(), &["pos1", "pos2"]);
 
-        // Reference lines
-        assert_eq!(
-            Geom::linear().aesthetics().required(),
-            &["coef", "intercept"]
-        );
-
         // ErrorBar has no strict requirements
         assert_eq!(Geom::errorbar().aesthetics().required(), &[] as &[&str]);
     }

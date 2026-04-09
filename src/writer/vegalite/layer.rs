@@ -43,7 +43,6 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Segment => "rule",
         GeomType::Smooth => "line",
         GeomType::Rule => "rule",
-        GeomType::Linear => "rule",
         GeomType::ErrorBar => "rule",
         _ => "point", // Default fallback
     };
@@ -400,78 +399,52 @@ impl GeomRenderer for RuleRenderer {
     fn modify_encoding(
         &self,
         encoding: &mut Map<String, Value>,
-        _layer: &Layer,
-        _context: &RenderContext,
+        layer: &Layer,
+        context: &RenderContext,
     ) -> Result<()> {
         let has_x = encoding.contains_key("x");
         let has_y = encoding.contains_key("y");
-        if !has_x && !has_y {
+
+        // Remove slope from encoding (it's never a visual encoding, only metadata)
+        // and check if it's non-zero (diagonal line)
+        let diagonal = matches!(
+            layer.parameters.get("diagonal"),
+            Some(ParameterValue::Boolean(true))
+        );
+
+        if !has_x && !has_y && !diagonal {
             return Err(GgsqlError::ValidationError(
                 "The `rule` layer requires the `x` or `y` aesthetic. It currently has neither."
                     .to_string(),
             ));
-        } else if has_x && has_y {
+        } else if has_x && has_y && !diagonal {
             return Err(GgsqlError::ValidationError(
                 "The `rule` layer requires exactly one of the `x` or `y` aesthetic, not both."
                     .to_string(),
             ));
         }
-        Ok(())
-    }
-}
+        if !diagonal {
+            return Ok(());
+        }
 
-// =============================================================================
-// Linear Renderer
-// =============================================================================
-
-/// Renderer for linear geom - draws lines based on coefficient and intercept
-pub struct LinearRenderer;
-
-impl GeomRenderer for LinearRenderer {
-    fn prepare_data(
-        &self,
-        df: &DataFrame,
-        _layer: &Layer,
-        _data_key: &str,
-        _binned_columns: &HashMap<String, Vec<f64>>,
-    ) -> Result<PreparedData> {
-        // Just convert DataFrame to JSON values
-        // No need to add xmin/xmax - they'll be encoded as literal values
-        let values = dataframe_to_values(df)?;
-        Ok(PreparedData::Single { values })
-    }
-
-    fn modify_encoding(
-        &self,
-        encoding: &mut Map<String, Value>,
-        layer: &Layer,
-        _context: &RenderContext,
-    ) -> Result<()> {
-        // Remove coefficient and intercept from encoding - they're only used in transforms
-        encoding.remove("coef");
-        encoding.remove("intercept");
-
-        // Check orientation
-        let is_horizontal = is_transposed(layer);
-
-        // For aligned (default): x is primary axis, y is computed (secondary)
-        // For transposed: y is primary axis, x is computed (secondary)
-        let (primary, primary2, secondary, secondary2) = if is_horizontal {
-            ("y", "y2", "x", "x2")
+        // Use layer's pre-computed orientation
+        let (primary, primary2, secondary, secondary2, extent_aes) = if is_transposed(layer) {
+            ("y", "y2", "x", "x2", "pos2")
         } else {
-            ("x", "x2", "y", "y2")
+            ("x", "x2", "y", "y2", "pos1")
+        };
+
+        // Get primary axis extent from context to set explicit scale domain
+        // This prevents an axis drift
+        let mut primary_enco = json!({"field": "primary_min", "type": "quantitative"});
+        if let Ok((min, max)) = context.get_extent(extent_aes) {
+            primary_enco["scale"] = json!({"domain": [min, max]})
         };
 
         // Add encodings for rule mark
         // primary_min/primary_max are created by transforms (extent of the axis)
         // secondary_min/secondary_max are computed via formula
-        encoding.insert(
-            primary.to_string(),
-            json!({
-                "field": "primary_min",
-                "type": "quantitative"
-            }),
-        );
+        encoding.insert(primary.to_string(), primary_enco);
         encoding.insert(
             primary2.to_string(),
             json!({
@@ -501,22 +474,46 @@ impl GeomRenderer for LinearRenderer {
         layer: &Layer,
         context: &RenderContext,
     ) -> Result<()> {
-        // Field names for coef and intercept (with aesthetic column prefix)
-        let coef_field = naming::aesthetic_column("coef");
-        let intercept_field = naming::aesthetic_column("intercept");
+        // Determine slope expression: either a literal value or a field reference
+        let slope_expr = match layer.mappings.get("slope") {
+            Some(AestheticValue::Literal(ParameterValue::Number(n))) if *n == 0.0 => {
+                // Slope is 0 - no diagonal
+                None
+            }
+            Some(AestheticValue::Literal(ParameterValue::Number(n))) => {
+                // Literal non-zero slope - inline the value
+                Some(n.to_string())
+            }
+            Some(AestheticValue::Column { .. }) | Some(AestheticValue::AnnotationColumn { .. }) => {
+                // Column-based slope - reference the field
+                let slope_field = naming::aesthetic_column("slope");
+                Some(format!("datum.{}", slope_field))
+            }
+            _ => {
+                // No slope mapping - no diagonal
+                None
+            }
+        };
 
-        // Check orientation
-        let is_horizontal = is_transposed(layer);
+        let Some(slope_expr) = slope_expr else {
+            return Ok(());
+        };
+
+        let (intercept_field, extent_aes) = if is_transposed(layer) {
+            // x is intercept
+            (naming::aesthetic_column("pos1"), "pos2")
+        } else {
+            // y is intercept
+            (naming::aesthetic_column("pos2"), "pos1")
+        };
 
         // Get extent from appropriate axis:
-        // - Aligned (default): extent from pos1 (x-axis), compute y from x
-        // - Transposed: extent from pos2 (y-axis), compute x from y
-        let extent_aesthetic = if is_horizontal { "pos2" } else { "pos1" };
-        let (primary_min, primary_max) = context.get_extent(extent_aesthetic)?;
+        let (primary_min, primary_max) = context.get_extent(extent_aes)?;
 
         // Add transforms:
         // 1. Create constant primary_min/primary_max fields (extent of the primary axis)
-        // 2. Compute secondary values at those primary positions: secondary = coef * primary + intercept
+        // 2. Compute secondary values at those primary positions: secondary = slope * primary + intercept
+        //    (where intercept is pos1 for x-mapped or pos2 for y-mapped)
         let transforms = json!([
             {
                 "calculate": primary_min.to_string(),
@@ -527,11 +524,11 @@ impl GeomRenderer for LinearRenderer {
                 "as": "primary_max"
             },
             {
-                "calculate": format!("datum.{} * datum.primary_min + datum.{}", coef_field, intercept_field),
+                "calculate": format!("{} * datum.primary_min + datum.{}", slope_expr, intercept_field),
                 "as": "secondary_min"
             },
             {
-                "calculate": format!("datum.{} * datum.primary_max + datum.{}", coef_field, intercept_field),
+                "calculate": format!("{} * datum.primary_max + datum.{}", slope_expr, intercept_field),
                 "as": "secondary_max"
             }
         ]);
@@ -1311,11 +1308,23 @@ impl GeomRenderer for ViolinRenderer {
         });
         let offset_col = naming::aesthetic_column("offset");
 
-        // It'll be implemented as an offset.
-        let violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
-
         // Read orientation from layer (already resolved during execution)
         let is_horizontal = is_transposed(layer);
+
+        // It'll be implemented as an offset.
+        let mut violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
+        if let Some(ParameterValue::String(side)) = layer.parameters.get("side") {
+            let positive = if is_horizontal {
+                matches!(side.as_str(), "bottom" | "left")
+            } else {
+                matches!(side.as_str(), "top" | "right")
+            };
+            violin_offset = if positive {
+                format!("[datum.{offset}]", offset = offset_col)
+            } else {
+                format!("[-datum.{offset}]", offset = offset_col)
+            };
+        }
 
         // Continuous axis column for order calculation:
         // - Vertical: pos2 (y-axis has continuous density values)
@@ -1382,6 +1391,8 @@ impl GeomRenderer for ViolinRenderer {
     ) -> Result<()> {
         // Read orientation from layer (already resolved during execution)
         let is_horizontal = is_transposed(layer);
+
+        encoding.remove("offset");
 
         // Categorical axis for detail encoding:
         // - Vertical: x channel (categorical groups on x-axis)
@@ -1922,7 +1933,6 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Violin => Box::new(ViolinRenderer),
         GeomType::Text => Box::new(TextRenderer),
         GeomType::Segment => Box::new(SegmentRenderer),
-        GeomType::Linear => Box::new(LinearRenderer),
         GeomType::ErrorBar => Box::new(ErrorBarRenderer),
         GeomType::Rule => Box::new(RuleRenderer),
         // All other geoms (Point, Area, Density, Tile, etc.) use the default renderer
@@ -3215,6 +3225,114 @@ mod tests {
     }
 
     #[test]
+    fn test_violin_ridge_parameter() {
+        use crate::naming;
+        use crate::plot::ParameterValue;
+
+        let offset_col = naming::aesthetic_column("offset");
+
+        fn get_violin_offset_expr(ridge: Option<&str>, is_horizontal: bool) -> String {
+            let mut layer = Layer::new(crate::plot::Geom::violin());
+            if let Some(r) = ridge {
+                layer
+                    .parameters
+                    .insert("side".to_string(), ParameterValue::String(r.to_string()));
+            }
+
+            // Set orientation parameter for horizontal case
+            if is_horizontal {
+                layer.parameters.insert(
+                    "orientation".to_string(),
+                    ParameterValue::String("transposed".to_string()),
+                );
+            }
+
+            let mut layer_spec = if is_horizontal {
+                json!({
+                    "mark": {"type": "line"},
+                    "encoding": {
+                        "x": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"},
+                        "y": {"field": "species", "type": "nominal"}
+                    }
+                })
+            } else {
+                json!({
+                    "mark": {"type": "line"},
+                    "encoding": {
+                        "x": {"field": "species", "type": "nominal"},
+                        "y": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"}
+                    }
+                })
+            };
+
+            ViolinRenderer
+                .modify_spec(&mut layer_spec, &layer, &RenderContext::new(&[]))
+                .unwrap();
+
+            layer_spec["transform"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t.get("as").and_then(|a| a.as_str()) == Some("violin_offsets"))
+                .unwrap()["calculate"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        }
+
+        // Default "both" - mirrors on both sides (vertical orientation)
+        let expr = get_violin_offset_expr(None, false);
+        assert!(
+            expr.contains(&format!("[datum.{}, -datum.{}]", offset_col, offset_col))
+                || expr.contains(&format!("[-datum.{}, datum.{}]", offset_col, offset_col)),
+            "Default should mirror both sides: {}",
+            expr
+        );
+
+        // Vertical orientation (default): x=nominal, y=quantitative
+        // "left" and "bottom" - only negative offset
+        assert_eq!(
+            get_violin_offset_expr(Some("left"), false),
+            format!("[-datum.{}]", offset_col)
+        );
+        assert_eq!(
+            get_violin_offset_expr(Some("bottom"), false),
+            format!("[-datum.{}]", offset_col)
+        );
+
+        // "right" and "top" - only positive offset
+        assert_eq!(
+            get_violin_offset_expr(Some("right"), false),
+            format!("[datum.{}]", offset_col)
+        );
+        assert_eq!(
+            get_violin_offset_expr(Some("top"), false),
+            format!("[datum.{}]", offset_col)
+        );
+
+        // Horizontal orientation: x=quantitative, y=nominal
+        // "bottom" and "left" - only positive offset
+        assert_eq!(
+            get_violin_offset_expr(Some("bottom"), true),
+            format!("[datum.{}]", offset_col)
+        );
+        assert_eq!(
+            get_violin_offset_expr(Some("left"), true),
+            format!("[datum.{}]", offset_col)
+        );
+
+        // "top" and "right" - only negative offset
+        assert_eq!(
+            get_violin_offset_expr(Some("top"), true),
+            format!("[-datum.{}]", offset_col)
+        );
+        assert_eq!(
+            get_violin_offset_expr(Some("right"), true),
+            format!("[-datum.{}]", offset_col)
+        );
+    }
+
+    #[test]
     fn test_render_context_get_extent() {
         use crate::plot::{ArrayElement, Scale};
 
@@ -3292,11 +3410,11 @@ mod tests {
     }
 
     #[test]
-    fn test_linear_renderer_multiple_lines() {
+    fn test_rule_renderer_multiple_diagonal_lines() {
         use crate::reader::{DuckDBReader, Reader};
         use crate::writer::{VegaLiteWriter, Writer};
 
-        // Test that linear with 3 different coefficients renders 3 separate lines
+        // Test that rule with 3 different slopes renders 3 separate lines
         let query = r#"
             WITH points AS (
                 SELECT * FROM (VALUES (0, 5), (5, 15), (10, 25)) AS t(x, y)
@@ -3306,12 +3424,12 @@ mod tests {
                     (2, 5, 'A'),
                     (1, 10, 'B'),
                     (3, 0, 'C')
-                ) AS t(coef, intercept, line_id)
+                ) AS t(slope, y, line_id)
             )
             SELECT * FROM points
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            DRAW linear MAPPING coef AS coef, intercept AS intercept, line_id AS color FROM lines
+            DRAW rule MAPPING slope AS slope, y AS y, line_id AS color FROM lines
         "#;
 
         // Execute query
@@ -3327,21 +3445,21 @@ mod tests {
         let vl_spec: serde_json::Value =
             serde_json::from_str(&vl_json).expect("Failed to parse Vega-Lite JSON");
 
-        // Verify we have 2 layers (point + linear)
+        // Verify we have 2 layers (point + rule)
         let layers = vl_spec["layer"].as_array().expect("No layers found");
-        assert_eq!(layers.len(), 2, "Should have 2 layers (point + linear)");
+        assert_eq!(layers.len(), 2, "Should have 2 layers (point + rule)");
 
-        // Get the linear layer (second layer)
-        let linear_layer = &layers[1];
+        // Get the rule layer (second layer)
+        let rule_layer = &layers[1];
 
         // Verify it's a rule mark
         assert_eq!(
-            linear_layer["mark"]["type"], "rule",
-            "Linear should use rule mark"
+            rule_layer["mark"]["type"], "rule",
+            "Rule should use rule mark"
         );
 
         // Verify transforms exist
-        let transforms = linear_layer["transform"]
+        let transforms = rule_layer["transform"]
             .as_array()
             .expect("No transforms found");
 
@@ -3371,7 +3489,7 @@ mod tests {
             "primary_max should have calculate expression"
         );
 
-        // Verify secondary_min and secondary_max transforms use coef and intercept with primary_min/primary_max
+        // Verify secondary_min and secondary_max transforms use slope and intercept with primary_min/primary_max
         let secondary_min_transform = transforms
             .iter()
             .find(|t| t["as"] == "secondary_min")
@@ -3388,26 +3506,18 @@ mod tests {
             .as_str()
             .expect("secondary_max calculate should be string");
 
-        // Should reference coef, intercept, and primary_min/primary_max
+        // Should reference slope, pos2 (acting as intercept for y-mapped rules), and primary_min/primary_max
         assert!(
-            secondary_min_calc.contains("__ggsql_aes_coef__"),
-            "secondary_min should reference coef"
-        );
-        assert!(
-            secondary_min_calc.contains("__ggsql_aes_intercept__"),
-            "secondary_min should reference intercept"
+            secondary_min_calc.contains("__ggsql_aes_pos2__"),
+            "secondary_min should reference pos2 (y intercept)"
         );
         assert!(
             secondary_min_calc.contains("datum.primary_min"),
             "secondary_min should reference datum.primary_min"
         );
         assert!(
-            secondary_max_calc.contains("__ggsql_aes_coef__"),
-            "secondary_max should reference coef"
-        );
-        assert!(
-            secondary_max_calc.contains("__ggsql_aes_intercept__"),
-            "secondary_max should reference intercept"
+            secondary_max_calc.contains("__ggsql_aes_pos2__"),
+            "secondary_max should reference pos2 (y intercept)"
         );
         assert!(
             secondary_max_calc.contains("datum.primary_max"),
@@ -3415,7 +3525,7 @@ mod tests {
         );
 
         // Verify encoding has x, x2, y, y2 with consistent field names
-        let encoding = linear_layer["encoding"]
+        let encoding = rule_layer["encoding"]
             .as_object()
             .expect("No encoding found");
 
@@ -3448,52 +3558,56 @@ mod tests {
             "Should have stroke encoding for line_id"
         );
 
-        // Verify data has 3 linear rows (one per coef)
+        // Verify data has 3 rule rows (one per slope)
         let data_values = vl_spec["data"]["values"]
             .as_array()
             .expect("No data values found");
 
-        let linear_rows: Vec<_> = data_values
+        let rule_rows: Vec<_> = data_values
             .iter()
             .filter(|row| {
                 row["__ggsql_source__"] == "__ggsql_layer_1__"
-                    && row["__ggsql_aes_coef__"].is_number()
+                    && row["__ggsql_aes_slope__"].is_number()
             })
             .collect();
 
         assert_eq!(
-            linear_rows.len(),
+            rule_rows.len(),
             3,
-            "Should have 3 linear rows (3 different coefficients)"
+            "Should have 3 rule rows (3 different slopes)"
         );
 
-        // Verify we have coefs 1, 2, 3
-        let mut coefs: Vec<f64> = linear_rows
+        // Verify we have slopes 1, 2, 3
+        let mut slopes: Vec<f64> = rule_rows
             .iter()
-            .map(|row| row["__ggsql_aes_coef__"].as_f64().unwrap())
+            .map(|row| row["__ggsql_aes_slope__"].as_f64().unwrap())
             .collect();
-        coefs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        slopes.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-        assert_eq!(coefs, vec![1.0, 2.0, 3.0], "Should have coefs 1, 2, and 3");
+        assert_eq!(
+            slopes,
+            vec![1.0, 2.0, 3.0],
+            "Should have slopes 1, 2, and 3"
+        );
     }
 
     #[test]
-    fn test_linear_renderer_transposed_orientation() {
+    fn test_sloped_rule_renderer_horizontal_orientation() {
         use crate::reader::{DuckDBReader, Reader};
         use crate::writer::{VegaLiteWriter, Writer};
 
-        // Test that linear with transposed orientation swaps x/y axes
+        // Test that sloped rule with x mapping (horizontal) infers y varies
         let query = r#"
             WITH points AS (
                 SELECT * FROM (VALUES (0, 5), (5, 15), (10, 25)) AS t(x, y)
             ),
             lines AS (
-                SELECT * FROM (VALUES (0.4, -1, 'A')) AS t(coef, intercept, line_id)
+                SELECT * FROM (VALUES (0.4, -1, 'A')) AS t(slope, x, line_id)
             )
             SELECT * FROM points
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            DRAW linear MAPPING coef AS coef, intercept AS intercept, line_id AS color FROM lines SETTING orientation => 'transposed'
+            DRAW rule MAPPING slope AS slope, x AS x, line_id AS color FROM lines
         "#;
 
         // Execute query
@@ -3509,16 +3623,16 @@ mod tests {
         let vl_spec: serde_json::Value =
             serde_json::from_str(&vl_json).expect("Failed to parse Vega-Lite JSON");
 
-        // Get the linear layer (second layer)
+        // Get the rule layer (second layer)
         let layers = vl_spec["layer"].as_array().expect("No layers found");
-        let linear_layer = &layers[1];
+        let rule_layer = &layers[1];
 
         // Verify transforms exist
-        let transforms = linear_layer["transform"]
+        let transforms = rule_layer["transform"]
             .as_array()
             .expect("No transforms found");
 
-        // Verify primary_min/max use pos2 extent (y-axis) for transposed orientation
+        // Verify primary_min/max use pos2 extent (y-axis) for horizontal (x-mapped) orientation
         let primary_min_transform = transforms
             .iter()
             .find(|t| t["as"] == "primary_min")
@@ -3528,7 +3642,7 @@ mod tests {
             .find(|t| t["as"] == "primary_max")
             .expect("primary_max transform not found");
 
-        // The primary extent should come from the y-axis for transposed
+        // The primary extent should come from the y-axis for horizontal orientation
         assert!(
             primary_min_transform["calculate"].is_string(),
             "primary_min should have calculate expression"
@@ -3538,27 +3652,54 @@ mod tests {
             "primary_max should have calculate expression"
         );
 
+        // Verify secondary_min and secondary_max use pos1 (x intercept) for horizontal orientation
+        let secondary_min_transform = transforms
+            .iter()
+            .find(|t| t["as"] == "secondary_min")
+            .expect("secondary_min transform not found");
+        let secondary_max_transform = transforms
+            .iter()
+            .find(|t| t["as"] == "secondary_max")
+            .expect("secondary_max transform not found");
+
+        let secondary_min_calc = secondary_min_transform["calculate"]
+            .as_str()
+            .expect("secondary_min calculate should be string");
+        let secondary_max_calc = secondary_max_transform["calculate"]
+            .as_str()
+            .expect("secondary_max calculate should be string");
+
+        // Should reference pos1 (x intercept) for horizontal orientation
+        assert!(
+            secondary_min_calc.contains("__ggsql_aes_pos1__"),
+            "secondary_min should reference pos1 (x intercept)"
+        );
+        assert!(
+            secondary_max_calc.contains("__ggsql_aes_pos1__"),
+            "secondary_max should reference pos1 (x intercept)"
+        );
+
         // Verify encoding has y as primary axis (mapped to primary_min/max)
-        let encoding = linear_layer["encoding"]
+        let encoding = rule_layer["encoding"]
             .as_object()
             .expect("No encoding found");
 
-        // For transposed orientation: y is primary (uses primary_min/max), x is secondary
+        // For horizontal orientation (x-mapped): y is primary (uses primary_min/max), x is secondary
         assert_eq!(
             encoding["y"]["field"], "primary_min",
-            "y should reference primary_min field for transposed"
+            "y should reference primary_min field for horizontal orientation"
         );
         assert_eq!(
             encoding["y2"]["field"], "primary_max",
-            "y2 should reference primary_max field for transposed"
+            "y2 should reference primary_max field for horizontal orientation"
         );
         assert_eq!(
             encoding["x"]["field"], "secondary_min",
-            "x should reference secondary_min field for transposed"
+            "x should reference secondary_min field for horizontal orientation"
         );
         assert_eq!(
             encoding["x2"]["field"], "secondary_max",
-            "x2 should reference secondary_max field for transposed"
+            "x2 should reference secondary_max field for horizontal orientation"
         );
     }
 
