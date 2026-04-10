@@ -201,7 +201,10 @@ pub trait GeomRenderer: Send + Sync {
         } else {
             dataframe_to_values_with_bins(df, binned_columns)?
         };
-        Ok(PreparedData::Single { values, metadata: Box::new(()) })
+        Ok(PreparedData::Single {
+            values,
+            metadata: Box::new(()),
+        })
     }
 
     // === Phase 2: Encoding Modifications ===
@@ -629,10 +632,13 @@ impl GeomRenderer for PathRenderer {
                 }
 
                 // Add segment_id to detail encoding
-                encoding_map.insert("detail".to_string(), json!({
-                    "field": "__segment_id__",
-                    "type": "nominal"
-                }));
+                encoding_map.insert(
+                    "detail".to_string(),
+                    json!({
+                        "field": "__segment_id__",
+                        "type": "nominal"
+                    }),
+                );
             }
         }
 
@@ -4310,7 +4316,9 @@ mod tests {
         let spec = &result[0];
 
         // Check transforms exist
-        let transforms = spec["transform"].as_array().expect("Should have transforms");
+        let transforms = spec["transform"]
+            .as_array()
+            .expect("Should have transforms");
         assert!(!transforms.is_empty());
 
         // Check for window transform (lead operation)
@@ -4323,26 +4331,22 @@ mod tests {
 
         // Check for detail encoding with segment_id
         let encoding = spec["encoding"].as_object().unwrap();
-        assert!(encoding.contains_key("detail"), "Should have detail encoding");
+        assert!(
+            encoding.contains_key("detail"),
+            "Should have detail encoding"
+        );
         assert_eq!(
-            encoding["detail"]["field"],
-            "__segment_id__",
+            encoding["detail"]["field"], "__segment_id__",
             "Detail should use segment_id"
         );
 
         // Check that x/y use _final fields
         assert!(
-            encoding["x"]["field"]
-                .as_str()
-                .unwrap()
-                .ends_with("_final"),
+            encoding["x"]["field"].as_str().unwrap().ends_with("_final"),
             "x should use _final field"
         );
         assert!(
-            encoding["y"]["field"]
-                .as_str()
-                .unwrap()
-                .ends_with("_final"),
+            encoding["y"]["field"].as_str().unwrap().ends_with("_final"),
             "y should use _final field"
         );
     }
