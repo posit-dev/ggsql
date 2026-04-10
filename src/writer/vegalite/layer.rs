@@ -109,7 +109,10 @@ pub fn validate_layer_columns(layer: &Layer, data: &DataFrame, layer_idx: usize)
 /// Data prepared for a layer - either single dataset or multiple components
 pub enum PreparedData {
     /// Standard single dataset (most geoms)
-    Single { values: Vec<Value> },
+    Single {
+        values: Vec<Value>,
+        metadata: Box<dyn Any + Send + Sync>,
+    },
     /// Multiple component datasets (boxplot, violin, errorbar)
     Composite {
         components: HashMap<String, Vec<Value>>,
@@ -198,7 +201,7 @@ pub trait GeomRenderer: Send + Sync {
         } else {
             dataframe_to_values_with_bins(df, binned_columns)?
         };
-        Ok(PreparedData::Single { values })
+        Ok(PreparedData::Single { values, metadata: Box::new(()) })
     }
 
     // === Phase 2: Encoding Modifications ===
@@ -478,16 +481,10 @@ impl GeomRenderer for LineRenderer {
 
         let needs_segmentation = !varying_aesthetics.is_empty();
 
-        if needs_segmentation {
-            // Use Composite with empty component name so dataset key = data_key (not data_key + suffix)
-            // This ensures the source filter works correctly with the unified dataset
-            Ok(PreparedData::Composite {
-                components: [("".to_string(), values)].iter().cloned().collect(),
-                metadata: Box::new(()),
-            })
-        } else {
-            Ok(PreparedData::Single { values })
-        }
+        Ok(PreparedData::Single {
+            values,
+            metadata: Box::new(needs_segmentation),
+        })
     }
 
     fn modify_encoding(
@@ -512,10 +509,19 @@ impl GeomRenderer for LineRenderer {
         _data_key: &str,
         prepared: &PreparedData,
     ) -> Result<Vec<Value>> {
-        // Early return for standard line rendering
-        let PreparedData::Composite { .. } = prepared else {
-            return Ok(vec![layer_spec]);
+        // Check if segmentation is needed via metadata
+        let PreparedData::Single { metadata, .. } = prepared else {
+            return Err(GgsqlError::InternalError(
+                "LineRenderer expects PreparedData::Single".to_string(),
+            ));
         };
+
+        let needs_segmentation = metadata.downcast_ref::<bool>() == Some(&true);
+
+        // Early return for standard line rendering
+        if !needs_segmentation {
+            return Ok(vec![layer_spec]);
+        }
 
         // Get position column names
         let x_col = naming::aesthetic_column("pos1");

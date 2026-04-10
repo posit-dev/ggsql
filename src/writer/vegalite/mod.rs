@@ -101,7 +101,7 @@ fn prepare_layer_data(
 
         // Add data to individual datasets based on prepared type
         match &prepared {
-            PreparedData::Single { values } => {
+            PreparedData::Single { values, .. } => {
                 individual_datasets.insert(data_key.clone(), json!(values));
             }
             PreparedData::Composite { components, .. } => {
