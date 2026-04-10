@@ -425,7 +425,7 @@ fn aesthetic_varies_within_groups(
 
 /// Renderer for line geom - preserves data order for correct line rendering
 ///
-/// Automatically detects when continuous material aesthetics (stroke, linewidth) vary
+/// Automatically detects when continuous material aesthetics (stroke, linewidth, opacity) vary
 /// within partition groups and converts to segmented rendering using detail encoding.
 /// Discrete material aesthetics (linetype, or discrete stroke) already define groups
 /// via partition_by and don't require special handling.
@@ -441,7 +441,7 @@ impl GeomRenderer for LineRenderer {
     ) -> Result<PreparedData> {
         // Continuous material aesthetics that can trigger segmentation
         // (linetype is always discrete and already handled via partition_by)
-        let material_aesthetics: &[&'static str] = &["stroke", "linewidth"];
+        let material_aesthetics: &[&'static str] = &["stroke", "linewidth", "opacity"];
 
         // Start with existing partition_by (includes discrete material aesthetics already)
         let partition_columns: Vec<String> = layer.partition_by.clone();
@@ -544,8 +544,8 @@ impl GeomRenderer for LineRenderer {
             }
         }
 
-        // Handle varying stroke: apply segmentation
-        if !varying_aesthetics.contains(&"stroke") {
+        // Handle varying stroke/opacity: apply segmentation
+        if !varying_aesthetics.contains(&"stroke") && !varying_aesthetics.contains(&"opacity") {
             // Only linewidth varies, trail mark handles it natively
             return Ok(vec![layer_spec]);
         }
