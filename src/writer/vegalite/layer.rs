@@ -420,16 +420,12 @@ fn aesthetic_varies_within_groups(
     Ok(false)
 }
 
-/// Metadata for segmented line rendering
-#[derive(Debug)]
-struct LineSegmentMetadata {
-    partition_columns: Vec<String>,
-}
-
 /// Renderer for line geom - preserves data order for correct line rendering
 ///
-/// Automatically detects when material aesthetics (stroke, linetype) vary within
-/// partition groups and converts to segmented rendering using detail encoding.
+/// Automatically detects when continuous material aesthetics (stroke, linewidth) vary
+/// within partition groups and converts to segmented rendering using detail encoding.
+/// Discrete material aesthetics (linetype, or discrete stroke) already define groups
+/// via partition_by and don't require special handling.
 pub struct LineRenderer;
 
 impl GeomRenderer for LineRenderer {
@@ -440,32 +436,14 @@ impl GeomRenderer for LineRenderer {
         _data_key: &str,
         binned_columns: &HashMap<String, Vec<f64>>,
     ) -> Result<PreparedData> {
-        // Identify material aesthetics that are column-mapped
-        let material_aesthetics = ["stroke", "linetype"];
-        let mut varying_aesthetics = Vec::new();
+        // Continuous material aesthetics that can trigger segmentation
+        // (linetype is always discrete and already handled via partition_by)
+        let material_aesthetics = ["stroke", "linewidth"];
 
-        // Collect (aesthetic, column) pairs for material aesthetics that are mapped to columns
-        let mapped_material_aesthetics: Vec<(&str, String)> = material_aesthetics
-            .iter()
-            .filter_map(|aesthetic| {
-                if let Some(AestheticValue::Column { name: col, .. }) = layer.mappings.get(aesthetic) {
-                    Some((*aesthetic, col.clone()))
-                } else {
-                    None
-                }
-            })
-            .collect();
+        // Start with existing partition_by (includes discrete material aesthetics already)
+        let partition_columns: Vec<String> = layer.partition_by.clone();
 
-        // Build list of partition columns EXCLUDING the material aesthetics we're checking
-        // (we need to check if they vary within the other partition groups)
-        let mut partition_columns: Vec<String> = layer
-            .partition_by
-            .iter()
-            .filter(|col| !mapped_material_aesthetics.iter().any(|(_, c)| c == *col))
-            .cloned()
-            .collect();
-
-        // Compute group boundaries once (without the material aesthetics)
+        // Compute group boundaries based on existing partitions
         let n_rows = df.height();
         let group_boundaries = if partition_columns.is_empty() || n_rows <= 1 {
             vec![0, n_rows]
@@ -475,16 +453,19 @@ impl GeomRenderer for LineRenderer {
             boundaries
         };
 
-        // Check each mapped material aesthetic for within-group variation
-        for (aesthetic, col) in &mapped_material_aesthetics {
-            // Check if this aesthetic varies within partition groups
-            let varies = aesthetic_varies_within_groups(df, col, &group_boundaries)?;
-            if varies {
-                varying_aesthetics.push(*aesthetic);
-            } else {
-                // If it doesn't vary within groups, treat it as a partition column
-                // (boundaries remain the same since the aesthetic changes only where partitions change)
-                partition_columns.push(col.clone());
+        // Check continuous material aesthetics (not in partition_by) for within-group variation
+        let mut varying_aesthetics: Vec<&str> = Vec::new();
+
+        for aesthetic in material_aesthetics {
+            if let Some(AestheticValue::Column { name: col, .. }) = layer.mappings.get(aesthetic) {
+                // Skip if already in partition_by (discrete, already defines groups)
+                if !layer.partition_by.contains(col) {
+                    // Continuous: check if varies within groups
+                    if aesthetic_varies_within_groups(df, col, &group_boundaries)? {
+                        varying_aesthetics.push(aesthetic);
+                        // Don't add to partition_columns - continuous values shouldn't partition
+                    }
+                }
             }
         }
 
@@ -502,7 +483,7 @@ impl GeomRenderer for LineRenderer {
             // This ensures the source filter works correctly with the unified dataset
             Ok(PreparedData::Composite {
                 components: [("".to_string(), values)].iter().cloned().collect(),
-                metadata: Box::new(LineSegmentMetadata { partition_columns }),
+                metadata: Box::new(()),
             })
         } else {
             Ok(PreparedData::Single { values })
@@ -527,23 +508,13 @@ impl GeomRenderer for LineRenderer {
     fn finalize(
         &self,
         mut layer_spec: Value,
-        _layer: &Layer,
+        layer: &Layer,
         _data_key: &str,
         prepared: &PreparedData,
     ) -> Result<Vec<Value>> {
         // Early return for standard line rendering
-        let PreparedData::Composite { metadata, .. } = prepared else {
+        let PreparedData::Composite { .. } = prepared else {
             return Ok(vec![layer_spec]);
-        };
-
-        // Extract partition columns from metadata
-        let metadata_any = metadata.as_ref() as &dyn Any;
-        let partition_columns = if let Some(meta) = metadata_any.downcast_ref::<LineSegmentMetadata>() {
-            &meta.partition_columns
-        } else {
-            return Err(GgsqlError::InternalError(
-                "Invalid metadata type for segmented line".to_string(),
-            ));
         };
 
         // Get position column names
@@ -583,8 +554,8 @@ impl GeomRenderer for LineRenderer {
             "sort": [{"field": ROW_INDEX_COLUMN}]
         });
 
-        if !partition_columns.is_empty() {
-            window_transform["groupby"] = json!(partition_columns);
+        if !layer.partition_by.is_empty() {
+            window_transform["groupby"] = json!(layer.partition_by);
         }
 
         transforms.push(window_transform);
