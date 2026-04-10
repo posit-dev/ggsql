@@ -52,6 +52,21 @@ export function activate(context: vscode.ExtensionContext): void {
     }
 
     log(`Registered ${drivers.length} connection drivers`);
+
+    // Register "Source Current File" command for the editor run button
+    context.subscriptions.push(
+        vscode.commands.registerCommand('ggsql.sourceCurrentFile', async () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor || editor.document.languageId !== 'ggsql') {
+                return;
+            }
+            const code = editor.document.getText();
+            if (code.trim().length === 0) {
+                return;
+            }
+            positronApi.runtime.executeCode('ggsql', code, true);
+        })
+    );
 }
 
 /**
