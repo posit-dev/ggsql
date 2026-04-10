@@ -441,7 +441,7 @@ impl GeomRenderer for LineRenderer {
     ) -> Result<PreparedData> {
         // Continuous material aesthetics that can trigger segmentation
         // (linetype is always discrete and already handled via partition_by)
-        let material_aesthetics = ["stroke", "linewidth"];
+        let material_aesthetics: &[&'static str] = &["stroke", "linewidth"];
 
         // Start with existing partition_by (includes discrete material aesthetics already)
         let partition_columns: Vec<String> = layer.partition_by.clone();
@@ -457,9 +457,9 @@ impl GeomRenderer for LineRenderer {
         };
 
         // Check continuous material aesthetics (not in partition_by) for within-group variation
-        let mut varying_aesthetics: Vec<&str> = Vec::new();
+        let mut varying_aesthetics: Vec<&'static str> = Vec::new();
 
-        for aesthetic in material_aesthetics {
+        for &aesthetic in material_aesthetics {
             if let Some(AestheticValue::Column { name: col, .. }) = layer.mappings.get(aesthetic) {
                 // Skip if already in partition_by (discrete, already defines groups)
                 if !layer.partition_by.contains(col) {
@@ -479,11 +479,9 @@ impl GeomRenderer for LineRenderer {
             dataframe_to_values_with_bins(df, binned_columns)?
         };
 
-        let needs_segmentation = !varying_aesthetics.is_empty();
-
         Ok(PreparedData::Single {
             values,
-            metadata: Box::new(needs_segmentation),
+            metadata: Box::new(varying_aesthetics),
         })
     }
 
@@ -516,20 +514,54 @@ impl GeomRenderer for LineRenderer {
             ));
         };
 
-        let needs_segmentation = metadata.downcast_ref::<bool>() == Some(&true);
+        // Get varying aesthetics from metadata
+        let Some(varying_aesthetics) = metadata.downcast_ref::<Vec<&'static str>>() else {
+            return Ok(vec![layer_spec]);
+        };
 
-        // Early return for standard line rendering
-        if !needs_segmentation {
+        // Handle varying linewidth: switch to trail mark and translate encodings
+        if varying_aesthetics.contains(&"linewidth") {
+            layer_spec["mark"] = json!({"type": "trail", "clip": true, "stroke": null});
+
+            // Translate line encodings to trail encodings
+            if let Some(encoding_obj) = layer_spec.get_mut("encoding") {
+                if let Some(encoding_map) = encoding_obj.as_object_mut() {
+                    // strokeWidth → size
+                    if let Some(stroke_width) = encoding_map.remove("strokeWidth") {
+                        encoding_map.insert("size".to_string(), stroke_width);
+                    }
+
+                    // stroke → fill
+                    if let Some(stroke) = encoding_map.remove("stroke") {
+                        encoding_map.insert("fill".to_string(), stroke);
+                    }
+
+                    // opacity → fillOpacity
+                    if let Some(opacity) = encoding_map.remove("opacity") {
+                        encoding_map.insert("fillOpacity".to_string(), opacity);
+                    }
+                }
+            }
+        }
+
+        // Handle varying stroke: apply segmentation
+        if !varying_aesthetics.contains(&"stroke") {
+            // Only linewidth varies, trail mark handles it natively
             return Ok(vec![layer_spec]);
         }
 
-        // Get position column names
-        let x_col = naming::aesthetic_column("pos1");
-        let y_col = naming::aesthetic_column("pos2");
+        // Build list of fields to segment (always x/y, plus size if linewidth varies)
+        let mut segment_fields = vec![
+            ("x", naming::aesthetic_column("pos1")),
+            ("y", naming::aesthetic_column("pos2")),
+        ];
+        if varying_aesthetics.contains(&"linewidth") {
+            segment_fields.push(("size", naming::aesthetic_column("linewidth")));
+        }
 
         // Segmented rendering using detail encoding:
         // 1. Create segment IDs (row_index serves as segment ID)
-        // 2. Create next row's x/y values using window transform
+        // 2. Create next row's values using window transform
         // 3. Flatten to create 2 rows per segment (point_index: 0=start, 1=end)
         // 4. Use calculate to pick current or next based on point_index
         // 5. Add segment ID to detail encoding
@@ -542,18 +574,16 @@ impl GeomRenderer for LineRenderer {
             .unwrap_or_default();
 
         // Step 1 & 2: Window transform to get next row's values
-        let window_ops = vec![
-            json!({
-                "op": "lead",
-                "field": x_col,
-                "as": format!("{}_next", x_col)
-            }),
-            json!({
-                "op": "lead",
-                "field": y_col,
-                "as": format!("{}_next", y_col)
-            }),
-        ];
+        let window_ops: Vec<Value> = segment_fields
+            .iter()
+            .map(|(_, field)| {
+                json!({
+                    "op": "lead",
+                    "field": field,
+                    "as": format!("{}_next", field)
+                })
+            })
+            .collect();
 
         let mut window_transform = json!({
             "window": window_ops,
@@ -567,8 +597,10 @@ impl GeomRenderer for LineRenderer {
         transforms.push(window_transform);
 
         // Step 2b: Filter out last row in each group (no next point)
+        // Check the first field (x) for null to detect end of segments
+        let first_field = &segment_fields[0].1;
         transforms.push(json!({
-            "filter": format!("datum.{}_next != null", x_col)
+            "filter": format!("datum.{}_next != null", first_field)
         }));
 
         // Step 3: Flatten to create 2 rows per segment
@@ -583,16 +615,13 @@ impl GeomRenderer for LineRenderer {
             "as": ["__point_index__"]
         }));
 
-        // Step 4: Calculate actual x/y based on point_index
-        transforms.push(json!({
-            "calculate": format!("datum.__point_index__ == 0 ? datum.{} : datum.{}_next", x_col, x_col),
-            "as": format!("{}_final", x_col)
-        }));
-
-        transforms.push(json!({
-            "calculate": format!("datum.__point_index__ == 0 ? datum.{} : datum.{}_next", y_col, y_col),
-            "as": format!("{}_final", y_col)
-        }));
+        // Step 4: Calculate actual field values based on point_index
+        for (_, field) in &segment_fields {
+            transforms.push(json!({
+                "calculate": format!("datum.__point_index__ == 0 ? datum.{} : datum.{}_next", field, field),
+                "as": format!("{}_final", field)
+            }));
+        }
 
         // Step 5: Create segment ID (use original row_index)
         transforms.push(json!({
@@ -604,20 +633,15 @@ impl GeomRenderer for LineRenderer {
         // Don't set layer_spec["data"] - use the unified top-level dataset
         // The source filter transform will select the correct rows
 
-        // Update encodings to use final x/y and add segment_id to detail
+        // Update encodings to use final field values and add segment_id to detail
         if let Some(encoding_obj) = layer_spec.get_mut("encoding") {
             if let Some(encoding_map) = encoding_obj.as_object_mut() {
-                // Update x encoding to use x_final
-                if let Some(x_enc) = encoding_map.get_mut("x") {
-                    if let Some(x_obj) = x_enc.as_object_mut() {
-                        x_obj.insert("field".to_string(), json!(format!("{}_final", x_col)));
-                    }
-                }
-
-                // Update y encoding to use y_final
-                if let Some(y_enc) = encoding_map.get_mut("y") {
-                    if let Some(y_obj) = y_enc.as_object_mut() {
-                        y_obj.insert("field".to_string(), json!(format!("{}_final", y_col)));
+                // Update each field encoding to use _final
+                for (encoding_name, field) in &segment_fields {
+                    if let Some(enc) = encoding_map.get_mut(*encoding_name) {
+                        if let Some(enc_obj) = enc.as_object_mut() {
+                            enc_obj.insert("field".to_string(), json!(format!("{}_final", field)));
+                        }
                     }
                 }
 
