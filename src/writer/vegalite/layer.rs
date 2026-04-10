@@ -314,27 +314,18 @@ impl GeomRenderer for BarRenderer {
 // Path Renderer
 // =============================================================================
 
-/// Renderer for path geom - adds order channel for natural data order
+/// Renderer for path and line geoms - preserves data order for correct rendering
+///
+/// Automatically detects when continuous material aesthetics (stroke, linewidth, opacity) vary
+/// within partition groups and converts to segmented rendering using detail encoding.
+/// Discrete material aesthetics (linetype, or discrete stroke) already define groups
+/// via partition_by and don't require special handling.
+///
+/// Handles both `line` and `path` geoms - the only difference is the mark type used.
 pub struct PathRenderer;
 
-impl GeomRenderer for PathRenderer {
-    fn modify_encoding(
-        &self,
-        encoding: &mut Map<String, Value>,
-        _layer: &Layer,
-        _context: &RenderContext,
-    ) -> Result<()> {
-        // Use row index field to preserve natural data order
-        encoding.insert(
-            "order".to_string(),
-            json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
-        );
-        Ok(())
-    }
-}
-
 // =============================================================================
-// Line Renderer
+// Helper functions for path/line segmentation
 // =============================================================================
 
 /// Find row indices where any of the specified columns change value.
@@ -423,15 +414,7 @@ fn aesthetic_varies_within_groups(
     Ok(false)
 }
 
-/// Renderer for line geom - preserves data order for correct line rendering
-///
-/// Automatically detects when continuous material aesthetics (stroke, linewidth, opacity) vary
-/// within partition groups and converts to segmented rendering using detail encoding.
-/// Discrete material aesthetics (linetype, or discrete stroke) already define groups
-/// via partition_by and don't require special handling.
-pub struct LineRenderer;
-
-impl GeomRenderer for LineRenderer {
+impl GeomRenderer for PathRenderer {
     fn prepare_data(
         &self,
         df: &DataFrame,
@@ -507,10 +490,10 @@ impl GeomRenderer for LineRenderer {
         _data_key: &str,
         prepared: &PreparedData,
     ) -> Result<Vec<Value>> {
-        // Check if segmentation is needed via metadata
+        // Get metadata from prepared data
         let PreparedData::Single { metadata, .. } = prepared else {
             return Err(GgsqlError::InternalError(
-                "LineRenderer expects PreparedData::Single".to_string(),
+                "PathRenderer expects PreparedData::Single".to_string(),
             ));
         };
 
@@ -2207,7 +2190,7 @@ impl GeomRenderer for BoxplotRenderer {
 pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
     match geom.geom_type() {
         GeomType::Path => Box::new(PathRenderer),
-        GeomType::Line => Box::new(LineRenderer),
+        GeomType::Line => Box::new(PathRenderer),
         GeomType::Bar => Box::new(BarRenderer),
         GeomType::Rect => Box::new(RectRenderer),
         GeomType::Ribbon => Box::new(RibbonRenderer),
