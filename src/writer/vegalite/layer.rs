@@ -404,7 +404,7 @@ fn aesthetic_varies_within_groups(
         }
 
         // Slice the series for this group and check uniqueness
-        let segment = series.slice(start as i64, (end - start) as usize);
+        let segment = series.slice(start as i64, end - start);
         let n_unique = segment.n_unique().map_err(|e| {
             GgsqlError::InternalError(format!("Failed to count unique values: {}", e))
         })?;
