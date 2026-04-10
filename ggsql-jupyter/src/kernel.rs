@@ -650,7 +650,11 @@ impl KernelServer {
             }
             // Unknown comm — still respond to avoid RPC timeouts
             else {
-                tracing::warn!("JSON-RPC request for unknown comm_id: {}, method: {}", comm_id, method);
+                tracing::warn!(
+                    "JSON-RPC request for unknown comm_id: {}, method: {}",
+                    comm_id,
+                    method
+                );
                 self.send_shell_reply(
                     "comm_msg",
                     json!({
