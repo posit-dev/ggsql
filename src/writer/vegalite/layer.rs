@@ -334,10 +334,180 @@ impl GeomRenderer for PathRenderer {
 // Line Renderer
 // =============================================================================
 
+/// Find indices where group values change in a DataFrame
+///
+/// Returns a sorted vector of indices marking group boundaries. The first element
+/// is always 0 (start of first group), followed by indices where any of the
+/// group columns change value.
+fn find_group_boundaries(df: &DataFrame, group_columns: &[String]) -> Result<Vec<usize>> {
+    use polars::prelude::*;
+
+    let n_rows = df.height();
+
+    if group_columns.is_empty() {
+        // No grouping: treat entire dataset as one group
+        return Ok(vec![0, n_rows]);
+    }
+
+    if n_rows <= 1 {
+        return Ok(vec![0, n_rows]);
+    }
+
+    // Initialize change mask as all false (no changes)
+    let mut change_mask = BooleanChunked::full("change_mask".into(), false, n_rows - 1);
+
+    // For each group column, OR its change mask into the accumulator
+    for col_name in group_columns {
+        let series = df.column(col_name).map_err(|e| {
+            GgsqlError::InternalError(format!("Group column '{}' not found: {}", col_name, e))
+        })?;
+
+        // Compare each row with the previous row
+        // curr = series[1..n], prev = series[0..n-1]
+        let curr = series.slice(1, n_rows - 1);
+        let prev = series.slice(0, n_rows - 1);
+
+        // Get boolean mask where values differ
+        let not_equal = curr.not_equal(&prev).map_err(|e| {
+            GgsqlError::InternalError(format!("Failed to compare column '{}': {}", col_name, e))
+        })?;
+
+        // OR with accumulator (change if this column OR any previous column changed)
+        change_mask = &change_mask | &not_equal;
+    }
+
+    // Extract indices where mask is true (offset by 1 since we compared with previous)
+    let mut boundaries = vec![0];
+    for (idx, changed) in change_mask.into_iter().enumerate() {
+        if changed == Some(true) {
+            boundaries.push(idx + 1);
+        }
+    }
+
+    // Add final boundary (end of data)
+    boundaries.push(n_rows);
+
+    Ok(boundaries)
+}
+
+/// Check if an aesthetic varies within any group segment
+///
+/// Uses precomputed group boundaries to efficiently check if the aesthetic
+/// has multiple distinct values within any group segment.
+fn aesthetic_varies_within_groups(
+    df: &DataFrame,
+    aesthetic_col: &str,
+    group_boundaries: &[usize],
+) -> Result<bool> {
+    let series = df.column(aesthetic_col).map_err(|e| {
+        GgsqlError::InternalError(format!("Column '{}' not found: {}", aesthetic_col, e))
+    })?;
+
+    // Check each group segment
+    for window in group_boundaries.windows(2) {
+        let start = window[0];
+        let end = window[1];
+
+        if end - start < 2 {
+            continue; // Single-row groups can't vary
+        }
+
+        // Slice the series for this group and check uniqueness
+        let segment = series.slice(start as i64, (end - start) as usize);
+        let n_unique = segment.n_unique().map_err(|e| {
+            GgsqlError::InternalError(format!("Failed to count unique values: {}", e))
+        })?;
+
+        if n_unique > 1 {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+/// Metadata for segmented line rendering
+#[derive(Debug)]
+struct LineSegmentMetadata {
+    partition_columns: Vec<String>,
+}
+
 /// Renderer for line geom - preserves data order for correct line rendering
+///
+/// Automatically detects when material aesthetics (stroke, linetype) vary within
+/// partition groups and converts to segmented rendering using detail encoding.
 pub struct LineRenderer;
 
 impl GeomRenderer for LineRenderer {
+    fn prepare_data(
+        &self,
+        df: &DataFrame,
+        layer: &Layer,
+        _data_key: &str,
+        binned_columns: &HashMap<String, Vec<f64>>,
+    ) -> Result<PreparedData> {
+        // Identify material aesthetics that are column-mapped
+        let material_aesthetics = ["stroke", "linetype"];
+        let mut varying_aesthetics = Vec::new();
+
+        // Collect (aesthetic, column) pairs for material aesthetics that are mapped to columns
+        let mapped_material_aesthetics: Vec<(&str, String)> = material_aesthetics
+            .iter()
+            .filter_map(|aesthetic| {
+                if let Some(AestheticValue::Column { name: col, .. }) = layer.mappings.get(aesthetic) {
+                    Some((*aesthetic, col.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Build list of partition columns EXCLUDING the material aesthetics we're checking
+        // (we need to check if they vary within the other partition groups)
+        let mut partition_columns: Vec<String> = layer
+            .partition_by
+            .iter()
+            .filter(|col| !mapped_material_aesthetics.iter().any(|(_, c)| c == *col))
+            .cloned()
+            .collect();
+
+        // Compute group boundaries once (without the material aesthetics)
+        let group_boundaries = find_group_boundaries(df, &partition_columns)?;
+
+        // Check each mapped material aesthetic for within-group variation
+        for (aesthetic, col) in &mapped_material_aesthetics {
+            // Check if this aesthetic varies within partition groups
+            let varies = aesthetic_varies_within_groups(df, col, &group_boundaries)?;
+            if varies {
+                varying_aesthetics.push(*aesthetic);
+            } else {
+                // If it doesn't vary within groups, treat it as a partition column
+                // (boundaries remain the same since the aesthetic changes only where partitions change)
+                partition_columns.push(col.clone());
+            }
+        }
+
+        // Return the data with segmentation metadata if needed
+        let values = if binned_columns.is_empty() {
+            dataframe_to_values(df)?
+        } else {
+            dataframe_to_values_with_bins(df, binned_columns)?
+        };
+
+        let needs_segmentation = !varying_aesthetics.is_empty();
+
+        if needs_segmentation {
+            // Use Composite with empty component name so dataset key = data_key (not data_key + suffix)
+            // This ensures the source filter works correctly with the unified dataset
+            Ok(PreparedData::Composite {
+                components: [("".to_string(), values)].iter().cloned().collect(),
+                metadata: Box::new(LineSegmentMetadata { partition_columns }),
+            })
+        } else {
+            Ok(PreparedData::Single { values })
+        }
+    }
+
     fn modify_encoding(
         &self,
         encoding: &mut Map<String, Value>,
@@ -351,6 +521,137 @@ impl GeomRenderer for LineRenderer {
             json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
         );
         Ok(())
+    }
+
+    fn finalize(
+        &self,
+        mut layer_spec: Value,
+        _layer: &Layer,
+        _data_key: &str,
+        prepared: &PreparedData,
+    ) -> Result<Vec<Value>> {
+        // Early return for standard line rendering
+        let PreparedData::Composite { metadata, .. } = prepared else {
+            return Ok(vec![layer_spec]);
+        };
+
+        // Extract partition columns from metadata
+        let metadata_any = metadata.as_ref() as &dyn Any;
+        let partition_columns = if let Some(meta) = metadata_any.downcast_ref::<LineSegmentMetadata>() {
+            &meta.partition_columns
+        } else {
+            return Err(GgsqlError::InternalError(
+                "Invalid metadata type for segmented line".to_string(),
+            ));
+        };
+
+        // Get position column names
+        let x_col = naming::aesthetic_column("pos1");
+        let y_col = naming::aesthetic_column("pos2");
+
+        // Segmented rendering using detail encoding:
+        // 1. Create segment IDs (row_index serves as segment ID)
+        // 2. Create next row's x/y values using window transform
+        // 3. Flatten to create 2 rows per segment (point_index: 0=start, 1=end)
+        // 4. Use calculate to pick current or next based on point_index
+        // 5. Add segment ID to detail encoding
+
+        // Preserve existing transforms (e.g., source filter)
+        let mut transforms = layer_spec
+            .get("transform")
+            .and_then(|t| t.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        // Step 1 & 2: Window transform to get next row's values
+        let window_ops = vec![
+            json!({
+                "op": "lead",
+                "field": x_col,
+                "as": format!("{}_next", x_col)
+            }),
+            json!({
+                "op": "lead",
+                "field": y_col,
+                "as": format!("{}_next", y_col)
+            }),
+        ];
+
+        let mut window_transform = json!({
+            "window": window_ops,
+            "sort": [{"field": ROW_INDEX_COLUMN}]
+        });
+
+        if !partition_columns.is_empty() {
+            window_transform["groupby"] = json!(partition_columns);
+        }
+
+        transforms.push(window_transform);
+
+        // Step 2b: Filter out last row in each group (no next point)
+        transforms.push(json!({
+            "filter": format!("datum.{}_next != null", x_col)
+        }));
+
+        // Step 3: Flatten to create 2 rows per segment
+        // Create a constant array [0, 1] to flatten
+        transforms.push(json!({
+            "calculate": "[0, 1]",
+            "as": "__segment_points__"
+        }));
+
+        transforms.push(json!({
+            "flatten": ["__segment_points__"],
+            "as": ["__point_index__"]
+        }));
+
+        // Step 4: Calculate actual x/y based on point_index
+        transforms.push(json!({
+            "calculate": format!("datum.__point_index__ == 0 ? datum.{} : datum.{}_next", x_col, x_col),
+            "as": format!("{}_final", x_col)
+        }));
+
+        transforms.push(json!({
+            "calculate": format!("datum.__point_index__ == 0 ? datum.{} : datum.{}_next", y_col, y_col),
+            "as": format!("{}_final", y_col)
+        }));
+
+        // Step 5: Create segment ID (use original row_index)
+        transforms.push(json!({
+            "calculate": format!("datum.{}", ROW_INDEX_COLUMN),
+            "as": "__segment_id__"
+        }));
+
+        layer_spec["transform"] = json!(transforms);
+        // Don't set layer_spec["data"] - use the unified top-level dataset
+        // The source filter transform will select the correct rows
+
+        // Update encodings to use final x/y and add segment_id to detail
+        if let Some(encoding_obj) = layer_spec.get_mut("encoding") {
+            if let Some(encoding_map) = encoding_obj.as_object_mut() {
+                // Update x encoding to use x_final
+                if let Some(x_enc) = encoding_map.get_mut("x") {
+                    if let Some(x_obj) = x_enc.as_object_mut() {
+                        x_obj.insert("field".to_string(), json!(format!("{}_final", x_col)));
+                    }
+                }
+
+                // Update y encoding to use y_final
+                if let Some(y_enc) = encoding_map.get_mut("y") {
+                    if let Some(y_obj) = y_enc.as_object_mut() {
+                        y_obj.insert("field".to_string(), json!(format!("{}_final", y_col)));
+                    }
+                }
+
+                // Add segment_id to detail encoding
+                encoding_map.insert("detail".to_string(), json!({
+                    "field": "__segment_id__",
+                    "type": "nominal"
+                }));
+            }
+        }
+
+        Ok(vec![layer_spec])
     }
 }
 
