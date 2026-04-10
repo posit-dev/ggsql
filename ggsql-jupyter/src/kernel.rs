@@ -648,9 +648,23 @@ impl KernelServer {
                 self.handle_data_explorer_rpc(method, rpc_id, comm_id, parent, identities)
                     .await?;
             }
-            // Unknown comm
+            // Unknown comm — still respond to avoid RPC timeouts
             else {
-                tracing::warn!("Message for unknown comm_id: {}", comm_id);
+                tracing::warn!("JSON-RPC request for unknown comm_id: {}, method: {}", comm_id, method);
+                self.send_shell_reply(
+                    "comm_msg",
+                    json!({
+                        "comm_id": comm_id,
+                        "data": {
+                            "jsonrpc": "2.0",
+                            "id": rpc_id,
+                            "result": null
+                        }
+                    }),
+                    parent,
+                    identities,
+                )
+                .await?;
             }
         }
 
