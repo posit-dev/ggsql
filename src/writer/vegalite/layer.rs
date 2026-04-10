@@ -334,32 +334,29 @@ impl GeomRenderer for PathRenderer {
 // Line Renderer
 // =============================================================================
 
-/// Find indices where group values change in a DataFrame
+/// Find row indices where any of the specified columns change value.
 ///
-/// Returns a sorted vector of indices marking group boundaries. The first element
-/// is always 0 (start of first group), followed by indices where any of the
-/// group columns change value.
-fn find_group_boundaries(df: &DataFrame, group_columns: &[String]) -> Result<Vec<usize>> {
+/// Returns a sorted vector starting with 0 (first row), followed by indices
+/// where any column value differs from the previous row. Does not include
+/// the final boundary (n_rows).
+///
+/// Used by both line segmentation and text font run-length encoding.
+fn find_change_starts(df: &DataFrame, columns: &[String]) -> Result<Vec<usize>> {
     use polars::prelude::*;
 
     let n_rows = df.height();
 
-    if group_columns.is_empty() {
-        // No grouping: treat entire dataset as one group
-        return Ok(vec![0, n_rows]);
-    }
-
-    if n_rows <= 1 {
-        return Ok(vec![0, n_rows]);
+    if columns.is_empty() || n_rows <= 1 {
+        return Ok(vec![0]);
     }
 
     // Initialize change mask as all false (no changes)
     let mut change_mask = BooleanChunked::full("change_mask".into(), false, n_rows - 1);
 
-    // For each group column, OR its change mask into the accumulator
-    for col_name in group_columns {
+    // For each column, OR its change mask into the accumulator
+    for col_name in columns {
         let series = df.column(col_name).map_err(|e| {
-            GgsqlError::InternalError(format!("Group column '{}' not found: {}", col_name, e))
+            GgsqlError::InternalError(format!("Column '{}' not found: {}", col_name, e))
         })?;
 
         // Compare each row with the previous row
@@ -377,17 +374,14 @@ fn find_group_boundaries(df: &DataFrame, group_columns: &[String]) -> Result<Vec
     }
 
     // Extract indices where mask is true (offset by 1 since we compared with previous)
-    let mut boundaries = vec![0];
+    let mut change_starts = vec![0];
     for (idx, changed) in change_mask.into_iter().enumerate() {
         if changed == Some(true) {
-            boundaries.push(idx + 1);
+            change_starts.push(idx + 1);
         }
     }
 
-    // Add final boundary (end of data)
-    boundaries.push(n_rows);
-
-    Ok(boundaries)
+    Ok(change_starts)
 }
 
 /// Check if an aesthetic varies within any group segment
@@ -472,7 +466,14 @@ impl GeomRenderer for LineRenderer {
             .collect();
 
         // Compute group boundaries once (without the material aesthetics)
-        let group_boundaries = find_group_boundaries(df, &partition_columns)?;
+        let n_rows = df.height();
+        let group_boundaries = if partition_columns.is_empty() || n_rows <= 1 {
+            vec![0, n_rows]
+        } else {
+            let mut boundaries = find_change_starts(df, &partition_columns)?;
+            boundaries.push(n_rows);
+            boundaries
+        };
 
         // Check each mapped material aesthetic for within-group variation
         for (aesthetic, col) in &mapped_material_aesthetics {
@@ -871,43 +872,29 @@ impl TextRenderer {
             return Ok((DataFrame::default(), Vec::new()));
         }
 
-        // Build boolean mask showing where any font property changes
-        let mut changed = BooleanChunked::full("changed".into(), false, nrows);
-        let mut font_columns: HashMap<&str, &polars::prelude::Column> = HashMap::new();
-
-        for aesthetic in [
+        // Collect font property column names that exist in the DataFrame
+        let font_aesthetics = [
             "typeface",
             "fontweight",
             "italic",
             "hjust",
             "vjust",
             "rotation",
-        ] {
-            if let Ok(col) = df.column(&naming::aesthetic_column(aesthetic)) {
-                let col_changed = col.not_equal(&col.shift(1)).map_err(|e| {
-                    GgsqlError::InternalError(format!("Failed to compare column: {}", e))
-                })?;
-                changed = &changed | &col_changed;
+        ];
+
+        let mut font_column_names = Vec::new();
+        let mut font_columns: HashMap<&str, &polars::prelude::Column> = HashMap::new();
+
+        for aesthetic in font_aesthetics {
+            let col_name = naming::aesthetic_column(aesthetic);
+            if let Ok(col) = df.column(&col_name) {
+                font_column_names.push(col_name);
                 font_columns.insert(aesthetic, col);
             }
         }
 
-        // Extract change indices (where mask is true)
-        // shift() creates nulls at position 0, which we treat as a change point
-        let mut change_indices: Vec<usize> = Vec::new();
-        for (i, val) in changed.iter().enumerate() {
-            if val == Some(true) || val.is_none() {
-                // Treat null (from shift) or true as change point
-                change_indices.push(i);
-            }
-        }
-
-        // First row is always a change point (shift comparison is null)
-        if !change_indices.is_empty() && change_indices[0] != 0 {
-            change_indices.insert(0, 0);
-        } else if change_indices.is_empty() {
-            change_indices.push(0);
-        }
+        // Find indices where any font property changes
+        let change_indices = find_change_starts(df, &font_column_names)?;
 
         // Calculate run lengths
         let run_lengths: Vec<usize> = change_indices
@@ -924,14 +911,6 @@ impl TextRenderer {
             "indices".into(),
             change_indices.iter().map(|&i| i as u32).collect(),
         );
-        let font_aesthetics = [
-            "typeface",
-            "fontweight",
-            "italic",
-            "hjust",
-            "vjust",
-            "rotation",
-        ];
 
         let mut result_cols = Vec::new();
         for aesthetic in font_aesthetics {
