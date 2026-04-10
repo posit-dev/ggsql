@@ -4163,4 +4163,187 @@ mod tests {
             "Error message should mention conflicting aesthetics"
         );
     }
+
+    #[test]
+    fn test_path_renderer_varying_aesthetics_metadata() {
+        use crate::plot::{AestheticValue, Geom, Layer};
+        use polars::prelude::*;
+
+        let renderer = PathRenderer;
+        let mut layer = Layer::new(Geom::line());
+
+        // Create DataFrame with varying stroke
+        let df = df! {
+            naming::aesthetic_column("pos1").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("pos2").as_str() => &[10.0, 20.0, 30.0],
+            "color".to_string().as_str() => &[1.0, 2.0, 3.0],
+        }
+        .unwrap();
+
+        // Map stroke to color column (continuous, not in partition_by)
+        layer.mappings.insert(
+            "stroke".to_string(),
+            AestheticValue::standard_column("color"),
+        );
+
+        // Prepare data - should detect varying stroke
+        let prepared = renderer
+            .prepare_data(&df, &layer, "test", &HashMap::new())
+            .unwrap();
+
+        match prepared {
+            PreparedData::Single { metadata, .. } => {
+                let varying_aesthetics = metadata
+                    .downcast_ref::<Vec<&'static str>>()
+                    .expect("Metadata should be Vec<&str>");
+                assert_eq!(varying_aesthetics.len(), 1);
+                assert!(varying_aesthetics.contains(&"stroke"));
+            }
+            _ => panic!("Expected Single variant"),
+        }
+    }
+
+    #[test]
+    fn test_path_renderer_trail_mark_for_varying_linewidth() {
+        use crate::plot::{AestheticValue, Geom, Layer};
+        use polars::prelude::*;
+
+        let renderer = PathRenderer;
+        let mut layer = Layer::new(Geom::line());
+
+        // Create DataFrame with varying linewidth
+        let df = df! {
+            naming::aesthetic_column("pos1").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("pos2").as_str() => &[10.0, 20.0, 30.0],
+            naming::aesthetic_column("linewidth").as_str() => &[1.0, 3.0, 5.0],
+        }
+        .unwrap();
+
+        // Map linewidth to column
+        layer.mappings.insert(
+            "linewidth".to_string(),
+            AestheticValue::standard_column(naming::aesthetic_column("linewidth")),
+        );
+
+        // Prepare data
+        let prepared = renderer
+            .prepare_data(&df, &layer, "test", &HashMap::new())
+            .unwrap();
+
+        // Create a mock layer spec
+        let layer_spec = json!({
+            "mark": {"type": "line", "clip": true},
+            "encoding": {
+                "x": {"field": naming::aesthetic_column("pos1"), "type": "quantitative"},
+                "y": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"},
+                "strokeWidth": {"field": naming::aesthetic_column("linewidth"), "type": "quantitative"}
+            }
+        });
+
+        // Finalize should switch to trail mark and translate encodings
+        let result = renderer
+            .finalize(layer_spec.clone(), &layer, "test", &prepared)
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        let spec = &result[0];
+
+        // Check mark type is trail
+        assert_eq!(spec["mark"]["type"], "trail");
+        assert_eq!(spec["mark"]["stroke"], json!(null));
+
+        // Check encoding translations
+        let encoding = spec["encoding"].as_object().unwrap();
+        assert!(encoding.contains_key("size"), "Should have size encoding");
+        assert!(
+            !encoding.contains_key("strokeWidth"),
+            "strokeWidth should be removed"
+        );
+        // No stroke mapping in this test, so no fill expected
+        assert!(!encoding.contains_key("stroke"), "stroke should be removed");
+    }
+
+    #[test]
+    fn test_path_renderer_segmentation_for_varying_stroke() {
+        use crate::plot::{AestheticValue, Geom, Layer};
+        use polars::prelude::*;
+
+        let renderer = PathRenderer;
+        let mut layer = Layer::new(Geom::line());
+
+        // Create DataFrame with varying stroke
+        let df = df! {
+            naming::aesthetic_column("pos1").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("pos2").as_str() => &[10.0, 20.0, 30.0],
+            "color".to_string().as_str() => &[1.0, 2.0, 3.0],
+            ROW_INDEX_COLUMN => &[0, 1, 2],
+        }
+        .unwrap();
+
+        // Map stroke to color column
+        layer.mappings.insert(
+            "stroke".to_string(),
+            AestheticValue::standard_column("color"),
+        );
+
+        // Prepare data
+        let prepared = renderer
+            .prepare_data(&df, &layer, "test", &HashMap::new())
+            .unwrap();
+
+        // Create a mock layer spec
+        let layer_spec = json!({
+            "mark": {"type": "line", "clip": true},
+            "encoding": {
+                "x": {"field": naming::aesthetic_column("pos1"), "type": "quantitative"},
+                "y": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"},
+                "stroke": {"field": "color", "type": "nominal"}
+            }
+        });
+
+        // Finalize should apply segmentation transforms
+        let result = renderer
+            .finalize(layer_spec.clone(), &layer, "test", &prepared)
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        let spec = &result[0];
+
+        // Check transforms exist
+        let transforms = spec["transform"].as_array().expect("Should have transforms");
+        assert!(!transforms.is_empty());
+
+        // Check for window transform (lead operation)
+        let has_window = transforms.iter().any(|t| t.get("window").is_some());
+        assert!(has_window, "Should have window transform for lead");
+
+        // Check for flatten transform
+        let has_flatten = transforms.iter().any(|t| t.get("flatten").is_some());
+        assert!(has_flatten, "Should have flatten transform");
+
+        // Check for detail encoding with segment_id
+        let encoding = spec["encoding"].as_object().unwrap();
+        assert!(encoding.contains_key("detail"), "Should have detail encoding");
+        assert_eq!(
+            encoding["detail"]["field"],
+            "__segment_id__",
+            "Detail should use segment_id"
+        );
+
+        // Check that x/y use _final fields
+        assert!(
+            encoding["x"]["field"]
+                .as_str()
+                .unwrap()
+                .ends_with("_final"),
+            "x should use _final field"
+        );
+        assert!(
+            encoding["y"]["field"]
+                .as_str()
+                .unwrap()
+                .ends_with("_final"),
+            "y should use _final field"
+        );
+    }
 }
