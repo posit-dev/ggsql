@@ -2667,6 +2667,74 @@ mod tests {
             "PLACE layer should not have stroke (text geom default is null)"
         );
     }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_place_array_parameter_not_recycled() {
+        // Test that array parameters that are NOT supported aesthetics
+        // should not trigger row recycling in PLACE layers.
+        // Example: offset is a PARAMETER for text geom, not an aesthetic,
+        // so `offset => [0, 1]` should NOT create 2 rows.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            VISUALISE
+            PLACE text SETTING x => 5, y => 10, label => 'Test', offset => [0, 1]
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        assert_eq!(result.specs.len(), 1);
+        assert_eq!(
+            result.specs[0].layers.len(),
+            1,
+            "Should have one PLACE layer"
+        );
+
+        let text_layer = &result.specs[0].layers[0];
+        assert_eq!(text_layer.geom, crate::Geom::text());
+        assert!(
+            matches!(text_layer.source, Some(DataSource::Annotation)),
+            "PLACE layer should have Annotation source"
+        );
+
+        // Verify annotation layer has exactly 1 row (not 2)
+        // offset is a parameter, not an aesthetic, so it should NOT be recycled
+        let annotation_key = text_layer.data_key.as_ref().unwrap();
+        let annotation_df = result.data.get(annotation_key).unwrap();
+        assert_eq!(
+            annotation_df.height(),
+            1,
+            "Annotation layer should have exactly 1 row (offset array should not be recycled)"
+        );
+
+        // Verify offset remains as a parameter (not moved to aesthetics)
+        assert!(
+            text_layer.parameters.contains_key("offset"),
+            "offset should remain as a parameter"
+        );
+        assert!(
+            !text_layer.mappings.contains_key("offset"),
+            "offset should NOT be moved to aesthetics/mappings"
+        );
+
+        // Verify offset has the original array value
+        match text_layer.parameters.get("offset") {
+            Some(crate::plot::types::ParameterValue::Array(arr)) => {
+                assert_eq!(arr.len(), 2, "offset should have 2 elements");
+                assert!(
+                    matches!(arr[0], crate::plot::types::ArrayElement::Number(n) if (n - 0.0).abs() < 1e-10),
+                    "offset[0] should be 0"
+                );
+                assert!(
+                    matches!(arr[1], crate::plot::types::ArrayElement::Number(n) if (n - 1.0).abs() < 1e-10),
+                    "offset[1] should be 1"
+                );
+            }
+            other => panic!("Expected offset to be Array, got: {:?}", other),
+        }
+    }
+
     #[cfg(feature = "duckdb")]
     #[test]
     fn test_null_mapping_removes_global_aesthetic() {
