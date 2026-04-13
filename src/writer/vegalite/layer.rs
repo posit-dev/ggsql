@@ -654,6 +654,9 @@ impl TextRenderer {
     }
 
     /// Split label values containing newlines into arrays of strings
+    ///
+    /// Uses the shared split_label_on_newlines function to ensure consistent
+    /// newline handling across all label types (text data, axis labels, titles, etc.)
     fn split_label_newlines(values: &mut [Value]) -> Result<()> {
         let label_col = naming::aesthetic_column("label");
 
@@ -667,25 +670,13 @@ impl TextRenderer {
             let Some(label_value) = obj.get(&label_col) else {
                 continue;
             };
-
             // Get the string value, skip if not a string
             let Some(label_str) = label_value.as_str() else {
                 continue;
             };
 
-            // Normalize literal \\n to actual \n, then split on any newline type
-            // - Actual \n: from database columns, CHAR(10), or imported data
-            // - Literal \\n: from SQL string literals like 'Line 1\nLine 2'
-            // .lines() handles all platform newline types (\n, \r\n, \r)
-            let normalized = label_str.replace("\\n", "\n");
-            let lines: Vec<&str> = normalized.lines().collect();
-
-            // Only convert to array if we have multiple lines
-            if lines.len() <= 1 {
-                continue; // Single line or empty, leave as-is
-            }
-
-            obj.insert(label_col.clone(), json!(lines));
+            // Use shared function for consistent newline splitting
+            obj.insert(label_col.clone(), super::split_label_on_newlines(label_str));
         }
         Ok(())
     }
