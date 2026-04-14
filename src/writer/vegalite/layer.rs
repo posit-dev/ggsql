@@ -109,7 +109,10 @@ pub fn validate_layer_columns(layer: &Layer, data: &DataFrame, layer_idx: usize)
 /// Data prepared for a layer - either single dataset or multiple components
 pub enum PreparedData {
     /// Standard single dataset (most geoms)
-    Single { values: Vec<Value> },
+    Single {
+        values: Vec<Value>,
+        metadata: Box<dyn Any + Send + Sync>,
+    },
     /// Multiple component datasets (boxplot, violin, errorbar)
     Composite {
         components: HashMap<String, Vec<Value>>,
@@ -198,7 +201,10 @@ pub trait GeomRenderer: Send + Sync {
         } else {
             dataframe_to_values_with_bins(df, binned_columns)?
         };
-        Ok(PreparedData::Single { values })
+        Ok(PreparedData::Single {
+            values,
+            metadata: Box::new(()),
+        })
     }
 
     // === Phase 2: Encoding Modifications ===
@@ -270,22 +276,25 @@ impl GeomRenderer for BarRenderer {
         layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        let width = match layer.parameters.get("width") {
-            Some(ParameterValue::Number(w)) => *w,
-            _ => 0.9,
+        let width = match layer.adjusted_width {
+            // The adjusted width comes from position adjustments
+            Some(adjusted) => adjusted,
+            _ => match layer.parameters.get("width") {
+                // Fallback to width parameter value if there is no adjustment
+                Some(ParameterValue::Number(n)) => *n,
+                _ => 0.9,
+            },
         };
 
         // For horizontal bars, use "height" for band size; for vertical, use "width"
         let is_horizontal = is_transposed(layer);
+        let axis = if is_horizontal { "y" } else { "x" };
 
-        // For dodged bars, use expression-based size with the adjusted width
-        // For non-dodged bars, use band-relative size
-        let size_value = if let Some(adjusted) = layer.adjusted_width {
-            // Use bandwidth expression for dodged bars
-            let axis = if is_horizontal { "y" } else { "x" };
-            json!({"expr": format!("bandwidth('{}') * {}", axis, adjusted)})
-        } else {
-            json!({"band": width})
+        let size_value = match layer_spec["encoding"][axis]["bin"].as_str() {
+            // I don't think binned scales obey 'band', but they don't tolerate the 'expr' option.
+            Some("binned") => json!({"band": width}),
+            // Use expression-based size with the adjusted width
+            _ => json!({"expr": format!("bandwidth('{}') * {}", axis, width)}),
         };
 
         layer_spec["mark"] = if is_horizontal {
@@ -311,33 +320,160 @@ impl GeomRenderer for BarRenderer {
 // Path Renderer
 // =============================================================================
 
-/// Renderer for path geom - adds order channel for natural data order
+/// Renderer for path and line geoms - preserves data order for correct rendering
+///
+/// Automatically detects when continuous material aesthetics (stroke, linewidth, opacity) vary
+/// within partition groups and converts to segmented rendering using detail encoding.
+/// Discrete material aesthetics (linetype, or discrete stroke) already define groups
+/// via partition_by and don't require special handling.
+///
+/// Handles both `line` and `path` geoms - the only difference is the mark type used.
 pub struct PathRenderer;
 
-impl GeomRenderer for PathRenderer {
-    fn modify_encoding(
-        &self,
-        encoding: &mut Map<String, Value>,
-        _layer: &Layer,
-        _context: &RenderContext,
-    ) -> Result<()> {
-        // Use row index field to preserve natural data order
-        encoding.insert(
-            "order".to_string(),
-            json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
-        );
-        Ok(())
+// =============================================================================
+// Helper functions for path/line segmentation
+// =============================================================================
+
+/// Find row indices where any of the specified columns change value.
+///
+/// Returns a sorted vector starting with 0 (first row), followed by indices
+/// where any column value differs from the previous row. Does not include
+/// the final boundary (n_rows).
+///
+/// Used by both line segmentation and text font run-length encoding.
+fn find_change_starts(df: &DataFrame, columns: &[String]) -> Result<Vec<usize>> {
+    use polars::prelude::*;
+
+    let n_rows = df.height();
+
+    if columns.is_empty() || n_rows <= 1 {
+        return Ok(vec![0]);
     }
+
+    // Initialize change mask as all false (no changes)
+    let mut change_mask = BooleanChunked::full("change_mask".into(), false, n_rows - 1);
+
+    // For each column, OR its change mask into the accumulator
+    for col_name in columns {
+        let series = df.column(col_name).map_err(|e| {
+            GgsqlError::InternalError(format!("Column '{}' not found: {}", col_name, e))
+        })?;
+
+        // Compare each row with the previous row
+        // curr = series[1..n], prev = series[0..n-1]
+        let curr = series.slice(1, n_rows - 1);
+        let prev = series.slice(0, n_rows - 1);
+
+        // Get boolean mask where values differ
+        let not_equal = curr.not_equal(&prev).map_err(|e| {
+            GgsqlError::InternalError(format!("Failed to compare column '{}': {}", col_name, e))
+        })?;
+
+        // OR with accumulator (change if this column OR any previous column changed)
+        change_mask = &change_mask | &not_equal;
+    }
+
+    // Extract indices where mask is true (offset by 1 since we compared with previous)
+    let mut change_starts = vec![0];
+    for (idx, changed) in change_mask.into_iter().enumerate() {
+        if changed == Some(true) {
+            change_starts.push(idx + 1);
+        }
+    }
+
+    Ok(change_starts)
 }
 
-// =============================================================================
-// Line Renderer
-// =============================================================================
+/// Check if an aesthetic varies within any group segment
+///
+/// Uses precomputed group boundaries to efficiently check if the aesthetic
+/// has multiple distinct values within any group segment.
+fn aesthetic_varies_within_groups(
+    df: &DataFrame,
+    aesthetic_col: &str,
+    group_boundaries: &[usize],
+) -> Result<bool> {
+    let series = df.column(aesthetic_col).map_err(|e| {
+        GgsqlError::InternalError(format!("Column '{}' not found: {}", aesthetic_col, e))
+    })?;
 
-/// Renderer for line geom - preserves data order for correct line rendering
-pub struct LineRenderer;
+    // Check each group segment
+    for window in group_boundaries.windows(2) {
+        let start = window[0];
+        let end = window[1];
 
-impl GeomRenderer for LineRenderer {
+        if end - start < 2 {
+            continue; // Single-row groups can't vary
+        }
+
+        // Slice the series for this group and check uniqueness
+        let segment = series.slice(start as i64, end - start);
+        let n_unique = segment.n_unique().map_err(|e| {
+            GgsqlError::InternalError(format!("Failed to count unique values: {}", e))
+        })?;
+
+        if n_unique > 1 {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+impl GeomRenderer for PathRenderer {
+    fn prepare_data(
+        &self,
+        df: &DataFrame,
+        layer: &Layer,
+        _data_key: &str,
+        binned_columns: &HashMap<String, Vec<f64>>,
+    ) -> Result<PreparedData> {
+        // Continuous material aesthetics that can trigger segmentation
+        // (linetype is always discrete and already handled via partition_by)
+        let material_aesthetics: &[&'static str] = &["stroke", "linewidth", "opacity"];
+
+        // Start with existing partition_by (includes discrete material aesthetics already)
+        let partition_columns: Vec<String> = layer.partition_by.clone();
+
+        // Compute group boundaries based on existing partitions
+        let n_rows = df.height();
+        let group_boundaries = if partition_columns.is_empty() || n_rows <= 1 {
+            vec![0, n_rows]
+        } else {
+            let mut boundaries = find_change_starts(df, &partition_columns)?;
+            boundaries.push(n_rows);
+            boundaries
+        };
+
+        // Check continuous material aesthetics (not in partition_by) for within-group variation
+        let mut varying_aesthetics: Vec<&'static str> = Vec::new();
+
+        for &aesthetic in material_aesthetics {
+            if let Some(AestheticValue::Column { name: col, .. }) = layer.mappings.get(aesthetic) {
+                // Skip if already in partition_by (discrete, already defines groups)
+                if !layer.partition_by.contains(col) {
+                    // Continuous: check if varies within groups
+                    if aesthetic_varies_within_groups(df, col, &group_boundaries)? {
+                        varying_aesthetics.push(aesthetic);
+                        // Don't add to partition_columns - continuous values shouldn't partition
+                    }
+                }
+            }
+        }
+
+        // Return the data with segmentation metadata if needed
+        let values = if binned_columns.is_empty() {
+            dataframe_to_values(df)?
+        } else {
+            dataframe_to_values_with_bins(df, binned_columns)?
+        };
+
+        Ok(PreparedData::Single {
+            values,
+            metadata: Box::new(varying_aesthetics),
+        })
+    }
+
     fn modify_encoding(
         &self,
         encoding: &mut Map<String, Value>,
@@ -351,6 +487,165 @@ impl GeomRenderer for LineRenderer {
             json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
         );
         Ok(())
+    }
+
+    fn finalize(
+        &self,
+        mut layer_spec: Value,
+        layer: &Layer,
+        _data_key: &str,
+        prepared: &PreparedData,
+    ) -> Result<Vec<Value>> {
+        // Get metadata from prepared data
+        let PreparedData::Single { metadata, .. } = prepared else {
+            return Err(GgsqlError::InternalError(
+                "PathRenderer expects PreparedData::Single".to_string(),
+            ));
+        };
+
+        // Get varying aesthetics from metadata
+        let Some(varying_aesthetics) = metadata.downcast_ref::<Vec<&'static str>>() else {
+            return Ok(vec![layer_spec]);
+        };
+
+        // Handle varying linewidth: switch to trail mark and translate encodings
+        if varying_aesthetics.contains(&"linewidth") {
+            layer_spec["mark"] = json!({"type": "trail", "clip": true, "stroke": null});
+
+            // Translate line encodings to trail encodings
+            if let Some(encoding_obj) = layer_spec.get_mut("encoding") {
+                if let Some(encoding_map) = encoding_obj.as_object_mut() {
+                    // strokeWidth → size
+                    if let Some(stroke_width) = encoding_map.remove("strokeWidth") {
+                        encoding_map.insert("size".to_string(), stroke_width);
+                    }
+
+                    // stroke → fill
+                    if let Some(stroke) = encoding_map.remove("stroke") {
+                        encoding_map.insert("fill".to_string(), stroke);
+                    }
+
+                    // opacity → fillOpacity
+                    if let Some(opacity) = encoding_map.remove("opacity") {
+                        encoding_map.insert("fillOpacity".to_string(), opacity);
+                    }
+                }
+            }
+        }
+
+        // Handle varying stroke/opacity: apply segmentation
+        if !varying_aesthetics.contains(&"stroke") && !varying_aesthetics.contains(&"opacity") {
+            // Only linewidth varies, trail mark handles it natively
+            return Ok(vec![layer_spec]);
+        }
+
+        // Build list of fields to segment (always x/y, plus size if linewidth varies)
+        let mut segment_fields = vec![
+            ("x", naming::aesthetic_column("pos1")),
+            ("y", naming::aesthetic_column("pos2")),
+        ];
+        if varying_aesthetics.contains(&"linewidth") {
+            segment_fields.push(("size", naming::aesthetic_column("linewidth")));
+        }
+
+        // Segmented rendering using detail encoding:
+        // 1. Create segment IDs (row_index serves as segment ID)
+        // 2. Create next row's values using window transform
+        // 3. Flatten to create 2 rows per segment (point_index: 0=start, 1=end)
+        // 4. Use calculate to pick current or next based on point_index
+        // 5. Add segment ID to detail encoding
+
+        // Preserve existing transforms (e.g., source filter)
+        let mut transforms = layer_spec
+            .get("transform")
+            .and_then(|t| t.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        // Step 1 & 2: Window transform to get next row's values
+        let window_ops: Vec<Value> = segment_fields
+            .iter()
+            .map(|(_, field)| {
+                json!({
+                    "op": "lead",
+                    "field": field,
+                    "as": format!("{}_next", field)
+                })
+            })
+            .collect();
+
+        let mut window_transform = json!({
+            "window": window_ops,
+            "sort": [{"field": ROW_INDEX_COLUMN}]
+        });
+
+        if !layer.partition_by.is_empty() {
+            window_transform["groupby"] = json!(layer.partition_by);
+        }
+
+        transforms.push(window_transform);
+
+        // Step 2b: Filter out last row in each group (no next point)
+        // Check the first field (x) for null to detect end of segments
+        let first_field = &segment_fields[0].1;
+        transforms.push(json!({
+            "filter": format!("datum.{}_next != null", first_field)
+        }));
+
+        // Step 3: Flatten to create 2 rows per segment
+        // Create a constant array [0, 1] to flatten
+        transforms.push(json!({
+            "calculate": "[0, 1]",
+            "as": "__segment_points__"
+        }));
+
+        transforms.push(json!({
+            "flatten": ["__segment_points__"],
+            "as": ["__point_index__"]
+        }));
+
+        // Step 4: Calculate actual field values based on point_index
+        for (_, field) in &segment_fields {
+            transforms.push(json!({
+                "calculate": format!("datum.__point_index__ == 0 ? datum.{} : datum.{}_next", field, field),
+                "as": format!("{}_final", field)
+            }));
+        }
+
+        // Step 5: Create segment ID (use original row_index)
+        transforms.push(json!({
+            "calculate": format!("datum.{}", ROW_INDEX_COLUMN),
+            "as": "__segment_id__"
+        }));
+
+        layer_spec["transform"] = json!(transforms);
+        // Don't set layer_spec["data"] - use the unified top-level dataset
+        // The source filter transform will select the correct rows
+
+        // Update encodings to use final field values and add segment_id to detail
+        if let Some(encoding_obj) = layer_spec.get_mut("encoding") {
+            if let Some(encoding_map) = encoding_obj.as_object_mut() {
+                // Update each field encoding to use _final
+                for (encoding_name, field) in &segment_fields {
+                    if let Some(enc) = encoding_map.get_mut(*encoding_name) {
+                        if let Some(enc_obj) = enc.as_object_mut() {
+                            enc_obj.insert("field".to_string(), json!(format!("{}_final", field)));
+                        }
+                    }
+                }
+
+                // Add segment_id to detail encoding
+                encoding_map.insert(
+                    "detail".to_string(),
+                    json!({
+                        "field": "__segment_id__",
+                        "type": "nominal"
+                    }),
+                );
+            }
+        }
+
+        Ok(vec![layer_spec])
     }
 }
 
@@ -570,43 +865,29 @@ impl TextRenderer {
             return Ok((DataFrame::default(), Vec::new()));
         }
 
-        // Build boolean mask showing where any font property changes
-        let mut changed = BooleanChunked::full("changed".into(), false, nrows);
-        let mut font_columns: HashMap<&str, &polars::prelude::Column> = HashMap::new();
-
-        for aesthetic in [
+        // Collect font property column names that exist in the DataFrame
+        let font_aesthetics = [
             "typeface",
             "fontweight",
             "italic",
             "hjust",
             "vjust",
             "rotation",
-        ] {
-            if let Ok(col) = df.column(&naming::aesthetic_column(aesthetic)) {
-                let col_changed = col.not_equal(&col.shift(1)).map_err(|e| {
-                    GgsqlError::InternalError(format!("Failed to compare column: {}", e))
-                })?;
-                changed = &changed | &col_changed;
+        ];
+
+        let mut font_column_names = Vec::new();
+        let mut font_columns: HashMap<&str, &polars::prelude::Column> = HashMap::new();
+
+        for aesthetic in font_aesthetics {
+            let col_name = naming::aesthetic_column(aesthetic);
+            if let Ok(col) = df.column(&col_name) {
+                font_column_names.push(col_name);
                 font_columns.insert(aesthetic, col);
             }
         }
 
-        // Extract change indices (where mask is true)
-        // shift() creates nulls at position 0, which we treat as a change point
-        let mut change_indices: Vec<usize> = Vec::new();
-        for (i, val) in changed.iter().enumerate() {
-            if val == Some(true) || val.is_none() {
-                // Treat null (from shift) or true as change point
-                change_indices.push(i);
-            }
-        }
-
-        // First row is always a change point (shift comparison is null)
-        if !change_indices.is_empty() && change_indices[0] != 0 {
-            change_indices.insert(0, 0);
-        } else if change_indices.is_empty() {
-            change_indices.push(0);
-        }
+        // Find indices where any font property changes
+        let change_indices = find_change_starts(df, &font_column_names)?;
 
         // Calculate run lengths
         let run_lengths: Vec<usize> = change_indices
@@ -623,14 +904,6 @@ impl TextRenderer {
             "indices".into(),
             change_indices.iter().map(|&i| i as u32).collect(),
         );
-        let font_aesthetics = [
-            "typeface",
-            "fontweight",
-            "italic",
-            "hjust",
-            "vjust",
-            "rotation",
-        ];
 
         let mut result_cols = Vec::new();
         for aesthetic in font_aesthetics {
@@ -1741,25 +2014,19 @@ impl BoxplotRenderer {
 
         let value_var1 = if is_horizontal { "x" } else { "y" };
         let value_var2 = if is_horizontal { "x2" } else { "y2" };
+        let axis = if is_horizontal { "y" } else { "x" };
 
         // Get width parameter
-        let base_width = layer
-            .parameters
-            .get("width")
-            .and_then(|v| match v {
-                ParameterValue::Number(n) => Some(*n),
-                _ => None,
-            })
-            .unwrap_or(0.9);
-
-        // For dodged boxplots, use expression-based width with adjusted_width
-        // For non-dodged boxplots, use band-relative width
-        let axis = if is_horizontal { "y" } else { "x" };
-        let width_value = if let Some(adjusted) = layer.adjusted_width {
-            json!({"expr": format!("bandwidth('{}') * {}", axis, adjusted)})
-        } else {
-            json!({"band": base_width})
+        let width = match layer.adjusted_width {
+            // The adjusted width comes from position adjustments
+            Some(adjusted) => adjusted,
+            _ => match layer.parameters.get("width") {
+                // Fallback to width parameter value if there is no adjustment
+                Some(ParameterValue::Number(n)) => *n,
+                _ => 0.9,
+            },
         };
+        let width_value = json!({"expr": format!("bandwidth('{}') * {}", axis, width)});
 
         // Helper to create filter transform for source selection
         let make_source_filter = |type_suffix: &str| -> Value {
@@ -1957,7 +2224,7 @@ impl GeomRenderer for BoxplotRenderer {
 pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
     match geom.geom_type() {
         GeomType::Path => Box::new(PathRenderer),
-        GeomType::Line => Box::new(LineRenderer),
+        GeomType::Line => Box::new(PathRenderer),
         GeomType::Bar => Box::new(BarRenderer),
         GeomType::Rect => Box::new(RectRenderer),
         GeomType::Ribbon => Box::new(RibbonRenderer),
@@ -4003,6 +4270,187 @@ mod tests {
                 .to_string()
                 .contains("cannot use `y` aesthetic with `ymin` and `ymax`"),
             "Error message should mention conflicting aesthetics"
+        );
+    }
+
+    #[test]
+    fn test_path_renderer_varying_aesthetics_metadata() {
+        use crate::plot::{AestheticValue, Geom, Layer};
+        use polars::prelude::*;
+
+        let renderer = PathRenderer;
+        let mut layer = Layer::new(Geom::line());
+
+        // Create DataFrame with varying stroke
+        let df = df! {
+            naming::aesthetic_column("pos1").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("pos2").as_str() => &[10.0, 20.0, 30.0],
+            "color".to_string().as_str() => &[1.0, 2.0, 3.0],
+        }
+        .unwrap();
+
+        // Map stroke to color column (continuous, not in partition_by)
+        layer.mappings.insert(
+            "stroke".to_string(),
+            AestheticValue::standard_column("color"),
+        );
+
+        // Prepare data - should detect varying stroke
+        let prepared = renderer
+            .prepare_data(&df, &layer, "test", &HashMap::new())
+            .unwrap();
+
+        match prepared {
+            PreparedData::Single { metadata, .. } => {
+                let varying_aesthetics = metadata
+                    .downcast_ref::<Vec<&'static str>>()
+                    .expect("Metadata should be Vec<&str>");
+                assert_eq!(varying_aesthetics.len(), 1);
+                assert!(varying_aesthetics.contains(&"stroke"));
+            }
+            _ => panic!("Expected Single variant"),
+        }
+    }
+
+    #[test]
+    fn test_path_renderer_trail_mark_for_varying_linewidth() {
+        use crate::plot::{AestheticValue, Geom, Layer};
+        use polars::prelude::*;
+
+        let renderer = PathRenderer;
+        let mut layer = Layer::new(Geom::line());
+
+        // Create DataFrame with varying linewidth
+        let df = df! {
+            naming::aesthetic_column("pos1").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("pos2").as_str() => &[10.0, 20.0, 30.0],
+            naming::aesthetic_column("linewidth").as_str() => &[1.0, 3.0, 5.0],
+        }
+        .unwrap();
+
+        // Map linewidth to column
+        layer.mappings.insert(
+            "linewidth".to_string(),
+            AestheticValue::standard_column(naming::aesthetic_column("linewidth")),
+        );
+
+        // Prepare data
+        let prepared = renderer
+            .prepare_data(&df, &layer, "test", &HashMap::new())
+            .unwrap();
+
+        // Create a mock layer spec
+        let layer_spec = json!({
+            "mark": {"type": "line", "clip": true},
+            "encoding": {
+                "x": {"field": naming::aesthetic_column("pos1"), "type": "quantitative"},
+                "y": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"},
+                "strokeWidth": {"field": naming::aesthetic_column("linewidth"), "type": "quantitative"}
+            }
+        });
+
+        // Finalize should switch to trail mark and translate encodings
+        let result = renderer
+            .finalize(layer_spec.clone(), &layer, "test", &prepared)
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        let spec = &result[0];
+
+        // Check mark type is trail
+        assert_eq!(spec["mark"]["type"], "trail");
+        assert_eq!(spec["mark"]["stroke"], json!(null));
+
+        // Check encoding translations
+        let encoding = spec["encoding"].as_object().unwrap();
+        assert!(encoding.contains_key("size"), "Should have size encoding");
+        assert!(
+            !encoding.contains_key("strokeWidth"),
+            "strokeWidth should be removed"
+        );
+        // No stroke mapping in this test, so no fill expected
+        assert!(!encoding.contains_key("stroke"), "stroke should be removed");
+    }
+
+    #[test]
+    fn test_path_renderer_segmentation_for_varying_stroke() {
+        use crate::plot::{AestheticValue, Geom, Layer};
+        use polars::prelude::*;
+
+        let renderer = PathRenderer;
+        let mut layer = Layer::new(Geom::line());
+
+        // Create DataFrame with varying stroke
+        let df = df! {
+            naming::aesthetic_column("pos1").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("pos2").as_str() => &[10.0, 20.0, 30.0],
+            "color".to_string().as_str() => &[1.0, 2.0, 3.0],
+            ROW_INDEX_COLUMN => &[0, 1, 2],
+        }
+        .unwrap();
+
+        // Map stroke to color column
+        layer.mappings.insert(
+            "stroke".to_string(),
+            AestheticValue::standard_column("color"),
+        );
+
+        // Prepare data
+        let prepared = renderer
+            .prepare_data(&df, &layer, "test", &HashMap::new())
+            .unwrap();
+
+        // Create a mock layer spec
+        let layer_spec = json!({
+            "mark": {"type": "line", "clip": true},
+            "encoding": {
+                "x": {"field": naming::aesthetic_column("pos1"), "type": "quantitative"},
+                "y": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"},
+                "stroke": {"field": "color", "type": "nominal"}
+            }
+        });
+
+        // Finalize should apply segmentation transforms
+        let result = renderer
+            .finalize(layer_spec.clone(), &layer, "test", &prepared)
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        let spec = &result[0];
+
+        // Check transforms exist
+        let transforms = spec["transform"]
+            .as_array()
+            .expect("Should have transforms");
+        assert!(!transforms.is_empty());
+
+        // Check for window transform (lead operation)
+        let has_window = transforms.iter().any(|t| t.get("window").is_some());
+        assert!(has_window, "Should have window transform for lead");
+
+        // Check for flatten transform
+        let has_flatten = transforms.iter().any(|t| t.get("flatten").is_some());
+        assert!(has_flatten, "Should have flatten transform");
+
+        // Check for detail encoding with segment_id
+        let encoding = spec["encoding"].as_object().unwrap();
+        assert!(
+            encoding.contains_key("detail"),
+            "Should have detail encoding"
+        );
+        assert_eq!(
+            encoding["detail"]["field"], "__segment_id__",
+            "Detail should use segment_id"
+        );
+
+        // Check that x/y use _final fields
+        assert!(
+            encoding["x"]["field"].as_str().unwrap().ends_with("_final"),
+            "x should use _final field"
+        );
+        assert!(
+            encoding["y"]["field"].as_str().unwrap().ends_with("_final"),
+            "y should use _final field"
         );
     }
 }

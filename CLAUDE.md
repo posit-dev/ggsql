@@ -569,7 +569,9 @@ The codebase includes connection string parsing and feature flags for additional
 
 **Responsibility**: Convert DataFrame + Plot → output format (JSON, PNG, R code, etc.)
 
-#### Writer Trait (`mod.rs`)
+**Internal Architecture**: For Vega-Lite writer implementation details (unified dataset system, layer rendering pipeline, GeomRenderer lifecycle), see [`src/writer/vegalite/CLAUDE.md`](src/writer/vegalite/CLAUDE.md).
+
+#### Writer Trait
 
 ```rust
 pub trait Writer {
@@ -578,68 +580,13 @@ pub trait Writer {
 }
 ```
 
-#### Vega-Lite Writer (`vegalite.rs`)
+#### Available Writers
 
-**Current Production Writer** - Fully implemented and tested.
-
-**Features**:
-
-- Converts Plot → Vega-Lite JSON specification
-- Multi-layer composition support
-- Scale type → Vega field type mapping
-- Faceting (wrap and grid layouts)
-- Axis label customization
-- Inline data embedding
-
-**Architecture**:
-
-```rust
-impl Writer for VegaLiteWriter {
-    fn write(&self, df: &DataFrame, spec: &Plot) -> Result<String> {
-        // 1. Convert DataFrame to JSON values
-        let data_values = self.dataframe_to_json(df)?;
-
-        // 2. Build Vega-Lite spec
-        let mut vl_spec = json!({
-            "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
-            "data": {"values": data_values},
-            "width": 600,
-            "autosize": {"type": "fit", "contains": "padding"}
-        });
-
-        // 3. Handle single vs multi-layer
-        if spec.layers.len() == 1 {
-            // Single layer: flat structure
-            vl_spec["mark"] = self.geom_to_mark(&spec.layers[0].geom);
-            vl_spec["encoding"] = self.build_encoding(&spec.layers[0], df, spec)?;
-        } else {
-            // Multi-layer: layered structure
-            let layers: Vec<Value> = spec.layers.iter()
-                .map(|layer| {
-                    let mut layer_spec = json!({
-                        "mark": self.geom_to_mark(&layer.geom),
-                        "encoding": self.build_encoding(layer, df, spec)?
-                    });
-                    // Apply axis labels to each layer
-                    apply_axis_labels(&mut layer_spec, &spec.labels);
-                    Ok(layer_spec)
-                })
-                .collect::<Result<Vec<_>>>()?;
-            vl_spec["layer"] = json!(layers);
-        }
-
-        // 4. Add faceting, title, etc.
-        self.add_faceting(&mut vl_spec, spec)?;
-        if let Some(labels) = &spec.labels {
-            if let Some(title) = labels.labels.get("title") {
-                vl_spec["title"] = json!(title);
-            }
-        }
-
-        Ok(serde_json::to_string_pretty(&vl_spec)?)
-    }
-}
-```
+**VegaLiteWriter** (Production-ready):
+- Generates Vega-Lite v6 JSON specifications
+- Multi-layer composition with unified dataset architecture
+- Full support for scales, faceting, projections, and labels
+- Automatic geom-specific optimizations (segmentation, decomposition)
 
 ---
 

@@ -119,7 +119,7 @@ fn prepare_layer_data(
 
         // Add data to individual datasets based on prepared type
         match &prepared {
-            PreparedData::Single { values } => {
+            PreparedData::Single { values, .. } => {
                 individual_datasets.insert(data_key.clone(), json!(values));
             }
             PreparedData::Composite { components, .. } => {
@@ -1110,8 +1110,8 @@ impl Writer for VegaLiteWriter {
         }
 
         if let Some(labels) = &spec.labels {
-            let title = labels.labels.get("title");
-            let subtitle = labels.labels.get("subtitle");
+            let title = labels.labels.get("title").and_then(|v| v.as_ref());
+            let subtitle = labels.labels.get("subtitle").and_then(|v| v.as_ref());
             match (title, subtitle) {
                 (Some(t), Some(st)) => {
                     // Vega-Lite uses an object for title + subtitle
@@ -1564,7 +1564,7 @@ mod tests {
         };
         labels
             .labels
-            .insert("title".to_string(), "My Chart".to_string());
+            .insert("title".to_string(), Some("My Chart".to_string()));
         spec.labels = Some(labels);
 
         let df = df! {
