@@ -1396,7 +1396,7 @@ PROJECT [<aesthetic>, ...] TO <coord_type>
 
 **Components**:
 
-- **Aesthetics** (optional): Comma-separated list of positional aesthetic names. If omitted, uses coord defaults.
+- **Aesthetics** (optional): Comma-separated list of position aesthetic names. If omitted, uses coord defaults.
 - **TO**: Required keyword separating aesthetics from coord type.
 - **coord_type**: Either `cartesian` or `polar`.
 - **SETTING** (optional): Additional properties.
@@ -1437,7 +1437,7 @@ Note: For axis limits, use `SCALE x FROM [min, max]` or `SCALE y FROM [min, max]
 
 1. **Axis limits**: Use `SCALE x/y FROM [min, max]` to set axis limits
 2. **Aesthetic domains**: Use `SCALE <aesthetic> FROM [...]` to set aesthetic domains
-3. **Custom aesthetics**: User can define custom positional names (e.g., `PROJECT a, b TO cartesian`)
+3. **Custom aesthetics**: User can define custom position names (e.g., `PROJECT a, b TO cartesian`)
 4. **Multi-layer support**: All projection transforms apply to all layers
 
 **Status**:

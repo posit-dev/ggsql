@@ -5,6 +5,7 @@ use polars::prelude::DataType;
 use super::{
     ScaleTypeKind, ScaleTypeTrait, TransformKind, OOB_CENSOR, OOB_SQUISH, OOB_VALUES_CONTINUOUS,
 };
+use crate::naming;
 use crate::plot::types::{
     ArrayConstraint, DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition,
 };
@@ -214,14 +215,18 @@ impl ScaleTypeTrait for Continuous {
             .unwrap_or(super::default_oob(&scale.aesthetic));
 
         match oob {
-            OOB_CENSOR => Some(format!(
-                "(CASE WHEN {} >= {} AND {} <= {} THEN {} ELSE NULL END)",
-                column_name, min, column_name, max, column_name
-            )),
+            OOB_CENSOR => {
+                let quoted = naming::quote_ident(column_name);
+                Some(format!(
+                    "(CASE WHEN {} >= {} AND {} <= {} THEN {} ELSE NULL END)",
+                    quoted, min, quoted, max, quoted
+                ))
+            }
             OOB_SQUISH => {
                 let min_s = min.to_string();
                 let max_s = max.to_string();
-                let inner = dialect.sql_least(&[&max_s, column_name]);
+                let quoted = naming::quote_ident(column_name);
+                let inner = dialect.sql_least(&[&max_s, &quoted]);
                 Some(dialect.sql_greatest(&[&min_s, &inner]))
             }
             _ => None, // "keep" = no transformation
@@ -259,8 +264,8 @@ mod tests {
         let sql = sql.unwrap();
         // Should generate CASE WHEN for censor
         assert!(sql.contains("CASE WHEN"));
-        assert!(sql.contains("value >= 0"));
-        assert!(sql.contains("value <= 100"));
+        assert!(sql.contains("\"value\" >= 0"));
+        assert!(sql.contains("\"value\" <= 100"));
         assert!(sql.contains("ELSE NULL"));
     }
 
@@ -289,7 +294,7 @@ mod tests {
     #[test]
     fn test_pre_stat_transform_sql_keep() {
         let continuous = Continuous;
-        let mut scale = Scale::new("x"); // positional aesthetic defaults to keep
+        let mut scale = Scale::new("x"); // position aesthetic defaults to keep
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
         scale.properties.insert(
@@ -320,33 +325,33 @@ mod tests {
     }
 
     #[test]
-    fn test_pre_stat_transform_sql_default_oob_for_positional() {
-        // NOTE: After transformation, positional aesthetics use internal names (pos1, pos2, etc.)
+    fn test_pre_stat_transform_sql_default_oob_for_position() {
+        // NOTE: After transformation, position aesthetics use internal names (pos1, pos2, etc.)
         let continuous = Continuous;
-        let mut scale = Scale::new("pos1"); // positional aesthetic (internal name)
+        let mut scale = Scale::new("pos1"); // position aesthetic (internal name)
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
-        // No oob property - should use default (keep for positional)
+        // No oob property - should use default (keep for position)
 
         let sql =
             continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect);
 
-        // Should return None since default for positional is "keep"
+        // Should return None since default for position is "keep"
         assert!(sql.is_none());
     }
 
     #[test]
-    fn test_pre_stat_transform_sql_default_oob_for_non_positional() {
+    fn test_pre_stat_transform_sql_default_oob_for_material() {
         let continuous = Continuous;
-        let mut scale = Scale::new("color"); // non-positional aesthetic
+        let mut scale = Scale::new("color"); // material aesthetic
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
-        // No oob property - should use default (censor for non-positional)
+        // No oob property - should use default (censor for material)
 
         let sql =
             continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect);
 
-        // Should generate censor SQL since default for non-positional is "censor"
+        // Should generate censor SQL since default for material is "censor"
         assert!(sql.is_some());
         let sql = sql.unwrap();
         assert!(sql.contains("CASE WHEN"));

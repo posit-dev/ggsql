@@ -36,7 +36,7 @@ use std::collections::HashMap;
 use crate::execute::prepare_data_with_reader;
 use crate::plot::{CastTargetType, Plot};
 use crate::validate::{validate, ValidationWarning};
-use crate::{DataFrame, GgsqlError, Result};
+use crate::{naming, DataFrame, GgsqlError, Result};
 
 // =============================================================================
 // SQL Dialect
@@ -46,9 +46,9 @@ use crate::{DataFrame, GgsqlError, Result};
 ///
 /// Default implementations produce portable ANSI SQL.
 pub trait SqlDialect {
-    /// SQL type name for numeric columns (e.g., "DOUBLE")
+    /// SQL type name for numeric columns (e.g., "DOUBLE PRECISION")
     fn number_type_name(&self) -> Option<&str> {
-        Some("DOUBLE")
+        Some("DOUBLE PRECISION")
     }
 
     /// SQL type name for integer columns (e.g., "BIGINT")
@@ -94,6 +94,48 @@ pub trait SqlDialect {
         }
     }
 
+    // =========================================================================
+    // Schema introspection queries (for Connections pane)
+    // =========================================================================
+
+    /// SQL to list catalog names. Returns rows with column `catalog_name`.
+    fn sql_list_catalogs(&self) -> String {
+        "SELECT DISTINCT catalog_name FROM information_schema.schemata ORDER BY catalog_name".into()
+    }
+
+    /// SQL to list schema names within a catalog. Returns rows with column `schema_name`.
+    fn sql_list_schemas(&self, catalog: &str) -> String {
+        format!(
+            "SELECT DISTINCT schema_name FROM information_schema.schemata \
+             WHERE catalog_name = '{}' ORDER BY schema_name",
+            catalog.replace('\'', "''")
+        )
+    }
+
+    /// SQL to list tables/views within a catalog and schema.
+    /// Returns rows with columns `table_name` and `table_type`.
+    fn sql_list_tables(&self, catalog: &str, schema: &str) -> String {
+        format!(
+            "SELECT DISTINCT table_name, table_type FROM information_schema.tables \
+             WHERE table_catalog = '{}' AND table_schema = '{}' ORDER BY table_name",
+            catalog.replace('\'', "''"),
+            schema.replace('\'', "''")
+        )
+    }
+
+    /// SQL to list columns in a table.
+    /// Returns rows with columns `column_name` and `data_type`.
+    fn sql_list_columns(&self, catalog: &str, schema: &str, table: &str) -> String {
+        format!(
+            "SELECT column_name, data_type FROM information_schema.columns \
+             WHERE table_catalog = '{}' AND table_schema = '{}' AND table_name = '{}' \
+             ORDER BY ordinal_position",
+            catalog.replace('\'', "''"),
+            schema.replace('\'', "''"),
+            table.replace('\'', "''")
+        )
+    }
+
     /// Scalar MAX across any number of SQL expressions.
     fn sql_greatest(&self, exprs: &[&str]) -> String {
         let mut result = exprs[0].to_string();
@@ -124,12 +166,12 @@ pub trait SqlDialect {
         let base_sq = base_size * base_size;
         let base_max = base_size - 1;
         format!(
-            "__ggsql_base__(n) AS (\
-               SELECT 0 UNION ALL SELECT n + 1 FROM __ggsql_base__ WHERE n < {base_max}\
+            "\"__ggsql_base__\"(n) AS (\
+               SELECT 0 UNION ALL SELECT n + 1 FROM \"__ggsql_base__\" WHERE n < {base_max}\
              ),\
-             __ggsql_seq__(n) AS (\
+             \"__ggsql_seq__\"(n) AS (\
                SELECT CAST(a.n * {base_sq} + b.n * {base_size} + c.n AS REAL) AS n \
-               FROM __ggsql_base__ a, __ggsql_base__ b, __ggsql_base__ c \
+               FROM \"__ggsql_base__\" a, \"__ggsql_base__\" b, \"__ggsql_base__\" c \
                WHERE a.n * {base_sq} + b.n * {base_size} + c.n < {n}\
              )"
         )
@@ -143,12 +185,20 @@ pub trait SqlDialect {
         // Uses NTILE(4) to divide data into quartiles, then interpolates between boundaries.
         let group_filter = groups
             .iter()
-            .map(|g| format!("AND __ggsql_pct__.{g} IS NOT DISTINCT FROM __ggsql_qt__.{g}"))
+            .map(|g| {
+                let q = naming::quote_ident(g);
+                format!(
+                    "AND {pct}.{q} IS NOT DISTINCT FROM {qt}.{q}",
+                    pct = naming::quote_ident("__ggsql_pct__"),
+                    qt = naming::quote_ident("__ggsql_qt__")
+                )
+            })
             .collect::<Vec<_>>()
             .join(" ");
 
         let lo_tile = (fraction * 4.0).ceil() as usize;
         let hi_tile = lo_tile + 1;
+        let quoted_column = naming::quote_ident(column);
 
         format!(
             "(SELECT (\
@@ -158,9 +208,10 @@ pub trait SqlDialect {
             FROM (\
               SELECT {column} AS __val, \
                      NTILE(4) OVER (ORDER BY {column}) AS __tile \
-              FROM ({from}) AS __ggsql_pct__ \
+              FROM ({from}) AS \"__ggsql_pct__\" \
               WHERE {column} IS NOT NULL {group_filter}\
-            ))"
+            ))",
+            column = quoted_column
         )
     }
 
@@ -209,6 +260,12 @@ pub mod duckdb;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 
+#[cfg(feature = "odbc")]
+pub mod odbc;
+
+#[cfg(feature = "odbc")]
+pub mod snowflake;
+
 pub mod connection;
 pub mod data;
 mod spec;
@@ -218,6 +275,35 @@ pub use duckdb::DuckDBReader;
 
 #[cfg(feature = "sqlite")]
 pub use sqlite::SqliteReader;
+
+#[cfg(feature = "odbc")]
+pub use odbc::OdbcReader;
+
+// ============================================================================
+// Shared utilities
+// ============================================================================
+
+/// Validate a table name for use in SQL statements.
+///
+/// Rejects empty names and names containing null bytes or newlines.
+pub(crate) fn validate_table_name(name: &str) -> Result<()> {
+    if name.is_empty() {
+        return Err(GgsqlError::ReaderError("Table name cannot be empty".into()));
+    }
+
+    let forbidden = ['\0', '\n', '\r'];
+    for ch in forbidden {
+        if name.contains(ch) {
+            return Err(GgsqlError::ReaderError(format!(
+                "Table name '{}' contains invalid character '{}'",
+                name,
+                ch.escape_default()
+            )));
+        }
+    }
+
+    Ok(())
+}
 
 // ============================================================================
 // Spec - Result of reader.execute()
@@ -363,37 +449,7 @@ pub trait Reader {
     /// let writer = VegaLiteWriter::new();
     /// let json = writer.render(&spec)?;
     /// ```
-    fn execute(&self, query: &str) -> Result<Spec>
-    where
-        Self: Sized,
-    {
-        // Run validation first to capture warnings
-        let validated = validate(query)?;
-        let warnings: Vec<ValidationWarning> = validated.warnings().to_vec();
-
-        // Prepare data with type names for this reader
-        let prepared_data = prepare_data_with_reader(query, self)?;
-
-        // Get the first (and typically only) spec
-        let plot = prepared_data.specs.into_iter().next().ok_or_else(|| {
-            GgsqlError::ValidationError("No visualization spec found".to_string())
-        })?;
-
-        // For now, layer_sql and stat_sql are not tracked in PreparedData
-        // (they were part of main's version but not HEAD's)
-        let layer_sql = vec![None; plot.layers.len()];
-        let stat_sql = vec![None; plot.layers.len()];
-
-        Ok(Spec::new(
-            plot,
-            prepared_data.data,
-            prepared_data.sql,
-            prepared_data.visual,
-            layer_sql,
-            stat_sql,
-            warnings,
-        ))
-    }
+    fn execute(&self, query: &str) -> Result<Spec>;
 
     /// Get the SQL dialect for this reader.
     ///
@@ -401,6 +457,36 @@ pub trait Reader {
     fn dialect(&self) -> &dyn SqlDialect {
         &AnsiDialect
     }
+}
+
+/// Execute a ggsql query using any reader
+///
+/// This is the shared implementation behind `Reader::execute()`. Concrete
+/// readers delegate to this so the trait stays object-safe (no `Self: Sized`
+/// bound on `execute`).
+pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<Spec> {
+    let validated = validate(query)?;
+    let warnings: Vec<ValidationWarning> = validated.warnings().to_vec();
+
+    let prepared_data = prepare_data_with_reader(query, reader)?;
+
+    let plot =
+        prepared_data.specs.into_iter().next().ok_or_else(|| {
+            GgsqlError::ValidationError("No visualization spec found".to_string())
+        })?;
+
+    let layer_sql = vec![None; plot.layers.len()];
+    let stat_sql = vec![None; plot.layers.len()];
+
+    Ok(Spec::new(
+        plot,
+        prepared_data.data,
+        prepared_data.sql,
+        prepared_data.visual,
+        layer_sql,
+        stat_sql,
+        warnings,
+    ))
 }
 
 #[cfg(test)]
@@ -628,7 +714,7 @@ mod tests {
     #[test]
     fn test_polar_encoding_keys_independent_of_user_names() {
         // This test verifies that polar projections always produce theta/radius encoding keys
-        // in Vega-Lite output, regardless of what positional names the user specified in PROJECT.
+        // in Vega-Lite output, regardless of what position names the user specified in PROJECT.
         // This is critical because Vega-Lite expects specific channel names for polar marks.
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
@@ -709,7 +795,7 @@ mod tests {
     #[test]
     fn test_cartesian_encoding_keys_with_custom_names() {
         // This test verifies that cartesian projections produce x/y encoding keys
-        // even when custom positional names are used in PROJECT.
+        // even when custom position names are used in PROJECT.
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         fn check_cartesian_keys(json: &serde_json::Value, test_name: &str) {
@@ -816,7 +902,7 @@ mod tests {
     #[test]
     fn test_binned_fill_legend_renders_threshold_scale() {
         // End-to-end test for binned fill scale rendering to Vega-Lite
-        // Verifies that binned non-positional aesthetics use threshold scale type
+        // Verifies that binned material aesthetics use threshold scale type
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         // Create data with values that span the binned range
@@ -1227,8 +1313,8 @@ mod tests {
         let encoding = &layer["encoding"];
 
         // With PROJECT y, x TO cartesian:
-        // - y is pos1 (first positional), renders to VL x-axis in cartesian
-        // - x is pos2 (second positional), renders to VL y-axis in cartesian
+        // - y is pos1 (first position), renders to VL x-axis in cartesian
+        // - x is pos2 (second position), renders to VL y-axis in cartesian
         // So LABEL y => 'Category' should appear on VL x-axis, LABEL x => 'Value' on VL y-axis
         let x_title = encoding["x"]["title"].as_str();
         let y_title = encoding["y"]["title"].as_str();

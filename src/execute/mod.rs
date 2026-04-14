@@ -24,7 +24,7 @@ pub use schema::TypeInfo;
 
 use crate::naming;
 use crate::parser;
-use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
+use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
 use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDataContext};
 use crate::plot::layer::is_transposed;
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
@@ -711,10 +711,10 @@ fn add_discrete_columns_to_partition_by(
         excluded_aesthetics.insert("label");
 
         for (aesthetic, value) in &layer.mappings.aesthetics {
-            // Skip positional aesthetics - these should not trigger auto-grouping.
-            // Stats that need to group by positional aesthetics (like bar/histogram)
+            // Skip position aesthetics - these should not trigger auto-grouping.
+            // Stats that need to group by position aesthetics (like bar/histogram)
             // already handle this themselves via stat_consumed_aesthetics().
-            if is_positional_aesthetic(aesthetic) {
+            if is_position_aesthetic(aesthetic) {
                 continue;
             }
 
@@ -736,7 +736,7 @@ fn add_discrete_columns_to_partition_by(
                 // Discrete and Binned scales produce categorical groupings.
                 // Continuous scales don't group. Identity defers to column type.
                 let primary_aes = aesthetic_ctx
-                    .primary_internal_positional(aesthetic)
+                    .primary_internal_position(aesthetic)
                     .unwrap_or(aesthetic);
                 let is_discrete = if let Some(scale) = scale_map.get(primary_aes) {
                     if let Some(ref scale_type) = scale.scale_type {
@@ -929,7 +929,7 @@ pub struct PreparedData {
 /// # Arguments
 /// * `query` - The full ggsql query string
 /// * `reader` - A Reader implementation for executing SQL
-pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<PreparedData> {
+pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<PreparedData> {
     let execute_query = |sql: &str| reader.execute_sql(sql);
     let dialect = reader.dialect();
 
@@ -1239,7 +1239,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
             // (which uses remapping keys to create mapping entries).
             // Phase 4.5 will then flip the DataFrame columns to match.
             if is_transposed(l) {
-                crate::plot::layer::orientation::flip_positional_aesthetics(
+                crate::plot::layer::orientation::flip_position_aesthetics(
                     &mut l.remappings.aesthetics,
                 );
             }
@@ -1257,7 +1257,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     // Phase 4.5: Flip DataFrame columns for Transposed orientation layers
     // This must happen AFTER remappings (Phase 4) because remappings create columns
     // with ALIGNED orientation names, and the flip converts them to USER orientation.
-    // All positional columns (stat-produced and literal) are flipped together.
+    // All position columns (stat-produced and literal) are flipped together.
     let mut flipped_keys: HashSet<String> = HashSet::new();
     for layer in specs[0].layers.iter() {
         if is_transposed(layer) {
@@ -1266,7 +1266,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
                     // First time flipping this data key
                     if let Some(df) = data_map.remove(key) {
                         let flipped_df =
-                            crate::plot::layer::orientation::flip_dataframe_positional_columns(
+                            crate::plot::layer::orientation::flip_dataframe_position_columns(
                                 df,
                                 &aesthetic_ctx,
                             );
@@ -1312,11 +1312,11 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 
     // Resolve facet properties (after data is available)
     for spec in &mut specs {
-        // Get positional aesthetic names from the aesthetic context (coord-specific)
+        // Get position aesthetic names from the aesthetic context (coord-specific)
         // This must be done before mutably borrowing facet
-        let positional_names: Vec<String> = spec.get_aesthetic_context().user_positional().to_vec();
+        let position_names: Vec<String> = spec.get_aesthetic_context().user_position().to_vec();
         // Convert to &str slice for resolve_facet_properties
-        let positional_refs: Vec<&str> = positional_names.iter().map(|s| s.as_str()).collect();
+        let position_refs: Vec<&str> = position_names.iter().map(|s| s.as_str()).collect();
 
         if let Some(ref mut facet) = spec.facet {
             // Get the first layer's data for computing facet defaults
@@ -1332,7 +1332,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
                 .map(|aes| naming::aesthetic_column(aes))
                 .collect();
             let context = FacetDataContext::from_dataframe(facet_df, &aesthetic_cols);
-            resolve_facet_properties(facet, &context, &positional_refs)
+            resolve_facet_properties(facet, &context, &position_refs)
                 .map_err(|e| GgsqlError::ValidationError(format!("Facet: {}", e)))?;
         }
     }
@@ -2428,7 +2428,7 @@ mod tests {
             "Annotation layer should have exactly 1 row"
         );
 
-        // Verify positional aesthetics are moved from SETTING to mappings with transformed names
+        // Verify position aesthetics are moved from SETTING to mappings with transformed names
         // They become Column references (not Literals) so they can participate in scale training
         assert!(
             matches!(
@@ -2445,7 +2445,7 @@ mod tests {
             "y should be transformed to pos2, moved to mappings, and materialized as column"
         );
 
-        // Verify required non-positional aesthetic (label) is in mappings as AnnotationColumn
+        // Verify required material aesthetic (label) is in mappings as AnnotationColumn
         // After process_annotation_layer, required aesthetics are converted to AnnotationColumn
         assert!(
             matches!(
@@ -2455,9 +2455,9 @@ mod tests {
             "label (required) should be in mappings as AnnotationColumn with prefixed name"
         );
 
-        // Non-required, non-positional, non-array aesthetics like size may be processed
+        // Non-required, material, non-array aesthetics like size may be processed
         // by resolve_aesthetics or other downstream logic, so we don't strictly check
-        // where they end up. The key point is that required/positional aesthetics are
+        // where they end up. The key point is that required/position aesthetics are
         // correctly moved to mappings.
     }
 
@@ -2667,6 +2667,74 @@ mod tests {
             "PLACE layer should not have stroke (text geom default is null)"
         );
     }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_place_array_parameter_not_recycled() {
+        // Test that array parameters that are NOT supported aesthetics
+        // should not trigger row recycling in PLACE layers.
+        // Example: offset is a PARAMETER for text geom, not an aesthetic,
+        // so `offset => [0, 1]` should NOT create 2 rows.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            VISUALISE
+            PLACE text SETTING x => 5, y => 10, label => 'Test', offset => [0, 1]
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        assert_eq!(result.specs.len(), 1);
+        assert_eq!(
+            result.specs[0].layers.len(),
+            1,
+            "Should have one PLACE layer"
+        );
+
+        let text_layer = &result.specs[0].layers[0];
+        assert_eq!(text_layer.geom, crate::Geom::text());
+        assert!(
+            matches!(text_layer.source, Some(DataSource::Annotation)),
+            "PLACE layer should have Annotation source"
+        );
+
+        // Verify annotation layer has exactly 1 row (not 2)
+        // offset is a parameter, not an aesthetic, so it should NOT be recycled
+        let annotation_key = text_layer.data_key.as_ref().unwrap();
+        let annotation_df = result.data.get(annotation_key).unwrap();
+        assert_eq!(
+            annotation_df.height(),
+            1,
+            "Annotation layer should have exactly 1 row (offset array should not be recycled)"
+        );
+
+        // Verify offset remains as a parameter (not moved to aesthetics)
+        assert!(
+            text_layer.parameters.contains_key("offset"),
+            "offset should remain as a parameter"
+        );
+        assert!(
+            !text_layer.mappings.contains_key("offset"),
+            "offset should NOT be moved to aesthetics/mappings"
+        );
+
+        // Verify offset has the original array value
+        match text_layer.parameters.get("offset") {
+            Some(crate::plot::types::ParameterValue::Array(arr)) => {
+                assert_eq!(arr.len(), 2, "offset should have 2 elements");
+                assert!(
+                    matches!(arr[0], crate::plot::types::ArrayElement::Number(n) if (n - 0.0).abs() < 1e-10),
+                    "offset[0] should be 0"
+                );
+                assert!(
+                    matches!(arr[1], crate::plot::types::ArrayElement::Number(n) if (n - 1.0).abs() < 1e-10),
+                    "offset[1] should be 1"
+                );
+            }
+            other => panic!("Expected offset to be Array, got: {:?}", other),
+        }
+    }
+
     #[cfg(feature = "duckdb")]
     #[test]
     fn test_null_mapping_removes_global_aesthetic() {

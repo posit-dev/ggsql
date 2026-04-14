@@ -13,7 +13,7 @@ use crate::plot::ParameterValue;
 pub struct Projection {
     /// Coordinate system type
     pub coord: Coord,
-    /// Positional aesthetic names (resolved: explicit or coord defaults)
+    /// Position aesthetic names (resolved: explicit or coord defaults)
     /// Always populated after building - never empty.
     /// e.g., ["x", "y"] for cartesian, ["radius", "angle"] for polar,
     /// or custom names like ["a", "b"] if user specifies them.
@@ -23,9 +23,9 @@ pub struct Projection {
 }
 
 impl Projection {
-    /// Get the positional aesthetic names as string slices.
+    /// Get the position aesthetic names as string slices.
     /// (aesthetics are always resolved at build time)
-    pub fn positional_names(&self) -> Vec<&str> {
+    pub fn position_names(&self) -> Vec<&str> {
         self.aesthetics.iter().map(|s| s.as_str()).collect()
     }
 }

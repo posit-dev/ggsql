@@ -35,7 +35,22 @@ pub fn format_display_data(result: ExecutionResult) -> Option<Value> {
                 Some(format_dataframe(df))
             }
         }
+        ExecutionResult::ConnectionChanged { display_name, .. } => {
+            Some(format_connection_changed(&display_name))
+        }
     }
+}
+
+/// Format a connection-changed message
+fn format_connection_changed(display_name: &str) -> Value {
+    let text = format!("Connected to {}", display_name);
+    json!({
+        "data": {
+            "text/plain": text
+        },
+        "metadata": {},
+        "transient": {}
+    })
 }
 
 /// Format Vega-Lite visualization as display_data
@@ -59,6 +74,7 @@ fn format_vegalite(spec: String) -> Value {
 
     let html = format!(
         r#"<div id="{}"></div>
+
 <script type="text/javascript">
   (function() {{
     const spec = {};
@@ -127,7 +143,8 @@ fn format_vegalite(spec: String) -> Value {
         }});
     }}
   }})();
-</script>"#,
+</script>
+"#,
         vis_id, spec_json, vis_id
     );
 

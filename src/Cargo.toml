@@ -34,6 +34,8 @@ duckdb = { workspace = true, optional = true }
 arrow = { workspace = true, optional = true }
 postgres = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }
+odbc-api = { workspace = true, optional = true }
+toml_edit = { workspace = true, optional = true }
 
 # Writers
 plotters = { workspace = true, optional = true }
@@ -61,20 +63,22 @@ pyo3 = { workspace = true, optional = true }
 [dev-dependencies]
 jsonschema = "0.44"
 proptest.workspace = true
+tempfile = "3.8"
 ureq = "3"
 
 [features]
-default = ["duckdb", "sqlite", "vegalite", "ipc", "parquet", "builtin-data"]
+default = ["duckdb", "sqlite", "vegalite", "ipc", "parquet", "builtin-data", "odbc"]
 ipc = ["polars/ipc"]
 duckdb = ["dep:duckdb", "dep:arrow"]
 parquet = ["polars/parquet"]
 postgres = ["dep:postgres"]
 sqlite = ["dep:rusqlite"]
+odbc = ["dep:odbc-api", "dep:toml_edit"]
 vegalite = []
 ggplot2 = []
 builtin-data = []
 python = ["dep:pyo3"]
-all-readers = ["duckdb", "postgres", "sqlite"]
+all-readers = ["duckdb", "postgres", "sqlite", "odbc"]
 all-writers = ["vegalite", "ggplot2", "plotters"]
 
 # cargo-packager configuration for cross-platform installers

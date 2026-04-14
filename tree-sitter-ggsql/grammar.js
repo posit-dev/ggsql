@@ -210,7 +210,7 @@ module.exports = grammar({
     cast_expression: $ => prec(3, seq(
       choice(caseInsensitive('CAST'), caseInsensitive('TRY_CAST')),
       '(',
-      $.positional_arg,
+      $.position_arg,
       caseInsensitive('AS'),
       $.type_name,
       ')'
@@ -301,25 +301,25 @@ module.exports = grammar({
       repeat(seq(',', $.function_arg))
     ),
 
-    // Function argument: positional or named
+    // Function argument: position or named
     function_arg: $ => choice(
       $.named_arg,
-      $.positional_arg
+      $.position_arg
     ),
 
     named_arg: $ => seq(
       field('name', $.identifier),
       choice(':=', '=>'),
-      field('value', $.positional_arg)
+      field('value', $.position_arg)
     ),
 
-    // Positional argument: supports complex expressions including:
+    // Position argument: supports complex expressions including:
     // - Simple values: identifier, number, string, *
     // - Qualified names: table.column
     // - Nested function calls: ROUND(AVG(x), 2)
     // - Arithmetic expressions: quantity * price
     // - Type casts: value::type
-    positional_arg: $ => prec.left(choice(
+    position_arg: $ => prec.left(choice(
       // Simple values
       $.qualified_name,  // Handles both simple identifiers and table.column
       $.number,
@@ -332,9 +332,9 @@ module.exports = grammar({
       // Scalar subquery: (SELECT ...) or (WITH ... SELECT ...)
       $.scalar_subquery,
       // Arithmetic/comparison expression (binary operators)
-      seq($.positional_arg, choice('+', '-', '*', '/', '%', '||', '::', '<', '>', '<=', '>=', '=', '!=', '<>'), $.positional_arg),
+      seq($.position_arg, choice('+', '-', '*', '/', '%', '||', '::', '<', '>', '<=', '>=', '=', '!=', '<>'), $.position_arg),
       // Parenthesized expression
-      seq('(', $.positional_arg, ')')
+      seq('(', $.position_arg, ')')
     )),
 
     // Namespaced identifier: matches "namespace:name" pattern
@@ -804,7 +804,7 @@ module.exports = grammar({
       optional(seq(caseInsensitive('SETTING'), $.project_properties))
     ),
 
-    // Optional list of positional aesthetic names for PROJECT clause
+    // Optional list of position aesthetic names for PROJECT clause
     project_aesthetics: $ => seq(
       $.identifier,
       repeat(seq(',', $.identifier))

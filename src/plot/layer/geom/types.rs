@@ -2,8 +2,8 @@
 //!
 //! These types are used by all geom implementations and are shared across the module.
 
-use crate::plot::aesthetic::parse_positional;
-use crate::{plot::types::DefaultAestheticValue, Mappings};
+use crate::plot::aesthetic::parse_position;
+use crate::{naming, plot::types::DefaultAestheticValue, Mappings};
 
 // Re-export shared types from the central location
 pub use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
@@ -39,7 +39,7 @@ impl DefaultAesthetics {
 
     /// Get supported aesthetic names (excludes Delayed, for MAPPING validation)
     ///
-    /// Returns the literal names from defaults. For bidirectional positional checking,
+    /// Returns the literal names from defaults. For bidirectional position checking,
     /// use `is_supported()` which handles pos1/pos2 equivalence.
     pub fn supported(&self) -> Vec<&'static str> {
         self.defaults
@@ -65,7 +65,7 @@ impl DefaultAesthetics {
 
     /// Check if an aesthetic is supported (not Delayed)
     ///
-    /// Positional aesthetics are bidirectional: if pos1* is supported, pos2* is also
+    /// Position aesthetics are bidirectional: if pos1* is supported, pos2* is also
     /// considered supported (and vice versa).
     pub fn is_supported(&self, name: &str) -> bool {
         // Check for direct match first
@@ -77,8 +77,8 @@ impl DefaultAesthetics {
             return true;
         }
 
-        // Check for bidirectional positional match
-        if let Some((slot, suffix)) = parse_positional(name) {
+        // Check for bidirectional position match
+        if let Some((slot, suffix)) = parse_position(name) {
             let other_slot = if slot == 1 { 2 } else { 1 };
             let equivalent = format!("pos{}{}", other_slot, suffix);
             return self.defaults.iter().any(|(n, value)| {
@@ -148,6 +148,11 @@ pub fn get_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String>
         AestheticValue::Column { name, .. } => Some(name.clone()),
         _ => None,
     })
+}
+
+/// Helper to extract a double-quoted column name for use in SQL expressions.
+pub fn get_quoted_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String> {
+    get_column_name(aesthetics, aesthetic).map(|n| naming::quote_ident(&n))
 }
 
 #[cfg(test)]
