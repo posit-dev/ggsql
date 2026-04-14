@@ -2,7 +2,7 @@
 title: "Napoleon's march to Moscow"
 description: "Re-creating the famous visualisation from Minard."
 image: thumbnails/minard.svg
-categories: [line]
+categories: [line, advanced]
 order: 2
 references:
   - id: friendly2002

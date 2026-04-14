@@ -1,7 +1,7 @@
 ---
 title: "Pie chart"
 description: "Visualisation of proportions"
-image: thumbnails/line-chart.svg
+image: thumbnails/pie-chart.svg
 categories: [basic, polar]
 order: 2
 ---

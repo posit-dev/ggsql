@@ -1,7 +1,7 @@
 ---
 title: "Density plots"
 description: "Showing smooth distributions of single numeric variables"
-image: thumbnails/bar-chart.svg
+image: thumbnails/density-plot.svg
 categories: [basic, density, distribution]
 order: 3
 ---

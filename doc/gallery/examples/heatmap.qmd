@@ -1,7 +1,7 @@
 ---
 title: "Heatmap"
 description: "Arranging tiles on a grid"
-image: thumbnails/bar-chart.svg
+image: thumbnails/violin-plot.svg
 categories: [basic, heatmap]
 order: 3
 ---
