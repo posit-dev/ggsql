@@ -1,3 +1,5 @@
+[workspace]
+
 [package]
 name = 'ggsql-r'
 publish = false
@@ -11,8 +13,8 @@ name = 'ggsql'
 
 [dependencies]
 extendr-api = '0.8.1'
-ggsql-lib = { path = "../ggsql-lib", default-features = false, features = ["duckdb", "vegalite", "builtin-data"], package = "ggsql" }
-polars = { version = "0.52", default-features = false, features = ["ipc_streaming"] }
+ggsql = { version = "0.1.9", default-features = false, features = ["duckdb", "vegalite", "builtin-data"] }
+polars = { version = "0.52", default-features = false, features = ["ipc_streaming", "dtype-full", "timezones", "cum_agg"] }
 serde_json = "1.0"
 
 [profile.release]

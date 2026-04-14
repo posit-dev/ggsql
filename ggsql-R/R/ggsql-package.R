@@ -2,8 +2,7 @@
 "_PACKAGE"
 
 ## usethis namespace: start
-#' @importFrom rlang on_load
-#' @importFrom rlang run_on_load
+#' @import rlang
 #' @useDynLib ggsql, .registration = TRUE
 ## usethis namespace: end
 NULL

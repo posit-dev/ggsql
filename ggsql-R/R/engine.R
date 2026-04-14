@@ -54,7 +54,7 @@ new_ggsql_tables <- function() {
 #' @export
 print.ggsql_tables <- function(x, ...) {
   reader <- get_engine_reader()
-  tables <- tryCatch(
+  tables <- try_fetch(
     ggsql_execute_sql(reader, "SHOW TABLES"),
     error = function(cnd) data.frame(name = character())
   )
@@ -70,7 +70,7 @@ print.ggsql_tables <- function(x, ...) {
 #' @export
 names.ggsql_tables <- function(x) {
   reader <- get_engine_reader()
-  tables <- tryCatch(
+  tables <- try_fetch(
     ggsql_execute_sql(reader, "SHOW TABLES"),
     error = function(cnd) data.frame(name = character())
   )
@@ -82,7 +82,7 @@ names.ggsql_tables <- function(x) {
 # ---------------------------------------------------------------------------
 
 resolve_data_refs <- function(query, reader) {
-  refs <- gregexpr("(?:r|py):[a-zA-Z_][a-zA-Z0-9_.]*", query, perl = TRUE)
+  refs <- gregexpr("(?:r|py):[a-zA-Z_][a-zA-Z0-9_.]*", query, ignore.case = TRUE, perl = TRUE)
   matches <- regmatches(query, refs)[[1]]
 
   if (length(matches) == 0) return(query)
@@ -93,7 +93,7 @@ resolve_data_refs <- function(query, reader) {
     name <- parts[2]
 
     df <- switch(prefix,
-      r = tryCatch(
+      r = try_fetch(
         get(name, envir = knitr::knit_global()),
         error = function(cnd) {
           cli::cli_abort("Column reference {.code {ref}}: object {.val {name}} not found in R environment.")
@@ -194,7 +194,7 @@ ggsql_engine <- function(options) {
   query <- paste(options$code, collapse = "\n")
   reader <- get_engine_reader()
 
-  result <- tryCatch(
+  result <- try_fetch(
     ggsql_engine_eval(query, reader, options),
     error = function(cnd) {
       knitr::engine_output(options, options$code, conditionMessage(cnd))

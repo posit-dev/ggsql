@@ -1,8 +1,8 @@
 use extendr_api::prelude::*;
 
-use ggsql_lib::reader::{DuckDBReader as RustDuckDBReader, Reader, Spec};
-use ggsql_lib::validate::validate as rust_validate;
-use ggsql_lib::writer::{VegaLiteWriter as RustVegaLiteWriter, Writer};
+use ggsql::reader::{DuckDBReader as RustDuckDBReader, Reader, Spec};
+use ggsql::validate::validate as rust_validate;
+use ggsql::writer::{VegaLiteWriter as RustVegaLiteWriter, Writer};
 use polars::prelude::{DataFrame, IpcStreamReader, IpcStreamWriter, SerReader, SerWriter};
 use std::io::Cursor;
 
@@ -233,7 +233,7 @@ fn ggsql_validate_impl(query: &str) -> List {
 
 #[extendr]
 fn ggsql_version_impl() -> &'static str {
-    ggsql_lib::VERSION
+    ggsql::VERSION
 }
 
 // ============================================================================

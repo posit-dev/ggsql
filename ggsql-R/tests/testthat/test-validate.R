@@ -1,6 +1,6 @@
 test_that("ggsql_validate returns a ggsql_validated object", {
   v <- ggsql_validate(
-    "SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point"
+    "SELECT 1 AS x, 2 AS y VISUALISE DRAW point MAPPING x AS x, y AS y"
   )
   expect_s3_class(v, "ggsql_validated")
   expect_true(v$has_visual)
@@ -29,14 +29,14 @@ test_that("ggsql_has_visual works", {
 
 test_that("ggsql_is_valid works", {
   v <- ggsql_validate(
-    "SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point"
+    "SELECT 1 AS x, 2 AS y VISUALISE DRAW point MAPPING x AS x, y AS y"
   )
   expect_true(ggsql_is_valid(v))
 })
 
 test_that("print.ggsql_validated works", {
   v <- ggsql_validate(
-    "SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point"
+    "SELECT 1 AS x, 2 AS y VISUALISE DRAW point MAPPING x AS x, y AS y"
   )
   expect_invisible(print(v))
 })
