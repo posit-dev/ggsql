@@ -95,6 +95,7 @@ docs/_build/
 *.sqlite
 *.sqlite3
 !src/data/*.parquet
+!doc/assets/data/*.csv
 
 # Configuration files
 .env

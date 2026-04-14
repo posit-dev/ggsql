@@ -2,6 +2,7 @@ project:
   type: website
   resources:
     - wasm/**
+    - assets/data/**
 
 website:
   title: "ggsql"
