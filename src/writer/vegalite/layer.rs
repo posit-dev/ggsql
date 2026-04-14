@@ -284,8 +284,12 @@ impl GeomRenderer for BarRenderer {
         let is_horizontal = is_transposed(layer);
         let axis = if is_horizontal { "y" } else { "x" };
 
-        // Use expression-based size with the adjusted width
-        let size_value = json!({"expr": format!("bandwidth('{}') * {}", axis, width)});
+        let size_value = match layer_spec["encoding"][axis]["bin"].as_str() {
+            // I don't think binned scales obey 'band', but they don't tolerate the 'expr' option.
+            Some("binned") => json!({"band": width}),
+            // Use expression-based size with the adjusted width
+            _ => json!({"expr": format!("bandwidth('{}') * {}", axis, width)}),
+        };
 
         layer_spec["mark"] = if is_horizontal {
             json!({
