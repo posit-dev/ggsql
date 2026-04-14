@@ -55,6 +55,27 @@
         "languageId": "ggsql"
       }
     ],
+    "commands": [
+      {
+        "command": "ggsql.sourceCurrentFile",
+        "category": "ggsql",
+        "title": "Source Current File",
+        "icon": "$(play)"
+      }
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "ggsql.sourceCurrentFile",
+          "group": "navigation@0",
+          "when": "resourceLangId == ggsql && !isInDiffEditor"
+        },
+        {
+          "command": "workbench.action.positronConsole.executeCode",
+          "when": "resourceLangId == ggsql && !isInDiffEditor"
+        }
+      ]
+    },
     "configuration": {
       "type": "object",
       "title": "ggsql",

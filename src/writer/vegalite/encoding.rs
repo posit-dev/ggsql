@@ -414,8 +414,15 @@ fn apply_title_to_encoding(
             .as_ref()
             .and_then(|labels| labels.labels.get(primary));
 
-        if let Some(label) = explicit_label {
-            encoding["title"] = json!(label);
+        if let Some(label_opt) = explicit_label {
+            match label_opt {
+                Some(label) => {
+                    encoding["title"] = super::split_label_on_newlines(label);
+                }
+                None => {
+                    encoding["title"] = Value::Null;
+                }
+            }
             titled_families.insert(primary.to_string());
         } else if let Some(orig) = original_name {
             // Use original column name as default title when available
@@ -428,8 +435,15 @@ fn apply_title_to_encoding(
     } else if !is_primary && !primary_exists && !titled_families.contains(primary) {
         // Variant without primary: allow first variant to claim title (for explicit labels)
         if let Some(ref labels) = spec.labels {
-            if let Some(label) = labels.labels.get(primary) {
-                encoding["title"] = json!(label);
+            if let Some(label_opt) = labels.labels.get(primary) {
+                match label_opt {
+                    Some(label) => {
+                        encoding["title"] = super::split_label_on_newlines(label);
+                    }
+                    None => {
+                        encoding["title"] = Value::Null;
+                    }
+                }
                 titled_families.insert(primary.to_string());
             }
         }

@@ -112,7 +112,7 @@ VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 ```
 
-#### Applying a log transform to the y axis
+#### Applying a log transformation to the y axis
 
 ```{ggsql}
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality

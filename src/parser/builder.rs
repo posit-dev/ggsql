@@ -1124,12 +1124,13 @@ fn build_labels(node: &Node, source: &SourceTree) -> Result<Labels> {
         // Parse label type (name)
         let label_type = source.get_text(&name_node);
 
-        // Parse label value (must be a string)
+        // Parse label value (string or null)
         let label_value = match value_node.kind() {
-            "string" => parse_string_node(&value_node, source),
+            "string" => Some(parse_string_node(&value_node, source)),
+            "null_literal" => None,
             _ => {
                 return Err(GgsqlError::ParseError(format!(
-                    "Label '{}' must have a string value, got: {}",
+                    "Label '{}' must have a string or null value, got: {}",
                     label_type,
                     value_node.kind()
                 )));

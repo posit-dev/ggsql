@@ -49,6 +49,24 @@ const POINTS_TO_PIXELS: f64 = 96.0 / 72.0;
 /// So: area_px^2 = pi * (r_pt * POINTS_TO_PIXELS)^2 = pi * r_pt^2 * (96/72)^2
 const POINTS_TO_AREA: f64 = std::f64::consts::PI * POINTS_TO_PIXELS * POINTS_TO_PIXELS;
 
+/// Split a label string on newlines and return appropriate JSON value
+///
+/// Returns a JSON array if the string contains multiple lines, or a JSON string
+/// if it's a single line. Handles both actual newlines (from database columns,
+/// CHAR(10), imported data) and literal \\n (from SQL string literals).
+fn split_label_on_newlines(label: &str) -> Value {
+    // Normalize literal \\n to actual \n, then split on any newline type
+    let normalized = label.replace("\\n", "\n");
+    let lines: Vec<&str> = normalized.lines().collect();
+
+    // Return array if multiple lines, string if single line
+    if lines.len() > 1 {
+        json!(lines)
+    } else {
+        json!(label)
+    }
+}
+
 /// Result of preparing layer data for rendering
 ///
 /// Contains the datasets, renderers, and prepared data needed to build Vega-Lite layers.
@@ -101,7 +119,7 @@ fn prepare_layer_data(
 
         // Add data to individual datasets based on prepared type
         match &prepared {
-            PreparedData::Single { values } => {
+            PreparedData::Single { values, .. } => {
                 individual_datasets.insert(data_key.clone(), json!(values));
             }
             PreparedData::Composite { components, .. } => {
@@ -1092,18 +1110,25 @@ impl Writer for VegaLiteWriter {
         }
 
         if let Some(labels) = &spec.labels {
-            let title = labels.labels.get("title");
-            let subtitle = labels.labels.get("subtitle");
+            let title = labels.labels.get("title").and_then(|v| v.as_ref());
+            let subtitle = labels.labels.get("subtitle").and_then(|v| v.as_ref());
             match (title, subtitle) {
                 (Some(t), Some(st)) => {
                     // Vega-Lite uses an object for title + subtitle
-                    vl_spec["title"] = json!({"text": t, "subtitle": st});
+                    // Split both title and subtitle on newlines
+                    vl_spec["title"] = json!({
+                        "text": split_label_on_newlines(t),
+                        "subtitle": split_label_on_newlines(st)
+                    });
                 }
                 (Some(t), None) => {
-                    vl_spec["title"] = json!(t);
+                    vl_spec["title"] = split_label_on_newlines(t);
                 }
                 (None, Some(st)) => {
-                    vl_spec["title"] = json!({"text": "", "subtitle": st});
+                    vl_spec["title"] = json!({
+                        "text": "",
+                        "subtitle": split_label_on_newlines(st)
+                    });
                 }
                 (None, None) => {}
             }
@@ -1539,7 +1564,7 @@ mod tests {
         };
         labels
             .labels
-            .insert("title".to_string(), "My Chart".to_string());
+            .insert("title".to_string(), Some("My Chart".to_string()));
         spec.labels = Some(labels);
 
         let df = df! {
@@ -1556,6 +1581,94 @@ mod tests {
         assert_eq!(vl_spec["title"], "My Chart");
         assert_eq!(vl_spec["layer"][0]["mark"]["type"], "line");
         assert_eq!(vl_spec["layer"][0]["mark"]["clip"], true);
+    }
+
+    #[test]
+    fn test_labels_newline_splitting() {
+        use crate::execute;
+        use crate::reader::DuckDBReader;
+
+        // Test that LABEL clause values with newlines are split into arrays
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            SELECT
+                n::INTEGER as x,
+                n::INTEGER as y,
+                CASE WHEN n % 2 = 0 THEN 'Group A' ELSE 'Group B' END as category
+            FROM generate_series(0, 2) as t(n)
+            VISUALISE x, y, category AS stroke
+            DRAW point
+            LABEL
+                title => 'Multi-line\nChart Title',
+                subtitle => 'Line 1\nLine 2\nLine 3',
+                x => 'X Axis\nWith Newline',
+                y => 'Single Line',
+                stroke => 'Category\nMulti-line Legend'
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &prepared.specs[0];
+
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Check title (should be object with text and subtitle)
+        assert!(vl_spec["title"].is_object(), "Title should be an object");
+        let title_obj = vl_spec["title"].as_object().unwrap();
+
+        // Check title text (multi-line, should be array)
+        assert!(
+            title_obj["text"].is_array(),
+            "Title with newline should be an array"
+        );
+        let title_lines = title_obj["text"].as_array().unwrap();
+        assert_eq!(title_lines.len(), 2);
+        assert_eq!(title_lines[0].as_str().unwrap(), "Multi-line");
+        assert_eq!(title_lines[1].as_str().unwrap(), "Chart Title");
+
+        // Check subtitle (multi-line, should be array)
+        assert!(
+            title_obj["subtitle"].is_array(),
+            "Subtitle with newlines should be an array"
+        );
+        let subtitle_lines = title_obj["subtitle"].as_array().unwrap();
+        assert_eq!(subtitle_lines.len(), 3);
+        assert_eq!(subtitle_lines[0].as_str().unwrap(), "Line 1");
+        assert_eq!(subtitle_lines[1].as_str().unwrap(), "Line 2");
+        assert_eq!(subtitle_lines[2].as_str().unwrap(), "Line 3");
+
+        // Check x axis label (multi-line, should be array)
+        let x_encoding = &vl_spec["layer"][0]["encoding"]["x"];
+        assert!(
+            x_encoding["title"].is_array(),
+            "X axis label with newline should be an array"
+        );
+        let x_label_lines = x_encoding["title"].as_array().unwrap();
+        assert_eq!(x_label_lines.len(), 2);
+        assert_eq!(x_label_lines[0].as_str().unwrap(), "X Axis");
+        assert_eq!(x_label_lines[1].as_str().unwrap(), "With Newline");
+
+        // Check y axis label (single line, should be string)
+        let y_encoding = &vl_spec["layer"][0]["encoding"]["y"];
+        assert!(
+            y_encoding["title"].is_string(),
+            "Y axis label without newline should be a string"
+        );
+        assert_eq!(y_encoding["title"].as_str().unwrap(), "Single Line");
+
+        // Check stroke legend label (multi-line, should be array)
+        let stroke_encoding = &vl_spec["layer"][0]["encoding"]["stroke"];
+        assert!(
+            stroke_encoding["title"].is_array(),
+            "Stroke legend title with newline should be an array"
+        );
+        let stroke_label_lines = stroke_encoding["title"].as_array().unwrap();
+        assert_eq!(stroke_label_lines.len(), 2);
+        assert_eq!(stroke_label_lines[0].as_str().unwrap(), "Category");
+        assert_eq!(stroke_label_lines[1].as_str().unwrap(), "Multi-line Legend");
     }
 
     #[test]

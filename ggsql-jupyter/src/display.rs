@@ -74,6 +74,7 @@ fn format_vegalite(spec: String) -> Value {
 
     let html = format!(
         r#"<div id="{}"></div>
+
 <script type="text/javascript">
   (function() {{
     const spec = {};
@@ -142,7 +143,8 @@ fn format_vegalite(spec: String) -> Value {
         }});
     }}
   }})();
-</script>"#,
+</script>
+"#,
         vis_id, spec_json, vis_id
     );
 
