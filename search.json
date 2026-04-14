@@ -1184,7 +1184,7 @@
     "href": "syntax/layer/type/line.html#aesthetics",
     "title": "Line",
     "section": "Aesthetics",
-    "text": "Aesthetics\nThe following aesthetics are recognised by the line layer.\n\nRequired\n\nPrimary axis (e.g. x): The value of the independent variable.\nSecondary axis (e.g. y): The value of the dependent variable.\n\n\n\nOptional\n\ncolour/stroke: The colour of the line\nopacity: The opacity of the line\nlinewidth: The width of the line\nlinetype: The type of line, i.e. the dashing pattern",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the line layer.\n\nRequired\n\nPrimary axis (e.g. x): The value of the independent variable.\nSecondary axis (e.g. y): The value of the dependent variable.\n\n\n\nOptional\n\ncolour/stroke: The colour of the line.\nopacity: The opacity of the line.\nlinewidth: The width of the line. If linewidth varies within a group, linetype is incompatible.\nlinetype: The type of line, i.e. the dashing pattern.",
     "crumbs": [
       "Get started",
       "Layers",
@@ -1210,7 +1210,7 @@
     "href": "syntax/layer/type/line.html#data-transformation",
     "title": "Line",
     "section": "Data transformation",
-    "text": "Data transformation\nThe line layer sorts the data along its primary axis.",
+    "text": "Data transformation\nThe line layer sorts the data along its primary axis. If the line has a variable stroke or opacity aesthetic within groups, the line is broken into segments. Each segment gets the property of the preceding datapoint, so the last datapoint in a group does not transfer these properties.",
     "crumbs": [
       "Get started",
       "Layers",
@@ -1236,7 +1236,7 @@
     "href": "syntax/layer/type/line.html#examples",
     "title": "Line",
     "section": "Examples",
-    "text": "Examples\nStandard lineplot\n\nVISUALISE FROM ggsql:airquality\nDRAW line\n  MAPPING Date AS x, Temp AS y\n\n\n\n\n\n\nUse PARTITION BY to create multiple lines\n\nVISUALISE FROM ggsql:airquality\nDRAW line\n  MAPPING Day AS x, Temp AS y\n  PARTITION BY Month\n\n\n\n\n\n\nor split them with an aesthetic\n\nVISUALISE FROM ggsql:airquality\nDRAW line\n  MAPPING Day AS x, Temp AS y, Month AS color",
+    "text": "Examples\nStandard lineplot\n\nVISUALISE FROM ggsql:airquality\nDRAW line\n  MAPPING Date AS x, Temp AS y\n\n\n\n\n\n\nUse PARTITION BY to create multiple lines\n\nVISUALISE FROM ggsql:airquality\nDRAW line\n  MAPPING Day AS x, Temp AS y\n  PARTITION BY Month\n\n\n\n\n\n\nor split them with a discrete aesthetic. We can make a continuous variable (Month) discrete by using an ordinal scale.\n\nVISUALISE FROM ggsql:airquality\nDRAW line\n  MAPPING Day AS x, Temp AS y, Month AS stroke\n  SCALE ordinal stroke\n\n\n\n\n\n\nWhen stroke or opacity varies, the properties of the preceding datapoint carry over. In the case below, we don’t see the blue of the last datapoint.\n\nWITH data(x, y, z) AS (VALUES\n  (1, 2, 1),\n  (2, 5, 3),\n  (3, 3, 5),\n)\nVISUALISE x, y FROM data\nDRAW line\n  MAPPING z AS stroke\nSCALE stroke TO ['red', 'green', 'blue']\n\n\n\n\n\n\nThe linewidth aesthetic can vary point to point.\n\nWITH data(x, y, z) AS (VALUES\n  (1, 2, 1),\n  (2, 5, 3),\n  (3, 3, 5),\n)\n\nVISUALISE x, y FROM data\nDRAW line\n  MAPPING z AS linewidth\nSCALE linewidth TO [0, 30]",
     "crumbs": [
       "Get started",
       "Layers",
@@ -2358,7 +2358,7 @@
     "href": "syntax/layer/type/path.html#aesthetics",
     "title": "Path",
     "section": "Aesthetics",
-    "text": "Aesthetics\nThe following aesthetics are recognised by the path layer.\n\nRequired\n\nPrimary axis (e.g. x): Position along the primary axis.\nSecondary axis (e.g. y): Position along the secondary axis.\n\n\n\nOptional\n\ncolour/stroke: The colour of the path\nopacity: The opacity of the path\nlinewidth: The width of the path\nlinetype: The type of path, i.e. the dashing pattern",
+    "text": "Aesthetics\nThe following aesthetics are recognised by the path layer.\n\nRequired\n\nPrimary axis (e.g. x): Position along the primary axis.\nSecondary axis (e.g. y): Position along the secondary axis.\n\n\n\nOptional\n\ncolour/stroke: The colour of the path.\nopacity: The opacity of the path.\nlinewidth: The width of the path. If linewidth varies within a group, linetype is incompatible.\nlinetype: The type of path, i.e. the dashing pattern.",
     "crumbs": [
       "Get started",
       "Layers",
@@ -2384,7 +2384,7 @@
     "href": "syntax/layer/type/path.html#data-transformation",
     "title": "Path",
     "section": "Data transformation",
-    "text": "Data transformation\nThe path layer does not transform its data but passes it through unchanged",
+    "text": "Data transformation\nThe path layer does not transform its data but passes it through unchanged. If the path has a variable stroke or opacity aesthetic within groups, the line is broken into segments. Each segment gets the property of the preceding datapoint, so the last datapoint in a group does not transfer these properties.",
     "crumbs": [
       "Get started",
       "Layers",
@@ -2410,7 +2410,7 @@
     "href": "syntax/layer/type/path.html#examples",
     "title": "Path",
     "section": "Examples",
-    "text": "Examples\n\n\nCreate example data\nCREATE TABLE df AS\nWITH t(x, y, id) AS (VALUES\n  (1.0, 1.0, 'A'),\n  (2.0, 1.0, 'A'),\n  (1.0, 3.0, 'A'),\n  (3.0, 1.0, 'B'),\n  (2.0, 3.0, 'B'),\n  (3.0, 3.0, 'B')\n)\nSELECT * FROM t\n\n\nSimple example path.\n\nVISUALISE x, y FROM df\nDRAW path\n\n\n\n\n\n\nContrary to line drawings, path is not forced to follow the order along the axis.\n\nVISUALISE x, y FROM df\nDRAW path \n  MAPPING 'Path' AS colour\nDRAW line \n  MAPPING 'Line' AS colour\n\n\n\n\n\n\nGroups of individual paths can be declared via PARTITION BY.\n\nVISUALISE x, y FROM df\nDRAW path \n  PARTITION BY id\n\n\n\n\n\n\nInvoking a group through discrete aesthetics works as well.\n\nVISUALISE x, y FROM df\nDRAW path \n  MAPPING id AS colour\n\n\n\n\n\n\nCompared to polygons, paths don’t close their shapes and fill their interiors.\n\nVISUALISE x, y FROM df\nDRAW polygon \n  MAPPING 'Polygon' AS stroke\nDRAW path \n  MAPPING 'Path' AS stroke",
+    "text": "Examples\n\n\nCreate example data\nCREATE TABLE df AS\nWITH t(x, y, id) AS (VALUES\n  (1.0, 1.0, 'A'),\n  (2.0, 1.0, 'A'),\n  (1.0, 3.0, 'A'),\n  (3.0, 1.0, 'B'),\n  (2.0, 3.0, 'B'),\n  (3.0, 3.0, 'B')\n)\nSELECT * FROM t\n\n\nSimple example path.\n\nVISUALISE x, y FROM df\nDRAW path\n\n\n\n\n\n\nContrary to line drawings, path is not forced to follow the order along the axis.\n\nVISUALISE x, y FROM df\nDRAW path \n  MAPPING 'Path' AS colour\nDRAW line \n  MAPPING 'Line' AS colour\n\n\n\n\n\n\nGroups of individual paths can be declared via PARTITION BY.\n\nVISUALISE x, y FROM df\nDRAW path \n  PARTITION BY id\n\n\n\n\n\n\nInvoking a group through discrete aesthetics works as well.\n\nVISUALISE x, y FROM df\nDRAW path \n  MAPPING id AS colour\n\n\n\n\n\n\nCompared to polygons, paths don’t close their shapes and fill their interiors.\n\nVISUALISE x, y FROM df\nDRAW polygon \n  MAPPING 'Polygon' AS stroke\nDRAW path \n  MAPPING 'Path' AS stroke\n\n\n\n\n\n\nWhen stroke or opacity varies, the properties of the preceding datapoint carry over. In the case below, we don’t see the blue of the last datapoint.\n\nWITH data(x, y, z) AS (VALUES\n  (1, 2, 1),\n  (3, 3, 3),\n  (2, 5, 5),\n)\n\nVISUALISE x, y FROM data\nDRAW path\n  MAPPING z AS stroke\nSCALE stroke TO ['red', 'green', 'blue']\n\n\n\n\n\n\nThe linewidth aesthetic can vary point to point.\n\nWITH data(x, y, z) AS (VALUES\n  (1, 2, 1),\n  (3, 3, 3),\n  (2, 5, 5),\n)\n\nVISUALISE x, y FROM data\nDRAW path\n  MAPPING z AS linewidth\nSCALE linewidth TO [0, 30]",
     "crumbs": [
       "Get started",
       "Layers",
