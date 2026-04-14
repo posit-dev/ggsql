@@ -837,7 +837,7 @@ module.exports = grammar({
     label_assignment: $ => seq(
       field('name', $.label_type),
       '=>',
-      field('value', $.string)
+      field('value', choice($.string, $.null_literal))
     ),
 
     label_type: $ => $.identifier,
