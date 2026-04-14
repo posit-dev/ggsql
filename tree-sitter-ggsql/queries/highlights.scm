@@ -40,13 +40,13 @@
   "xend"
   "yend"
   ; Position aesthetics (polar)
-  "theta"
+  "angle"
   "radius"
-  "thetamin"
-  "thetamax"
+  "anglemin"
+  "anglemax"
   "radiusmin"
   "radiusmax"
-  "thetaend"
+  "angleend"
   "radiusend"
   ; Aggregation aesthetic
   "weight"
@@ -68,12 +68,12 @@
   "typeface"
   "fontweight"
   "italic"
+  "fontsize"
   "hjust"
   "vjust"
   "rotation"
   ; Specialty aesthetics
   "slope"
-  "intercept"
   ; Facet aesthetics
   "panel"
   "row"
