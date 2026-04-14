@@ -270,23 +270,22 @@ impl GeomRenderer for BarRenderer {
         layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        let width = match layer.parameters.get("width") {
-            Some(ParameterValue::Number(w)) => *w,
-            _ => 0.9,
+        let width = match layer.adjusted_width {
+            // The adjusted width comes from position adjustments
+            Some(adjusted) => adjusted,
+            _ => match layer.parameters.get("width") {
+                // Fallback to width parameter value if there is no adjustment
+                Some(ParameterValue::Number(n)) => *n,
+                _ => 0.9,
+            },
         };
 
         // For horizontal bars, use "height" for band size; for vertical, use "width"
         let is_horizontal = is_transposed(layer);
+        let axis = if is_horizontal { "y" } else { "x" };
 
-        // For dodged bars, use expression-based size with the adjusted width
-        // For non-dodged bars, use band-relative size
-        let size_value = if let Some(adjusted) = layer.adjusted_width {
-            // Use bandwidth expression for dodged bars
-            let axis = if is_horizontal { "y" } else { "x" };
-            json!({"expr": format!("bandwidth('{}') * {}", axis, adjusted)})
-        } else {
-            json!({"band": width})
-        };
+        // Use expression-based size with the adjusted width
+        let size_value = json!({"expr": format!("bandwidth('{}') * {}", axis, width)});
 
         layer_spec["mark"] = if is_horizontal {
             json!({
