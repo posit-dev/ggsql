@@ -179,27 +179,103 @@ pub fn apply_label_template(
         }
         let key = elem.to_key_string();
 
-        let break_val = key.clone();
         // Only apply template if no explicit mapping exists
-        result.entry(key).or_insert_with(|| {
-            let label = if placeholders.is_empty() {
-                // No placeholders - use template as literal string
-                template.to_string()
-            } else {
-                // Replace each placeholder with its transformed value
-                // Process in reverse order to preserve string indices
-                let mut label = template.to_string();
-                for parsed in placeholders.iter().rev() {
-                    let transformed = apply_transformation(&break_val, &parsed.placeholder);
-                    label = label.replace(&parsed.match_text, &transformed);
-                }
-                label
-            };
-            Some(label)
+        result.entry(key.clone()).or_insert_with(|| {
+            // Use shared format_value helper
+            Some(format_value(&key, template, &placeholders))
         });
     }
 
     result
+}
+
+/// Apply label formatting template to a DataFrame column.
+///
+/// Returns a new DataFrame with the specified column formatted according to the template.
+///
+/// # Arguments
+/// * `df` - DataFrame containing the column to format
+/// * `column_name` - Name of the column to format
+/// * `template` - Template string with placeholders (e.g., "{:Title}", "{:num %.2f}")
+///
+/// # Returns
+/// New DataFrame with formatted column
+///
+/// # Example
+/// ```ignore
+/// let formatted_df = format_dataframe_column(&df, "_aesthetic_label", "Region: {:Title}")?;
+/// ```
+pub fn format_dataframe_column(
+    df: &polars::prelude::DataFrame,
+    column_name: &str,
+    template: &str,
+) -> Result<polars::prelude::DataFrame, String> {
+    use polars::prelude::*;
+
+    // Get the column
+    let column = df
+        .column(column_name)
+        .map_err(|e| format!("Column '{}' not found: {}", column_name, e))?;
+
+    // Step 1: Convert entire column to strings
+    let string_values: Vec<Option<String>> = if let Ok(str_col) = column.str() {
+        // String column (includes temporal data auto-converted to ISO format)
+        str_col
+            .into_iter()
+            .map(|opt| opt.map(|s| s.to_string()))
+            .collect()
+    } else if let Ok(num_col) = column.cast(&DataType::Float64) {
+        // Numeric column - use shared format_number helper for clean integer formatting
+        use crate::plot::format_number;
+
+        let f64_col = num_col
+            .f64()
+            .map_err(|e| format!("Failed to cast column to f64: {}", e))?;
+
+        f64_col
+            .into_iter()
+            .map(|opt| opt.map(format_number))
+            .collect()
+    } else {
+        return Err(format!(
+            "Formatting doesn't support type {:?} in column '{}'. Try string or numeric types instead.",
+            column.dtype(),
+            column_name
+        ));
+    };
+
+    // Step 2: Apply formatting template to all string values
+    let placeholders = parse_placeholders(template);
+    let formatted_values: Vec<Option<String>> = string_values
+        .into_iter()
+        .map(|opt| opt.map(|s| format_value(&s, template, &placeholders)))
+        .collect();
+
+    let formatted_col = Series::new(column_name.into(), formatted_values);
+
+    // Replace column in DataFrame
+    let mut new_df = df.clone();
+    new_df
+        .replace(column_name, formatted_col)
+        .map_err(|e| format!("Failed to replace column: {}", e))?;
+
+    Ok(new_df)
+}
+
+/// Format a single value using template and parsed placeholders
+fn format_value(value: &str, template: &str, placeholders: &[ParsedPlaceholder]) -> String {
+    if placeholders.is_empty() {
+        // No placeholders - use template as literal string
+        template.to_string()
+    } else {
+        // Replace each placeholder with its transformed value
+        let mut result = template.to_string();
+        for parsed in placeholders.iter().rev() {
+            let transformed = apply_transformation(value, &parsed.placeholder);
+            result = result.replace(&parsed.match_text, &transformed);
+        }
+        result
+    }
 }
 
 #[cfg(test)]

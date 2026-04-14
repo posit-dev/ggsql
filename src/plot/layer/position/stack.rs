@@ -7,7 +7,7 @@
 //! - If pos1 is continuous and pos2 is discrete → stack horizontally (modify pos1/pos1end)
 
 use super::{is_continuous_scale, Layer, PositionTrait, PositionType};
-use crate::plot::types::{DefaultParam, DefaultParamValue, ParameterValue};
+use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue};
 use crate::{naming, DataFrame, GgsqlError, Plot, Result};
 use polars::prelude::*;
 
@@ -37,17 +37,20 @@ impl PositionTrait for Stack {
         PositionType::Stack
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "center",
                 default: DefaultParamValue::Boolean(false),
+                constraint: ParamConstraint::boolean(),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "total",
                 default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-        ]
+        ];
+        PARAMS
     }
 
     fn apply_adjustment(
@@ -100,16 +103,20 @@ fn is_axis_stackable(spec: &Plot, layer: &Layer, df: &DataFrame, axis: &str) -> 
         return false;
     }
 
+    // Helper to check if an aesthetic is defined in mappings OR remappings
+    // (remappings come from default_remappings for stat geoms like bar)
+    let has_aesthetic = |aes: &str| -> bool {
+        layer.mappings.contains_key(aes) || layer.remappings.contains_key(aes)
+    };
+
     // Check for pos/posend pair (e.g., pos2/pos2end)
     let end_aesthetic = format!("{}end", axis);
-    let has_end_pair =
-        layer.mappings.contains_key(axis) && layer.mappings.contains_key(&end_aesthetic);
+    let has_end_pair = has_aesthetic(axis) && has_aesthetic(&end_aesthetic);
 
     // Check for posmin/posmax pair (e.g., pos2min/pos2max)
     let min_aesthetic = format!("{}min", axis);
     let max_aesthetic = format!("{}max", axis);
-    let has_minmax_pair =
-        layer.mappings.contains_key(&min_aesthetic) && layer.mappings.contains_key(&max_aesthetic);
+    let has_minmax_pair = has_aesthetic(&min_aesthetic) && has_aesthetic(&max_aesthetic);
 
     // Check that each row has zero baseline in one of the range columns
     if has_end_pair {
@@ -134,13 +141,30 @@ fn has_zero_baseline_per_row(df: &DataFrame, col_a: &str, col_b: &str) -> bool {
     let (Ok(a), Ok(b)) = (df.column(col_a), df.column(col_b)) else {
         return false;
     };
-    let (Ok(a_f64), Ok(b_f64)) = (a.f64(), b.f64()) else {
+
+    // Cast columns to f64 for comparison - handle both Int64 and Float64 sources
+    let Ok(a_casted) = a.cast(&polars::datatypes::DataType::Float64) else {
         return false;
     };
+    let Ok(b_casted) = b.cast(&polars::datatypes::DataType::Float64) else {
+        return false;
+    };
+
+    let Ok(a_vals) = a_casted.f64() else {
+        return false;
+    };
+    let Ok(b_vals) = b_casted.f64() else {
+        return false;
+    };
+
+    // Collect values to avoid borrow issues
+    let a_vec: Vec<Option<f64>> = a_vals.into_iter().collect();
+    let b_vec: Vec<Option<f64>> = b_vals.into_iter().collect();
+
     // For each row, either a or b must be 0
-    a_f64
+    a_vec
         .into_iter()
-        .zip(b_f64)
+        .zip(b_vec)
         .all(|(a_val, b_val)| a_val == Some(0.0) || b_val == Some(0.0))
 }
 
@@ -242,6 +266,17 @@ fn apply_stack(df: DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> Re
     // 2. stack_end_col = lag(stack_col, 1, 0) - the bar bottom/start (previous stack top)
     // The cumsum naturally stacks across the grouping column values
 
+    // Build the partition columns for .over(): group column + facet columns.
+    // Facet columns must be included so stacking resets per facet panel,
+    // matching ggplot2 where position adjustments are computed per-panel.
+    let mut over_cols: Vec<Expr> = vec![col(&group_col)];
+    if let Some(ref facet) = spec.facet {
+        for aes in facet.layout.internal_facet_names() {
+            let facet_col = naming::aesthetic_column(&aes);
+            over_cols.push(col(&facet_col));
+        }
+    }
+
     // Treat NA heights as 0 for stacking
     // Compute cumulative sums (shared by all modes)
     let lf = lf
@@ -249,7 +284,7 @@ fn apply_stack(df: DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> Re
         .with_column(
             col(&stack_col)
                 .cum_sum(false)
-                .over([col(&group_col)])
+                .over(&over_cols)
                 .alias("__cumsum__"),
         )
         .with_column(
@@ -257,7 +292,7 @@ fn apply_stack(df: DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> Re
                 .cum_sum(false)
                 .shift(lit(1))
                 .fill_null(lit(0.0))
-                .over([col(&group_col)])
+                .over(&over_cols)
                 .alias("__cumsum_lag__"),
         );
 
@@ -269,7 +304,7 @@ fn apply_stack(df: DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> Re
             vec!["__cumsum__", "__cumsum_lag__"],
         ),
         StackMode::Fill(target) => {
-            let total = col(&stack_col).sum().over([col(&group_col)]);
+            let total = col(&stack_col).sum().over(&over_cols);
             (
                 (col("__cumsum__") / total.clone() * lit(target)).alias(&stack_col),
                 (col("__cumsum_lag__") / total * lit(target)).alias(&stack_end_col),
@@ -277,7 +312,7 @@ fn apply_stack(df: DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> Re
             )
         }
         StackMode::Center => {
-            let half_total = col(&stack_col).sum().over([col(&group_col)]) / lit(2.0);
+            let half_total = col(&stack_col).sum().over(&over_cols) / lit(2.0);
             (
                 (col("__cumsum__") - half_total.clone()).alias(&stack_col),
                 (col("__cumsum_lag__") - half_total).alias(&stack_end_col),

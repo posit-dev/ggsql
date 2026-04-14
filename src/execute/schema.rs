@@ -6,9 +6,9 @@
 //! 2. Apply casting to queries
 //! 3. complete_schema_ranges() - get min/max from cast queries
 
-use crate::plot::{AestheticValue, ColumnInfo, Layer, ParameterValue, Schema};
+use crate::plot::{AestheticValue, ArrayElement, ColumnInfo, Layer, ParameterValue, Schema};
 use crate::{naming, DataFrame, Result};
-use polars::prelude::DataType;
+use polars::prelude::{DataType, TimeUnit};
 
 /// Simple type info tuple: (name, dtype, is_discrete)
 pub type TypeInfo = (String, DataType, bool);
@@ -21,16 +21,22 @@ pub type TypeInfo = (String, DataType, bool);
 pub fn build_minmax_query(source_query: &str, column_names: &[&str]) -> String {
     let min_exprs: Vec<String> = column_names
         .iter()
-        .map(|name| format!("MIN(\"{}\") AS \"{}\"", name, name))
+        .map(|name| {
+            let q = naming::quote_ident(name);
+            format!("MIN({q}) AS {q}")
+        })
         .collect();
 
     let max_exprs: Vec<String> = column_names
         .iter()
-        .map(|name| format!("MAX(\"{}\") AS \"{}\"", name, name))
+        .map(|name| {
+            let q = naming::quote_ident(name);
+            format!("MAX({q}) AS {q}")
+        })
         .collect();
 
     format!(
-        "WITH __ggsql_source__ AS ({}) SELECT {} FROM __ggsql_source__ UNION ALL SELECT {} FROM __ggsql_source__",
+        "WITH \"__ggsql_source__\" AS ({}) SELECT {} FROM \"__ggsql_source__\" UNION ALL SELECT {} FROM \"__ggsql_source__\"",
         source_query,
         min_exprs.join(", "),
         max_exprs.join(", ")
@@ -145,7 +151,7 @@ pub fn extract_series_value(
 
 /// Fetch only column types (no min/max) from a query.
 ///
-/// Uses LIMIT 0 to get schema without reading data.
+/// Uses LIMIT 1 to get schema while minimally reading data.
 /// Returns `(name, dtype, is_discrete)` tuples for each column.
 ///
 /// This is the first phase of the split schema extraction approach:
@@ -157,7 +163,7 @@ where
     F: Fn(&str) -> Result<DataFrame>,
 {
     let schema_query = format!(
-        "SELECT * FROM ({}) AS {} LIMIT 0",
+        "SELECT * FROM ({}) AS {} LIMIT 1",
         query,
         naming::SCHEMA_ALIAS
     );
@@ -246,16 +252,37 @@ pub fn add_literal_columns_to_type_info(layers: &[Layer], layer_type_info: &mut 
     for (layer, type_info) in layers.iter().zip(layer_type_info.iter_mut()) {
         for (aesthetic, value) in &layer.mappings.aesthetics {
             if let AestheticValue::Literal(lit) = value {
-                let dtype = match lit {
-                    ParameterValue::String(_) => DataType::String,
-                    ParameterValue::Number(_) => DataType::Float64,
-                    ParameterValue::Boolean(_) => DataType::Boolean,
-                    ParameterValue::Array(_) | ParameterValue::Null => unreachable!(
-                        "Grammar prevents arrays and null in literal aesthetic mappings"
-                    ),
+                let (dtype, is_discrete) = match lit {
+                    ParameterValue::String(_) => (DataType::String, true),
+                    ParameterValue::Number(_) => (DataType::Float64, false),
+                    ParameterValue::Boolean(_) => (DataType::Boolean, true),
+                    ParameterValue::Array(arr) => {
+                        // Infer dtype from first element (arrays are homogeneous)
+                        if let Some(first) = arr.first() {
+                            match first {
+                                ArrayElement::String(_) => (DataType::String, true),
+                                ArrayElement::Number(_) => (DataType::Float64, false),
+                                ArrayElement::Boolean(_) => (DataType::Boolean, true),
+                                ArrayElement::Date(_) => (DataType::Date, false),
+                                ArrayElement::DateTime(_) => {
+                                    (DataType::Datetime(TimeUnit::Microseconds, None), false)
+                                }
+                                ArrayElement::Time(_) => (DataType::Time, false),
+                                ArrayElement::Null => {
+                                    // Null element: default to Float64
+                                    (DataType::Float64, false)
+                                }
+                            }
+                        } else {
+                            // Empty array: default to Float64
+                            (DataType::Float64, false)
+                        }
+                    }
+                    ParameterValue::Null => {
+                        // Skip null literals - they don't create columns
+                        continue;
+                    }
                 };
-                let is_discrete =
-                    matches!(lit, ParameterValue::String(_) | ParameterValue::Boolean(_));
                 let col_name = naming::aesthetic_column(aesthetic);
 
                 // Only add if not already present
@@ -280,7 +307,7 @@ pub fn build_aesthetic_schema(layer: &Layer, schema: &Schema) -> Schema {
     for (aesthetic, value) in &layer.mappings.aesthetics {
         let aes_col_name = naming::aesthetic_column(aesthetic);
         match value {
-            AestheticValue::Column { name, .. } => {
+            AestheticValue::Column { name, .. } | AestheticValue::AnnotationColumn { name } => {
                 // The schema already has aesthetic-prefixed column names from build_layer_base_query,
                 // so we look up by aesthetic name, not the original column name.
                 // Fall back to original name for backwards compatibility with older schemas.
@@ -310,21 +337,41 @@ pub fn build_aesthetic_schema(layer: &Layer, schema: &Schema) -> Schema {
             }
             AestheticValue::Literal(lit) => {
                 // Literals become columns with appropriate type
-                let dtype = match lit {
-                    ParameterValue::String(_) => DataType::String,
-                    ParameterValue::Number(_) => DataType::Float64,
-                    ParameterValue::Boolean(_) => DataType::Boolean,
-                    ParameterValue::Array(_) | ParameterValue::Null => unreachable!(
-                        "Grammar prevents arrays and null in literal aesthetic mappings"
-                    ),
+                let (dtype, is_discrete) = match lit {
+                    ParameterValue::String(_) => (DataType::String, true),
+                    ParameterValue::Number(_) => (DataType::Float64, false),
+                    ParameterValue::Boolean(_) => (DataType::Boolean, true),
+                    ParameterValue::Array(arr) => {
+                        // Infer dtype from first element (arrays are homogeneous)
+                        if let Some(first) = arr.first() {
+                            match first {
+                                ArrayElement::String(_) => (DataType::String, true),
+                                ArrayElement::Number(_) => (DataType::Float64, false),
+                                ArrayElement::Boolean(_) => (DataType::Boolean, true),
+                                ArrayElement::Date(_) => (DataType::Date, false),
+                                ArrayElement::DateTime(_) => {
+                                    (DataType::Datetime(TimeUnit::Microseconds, None), false)
+                                }
+                                ArrayElement::Time(_) => (DataType::Time, false),
+                                ArrayElement::Null => {
+                                    // Null element: default to Float64
+                                    (DataType::Float64, false)
+                                }
+                            }
+                        } else {
+                            // Empty array: default to Float64
+                            (DataType::Float64, false)
+                        }
+                    }
+                    ParameterValue::Null => {
+                        // Null: default to Float64
+                        (DataType::Float64, false)
+                    }
                 };
                 aesthetic_schema.push(ColumnInfo {
                     name: aes_col_name,
                     dtype,
-                    is_discrete: matches!(
-                        lit,
-                        ParameterValue::String(_) | ParameterValue::Boolean(_)
-                    ),
+                    is_discrete,
                     min: None,
                     max: None,
                 });

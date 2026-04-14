@@ -34,15 +34,237 @@
 use std::collections::HashMap;
 
 use crate::execute::prepare_data_with_reader;
-use crate::plot::{Plot, SqlTypeNames};
+use crate::plot::{CastTargetType, Plot};
 use crate::validate::{validate, ValidationWarning};
-use crate::{DataFrame, GgsqlError, Result};
+use crate::{naming, DataFrame, GgsqlError, Result};
+
+// =============================================================================
+// SQL Dialect
+// =============================================================================
+
+/// SQL type names and functionality in the syntax supported by that backend.
+///
+/// Default implementations produce portable ANSI SQL.
+pub trait SqlDialect {
+    /// SQL type name for numeric columns (e.g., "DOUBLE PRECISION")
+    fn number_type_name(&self) -> Option<&str> {
+        Some("DOUBLE PRECISION")
+    }
+
+    /// SQL type name for integer columns (e.g., "BIGINT")
+    fn integer_type_name(&self) -> Option<&str> {
+        Some("BIGINT")
+    }
+
+    /// SQL type name for DATE columns (e.g., "DATE")
+    fn date_type_name(&self) -> Option<&str> {
+        Some("DATE")
+    }
+
+    /// SQL type name for DATETIME/TIMESTAMP columns
+    fn datetime_type_name(&self) -> Option<&str> {
+        Some("TIMESTAMP")
+    }
+
+    /// SQL type name for TIME columns
+    fn time_type_name(&self) -> Option<&str> {
+        Some("TIME")
+    }
+
+    /// SQL type name for STRING/VARCHAR columns
+    fn string_type_name(&self) -> Option<&str> {
+        Some("VARCHAR")
+    }
+
+    /// SQL type name for BOOLEAN columns
+    fn boolean_type_name(&self) -> Option<&str> {
+        Some("BOOLEAN")
+    }
+
+    /// Get the SQL type name for a cast target type.
+    fn type_name_for(&self, target: CastTargetType) -> Option<&str> {
+        match target {
+            CastTargetType::Number => self.number_type_name(),
+            CastTargetType::Integer => self.integer_type_name(),
+            CastTargetType::Date => self.date_type_name(),
+            CastTargetType::DateTime => self.datetime_type_name(),
+            CastTargetType::Time => self.time_type_name(),
+            CastTargetType::String => self.string_type_name(),
+            CastTargetType::Boolean => self.boolean_type_name(),
+        }
+    }
+
+    // =========================================================================
+    // Schema introspection queries (for Connections pane)
+    // =========================================================================
+
+    /// SQL to list catalog names. Returns rows with column `catalog_name`.
+    fn sql_list_catalogs(&self) -> String {
+        "SELECT DISTINCT catalog_name FROM information_schema.schemata ORDER BY catalog_name".into()
+    }
+
+    /// SQL to list schema names within a catalog. Returns rows with column `schema_name`.
+    fn sql_list_schemas(&self, catalog: &str) -> String {
+        format!(
+            "SELECT DISTINCT schema_name FROM information_schema.schemata \
+             WHERE catalog_name = '{}' ORDER BY schema_name",
+            catalog.replace('\'', "''")
+        )
+    }
+
+    /// SQL to list tables/views within a catalog and schema.
+    /// Returns rows with columns `table_name` and `table_type`.
+    fn sql_list_tables(&self, catalog: &str, schema: &str) -> String {
+        format!(
+            "SELECT DISTINCT table_name, table_type FROM information_schema.tables \
+             WHERE table_catalog = '{}' AND table_schema = '{}' ORDER BY table_name",
+            catalog.replace('\'', "''"),
+            schema.replace('\'', "''")
+        )
+    }
+
+    /// SQL to list columns in a table.
+    /// Returns rows with columns `column_name` and `data_type`.
+    fn sql_list_columns(&self, catalog: &str, schema: &str, table: &str) -> String {
+        format!(
+            "SELECT column_name, data_type FROM information_schema.columns \
+             WHERE table_catalog = '{}' AND table_schema = '{}' AND table_name = '{}' \
+             ORDER BY ordinal_position",
+            catalog.replace('\'', "''"),
+            schema.replace('\'', "''"),
+            table.replace('\'', "''")
+        )
+    }
+
+    /// Scalar MAX across any number of SQL expressions.
+    fn sql_greatest(&self, exprs: &[&str]) -> String {
+        let mut result = exprs[0].to_string();
+        for expr in &exprs[1..] {
+            result =
+                format!("(CASE WHEN ({result}) >= ({expr}) THEN ({result}) ELSE ({expr}) END)");
+        }
+        result
+    }
+
+    /// Scalar MIN across any number of SQL expressions.
+    fn sql_least(&self, exprs: &[&str]) -> String {
+        let mut result = exprs[0].to_string();
+        for expr in &exprs[1..] {
+            result =
+                format!("(CASE WHEN ({result}) <= ({expr}) THEN ({result}) ELSE ({expr}) END)");
+        }
+        result
+    }
+
+    /// Generate a series of integers 0..n-1 as a CTE fragment.
+    ///
+    /// Returns CTE fragment(s) producing table `__ggsql_seq__` with column `n`.
+    fn sql_generate_series(&self, n: usize) -> String {
+        // Uses a cube-root decomposition to avoid deep recursion: only recurses
+        // ~cbrt(n) times, then cross-joins three copies to cover the full range.
+        let base_size = (n as f64).cbrt().ceil() as usize;
+        let base_sq = base_size * base_size;
+        let base_max = base_size - 1;
+        format!(
+            "\"__ggsql_base__\"(n) AS (\
+               SELECT 0 UNION ALL SELECT n + 1 FROM \"__ggsql_base__\" WHERE n < {base_max}\
+             ),\
+             \"__ggsql_seq__\"(n) AS (\
+               SELECT CAST(a.n * {base_sq} + b.n * {base_size} + c.n AS REAL) AS n \
+               FROM \"__ggsql_base__\" a, \"__ggsql_base__\" b, \"__ggsql_base__\" c \
+               WHERE a.n * {base_sq} + b.n * {base_size} + c.n < {n}\
+             )"
+        )
+    }
+
+    /// Compute a percentile of a column
+    ///
+    /// Returns a scalar subquery expression that computes the specified percentile
+    /// of a column within an optional grouping context.
+    fn sql_percentile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
+        // Uses NTILE(4) to divide data into quartiles, then interpolates between boundaries.
+        let group_filter = groups
+            .iter()
+            .map(|g| {
+                let q = naming::quote_ident(g);
+                format!(
+                    "AND {pct}.{q} IS NOT DISTINCT FROM {qt}.{q}",
+                    pct = naming::quote_ident("__ggsql_pct__"),
+                    qt = naming::quote_ident("__ggsql_qt__")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        let lo_tile = (fraction * 4.0).ceil() as usize;
+        let hi_tile = lo_tile + 1;
+        let quoted_column = naming::quote_ident(column);
+
+        format!(
+            "(SELECT (\
+              MAX(CASE WHEN __tile = {lo_tile} THEN __val END) + \
+              MIN(CASE WHEN __tile = {hi_tile} THEN __val END)\
+            ) / 2.0 \
+            FROM (\
+              SELECT {column} AS __val, \
+                     NTILE(4) OVER (ORDER BY {column}) AS __tile \
+              FROM ({from}) AS \"__ggsql_pct__\" \
+              WHERE {column} IS NOT NULL {group_filter}\
+            ))",
+            column = quoted_column
+        )
+    }
+
+    /// SQL literal for a date value (days since Unix epoch).
+    fn sql_date_literal(&self, days_since_epoch: i32) -> String {
+        format!(
+            "CAST(DATE '1970-01-01' + INTERVAL {} DAY AS DATE)",
+            days_since_epoch
+        )
+    }
+
+    /// SQL literal for a datetime value (microseconds since Unix epoch).
+    fn sql_datetime_literal(&self, microseconds_since_epoch: i64) -> String {
+        format!(
+            "TIMESTAMP '1970-01-01 00:00:00' + INTERVAL {} MICROSECOND",
+            microseconds_since_epoch
+        )
+    }
+
+    /// SQL literal for a time value (nanoseconds since midnight).
+    fn sql_time_literal(&self, nanoseconds_since_midnight: i64) -> String {
+        let seconds = nanoseconds_since_midnight / 1_000_000_000;
+        let nanos = nanoseconds_since_midnight % 1_000_000_000;
+        format!(
+            "TIME '00:00:00' + INTERVAL {} SECOND + INTERVAL {} NANOSECOND",
+            seconds, nanos
+        )
+    }
+
+    /// SQL literal for a boolean value.
+    fn sql_boolean_literal(&self, value: bool) -> String {
+        if value {
+            "TRUE".to_string()
+        } else {
+            "FALSE".to_string()
+        }
+    }
+}
+
+pub struct AnsiDialect;
+impl SqlDialect for AnsiDialect {}
 
 #[cfg(feature = "duckdb")]
 pub mod duckdb;
 
-#[cfg(feature = "polars-sql")]
-pub mod polars_sql;
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
+
+#[cfg(feature = "odbc")]
+pub mod odbc;
+
+#[cfg(feature = "odbc")]
+pub mod snowflake;
 
 pub mod connection;
 pub mod data;
@@ -51,8 +273,37 @@ mod spec;
 #[cfg(feature = "duckdb")]
 pub use duckdb::DuckDBReader;
 
-#[cfg(feature = "polars-sql")]
-pub use polars_sql::PolarsReader;
+#[cfg(feature = "sqlite")]
+pub use sqlite::SqliteReader;
+
+#[cfg(feature = "odbc")]
+pub use odbc::OdbcReader;
+
+// ============================================================================
+// Shared utilities
+// ============================================================================
+
+/// Validate a table name for use in SQL statements.
+///
+/// Rejects empty names and names containing null bytes or newlines.
+pub(crate) fn validate_table_name(name: &str) -> Result<()> {
+    if name.is_empty() {
+        return Err(GgsqlError::ReaderError("Table name cannot be empty".into()));
+    }
+
+    let forbidden = ['\0', '\n', '\r'];
+    for ch in forbidden {
+        if name.contains(ch) {
+            return Err(GgsqlError::ReaderError(format!(
+                "Table name '{}' contains invalid character '{}'",
+                name,
+                ch.escape_default()
+            )));
+        }
+    }
+
+    Ok(())
+}
 
 // ============================================================================
 // Spec - Result of reader.execute()
@@ -198,113 +449,44 @@ pub trait Reader {
     /// let writer = VegaLiteWriter::new();
     /// let json = writer.render(&spec)?;
     /// ```
-    fn execute(&self, query: &str) -> Result<Spec>
-    where
-        Self: Sized,
-    {
-        // Run validation first to capture warnings
-        let validated = validate(query)?;
-        let warnings: Vec<ValidationWarning> = validated.warnings().to_vec();
+    fn execute(&self, query: &str) -> Result<Spec>;
 
-        // Prepare data with type names for this reader
-        let prepared_data = prepare_data_with_reader(query, self)?;
+    /// Get the SQL dialect for this reader.
+    ///
+    /// Database-specific SQL type names and SQL generation methods
+    fn dialect(&self) -> &dyn SqlDialect {
+        &AnsiDialect
+    }
+}
 
-        // Get the first (and typically only) spec
-        let plot = prepared_data.specs.into_iter().next().ok_or_else(|| {
+/// Execute a ggsql query using any reader
+///
+/// This is the shared implementation behind `Reader::execute()`. Concrete
+/// readers delegate to this so the trait stays object-safe (no `Self: Sized`
+/// bound on `execute`).
+pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<Spec> {
+    let validated = validate(query)?;
+    let warnings: Vec<ValidationWarning> = validated.warnings().to_vec();
+
+    let prepared_data = prepare_data_with_reader(query, reader)?;
+
+    let plot =
+        prepared_data.specs.into_iter().next().ok_or_else(|| {
             GgsqlError::ValidationError("No visualization spec found".to_string())
         })?;
 
-        // For now, layer_sql and stat_sql are not tracked in PreparedData
-        // (they were part of main's version but not HEAD's)
-        let layer_sql = vec![None; plot.layers.len()];
-        let stat_sql = vec![None; plot.layers.len()];
+    let layer_sql = vec![None; plot.layers.len()];
+    let stat_sql = vec![None; plot.layers.len()];
 
-        Ok(Spec::new(
-            plot,
-            prepared_data.data,
-            prepared_data.sql,
-            prepared_data.visual,
-            layer_sql,
-            stat_sql,
-            warnings,
-        ))
-    }
-
-    // =========================================================================
-    // SQL Type Names for Casting
-    // =========================================================================
-
-    /// SQL type name for numeric columns (e.g., "DOUBLE", "FLOAT", "NUMERIC")
-    ///
-    /// Used for casting string columns to numbers for binning.
-    /// Returns None if the database doesn't support this cast.
-    fn number_type_name(&self) -> Option<&str> {
-        Some("DOUBLE")
-    }
-
-    /// SQL type name for DATE columns (e.g., "DATE", "date")
-    ///
-    /// Used for casting string columns to dates for temporal binning.
-    /// Returns None if the database doesn't support native date types.
-    fn date_type_name(&self) -> Option<&str> {
-        Some("DATE")
-    }
-
-    /// SQL type name for DATETIME/TIMESTAMP columns
-    ///
-    /// Used for casting string columns to timestamps for temporal binning.
-    /// Returns None if the database doesn't support this type.
-    fn datetime_type_name(&self) -> Option<&str> {
-        Some("TIMESTAMP")
-    }
-
-    /// SQL type name for TIME columns
-    ///
-    /// Used for casting string columns to time values for temporal binning.
-    /// Returns None if the database doesn't support this type.
-    fn time_type_name(&self) -> Option<&str> {
-        Some("TIME")
-    }
-
-    /// SQL type name for VARCHAR/TEXT columns
-    ///
-    /// Used for casting columns to string type.
-    /// Returns None if the database doesn't support this cast.
-    fn string_type_name(&self) -> Option<&str> {
-        Some("VARCHAR")
-    }
-
-    /// SQL type name for BOOLEAN columns
-    ///
-    /// Used for casting columns to boolean type.
-    /// Returns None if the database doesn't support this cast.
-    fn boolean_type_name(&self) -> Option<&str> {
-        Some("BOOLEAN")
-    }
-
-    /// SQL type name for INTEGER columns (e.g., "BIGINT", "INTEGER")
-    ///
-    /// Used for casting columns to integer type.
-    /// Returns None if the database doesn't support this cast.
-    fn integer_type_name(&self) -> Option<&str> {
-        Some("BIGINT")
-    }
-
-    /// Get SQL type names for this reader.
-    ///
-    /// Returns a SqlTypeNames struct populated from the individual type name methods.
-    /// This is useful for passing to functions that need all type names at once.
-    fn sql_type_names(&self) -> SqlTypeNames {
-        SqlTypeNames {
-            number: self.number_type_name().map(String::from),
-            integer: self.integer_type_name().map(String::from),
-            date: self.date_type_name().map(String::from),
-            datetime: self.datetime_type_name().map(String::from),
-            time: self.time_type_name().map(String::from),
-            string: self.string_type_name().map(String::from),
-            boolean: self.boolean_type_name().map(String::from),
-        }
-    }
+    Ok(Spec::new(
+        plot,
+        prepared_data.data,
+        prepared_data.sql,
+        prepared_data.visual,
+        layer_sql,
+        stat_sql,
+        warnings,
+    ))
 }
 
 #[cfg(test)]
@@ -532,7 +714,7 @@ mod tests {
     #[test]
     fn test_polar_encoding_keys_independent_of_user_names() {
         // This test verifies that polar projections always produce theta/radius encoding keys
-        // in Vega-Lite output, regardless of what positional names the user specified in PROJECT.
+        // in Vega-Lite output, regardless of what position names the user specified in PROJECT.
         // This is critical because Vega-Lite expects specific channel names for polar marks.
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
@@ -560,7 +742,7 @@ mod tests {
             );
         }
 
-        // Test case 1: PROJECT y, x TO polar (y as pos1→theta, x as pos2→radius)
+        // Test case 1: PROJECT y, x TO polar (y as pos1→radius, x as pos2→theta)
         let query1 = r#"
             SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
             VISUALISE value AS y, category AS fill
@@ -573,7 +755,7 @@ mod tests {
         let json1: serde_json::Value = serde_json::from_str(&result1).unwrap();
         check_encoding_keys(&json1, "PROJECT y, x TO polar");
 
-        // Test case 2: PROJECT x, y TO polar (x as pos1→theta, y as pos2→radius)
+        // Test case 2: PROJECT x, y TO polar (x as pos1→radius, y as pos2→theta)
         let query2 = r#"
             SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
             VISUALISE value AS x, category AS fill
@@ -585,10 +767,10 @@ mod tests {
         let json2: serde_json::Value = serde_json::from_str(&result2).unwrap();
         check_encoding_keys(&json2, "PROJECT x, y TO polar");
 
-        // Test case 3: PROJECT TO polar (default theta/radius names)
+        // Test case 3: PROJECT TO polar (default radius/angle names)
         let query3 = r#"
             SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
-            VISUALISE value AS theta, category AS fill
+            VISUALISE value AS angle, category AS fill
             DRAW bar
             PROJECT TO polar
         "#;
@@ -613,7 +795,7 @@ mod tests {
     #[test]
     fn test_cartesian_encoding_keys_with_custom_names() {
         // This test verifies that cartesian projections produce x/y encoding keys
-        // even when custom positional names are used in PROJECT.
+        // even when custom position names are used in PROJECT.
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         fn check_cartesian_keys(json: &serde_json::Value, test_name: &str) {
@@ -720,7 +902,7 @@ mod tests {
     #[test]
     fn test_binned_fill_legend_renders_threshold_scale() {
         // End-to-end test for binned fill scale rendering to Vega-Lite
-        // Verifies that binned non-positional aesthetics use threshold scale type
+        // Verifies that binned material aesthetics use threshold scale type
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         // Create data with values that span the binned range
@@ -733,7 +915,7 @@ mod tests {
                 (4, 40, 85.0)
             ) AS t(x, y, value)
             VISUALISE
-            DRAW tile MAPPING x AS x, y AS y, value AS fill
+            DRAW point MAPPING x AS x, y AS y, value AS fill
             SCALE BINNED fill FROM [0, 100] TO viridis SETTING breaks => [0, 25, 50, 75, 100]
         "#;
 
@@ -970,6 +1152,70 @@ mod tests {
     }
 
     #[test]
+    fn test_stacked_bar_chart_dummy_x() {
+        // Test stacked bar chart with no x mapping (dummy x column)
+        // This is the case where only fill is mapped: all bars at same x position should stack
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            VISUALISE FROM ggsql:penguins
+            DRAW bar MAPPING species AS fill
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+
+        // Verify y and y2 encodings exist (stacked bars use y/y2 for range)
+        let encoding = &layer["encoding"];
+        assert!(encoding["y"].is_object(), "Should have y encoding");
+        assert!(
+            encoding["y2"].is_object(),
+            "Should have y2 encoding for stacked bars with dummy x. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+
+        // Verify Vega-Lite stacking is disabled (we handle it ourselves)
+        assert!(
+            encoding["y"]["stack"].is_null(),
+            "y encoding should have stack: null to disable VL stacking. Got: {}",
+            serde_json::to_string_pretty(&encoding["y"]).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_bar_chart_with_expand_setting() {
+        // Test bar chart with SCALE y SETTING expand - should work even when y is stat-derived
+        // This tests that:
+        // 1. Scale type inference works for stat-generated count columns
+        // 2. Stacking still works (y2 encoding exists) when SCALE y is specified
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            VISUALISE FROM ggsql:penguins
+            DRAW bar MAPPING species AS fill
+            SCALE y SETTING expand => [0.05, 0.05]
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        // Should succeed without "discrete scale does not support SETTING 'expand'" error
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = json["layer"].as_array().unwrap().first().unwrap();
+
+        // Verify stacking works (y2 encoding exists for stacked bars)
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding["y2"].is_object(),
+            "Should have y2 encoding for stacked bars. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+    }
+
+    #[test]
     fn test_dodged_bar_chart() {
         // Test dodged bar chart via position => 'dodge'
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
@@ -1067,8 +1313,8 @@ mod tests {
         let encoding = &layer["encoding"];
 
         // With PROJECT y, x TO cartesian:
-        // - y is pos1 (first positional), renders to VL x-axis in cartesian
-        // - x is pos2 (second positional), renders to VL y-axis in cartesian
+        // - y is pos1 (first position), renders to VL x-axis in cartesian
+        // - x is pos2 (second position), renders to VL y-axis in cartesian
         // So LABEL y => 'Category' should appear on VL x-axis, LABEL x => 'Value' on VL y-axis
         let x_title = encoding["x"]["title"].as_str();
         let y_title = encoding["y"]["title"].as_str();
@@ -1089,14 +1335,14 @@ mod tests {
 
     #[test]
     fn test_label_with_polar_project() {
-        // End-to-end test: LABEL theta/radius with PROJECT TO polar
+        // End-to-end test: LABEL angle/radius with PROJECT TO polar
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let query = r#"
             SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
-            VISUALISE value AS theta, category AS fill
+            VISUALISE value AS angle, category AS fill
             DRAW bar
             PROJECT TO polar
-            LABEL theta => 'Angle', radius => 'Distance'
+            LABEL angle => 'Angle', radius => 'Distance'
         "#;
 
         let spec = reader.execute(query).unwrap();

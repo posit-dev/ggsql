@@ -9,7 +9,14 @@ use serde_json::{json, Value};
 
 /// Format execution result as Jupyter display_data content
 ///
-/// Returns a JSON value matching the Jupyter display_data message format:
+/// Returns `Some(Value)` for results that should be displayed, or `None` for
+/// empty results (e.g., DDL statements like CREATE TABLE that have no columns).
+///
+/// Note: A SELECT that returns 0 rows but has columns will still display
+/// an empty table with headers. Only truly empty DataFrames (0 columns)
+/// from DDL statements return `None`.
+///
+/// The returned JSON matches the Jupyter display_data message format:
 /// ```json
 /// {
 ///   "data": { "mime/type": content, ... },
@@ -17,11 +24,33 @@ use serde_json::{json, Value};
 ///   "transient": { ... }
 /// }
 /// ```
-pub fn format_display_data(result: ExecutionResult) -> Value {
+pub fn format_display_data(result: ExecutionResult) -> Option<Value> {
     match result {
-        ExecutionResult::Visualization { spec } => format_vegalite(spec),
-        ExecutionResult::DataFrame(df) => format_dataframe(df),
+        ExecutionResult::Visualization { spec } => Some(format_vegalite(spec)),
+        ExecutionResult::DataFrame(df) => {
+            // DDL statements return DataFrames with 0 columns - don't display anything
+            if df.width() == 0 {
+                None
+            } else {
+                Some(format_dataframe(df))
+            }
+        }
+        ExecutionResult::ConnectionChanged { display_name, .. } => {
+            Some(format_connection_changed(&display_name))
+        }
     }
+}
+
+/// Format a connection-changed message
+fn format_connection_changed(display_name: &str) -> Value {
+    let text = format!("Connected to {}", display_name);
+    json!({
+        "data": {
+            "text/plain": text
+        },
+        "metadata": {},
+        "transient": {}
+    })
 }
 
 /// Format Vega-Lite visualization as display_data
@@ -45,6 +74,7 @@ fn format_vegalite(spec: String) -> Value {
 
     let html = format!(
         r#"<div id="{}"></div>
+
 <script type="text/javascript">
   (function() {{
     const spec = {};
@@ -113,7 +143,8 @@ fn format_vegalite(spec: String) -> Value {
         }});
     }}
   }})();
-</script>"#,
+</script>
+"#,
         vis_id, spec_json, vis_id
     );
 
@@ -199,10 +230,40 @@ mod tests {
     fn test_vegalite_format() {
         let spec = r#"{"mark": "point"}"#.to_string();
         let result = ExecutionResult::Visualization { spec };
-        let display = format_display_data(result);
+        let display = format_display_data(result).expect("Visualization should return Some");
 
         assert!(display["data"]["text/html"].is_string());
         assert!(display["data"]["text/plain"].is_string());
+    }
+
+    #[test]
+    fn test_empty_dataframe_returns_none() {
+        use polars::prelude::*;
+
+        // DDL statements return DataFrames with 0 columns
+        let df = DataFrame::new(Vec::<Column>::new()).unwrap();
+        let result = ExecutionResult::DataFrame(df);
+        let display = format_display_data(result);
+
+        assert!(
+            display.is_none(),
+            "Empty DataFrame (0 columns) should return None"
+        );
+    }
+
+    #[test]
+    fn test_empty_rows_dataframe_returns_some() {
+        use polars::prelude::*;
+
+        // SELECT with 0 rows but columns should still display
+        let df = DataFrame::new(vec![Column::new("x".into(), Vec::<i32>::new())]).unwrap();
+        let result = ExecutionResult::DataFrame(df);
+        let display = format_display_data(result);
+
+        assert!(
+            display.is_some(),
+            "DataFrame with columns but 0 rows should return Some"
+        );
     }
 
     #[test]

@@ -1,8 +1,11 @@
 [package]
 name = "ggsql-python"
-version = "0.1.0"
+version = "0.1.9"
 edition = "2021"
-license = "MIT"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
 description = "Python bindings for ggsql"
 
 [lib]

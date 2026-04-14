@@ -18,25 +18,26 @@ The input range for ordinal scales consists of all the unique values that the sc
 ```{ggsql}
 SELECT *, 
 CASE 
-    WHEN Wind <= 3 THEN 'Light Air'
-    WHEN Wind <= 7 THEN 'Light Breeze'
-    WHEN Wind <= 12 THEN 'Gentle Breeze'
-    WHEN Wind <= 18 THEN 'Moderate Breeze'
-    WHEN Wind <= 24 THEN 'Fresh Breeze'
-    ELSE 'Hurricane'
+  WHEN Wind <= 3 THEN 'Light Air'
+  WHEN Wind <= 7 THEN 'Light Breeze'
+  WHEN Wind <= 12 THEN 'Gentle Breeze'
+  WHEN Wind <= 18 THEN 'Moderate Breeze'
+  WHEN Wind <= 24 THEN 'Fresh Breeze'
+  ELSE 'Hurricane'
 END AS Wind_Category
 FROM ggsql:airquality
+
 VISUALISE Month AS x, Wind AS y, Wind_Category AS color
 DRAW point
-    SETTING opacity => 1
+  SETTING opacity => 1
 SCALE ORDINAL color 
-    FROM [
-        'Light Air', 
-        'Light Breeze', 
-        'Gentle Breeze',
-        'Moderate Breeze',
-        'Fresh Breeze'
-    ]
+  FROM [
+    'Light Air', 
+    'Light Breeze', 
+    'Gentle Breeze',
+    'Moderate Breeze',
+    'Fresh Breeze'
+  ]
 ```
 
 ## Output range
@@ -59,7 +60,7 @@ While it is possible to use a ordinal scale to map ordered discrete data to line
 ```{ggsql}
 VISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality
 DRAW point
-    MAPPING Month AS color
+  MAPPING Month AS color
 SCALE ORDINAL color TO lapaz
 ```
 
@@ -68,7 +69,7 @@ SCALE ORDINAL color TO lapaz
 ```{ggsql}
 VISUALISE Day AS x, Temp AS y FROM ggsql:airquality
 DRAW line
-    MAPPING Month AS linetype
+  MAPPING Month AS linetype
 SCALE ORDINAL linetype
 ```
 
@@ -86,9 +87,9 @@ There is only one setting relevant for ordinal scales:
 ```{ggsql}
 VISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality
 DRAW point
-    MAPPING Month AS color
+  MAPPING Month AS color
 SCALE ORDINAL color
-    SETTING reverse => true
+  SETTING reverse => true
 ```
 
 ## Renaming
@@ -109,9 +110,9 @@ You can combine formatting with direct renaming in which case the direct renamin
 ```{ggsql}
 VISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality
 DRAW point
-    MAPPING Month AS color
+  MAPPING Month AS color
 SCALE ORDINAL color
-    RENAMING 6 => 'June'
+  RENAMING 6 => 'June'
 ```
 
 #### Use string interpolation to add a suffix
@@ -119,33 +120,34 @@ SCALE ORDINAL color
 ```{ggsql}
 VISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality
 DRAW point
-    MAPPING Month AS color
+  MAPPING Month AS color
 SCALE ORDINAL color
-    RENAMING * => '{}th month'
+  RENAMING * => '{}th month'
 ```
 
 #### Use a formatter to make labels shouty
 ```{ggsql}
 SELECT *, 
 CASE 
-    WHEN Wind <= 3 THEN 'Light Air'
-    WHEN Wind <= 7 THEN 'Light Breeze'
-    WHEN Wind <= 12 THEN 'Gentle Breeze'
-    WHEN Wind <= 18 THEN 'Moderate Breeze'
-    WHEN Wind <= 24 THEN 'Fresh Breeze'
-    ELSE 'Hurricane'
+  WHEN Wind <= 3 THEN 'Light Air'
+  WHEN Wind <= 7 THEN 'Light Breeze'
+  WHEN Wind <= 12 THEN 'Gentle Breeze'
+  WHEN Wind <= 18 THEN 'Moderate Breeze'
+  WHEN Wind <= 24 THEN 'Fresh Breeze'
+  ELSE 'Hurricane'
 END AS Wind_Category
 FROM ggsql:airquality
+
 VISUALISE Month AS x, Wind AS y, Wind_Category AS color
 DRAW point
-    SETTING opacity => 1
+  SETTING opacity => 1
 SCALE ORDINAL color 
-    FROM [
-        'Light Air', 
-        'Light Breeze', 
-        'Gentle Breeze',
-        'Moderate Breeze',
-        'Fresh Breeze'
-    ]
-    RENAMING * => '{:UPPER}'
+  FROM [
+    'Light Air', 
+    'Light Breeze', 
+    'Gentle Breeze',
+    'Moderate Breeze',
+    'Fresh Breeze'
+  ]
+  RENAMING * => '{:UPPER}'
 ```

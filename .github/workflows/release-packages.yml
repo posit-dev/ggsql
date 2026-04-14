@@ -1,0 +1,285 @@
+name: Release Cargo and Installer Packages
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows:
+    name: Build Windows Installers
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Build ggsql binary
+        run: cargo build --release --bin ggsql --bin ggsql-jupyter
+
+      - name: Sign files before making NSIS and MSI installer
+        id: sign-files
+        uses: ./.github/workflows/actions/sign-files
+        with:
+          paths: |
+            ./target/release/ggsql.exe
+            ./target/release/ggsql-jupyter.exe
+        env:
+          # environment variables required to sign with signtool
+          SM_HOST: ${{ secrets.SM_HOST }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY }}
+          SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE_B64 }}
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+          SM_CLIENT_CERT_FINGERPRINT: ${{ secrets.SM_CLIENT_CERT_FINGERPRINT }}
+
+      - name: Build NSIS installer
+        run: cargo packager --release --formats nsis
+
+      - name: Build MSI installer
+        run: cargo packager --release --formats wix
+
+      - name: Sign installers
+        uses: ./.github/workflows/actions/sign-files
+        with:
+          paths: |
+            ./src/target/release/packager/*.exe
+            ./src/target/release/packager/*.msi
+        env:
+          # environment variables required to sign with signtool
+          SM_HOST: ${{ secrets.SM_HOST }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY }}
+          SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE_B64 }}
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+          SM_CLIENT_CERT_FINGERPRINT: ${{ secrets.SM_CLIENT_CERT_FINGERPRINT }}
+
+      - name: Upload NSIS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggsql-windows-nsis
+          path: src/target/release/packager/*.exe
+          retention-days: 30
+
+      - name: Upload MSI installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggsql-windows-msi
+          path: src/target/release/packager/*.msi
+          retention-days: 30
+
+  build-macos:
+    name: Build macOS Installers
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin, aarch64-apple-darwin
+
+      - name: Set up Apple notarization key
+        run: |
+          mkdir -p ~/.private_keys
+          echo -n "$APPLE_API_KEY_BASE64" | base64 --decode -o ~/.private_keys/AuthKey_${APPLE_API_KEY}.p8
+          chmod 600 ~/.private_keys/AuthKey_${APPLE_API_KEY}.p8
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.GWS_APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY: ${{ secrets.GWS_APPLE_API_KEY }}
+
+      - name: Configure macOS installer signing
+        env:
+          APPLE_SIGN_IDENTITY: ${{ secrets.GWS_APPLE_SIGN_IDENTITY }}
+        run: |
+          cat <<EOF >> src/Cargo.toml
+
+          [package.metadata.packager.macos]
+          signing-identity = "${APPLE_SIGN_IDENTITY}"
+          entitlements = "entitlements.plist"
+          EOF
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Build ggsql binary (x86_64)
+        run: cargo build --release --bin ggsql --bin ggsql-jupyter
+
+      - name: Build DMG installer (x86_64)
+        run: cargo packager --release --formats dmg
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.GWS_APPLE_SIGN_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.GWS_APPLE_SIGN_PW }}
+          APPLE_API_KEY: ${{ secrets.GWS_APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.GWS_APPLE_API_ISSUER }}
+
+      - name: Build ggsql binary (aarch64)
+        run: cargo build --release --bin ggsql --bin ggsql-jupyter --target aarch64-apple-darwin
+
+      - name: Build DMG installer (aarch64)
+        run: cargo packager --release --target aarch64-apple-darwin --formats dmg
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.GWS_APPLE_SIGN_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.GWS_APPLE_SIGN_PW }}
+          APPLE_API_KEY: ${{ secrets.GWS_APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.GWS_APPLE_API_ISSUER }}
+
+      - name: Upload DMG installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggsql-macos-dmg
+          path: src/target/release/packager/*.dmg
+          retention-days: 30
+
+  build-linux:
+    name: Build Linux Installers
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Build ggsql binary
+        run: cargo build --release --bin ggsql --bin ggsql-jupyter
+
+      - name: Build Debian package
+        run: cargo packager --release --formats deb
+
+      - name: Upload Debian package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggsql-linux-deb
+          path: src/target/release/packager/*.deb
+          retention-days: 30
+
+  build-cargo:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Get crates.io publish token
+        uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+
+      - name: Build tree-sitter-ggsql
+        run: cargo build --package tree-sitter-ggsql
+
+      - name: Publish tree-sitter-ggsql
+        run: cargo publish --package tree-sitter-ggsql --allow-dirty
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      - name: Wait for crates.io index update
+        run: sleep 30
+
+      - name: Publish ggsql
+        run: cargo publish --package ggsql
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      - name: Wait for crates.io index update
+        run: sleep 30
+
+      - name: Publish ggsql-jupyter
+        run: cargo publish --package ggsql-jupyter
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-windows, build-macos, build-linux, build-cargo]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Create release and upload installers
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/*.exe
+            artifacts/**/*.msi
+            artifacts/**/*.dmg
+            artifacts/**/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

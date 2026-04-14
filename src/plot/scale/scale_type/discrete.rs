@@ -3,8 +3,9 @@
 use polars::prelude::DataType;
 
 use super::super::transform::{Transform, TransformKind};
-use super::{ScaleTypeKind, ScaleTypeTrait, SqlTypeNames};
-use crate::plot::types::{DefaultParam, DefaultParamValue};
+use super::{ScaleTypeKind, ScaleTypeTrait};
+use crate::naming;
+use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
 use crate::plot::ArrayElement;
 
 /// Discrete scale type - for categorical/discrete data
@@ -56,12 +57,14 @@ impl ScaleTypeTrait for Discrete {
         true
     }
 
-    fn default_properties(&self) -> &'static [DefaultParam] {
+    fn default_properties(&self) -> &'static [ParamDefinition] {
         // Discrete scales always censor OOB values (no OOB setting needed)
-        &[DefaultParam {
+        const PARAMS: &[ParamDefinition] = &[ParamDefinition {
             name: "reverse",
             default: DefaultParamValue::Boolean(false),
-        }]
+            constraint: ParamConstraint::boolean(),
+        }];
+        PARAMS
     }
 
     fn allowed_transforms(&self) -> &'static [TransformKind] {
@@ -102,14 +105,10 @@ impl ScaleTypeTrait for Discrete {
                 return Ok(t.clone());
             } else {
                 return Err(format!(
-                    "Transform '{}' not supported for {} scale. Allowed: {}",
-                    t.name(),
+                    "{} scale transform should be {}, not '{}'",
                     self.name(),
-                    self.allowed_transforms()
-                        .iter()
-                        .map(|k| k.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
+                    crate::or_list(self.allowed_transforms()),
+                    t.name()
                 ));
             }
         }
@@ -233,7 +232,7 @@ impl ScaleTypeTrait for Discrete {
         column_name: &str,
         _column_dtype: &DataType,
         scale: &super::super::Scale,
-        _type_names: &SqlTypeNames,
+        _dialect: &dyn super::SqlDialect,
     ) -> Option<String> {
         // Only apply if input_range is explicitly specified by user
         // (not inferred from data)
@@ -261,11 +260,12 @@ impl ScaleTypeTrait for Discrete {
         }
 
         // Always censor - discrete scales have no other valid OOB behavior
+        let quoted = naming::quote_ident(column_name);
         Some(format!(
             "(CASE WHEN {} IN ({}) THEN {} ELSE NULL END)",
-            column_name,
+            quoted,
             allowed_values.join(", "),
-            column_name
+            quoted
         ))
     }
 }
@@ -297,6 +297,8 @@ impl std::fmt::Display for Discrete {
 
 #[cfg(test)]
 mod tests {
+    use crate::reader::AnsiDialect;
+
     use super::*;
 
     #[test]
@@ -454,9 +456,7 @@ mod tests {
 
         let result = discrete.resolve_transform("color", Some(&log_transform), None, None);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .contains("not supported for discrete scale"));
+        assert!(result.unwrap_err().contains("not 'log'"));
     }
 
     // =========================================================================
@@ -475,9 +475,8 @@ mod tests {
         ]);
         scale.explicit_input_range = true;
 
-        let type_names = super::SqlTypeNames::default();
         let sql =
-            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &type_names);
+            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &AnsiDialect);
 
         assert!(sql.is_some());
         let sql = sql.unwrap();
@@ -500,9 +499,8 @@ mod tests {
         // explicit_input_range = false (inferred from data)
         scale.explicit_input_range = false;
 
-        let type_names = super::SqlTypeNames::default();
         let sql =
-            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &type_names);
+            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &AnsiDialect);
 
         // Should return None (no OOB handling for inferred ranges)
         assert!(sql.is_none());
@@ -520,8 +518,7 @@ mod tests {
         ]);
         scale.explicit_input_range = true;
 
-        let type_names = super::SqlTypeNames::default();
-        let sql = discrete.pre_stat_transform_sql("flag", &DataType::Boolean, &scale, &type_names);
+        let sql = discrete.pre_stat_transform_sql("flag", &DataType::Boolean, &scale, &AnsiDialect);
 
         assert!(sql.is_some());
         let sql = sql.unwrap();
@@ -542,8 +539,7 @@ mod tests {
         ]);
         scale.explicit_input_range = true;
 
-        let type_names = super::SqlTypeNames::default();
-        let sql = discrete.pre_stat_transform_sql("text", &DataType::String, &scale, &type_names);
+        let sql = discrete.pre_stat_transform_sql("text", &DataType::String, &scale, &AnsiDialect);
 
         assert!(sql.is_some());
         let sql = sql.unwrap();
@@ -560,9 +556,8 @@ mod tests {
         scale.input_range = Some(vec![]);
         scale.explicit_input_range = true;
 
-        let type_names = super::SqlTypeNames::default();
         let sql =
-            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &type_names);
+            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &AnsiDialect);
 
         // Should return None for empty range
         assert!(sql.is_none());

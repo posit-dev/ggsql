@@ -3,11 +3,12 @@
 //! This module handles determining which columns need type casting based on
 //! scale requirements and updating type info accordingly.
 
+use crate::naming;
 use crate::plot::scale::coerce_dtypes;
-use crate::plot::{CastTargetType, Layer, ParameterValue, Plot, SqlTypeNames};
-use crate::{naming, DataSource};
+use crate::plot::{CastTargetType, Plot};
+use crate::reader::SqlDialect;
 use polars::prelude::{DataType, TimeUnit};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use super::schema::TypeInfo;
 
@@ -20,24 +21,6 @@ pub struct TypeRequirement {
     pub target_type: CastTargetType,
     /// SQL type name (e.g., "DATE", "DOUBLE", "VARCHAR")
     pub sql_type_name: String,
-}
-
-/// Format a literal value as SQL
-pub fn literal_to_sql(lit: &ParameterValue) -> String {
-    match lit {
-        ParameterValue::String(s) => format!("'{}'", s.replace('\'', "''")),
-        ParameterValue::Number(n) => n.to_string(),
-        ParameterValue::Boolean(b) => {
-            if *b {
-                "TRUE".to_string()
-            } else {
-                "FALSE".to_string()
-            }
-        }
-        ParameterValue::Array(_) | ParameterValue::Null => {
-            unreachable!("Grammar prevents arrays and null in literal aesthetic mappings")
-        }
-    }
 }
 
 /// Determine which columns need casting based on scale requirements.
@@ -57,7 +40,7 @@ pub fn literal_to_sql(lit: &ParameterValue) -> String {
 pub fn determine_type_requirements(
     spec: &Plot,
     layer_type_info: &[Vec<TypeInfo>],
-    type_names: &SqlTypeNames,
+    dialect: &dyn SqlDialect,
 ) -> Vec<Vec<TypeRequirement>> {
     use crate::plot::scale::TransformKind;
 
@@ -123,7 +106,7 @@ pub fn determine_type_requirements(
 
             // Check if this specific column needs casting
             if let Some(cast_target) = scale_type.required_cast_type(col_dtype, &target_dtype) {
-                if let Some(sql_type) = type_names.for_target(cast_target) {
+                if let Some(sql_type) = dialect.type_name_for(cast_target) {
                     // Don't add duplicate requirements for same column
                     if !requirements.iter().any(|r| r.column == col_name) {
                         requirements.push(TypeRequirement {
@@ -155,7 +138,7 @@ pub fn determine_type_requirements(
                     };
 
                     if needs_int_cast {
-                        if let Some(sql_type) = type_names.for_target(CastTargetType::Integer) {
+                        if let Some(sql_type) = dialect.type_name_for(CastTargetType::Integer) {
                             // Don't add duplicate requirements for same column
                             if !requirements.iter().any(|r| r.column == col_name) {
                                 requirements.push(TypeRequirement {
@@ -198,35 +181,6 @@ pub fn update_type_info_for_casting(type_info: &mut [TypeInfo], requirements: &[
             };
             // Update is_discrete flag based on new type
             entry.2 = matches!(entry.1, DataType::String | DataType::Boolean);
-        }
-    }
-}
-
-/// Determine the data source table name for a layer.
-///
-/// Returns the table/CTE name to query from:
-/// - Layer with explicit source (CTE, table, file) → that source name
-/// - Layer using global data → global table name
-pub fn determine_layer_source(
-    layer: &Layer,
-    materialized_ctes: &HashSet<String>,
-    has_global: bool,
-) -> String {
-    match &layer.source {
-        Some(DataSource::Identifier(name)) => {
-            if materialized_ctes.contains(name) {
-                naming::cte_table(name)
-            } else {
-                name.clone()
-            }
-        }
-        Some(DataSource::FilePath(path)) => {
-            format!("'{}'", path)
-        }
-        None => {
-            // Layer uses global data - caller must ensure has_global is true
-            debug_assert!(has_global, "Layer has no source and no global data");
-            naming::global_table()
         }
     }
 }

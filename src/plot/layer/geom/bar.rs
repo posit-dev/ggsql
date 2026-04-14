@@ -3,10 +3,14 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use super::types::get_column_name;
-use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, StatResult};
+use super::types::{get_column_name, POSITION_VALUES};
+use super::{
+    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
+    StatResult,
+};
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
+use crate::reader::SqlDialect;
 use crate::{DataFrame, GgsqlError, Mappings, Result};
 
 use super::types::Schema;
@@ -32,6 +36,7 @@ impl GeomTrait for Bar {
             defaults: &[
                 ("pos1", DefaultAestheticValue::Null), // Optional - stat may provide
                 ("pos2", DefaultAestheticValue::Null), // Optional - stat may compute
+                ("pos2end", DefaultAestheticValue::Delayed),
                 ("weight", DefaultAestheticValue::Null),
                 ("fill", DefaultAestheticValue::String("black")),
                 ("stroke", DefaultAestheticValue::String("black")),
@@ -40,29 +45,34 @@ impl GeomTrait for Bar {
         }
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
-        &[
-            ("pos2", DefaultAestheticValue::Column("count")),
-            ("pos1", DefaultAestheticValue::Column("pos1")),
-            ("pos2end", DefaultAestheticValue::Number(0.0)),
-        ]
+    fn default_remappings(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("pos2", DefaultAestheticValue::Column("count")),
+                ("pos1", DefaultAestheticValue::Column("pos1")),
+                ("pos2end", DefaultAestheticValue::Number(0.0)),
+            ],
+        }
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {
         &["count", "pos1", "proportion"]
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "width",
                 default: DefaultParamValue::Number(0.9),
+                constraint: ParamConstraint::number_range(0.0, 1.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "position",
                 default: DefaultParamValue::String("stack"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
-        ]
+        ];
+        PARAMS
     }
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {
@@ -81,6 +91,7 @@ impl GeomTrait for Bar {
         group_by: &[String],
         _parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+        _dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
         stat_bar_count(query, schema, aesthetics, group_by)
     }
@@ -167,37 +178,44 @@ fn stat_bar_count(
         if let Some(weight_col) = weight_value.column_name() {
             if schema_columns.contains(weight_col) {
                 // weight column exists - use SUM (but still call it "count")
-                format!("SUM({}) AS {}", weight_col, stat_count)
+                format!(
+                    "SUM({}) AS {}",
+                    naming::quote_ident(weight_col),
+                    naming::quote_ident(&stat_count)
+                )
             } else {
                 // weight mapped but column doesn't exist - fall back to COUNT
                 // (this shouldn't happen with upfront validation, but handle gracefully)
-                format!("COUNT(*) AS {}", stat_count)
+                format!("COUNT(*) AS {}", naming::quote_ident(&stat_count))
             }
         } else {
             // Shouldn't happen (not literal, not column), fall back to COUNT
-            format!("COUNT(*) AS {}", stat_count)
+            format!("COUNT(*) AS {}", naming::quote_ident(&stat_count))
         }
     } else {
         // weight not mapped - use COUNT
-        format!("COUNT(*) AS {}", stat_count)
+        format!("COUNT(*) AS {}", naming::quote_ident(&stat_count))
     };
 
     // Build the query based on whether x is mapped or not
     // Use two-stage query: first GROUP BY, then calculate proportion with window function
     let (transformed_query, stat_columns, dummy_columns, consumed_aesthetics) = if use_dummy_x {
         // x is not mapped - use dummy constant, no GROUP BY on x
+        let q_x = naming::quote_ident(&stat_x);
+        let q_count = naming::quote_ident(&stat_count);
+        let q_prop = naming::quote_ident(&stat_proportion);
         let (grouped_select, final_select) = if group_by.is_empty() {
             (
                 format!(
                     "'{dummy}' AS {x}, {agg}",
                     dummy = stat_dummy_value,
-                    x = stat_x,
+                    x = q_x,
                     agg = agg_expr
                 ),
                 format!(
                     "*, {count} * 1.0 / SUM({count}) OVER () AS {prop}",
-                    count = stat_count,
-                    prop = stat_proportion
+                    count = q_count,
+                    prop = q_prop
                 ),
             )
         } else {
@@ -207,14 +225,14 @@ fn stat_bar_count(
                     "{g}, '{dummy}' AS {x}, {agg}",
                     g = grp_cols,
                     dummy = stat_dummy_value,
-                    x = stat_x,
+                    x = q_x,
                     agg = agg_expr
                 ),
                 format!(
                     "*, {count} * 1.0 / SUM({count}) OVER (PARTITION BY {grp}) AS {prop}",
-                    count = stat_count,
+                    count = q_count,
                     grp = grp_cols,
-                    prop = stat_proportion
+                    prop = q_prop
                 ),
             )
         };
@@ -222,7 +240,7 @@ fn stat_bar_count(
         let query_str = if group_by.is_empty() {
             // No grouping at all - single aggregate
             format!(
-                "WITH __stat_src__ AS ({query}), __grouped__ AS (SELECT {grouped} FROM __stat_src__) SELECT {final} FROM __grouped__",
+                "WITH \"__stat_src__\" AS ({query}), \"__grouped__\" AS (SELECT {grouped} FROM \"__stat_src__\") SELECT {final} FROM \"__grouped__\"",
                 query = query,
                 grouped = grouped_select,
                 final = final_select
@@ -231,7 +249,7 @@ fn stat_bar_count(
             // Group by partition/facet variables only
             let group_cols = group_by.join(", ");
             format!(
-                "WITH __stat_src__ AS ({query}), __grouped__ AS (SELECT {grouped} FROM __stat_src__ GROUP BY {group}) SELECT {final} FROM __grouped__",
+                "WITH \"__stat_src__\" AS ({query}), \"__grouped__\" AS (SELECT {grouped} FROM \"__stat_src__\" GROUP BY {group}) SELECT {final} FROM \"__grouped__\"",
                 query = query,
                 grouped = grouped_select,
                 group = group_cols,
@@ -253,7 +271,7 @@ fn stat_bar_count(
         )
     } else {
         // x is mapped - use existing logic with two-stage query
-        let x_col = x_col.unwrap();
+        let x_col = naming::quote_ident(&x_col.unwrap());
 
         // Build grouped columns (group_by includes partition_by + facet variables + x)
         let group_cols = if group_by.is_empty() {
@@ -265,13 +283,15 @@ fn stat_bar_count(
         };
 
         // Keep original x column name, only add the aggregated stat column
+        let q_count = naming::quote_ident(&stat_count);
+        let q_prop = naming::quote_ident(&stat_proportion);
         let (grouped_select, final_select) = if group_by.is_empty() {
             (
                 format!("{x}, {agg}", x = x_col, agg = agg_expr),
                 format!(
                     "*, {count} * 1.0 / SUM({count}) OVER () AS {prop}",
-                    count = stat_count,
-                    prop = stat_proportion
+                    count = q_count,
+                    prop = q_prop
                 ),
             )
         } else {
@@ -280,15 +300,15 @@ fn stat_bar_count(
                 format!("{g}, {x}, {agg}", g = grp_cols, x = x_col, agg = agg_expr),
                 format!(
                     "*, {count} * 1.0 / SUM({count}) OVER (PARTITION BY {grp}) AS {prop}",
-                    count = stat_count,
+                    count = q_count,
                     grp = grp_cols,
-                    prop = stat_proportion
+                    prop = q_prop
                 ),
             )
         };
 
         let query_str = format!(
-            "WITH __stat_src__ AS ({query}), __grouped__ AS (SELECT {grouped} FROM __stat_src__ GROUP BY {group}) SELECT {final} FROM __grouped__",
+            "WITH \"__stat_src__\" AS ({query}), \"__grouped__\" AS (SELECT {grouped} FROM \"__stat_src__\" GROUP BY {group}) SELECT {final} FROM \"__grouped__\"",
             query = query,
             grouped = grouped_select,
             group = group_cols,

@@ -1,0 +1,60 @@
+---
+pagetitle: "ggsql Playground"
+page-layout: custom
+section-divs: false
+toc: false
+lightbox: false
+repo-actions: false
+include-in-header:
+  - text: |
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="stylesheet" href="bundle.css" />
+      <script>
+        // Set navbar height CSS variable for proper playground sizing
+        document.addEventListener('DOMContentLoaded', () => {
+          const header = document.getElementById('quarto-header');
+          if (header) {
+            const height = header.offsetHeight;
+            document.documentElement.style.setProperty('--quarto-navbar-height', height + 'px');
+          }
+        });
+      </script>
+include-after-body: 
+  - text: |
+      <script type="module" src="bundle.js"></script>
+---
+
+```{=html}
+<div id="app">
+  <div id="mobile-toolbar">
+    <select id="mobile-example-select">
+      <option value="" disabled selected>Select an example…</option>
+    </select>
+  </div>
+  <div id="sidebar">
+    <div id="status" class="loading">Initializing...</div>
+    <div class="sidebar-section">
+      <h3>Tables</h3>
+      <ul id="table-list" class="table-list"></ul>
+    </div>
+    <div class="sidebar-section">
+      <h3>Upload</h3>
+      <div class="file-input-wrapper">
+        <input type="file" id="csv-upload" accept=".csv,.parquet" />
+        <label for="csv-upload" class="file-input-label">Upload Data</label>
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <div id="examples-list"></div>
+    </div>
+  </div>
+  <div id="editor-container"></div>
+  <div id="viz-container">
+    <div id="viz-output"></div>
+  </div>
+  <div id="error-panel">
+    <h3 class="panel-label">Problems</h3>
+    <div id="error-messages"></div>
+  </div>
+</div>
+```

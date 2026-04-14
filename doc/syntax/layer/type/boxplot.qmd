@@ -9,8 +9,8 @@ Boxplots display a summary of a continuous distribution. In the style of Tukey, 
 The following aesthetics are recognised by the boxplot layer.
 
 ### Required
-* `x`: Position on the x-axis
-* `y`: Position on the y-axis
+* Primary axis (e.g. `x`): The categorical variable to group by
+* Secondary axis (e.g. `y`): The continuous variable to summarize
 
 ### Optional
 * `stroke`: The colour of the box contours, whiskers, median line and outliers.
@@ -23,17 +23,17 @@ The following aesthetics are recognised by the boxplot layer.
 * `shape` The shape of outlier points.
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'dodge'`)
+* `position`: Position adjustment. One of `'identity'`, `'stack'`, `'dodge'` (default), or `'jitter'`
 * `outliers`: Whether to display outliers as points. Defaults to `true`.
-* `coef`: A number indicating the length of the whiskers as a multiple of the interquartile range (IQR). Defaults to `1.5`.
-* `width`: Relative width of the boxes. Defaults to `0.9`.
+* `coef`: Length of the whiskers as a multiple of the IQR (must be >= 0). Defaults to `1.5`.
+* `width`: Relative width of the boxes (0 to 1). Defaults to `0.9`.
 
 ## Data transformation
-Per group, data will be divided into 4 quartiles and summary statistics will be derived from their extremes.
-Because number of observations per quartile may differ by one, the result of this approach may slightly differ from a pure quantile-based approach.
-The central line represents the median.
-The boxes are displayed from the 25th up to the 75th percentiles.
-The whiskers are calculated from the 25th/75th percentiles +/- the IQR times `coef`, but no more extreme than the data extrema.
+Per group, data will be divided into 4 quartiles and summary statistics will be derived from their extremes. 
+Because number of observations per quartile may differ by one, the result of this approach may slightly differ from a pure quantile-based approach. 
+The central line represents the median. 
+The boxes are displayed from the 25th up to the 75th percentiles. 
+The whiskers are calculated from the 25th/75th percentiles +/- the IQR times `coef`, but no more extreme than the data extrema. 
 Observations are considered outliers when they are more extreme than the whiskers.
 
 ### Calculated statistics
@@ -43,7 +43,10 @@ Observations are considered outliers when they are more extreme than the whisker
 
 ### Default remapping
 
-* `value AS y`: By default the values are displayed along the y-axis.
+* `value AS <secondary axis>`: By default the values are displayed along the secondary axis.
+
+## Orientation
+The boxplot has its categorical groups along the primary axis and the continuous values along the secondary axis. The orientation can be deduced from the scale types or from the mapping. To create a horizontal boxplot, map the categorical variable to `y` and the continuous variable to `x` (assuming a default Cartesian coordinate system).
 
 ### Examples
 
@@ -60,10 +63,7 @@ Additional groups will dodge the boxplots.
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
 DRAW boxplot
-  MAPPING 
-    species AS x, 
-    bill_len AS y,
-    island AS stroke
+  MAPPING species AS x, bill_len AS y, island AS stroke
 ```
 
 Narrow boxes by shrinking the `width` parameter.
@@ -82,4 +82,12 @@ VISUALISE FROM ggsql:penguins
 DRAW boxplot
   MAPPING species AS x, bill_len AS y
   SETTING coef => 0.1
+```
+
+Create a horizontal boxplot by swapping `x` and `y`:
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW boxplot
+  MAPPING species AS y, bill_len AS x
 ```

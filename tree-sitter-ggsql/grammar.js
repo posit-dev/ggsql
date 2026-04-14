@@ -180,6 +180,17 @@ module.exports = grammar({
       ')'
     )),
 
+    // Scalar subquery for use inside expressions (e.g. function arguments)
+    // Matches (SELECT ...) or (WITH ... SELECT ...),
+    scalar_subquery: $ => prec(2, seq(
+      '(',
+      choice(
+        $.with_statement,
+        $.select_statement,
+      ),
+      ')'
+    )),
+
     // Token-by-token fallback for any other subquery content
     subquery_body: $ => repeat1(choice(
       $.window_function,
@@ -199,7 +210,7 @@ module.exports = grammar({
     cast_expression: $ => prec(3, seq(
       choice(caseInsensitive('CAST'), caseInsensitive('TRY_CAST')),
       '(',
-      $.positional_arg,
+      $.position_arg,
       caseInsensitive('AS'),
       $.type_name,
       ')'
@@ -290,25 +301,25 @@ module.exports = grammar({
       repeat(seq(',', $.function_arg))
     ),
 
-    // Function argument: positional or named
+    // Function argument: position or named
     function_arg: $ => choice(
       $.named_arg,
-      $.positional_arg
+      $.position_arg
     ),
 
     named_arg: $ => seq(
       field('name', $.identifier),
       choice(':=', '=>'),
-      field('value', $.positional_arg)
+      field('value', $.position_arg)
     ),
 
-    // Positional argument: supports complex expressions including:
+    // Position argument: supports complex expressions including:
     // - Simple values: identifier, number, string, *
     // - Qualified names: table.column
     // - Nested function calls: ROUND(AVG(x), 2)
     // - Arithmetic expressions: quantity * price
     // - Type casts: value::type
-    positional_arg: $ => prec.left(choice(
+    position_arg: $ => prec.left(choice(
       // Simple values
       $.qualified_name,  // Handles both simple identifiers and table.column
       $.number,
@@ -318,10 +329,12 @@ module.exports = grammar({
       $.cast_expression,
       // Nested function call
       $.function_call,
+      // Scalar subquery: (SELECT ...) or (WITH ... SELECT ...)
+      $.scalar_subquery,
       // Arithmetic/comparison expression (binary operators)
-      seq($.positional_arg, choice('+', '-', '*', '/', '%', '||', '::', '<', '>', '<=', '>=', '=', '!=', '<>'), $.positional_arg),
+      seq($.position_arg, choice('+', '-', '*', '/', '%', '||', '::', '<', '>', '<=', '>=', '=', '!=', '<>'), $.position_arg),
       // Parenthesized expression
-      seq('(', $.positional_arg, ')')
+      seq('(', $.position_arg, ')')
     )),
 
     // Namespaced identifier: matches "namespace:name" pattern
@@ -449,6 +462,7 @@ module.exports = grammar({
     // All the visualization clauses (same as current grammar)
     viz_clause: $ => choice(
       $.draw_clause,
+      $.place_clause,
       $.scale_clause,
       $.facet_clause,
       $.project_clause,
@@ -467,6 +481,14 @@ module.exports = grammar({
       optional($.order_clause)
     ),
 
+    // PLACE clause - syntax: PLACE geom [SETTING ...]
+    // For annotation layers with literal values only (no data mappings)
+    place_clause: $ => seq(
+      caseInsensitive('PLACE'),
+      $.geom_type,
+      optional($.setting_clause)
+    ),
+
     // REMAPPING clause: maps stat-computed columns to aesthetics
     // Syntax: REMAPPING count AS y, sum AS size
     // Reuses mapping_list for parsing - stat names are treated as column references
@@ -476,9 +498,9 @@ module.exports = grammar({
     ),
 
     geom_type: $ => choice(
-      'point', 'line', 'path', 'bar', 'area', 'tile', 'polygon', 'ribbon',
+      'point', 'line', 'path', 'bar', 'area', 'rect', 'polygon', 'ribbon',
       'histogram', 'density', 'smooth', 'boxplot', 'violin',
-      'text', 'label', 'segment', 'arrow', 'rule', 'linear', 'errorbar'
+      'text', 'label', 'segment', 'arrow', 'rule', 'errorbar'
     ),
 
     // MAPPING clause for aesthetic mappings: MAPPING col AS x, "blue" AS color [FROM source]
@@ -649,8 +671,8 @@ module.exports = grammar({
       // Position aesthetics (cartesian)
       'x', 'y', 'xmin', 'xmax', 'ymin', 'ymax', 'xend', 'yend',
       // Position aesthetics (polar)
-      'theta', 'radius', 'thetamin', 'thetamax', 'radiusmin', 'radiusmax',
-      'thetaend', 'radiusend',
+      'angle', 'radius', 'anglemin', 'anglemax', 'radiusmin', 'radiusmax',
+      'angleend', 'radiusend',
       // Aggregation aesthetic (for bar charts)
       'weight',
       // Color aesthetics
@@ -658,9 +680,9 @@ module.exports = grammar({
       // Size and shape
       'size', 'shape', 'linetype', 'linewidth', 'width', 'height',
       // Text aesthetics
-      'label', 'family', 'fontface', 'hjust', 'vjust',
+      'label', 'typeface', 'fontweight', 'italic', 'fontsize', 'hjust', 'vjust', 'rotation',
       // Specialty aesthetics,
-      'coef', 'intercept',
+      'slope',
       // Facet aesthetics
       'panel', 'row', 'column',
       // Computed variables
@@ -770,8 +792,8 @@ module.exports = grammar({
     //   PROJECT TO cartesian (defaults to x, y)
     //   PROJECT x, y TO cartesian (explicit aesthetics)
     //   PROJECT a, b TO cartesian (custom aesthetic names)
-    //   PROJECT TO polar (defaults to theta, radius)
-    //   PROJECT theta, radius TO polar (explicit aesthetics)
+    //   PROJECT TO polar (defaults to angle, radius)
+    //   PROJECT angle, radius TO polar (explicit aesthetics)
     //   PROJECT TO cartesian SETTING clip => true
     project_clause: $ => seq(
       caseInsensitive('PROJECT'),
@@ -781,7 +803,7 @@ module.exports = grammar({
       optional(seq(caseInsensitive('SETTING'), $.project_properties))
     ),
 
-    // Optional list of positional aesthetic names for PROJECT clause
+    // Optional list of position aesthetic names for PROJECT clause
     project_aesthetics: $ => seq(
       $.identifier,
       repeat(seq(',', $.identifier))
@@ -814,7 +836,7 @@ module.exports = grammar({
     label_assignment: $ => seq(
       field('name', $.label_type),
       '=>',
-      field('value', $.string)
+      field('value', choice($.string, $.null_literal))
     ),
 
     label_type: $ => $.identifier,

@@ -31,7 +31,7 @@ pub use super::types::{
 
 // Re-export Geom and related types from the layer::geom module
 pub use super::layer::geom::{
-    DefaultAesthetics, DefaultParam, DefaultParamValue, Geom, GeomTrait, GeomType, StatResult,
+    DefaultAesthetics, DefaultParamValue, Geom, GeomTrait, GeomType, ParamDefinition, StatResult,
 };
 
 // Re-export Layer from the layer module
@@ -45,6 +45,10 @@ pub use super::projection::{Coord, Projection};
 
 // Re-export Facet types from the facet module
 pub use super::facet::{Facet, FacetLayout};
+
+// =============================================================================
+// Plot Type
+// =============================================================================
 
 /// Complete ggsql visualization specification
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,8 +76,8 @@ pub struct Plot {
 /// Text labels (from LABELS clause)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Labels {
-    /// Label assignments (label type → text)
-    pub labels: HashMap<String, String>,
+    /// Label assignments (label type → text, None = suppress)
+    pub labels: HashMap<String, Option<String>>,
 }
 
 // Manual PartialEq implementation (aesthetic_context is derived, not compared)
@@ -120,18 +124,18 @@ impl Plot {
 
     /// Build an aesthetic context from current project and facet settings
     fn build_aesthetic_context(&self) -> AestheticContext {
-        let default_positional: Vec<String> = vec!["x".to_string(), "y".to_string()];
-        let positional_names: &[String] = self
+        let default_position: Vec<String> = vec!["x".to_string(), "y".to_string()];
+        let position_names: &[String] = self
             .project
             .as_ref()
             .map(|p| p.aesthetics.as_slice())
-            .unwrap_or(&default_positional);
+            .unwrap_or(&default_position);
         let facet_names: &[&'static str] = self
             .facet
             .as_ref()
             .map(|f| f.layout.user_facet_names())
             .unwrap_or(&[]);
-        AestheticContext::new(positional_names, facet_names)
+        AestheticContext::new(position_names, facet_names)
     }
 
     /// Get the aesthetic context, creating a default one if not set
@@ -153,6 +157,7 @@ impl Plot {
     /// - Global mappings
     /// - Layer aesthetics
     /// - Layer remappings
+    /// - Layer parameters (SETTING aesthetics)
     /// - Scale aesthetics
     /// - Label keys
     pub fn transform_aesthetics_to_internal(&mut self) {
@@ -161,10 +166,21 @@ impl Plot {
         // Transform global mappings
         self.global_mappings.transform_to_internal(&ctx);
 
-        // Transform layer aesthetics and remappings
+        // Transform layer aesthetics, remappings, and parameters
         for layer in &mut self.layers {
             layer.mappings.transform_to_internal(&ctx);
             layer.remappings.transform_to_internal(&ctx);
+
+            // Transform parameter keys from user-facing to internal names
+            // This ensures position aesthetics in SETTING (e.g., x => 5) become internal (pos1 => 5)
+            let original_parameters = std::mem::take(&mut layer.parameters);
+            for (param_name, value) in original_parameters {
+                let internal_name = ctx
+                    .map_user_to_internal(&param_name)
+                    .map(|s| s.to_string())
+                    .unwrap_or(param_name);
+                layer.parameters.insert(internal_name, value);
+            }
         }
 
         // Transform scale aesthetics
@@ -235,7 +251,7 @@ impl Plot {
             for layer in &self.layers {
                 for (aesthetic, value) in &layer.mappings.aesthetics {
                     let primary = aesthetic_ctx
-                        .primary_internal_positional(aesthetic)
+                        .primary_internal_position(aesthetic)
                         .unwrap_or(aesthetic);
                     let is_primary = aesthetic == primary;
 
@@ -270,7 +286,7 @@ impl Plot {
                             label_source.to_string()
                         };
 
-                        labels.labels.insert(primary.to_string(), column_name);
+                        labels.labels.insert(primary.to_string(), Some(column_name));
                     }
                 }
             }
@@ -348,12 +364,12 @@ mod tests {
             .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"))
             .with_aesthetic("pos2".to_string(), AestheticValue::standard_column("y"));
 
-        assert!(valid_point.validate_required_aesthetics().is_ok());
+        assert!(valid_point.validate_mapping(&None, false).is_ok());
 
         let invalid_point = Layer::new(Geom::point())
             .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"));
 
-        assert!(invalid_point.validate_required_aesthetics().is_err());
+        assert!(invalid_point.validate_mapping(&None, false).is_err());
 
         let valid_ribbon = Layer::new(Geom::ribbon())
             .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"))
@@ -366,7 +382,7 @@ mod tests {
                 AestheticValue::standard_column("ymax"),
             );
 
-        assert!(valid_ribbon.validate_required_aesthetics().is_ok());
+        assert!(valid_ribbon.validate_mapping(&None, false).is_ok());
     }
 
     #[test]
@@ -488,11 +504,11 @@ mod tests {
         assert!(bar.is_supported("pos1")); // Bar accepts optional pos1
         assert_eq!(bar.required(), &[] as &[&str]); // No required aesthetics
 
-        // Text geom
+        // Text geom - requires label
         let text = Geom::text().aesthetics();
         assert!(text.is_supported("label"));
-        assert!(text.is_supported("family"));
-        assert_eq!(text.required(), &["pos1", "pos2"]);
+        assert!(text.is_supported("typeface"));
+        assert_eq!(text.required(), &["pos1", "pos2", "label"]);
 
         // Statistical geoms only require pos1
         assert_eq!(Geom::histogram().aesthetics().required(), &["pos1"]);
@@ -507,12 +523,6 @@ mod tests {
         // Segment/arrow require endpoints
         assert_eq!(Geom::segment().aesthetics().required(), &["pos1", "pos2"]);
 
-        // Reference lines
-        assert_eq!(
-            Geom::linear().aesthetics().required(),
-            &["coef", "intercept"]
-        );
-
         // ErrorBar has no strict requirements
         assert_eq!(Geom::errorbar().aesthetics().required(), &[] as &[&str]);
     }
@@ -524,23 +534,23 @@ mod tests {
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
 
         // Test that internal variant aesthetics map to their primary
-        assert_eq!(ctx.primary_internal_positional("pos1"), Some("pos1"));
-        assert_eq!(ctx.primary_internal_positional("pos1min"), Some("pos1"));
-        assert_eq!(ctx.primary_internal_positional("pos1max"), Some("pos1"));
-        assert_eq!(ctx.primary_internal_positional("pos1end"), Some("pos1"));
-        assert_eq!(ctx.primary_internal_positional("pos2"), Some("pos2"));
-        assert_eq!(ctx.primary_internal_positional("pos2min"), Some("pos2"));
-        assert_eq!(ctx.primary_internal_positional("pos2max"), Some("pos2"));
-        assert_eq!(ctx.primary_internal_positional("pos2end"), Some("pos2"));
+        assert_eq!(ctx.primary_internal_position("pos1"), Some("pos1"));
+        assert_eq!(ctx.primary_internal_position("pos1min"), Some("pos1"));
+        assert_eq!(ctx.primary_internal_position("pos1max"), Some("pos1"));
+        assert_eq!(ctx.primary_internal_position("pos1end"), Some("pos1"));
+        assert_eq!(ctx.primary_internal_position("pos2"), Some("pos2"));
+        assert_eq!(ctx.primary_internal_position("pos2min"), Some("pos2"));
+        assert_eq!(ctx.primary_internal_position("pos2max"), Some("pos2"));
+        assert_eq!(ctx.primary_internal_position("pos2end"), Some("pos2"));
 
-        // Non-positional aesthetics return themselves
-        assert_eq!(ctx.primary_internal_positional("color"), Some("color"));
-        assert_eq!(ctx.primary_internal_positional("size"), Some("size"));
-        assert_eq!(ctx.primary_internal_positional("fill"), Some("fill"));
+        // Material aesthetics return themselves
+        assert_eq!(ctx.primary_internal_position("color"), Some("color"));
+        assert_eq!(ctx.primary_internal_position("size"), Some("size"));
+        assert_eq!(ctx.primary_internal_position("fill"), Some("fill"));
 
         // User-facing names are not recognized as internal aesthetics
-        assert_eq!(ctx.primary_internal_positional("x"), None);
-        assert_eq!(ctx.primary_internal_positional("xmin"), None);
+        assert_eq!(ctx.primary_internal_position("x"), None);
+        assert_eq!(ctx.primary_internal_position("xmin"), None);
     }
 
     #[test]
@@ -610,7 +620,7 @@ mod tests {
         };
         labels
             .labels
-            .insert("pos1".to_string(), "Custom X Label".to_string());
+            .insert("pos1".to_string(), Some("Custom X Label".to_string()));
         spec.labels = Some(labels);
 
         spec.compute_aesthetic_labels();
@@ -619,7 +629,7 @@ mod tests {
         // User-specified label should be preserved
         assert_eq!(
             labels.labels.get("pos1"),
-            Some(&"Custom X Label".to_string())
+            Some(&Some("Custom X Label".to_string()))
         );
         // pos2 should still be computed from variants
         assert!(labels.labels.contains_key("pos2"));
@@ -659,7 +669,7 @@ mod tests {
 
         let labels = spec.labels.as_ref().unwrap();
         // First layer's pos1 mapping should win
-        assert_eq!(labels.labels.get("pos1"), Some(&"date".to_string()));
+        assert_eq!(labels.labels.get("pos1"), Some(&Some("date".to_string())));
     }
 
     #[test]
@@ -686,7 +696,7 @@ mod tests {
         // The stroke label should be "stroke" (extracted from __ggsql_aes_stroke__)
         assert_eq!(
             labels.labels.get("stroke"),
-            Some(&"stroke".to_string()),
+            Some(&Some("stroke".to_string())),
             "Stroke aesthetic should use 'stroke' as label"
         );
     }
@@ -711,7 +721,7 @@ mod tests {
         // The size label should be "size", not "color"
         assert_eq!(
             labels.labels.get("size"),
-            Some(&"size".to_string()),
+            Some(&Some("size".to_string())),
             "Non-color aesthetic should keep its name"
         );
     }
@@ -733,8 +743,8 @@ mod tests {
         });
         spec.labels = Some(Labels {
             labels: HashMap::from([
-                ("x".to_string(), "X Axis".to_string()),
-                ("y".to_string(), "Y Axis".to_string()),
+                ("x".to_string(), Some("X Axis".to_string())),
+                ("y".to_string(), Some("Y Axis".to_string())),
             ]),
         });
 
@@ -742,10 +752,10 @@ mod tests {
         spec.transform_aesthetics_to_internal();
 
         let labels = spec.labels.as_ref().unwrap();
-        assert_eq!(labels.labels.get("pos1"), Some(&"X Axis".to_string()));
-        assert_eq!(labels.labels.get("pos2"), Some(&"Y Axis".to_string()));
-        assert!(labels.labels.get("x").is_none());
-        assert!(labels.labels.get("y").is_none());
+        assert_eq!(labels.labels.get("pos1"), Some(&Some("X Axis".to_string())));
+        assert_eq!(labels.labels.get("pos2"), Some(&Some("Y Axis".to_string())));
+        assert!(!labels.labels.contains_key("x"));
+        assert!(!labels.labels.contains_key("y"));
     }
 
     #[test]
@@ -762,8 +772,8 @@ mod tests {
         });
         spec.labels = Some(Labels {
             labels: HashMap::from([
-                ("x".to_string(), "Category".to_string()),
-                ("y".to_string(), "Value".to_string()),
+                ("x".to_string(), Some("Category".to_string())),
+                ("y".to_string(), Some("Value".to_string())),
             ]),
         });
 
@@ -771,26 +781,29 @@ mod tests {
         spec.transform_aesthetics_to_internal();
 
         let labels = spec.labels.as_ref().unwrap();
-        // x maps to pos2 (second positional), y maps to pos1 (first positional)
-        assert_eq!(labels.labels.get("pos1"), Some(&"Value".to_string()));
-        assert_eq!(labels.labels.get("pos2"), Some(&"Category".to_string()));
+        // x maps to pos2 (second position), y maps to pos1 (first position)
+        assert_eq!(labels.labels.get("pos1"), Some(&Some("Value".to_string())));
+        assert_eq!(
+            labels.labels.get("pos2"),
+            Some(&Some("Category".to_string()))
+        );
     }
 
     #[test]
     fn test_label_transform_with_polar_project() {
-        // LABEL theta/radius with polar should transform to pos1/pos2
+        // LABEL angle/radius with polar should transform to pos1/pos2
         use crate::plot::projection::{Coord, Projection};
 
         let mut spec = Plot::new();
         spec.project = Some(Projection {
             coord: Coord::polar(),
-            aesthetics: vec!["theta".to_string(), "radius".to_string()],
+            aesthetics: vec!["angle".to_string(), "radius".to_string()],
             properties: HashMap::new(),
         });
         spec.labels = Some(Labels {
             labels: HashMap::from([
-                ("theta".to_string(), "Angle".to_string()),
-                ("radius".to_string(), "Distance".to_string()),
+                ("angle".to_string(), Some("Angle".to_string())),
+                ("radius".to_string(), Some("Distance".to_string())),
             ]),
         });
 
@@ -798,12 +811,15 @@ mod tests {
         spec.transform_aesthetics_to_internal();
 
         let labels = spec.labels.as_ref().unwrap();
-        assert_eq!(labels.labels.get("pos1"), Some(&"Angle".to_string()));
-        assert_eq!(labels.labels.get("pos2"), Some(&"Distance".to_string()));
+        assert_eq!(labels.labels.get("pos1"), Some(&Some("Angle".to_string())));
+        assert_eq!(
+            labels.labels.get("pos2"),
+            Some(&Some("Distance".to_string()))
+        );
     }
 
     #[test]
-    fn test_label_transform_preserves_non_positional() {
+    fn test_label_transform_preserves_material() {
         // LABEL title/color should be preserved unchanged
         use crate::plot::projection::{Coord, Projection};
 
@@ -815,9 +831,9 @@ mod tests {
         });
         spec.labels = Some(Labels {
             labels: HashMap::from([
-                ("title".to_string(), "My Chart".to_string()),
-                ("color".to_string(), "Category".to_string()),
-                ("x".to_string(), "X Axis".to_string()),
+                ("title".to_string(), Some("My Chart".to_string())),
+                ("color".to_string(), Some("Category".to_string())),
+                ("x".to_string(), Some("X Axis".to_string())),
             ]),
         });
 
@@ -825,10 +841,16 @@ mod tests {
         spec.transform_aesthetics_to_internal();
 
         let labels = spec.labels.as_ref().unwrap();
-        // Non-positional labels should remain unchanged
-        assert_eq!(labels.labels.get("title"), Some(&"My Chart".to_string()));
-        assert_eq!(labels.labels.get("color"), Some(&"Category".to_string()));
-        // Positional label should be transformed
-        assert_eq!(labels.labels.get("pos1"), Some(&"X Axis".to_string()));
+        // Material labels should remain unchanged
+        assert_eq!(
+            labels.labels.get("title"),
+            Some(&Some("My Chart".to_string()))
+        );
+        assert_eq!(
+            labels.labels.get("color"),
+            Some(&Some("Category".to_string()))
+        );
+        // Position label should be transformed
+        assert_eq!(labels.labels.get("pos1"), Some(&Some("X Axis".to_string())));
     }
 }

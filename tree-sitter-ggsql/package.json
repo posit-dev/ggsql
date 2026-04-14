@@ -1,6 +1,6 @@
 {
   "name": "tree-sitter-ggsql",
-  "version": "0.1.0",
+  "version": "0.1.9",
   "description": "Tree-sitter grammar for ggsql visualization language",
   "main": "bindings/node",
   "repository": {

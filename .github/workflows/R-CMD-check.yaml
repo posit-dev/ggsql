@@ -23,10 +23,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "22"
 
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
+
+      - name: Install ODBC
+        run: sudo apt-get install -y unixodbc-dev
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -36,6 +39,7 @@ jobs:
         with:
           shared-key: ${{ runner.os }}-R-CMD-Check
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Check disk space
         run: df -h

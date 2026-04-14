@@ -12,7 +12,7 @@
   "path"
   "bar"
   "area"
-  "tile"
+  "rect"
   "polygon"
   "ribbon"
   "histogram"
@@ -25,7 +25,6 @@
   "segment"
   "arrow"
   "rule"
-  "linear"
   "errorbar"
 ] @type.builtin
 
@@ -66,12 +65,14 @@
   "height"
   ; Text aesthetics
   "label"
-  "family"
-  "fontface"
+  "typeface"
+  "fontweight"
+  "italic"
   "hjust"
   "vjust"
+  "rotation"
   ; Specialty aesthetics
-  "coef"
+  "slope"
   "intercept"
   ; Facet aesthetics
   "panel"

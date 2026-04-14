@@ -2,10 +2,21 @@
 //!
 //! These types are used by all geom implementations and are shared across the module.
 
-use crate::{plot::types::DefaultAestheticValue, Mappings};
+use crate::plot::aesthetic::parse_position;
+use crate::{naming, plot::types::DefaultAestheticValue, Mappings};
 
 // Re-export shared types from the central location
-pub use crate::plot::types::{DefaultParam, DefaultParamValue};
+pub use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
+
+// =============================================================================
+// Common constraint value arrays
+// =============================================================================
+
+/// Standard position adjustment values for the `position` parameter
+pub const POSITION_VALUES: &[&str] = &["identity", "stack", "dodge", "jitter"];
+
+/// Closed interval side values for binned data
+pub const CLOSED_VALUES: &[&str] = &["left", "right"];
 
 /// Default aesthetic values for a geom type
 ///
@@ -27,16 +38,14 @@ impl DefaultAesthetics {
     }
 
     /// Get supported aesthetic names (excludes Delayed, for MAPPING validation)
+    ///
+    /// Returns the literal names from defaults. For bidirectional position checking,
+    /// use `is_supported()` which handles pos1/pos2 equivalence.
     pub fn supported(&self) -> Vec<&'static str> {
         self.defaults
             .iter()
-            .filter_map(|(name, value)| {
-                if !matches!(value, DefaultAestheticValue::Delayed) {
-                    Some(*name)
-                } else {
-                    None
-                }
-            })
+            .filter(|(_, value)| !matches!(value, DefaultAestheticValue::Delayed))
+            .map(|(name, _)| *name)
             .collect()
     }
 
@@ -55,10 +64,29 @@ impl DefaultAesthetics {
     }
 
     /// Check if an aesthetic is supported (not Delayed)
+    ///
+    /// Position aesthetics are bidirectional: if pos1* is supported, pos2* is also
+    /// considered supported (and vice versa).
     pub fn is_supported(&self, name: &str) -> bool {
-        self.defaults
+        // Check for direct match first
+        let direct_match = self
+            .defaults
             .iter()
-            .any(|(n, value)| *n == name && !matches!(value, DefaultAestheticValue::Delayed))
+            .any(|(n, value)| !matches!(value, DefaultAestheticValue::Delayed) && *n == name);
+        if direct_match {
+            return true;
+        }
+
+        // Check for bidirectional position match
+        if let Some((slot, suffix)) = parse_position(name) {
+            let other_slot = if slot == 1 { 2 } else { 1 };
+            let equivalent = format!("pos{}{}", other_slot, suffix);
+            return self.defaults.iter().any(|(n, value)| {
+                !matches!(value, DefaultAestheticValue::Delayed) && *n == equivalent
+            });
+        }
+
+        false
     }
 
     /// Check if an aesthetic exists (including Delayed)
@@ -120,6 +148,11 @@ pub fn get_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String>
         AestheticValue::Column { name, .. } => Some(name.clone()),
         _ => None,
     })
+}
+
+/// Helper to extract a double-quoted column name for use in SQL expressions.
+pub fn get_quoted_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String> {
+    get_column_name(aesthetics, aesthetic).map(|n| naming::quote_ident(&n))
 }
 
 #[cfg(test)]

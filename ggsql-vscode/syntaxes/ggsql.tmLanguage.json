@@ -8,6 +8,7 @@
     { "include": "#numbers" },
     { "include": "#sql-functions" },
     { "include": "#draw-clause" },
+    { "include": "#place-clause" },
     { "include": "#scale-clause" },
     { "include": "#facet-clause" },
     { "include": "#project-clause" },
@@ -220,7 +221,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         { "include": "#comments" },
         { "include": "#strings" },
@@ -314,12 +315,26 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "comment": "Geom types from grammar.js",
           "name": "support.type.geom.ggsql",
-          "match": "\\b(point|line|path|bar|area|tile|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|linear|errorbar)\\b"
+          "match": "\\b(point|line|path|bar|col|area|tile|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|errorbar)\\b"
+        },
+        { "include": "#common-clause-patterns" }
+      ]
+    },
+    "place-clause": {
+      "begin": "(?i)\\b(PLACE)\\b",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.ggsql" }
+      },
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "patterns": [
+        {
+          "name": "support.type.geom.ggsql",
+          "match": "\\b(point|line|path|bar|col|area|rect|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|errorbar)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]
@@ -329,7 +344,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "comment": "Scale type identifiers from grammar.js",
@@ -358,7 +373,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "name": "support.type.property.ggsql",
@@ -380,7 +395,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "comment": "Coord types (currently implemented: cartesian, polar)",
@@ -390,7 +405,7 @@
         {
           "comment": "Project properties",
           "name": "support.type.property.ggsql",
-          "match": "\\b(clip|start|ratio)\\b"
+          "match": "\\b(xlim|ylim|ratio|angle|clip|start)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]
@@ -400,12 +415,12 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "comment": "Label types",
           "name": "support.type.property.ggsql",
-          "match": "\\b(title|subtitle|caption|tag)\\b"
+          "match": "\\b(title|subtitle|x|y|caption|tag|color|colour|fill|size|shape|linetype)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]

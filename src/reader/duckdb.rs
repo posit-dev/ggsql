@@ -3,7 +3,7 @@
 //! Provides a reader for DuckDB databases with direct Polars DataFrame integration.
 
 use crate::reader::{connection::ConnectionInfo, Reader};
-use crate::{DataFrame, GgsqlError, Result};
+use crate::{naming, DataFrame, GgsqlError, Result};
 use arrow::ipc::reader::FileReader;
 use duckdb::vtab::arrow::{arrow_recordbatch_to_query_params, ArrowVTab};
 use duckdb::{params, Connection};
@@ -12,6 +12,58 @@ use polars::prelude::*;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::io::Cursor;
+
+/// DuckDB SQL dialect with native function support.
+///
+/// Overrides SQL generation methods to use DuckDB-native functions
+/// (LEAST, GREATEST, GENERATE_SERIES, QUANTILE_CONT).
+pub struct DuckDbDialect;
+
+impl super::SqlDialect for DuckDbDialect {
+    fn sql_greatest(&self, exprs: &[&str]) -> String {
+        if exprs.len() == 1 {
+            return exprs[0].to_string();
+        }
+        format!("GREATEST({})", exprs.join(", "))
+    }
+
+    fn sql_least(&self, exprs: &[&str]) -> String {
+        if exprs.len() == 1 {
+            return exprs[0].to_string();
+        }
+        format!("LEAST({})", exprs.join(", "))
+    }
+
+    fn sql_generate_series(&self, n: usize) -> String {
+        format!(
+            "\"__ggsql_seq__\"(n) AS (SELECT generate_series FROM GENERATE_SERIES(0, {}))",
+            n - 1
+        )
+    }
+
+    fn sql_percentile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
+        let group_filter = groups
+            .iter()
+            .map(|g| {
+                let q = naming::quote_ident(g);
+                format!(
+                    "AND {pct}.{q} IS NOT DISTINCT FROM {qt}.{q}",
+                    pct = naming::quote_ident("__ggsql_pct__"),
+                    qt = naming::quote_ident("__ggsql_qt__")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        let quoted_column = naming::quote_ident(column);
+        format!(
+            "(SELECT QUANTILE_CONT({column}, {fraction}) \
+            FROM ({from}) AS \"__ggsql_pct__\" \
+            WHERE {column} IS NOT NULL {group_filter})",
+            column = quoted_column
+        )
+    }
+}
 
 /// DuckDB database reader
 ///
@@ -101,34 +153,7 @@ impl DuckDBReader {
     }
 }
 
-/// Validate a table name
-fn validate_table_name(name: &str) -> Result<()> {
-    if name.is_empty() {
-        return Err(GgsqlError::ReaderError("Table name cannot be empty".into()));
-    }
-
-    // Reject characters that could break double-quoted identifiers or cause issues
-    let forbidden = ['"', '\0', '\n', '\r'];
-    for ch in forbidden {
-        if name.contains(ch) {
-            return Err(GgsqlError::ReaderError(format!(
-                "Table name '{}' contains invalid character '{}'",
-                name,
-                ch.escape_default()
-            )));
-        }
-    }
-
-    // Reasonable length limit
-    if name.len() > 128 {
-        return Err(GgsqlError::ReaderError(format!(
-            "Table name '{}' exceeds maximum length of 128 characters",
-            name
-        )));
-    }
-
-    Ok(())
-}
+use super::validate_table_name;
 
 /// Convert a Polars DataFrame to DuckDB Arrow query parameters via IPC serialization
 fn dataframe_to_arrow_params(df: DataFrame) -> Result<[usize; 2]> {
@@ -536,8 +561,9 @@ impl Reader for DuckDBReader {
             // Small DataFrame: register in a single batch
             let params = dataframe_to_arrow_params(df)?;
             let sql = format!(
-                "{} TEMP TABLE \"{}\" AS SELECT * FROM arrow(?, ?)",
-                create_or_replace, name
+                "{} TEMP TABLE {} AS SELECT * FROM arrow(?, ?)",
+                create_or_replace,
+                naming::quote_ident(name)
             );
             self.conn.execute(&sql, params).map_err(|e| {
                 GgsqlError::ReaderError(format!("Failed to register table '{}': {}", name, e))
@@ -547,8 +573,9 @@ impl Reader for DuckDBReader {
             let first_chunk = df.slice(0, MAX_ARROW_BATCH_ROWS);
             let params = dataframe_to_arrow_params(first_chunk)?;
             let create_sql = format!(
-                "{} TEMP TABLE \"{}\" AS SELECT * FROM arrow(?, ?)",
-                create_or_replace, name
+                "{} TEMP TABLE {} AS SELECT * FROM arrow(?, ?)",
+                create_or_replace,
+                naming::quote_ident(name)
             );
             self.conn.execute(&create_sql, params).map_err(|e| {
                 GgsqlError::ReaderError(format!("Failed to register table '{}': {}", name, e))
@@ -559,7 +586,10 @@ impl Reader for DuckDBReader {
                 let chunk_size = std::cmp::min(MAX_ARROW_BATCH_ROWS, total_rows - offset);
                 let chunk = df.slice(offset as i64, chunk_size);
                 let params = dataframe_to_arrow_params(chunk)?;
-                let insert_sql = format!("INSERT INTO \"{}\" SELECT * FROM arrow(?, ?)", name);
+                let insert_sql = format!(
+                    "INSERT INTO {} SELECT * FROM arrow(?, ?)",
+                    naming::quote_ident(name)
+                );
                 self.conn.execute(&insert_sql, params).map_err(|e| {
                     GgsqlError::ReaderError(format!(
                         "Failed to insert chunk into table '{}': {}",
@@ -585,7 +615,7 @@ impl Reader for DuckDBReader {
         }
 
         // Drop the temp table
-        let sql = format!("DROP TABLE IF EXISTS \"{}\"", name);
+        let sql = format!("DROP TABLE IF EXISTS {}", naming::quote_ident(name));
         self.conn.execute(&sql, []).map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to unregister table '{}': {}", name, e))
         })?;
@@ -594,6 +624,14 @@ impl Reader for DuckDBReader {
         self.registered_tables.borrow_mut().remove(name);
 
         Ok(())
+    }
+
+    fn execute(&self, query: &str) -> Result<super::Spec> {
+        super::execute_with_reader(self, query)
+    }
+
+    fn dialect(&self) -> &dyn super::SqlDialect {
+        &DuckDbDialect
     }
 }
 
@@ -640,6 +678,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        target_os = "windows",
+        ignore = "DuckDB crashes on Windows with invalid SQL"
+    )]
     fn test_invalid_sql() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let result = reader.execute_sql("INVALID SQL SYNTAX");
@@ -720,13 +762,10 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("cannot be empty"));
 
-        // Name with double quote
+        // Name with double quote should succeed (quote_ident escapes it)
         let result = reader.register("bad\"name", df.clone(), false);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("invalid character"));
+        assert!(result.is_ok());
+        reader.unregister("bad\"name").unwrap();
 
         // Name with null byte
         let result = reader.register("bad\0name", df.clone(), false);
@@ -735,15 +774,6 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("invalid character"));
-
-        // Name too long
-        let long_name = "a".repeat(200);
-        let result = reader.register(&long_name, df, false);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("exceeds maximum length"));
     }
 
     #[test]
@@ -878,5 +908,151 @@ mod tests {
                 .unwrap(),
             format!("item_{}", n - 1)
         );
+    }
+
+    #[cfg(feature = "vegalite")]
+    #[test]
+    fn test_date_vegalite_temporal() {
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE date_data AS SELECT * FROM (VALUES
+                    ('2024-01-01'::DATE, 10),
+                    ('2024-01-02'::DATE, 20),
+                    ('2024-01-03'::DATE, 30)
+                ) AS t(date, value)",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute("SELECT * FROM date_data VISUALISE DRAW line MAPPING date AS x, value AS y")
+            .unwrap();
+
+        let writer = VegaLiteWriter::new();
+        let json = writer.render(&spec).unwrap();
+        assert!(
+            json.contains("\"temporal\""),
+            "Expected temporal type in Vega-Lite output: {}",
+            json
+        );
+    }
+
+    #[cfg(feature = "vegalite")]
+    #[test]
+    fn test_geom_bar_count_stat() {
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE bar_data AS SELECT * FROM (VALUES
+                    ('A'), ('B'), ('A'), ('C'), ('A'), ('B')
+                ) AS t(category)",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute("SELECT * FROM bar_data VISUALISE DRAW bar MAPPING category AS x")
+            .unwrap();
+
+        assert_eq!(spec.plot().layers.len(), 1);
+        assert!(spec.layer_data(0).is_some());
+
+        let writer = VegaLiteWriter::new();
+        let json = writer.render(&spec).unwrap();
+        assert!(
+            json.contains("\"bar\""),
+            "Expected bar mark in output: {}",
+            json
+        );
+    }
+
+    #[cfg(feature = "vegalite")]
+    #[test]
+    fn test_geom_histogram() {
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE hist_data AS SELECT generate_series * 2.0 AS value FROM GENERATE_SERIES(0, 49)",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute("SELECT * FROM hist_data VISUALISE DRAW histogram MAPPING value AS x")
+            .unwrap();
+
+        assert_eq!(spec.plot().layers.len(), 1);
+        let layer_df = spec.layer_data(0).unwrap();
+        assert!(
+            layer_df.height() < 50,
+            "Histogram should bin data: got {} rows",
+            layer_df.height()
+        );
+
+        let writer = VegaLiteWriter::new();
+        let json = writer.render(&spec).unwrap();
+        assert!(
+            json.contains("\"bar\""),
+            "Histogram should render as bar mark: {}",
+            json
+        );
+    }
+
+    #[cfg(feature = "vegalite")]
+    #[test]
+    fn test_geom_density() {
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE density_data AS SELECT generate_series * 0.5 AS value FROM GENERATE_SERIES(0, 49)",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute("SELECT * FROM density_data VISUALISE DRAW density MAPPING value AS x")
+            .unwrap();
+
+        assert_eq!(spec.plot().layers.len(), 1);
+        assert!(spec.layer_data(0).is_some());
+
+        let writer = VegaLiteWriter::new();
+        let json = writer.render(&spec).unwrap();
+        assert!(
+            json.contains("\"area\""),
+            "Density should render as area mark: {}",
+            json
+        );
+    }
+
+    #[cfg(feature = "vegalite")]
+    #[test]
+    fn test_geom_boxplot() {
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE box_data AS
+                SELECT 'A' AS grp, generate_series * 1.0 AS value FROM GENERATE_SERIES(1, 10)
+                UNION ALL
+                SELECT 'B' AS grp, generate_series * 1.0 + 4.0 AS value FROM GENERATE_SERIES(1, 10)",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute("SELECT * FROM box_data VISUALISE DRAW boxplot MAPPING grp AS x, value AS y")
+            .unwrap();
+
+        assert!(spec.layer_data(0).is_some());
+
+        let writer = VegaLiteWriter::new();
+        let json = writer.render(&spec).unwrap();
+        assert!(!json.is_empty(), "Boxplot should render successfully");
     }
 }

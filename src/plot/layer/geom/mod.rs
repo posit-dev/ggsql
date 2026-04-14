@@ -35,22 +35,22 @@ mod boxplot;
 mod density;
 mod errorbar;
 mod histogram;
-mod label;
 mod line;
-mod linear;
 mod path;
 mod point;
 mod polygon;
+mod rect;
 mod ribbon;
 mod rule;
 mod segment;
 mod smooth;
 mod text;
-mod tile;
 mod violin;
 
 // Re-export types
-pub use types::{DefaultAesthetics, DefaultParam, DefaultParamValue, StatResult};
+pub use types::{
+    DefaultAesthetics, DefaultParamValue, ParamConstraint, ParamDefinition, StatResult,
+};
 
 // Re-export geom structs for direct access if needed
 pub use area::Area;
@@ -60,21 +60,20 @@ pub use boxplot::Boxplot;
 pub use density::Density;
 pub use errorbar::ErrorBar;
 pub use histogram::Histogram;
-pub use label::Label;
 pub use line::Line;
-pub use linear::Linear;
 pub use path::Path;
 pub use point::Point;
 pub use polygon::Polygon;
+pub use rect::Rect;
 pub use ribbon::Ribbon;
 pub use rule::Rule;
 pub use segment::Segment;
 pub use smooth::Smooth;
 pub use text::Text;
-pub use tile::Tile;
 pub use violin::Violin;
 
-use crate::plot::types::{DefaultAestheticValue, ParameterValue, Schema};
+use crate::plot::types::{ParameterValue, Schema};
+use crate::reader::SqlDialect;
 
 /// Enum of all geom types for pattern matching and serialization
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -85,7 +84,7 @@ pub enum GeomType {
     Path,
     Bar,
     Area,
-    Tile,
+    Rect,
     Polygon,
     Ribbon,
     Histogram,
@@ -94,11 +93,9 @@ pub enum GeomType {
     Boxplot,
     Violin,
     Text,
-    Label,
     Segment,
     Arrow,
     Rule,
-    Linear,
     ErrorBar,
 }
 
@@ -110,7 +107,7 @@ impl std::fmt::Display for GeomType {
             GeomType::Path => "path",
             GeomType::Bar => "bar",
             GeomType::Area => "area",
-            GeomType::Tile => "tile",
+            GeomType::Rect => "rect",
             GeomType::Polygon => "polygon",
             GeomType::Ribbon => "ribbon",
             GeomType::Histogram => "histogram",
@@ -119,11 +116,9 @@ impl std::fmt::Display for GeomType {
             GeomType::Boxplot => "boxplot",
             GeomType::Violin => "violin",
             GeomType::Text => "text",
-            GeomType::Label => "label",
             GeomType::Segment => "segment",
             GeomType::Arrow => "arrow",
             GeomType::Rule => "rule",
-            GeomType::Linear => "linear",
             GeomType::ErrorBar => "errorbar",
         };
         write!(f, "{}", s)
@@ -148,8 +143,8 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// - `DefaultAestheticValue::Number(0.0)` - maps a literal value to the aesthetic
     ///
     /// These defaults can be overridden by a REMAPPING clause.
-    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
-        &[]
+    fn default_remappings(&self) -> DefaultAesthetics {
+        DefaultAesthetics { defaults: &[] }
     }
 
     /// Returns valid stat column names that can be used in REMAPPING (early validation).
@@ -170,7 +165,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Returns non-aesthetic parameters with their default values.
     ///
     /// These control stat behavior (e.g., bins for histogram).
-    fn default_params(&self) -> &'static [DefaultParam] {
+    fn default_params(&self) -> &'static [ParamDefinition] {
         &[]
     }
 
@@ -190,6 +185,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Apply statistical transformation to the layer query.
     ///
     /// The default implementation returns identity (no transformation).
+    #[allow(clippy::too_many_arguments)]
     fn apply_stat_transform(
         &self,
         _query: &str,
@@ -198,6 +194,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         _group_by: &[String],
         _parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+        _dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
         Ok(StatResult::Identity)
     }
@@ -218,9 +215,24 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         Ok(df)
     }
 
+    /// Adjust layer mappings and parameters based on geom-specific logic.
+    ///
+    /// This method is called during layer execution to allow geoms to customize
+    /// how aesthetics and parameters should be treated.
+    /// This is called after parameters are validated, which allows for internal
+    /// parameters.
+    /// The default implementation does nothing.
+    fn setup_layer(
+        &self,
+        _mappings: &mut Mappings,
+        _parameters: &mut HashMap<String, ParameterValue>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     /// Returns valid parameter names for SETTING clause.
     ///
-    /// Combines supported aesthetics with non-aesthetic parameters.
+    /// Combines supported aesthetics with non-aesthetic parameters from default_params.
     fn valid_settings(&self) -> Vec<&'static str> {
         let mut valid: Vec<&'static str> = self.aesthetics().supported();
         for param in self.default_params() {
@@ -263,9 +275,9 @@ impl Geom {
         Self(Arc::new(Area))
     }
 
-    /// Create a Tile geom
-    pub fn tile() -> Self {
-        Self(Arc::new(Tile))
+    /// Create a Rect geom
+    pub fn rect() -> Self {
+        Self(Arc::new(Rect))
     }
 
     /// Create a Polygon geom
@@ -308,11 +320,6 @@ impl Geom {
         Self(Arc::new(Text))
     }
 
-    /// Create a Label geom
-    pub fn label() -> Self {
-        Self(Arc::new(Label))
-    }
-
     /// Create a Segment geom
     pub fn segment() -> Self {
         Self(Arc::new(Segment))
@@ -328,11 +335,6 @@ impl Geom {
         Self(Arc::new(Rule))
     }
 
-    /// Create an Linear geom
-    pub fn linear() -> Self {
-        Self(Arc::new(Linear))
-    }
-
     /// Create an ErrorBar geom
     pub fn errorbar() -> Self {
         Self(Arc::new(ErrorBar))
@@ -346,7 +348,7 @@ impl Geom {
             GeomType::Path => Self::path(),
             GeomType::Bar => Self::bar(),
             GeomType::Area => Self::area(),
-            GeomType::Tile => Self::tile(),
+            GeomType::Rect => Self::rect(),
             GeomType::Polygon => Self::polygon(),
             GeomType::Ribbon => Self::ribbon(),
             GeomType::Histogram => Self::histogram(),
@@ -355,11 +357,9 @@ impl Geom {
             GeomType::Boxplot => Self::boxplot(),
             GeomType::Violin => Self::violin(),
             GeomType::Text => Self::text(),
-            GeomType::Label => Self::label(),
             GeomType::Segment => Self::segment(),
             GeomType::Arrow => Self::arrow(),
             GeomType::Rule => Self::rule(),
-            GeomType::Linear => Self::linear(),
             GeomType::ErrorBar => Self::errorbar(),
         }
     }
@@ -375,7 +375,7 @@ impl Geom {
     }
 
     /// Get default remappings
-    pub fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
+    pub fn default_remappings(&self) -> DefaultAesthetics {
         self.0.default_remappings()
     }
 
@@ -385,7 +385,7 @@ impl Geom {
     }
 
     /// Get default parameters
-    pub fn default_params(&self) -> &'static [DefaultParam] {
+    pub fn default_params(&self) -> &'static [ParamDefinition] {
         self.0.default_params()
     }
 
@@ -400,6 +400,7 @@ impl Geom {
     }
 
     /// Apply stat transform
+    #[allow(clippy::too_many_arguments)]
     pub fn apply_stat_transform(
         &self,
         query: &str,
@@ -408,6 +409,7 @@ impl Geom {
         group_by: &[String],
         parameters: &HashMap<String, ParameterValue>,
         execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+        dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
         self.0.apply_stat_transform(
             query,
@@ -416,6 +418,7 @@ impl Geom {
             group_by,
             parameters,
             execute_query,
+            dialect,
         )
     }
 
@@ -426,6 +429,15 @@ impl Geom {
         parameters: &HashMap<String, ParameterValue>,
     ) -> Result<DataFrame> {
         self.0.post_process(df, parameters)
+    }
+
+    /// Adjust layer mappings and parameters based on geom-specific logic
+    pub fn setup_layer(
+        &self,
+        mappings: &mut Mappings,
+        parameters: &mut HashMap<String, ParameterValue>,
+    ) -> Result<()> {
+        self.0.setup_layer(mappings, parameters)
     }
 
     /// Get valid settings
@@ -530,5 +542,76 @@ mod tests {
 
         let deserialized: Geom = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.geom_type(), GeomType::Point);
+    }
+
+    #[test]
+    fn test_default_remappings_are_in_aesthetics() {
+        // Test that every aesthetic in default_remappings() exists in aesthetics().defaults
+        // This ensures that remapped aesthetics are properly declared (usually as Delayed)
+
+        let all_geom_types = [
+            GeomType::Point,
+            GeomType::Line,
+            GeomType::Path,
+            GeomType::Bar,
+            GeomType::Area,
+            GeomType::Rect,
+            GeomType::Polygon,
+            GeomType::Ribbon,
+            GeomType::Histogram,
+            GeomType::Density,
+            GeomType::Smooth,
+            GeomType::Boxplot,
+            GeomType::Violin,
+            GeomType::Text,
+            GeomType::Segment,
+            GeomType::Arrow,
+            GeomType::Rule,
+            GeomType::ErrorBar,
+        ];
+
+        // This test is rigged to trigger a compiler error when new variants are added.
+        // Add the new layer to both the array above and as match arm below.
+        let _exhaustive_check = |t: GeomType| match t {
+            GeomType::Point
+            | GeomType::Line
+            | GeomType::Path
+            | GeomType::Bar
+            | GeomType::Area
+            | GeomType::Rect
+            | GeomType::Polygon
+            | GeomType::Ribbon
+            | GeomType::Histogram
+            | GeomType::Density
+            | GeomType::Smooth
+            | GeomType::Boxplot
+            | GeomType::Violin
+            | GeomType::Text
+            | GeomType::Segment
+            | GeomType::Arrow
+            | GeomType::Rule
+            | GeomType::ErrorBar => {}
+        };
+
+        for geom_type in all_geom_types {
+            let geom = Geom::from_type(geom_type);
+            let remappings = geom.default_remappings();
+            let aesthetics = geom.aesthetics();
+
+            // Collect all aesthetic names from aesthetics().defaults
+            let aesthetic_names: std::collections::HashSet<&str> =
+                aesthetics.defaults.iter().map(|(name, _)| *name).collect();
+
+            // Check each remapping name exists in aesthetics
+            for (name, _) in remappings.defaults {
+                assert!(
+                    aesthetic_names.contains(name),
+                    "Geom '{}' has '{}' in default_remappings() but not in aesthetics().defaults. \
+                     Add it as DefaultAestheticValue::Delayed if it's a stat-produced aesthetic.",
+                    geom_type,
+                    name
+                );
+            }
+        }
     }
 }

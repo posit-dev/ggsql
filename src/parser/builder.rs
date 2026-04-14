@@ -289,10 +289,14 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
     // This must happen after all clauses are processed (especially PROJECT and FACET)
     spec.initialize_aesthetic_context();
 
-    // Transform all aesthetic keys from user-facing (x/y or theta/radius) to internal (pos1/pos2)
+    // Transform all aesthetic keys from user-facing (x/y or angle/radius) to internal (pos1/pos2)
     // This enables generic handling throughout the pipeline and must happen before merge
     // since geom definitions use internal names for their supported/required aesthetics
     spec.transform_aesthetics_to_internal();
+
+    // Note: Annotation layer processing (moving parameters to mappings) now happens
+    // during execution in process_annotation_layer(), not during parsing.
+    // This keeps all annotation-specific logic in one place.
 
     Ok(spec)
 }
@@ -304,6 +308,10 @@ fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Resu
         match child.kind() {
             "draw_clause" => {
                 let layer = build_layer(&child, source)?;
+                spec.layers.push(layer);
+            }
+            "place_clause" => {
+                let layer = build_place_layer(&child, source)?;
                 spec.layers.push(layer);
             }
             "scale_clause" => {
@@ -504,6 +512,22 @@ fn build_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
     Ok(layer)
 }
 
+/// Build an annotation Layer from a place_clause node
+/// This is similar to build_layer but marks it as an annotation layer.
+/// The transformation of position/required aesthetics from SETTING to mappings
+/// happens later in Plot::transform_aesthetics_to_internal().
+/// Syntax: PLACE geom [MAPPING col AS x, ...] [SETTING param => val, ...] [FILTER condition]
+fn build_place_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
+    // Build the layer using standard logic
+    let mut layer = build_layer(node, source)?;
+
+    // Mark as annotation layer
+    // Array recycling happens later during SQL generation in process_annotation_layer()
+    layer.source = Some(DataSource::Annotation);
+
+    Ok(layer)
+}
+
 /// Parse a setting_clause: SETTING param => value, ...
 fn parse_setting_clause(
     node: &Node,
@@ -599,7 +623,7 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
         "path" => Ok(Geom::path()),
         "bar" => Ok(Geom::bar()),
         "area" => Ok(Geom::area()),
-        "tile" => Ok(Geom::tile()),
+        "rect" => Ok(Geom::rect()),
         "polygon" => Ok(Geom::polygon()),
         "ribbon" => Ok(Geom::ribbon()),
         "histogram" => Ok(Geom::histogram()),
@@ -608,11 +632,9 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
         "boxplot" => Ok(Geom::boxplot()),
         "violin" => Ok(Geom::violin()),
         "text" => Ok(Geom::text()),
-        "label" => Ok(Geom::label()),
         "segment" => Ok(Geom::segment()),
         "arrow" => Ok(Geom::arrow()),
         "rule" => Ok(Geom::rule()),
-        "linear" => Ok(Geom::linear()),
         "errorbar" => Ok(Geom::errorbar()),
         _ => Err(GgsqlError::ParseError(format!(
             "Unknown geom type: {}",
@@ -788,7 +810,7 @@ fn parse_scale_via_clause(node: &Node, source: &SourceTree) -> Result<Transform>
         GgsqlError::ParseError(format!(
             "Unknown transform: '{}'. Valid transforms are: {}",
             transform_name,
-            crate::plot::scale::ALL_TRANSFORM_NAMES.join(", ")
+            crate::and_list_quoted(crate::plot::scale::ALL_TRANSFORM_NAMES, '\'')
         ))
     })
 }
@@ -967,7 +989,7 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
     // Resolve aesthetics: use provided or fall back to coord defaults
     let aesthetics = if let Some(aes) = user_aesthetics {
         // Validate aesthetic count matches coord requirements
-        let expected = coord.positional_aesthetic_names().len();
+        let expected = coord.position_aesthetic_names().len();
         if aes.len() != expected {
             return Err(GgsqlError::ParseError(format!(
                 "PROJECT {} requires {} aesthetics, got {}",
@@ -977,14 +999,14 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
             )));
         }
 
-        // Validate no conflicts with non-positional or facet aesthetics
-        validate_positional_aesthetic_names(&aes)?;
+        // Validate no conflicts with material or facet aesthetics
+        validate_position_aesthetic_names(&aes)?;
 
         aes
     } else {
         // Use coord defaults - resolved immediately at build time
         coord
-            .positional_aesthetic_names()
+            .position_aesthetic_names()
             .iter()
             .map(|s| s.to_string())
             .collect()
@@ -1000,15 +1022,15 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
     })
 }
 
-/// Validate that positional aesthetic names don't conflict with reserved names
-fn validate_positional_aesthetic_names(names: &[String]) -> Result<()> {
-    use crate::plot::aesthetic::{NON_POSITIONAL, USER_FACET_AESTHETICS};
+/// Validate that position aesthetic names don't conflict with reserved names
+fn validate_position_aesthetic_names(names: &[String]) -> Result<()> {
+    use crate::plot::aesthetic::{MATERIAL_AESTHETICS, USER_FACET_AESTHETICS};
 
     for name in names {
-        // Check against non-positional aesthetics
-        if NON_POSITIONAL.contains(&name.as_str()) {
+        // Check against material aesthetics
+        if MATERIAL_AESTHETICS.contains(&name.as_str()) {
             return Err(GgsqlError::ParseError(format!(
-                "PROJECT aesthetic '{}' conflicts with non-positional aesthetic. \
+                "PROJECT aesthetic '{}' conflicts with material aesthetic. \
                  Choose a different name.",
                 name
             )));
@@ -1099,12 +1121,13 @@ fn build_labels(node: &Node, source: &SourceTree) -> Result<Labels> {
         // Parse label type (name)
         let label_type = source.get_text(&name_node);
 
-        // Parse label value (must be a string)
+        // Parse label value (string or null)
         let label_value = match value_node.kind() {
-            "string" => parse_string_node(&value_node, source),
+            "string" => Some(parse_string_node(&value_node, source)),
+            "null_literal" => None,
             _ => {
                 return Err(GgsqlError::ParseError(format!(
-                    "Label '{}' must have a string value, got: {}",
+                    "Label '{}' must have a string or null value, got: {}",
                     label_type,
                     value_node.kind()
                 )));
@@ -1232,7 +1255,7 @@ mod tests {
 
     #[test]
     fn test_project_custom_aesthetics() {
-        // Use identifiers as custom positional aesthetics in PROJECT
+        // Use identifiers as custom position aesthetics in PROJECT
         // Note: Custom aesthetics in PROJECT don't need to match grammar's aesthetic_name
         // since project_aesthetics uses identifier nodes, not aesthetic_name
         let query = r#"
@@ -1272,7 +1295,7 @@ mod tests {
     fn test_project_default_aesthetics_polar() {
         let query = r#"
             VISUALISE
-            DRAW bar MAPPING category AS theta, value AS radius
+            DRAW bar MAPPING category AS angle, value AS radius
             PROJECT TO polar
         "#;
 
@@ -1283,7 +1306,7 @@ mod tests {
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(
             project.aesthetics,
-            vec!["theta".to_string(), "radius".to_string()]
+            vec!["radius".to_string(), "angle".to_string()]
         );
     }
 
@@ -1314,7 +1337,7 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err
             .to_string()
-            .contains("conflicts with non-positional aesthetic"));
+            .contains("conflicts with material aesthetic"));
     }
 
     // ========================================
@@ -3279,9 +3302,10 @@ mod tests {
 
         let literal_node = source.find_node(&root, "(literal_value) @lit").unwrap();
         let parsed = parse_literal_value(&literal_node, &source).unwrap();
-        assert!(
-            matches!(parsed, AestheticValue::Literal(ParameterValue::String(ref s)) if s == "red")
-        );
+        assert!(matches!(
+            parsed,
+            AestheticValue::Literal(ParameterValue::String(ref s)) if s == "red"
+        ));
 
         // Test number literal
         let source2 = make_source("VISUALISE DRAW point MAPPING 42 AS size");
@@ -3300,7 +3324,10 @@ mod tests {
 
         let literal_node = source.find_node(&root, "(literal_value) @lit").unwrap();
         let parsed = parse_literal_value(&literal_node, &source).unwrap();
-        assert!(matches!(parsed, AestheticValue::Literal(ParameterValue::Null)));
+        assert!(matches!(
+            parsed,
+            AestheticValue::Literal(ParameterValue::Null)
+        ));
     }
 
     // ========================================
@@ -3322,8 +3349,8 @@ mod tests {
     }
 
     #[test]
-    fn test_infer_polar_from_theta_radius_mappings() {
-        let query = "VISUALISE DRAW bar MAPPING cat AS theta, val AS radius";
+    fn test_infer_polar_from_angle_radius_mappings() {
+        let query = "VISUALISE DRAW bar MAPPING cat AS angle, val AS radius";
 
         let result = parse_test_query(query);
         assert!(result.is_ok());
@@ -3332,15 +3359,15 @@ mod tests {
         // Should infer polar projection
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(project.coord.coord_kind(), CoordKind::Polar);
-        assert_eq!(project.aesthetics, vec!["theta", "radius"]);
+        assert_eq!(project.aesthetics, vec!["radius", "angle"]);
     }
 
     #[test]
     fn test_explicit_project_overrides_inference() {
-        // Explicitly use cartesian even though mappings use theta
+        // Explicitly use cartesian even though mappings use angle
         let query = r#"
             VISUALISE
-            DRAW bar MAPPING cat AS theta, val AS radius
+            DRAW bar MAPPING cat AS angle, val AS radius
             PROJECT TO cartesian
         "#;
 
@@ -3355,8 +3382,8 @@ mod tests {
 
     #[test]
     fn test_conflicting_aesthetics_error() {
-        // Using both x and theta should error
-        let query = "VISUALISE DRAW point MAPPING a AS x, b AS theta";
+        // Using both x and angle should error
+        let query = "VISUALISE DRAW point MAPPING a AS x, b AS angle";
 
         let result = parse_test_query(query);
         assert!(result.is_err());
@@ -3365,8 +3392,8 @@ mod tests {
     }
 
     #[test]
-    fn test_no_positional_keeps_default() {
-        // Only color mapping, no positional aesthetics
+    fn test_no_position_keeps_default() {
+        // Only color mapping, no position aesthetics
         let query = "VISUALISE DRAW point MAPPING region AS color";
 
         let result = parse_test_query(query);
@@ -3374,7 +3401,7 @@ mod tests {
         let specs = result.unwrap();
 
         // Should have no explicit project (defaults will be used later)
-        // The resolve_coord returns None when no positional aesthetics found
+        // The resolve_coord returns None when no position aesthetics found
         assert!(specs[0].project.is_none());
     }
 
@@ -3399,7 +3426,7 @@ mod tests {
         assert!(result.is_ok());
         let specs = result.unwrap();
 
-        // Should infer cartesian from positional variants
+        // Should infer cartesian from position variants
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(project.coord.coord_kind(), CoordKind::Cartesian);
     }

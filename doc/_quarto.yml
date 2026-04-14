@@ -1,5 +1,7 @@
 project:
   type: website
+  resources:
+    - wasm/**
 
 website:
   title: "ggsql"
@@ -18,18 +20,18 @@ website:
   announcement:
     icon: info-circle
     dismissable: true
-    content: "ggsql is still in early development and all functionality are subject to change"
+    content: "ggsql is still in early development and all functionality is subject to change"
     type: primary
     position: below-navbar
   twitter-card:
     card-style: summary
   open-graph: true
-  search: true
+  search:
+    keyboard-shortcut: []
   navbar:
     left:
-      - href: index.qmd
-        text: Home
-      - installation.qmd
+      - text: Get started
+        href: get_started/installation.qmd
       - text: Syntax
         menu:
           - text: Overview
@@ -39,6 +41,8 @@ website:
             href: syntax/clause/visualise.qmd
           - text: "`DRAW`"
             href: syntax/clause/draw.qmd
+          - text: "`PLACE`"
+            href: syntax/clause/place.qmd
           - text: "`SCALE`"
             href: syntax/clause/scale.qmd
           - text: "`FACET`"
@@ -47,7 +51,13 @@ website:
             href: syntax/clause/project.qmd
           - text: "`LABEL`"
             href: syntax/clause/label.qmd
-      - examples.qmd
+      - text: Gallery
+        href: gallery/index.qmd
+      - href: faq.qmd
+        text: FAQ
+    right:
+      - text: Playground
+        href: wasm/index.html
     tools:
       - icon: github
         menu:
@@ -56,52 +66,72 @@ website:
           - text: Report a Bug
             href: https://github.com/ggsql-dev/ggsql/issues
   sidebar:
-    id: syntax
-    title: Syntax
-    style: "floating"
-    search: true
-    logo: false
-    contents:
-      - text: Overview
-        href: syntax/index.qmd
-      - section: "Main clauses"
-        contents:
-          - text: "`VISUALISE`"
-            href: syntax/clause/visualise.qmd
-          - text: "`DRAW`"
-            href: syntax/clause/draw.qmd
-          - text: "`SCALE`"
-            href: syntax/clause/scale.qmd
-          - text: "`FACET`"
-            href: syntax/clause/facet.qmd
-          - text: "`PROJECT`"
-            href: syntax/clause/project.qmd
-          - text: "`LABEL`"
-            href: syntax/clause/label.qmd
-      - section: Layers
-        contents:
-          - section: Types
-            contents:
-              - auto: syntax/layer/type/*
-          - section: Position adjustment
-            contents:
-              - auto: syntax/layer/position/*
-      - section: Scales
-        contents:
-          - section: Types
-            contents:
-              - auto: syntax/scale/type/*
-          - section: Aesthetics
-            contents:
-              - auto: syntax/scale/aesthetic/*
-      - section: Coordinate systems
-        contents:
-          - auto: syntax/coord/*
-
+    - id: syntax
+      title: Syntax
+      style: "floating"
+      search: true
+      logo: false
+      contents:
+        - text: Overview
+          href: syntax/index.qmd
+        - section: "Main clauses"
+          contents:
+            - text: "`VISUALISE`"
+              href: syntax/clause/visualise.qmd
+            - text: "`DRAW`"
+              href: syntax/clause/draw.qmd
+            - text: "`PLACE`"
+              href: syntax/clause/place.qmd
+            - text: "`SCALE`"
+              href: syntax/clause/scale.qmd
+            - text: "`FACET`"
+              href: syntax/clause/facet.qmd
+            - text: "`PROJECT`"
+              href: syntax/clause/project.qmd
+            - text: "`LABEL`"
+              href: syntax/clause/label.qmd
+        - section: Layers
+          contents:
+            - section: Types
+              contents:
+                - auto: syntax/layer/type/*
+            - section: Position adjustment
+              contents:
+                - auto: syntax/layer/position/*
+        - section: Scales
+          contents:
+            - section: Types
+              contents:
+                - auto: syntax/scale/type/*
+            - section: Aesthetics
+              contents:
+                - auto: syntax/scale/aesthetic/*
+        - section: Coordinate systems
+          contents:
+            - auto: syntax/coord/*
+    - id: get_started
+      title: Get started
+      style: "floating"
+      search: false
+      logo: false
+      contents:
+        - text: Installation
+          href: get_started/installation.qmd
+        - text: The first plot
+          href: get_started/first_plot.qmd
+        - text: Grammar of graphics
+          href: get_started/grammar.qmd
+        - text: Anatomy of ggsql
+          href: get_started/anatomy.qmd
+        - text: Tooling
+          href: get_started/tooling.qmd
+        - text: The rest of the owl
+          href: get_started/the_rest.qmd
 
 format:
   html:
     lightbox: auto
+    highlight-style: pygments
     syntax-definitions:
       - ggsql.xml
     theme:
@@ -114,3 +144,20 @@ format:
           <script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js"
               data-light-bg="#94D2BD"
               data-dark-bg="#001219"></script>
+          <!-- Privacy-friendly analytics by Plausible -->
+          <script async src="https://plausible.io/js/pa-eH2pS73nQmBLURrhxXgML.js"></script>
+          <script>
+              window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+              plausible.init()
+          </script>
+    include-after-body:
+      - text: |
+          <script type="module">
+            const offset = document.querySelector('meta[name="quarto:offset"]')?.content || './';
+            const base = offset + 'wasm/';
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = base + 'quarto.css';
+            document.head.appendChild(link);
+            import(base + 'quarto.js');
+          </script>

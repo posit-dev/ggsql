@@ -10,9 +10,9 @@ The ribbon layer is used to display extrema over a sorted x-axis. It can be seen
 The following aesthetics are recognised by the ribbon layer.
 
 ### Required
-* `x`: Position along the x-axis
-* `ymin`: Lower position along the y-axis.
-* `ymax`: Upper position along the y-axis.
+* Primary axis (e.g. `x`): Position along the primary axis
+* Secondary axis min (e.g. `ymin`): Lower position along the secondary axis.
+* Secondary axis max (e.g. `ymax`): Upper position along the secondary axis.
 
 ### Optional
 * `stroke`: The colour of the contour lines.
@@ -22,10 +22,13 @@ The following aesthetics are recognised by the ribbon layer.
 * `linewidth`: The width of the contour lines.
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
+* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 
 ## Data transformation
-The ribbon layer does not transform its data but passes it through unchanged.
+The ribbon layer sorts the data along its primary axis
+
+## Orientation
+Ribbon layers are sorted and connected along their primary axis. The orientation is deduced directly from the mapping, because the interval is mapped to the secondary axis. To create a vertical ribbon layer you map the independent variable to `y` instead of `x` and the interval to `xmin` and `xmax` (assuming a default Cartesian coordinate system).
 
 ## Examples
 
@@ -33,26 +36,26 @@ A ribbon plot with arbitrary values as minima/maxima
 
 ```{ggsql}
 VISUALISE FROM ggsql:airquality
-  DRAW ribbon
-    MAPPING Date AS x, Wind AS ymin, Temp AS ymax
+DRAW ribbon
+  MAPPING Date AS x, Wind AS ymin, Temp AS ymax
 ```
 
 Ribbon plots are great for showing the range of some aggregation.
 
 ```{ggsql}
 // Weekly aggregation of temperature
-SELECT 
-  WEEKOFYEAR(Date) AS Week, 
-  MAX(Temp) AS MaxTemp, 
-  MEAN(Temp) AS MeanTemp,
-  MIN(Temp) AS MinTemp 
+SELECT
+  Week,
+  MAX(Temp) AS MaxTemp,
+  AVG(Temp) AS MeanTemp,
+  MIN(Temp) AS MinTemp
 FROM ggsql:airquality
-GROUP BY WEEKOFYEAR(Date)
+GROUP BY Week
 
 VISUALISE Week AS x
-  DRAW ribbon 
-    MAPPING MinTemp AS ymin, MaxTemp AS ymax
-    SETTING opacity => 0.5
-  DRAW line
-    MAPPING MeanTemp AS y
+DRAW ribbon 
+  MAPPING MinTemp AS ymin, MaxTemp AS ymax
+  SETTING opacity => 0.5
+DRAW line
+  MAPPING MeanTemp AS y
 ```

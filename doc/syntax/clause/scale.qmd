@@ -9,8 +9,8 @@ The `SCALE` clause takes a number of subclauses, all of them optional:
 
 ```ggsql
 SCALE <type> <aesthetic> FROM <input-range> TO <output-range> VIA <transform>
-    SETTING <parameter> => <value>, ...
-    RENAMING <break-value> => <string>, ...
+  SETTING <parameter> => <value>, ...
+  RENAMING <break-value> => <string>, ...
 ```
 
 The `type` defines the class of scale to use. It can be one of four different types:
@@ -23,7 +23,9 @@ The `type` defines the class of scale to use. It can be one of four different ty
 
 Read more about each type at their dedicated documentation. You do not have to specify the type as it is deduced from the transform, input range, or data if left blank.
 
-You *must* specify an aesthetic so that the scale knows which mapping it belongs to. For positional aesthetics you will provide the base name (`x` or `y`) even though you are mapping to e.g. `xmin`. Creating a scale for `colour` (or `color`) will create a scale for both fill and stroke colour based on the settings. 
+You *must* specify an aesthetic so that the scale knows which mapping it belongs to. 
+For position aesthetics you will provide the base name (`x` or `y`) even though you are mapping to e.g. `xmin`. 
+Creating a scale for `colour` (or `color`) will create a scale for both fill and stroke colour based on the settings. 
 
 ### `FROM`
 ```ggsql

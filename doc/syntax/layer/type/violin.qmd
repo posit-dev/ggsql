@@ -11,8 +11,8 @@ The violins are mirrored kernel density estimates, similar to the [density](dens
 The following aesthetics are recognised by the violin layer.
 
 ### Required
-* `x`: Position on the x-axis (categorical).
-* `y`: Value on the y-axis for which to compute density.
+* Primary axis (e.g. `x`): The categorical variable for grouping.
+* Secondary axis (e.g. `y`): The continuous variable to compute density for.
 
 ### Optional
 * `stroke`: The colour of the contour lines.
@@ -23,9 +23,9 @@ The following aesthetics are recognised by the violin layer.
 * `linetype` The dash pattern of the contour line.
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'dodge'`)
-* `bandwidth`: A numerical value setting the smoothing bandwidth to use. If absent (default), the bandwidth will be computed using Silverman's rule of thumb.
-* `adjust`: A numerical value as multiplier for the `bandwidth` setting, with 1 as default.
+* `position`: Position adjustment. One of `'identity'`, `'stack'`, `'dodge'` (default), or `'jitter'`
+* `bandwidth`: Smoothing bandwidth (must be > 0). If absent (default), the bandwidth will be computed using Silverman's rule of thumb.
+* `adjust`: Multiplier for the `bandwidth` setting (must be > 0). Defaults to 1.
 * `kernel`: Determines the smoothing kernel shape. Can be one of the following:
     * `'gaussian'` (default)
     * `'epanechnikov'`
@@ -33,7 +33,14 @@ The following aesthetics are recognised by the violin layer.
     * `'rectangular'` or `'uniform'`
     * `'biweight'` or `'quartic'`
     * `'cosine'`
-* `width`: Relative width of the violins. Defaults to `0.9`.
+* `width`: Relative width of the violins (0 to 1). Defaults to `0.9`.
+* `side`: Determines the sides of the midline where the density is displayed. One of the following:
+    * `'both'` (default) displays a complete violin both sides of the midline.
+    * `'left'` or `'bottom'` only displays half a violin at the left side or bottom side.
+    * `'right'` or `'top'` only displays half a violin at the right side or top side.
+* `tails`: Expansion rule for drawing the tails (must be >= 0 if numeric). One of the following:
+    * A number setting a multiple of adjusted bandwidths to expand each group's range. Defaults to 3.
+    * `null` to use the whole data range rather than group ranges.
 
 ## Data transformation
 A violin layer uses the same computation as a density layer. See the [density data transformation](density.qmd#data-transformation) section for details.
@@ -52,20 +59,32 @@ The major difference between a violin layer and a density layer is just the matt
 
 * `density AS offset`: By default the offsets around a centerline reflect the computed density.
 
+## Orientation
+The violin plot has its categorical groups along the primary axis and the continuous values along the secondary axis. The orientation can be deduced from the scale types or from the mapping. To create horizontal violins, swap `x` and `y` in the mapping (assuming a default Cartesian coordinate system).
+
 ## Examples
 
 A typical violin plot.
 
 ```{ggsql}
 VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
-  DRAW violin
+DRAW violin
 ```
 
 The `adjust` setting controls the smoothing.
 
 ```{ggsql}
 VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
-  DRAW violin SETTING adjust => 0.1
+DRAW violin 
+  SETTING adjust => 0.1
+```
+
+The `tails` setting controls the display beyond the data range. You can set it to `0` to use the exact group's data range.
+
+```{ggsql}
+VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
+DRAW violin 
+  SETTING tails => 0
 ```
 
 To more clearly indicate differences in group sizes, you can use the `intensity` computed variable.
@@ -73,13 +92,29 @@ Note that we have fewer (n=68) Chinstrap penguins than Adelie (n=152) or Gentoo 
 
 ```{ggsql}
 VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
-  DRAW violin REMAPPING intensity AS offset
+DRAW violin 
+  REMAPPING intensity AS offset
 ```
 
-You can combine groups to expand the categories.
+If you have multiple groups within a category they are dodged by default:
 
 ```{ggsql}
 VISUALISE species AS x, bill_dep AS y, island AS fill FROM ggsql:penguins
-  DRAW violin
+DRAW violin
 ```
 
+Create horizontal violins by swapping `x` and `y`:
+
+```{ggsql}
+VISUALISE species AS y, bill_dep AS x FROM ggsql:penguins
+DRAW violin
+```
+
+A ridgeline plot (or joy plot) can be seen as a horizontal half-violin plot, or like a density plot with vertical offsets for every category.
+To achieve this outcome, you can set the `side` setting and adjust `width` to taste.
+
+```{ggsql}
+VISUALISE Temp AS x, Month AS y FROM ggsql:airquality
+DRAW violin SETTING width => 4, side => 'top'
+SCALE ORDINAL y
+```

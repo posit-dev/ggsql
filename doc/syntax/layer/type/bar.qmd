@@ -13,8 +13,8 @@ The following aesthetics are recognised by the bar layer.
 The bar layer has no required aesthetics
 
 ### Optional
-* `x`: Position on the x-axis. If missing all records will be shown in the same bar
-* `y`: The height of the plot. If missing, it will be calculated by the layer
+* Primary axis (e.g. `x`): The categories to create bars for. If missing all records will be shown in the same bar
+* Secondary axis (e.g. `y`): The height of the bars. If missing, it will be calculated by the layer
 * `colour`: The default colour of each bar
 * `stroke`: The colour of the stroke around each bar. Overrides `colour`
 * `fill`: The fill colour of each bar. Overrides `colour`
@@ -23,11 +23,11 @@ The bar layer has no required aesthetics
 * `linetype`: The type of stroke, i.e. the dashing pattern
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'stack'`)
-* `width`: The width of the bars as a proportion of the available width
+* `position`: Position adjustment. One of `'identity'`, `'stack'` (default), `'dodge'`, or `'jitter'`
+* `width`: The width of the bars as a proportion of the available width (0 to 1)
 
 ## Data transformation
-If `y` has not been mapped the layer will calculate it for you.
+If the secondary axis has not been mapped the layer will calculate counts for you and display these as the secondary axis.
 
 ### Properties
 
@@ -40,7 +40,10 @@ If `y` has not been mapped the layer will calculate it for you.
 
 ### Default remappings
 
-* `count AS y`: By default the barplot will show count as the height of the bars
+* `count AS <secondary axis>`: By default the barplot will show count as the height of the bars
+
+## Orientation
+Bar plots have categories along their primary axis. The orientation is deduced directly from the mapping. To create a horizontal bar plot you map the categories to `y` instead of `x` (assuming a default Cartesian coordinate system).
 
 ## Examples
 
@@ -49,7 +52,7 @@ Show the number of each species in the data
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
 DRAW bar
-    MAPPING species AS x
+  MAPPING species AS x
 ```
 
 Use `weight` to instead show the collective mass of each species
@@ -57,7 +60,7 @@ Use `weight` to instead show the collective mass of each species
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
 DRAW bar
-    MAPPING species AS x, body_mass AS weight
+  MAPPING species AS x, body_mass AS weight
 ```
 
 Map fill to a discrete value to create a stacked bar chart
@@ -65,7 +68,7 @@ Map fill to a discrete value to create a stacked bar chart
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
 DRAW bar
-    MAPPING species AS x, island AS fill
+  MAPPING species AS x, island AS fill
 ```
 
 Or change the position setting to e.g. get a dodged bar chart
@@ -73,8 +76,8 @@ Or change the position setting to e.g. get a dodged bar chart
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
 DRAW bar
-    MAPPING species AS x, sex AS fill
-    SETTING position => 'dodge'
+  MAPPING species AS x, sex AS fill
+  SETTING position => 'dodge'
 ```
 
 Map to y if the dataset already contains the value you want to show
@@ -84,7 +87,7 @@ SELECT species, MAX(body_mass) AS max_mass FROM ggsql:penguins
 GROUP BY species
 VISUALISE
 DRAW bar
-    MAPPING species AS x, max_mass AS y
+  MAPPING species AS x, max_mass AS y
 ```
 
 Use together with a binned scale as an alternative to the [histogram layer](histogram.qmd)
@@ -92,11 +95,24 @@ Use together with a binned scale as an alternative to the [histogram layer](hist
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
 DRAW bar
-    MAPPING body_mass AS x
+  MAPPING body_mass AS x
 SCALE BINNED x
-    SETTING breaks => 10
+  SETTING breaks => 10
+```
+
+Create a horizontal bar plot by changing the mapping
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW bar
+  MAPPING species AS y
 ```
 
 And use with a polar coordinate system to create a pie chart
 
-**TBD**
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW bar
+  MAPPING species AS fill
+PROJECT TO polar
+```

@@ -3,7 +3,7 @@
 //! This module handles building Vega-Lite encoding channels from ggsql aesthetic mappings,
 //! including type inference, scale properties, and title handling.
 
-use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
+use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
 use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path, ScaleTypeKind};
 use crate::plot::{CoordKind, ParameterValue};
 use crate::{AestheticValue, DataFrame, Plot, Result};
@@ -13,14 +13,14 @@ use std::collections::{HashMap, HashSet};
 
 use super::{POINTS_TO_AREA, POINTS_TO_PIXELS};
 
-/// Check if a positional aesthetic has free scales enabled.
+/// Check if a position aesthetic has free scales enabled.
 ///
 /// Maps aesthetic names to position indices:
 /// - pos1, pos1min, pos1max, pos1end -> index 0
 /// - pos2, pos2min, pos2max, pos2end -> index 1
 /// - etc.
 ///
-/// Returns false for non-positional aesthetics or if no free_scales array is provided.
+/// Returns false for material aesthetics or if no free_scales array is provided.
 fn is_position_free_for_aesthetic(
     aesthetic: &str,
     free_scales: Option<&[crate::plot::ArrayElement]>,
@@ -191,7 +191,7 @@ pub(super) fn build_symbol_legend_label_mapping(
     result
 }
 
-/// Count the number of binned non-positional scales in the spec.
+/// Count the number of binned material scales in the spec.
 /// This is used to determine if legends should use symbol style (which requires
 /// removing the last terminal value) or gradient style (which keeps all values).
 pub(super) fn count_binned_legend_scales(spec: &Plot) -> usize {
@@ -205,10 +205,10 @@ pub(super) fn count_binned_legend_scales(spec: &Plot) -> usize {
                 .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)
                 .unwrap_or(false);
 
-            // Check if non-positional (legend aesthetic)
-            let is_legend_aesthetic = !is_positional_aesthetic(&scale.aesthetic);
+            // Check if material aesthetic
+            let is_material_aesthetic = !is_position_aesthetic(&scale.aesthetic);
 
-            is_binned && is_legend_aesthetic
+            is_binned && is_material_aesthetic
         })
         .count()
 }
@@ -297,7 +297,7 @@ enum LegendStyle {
 /// Determine legend style for a binned aesthetic
 ///
 /// - fill/stroke alone: gradient legend
-/// - fill/stroke with other binned legend aesthetics: symbol legend
+/// - fill/stroke with other binned material aesthetics: symbol legend
 /// - all other aesthetics: symbol legend
 fn determine_legend_style(aesthetic: &str, spec: &Plot) -> LegendStyle {
     let is_gradient_aesthetic = matches!(aesthetic, "fill" | "stroke");
@@ -367,7 +367,7 @@ fn determine_field_type_for_aesthetic(
     aesthetic_ctx: &AestheticContext,
 ) -> String {
     let primary = aesthetic_ctx
-        .primary_internal_positional(aesthetic)
+        .primary_internal_position(aesthetic)
         .unwrap_or(aesthetic);
     let inferred = infer_field_type(df, col);
 
@@ -402,7 +402,7 @@ fn apply_title_to_encoding(
     aesthetic_ctx: &AestheticContext,
 ) {
     let primary = aesthetic_ctx
-        .primary_internal_positional(aesthetic)
+        .primary_internal_position(aesthetic)
         .unwrap_or(aesthetic);
     let is_primary = aesthetic == primary;
     let primary_exists = primary_aesthetics.contains(primary);
@@ -414,8 +414,15 @@ fn apply_title_to_encoding(
             .as_ref()
             .and_then(|labels| labels.labels.get(primary));
 
-        if let Some(label) = explicit_label {
-            encoding["title"] = json!(label);
+        if let Some(label_opt) = explicit_label {
+            match label_opt {
+                Some(label) => {
+                    encoding["title"] = super::split_label_on_newlines(label);
+                }
+                None => {
+                    encoding["title"] = Value::Null;
+                }
+            }
             titled_families.insert(primary.to_string());
         } else if let Some(orig) = original_name {
             // Use original column name as default title when available
@@ -428,8 +435,15 @@ fn apply_title_to_encoding(
     } else if !is_primary && !primary_exists && !titled_families.contains(primary) {
         // Variant without primary: allow first variant to claim title (for explicit labels)
         if let Some(ref labels) = spec.labels {
-            if let Some(label) = labels.labels.get(primary) {
-                encoding["title"] = json!(label);
+            if let Some(label_opt) = labels.labels.get(primary) {
+                match label_opt {
+                    Some(label) => {
+                        encoding["title"] = super::split_label_on_newlines(label);
+                    }
+                    None => {
+                        encoding["title"] = Value::Null;
+                    }
+                }
                 titled_families.insert(primary.to_string());
             }
         }
@@ -505,7 +519,7 @@ fn build_scale_properties(
         apply_transform_to_scale(&mut scale_obj, transform);
     }
 
-    // Handle binned non-positional aesthetics with threshold scale
+    // Handle binned material aesthetics with threshold scale
     if ctx.is_binned_legend {
         scale_obj.insert("type".to_string(), json!("threshold"));
 
@@ -553,7 +567,7 @@ fn convert_range_element(elem: &crate::plot::ArrayElement, aesthetic: &str) -> V
                 // Size: convert radius (points) to area (pixels²)
                 "size" => json!(n * n * POINTS_TO_AREA),
                 // Linewidth: convert points to pixels
-                "linewidth" => json!(n * POINTS_TO_PIXELS),
+                "linewidth" | "fontsize" => json!(n * POINTS_TO_PIXELS),
                 // Other aesthetics: pass through unchanged
                 _ => json!(n),
             }
@@ -629,8 +643,8 @@ fn apply_reverse_legend(encoding: &mut Value, scale: &crate::plot::Scale, aesthe
         return;
     }
 
-    // Only for non-positional aesthetics (those with legends)
-    if is_positional_aesthetic(aesthetic) {
+    // Only for material aesthetics (those with legends)
+    if is_position_aesthetic(aesthetic) {
         return;
     }
 
@@ -657,8 +671,8 @@ fn apply_breaks_to_encoding(
 
     let all_values: Vec<Value> = breaks.iter().map(|e| e.to_json()).collect();
 
-    if is_positional_aesthetic(aesthetic) {
-        // For positional aesthetics (axes), filter out suppressed terminal breaks
+    if is_position_aesthetic(aesthetic) {
+        // For position aesthetics (axes), filter out suppressed terminal breaks
         let axis_values: Vec<Value> = if let Some(ref label_mapping) = scale.label_mapping {
             breaks
                 .iter()
@@ -674,7 +688,7 @@ fn apply_breaks_to_encoding(
 
         insert_axis_property(encoding, "values", json!(axis_values));
     } else {
-        // For legend aesthetics, determine values based on legend style
+        // For material aesthetics, determine values based on legend style
         let legend_values = if is_binned_legend {
             let legend_style = determine_legend_style(aesthetic, spec);
             if legend_style == LegendStyle::Symbol && !all_values.is_empty() {
@@ -762,7 +776,7 @@ fn apply_label_mapping_to_encoding(
 
     let label_expr = build_label_expr(&filtered_mapping, time_format, null_key.as_deref());
 
-    if is_positional_aesthetic(aesthetic) {
+    if is_position_aesthetic(aesthetic) {
         insert_axis_property(encoding, "labelExpr", json!(label_expr));
     } else {
         insert_legend_property(encoding, "labelExpr", json!(label_expr));
@@ -802,7 +816,11 @@ pub(super) fn build_encoding_channel(
             name: col,
             original_name,
             is_dummy,
-        } => build_column_encoding(aesthetic, col, original_name, *is_dummy, ctx),
+        } => build_column_encoding(aesthetic, col, original_name, *is_dummy, true, ctx),
+        AestheticValue::AnnotationColumn { name: col } => {
+            // Material annotation columns use identity scale
+            build_column_encoding(aesthetic, col, &None, false, false, ctx)
+        }
         AestheticValue::Literal(lit) => build_literal_encoding(aesthetic, lit),
     }
 }
@@ -813,13 +831,14 @@ fn build_column_encoding(
     col: &str,
     original_name: &Option<String>,
     is_dummy: bool,
+    is_scaled: bool,
     ctx: &mut EncodingContext,
 ) -> Result<Value> {
     let aesthetic_ctx = ctx.spec.get_aesthetic_context();
     let primary = aesthetic_ctx
-        .primary_internal_positional(aesthetic)
+        .primary_internal_position(aesthetic)
         .unwrap_or(aesthetic);
-    let mut identity_scale = false;
+    let mut identity_scale = !is_scaled;
 
     // Determine field type from scale or infer from data
     let field_type = determine_field_type_for_aesthetic(
@@ -839,8 +858,8 @@ fn build_column_encoding(
         .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)
         .unwrap_or(false);
 
-    // Binned legend = binned + non-positional (needs threshold scale)
-    let is_binned_legend = is_binned && !is_positional_aesthetic(aesthetic);
+    // Binned legend = binned + material (needs threshold scale)
+    let is_binned_legend = is_binned && !is_position_aesthetic(aesthetic);
 
     // Build base encoding
     let mut encoding = json!({
@@ -848,7 +867,7 @@ fn build_column_encoding(
         "type": field_type,
     });
 
-    // bin: "binned" is only valid for positional channels in VL v6
+    // bin: "binned" is only valid for position channels in VL v6
     if is_binned && !is_binned_legend {
         encoding["bin"] = json!("binned");
     }
@@ -894,8 +913,13 @@ fn build_column_encoding(
         (serde_json::Map::new(), false)
     };
 
-    // Position scales don't include zero by default
-    if aesthetic_ctx.is_primary_internal(aesthetic) {
+    // Position scales don't include zero by default — but only when we set
+    // an explicit domain. With free facet scales (no domain), VL computes
+    // the domain from data values. Setting zero:false in that case can exclude
+    // 0 from the domain, breaking charts with pre-computed stacking (y2/theta2
+    // starts at 0). Let VL's defaults handle it instead.
+    let is_free = is_position_free_for_aesthetic(aesthetic, ctx.free_scales);
+    if aesthetic_ctx.is_primary_internal(aesthetic) && !is_free {
         scale_obj.insert("zero".to_string(), json!(false));
     }
 
@@ -933,9 +957,15 @@ fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value
                 // Size: radius (points) → area (pixels²)
                 "size" => json!(n * n * POINTS_TO_AREA),
                 // Linewidth: points → pixels
-                "linewidth" => json!(n * POINTS_TO_PIXELS),
+                "linewidth" | "fontsize" => json!(n * POINTS_TO_PIXELS),
                 _ => json!(n),
             }
+        }
+        ParameterValue::Array(_) => {
+            return Err(crate::GgsqlError::WriterError(format!(
+                "The `{aes}` SETTING must be scalar, not an array.",
+                aes = aesthetic
+            )))
         }
         _ => lit.to_json(),
     };
@@ -944,52 +974,54 @@ fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value
 
 /// Map ggsql aesthetic name to Vega-Lite encoding channel name.
 ///
-/// For internal positional aesthetics (pos1, pos2, etc.), maps directly to Vega-Lite
+/// For internal position aesthetics (pos1, pos2, etc.), maps directly to Vega-Lite
 /// channel names based on coord type:
 /// - Cartesian: pos1 → "x", pos2 → "y"
-/// - Polar: pos1 → "theta", pos2 → "radius"
+/// - Polar: pos1 → "radius", pos2 → "theta"
 ///
 /// This ensures correct Vega-Lite channel names regardless of what the user originally
-/// called their positional aesthetics in the PROJECT clause.
+/// called their position aesthetics in the PROJECT clause.
 ///
-/// For non-positional aesthetics, applies Vega-Lite specific mappings (e.g., linetype → strokeDash).
+/// For material aesthetics, applies Vega-Lite specific mappings (e.g., linetype → strokeDash).
 pub(super) fn map_aesthetic_name(
     aesthetic: &str,
     _ctx: &crate::plot::AestheticContext,
     coord_kind: CoordKind,
 ) -> String {
-    // For internal positional aesthetics, map directly to Vega-Lite channel names
+    // For internal position aesthetics, map directly to Vega-Lite channel names
     // based on coord type (ignoring user-facing names)
-    if let Some(vl_channel) = map_positional_to_vegalite(aesthetic, coord_kind) {
+    if let Some(vl_channel) = map_position_to_vegalite(aesthetic, coord_kind) {
         return vl_channel;
     }
 
-    // Non-positional aesthetics: apply Vega-Lite specific mappings
+    // Material aesthetics: apply Vega-Lite specific mappings
     match aesthetic {
         // Line aesthetics
         "linetype" => "strokeDash".to_string(),
         "linewidth" => "strokeWidth".to_string(),
         // Text aesthetics
         "label" => "text".to_string(),
+        "fontsize" => "size".to_string(),
         // All other aesthetics pass through directly
         // (fill and stroke map to Vega-Lite's separate fill/stroke channels)
+        // typeface/fontweight/italic/rotation are parsed explicitly
         _ => aesthetic.to_string(),
     }
 }
 
-/// Map internal positional aesthetic to Vega-Lite channel name based on coord type.
+/// Map internal position aesthetic to Vega-Lite channel name based on coord type.
 ///
-/// Returns `Some(channel_name)` for internal positional aesthetics (pos1, pos2, etc.),
-/// or `None` for non-positional aesthetics.
-fn map_positional_to_vegalite(aesthetic: &str, coord_kind: CoordKind) -> Option<String> {
+/// Returns `Some(channel_name)` for internal position aesthetics (pos1, pos2, etc.),
+/// or `None` for material aesthetics.
+fn map_position_to_vegalite(aesthetic: &str, coord_kind: CoordKind) -> Option<String> {
     let (primary, secondary) = match coord_kind {
         CoordKind::Cartesian => ("x", "y"),
-        CoordKind::Polar => ("theta", "radius"),
+        CoordKind::Polar => ("radius", "theta"),
     };
 
-    // Match internal positional aesthetic patterns
+    // Match internal position aesthetic patterns
     match aesthetic {
-        // Primary positional
+        // Primary position
         "pos1" => Some(primary.to_string()),
         "pos2" => Some(secondary.to_string()),
         // End variants (Vega-Lite uses x2/y2/theta2/radius2)

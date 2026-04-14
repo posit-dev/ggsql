@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::plot::types::DefaultParam;
+use crate::plot::types::{validate_parameter, ParamDefinition};
 use crate::plot::ParameterValue;
 
 // Coord type implementations
@@ -64,18 +64,18 @@ pub trait CoordTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Canonical name for parsing and display
     fn name(&self) -> &'static str;
 
-    /// Primary positional aesthetic names for this coord.
+    /// Primary position aesthetic names for this coord.
     ///
-    /// Returns the user-facing positional aesthetic names.
-    /// e.g., ["x", "y"] for cartesian, ["theta", "radius"] for polar.
+    /// Returns the user-facing position aesthetic names.
+    /// e.g., ["x", "y"] for cartesian, ["radius", "angle"] for polar.
     ///
     /// These names are transformed to internal names (pos1, pos2, etc.)
     /// early in the pipeline and transformed back for output.
-    fn positional_aesthetic_names(&self) -> &'static [&'static str];
+    fn position_aesthetic_names(&self) -> &'static [&'static str];
 
     /// Returns list of allowed properties with their default values.
     /// Default: empty (no properties allowed).
-    fn default_properties(&self) -> &'static [DefaultParam] {
+    fn default_properties(&self) -> &'static [ParamDefinition] {
         &[]
     }
 
@@ -86,22 +86,27 @@ pub trait CoordTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         properties: &HashMap<String, ParameterValue>,
     ) -> Result<HashMap<String, ParameterValue>, String> {
         let defaults = self.default_properties();
-        let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
 
-        // Check for unknown properties
-        for key in properties.keys() {
-            if !allowed.contains(&key.as_str()) {
-                let valid_props = if allowed.is_empty() {
-                    "none".to_string()
+        // Validate values against constraints
+        for (key, value) in properties.iter() {
+            if let Some(param) = defaults.iter().find(|p| p.name == key) {
+                validate_parameter(key, value, &param.constraint)?;
+            } else {
+                let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
+                return Err(if allowed.is_empty() {
+                    format!(
+                        "{} projection does not accept any properties, but got '{}'",
+                        self.name(),
+                        key
+                    )
                 } else {
-                    allowed.join(", ")
-                };
-                return Err(format!(
-                    "Property '{}' not valid for {} projection. Valid properties: {}",
-                    key,
-                    self.name(),
-                    valid_props
-                ));
+                    format!(
+                        "{} projection property should be {}, not '{}'",
+                        self.name(),
+                        crate::or_list_quoted(&allowed, '\''),
+                        key
+                    )
+                });
             }
         }
 
@@ -159,14 +164,14 @@ impl Coord {
         self.0.name()
     }
 
-    /// Primary positional aesthetic names for this coord.
-    /// e.g., ["x", "y"] for cartesian, ["theta", "radius"] for polar.
-    pub fn positional_aesthetic_names(&self) -> &'static [&'static str] {
-        self.0.positional_aesthetic_names()
+    /// Primary position aesthetic names for this coord.
+    /// e.g., ["x", "y"] for cartesian, ["radius", "angle"] for polar.
+    pub fn position_aesthetic_names(&self) -> &'static [&'static str] {
+        self.0.position_aesthetic_names()
     }
 
     /// Returns list of allowed properties with their default values.
-    pub fn default_properties(&self) -> &'static [DefaultParam] {
+    pub fn default_properties(&self) -> &'static [ParamDefinition] {
         self.0.default_properties()
     }
 
@@ -281,11 +286,11 @@ mod tests {
     }
 
     #[test]
-    fn test_positional_aesthetic_names() {
+    fn test_position_aesthetic_names() {
         let cartesian = Coord::cartesian();
-        assert_eq!(cartesian.positional_aesthetic_names(), &["x", "y"]);
+        assert_eq!(cartesian.position_aesthetic_names(), &["x", "y"]);
 
         let polar = Coord::polar();
-        assert_eq!(polar.positional_aesthetic_names(), &["theta", "radius"]);
+        assert_eq!(polar.position_aesthetic_names(), &["radius", "angle"]);
     }
 }

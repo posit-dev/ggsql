@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
 description = "Jupyter kernel for ggsql"
 
 [[bin]]
@@ -16,7 +18,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # Core ggsql library
-ggsql = { path = "../src", features = ["duckdb", "vegalite"] }
+ggsql = { workspace = true, features = ["duckdb", "vegalite"] }
 
 # Need polars for DataFrame type
 polars = { workspace = true }
@@ -53,6 +55,13 @@ hex = "0.4"
 
 # UUID for message IDs
 uuid = { version = "1.0", features = ["v4"] }
+
+[features]
+default = ["all-readers"]
+all-readers = ["sqlite", "odbc", "duckdb"]
+odbc = ["ggsql/odbc"]
+sqlite = ["ggsql/sqlite"]
+duckdb = ["ggsql/duckdb"]
 
 [dev-dependencies]
 # Test utilities

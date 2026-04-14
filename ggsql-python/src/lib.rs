@@ -127,6 +127,8 @@ struct PyReaderBridge {
     obj: Py<PyAny>,
 }
 
+static ANSI_DIALECT: ggsql::reader::AnsiDialect = ggsql::reader::AnsiDialect;
+
 impl Reader for PyReaderBridge {
     fn execute_sql(&self, sql: &str) -> ggsql::Result<DataFrame> {
         Python::attach(|py| {
@@ -160,6 +162,14 @@ impl Reader for PyReaderBridge {
                 })?;
             Ok(())
         })
+    }
+
+    fn execute(&self, query: &str) -> ggsql::Result<ggsql::reader::Spec> {
+        ggsql::reader::execute_with_reader(self, query)
+    }
+
+    fn dialect(&self) -> &dyn ggsql::reader::SqlDialect {
+        &ANSI_DIALECT
     }
 }
 

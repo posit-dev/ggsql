@@ -2,10 +2,14 @@
 
 use std::collections::HashMap;
 
-use super::types::get_column_name;
-use super::{DefaultAesthetics, DefaultParam, DefaultParamValue, GeomTrait, GeomType, StatResult};
+use super::types::{get_quoted_column_name, CLOSED_VALUES, POSITION_VALUES};
+use super::{
+    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
+    StatResult,
+};
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
+use crate::reader::SqlDialect;
 use crate::{DataFrame, GgsqlError, Mappings, Result};
 
 use super::types::Schema;
@@ -30,42 +34,50 @@ impl GeomTrait for Histogram {
                 // pos2 and pos1end are produced by stat_histogram but not valid for manual MAPPING
                 ("pos2", DefaultAestheticValue::Delayed),
                 ("pos1end", DefaultAestheticValue::Delayed),
+                ("pos2end", DefaultAestheticValue::Delayed), // baseline value
             ],
         }
     }
 
-    fn default_remappings(&self) -> &'static [(&'static str, DefaultAestheticValue)] {
-        &[
-            ("pos1", DefaultAestheticValue::Column("bin")),
-            ("pos1end", DefaultAestheticValue::Column("bin_end")),
-            ("pos2", DefaultAestheticValue::Column("count")),
-            ("pos2end", DefaultAestheticValue::Number(0.0)),
-        ]
+    fn default_remappings(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("pos1", DefaultAestheticValue::Column("bin")),
+                ("pos1end", DefaultAestheticValue::Column("bin_end")),
+                ("pos2", DefaultAestheticValue::Column("count")),
+                ("pos2end", DefaultAestheticValue::Number(0.0)),
+            ],
+        }
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {
         &["bin", "bin_end", "count", "density"]
     }
 
-    fn default_params(&self) -> &'static [DefaultParam] {
-        &[
-            DefaultParam {
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "bins",
                 default: DefaultParamValue::Number(30.0),
+                constraint: ParamConstraint::count(1.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "closed",
                 default: DefaultParamValue::String("right"),
+                constraint: ParamConstraint::string_option(CLOSED_VALUES),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "binwidth",
                 default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_min_exclusive(0.0),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "position",
                 default: DefaultParamValue::String("stack"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
-        ]
+        ];
+        PARAMS
     }
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {
@@ -84,8 +96,16 @@ impl GeomTrait for Histogram {
         group_by: &[String],
         parameters: &HashMap<String, ParameterValue>,
         execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+        dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
-        stat_histogram(query, aesthetics, group_by, parameters, execute_query)
+        stat_histogram(
+            query,
+            aesthetics,
+            group_by,
+            parameters,
+            execute_query,
+            dialect,
+        )
     }
 }
 
@@ -102,29 +122,24 @@ fn stat_histogram(
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
     execute_query: &dyn Fn(&str) -> Result<DataFrame>,
+    dialect: &dyn SqlDialect,
 ) -> Result<StatResult> {
     // Get x column name from aesthetics
-    let x_col = get_column_name(aesthetics, "pos1").ok_or_else(|| {
+    let x_col = get_quoted_column_name(aesthetics, "pos1").ok_or_else(|| {
         GgsqlError::ValidationError("Histogram requires 'x' aesthetic mapping".to_string())
     })?;
 
-    // Get bins from parameters (default: 30)
-    let bins = parameters
-        .get("bins")
-        .and_then(|p| match p {
-            ParameterValue::Number(n) => Some(*n as usize),
-            _ => None,
-        })
-        .expect("bins is not the correct format. Expected a number");
+    // Get bins from parameters (default: 30, validated by constraint)
+    let ParameterValue::Number(bins) = parameters.get("bins").unwrap() else {
+        unreachable!("bins validated by ParamConstraint::count")
+    };
+    let bins = *bins as usize;
 
-    // Get closed parameter (default: "right")
-    let closed = parameters
-        .get("closed")
-        .and_then(|p| match p {
-            ParameterValue::String(s) => Some(s.as_str()),
-            _ => None,
-        })
-        .expect("closed is not the correct format. Expected a string");
+    // Get closed parameter (default: "right", validated by constraint)
+    let ParameterValue::String(closed) = parameters.get("closed").unwrap() else {
+        unreachable!("closed validated by ParamConstraint::string_option")
+    };
+    let closed = closed.as_str();
 
     // Get binwidth from parameters (default: None - use bins to calculate)
     let explicit_binwidth = parameters.get("binwidth").and_then(|p| match p {
@@ -134,7 +149,7 @@ fn stat_histogram(
 
     // Query min/max to compute bin width
     let stats_query = format!(
-        "SELECT MIN({x}) as min_val, MAX({x}) as max_val FROM ({query}) AS __ggsql_stats__",
+        "SELECT MIN({x}) as min_val, MAX({x}) as max_val FROM ({query}) AS \"__ggsql_stats__\"",
         x = x_col,
         query = query
     );
@@ -163,12 +178,19 @@ fn stat_histogram(
             w = bin_width
         )
     } else {
-        // Right-closed (a, b]: use CEIL - 1 with GREATEST for min value
-        format!(
-            "(GREATEST(CEIL(({x} - {min} + {w} * 0.5) / {w}) - 1, 0)) * {w} + {min} - {w} * 0.5",
+        // Right-closed (a, b]: use CEIL - 1, clamped to 0 minimum
+        let ceil_expr = format!(
+            "CEIL(({x} - {min} + {w} * 0.5) / {w}) - 1",
             x = x_col,
             min = min_val,
             w = bin_width
+        );
+        let clamped = dialect.sql_greatest(&["0", &ceil_expr]);
+        format!(
+            "({clamped}) * {w} + {min} - {w} * 0.5",
+            clamped = clamped,
+            w = bin_width,
+            min = min_val
         )
     };
     // Build the bin end expression (bin start + bin width)
@@ -191,7 +213,7 @@ fn stat_histogram(
             ));
         }
         if let Some(weight_col) = weight_value.column_name() {
-            format!("SUM({})", weight_col)
+            format!("SUM({})", naming::quote_ident(weight_col))
         } else {
             "COUNT(*)".to_string()
         }
@@ -207,16 +229,20 @@ fn stat_histogram(
     let stat_count = naming::stat_column("count");
     let stat_density = naming::stat_column("density");
 
+    let q_bin = naming::quote_ident(&stat_bin);
+    let q_bin_end = naming::quote_ident(&stat_bin_end);
+    let q_count = naming::quote_ident(&stat_count);
+    let q_density = naming::quote_ident(&stat_density);
     let (binned_select, final_select) = if group_by.is_empty() {
         (
             format!(
                 "{} AS {}, {} AS {}, {} AS {}",
-                bin_expr, stat_bin, bin_end_expr, stat_bin_end, agg_expr, stat_count
+                bin_expr, q_bin, bin_end_expr, q_bin_end, agg_expr, q_count
             ),
             format!(
                 "*, {count} * 1.0 / SUM({count}) OVER () AS {density}",
-                count = stat_count,
-                density = stat_density
+                count = q_count,
+                density = q_density
             ),
         )
     } else {
@@ -224,19 +250,19 @@ fn stat_histogram(
         (
             format!(
                 "{}, {} AS {}, {} AS {}, {} AS {}",
-                grp_cols, bin_expr, stat_bin, bin_end_expr, stat_bin_end, agg_expr, stat_count
+                grp_cols, bin_expr, q_bin, bin_end_expr, q_bin_end, agg_expr, q_count
             ),
             format!(
                 "*, {count} * 1.0 / SUM({count}) OVER (PARTITION BY {grp}) AS {density}",
-                count = stat_count,
+                count = q_count,
                 grp = grp_cols,
-                density = stat_density
+                density = q_density
             ),
         )
     };
 
     let transformed_query = format!(
-        "WITH __stat_src__ AS ({query}), __binned__ AS (SELECT {binned} FROM __stat_src__ GROUP BY {group}) SELECT {final} FROM __binned__",
+        "WITH \"__stat_src__\" AS ({query}), \"__binned__\" AS (SELECT {binned} FROM \"__stat_src__\" GROUP BY {group}) SELECT {final} FROM \"__binned__\"",
         query = query,
         binned = binned_select,
         group = group_cols,

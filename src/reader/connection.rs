@@ -11,14 +11,15 @@ pub enum ConnectionInfo {
     DuckDBMemory,
     /// DuckDB file-based database
     DuckDBFile(String),
-    /// Polars in-memory SQL context
-    PolarsMemory,
     /// PostgreSQL connection
     #[allow(dead_code)]
     PostgreSQL(String),
     /// SQLite file-based database
     #[allow(dead_code)]
     SQLite(String),
+    /// Generic ODBC connection (raw connection string after `odbc://` prefix)
+    #[allow(dead_code)]
+    ODBC(String),
 }
 
 /// Parse a connection string into connection information
@@ -58,18 +59,6 @@ pub fn parse_connection_string(uri: &str) -> Result<ConnectionInfo> {
         return Ok(ConnectionInfo::DuckDBFile(cleaned_path.to_string()));
     }
 
-    if uri == "polars://" || uri == "polars://memory" {
-        return Ok(ConnectionInfo::PolarsMemory);
-    }
-
-    if uri.starts_with("polars://") {
-        // Polars only supports in-memory mode
-        return Err(GgsqlError::ReaderError(
-            "Polars reader only supports in-memory mode. Use 'polars://memory' or 'polars://'"
-                .to_string(),
-        ));
-    }
-
     if uri.starts_with("postgres://") || uri.starts_with("postgresql://") {
         return Ok(ConnectionInfo::PostgreSQL(uri.to_string()));
     }
@@ -84,8 +73,17 @@ pub fn parse_connection_string(uri: &str) -> Result<ConnectionInfo> {
         return Ok(ConnectionInfo::SQLite(cleaned_path.to_string()));
     }
 
+    if let Some(conn_str) = uri.strip_prefix("odbc://") {
+        if conn_str.is_empty() {
+            return Err(GgsqlError::ReaderError(
+                "ODBC connection string cannot be empty".to_string(),
+            ));
+        }
+        return Ok(ConnectionInfo::ODBC(conn_str.to_string()));
+    }
+
     Err(GgsqlError::ReaderError(format!(
-        "Unsupported connection string format: {}. Supported: duckdb://, polars://, postgres://, sqlite://",
+        "Unsupported connection string format: {}. Supported: duckdb://, postgres://, sqlite://, odbc://",
         uri
     )))
 }
@@ -142,30 +140,28 @@ mod tests {
     }
 
     #[test]
-    fn test_polars_memory() {
-        let info = parse_connection_string("polars://memory").unwrap();
-        assert_eq!(info, ConnectionInfo::PolarsMemory);
-    }
-
-    #[test]
-    fn test_polars_empty() {
-        let info = parse_connection_string("polars://").unwrap();
-        assert_eq!(info, ConnectionInfo::PolarsMemory);
-    }
-
-    #[test]
-    fn test_polars_file_not_supported() {
-        let result = parse_connection_string("polars://data.db");
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("only supports in-memory"));
-    }
-
-    #[test]
     fn test_empty_duckdb_path() {
         let result = parse_connection_string("duckdb://");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_odbc() {
+        let info = parse_connection_string(
+            "odbc://Driver=Snowflake;Server=myaccount.snowflakecomputing.com",
+        )
+        .unwrap();
+        assert_eq!(
+            info,
+            ConnectionInfo::ODBC(
+                "Driver=Snowflake;Server=myaccount.snowflakecomputing.com".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn test_odbc_empty() {
+        let result = parse_connection_string("odbc://");
         assert!(result.is_err());
     }
 

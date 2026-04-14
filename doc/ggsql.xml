@@ -90,6 +90,7 @@
     <!-- ggsql Main Clause Keywords (triggers context switch) -->
     <list name="clause_keywords">
       <item>DRAW</item>
+      <item>PLACE</item>
       <item>SCALE</item>
       <item>PROJECT</item>
       <item>FACET</item>
@@ -127,7 +128,7 @@
       <item>path</item>
       <item>bar</item>
       <item>area</item>
-      <item>tile</item>
+      <item>rect</item>
       <item>polygon</item>
       <item>ribbon</item>
       <item>histogram</item>
@@ -140,7 +141,6 @@
       <item>segment</item>
       <item>arrow</item>
       <item>rule</item>
-      <item>linear</item>
       <item>errorbar</item>
     </list>
 
@@ -186,7 +186,7 @@
       <item>hjust</item>
       <item>vjust</item>
       <!-- Specialty aesthetics -->
-      <item>coef</item>
+      <item>slope</item>
       <item>intercept</item>
       <!-- Facet aesthetics -->
       <item>panel</item>
@@ -248,7 +248,7 @@
       <item>xlim</item>
       <item>ylim</item>
       <item>ratio</item>
-      <item>theta</item>
+      <item>angle</item>
       <item>clip</item>
     </list>
 
@@ -390,6 +390,7 @@
 
         <!-- Clause keywords trigger context switches -->
         <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="PlaceClause" String="PLACE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
@@ -436,6 +437,7 @@
 
         <!-- Exit to other clause contexts -->
         <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="PlaceClause" String="PLACE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
@@ -465,6 +467,45 @@
         <DetectChar char="," attribute="Symbol" context="#stay"/>
       </context>
 
+      <!-- PLACE clause context (annotation layers) -->
+      <context name="PlaceClause" attribute="Normal Text" lineEndContext="#stay">
+        <Detect2Chars char="-" char1="-" attribute="Comment" context="Comment"/>
+        <Detect2Chars char="/" char1="*" attribute="Comment" context="CommentMulti" beginRegion="comment"/>
+        <DetectChar char="'" attribute="String" context="StringSingle"/>
+        <DetectChar char="&quot;" attribute="String" context="StringDouble"/>
+        <RegExpr attribute="Number" context="#stay" String="-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?"/>
+
+        <!-- Exit to other clause contexts -->
+        <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="PlaceClause" String="PLACE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
+
+        <!-- Geom types - same as DRAW -->
+        <keyword attribute="Data Type" context="#stay" String="geoms"/>
+
+        <!-- Aesthetics -->
+        <keyword attribute="Attribute" context="#stay" String="aesthetics"/>
+
+        <!-- Sub-keywords (only SETTING supported, not FILTER/PARTITION/ORDER) -->
+        <WordDetect attribute="Keyword" context="#stay" String="SETTING" insensitive="true"/>
+
+        <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
+        <AnyChar attribute="Operator" context="#stay" String="=!&lt;&gt;+-*/%"/>
+        <DetectChar char="(" attribute="Symbol" context="#stay"/>
+        <DetectChar char=")" attribute="Symbol" context="#stay"/>
+        <DetectChar char="[" attribute="Symbol" context="#stay"/>
+        <DetectChar char="]" attribute="Symbol" context="#stay"/>
+        <DetectChar char="," attribute="Symbol" context="#stay"/>
+      </context>
+
       <!-- SCALE clause context -->
       <context name="ScaleClause" attribute="Normal Text" lineEndContext="#stay">
         <Detect2Chars char="-" char1="-" attribute="Comment" context="Comment"/>
@@ -475,6 +516,7 @@
 
         <!-- Exit to other clause contexts -->
         <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="PlaceClause" String="PLACE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
@@ -520,6 +562,7 @@
 
         <!-- Exit to other clause contexts -->
         <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="PlaceClause" String="PLACE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
@@ -562,6 +605,7 @@
 
         <!-- Exit to other clause contexts -->
         <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="PlaceClause" String="PLACE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
@@ -603,6 +647,7 @@
 
         <!-- Exit to other clause contexts -->
         <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="PlaceClause" String="PLACE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
@@ -639,6 +684,7 @@
 
         <!-- Exit to other clause contexts -->
         <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="PlaceClause" String="PLACE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>

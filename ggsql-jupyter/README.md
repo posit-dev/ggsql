@@ -40,17 +40,26 @@ ggsql-jupyter --install
 
 The `--install` flag registers the kernel with Jupyter. It automatically detects and respects your current environment (virtualenv, conda, uv, etc.).
 
-### Option 2: Download Pre-built Binary
+### Option 2: Install from crates.io
+
+Requires a [Rust toolchain](https://rustup.rs/):
+
+```bash
+cargo install ggsql-jupyter
+ggsql-jupyter --install
+```
+
+### Option 3: Download Pre-built Binary
 
 Pre-built binaries are available from [GitHub Releases](https://github.com/georgestagg/ggsql/releases):
 
-| Platform             | Binary                             |
-| -------------------- | ---------------------------------- |
-| Linux (x86_64)       | `ggsql-jupyter-linux-x64`          |
-| Linux (ARM64)        | `ggsql-jupyter-linux-arm64`        |
-| macOS (Intel)        | `ggsql-jupyter-macos-x64`          |
-| macOS (Apple Silicon) | `ggsql-jupyter-macos-arm64`       |
-| Windows (x64)        | `ggsql-jupyter-windows-x64.exe`    |
+| Platform              | Binary                          |
+| --------------------- | ------------------------------- |
+| Linux (x86_64)        | `ggsql-jupyter-linux-x64`       |
+| Linux (ARM64)         | `ggsql-jupyter-linux-arm64`     |
+| macOS (Intel)         | `ggsql-jupyter-macos-x64`       |
+| macOS (Apple Silicon) | `ggsql-jupyter-macos-arm64`     |
+| Windows (x64)         | `ggsql-jupyter-windows-x64.exe` |
 
 After downloading, make it executable and install:
 
@@ -65,7 +74,7 @@ On Windows (PowerShell):
 .\ggsql-jupyter-windows-x64.exe --install
 ```
 
-### Option 3: Build from Source
+### Option 4: Build from Source
 
 Requires a [Rust toolchain](https://rustup.rs/). From the workspace root:
 
@@ -113,6 +122,7 @@ UNION ALL
 SELECT 2, 4, 'A'
 UNION ALL
 SELECT 3, 3, 'B'
+
 VISUALISE x, y, category AS color
 DRAW point
 ```
@@ -124,9 +134,11 @@ SELECT
     '2024-01-01'::DATE + INTERVAL (n) DAY as date,
     n * 10 as revenue
 FROM generate_series(0, 30) as t(n)
+
 VISUALISE date AS x, revenue AS y
 DRAW line
-SCALE x SETTING type => 'date'
+SCALE x
+  SETTING type => 'date'
 LABEL title => 'Revenue Growth', x => 'Date', y => 'Revenue ($)'
 ```
 
@@ -135,9 +147,12 @@ LABEL title => 'Revenue Growth', x => 'Date', y => 'Revenue ($)'
 ```sql
 SELECT x, x*x as y, x*x*x as z
 FROM generate_series(1, 10) as t(x)
+
 VISUALISE x AS x
-DRAW line MAPPING y AS y
-DRAW line MAPPING z AS y
+DRAW line
+  MAPPING y AS y
+DRAW line
+  MAPPING z AS y
 LABEL title => 'Polynomial Functions'
 ```
 
@@ -156,9 +171,9 @@ Cell 1:
 ```sql
 CREATE TABLE products AS
 SELECT * FROM (VALUES
-    (1, 'Widget', 10.99),
-    (2, 'Gadget', 24.99),
-    (3, 'Doohickey', 5.99)
+  (1, 'Widget', 10.99),
+  (2, 'Gadget', 24.99),
+  (3, 'Doohickey', 5.99)
 ) AS t(id, name, price)
 ```
 

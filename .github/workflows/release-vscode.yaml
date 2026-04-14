@@ -3,7 +3,7 @@ name: Open VSX Release
 on:
   push:
     tags:
-      - "vscode/v*"
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -20,7 +20,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install vsce
         run: npm install -g @vscode/vsce

@@ -5,13 +5,10 @@ Provides commands for executing ggsql queries with various data sources and outp
 */
 
 use clap::{Parser, Subcommand};
+use ggsql::reader::{Reader, Spec};
+use ggsql::validate::validate;
 use ggsql::{parser, VERSION};
 use std::path::PathBuf;
-
-#[cfg(feature = "duckdb")]
-use ggsql::reader::{DuckDBReader, Reader};
-#[cfg(feature = "duckdb")]
-use ggsql::validate::validate;
 
 #[cfg(feature = "vegalite")]
 use ggsql::writer::{VegaLiteWriter, Writer};
@@ -32,11 +29,11 @@ pub enum Commands {
         /// The ggsql query to execute
         query: String,
 
-        /// Data source connection string
+        /// Data source connection string (duckdb://, sqlite://)
         #[arg(long, default_value = "duckdb://memory")]
         reader: String,
 
-        /// Output format
+        /// Output format (vegalite)
         #[arg(long, default_value = "vegalite")]
         writer: String,
 
@@ -54,11 +51,11 @@ pub enum Commands {
         /// Path to .sql file containing ggsql query
         file: PathBuf,
 
-        /// Data source connection string
+        /// Data source connection string (duckdb://, sqlite://)
         #[arg(long, default_value = "duckdb://memory")]
         reader: String,
 
-        /// Output format
+        /// Output format (vegalite)
         #[arg(long, default_value = "vegalite")]
         writer: String,
 
@@ -86,7 +83,7 @@ pub enum Commands {
         /// The ggsql query to validate
         query: String,
 
-        /// Data source connection string (needed for column validation)
+        /// Data source connection string for column validation (duckdb://, sqlite://, polars://)
         #[arg(long)]
         reader: Option<String>,
     },
@@ -153,23 +150,58 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
         }
     }
 
-    // Setup reader
-    #[cfg(feature = "duckdb")]
-    if !reader.starts_with("duckdb://") {
-        eprintln!("Unsupported reader: {}", reader);
-        eprintln!("Currently only 'duckdb://' readers are supported");
+    if reader.starts_with("duckdb://") {
+        #[cfg(feature = "duckdb")]
+        {
+            let r = match ggsql::reader::DuckDBReader::from_connection_string(&reader) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("Failed to create reader: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            exec_with_reader(&query, &r, &writer, output, verbose);
+        }
+        #[cfg(not(feature = "duckdb"))]
+        {
+            eprintln!("DuckDB reader not compiled in. Rebuild with --features duckdb");
+            std::process::exit(1);
+        }
+    } else if reader.starts_with("sqlite://") {
+        #[cfg(feature = "sqlite")]
+        {
+            let r = match ggsql::reader::SqliteReader::from_connection_string(&reader) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("Failed to create reader: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            exec_with_reader(&query, &r, &writer, output, verbose);
+        }
+        #[cfg(not(feature = "sqlite"))]
+        {
+            eprintln!("SQLite reader not compiled in. Rebuild with --features sqlite");
+            std::process::exit(1);
+        }
+    } else if reader.starts_with("postgres://") || reader.starts_with("postgresql://") {
+        eprintln!("PostgreSQL reader is not yet implemented");
+        std::process::exit(1);
+    } else {
+        eprintln!("Unsupported connection string: {}", reader);
         std::process::exit(1);
     }
+}
 
-    let db_reader = DuckDBReader::from_connection_string(&reader);
-    if let Err(e) = db_reader {
-        eprintln!("Failed to create DuckDB reader: {}", e);
-        std::process::exit(1);
-    }
-    let db_reader = db_reader.unwrap();
-
+fn exec_with_reader<R: Reader>(
+    query: &str,
+    reader: &R,
+    writer: &str,
+    output: Option<PathBuf>,
+    verbose: bool,
+) {
     // Use validate() to check if query has visualization
-    let validated = match validate(&query) {
+    let validated = match validate(query) {
         Ok(v) => v,
         Err(e) => {
             eprintln!("Failed to validate query: {}", e);
@@ -181,12 +213,12 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
         if verbose {
             eprintln!("Visualisation is empty. Printing table instead.");
         }
-        print_table_fallback(&query, &db_reader, 100);
+        print_table_fallback(query, reader, 100);
         return;
     }
 
     // Execute ggsql query
-    let spec = match db_reader.execute(&query) {
+    let spec = match reader.execute(query) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to execute query: {}", e);
@@ -194,6 +226,10 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
         }
     };
 
+    render_spec(spec, writer, output, verbose);
+}
+
+fn render_spec(spec: Spec, writer: &str, output: Option<PathBuf>, verbose: bool) {
     if verbose {
         let metadata = spec.metadata();
         eprintln!("\nQuery executed:");
@@ -289,41 +325,32 @@ fn cmd_parse(query: String, format: String) {
 }
 
 fn cmd_validate(query: String, _reader: Option<String>) {
-    #[cfg(feature = "duckdb")]
-    {
-        match validate(&query) {
-            Ok(validated) if validated.valid() => {
-                println!("✓ Query syntax is valid");
-            }
-            Ok(validated) => {
-                println!("✗ Validation errors:");
-                for err in validated.errors() {
-                    println!("  - {}", err.message);
-                }
-                if !validated.warnings().is_empty() {
-                    println!("\nWarnings:");
-                    for warning in validated.warnings() {
-                        println!("  - {}", warning.message);
-                    }
-                }
-                std::process::exit(1);
-            }
-            Err(e) => {
-                eprintln!("Error during validation: {}", e);
-                std::process::exit(1);
-            }
+    match validate(&query) {
+        Ok(validated) if validated.valid() => {
+            println!("✓ Query syntax is valid");
         }
-    }
-
-    #[cfg(not(feature = "duckdb"))]
-    {
-        eprintln!("Validation requires the duckdb feature");
-        std::process::exit(1);
+        Ok(validated) => {
+            println!("✗ Validation errors:");
+            for err in validated.errors() {
+                println!("  - {}", err.message);
+            }
+            if !validated.warnings().is_empty() {
+                println!("\nWarnings:");
+                for warning in validated.warnings() {
+                    println!("  - {}", warning.message);
+                }
+            }
+            std::process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("Error during validation: {}", e);
+            std::process::exit(1);
+        }
     }
 }
 
 // Prints a CSV-like output to stdout with aligned columns
-fn print_table_fallback(query: &str, reader: &DuckDBReader, max_rows: usize) {
+fn print_table_fallback<R: Reader>(query: &str, reader: &R, max_rows: usize) {
     let source_tree = match parser::SourceTree::new(query) {
         Ok(st) => st,
         Err(e) => {

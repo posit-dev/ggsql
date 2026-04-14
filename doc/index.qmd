@@ -5,22 +5,178 @@ section-divs: false
 toc: false
 lightbox: false
 repo-actions: false
+listing:
+  - id: example-carousel
+    contents: gallery/examples
+    type: grid
+    grid-columns: 6
+    image-height: 150px
+    fields: [image, title]
+    sort: "order"
+    max-items: 6
+include-in-header: 
+    text: |
+        <link href="https://fonts.googleapis.com/css2?family=Antic+Didone&display=swap" rel="stylesheet">
 ---
 
 ::: {.hero-banner}
-![](assets/hero.png){.hero-image}
 
-::: {.hero-content}
-# SQL meets Grammar of Graphics
+# <span class="hcode">QUERY</span> <span class="hviz-wrapper">![](assets/visualize.svg){.hviz aria-hidden="true"}<span class="sr-only">VISUALIZE</span></span> <span class="hund">UNDERSTAND</span>
 
-A declarative visualization language that extends SQL with powerful data visualization capabilities.
+::: {.hero-body}
+ggsql brings the elegance of the [Grammar of Graphics](get_started/grammar.qmd) to SQL. Write familiar queries, add visualization clauses, and see your data transform into beautiful, composable charts — no context switching, no separate tools, just SQL with superpowers.
 
 ::: {.hero-buttons}
-[Get Started](installation.qmd){.btn .btn-secondary .btn-lg}
-[View Examples](examples.qmd){.btn .btn-outline-light .btn-lg}
+[Get started](get_started/installation.qmd){.btn .btn-primary .btn-lg}
+[View examples](gallery/index.qmd){.btn .btn-outline-primary .btn-lg}
+:::
 :::
 
 :::
+
+::: {.content-block .dark-bg}
+### Try it out
+
+```{ggsql}
+-- Regular query
+SELECT * FROM ggsql:penguins
+WHERE island = 'Biscoe'
+-- Followed by visualization declaration
+VISUALISE bill_len AS x, bill_dep AS y, body_mass AS fill
+DRAW point
+PLACE rule 
+  SETTING slope => 0.4, y => -1
+SCALE BINNED fill
+LABEL
+  title => 'Relationship between bill dimensions in 3 species of penguins',
+  x => 'Bill length (mm)',
+  y => 'Bill depth (mm)'
+```
+
+:::
+
+::: {.content-block .examples-carousel}
+## Explore the examples
+
+::: {#example-carousel}
+:::
+
+[See all examples →](gallery/index.qmd){.see-all-link}
+
+:::
+
+::: {.content-block .dark-bg .install-section}
+### Install it today
+
+::: {.install-columns}
+::: {.install-col .install-col-left}
+::: {#installer-recommended}
+<noscript>Download from [GitHub Releases](https://github.com/posit-dev/ggsql/releases)</noscript>
+:::
+
+[Other platforms](get_started/installation.qmd){.other-platforms-link}
+:::
+
+::: {.install-divider}
+[or]{.divider-text}
+:::
+
+::: {.install-col .install-col-right}
+```bash
+# Jupyter kernel
+uv tool install ggsql-jupyter
+ggsql-jupyter --install
+
+# CLI
+uv tool install ggsql
+```
+:::
+:::
+
+```{=html}
+<script>
+(function() {
+  const repoOwner = 'posit-dev';
+  const repoName = 'ggsql';
+  const includePreReleases = true;
+
+  function detectOS() {
+    const ua = navigator.userAgent.toLowerCase();
+    if (ua.includes('win')) return 'windows';
+    if (ua.includes('mac')) return 'macos';
+    if (ua.includes('linux')) return 'linux';
+    return 'unknown';
+  }
+
+  function getOSIcon(os) {
+    const icons = {
+      windows: 'bi-windows',
+      macos: 'bi-apple',
+      linux: 'bi-ubuntu'
+    };
+    return icons[os] ? `<i class="bi ${icons[os]}"></i>` : '';
+  }
+
+  const patterns = {
+    windows_exe: /^ggsql[_-]\d.*x64.*-setup\.exe$/i,
+    macos: /^ggsql[_-]\d.*(aarch64|arm64).*\.dmg$/i,
+    linux: /^ggsql[_-]\d.*amd64.*\.deb$/i
+  };
+
+  function findAsset(assets, pattern) {
+    return assets?.find(a => pattern?.test(a.name));
+  }
+
+  async function loadInstaller() {
+    const container = document.getElementById('installer-recommended');
+    if (!container) return;
+
+    const os = detectOS();
+
+    try {
+      const endpoint = includePreReleases
+        ? `https://api.github.com/repos/${repoOwner}/${repoName}/releases`
+        : `https://api.github.com/repos/${repoOwner}/${repoName}/releases/latest`;
+      const response = await fetch(endpoint);
+      if (!response.ok) throw new Error('Failed to fetch release');
+      const data = await response.json();
+      const release = includePreReleases ? data[0] : data;
+      if (!release) throw new Error('No releases found');
+
+      const version = release.tag_name;
+      const assets = release.assets || [];
+
+      let asset;
+      if (os === 'windows') {
+        asset = findAsset(assets, patterns.windows_exe);
+      } else if (os === 'macos') {
+        asset = findAsset(assets, patterns.macos);
+      } else if (os === 'linux') {
+        asset = findAsset(assets, patterns.linux);
+      }
+
+      container.innerHTML = `
+        <a href="${asset?.browser_download_url || release.html_url}" class="btn btn-primary install-btn">
+          ${getOSIcon(os)} Download ggsql ${version}
+        </a>
+      `;
+    } catch (e) {
+      container.innerHTML = `
+        <a href="https://github.com/${repoOwner}/${repoName}/releases" class="btn btn-primary install-btn">
+          View Downloads on GitHub
+        </a>
+      `;
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadInstaller);
+  } else {
+    loadInstaller();
+  }
+})();
+</script>
+```
 :::
 
 ::: {.content-block}
@@ -29,7 +185,7 @@ A declarative visualization language that extends SQL with powerful data visuali
 ::: {.features}
 
 ::: {.feature}
-### Familiar Syntax
+### Familiar syntax
 
 Write standard SQL queries and seamlessly extend them with visualization clauses. Your existing SQL knowledge transfers directly.
 
@@ -43,9 +199,9 @@ DRAW line
 :::
 
 ::: {.feature}
-### Grammar of Graphics
+### Grammar of graphics
 
-Compose visualizations from independent layers, scales, and coordinates. Mix and match components for powerful custom visuals.
+Compose visualizations from independent layers, scales, and coordinates. Mix and match components for powerful custom visuals. The [grammar of graphics](get_started/grammar.qmd) provides you with a single mental model for every type of plot.
 
 ```{.ggsql .code-example}
 VISUALISE date AS x FROM sales
@@ -57,7 +213,7 @@ FACET region
 :::
 
 ::: {.feature}
-### Built for Humans _and_ AI
+### Built for humans _and_ AI
 
 The structured syntax makes it easy for AI agents to write, and for you to read, adjust, and verify.
 
@@ -65,35 +221,37 @@ You also avoid needing agents to launch full programming languages like Python o
 :::
 
 ::: {.feature}
-### There where you need it
+### Connect directly to your data
 
-ggsql is available where you do your data analysis:
+ggsql interfaces directly with your database. Want to create a histogram over 1 billion observations? No problem! All calculations are pushed to the database so you only extract what is needed for the visual.
+:::
+
+:::
+
+:::
+
+::: {.content-block .integrations}
+
+## Available where your data is
 
 ::: {.tool-grid}
 ::: {.tool-item}
-![](assets/logos/positron.svg){.tool-logo}
-Positron
+[![](assets/logos/positron.svg){.tool-logo} Positron](get_started/installation.qmd#vs-code--positron-extension)
 :::
 ::: {.tool-item}
-![](assets/logos/quarto.svg){.tool-logo}
-Quarto
+[![](assets/logos/quarto.svg){.tool-logo} Quarto](get_started/installation.qmd#jupyter-kernel)
 :::
 ::: {.tool-item}
-![](assets/logos/jupyter.svg){.tool-logo}
-Jupyter
+[![](assets/logos/jupyter.svg){.tool-logo} Jupyter](get_started/installation.qmd#jupyter-kernel)
 :::
 ::: {.tool-item}
-![](assets/logos/vscode.svg){.tool-logo}
-VS Code
-:::
+[![](assets/logos/vscode.svg){.tool-logo} VS Code](get_started/installation.qmd#vs-code--positron-extension)
 :::
 :::
 
 :::
 
-:::
-
-::: {.content-block .alt-bg}
+::: {.content-block}
 
 ::: {.cta-section}
 
@@ -102,11 +260,19 @@ VS Code
 Install ggsql and start creating visualizations in minutes.
 
 ::: {.cta-buttons}
-[Installation](installation.qmd){.btn .btn-primary .btn-lg}
+[Installation](get_started/installation.qmd){.btn .btn-primary .btn-lg}
 [Documentation](syntax/index.qmd){.btn .btn-outline-primary .btn-lg}
-[Examples](examples.qmd){.btn .btn-outline-secondary .btn-lg}
+[Examples](gallery/index.qmd){.btn .btn-outline-secondary .btn-lg}
 :::
+
+Or try our [online playground](wasm/) to experience the syntax _right now_.
 
 :::
 
 :::
+
+```{=html}
+<canvas id="bg-lines" aria-hidden="true"></canvas>
+<script src="bg-lines.js"></script>
+```
+

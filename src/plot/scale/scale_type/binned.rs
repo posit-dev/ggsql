@@ -6,9 +6,12 @@ use polars::prelude::DataType;
 
 use super::{
     expand_numeric_range, resolve_common_steps, ScaleDataContext, ScaleTypeKind, ScaleTypeTrait,
-    TransformKind, OOB_CENSOR, OOB_SQUISH,
+    TransformKind, CLOSED_VALUES, OOB_CENSOR, OOB_SQUISH, OOB_VALUES_BINNED,
 };
-use crate::plot::types::{DefaultParam, DefaultParamValue};
+use crate::naming;
+use crate::plot::types::{
+    ArrayConstraint, DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition,
+};
 use crate::plot::{ArrayElement, ParameterValue};
 
 use super::InputRange;
@@ -146,37 +149,52 @@ impl ScaleTypeTrait for Binned {
         TransformKind::Identity
     }
 
-    fn default_properties(&self) -> &'static [DefaultParam] {
-        &[
-            DefaultParam {
+    fn default_properties(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
                 name: "expand",
                 default: DefaultParamValue::Number(super::DEFAULT_EXPAND_MULT),
+                // Number (multiplier >= 0) or Array of exactly 2 numbers [mult, add] (both >= 0)
+                constraint: ParamConstraint::number_or_numeric_array(
+                    NumberConstraint::min(0.0),
+                    ArrayConstraint::of_numbers_len(NumberConstraint::min(0.0), 2),
+                ),
             },
-            // Binned scales always use "censor" - "keep" is not valid for binned
-            DefaultParam {
+            // Binned scales support "censor" and "squish", but not "keep"
+            ParamDefinition {
                 name: "oob",
                 default: DefaultParamValue::String(OOB_CENSOR),
+                constraint: ParamConstraint::string_option(OOB_VALUES_BINNED),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "reverse",
                 default: DefaultParamValue::Boolean(false),
+                constraint: ParamConstraint::boolean(),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "breaks",
                 default: DefaultParamValue::Number(
                     super::super::breaks::DEFAULT_BREAK_COUNT as f64,
                 ),
+                // Number (count >= 1), Array of numbers (explicit breaks), or String (temporal interval)
+                constraint: ParamConstraint::number_or_array_or_string(
+                    NumberConstraint::min(1.0),
+                    ArrayConstraint::of_numbers(NumberConstraint::unconstrained()),
+                ),
             },
-            DefaultParam {
+            ParamDefinition {
                 name: "pretty",
                 default: DefaultParamValue::Boolean(true),
+                constraint: ParamConstraint::boolean(),
             },
             // "left" means bins are [lower, upper), "right" means (lower, upper]
-            DefaultParam {
+            ParamDefinition {
                 name: "closed",
                 default: DefaultParamValue::String("left"),
+                constraint: ParamConstraint::string_option(CLOSED_VALUES),
             },
-        ]
+        ];
+        PARAMS
     }
 
     fn default_output_range(
@@ -315,11 +333,15 @@ impl ScaleTypeTrait for Binned {
         match scale.properties.get("breaks") {
             Some(ParameterValue::Number(_)) => {
                 // Scalar count → calculate actual breaks and store as Array
-                if let Some(breaks) = self.resolve_breaks(
-                    scale.input_range.as_deref(),
-                    &scale.properties,
-                    scale.transform.as_ref(),
-                ) {
+                // Use raw data range (not expanded input_range) so breaks align
+                // to actual data extent; expansion happens later in step 5b.
+                let break_range = match &context.range {
+                    Some(InputRange::Continuous(r)) => Some(r.as_slice()),
+                    _ => scale.input_range.as_deref(),
+                };
+                if let Some(breaks) =
+                    self.resolve_breaks(break_range, &scale.properties, scale.transform.as_ref())
+                {
                     // For binned implicit, keep all breaks (they extend past data).
                     // For binned explicit, filter to input range.
                     let filtered = if binned_implicit {
@@ -370,7 +392,13 @@ impl ScaleTypeTrait for Binned {
                 };
 
                 if let Some(interval) = TemporalInterval::create_from_str(interval_str) {
-                    if let Some(ref range) = scale.input_range {
+                    // Use raw data range (not expanded input_range) so breaks align
+                    // to actual data extent; expansion happens later in step 5b.
+                    let break_range: Option<&[ArrayElement]> = match &context.range {
+                        Some(InputRange::Continuous(r)) => Some(r.as_slice()),
+                        _ => scale.input_range.as_deref(),
+                    };
+                    if let Some(range) = break_range {
                         let breaks: Vec<ArrayElement> = match resolved_transform.transform_kind() {
                             TransformKind::Date => {
                                 let min = range[0].to_f64().unwrap_or(0.0) as i32;
@@ -405,10 +433,18 @@ impl ScaleTypeTrait for Binned {
                                 .iter()
                                 .map(|elem| resolved_transform.parse_value(elem))
                                 .collect();
-                            // Filter to input range
-                            let filtered = super::super::super::breaks::filter_breaks_to_range(
-                                &converted, range,
-                            );
+                            // Only filter to input range when user provided explicit FROM clause
+                            let filtered = if scale.explicit_input_range {
+                                if let Some(ref ir) = scale.input_range {
+                                    super::super::super::breaks::filter_breaks_to_range(
+                                        &converted, ir,
+                                    )
+                                } else {
+                                    converted
+                                }
+                            } else {
+                                converted
+                            };
                             scale
                                 .properties
                                 .insert("breaks".to_string(), ParameterValue::Array(filtered));
@@ -443,9 +479,9 @@ impl ScaleTypeTrait for Binned {
                     breaks.first().unwrap().clone(),
                     breaks.last().unwrap().clone(),
                 ];
-                // Only expand for positional aesthetics (x, y, etc.)
-                // Non-positional aesthetics (color, fill, size) don't get expansion
-                let final_range = if super::is_positional_aesthetic(aesthetic) {
+                // Only expand for position aesthetics (x, y, etc.)
+                // Material aesthetics (color, fill, size) don't get expansion
+                let final_range = if super::is_position_aesthetic(aesthetic) {
                     expand_numeric_range(&terminal_range, mult, add)
                 } else {
                     terminal_range
@@ -541,7 +577,7 @@ impl ScaleTypeTrait for Binned {
         column_name: &str,
         column_dtype: &DataType,
         scale: &super::super::Scale,
-        type_names: &super::SqlTypeNames,
+        dialect: &dyn super::SqlDialect,
     ) -> Option<String> {
         use super::super::transform::TransformKind;
 
@@ -602,9 +638,9 @@ impl ScaleTypeTrait for Binned {
                 // For temporal columns, format break values as ISO strings with CAST
                 if let Some(t) = transform {
                     let type_name = match t.transform_kind() {
-                        TransformKind::Date => type_names.date.as_deref(),
-                        TransformKind::DateTime => type_names.datetime.as_deref(),
-                        TransformKind::Time => type_names.time.as_deref(),
+                        TransformKind::Date => dialect.date_type_name(),
+                        TransformKind::DateTime => dialect.datetime_type_name(),
+                        TransformKind::Time => dialect.time_type_name(),
                         _ => None,
                     };
 
@@ -692,20 +728,21 @@ fn build_bin_condition(
         (if is_first { ">=" } else { ">" }, "<=")
     };
 
+    let quoted = naming::quote_ident(column_name);
     if oob_squish && is_first && is_last {
         // Single bin with squish: capture everything
         "TRUE".to_string()
     } else if oob_squish && is_first {
         // First bin with squish: no lower bound, extends to -∞
-        format!("{} {} {}", column_name, upper_op, upper_expr)
+        format!("{} {} {}", quoted, upper_op, upper_expr)
     } else if oob_squish && is_last {
         // Last bin with squish: no upper bound, extends to +∞
-        format!("{} {} {}", column_name, lower_op, lower_expr)
+        format!("{} {} {}", quoted, lower_op, lower_expr)
     } else {
         // Normal bin with both bounds
         format!(
             "{} {} {} AND {} {} {}",
-            column_name, lower_op, lower_expr, column_name, upper_op, upper_expr
+            quoted, lower_op, lower_expr, quoted, upper_op, upper_expr
         )
     }
 }
@@ -796,20 +833,8 @@ pub fn add_range_boundaries_to_breaks(breaks: &mut Vec<ArrayElement>, range: &[A
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::scale::{Scale, SqlTypeNames};
-
-    /// Helper to create default type names for tests
-    fn test_type_names() -> SqlTypeNames {
-        SqlTypeNames {
-            number: Some("DOUBLE".to_string()),
-            integer: Some("BIGINT".to_string()),
-            date: Some("DATE".to_string()),
-            datetime: Some("TIMESTAMP".to_string()),
-            time: Some("TIME".to_string()),
-            string: Some("VARCHAR".to_string()),
-            boolean: Some("BOOLEAN".to_string()),
-        }
-    }
+    use crate::plot::scale::Scale;
+    use crate::reader::AnsiDialect;
 
     #[test]
     fn test_pre_stat_transform_sql_even_breaks() {
@@ -827,15 +852,15 @@ mod tests {
 
         // Float64 column - no casting needed
         let sql = binned
-            .pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect)
             .unwrap();
 
         // Should produce CASE WHEN with bin centers 5, 15, 25
         assert!(sql.contains("CASE"));
-        assert!(sql.contains("WHEN value >= 0 AND value < 10 THEN 5"));
-        assert!(sql.contains("WHEN value >= 10 AND value < 20 THEN 15"));
+        assert!(sql.contains("WHEN \"value\" >= 0 AND \"value\" < 10 THEN 5"));
+        assert!(sql.contains("WHEN \"value\" >= 10 AND \"value\" < 20 THEN 15"));
         // Last bin should be inclusive on both ends
-        assert!(sql.contains("WHEN value >= 20 AND value <= 30 THEN 25"));
+        assert!(sql.contains("WHEN \"value\" >= 20 AND \"value\" <= 30 THEN 25"));
         assert!(sql.contains("ELSE NULL END"));
     }
 
@@ -855,7 +880,7 @@ mod tests {
         );
 
         let sql = binned
-            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
             .unwrap();
 
         // Bin centers: (0+10)/2=5, (10+25)/2=17.5, (25+100)/2=62.5
@@ -879,12 +904,12 @@ mod tests {
         // No explicit closed property, should default to "left"
 
         let sql = binned
-            .pre_stat_transform_sql("col", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("col", &DataType::Float64, &scale, &AnsiDialect)
             .unwrap();
 
         // closed="left": [lower, upper) except last which is [lower, upper]
-        assert!(sql.contains("col >= 0 AND col < 10"));
-        assert!(sql.contains("col >= 10 AND col <= 20")); // last bin inclusive
+        assert!(sql.contains("\"col\" >= 0 AND \"col\" < 10"));
+        assert!(sql.contains("\"col\" >= 10 AND \"col\" <= 20")); // last bin inclusive
     }
 
     #[test]
@@ -905,12 +930,12 @@ mod tests {
         );
 
         let sql = binned
-            .pre_stat_transform_sql("col", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("col", &DataType::Float64, &scale, &AnsiDialect)
             .unwrap();
 
         // closed="right": first bin is [lower, upper], rest are (lower, upper]
-        assert!(sql.contains("col >= 0 AND col <= 10")); // first bin inclusive
-        assert!(sql.contains("col > 10 AND col <= 20"));
+        assert!(sql.contains("\"col\" >= 0 AND \"col\" <= 10")); // first bin inclusive
+        assert!(sql.contains("\"col\" > 10 AND \"col\" <= 20"));
     }
 
     #[test]
@@ -925,7 +950,7 @@ mod tests {
         );
 
         assert!(binned
-            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
             .is_none());
     }
 
@@ -936,7 +961,7 @@ mod tests {
         // No breaks property at all
 
         assert!(binned
-            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
             .is_none());
     }
 
@@ -951,7 +976,7 @@ mod tests {
 
         // Should return None because breaks hasn't been resolved to Array
         assert!(binned
-            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
             .is_none());
     }
 
@@ -993,8 +1018,7 @@ mod tests {
         );
 
         // Date column - no casting needed (types match)
-        let sql =
-            binned.pre_stat_transform_sql("date_col", &DataType::Date, &scale, &test_type_names());
+        let sql = binned.pre_stat_transform_sql("date_col", &DataType::Date, &scale, &AnsiDialect);
 
         // Should successfully generate SQL (not return None due to filtered-out breaks)
         assert!(sql.is_some(), "SQL should be generated for Date breaks");
@@ -1048,7 +1072,7 @@ mod tests {
             "datetime_col",
             &DataType::Datetime(TimeUnit::Microseconds, None),
             &scale,
-            &test_type_names(),
+            &AnsiDialect,
         );
 
         // Should successfully generate SQL
@@ -1077,8 +1101,7 @@ mod tests {
             ]),
         );
 
-        let sql =
-            binned.pre_stat_transform_sql("time_col", &DataType::Time, &scale, &test_type_names());
+        let sql = binned.pre_stat_transform_sql("time_col", &DataType::Time, &scale, &AnsiDialect);
 
         // Should successfully generate SQL
         assert!(sql.is_some(), "SQL should be generated for Time breaks");
@@ -1119,7 +1142,7 @@ mod tests {
 
         // Date column - no column casting, but break values are formatted as ISO dates
         let sql = binned
-            .pre_stat_transform_sql("date_col", &DataType::Date, &scale, &test_type_names())
+            .pre_stat_transform_sql("date_col", &DataType::Date, &scale, &AnsiDialect)
             .unwrap();
 
         // Should NOT contain column CAST (column is already DATE)
@@ -1160,7 +1183,7 @@ mod tests {
 
         // Float64 column - no casting needed
         let sql = binned
-            .pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect)
             .unwrap();
 
         // Should NOT contain any CAST expressions
@@ -1170,8 +1193,8 @@ mod tests {
             sql
         );
         assert!(
-            sql.contains("value >= 0"),
-            "SQL should use raw column name. Got: {}",
+            sql.contains("\"value\" >= 0"),
+            "SQL should use quoted column name. Got: {}",
             sql
         );
         assert!(
@@ -1198,7 +1221,7 @@ mod tests {
 
         // Int64 column - no casting needed
         let sql = binned
-            .pre_stat_transform_sql("value", &DataType::Int64, &scale, &test_type_names())
+            .pre_stat_transform_sql("value", &DataType::Int64, &scale, &AnsiDialect)
             .unwrap();
 
         // Should NOT contain CAST expressions
@@ -1206,7 +1229,10 @@ mod tests {
             !sql.contains("CAST("),
             "SQL should not contain CAST when column is numeric"
         );
-        assert!(sql.contains("value >= 0"), "SQL should use raw column name");
+        assert!(
+            sql.contains("\"value\" >= 0"),
+            "SQL should use quoted column name"
+        );
     }
 
     #[test]
@@ -1236,7 +1262,7 @@ mod tests {
                 "datetime_col",
                 &DataType::Datetime(TimeUnit::Microseconds, None),
                 &scale,
-                &test_type_names(),
+                &AnsiDialect,
             )
             .unwrap();
 
@@ -1482,9 +1508,9 @@ mod tests {
                 "left",
                 vec![0.0, 10.0, 20.0, 30.0],
                 vec![
-                    "WHEN value < 10 THEN 5",                  // First bin extends to -∞
-                    "WHEN value >= 10 AND value < 20 THEN 15", // Middle bin
-                    "WHEN value >= 20 THEN 25",                // Last bin extends to +∞
+                    "WHEN \"value\" < 10 THEN 5", // First bin extends to -∞
+                    "WHEN \"value\" >= 10 AND \"value\" < 20 THEN 15", // Middle bin
+                    "WHEN \"value\" >= 20 THEN 25", // Last bin extends to +∞
                 ],
             ),
             // closed="right" with 3 bins (4 breaks)
@@ -1492,9 +1518,9 @@ mod tests {
                 "right",
                 vec![0.0, 10.0, 20.0, 30.0],
                 vec![
-                    "WHEN value <= 10 THEN 5",                 // First bin extends to -∞
-                    "WHEN value > 10 AND value <= 20 THEN 15", // Middle bin
-                    "WHEN value > 20 THEN 25",                 // Last bin extends to +∞
+                    "WHEN \"value\" <= 10 THEN 5", // First bin extends to -∞
+                    "WHEN \"value\" > 10 AND \"value\" <= 20 THEN 15", // Middle bin
+                    "WHEN \"value\" > 20 THEN 25", // Last bin extends to +∞
                 ],
             ),
         ];
@@ -1518,7 +1544,7 @@ mod tests {
             }
 
             let sql = binned
-                .pre_stat_transform_sql("value", &DataType::Float64, &scale, &test_type_names())
+                .pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect)
                 .unwrap();
             for pattern in expected {
                 assert!(
@@ -1552,14 +1578,14 @@ mod tests {
                 ParameterValue::String("squish".to_string()),
             );
             let sql = binned
-                .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
+                .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
                 .unwrap();
             assert!(
-                sql.contains("WHEN x < 50 THEN 25"),
+                sql.contains("WHEN \"x\" < 50 THEN 25"),
                 "Two bins: first should extend to -∞"
             );
             assert!(
-                sql.contains("WHEN x >= 50 THEN 75"),
+                sql.contains("WHEN \"x\" >= 50 THEN 75"),
                 "Two bins: last should extend to +∞"
             );
         }
@@ -1576,7 +1602,7 @@ mod tests {
                 ParameterValue::String("squish".to_string()),
             );
             let sql = binned
-                .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
+                .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
                 .unwrap();
             assert!(
                 sql.contains("WHEN TRUE THEN 50"),
@@ -1601,14 +1627,14 @@ mod tests {
         );
 
         let sql = binned
-            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &test_type_names())
+            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
             .unwrap();
         assert!(
-            sql.contains("x >= 0 AND x < 10"),
+            sql.contains("\"x\" >= 0 AND \"x\" < 10"),
             "First bin should have lower bound with censor"
         );
         assert!(
-            sql.contains("x >= 10 AND x <= 20"),
+            sql.contains("\"x\" >= 10 AND \"x\" <= 20"),
             "Last bin should have upper bound with censor"
         );
     }
@@ -1621,14 +1647,17 @@ mod tests {
             (
                 true,
                 vec![
-                    "WHEN col < 10 THEN 5",
-                    "WHEN col >= 10 AND col < 20 THEN 15",
-                    "WHEN col >= 20 THEN 25",
+                    "WHEN \"col\" < 10 THEN 5",
+                    "WHEN \"col\" >= 10 AND \"col\" < 20 THEN 15",
+                    "WHEN \"col\" >= 20 THEN 25",
                 ],
             ),
             (
                 false,
-                vec!["col >= 0 AND col < 10", "col >= 10 AND col <= 20"],
+                vec![
+                    "\"col\" >= 0 AND \"col\" < 10",
+                    "\"col\" >= 10 AND \"col\" <= 20",
+                ],
             ),
         ];
 
@@ -1980,6 +2009,7 @@ mod tests {
             ])),
             dtype: Some(DataType::Float64),
             is_discrete: false,
+            default_expand: None,
         };
 
         binned.resolve(&mut scale, &context, "fill").unwrap();
@@ -2036,6 +2066,7 @@ mod tests {
             ])),
             dtype: Some(DataType::Float64),
             is_discrete: false,
+            default_expand: None,
         };
 
         binned.resolve(&mut scale, &context, "fill").unwrap();

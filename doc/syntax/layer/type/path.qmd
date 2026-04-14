@@ -10,20 +10,25 @@ The path layer is used to create lineplots, but contrary to the [line layer](lin
 The following aesthetics are recognised by the path layer.
 
 ### Required
-* `x`: Position along the x-axis
-* `y`: Position along the y-axis
+* Primary axis (e.g. `x`): Position along the primary axis.
+* Secondary axis (e.g. `y`): Position along the secondary axis.
 
 ### Optional
-* `colour`/`stroke`: The colour of the path
-* `opacity`: The opacity of the path
-* `linewidth`: The width of the path
-* `linetype`: The type of path, i.e. the dashing pattern
+* `colour`/`stroke`: The colour of the path.
+* `opacity`: The opacity of the path.
+* `linewidth`: The width of the path. If `linewidth` varies within a group, `linetype` is incompatible.
+* `linetype`: The type of path, i.e. the dashing pattern.
 
 ## Settings
-* `position`: Determines the position adjustment to use for the layer (default is `'identity'`)
+* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 
 ## Data transformation
-The line layer does not transform its data but passes it through unchanged
+The path layer does not transform its data but passes it through unchanged.
+If the path has a variable `stroke` or `opacity` aesthetic within groups, the line is broken into segments. 
+Each segment gets the property of the preceding datapoint, so the last datapoint in a group does not transfer these properties.
+
+## Orientation
+The path layer has no orientation. The axes are treated symmetrically.
 
 ## Examples
 
@@ -31,49 +36,86 @@ The line layer does not transform its data but passes it through unchanged
 #| code-fold: true
 #| code-summary: "Create example data"
 CREATE TABLE df AS
-SELECT * FROM (VALUES
+WITH t(x, y, id) AS (VALUES
   (1.0, 1.0, 'A'),
   (2.0, 1.0, 'A'),
   (1.0, 3.0, 'A'),
   (3.0, 1.0, 'B'),
   (2.0, 3.0, 'B'),
-  (3.0, 3.0, 'B'),
-) AS t(x, y, id)
+  (3.0, 3.0, 'B')
+)
+SELECT * FROM t
 ```
 
 Simple example path.
 
 ```{ggsql}
 VISUALISE x, y FROM df
-  DRAW path
+DRAW path
 ```
 
 Contrary to `line` drawings, `path` is not forced to follow the order along the axis.
 
 ```{ggsql}
 VISUALISE x, y FROM df
-  DRAW path MAPPING 'Path' AS colour
-  DRAW line MAPPING 'Line' AS colour
+DRAW path 
+  MAPPING 'Path' AS colour
+DRAW line 
+  MAPPING 'Line' AS colour
 ```
 
 Groups of individual paths can be declared via `PARTITION BY`.
 
 ```{ggsql}
 VISUALISE x, y FROM df
-  DRAW path PARTITION BY id
+DRAW path 
+  PARTITION BY id
 ```
 
 Invoking a group through discrete aesthetics works as well.
 
 ```{ggsql}
 VISUALISE x, y FROM df
-  DRAW path MAPPING id AS colour
+DRAW path 
+  MAPPING id AS colour
 ```
 
 Compared to polygons, paths don't close their shapes and fill their interiors.
 
 ```{ggsql}
 VISUALISE x, y FROM df
-  DRAW polygon MAPPING 'Polygon' AS stroke
-  DRAW path MAPPING 'Path' AS stroke
+DRAW polygon 
+  MAPPING 'Polygon' AS stroke
+DRAW path 
+  MAPPING 'Path' AS stroke
+```
+
+When `stroke` or `opacity` varies, the properties of the preceding datapoint carry over. In the case below, we don't see the blue of the last datapoint.
+
+```{ggsql}
+WITH data(x, y, z) AS (VALUES
+  (1, 2, 1),
+  (3, 3, 3),
+  (2, 5, 5),
+)
+
+VISUALISE x, y FROM data
+DRAW path
+  MAPPING z AS stroke
+SCALE stroke TO ['red', 'green', 'blue']
+```
+
+The `linewidth` aesthetic can vary point to point.
+
+```{ggsql}
+WITH data(x, y, z) AS (VALUES
+  (1, 2, 1),
+  (3, 3, 3),
+  (2, 5, 5),
+)
+
+VISUALISE x, y FROM data
+DRAW path
+  MAPPING z AS linewidth
+SCALE linewidth TO [0, 30]
 ```

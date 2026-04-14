@@ -3,32 +3,63 @@
 //! This module handles building SQL queries for layers, applying pre-stat
 //! transformations, stat transforms, and post-query operations.
 
+use crate::plot::aesthetic::{self, AestheticContext};
+use crate::plot::layer::is_transposed;
+use crate::plot::layer::orientation::{flip_position_aesthetics, resolve_orientation};
 use crate::plot::{
-    AestheticValue, DefaultAestheticValue, Layer, ParameterValue, Scale, Schema, SqlTypeNames,
-    StatResult,
+    AestheticValue, DefaultAestheticValue, Layer, ParameterValue, Scale, Schema, StatResult,
 };
+use crate::reader::SqlDialect;
 use crate::{naming, DataFrame, GgsqlError, Result};
 use polars::prelude::DataType;
 use std::collections::{HashMap, HashSet};
 
-use super::casting::{literal_to_sql, TypeRequirement};
+use super::casting::TypeRequirement;
 use super::schema::build_aesthetic_schema;
 
 /// Build the source query for a layer.
 ///
-/// Returns `SELECT * FROM source` where source is either:
-/// - The layer's explicit source (table, CTE, file)
-/// - The global table if layer has no explicit source
+/// Returns a complete query that can be executed to retrieve the layer's data:
+/// - Annotation layers → VALUES clause with all aesthetic columns (modifies layer mappings)
+/// - Table/CTE layers → `SELECT * FROM table_or_cte`
+/// - File path layers → `SELECT * FROM 'path'`
+/// - Layers without explicit source → `SELECT * FROM __ggsql_global__`
 ///
-/// Note: This is distinct from `build_layer_base_query()` which builds a full
-/// SELECT with aesthetic column renames and type casts.
+/// For annotation layers, this function processes parameters and converts them to
+/// Column/AnnotationColumn mappings, so the layer is modified in place.
 pub fn layer_source_query(
-    layer: &Layer,
+    layer: &mut Layer,
     materialized_ctes: &HashSet<String>,
     has_global: bool,
-) -> String {
-    let source = super::casting::determine_layer_source(layer, materialized_ctes, has_global);
-    format!("SELECT * FROM {}", source)
+    dialect: &dyn SqlDialect,
+) -> Result<String> {
+    match &layer.source {
+        Some(crate::DataSource::Annotation) => {
+            // Annotation layers: process parameters and return complete VALUES clause (with on-the-fly recycling)
+            process_annotation_layer(layer, dialect)
+        }
+        Some(crate::DataSource::Identifier(name)) => {
+            // Regular table or CTE
+            let source = if materialized_ctes.contains(name) {
+                naming::cte_table(name)
+            } else {
+                name.clone()
+            };
+            Ok(format!("SELECT * FROM {}", source))
+        }
+        Some(crate::DataSource::FilePath(path)) => {
+            // File path source
+            Ok(format!("SELECT * FROM '{}'", path))
+        }
+        None => {
+            // Layer uses global data
+            debug_assert!(has_global, "Layer has no source and no global data");
+            Ok(format!(
+                "SELECT * FROM {}",
+                naming::quote_ident(&naming::global_table())
+            ))
+        }
+    }
 }
 
 /// Build the SELECT list for a layer query with aesthetic-renamed columns and casting.
@@ -57,6 +88,7 @@ pub fn layer_source_query(
 pub fn build_layer_select_list(
     layer: &Layer,
     type_requirements: &[TypeRequirement],
+    dialect: &dyn SqlDialect,
 ) -> Vec<String> {
     let mut select_exprs = Vec::new();
 
@@ -75,22 +107,32 @@ pub fn build_layer_select_list(
     for (aesthetic, value) in &layer.mappings.aesthetics {
         let aes_col_name = naming::aesthetic_column(aesthetic);
         let select_expr = match value {
-            AestheticValue::Column { name, .. } => {
+            AestheticValue::Column { name, .. } | AestheticValue::AnnotationColumn { name } => {
                 // Check if this column needs casting
                 if let Some(req) = cast_map.get(name.as_str()) {
                     // Cast and rename to prefixed aesthetic name
                     format!(
-                        "CAST(\"{}\" AS {}) AS \"{}\"",
-                        name, req.sql_type_name, aes_col_name
+                        "CAST({} AS {}) AS {}",
+                        naming::quote_ident(name),
+                        req.sql_type_name,
+                        naming::quote_ident(&aes_col_name)
                     )
                 } else {
                     // Just rename to prefixed aesthetic name
-                    format!("\"{}\" AS \"{}\"", name, aes_col_name)
+                    format!(
+                        "{} AS {}",
+                        naming::quote_ident(name),
+                        naming::quote_ident(&aes_col_name)
+                    )
                 }
             }
             AestheticValue::Literal(lit) => {
                 // Literals become columns with prefixed aesthetic name
-                format!("{} AS \"{}\"", literal_to_sql(lit), aes_col_name)
+                format!(
+                    "{} AS {}",
+                    lit.to_sql(dialect),
+                    naming::quote_ident(&aes_col_name)
+                )
             }
         };
 
@@ -123,7 +165,7 @@ pub fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataF
         let target_col_name = naming::aesthetic_column(target_aesthetic);
 
         match value {
-            AestheticValue::Column { name, .. } => {
+            AestheticValue::Column { name, .. } | AestheticValue::AnnotationColumn { name } => {
                 // Check if this stat column exists in the DataFrame
                 if df.column(name).is_ok() {
                     df.rename(name, target_col_name.into()).map_err(|e| {
@@ -150,19 +192,53 @@ pub fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataF
         }
     }
 
+    // Drop any remaining __ggsql_stat_* columns that weren't consumed by remappings.
+    let stat_cols: Vec<String> = df
+        .get_column_names()
+        .into_iter()
+        .filter(|name| naming::is_stat_column(name))
+        .map(|name| name.to_string())
+        .collect();
+    if !stat_cols.is_empty() {
+        df = df.drop_many(stat_cols);
+    }
+
     Ok(df)
 }
 
 /// Convert a literal value to a Polars Series with constant values.
+///
+/// For string literals, attempts to parse as temporal types (date/datetime/time)
+/// using the same format precedence as the rest of ggsql. Falls back to string
+/// if parsing fails.
 pub fn literal_to_series(name: &str, lit: &ParameterValue, len: usize) -> polars::prelude::Series {
-    use polars::prelude::{NamedFrom, Series};
+    use crate::plot::ArrayElement;
+    use polars::prelude::{DataType, NamedFrom, Series, TimeUnit};
 
     match lit {
         ParameterValue::Number(n) => Series::new(name.into(), vec![*n; len]),
-        ParameterValue::String(s) => Series::new(name.into(), vec![s.as_str(); len]),
+        ParameterValue::String(s) => {
+            // Try to parse as temporal types (DateTime > Date > Time)
+            match ArrayElement::String(s.clone()).try_as_temporal() {
+                ArrayElement::DateTime(micros) => Series::new(name.into(), vec![micros; len])
+                    .cast(&DataType::Datetime(TimeUnit::Microseconds, None))
+                    .expect("DateTime cast should not fail"),
+                ArrayElement::Date(days) => Series::new(name.into(), vec![days; len])
+                    .cast(&DataType::Date)
+                    .expect("Date cast should not fail"),
+                ArrayElement::Time(nanos) => Series::new(name.into(), vec![nanos; len])
+                    .cast(&DataType::Time)
+                    .expect("Time cast should not fail"),
+                ArrayElement::String(_) => {
+                    // Parsing failed, use original string
+                    Series::new(name.into(), vec![s.as_str(); len])
+                }
+                _ => unreachable!("try_as_temporal only returns String or temporal types"),
+            }
+        }
         ParameterValue::Boolean(b) => Series::new(name.into(), vec![*b; len]),
         ParameterValue::Array(_) | ParameterValue::Null => {
-            unreachable!("Grammar prevents arrays and null in literal aesthetic mappings")
+            unreachable!("Arrays are never moved to mappings; NULL is filtered in process_annotation_layers()")
         }
     }
 }
@@ -183,14 +259,14 @@ pub fn literal_to_series(name: &str, lit: &ParameterValue, len: usize) -> polars
 /// * `layer` - The layer configuration
 /// * `schema` - The layer's schema (used for column dtype lookup)
 /// * `scales` - All resolved scales
-/// * `type_names` - SQL type names for the database backend
+/// * `dialect` - SQL dialect for the database backend
 pub fn apply_pre_stat_transform(
     query: &str,
     layer: &Layer,
     full_schema: &Schema,
     aesthetic_schema: &Schema,
     scales: &[Scale],
-    type_names: &SqlTypeNames,
+    dialect: &dyn SqlDialect,
 ) -> String {
     let mut transform_exprs: Vec<(String, String)> = vec![];
     let mut transformed_columns: HashSet<String> = HashSet::new();
@@ -226,7 +302,7 @@ pub fn apply_pre_stat_transform(
                 // Get pre-stat SQL transformation from scale type (if applicable)
                 // Each scale type's pre_stat_transform_sql() returns None if not applicable
                 if let Some(sql) =
-                    scale_type.pre_stat_transform_sql(&aes_col_name, &col_dtype, scale, type_names)
+                    scale_type.pre_stat_transform_sql(&aes_col_name, &col_dtype, scale, dialect)
                 {
                     transformed_columns.insert(aes_col_name.clone());
                     transform_exprs.push((aes_col_name, sql));
@@ -243,8 +319,7 @@ pub fn apply_pre_stat_transform(
     // aesthetic_schema (aesthetic columns added by build_layer_base_query).
     // The base query produces SELECT *, col AS __ggsql_aes_x__, ... so the
     // actual SQL output has both, but they come from different schema sources.
-    // This avoids SELECT * EXCLUDE which has portability issues
-    // (Polars SQL silently drops re-added columns with the same name).
+    // This avoids SELECT * EXCLUDE which has portability issues across SQL backends.
     let mut seen: HashSet<&str> = HashSet::new();
     let combined_cols = full_schema.iter().chain(aesthetic_schema.iter());
 
@@ -252,15 +327,15 @@ pub fn apply_pre_stat_transform(
         .filter(|col| seen.insert(&col.name))
         .map(|col| {
             if let Some((_, sql)) = transform_exprs.iter().find(|(c, _)| c == &col.name) {
-                format!("{} AS \"{}\"", sql, col.name)
+                format!("{} AS {}", sql, naming::quote_ident(&col.name))
             } else {
-                format!("\"{}\"", col.name)
+                naming::quote_ident(&col.name)
             }
         })
         .collect();
 
     format!(
-        "SELECT {} FROM ({}) AS __ggsql_pre__",
+        "SELECT {} FROM ({}) AS \"__ggsql_pre__\"",
         select_exprs.join(", "),
         query
     )
@@ -273,6 +348,9 @@ pub fn apply_pre_stat_transform(
 /// 2. Renames columns to aesthetic names (e.g., "Date" AS "__ggsql_aes_x__")
 /// 3. Applies type casts based on scale requirements
 ///
+/// For annotation layers, the source_query is already the complete VALUES clause,
+/// so it's returned as-is (no wrapping, filtering, or casting needed).
+///
 /// The resulting query can be used for:
 /// - Schema completion (fetching min/max values)
 /// - Scale input range resolution
@@ -282,8 +360,8 @@ pub fn apply_pre_stat_transform(
 /// # Arguments
 ///
 /// * `layer` - The layer configuration with aesthetic mappings
-/// * `source_query` - The base query for the layer's data source
-/// * `type_requirements` - Columns that need type casting
+/// * `source_query` - The base query for the layer's data source (for annotations, this is already the VALUES clause)
+/// * `type_requirements` - Columns that need type casting (not applicable to annotations)
 ///
 /// # Returns
 ///
@@ -292,9 +370,14 @@ pub fn build_layer_base_query(
     layer: &Layer,
     source_query: &str,
     type_requirements: &[TypeRequirement],
+    dialect: &dyn SqlDialect,
 ) -> String {
+    // Annotation layers now go through the same pipeline as regular layers.
+    // The source_query for annotations is a VALUES clause with raw column names,
+    // and this function wraps it with SELECT expressions that rename to prefixed aesthetic names.
+
     // Build SELECT list with aesthetic renames, casts
-    let select_exprs = build_layer_select_list(layer, type_requirements);
+    let select_exprs = build_layer_select_list(layer, type_requirements, dialect);
     let select_clause = if select_exprs.is_empty() {
         "*".to_string()
     } else {
@@ -304,14 +387,14 @@ pub fn build_layer_base_query(
     // Build query with optional WHERE clause
     if let Some(ref f) = layer.filter {
         format!(
-            "SELECT {} FROM ({}) AS __ggsql_src__ WHERE {}",
+            "SELECT {} FROM ({}) AS \"__ggsql_src__\" WHERE {}",
             select_clause,
             source_query,
             f.as_str()
         )
     } else {
         format!(
-            "SELECT {} FROM ({}) AS __ggsql_src__",
+            "SELECT {} FROM ({}) AS \"__ggsql_src__\"",
             select_clause, source_query
         )
     }
@@ -336,7 +419,7 @@ pub fn build_layer_base_query(
 /// * `base_query` - The base query from build_layer_base_query
 /// * `schema` - The layer's schema (with min/max from base_query)
 /// * `scales` - All resolved scales
-/// * `type_names` - SQL type names for the database backend
+/// * `dialect` - SQL dialect for the database backend
 /// * `execute_query` - Function to execute queries (needed for some stat transforms)
 ///
 /// # Returns
@@ -347,16 +430,23 @@ pub fn apply_layer_transforms<F>(
     base_query: &str,
     schema: &Schema,
     scales: &[Scale],
-    type_names: &SqlTypeNames,
+    dialect: &dyn SqlDialect,
     execute_query: &F,
 ) -> Result<String>
 where
     F: Fn(&str) -> Result<DataFrame>,
 {
+    use crate::plot::layer::orientation::flip_position_aesthetics;
+
     // Clone order_by early to avoid borrow conflicts
     let order_by = layer.order_by.clone();
 
+    // Orientation detection and initial flip was already done in mod.rs before
+    // build_layer_base_query. We just check if we need to flip back after stat.
+    let needs_flip = is_transposed(layer);
+
     // Build the aesthetic-named schema for stat transforms
+    // Note: Mappings were already flipped in mod.rs if needed, so schema reflects normalized orientation
     let aesthetic_schema: Schema = build_aesthetic_schema(layer, schema);
 
     // Collect literal aesthetic column names BEFORE conversion to Column values.
@@ -387,7 +477,7 @@ where
         schema,
         &aesthetic_schema,
         scales,
-        type_names,
+        dialect,
     );
 
     // Build group_by columns from partition_by
@@ -416,11 +506,21 @@ where
         &group_by,
         &layer.parameters,
         execute_query,
+        dialect,
     )?;
+
+    // Flip user remappings BEFORE merging defaults for Transposed orientation.
+    // User remappings are in user orientation (e.g., `count AS x` for horizontal histogram).
+    // We flip them to aligned orientation so they're uniform with defaults.
+    // At the end, we flip everything back together.
+    if needs_flip {
+        flip_position_aesthetics(&mut layer.remappings.aesthetics);
+    }
 
     // Apply literal default remappings from geom defaults (e.g., y2 => 0.0 for bar baseline).
     // These apply regardless of stat transform, but only if user hasn't overridden them.
-    for (aesthetic, default_value) in layer.geom.default_remappings() {
+    // Defaults are always in aligned orientation.
+    for (aesthetic, default_value) in layer.geom.default_remappings().defaults {
         // Only process literal values here (Column values are handled in Transformed branch)
         if !matches!(default_value, DefaultAestheticValue::Column(_)) {
             // Only add if user hasn't already specified this aesthetic in remappings or mappings
@@ -444,7 +544,7 @@ where
             // Build stat column -> aesthetic mappings from geom defaults for renaming
             let mut final_remappings: HashMap<String, String> = HashMap::new();
 
-            for (aesthetic, default_value) in layer.geom.default_remappings() {
+            for (aesthetic, default_value) in layer.geom.default_remappings().defaults {
                 if let DefaultAestheticValue::Column(stat_col) = default_value {
                     // Stat column mapping: stat_col -> aesthetic (for rename)
                     final_remappings.insert(stat_col.to_string(), aesthetic.to_string());
@@ -492,6 +592,20 @@ where
                     let original_name = consumed_original_names
                         .get(aesthetic)
                         .cloned()
+                        .or_else(|| {
+                            // For variant position aesthetics (e.g., pos1min, pos2max),
+                            // fall back to the primary aesthetic's original name (pos1, pos2).
+                            // This ensures rect's expanded min/max aesthetics inherit the
+                            // original column name from the user's x/y mapping.
+                            aesthetic::parse_position(aesthetic).and_then(|(slot, suffix)| {
+                                if !suffix.is_empty() {
+                                    let primary = format!("pos{}", slot);
+                                    consumed_original_names.get(&primary).cloned()
+                                } else {
+                                    None
+                                }
+                            })
+                        })
                         .or_else(|| Some(stat.clone()));
 
                     let value = AestheticValue::Column {
@@ -510,7 +624,11 @@ where
                     final_remappings.get(stat).map(|aes| {
                         let stat_col = naming::stat_column(stat);
                         let prefixed_aes = naming::aesthetic_column(aes);
-                        format!("\"{}\" AS \"{}\"", stat_col, prefixed_aes)
+                        format!(
+                            "{} AS {}",
+                            naming::quote_ident(&stat_col),
+                            naming::quote_ident(&prefixed_aes)
+                        )
                     })
                 })
                 .collect();
@@ -518,44 +636,32 @@ where
             if stat_rename_exprs.is_empty() {
                 transformed_query
             } else {
-                let stat_col_names: Vec<String> = stat_columns
-                    .iter()
-                    .map(|s| naming::stat_column(s))
-                    .collect();
-                let exclude_clause = format!("EXCLUDE ({})", stat_col_names.join(", "));
-
-                // If the transformed query uses CTEs (WITH ... SELECT ...),
-                // we can't wrap it in a subquery because Polars SQL doesn't
-                // support CTEs inside subqueries. Instead, split into CTE
-                // prefix + trailing SELECT, then append the trailing SELECT
-                // as another CTE and add the rename SELECT on top.
-                if let Some((cte_prefix, trailing_select)) =
-                    crate::parser::SourceTree::new(&transformed_query)
-                        .ok()
-                        .as_ref()
-                        .and_then(super::cte::split_with_query)
-                {
-                    format!(
-                        "{}, __ggsql_stat__ AS ({}) SELECT * {}, {} FROM __ggsql_stat__",
-                        cte_prefix,
-                        trailing_select,
-                        exclude_clause,
-                        stat_rename_exprs.join(", ")
-                    )
-                } else {
-                    format!(
-                        "SELECT * {}, {} FROM ({}) AS __ggsql_stat__",
-                        exclude_clause,
-                        stat_rename_exprs.join(", "),
-                        transformed_query
-                    )
-                }
+                format!(
+                    "SELECT *, {} FROM ({}) AS \"__ggsql_stat__\"",
+                    stat_rename_exprs.join(", "),
+                    transformed_query
+                )
             }
         }
         StatResult::Identity => query,
     };
 
-    // Apply ORDER BY
+    // Flip mappings back after stat transforms if we flipped them earlier
+    // Now pos1/pos2 map to the user's intended x/y positions
+    // Note: We only flip mappings here, not remappings. Remappings are flipped
+    // later in mod.rs after apply_remappings_post_query creates the columns,
+    // so that Phase 4.5 can flip those columns along with everything else.
+    if needs_flip {
+        flip_position_aesthetics(&mut layer.mappings.aesthetics);
+
+        // Normalize mapping column names to match their aesthetic keys.
+        // After flipping, pos1 might point to __ggsql_aes_pos2__ (and vice versa).
+        // We update the column names so pos1 → __ggsql_aes_pos1__, etc.
+        // The DataFrame columns will be renamed correspondingly in mod.rs.
+        normalize_mapping_column_names(layer);
+    }
+
+    // Apply explicit ORDER BY if provided
     let final_query = if let Some(ref o) = order_by {
         format!("{} ORDER BY {}", final_query, o.as_str())
     } else {
@@ -563,4 +669,528 @@ where
     };
 
     Ok(final_query)
+}
+
+/// Build a VALUES clause for an annotation layer with all aesthetic columns.
+///
+/// Generates SQL like: `WITH t(col1, col2) AS (VALUES (...), (...)) SELECT * FROM t`
+///
+/// This function:
+/// 1. Moves position/required/array parameters from layer.parameters to layer.mappings
+/// 2. Handles array recycling on-the-fly (determines max length, replicates scalars)
+/// 3. Validates that all arrays have compatible lengths (1 or max)
+/// 4. Builds the VALUES clause with raw aesthetic column names
+/// 5. Converts parameter values to Column/AnnotationColumn mappings
+///
+/// For annotation layers:
+/// - Position aesthetics (pos1, pos2): use Column (data coordinate space, participate in scales)
+/// - Material aesthetics (color, size): use AnnotationColumn (visual space, identity scale)
+///
+/// # Arguments
+///
+/// * `layer` - The annotation layer with aesthetics in parameters (will be modified)
+///
+/// # Returns
+///
+/// A complete SQL expression ready to use as a FROM clause
+fn process_annotation_layer(layer: &mut Layer, dialect: &dyn SqlDialect) -> Result<String> {
+    use crate::plot::ArrayElement;
+
+    // Step 1: Identify which parameters to use for annotation data
+    // Only process position aesthetics, required aesthetics, and array parameters
+    // (material non-required scalars stay in parameters as geom settings)
+    let required_aesthetics = layer.geom.aesthetics().required();
+    let supported_aesthetics = layer.geom.aesthetics().supported();
+    let param_keys: Vec<String> = layer.parameters.keys().cloned().collect();
+
+    // Collect parameters we'll use, checking criteria and filtering NULLs
+    let mut annotation_params: Vec<(String, ParameterValue)> = Vec::new();
+
+    for param_name in param_keys {
+        // Skip if already in mappings
+        if layer.mappings.contains_key(&param_name) {
+            continue;
+        }
+
+        let Some(value) = layer.parameters.get(&param_name) else {
+            continue;
+        };
+
+        // Filter out NULL aesthetics - they mean "use geom default"
+        if value.is_null() {
+            continue;
+        }
+
+        // Check if this is a position aesthetic OR a required aesthetic OR an array for supported aesthetic
+        let is_position = crate::plot::aesthetic::is_position_aesthetic(&param_name);
+        let is_required = required_aesthetics.contains(&param_name.as_str());
+        let is_array = matches!(value, ParameterValue::Array(_))
+            && supported_aesthetics.contains(&param_name.as_str());
+
+        // Only process position/required/array parameters
+        if is_position || is_required || is_array {
+            annotation_params.push((param_name.clone(), value.clone()));
+        }
+    }
+
+    // Step 2: Handle empty annotation_params by adding a dummy column
+    // This occurs when geoms have no required aesthetics and user provides only
+    // non-positional scalar parameters (e.g., PLACE rule SETTING stroke => 'red')
+    if annotation_params.is_empty() {
+        // Add a dummy column so we can generate a valid VALUES clause
+        annotation_params.push(("__ggsql_dummy__".to_string(), ParameterValue::Number(1.0)));
+    }
+
+    // Step 3: Determine max array length from all annotation parameters
+    let mut max_length = 1;
+
+    for (aesthetic, value) in &annotation_params {
+        // Only check array values
+        let ParameterValue::Array(arr) = value else {
+            continue;
+        };
+
+        let len = arr.len();
+        if len <= 1 {
+            continue;
+        }
+
+        if max_length > 1 && len != max_length {
+            // Multiple different non-1 lengths - error
+            return Err(GgsqlError::ValidationError(format!(
+                "PLACE annotation layer has mismatched array lengths: '{}' has length {}, but another has length {}",
+                aesthetic, len, max_length
+            )));
+        }
+        if len > max_length {
+            max_length = len;
+        }
+    }
+
+    // Step 4: Build VALUES clause and create final mappings simultaneously
+    let mut columns: Vec<Vec<ArrayElement>> = Vec::new();
+    let mut column_names = Vec::new();
+
+    for (aesthetic, param) in &annotation_params {
+        // Build column data for VALUES clause using rep() to handle scalars and arrays uniformly
+        let mut column_values = match param.clone().rep(max_length)? {
+            ParameterValue::Array(arr) => arr,
+            _ => unreachable!("rep() always returns Array variant"),
+        };
+
+        // Try to parse string elements as temporal types (Date/DateTime/Time)
+        // This ensures literals like '1973-06-01' become Date columns, not String columns
+        column_values = column_values
+            .into_iter()
+            .map(|elem| elem.try_as_temporal())
+            .collect();
+
+        columns.push(column_values);
+        // Use raw aesthetic names (not prefixed) so annotations go through
+        // the same column→aesthetic renaming pipeline as regular layers
+        column_names.push(aesthetic.clone());
+
+        // Skip creating mappings for dummy columns (they're just for valid SQL)
+        if aesthetic == "__ggsql_dummy__" {
+            continue;
+        }
+
+        // Create final mapping directly (no intermediate Literal step)
+        let is_position = crate::plot::aesthetic::is_position_aesthetic(aesthetic);
+        let mapping_value = if is_position {
+            // Position aesthetics use Column (participate in scales)
+            AestheticValue::Column {
+                name: aesthetic.clone(), // Raw aesthetic name from VALUES clause
+                original_name: None,
+                is_dummy: false,
+            }
+        } else {
+            // Material aesthetics use AnnotationColumn (identity scale)
+            AestheticValue::AnnotationColumn {
+                name: aesthetic.clone(), // Raw aesthetic name from VALUES clause
+            }
+        };
+
+        layer.mappings.insert(aesthetic.clone(), mapping_value);
+        // Remove from parameters now that it's in mappings
+        layer.parameters.remove(aesthetic);
+    }
+
+    // Step 5: Build VALUES rows
+    let values_clause = (0..max_length)
+        .map(|i| {
+            let row: Vec<String> = columns.iter().map(|col| col[i].to_sql(dialect)).collect();
+            format!("({})", row.join(", "))
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    // Step 6: Build complete SQL query
+    let column_list = column_names
+        .iter()
+        .map(|c| naming::quote_ident(c))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let sql = format!(
+        "WITH __ggsql_values__({}) AS (VALUES {}) SELECT * FROM __ggsql_values__",
+        column_list, values_clause
+    );
+
+    Ok(sql)
+}
+
+/// Normalize mapping column names to match their aesthetic keys after flip-back.
+///
+/// After flipping position aesthetics, the mapping values (column names) may not match the keys.
+/// For example, pos1 might point to `__ggsql_aes_pos2__`.
+/// This function updates the column names so pos1 → `__ggsql_aes_pos1__`, etc.
+///
+/// This should be called after flipping during flip-back.
+/// The DataFrame columns should be renamed correspondingly using `flip_dataframe_columns`.
+fn normalize_mapping_column_names(layer: &mut Layer) {
+    // Collect the aesthetics to update (to avoid borrowing issues)
+    let aesthetics_to_update: Vec<String> = layer
+        .mappings
+        .aesthetics
+        .keys()
+        .filter(|aes| crate::plot::aesthetic::is_position_aesthetic(aes))
+        .cloned()
+        .collect();
+
+    for aesthetic in aesthetics_to_update {
+        // Literals are already converted to Columns by update_mappings_for_aesthetic_columns()
+        if let Some(AestheticValue::Column { name, .. }) =
+            layer.mappings.aesthetics.get_mut(&aesthetic)
+        {
+            *name = naming::aesthetic_column(&aesthetic);
+        }
+    }
+}
+
+/// Resolve orientation for all layers and apply mapping flips.
+///
+/// This function:
+/// 1. Resolves orientation via auto-detection or explicit setting
+/// 2. Stores resolved orientation in layer parameters
+/// 3. Flips mappings for transposed layers
+/// 4. Flips type_info column names to match flipped mappings
+///
+/// Must be called BEFORE building base queries, since build_layer_base_query
+/// uses layer.mappings to create SQL like `column AS __ggsql_aes_pos1__`.
+///
+/// Note: Validation of orientation settings is handled by `validate_settings()`,
+/// which rejects orientation for geoms that don't have it in default_params.
+pub fn resolve_orientations(
+    layers: &mut [Layer],
+    scales: &[Scale],
+    layer_type_info: &mut [Vec<super::schema::TypeInfo>],
+    aesthetic_ctx: &AestheticContext,
+) {
+    for (layer_idx, layer) in layers.iter_mut().enumerate() {
+        let orientation = resolve_orientation(layer, scales);
+        // Store resolved orientation in parameters for downstream use (writers need it)
+        layer.parameters.insert(
+            "orientation".to_string(),
+            ParameterValue::String(orientation.to_string()),
+        );
+        if is_transposed(layer) {
+            flip_position_aesthetics(&mut layer.mappings.aesthetics);
+            // Also flip column names in type_info to match the flipped mappings
+            if layer_idx < layer_type_info.len() {
+                for (name, _, _) in &mut layer_type_info[layer_idx] {
+                    if let Some(aesthetic) = naming::extract_aesthetic_name(name) {
+                        let flipped = aesthetic_ctx.flip_position(aesthetic);
+                        if flipped != aesthetic {
+                            *name = naming::aesthetic_column(&flipped);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plot::{ArrayElement, DataSource, Geom, Layer, ParameterValue};
+    use crate::reader::AnsiDialect;
+
+    #[test]
+    fn test_annotation_single_scalar() {
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        // Put values in parameters (not mappings) - process_annotation_layer will process them
+        layer
+            .parameters
+            .insert("pos1".to_string(), ParameterValue::Number(5.0));
+        layer
+            .parameters
+            .insert("pos2".to_string(), ParameterValue::Number(10.0));
+        layer.parameters.insert(
+            "label".to_string(),
+            ParameterValue::String("Test".to_string()),
+        );
+
+        let result = process_annotation_layer(&mut layer, &AnsiDialect).unwrap();
+
+        // Uses CTE form: WITH __ggsql_values__(cols) AS (VALUES (...)) SELECT * FROM __ggsql_values__
+        // Check all values are present (order may vary due to HashMap)
+        assert!(result.contains("VALUES"));
+        assert!(result.contains("5"));
+        assert!(result.contains("10"));
+        assert!(result.contains("'Test'"));
+        // Raw aesthetic names in column list
+        assert!(result.contains("\"pos1\""));
+        assert!(result.contains("\"pos2\""));
+        assert!(result.contains("\"label\""));
+
+        // After processing, mappings should have Column/AnnotationColumn values
+        assert!(layer.mappings.contains_key("pos1"));
+        assert!(layer.mappings.contains_key("pos2"));
+        assert!(layer.mappings.contains_key("label"));
+    }
+
+    #[test]
+    fn test_annotation_array_recycling() {
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer.parameters.insert(
+            "pos1".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(1.0),
+                ArrayElement::Number(2.0),
+                ArrayElement::Number(3.0),
+            ]),
+        );
+        layer
+            .parameters
+            .insert("pos2".to_string(), ParameterValue::Number(10.0));
+        layer.parameters.insert(
+            "label".to_string(),
+            ParameterValue::String("Same".to_string()),
+        );
+
+        let result = process_annotation_layer(&mut layer, &AnsiDialect).unwrap();
+
+        // Should recycle scalar pos2 and label to match array length (3)
+        assert!(result.contains("VALUES"));
+        // Check that all values appear (order may vary due to HashMap)
+        assert!(result.contains("1") && result.contains("2") && result.contains("3"));
+        assert!(result.contains("10"));
+        assert!(result.contains("'Same'"));
+        // Check row count by counting value tuples (3 rows)
+        assert_eq!(result.matches("), (").count() + 1, 3, "Should have 3 rows");
+    }
+
+    #[test]
+    fn test_annotation_mismatched_arrays() {
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer.parameters.insert(
+            "pos1".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(1.0),
+                ArrayElement::Number(2.0),
+                ArrayElement::Number(3.0),
+            ]),
+        );
+        layer.parameters.insert(
+            "pos2".to_string(),
+            ParameterValue::Array(vec![ArrayElement::Number(10.0), ArrayElement::Number(20.0)]),
+        );
+
+        let result = process_annotation_layer(&mut layer, &AnsiDialect);
+
+        // Should error with mismatched lengths
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("mismatched array lengths"),
+            "Error message should mention mismatched arrays"
+        );
+        // Error should mention one of the aesthetics (order may vary)
+        assert!(
+            err_msg.contains("pos1") || err_msg.contains("pos2"),
+            "Error message should mention at least one aesthetic"
+        );
+    }
+
+    #[test]
+    fn test_annotation_multiple_arrays_same_length() {
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer.parameters.insert(
+            "pos1".to_string(),
+            ParameterValue::Array(vec![ArrayElement::Number(1.0), ArrayElement::Number(2.0)]),
+        );
+        layer.parameters.insert(
+            "pos2".to_string(),
+            ParameterValue::Array(vec![ArrayElement::Number(10.0), ArrayElement::Number(20.0)]),
+        );
+
+        let result = process_annotation_layer(&mut layer, &AnsiDialect).unwrap();
+
+        // Both arrays have length 2, should work (order may vary)
+        assert!(result.contains("VALUES"));
+        assert!(result.contains("1") && result.contains("2"));
+        assert!(result.contains("10") && result.contains("20"));
+        // Check row count by counting value tuples (2 rows)
+        assert_eq!(result.matches("), (").count() + 1, 2, "Should have 2 rows");
+    }
+
+    #[test]
+    fn test_annotation_mixed_types() {
+        let mut layer = Layer::new(Geom::text());
+        layer.source = Some(DataSource::Annotation);
+        layer
+            .parameters
+            .insert("pos1".to_string(), ParameterValue::Number(5.0));
+        layer
+            .parameters
+            .insert("pos2".to_string(), ParameterValue::Number(10.0));
+        layer.parameters.insert(
+            "label".to_string(),
+            ParameterValue::String("Text".to_string()),
+        );
+
+        let result = process_annotation_layer(&mut layer, &AnsiDialect).unwrap();
+
+        // Should handle different types (order may vary)
+        assert!(result.contains("VALUES"));
+        assert!(result.contains("5"));
+        assert!(result.contains("10"));
+        assert!(result.contains("'Text'"));
+    }
+
+    #[test]
+    fn test_literal_to_series_date_parsing() {
+        use polars::prelude::DataType;
+
+        // Date literal should parse to Date type
+        let series = literal_to_series(
+            "date_col",
+            &ParameterValue::String("1973-06-01".to_string()),
+            5,
+        );
+        assert_eq!(
+            series.dtype(),
+            &DataType::Date,
+            "Date string should parse to Date type"
+        );
+        assert_eq!(series.len(), 5);
+    }
+
+    #[test]
+    fn test_literal_to_series_datetime_parsing() {
+        use polars::prelude::{DataType, TimeUnit};
+
+        // DateTime literal should parse to Datetime type
+        let series = literal_to_series(
+            "dt_col",
+            &ParameterValue::String("2024-03-17T14:30:00".to_string()),
+            3,
+        );
+        assert!(
+            matches!(
+                series.dtype(),
+                DataType::Datetime(TimeUnit::Microseconds, None)
+            ),
+            "DateTime string should parse to Datetime type"
+        );
+        assert_eq!(series.len(), 3);
+    }
+
+    #[test]
+    fn test_literal_to_series_time_parsing() {
+        use polars::prelude::DataType;
+
+        // Time literal should parse to Time type
+        let series = literal_to_series(
+            "time_col",
+            &ParameterValue::String("14:30:00".to_string()),
+            4,
+        );
+        assert_eq!(
+            series.dtype(),
+            &DataType::Time,
+            "Time string should parse to Time type"
+        );
+        assert_eq!(series.len(), 4);
+    }
+
+    #[test]
+    fn test_literal_to_series_string_fallback() {
+        use polars::prelude::DataType;
+
+        // Non-temporal string should remain String type
+        let series = literal_to_series(
+            "text_col",
+            &ParameterValue::String("not a date".to_string()),
+            2,
+        );
+        assert_eq!(
+            series.dtype(),
+            &DataType::String,
+            "Non-temporal string should remain String type"
+        );
+        assert_eq!(series.len(), 2);
+    }
+
+    #[test]
+    fn test_annotation_no_required_aesthetics() {
+        // Rule geom has no required aesthetics, only optional ones
+        let mut layer = Layer::new(Geom::rule());
+        layer.source = Some(DataSource::Annotation);
+        // Only non-positional, non-required scalar parameters
+        layer.parameters.insert(
+            "stroke".to_string(),
+            ParameterValue::String("red".to_string()),
+        );
+        layer
+            .parameters
+            .insert("linewidth".to_string(), ParameterValue::Number(2.0));
+
+        let result = process_annotation_layer(&mut layer, &AnsiDialect);
+
+        // Should generate valid SQL with a dummy column
+        match result {
+            Ok(sql) => {
+                // Check that SQL is valid (has VALUES with at least one column)
+                assert!(
+                    !sql.contains("(VALUES ) AS t()"),
+                    "Should not generate empty VALUES clause"
+                );
+                assert!(
+                    sql.contains("VALUES") && sql.contains("WITH __ggsql_values__"),
+                    "Should have VALUES with at least one column"
+                );
+                // Should contain the dummy column
+                assert!(
+                    sql.contains("__ggsql_dummy__"),
+                    "Should have dummy column when no data columns exist"
+                );
+            }
+            Err(e) => {
+                panic!("Unexpected error: {}", e);
+            }
+        }
+
+        // Verify that stroke and linewidth remain in parameters (not moved to mappings)
+        assert!(
+            layer.parameters.contains_key("stroke"),
+            "Non-positional, non-required parameters should stay in parameters"
+        );
+        assert!(
+            layer.parameters.contains_key("linewidth"),
+            "Non-positional, non-required parameters should stay in parameters"
+        );
+
+        // Verify dummy column is not in mappings
+        assert!(
+            !layer.mappings.contains_key("__ggsql_dummy__"),
+            "Dummy column should not be added to mappings"
+        );
+    }
 }

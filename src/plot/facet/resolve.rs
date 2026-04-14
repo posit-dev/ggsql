@@ -2,6 +2,7 @@
 //!
 //! Validates facet properties and applies data-aware defaults.
 
+use crate::plot::types::validate_parameter;
 use crate::plot::ParameterValue;
 use crate::DataFrame;
 use std::collections::HashMap;
@@ -50,15 +51,6 @@ impl FacetDataContext {
     }
 }
 
-/// Allowed properties for wrap facets
-const WRAP_ALLOWED: &[&str] = &["free", "ncol", "missing"];
-
-/// Allowed properties for grid facets
-const GRID_ALLOWED: &[&str] = &["free", "missing"];
-
-/// Valid values for the missing property
-const MISSING_VALUES: &[&str] = &["repeat", "null"];
-
 /// Compute smart default ncol for wrap facets based on number of levels
 ///
 /// Returns an optimal column count that creates a balanced grid:
@@ -83,57 +75,69 @@ fn compute_default_ncol(num_levels: usize) -> i64 {
 /// This function:
 /// 1. Skips if already resolved
 /// 2. Validates all properties are allowed for this layout
-/// 3. Validates property values:
-///    - `free`: must be null, a valid positional aesthetic, or an array of them
-///    - `ncol`: positive integer
-/// 4. Normalizes the `free` property to a boolean vector (position-indexed)
-/// 5. Applies defaults for missing properties:
+/// 3. Validates property values using constraints from `default_properties()`
+/// 4. Validates `free` property against position aesthetic names (coord-dependent)
+/// 5. Validates ncol/nrow mutual exclusivity
+/// 6. Normalizes the `free` property to a boolean vector (position-indexed)
+/// 7. Applies defaults for missing properties:
 ///    - `ncol` (wrap only): computed from `context.num_levels`
-/// 6. Sets `resolved = true`
+/// 8. Sets `resolved = true`
 ///
 /// # Arguments
 ///
 /// * `facet` - The facet to resolve
 /// * `context` - Data context with unique values
-/// * `positional_names` - Valid positional aesthetic names (e.g., ["x", "y"] or ["theta", "radius"])
+/// * `position_names` - Valid position aesthetic names (e.g., ["x", "y"] or ["angle", "radius"])
 pub fn resolve_properties(
     facet: &mut Facet,
     context: &FacetDataContext,
-    positional_names: &[&str],
+    position_names: &[&str],
 ) -> Result<(), String> {
     // Skip if already resolved
     if facet.resolved {
         return Ok(());
     }
 
-    let is_wrap = facet.is_wrap();
+    let defaults = facet.layout.default_properties();
 
-    // Step 1: Validate all properties are allowed for this layout
-    let allowed = if is_wrap { WRAP_ALLOWED } else { GRID_ALLOWED };
-    for key in facet.properties.keys() {
-        if !allowed.contains(&key.as_str()) {
-            if key == "ncol" && !is_wrap {
+    // Step 1: Validate all properties are allowed and validate their values
+    for (key, value) in facet.properties.iter() {
+        if let Some(param) = defaults.iter().find(|p| p.name == key) {
+            // Skip validation for 'free' - it has coord-dependent allowed values
+            if key != "free" {
+                validate_parameter(key, value, &param.constraint)?;
+            }
+        } else {
+            // Special error messages for ncol/nrow on grid facets
+            if key == "ncol" {
                 return Err(
-                    "Setting `ncol` is only allowed for 1 dimensional facets, not 2 dimensional facets".to_string(),
+                    "Setting 'ncol' is only allowed for 1 dimensional facets, not 2 dimensional facets".to_string(),
                 );
             }
+            if key == "nrow" {
+                return Err(
+                    "Setting 'nrow' is only allowed for 1 dimensional facets, not 2 dimensional facets".to_string(),
+                );
+            }
+            let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
             return Err(format!(
-                "Unknown setting: '{}'. Allowed settings: {}",
-                key,
-                allowed.join(", ")
+                "FACET setting should be {}, not '{}'",
+                crate::or_list_quoted(&allowed, '\''),
+                key
             ));
         }
     }
 
-    // Step 2: Validate property values
-    validate_free_property(facet, positional_names)?;
-    validate_ncol_property(facet)?;
-    validate_missing_property(facet)?;
+    // Step 2: Validate free property against coord-dependent position names
+    validate_free_property(facet, position_names)?;
 
-    // Step 3: Normalize free property to boolean vector
-    normalize_free_property(facet, positional_names);
+    // Step 3: Validate ncol/nrow mutual exclusivity
+    validate_layout_exclusivity(facet)?;
 
-    // Step 4: Apply defaults for missing properties
+    // Step 4: Normalize free property to boolean vector
+    normalize_free_property(facet, position_names);
+
+    // Step 5: Apply defaults for missing properties
     apply_defaults(facet, context);
 
     // Mark as resolved
@@ -146,14 +150,14 @@ pub fn resolve_properties(
 ///
 /// Accepts:
 /// - `null` (ParameterValue::Null) - shared scales (default when absent)
-/// - A valid positional aesthetic name (string) - independent scale for that axis only
-/// - An array of valid positional aesthetic names - independent scales for specified axes
+/// - A valid position aesthetic name (string) - independent scale for that axis only
+/// - An array of valid position aesthetic names - independent scales for specified axes
 ///
 /// # Arguments
 ///
 /// * `facet` - The facet to validate
-/// * `positional_names` - Valid positional aesthetic names (e.g., ["x", "y"] or ["theta", "radius"])
-fn validate_free_property(facet: &Facet, positional_names: &[&str]) -> Result<(), String> {
+/// * `position_names` - Valid position aesthetic names (e.g., ["x", "y"] or ["angle", "radius"])
+fn validate_free_property(facet: &Facet, position_names: &[&str]) -> Result<(), String> {
     if let Some(value) = facet.properties.get("free") {
         match value {
             ParameterValue::Null => {
@@ -161,25 +165,25 @@ fn validate_free_property(facet: &Facet, positional_names: &[&str]) -> Result<()
                 Ok(())
             }
             ParameterValue::String(s) => {
-                if !positional_names.contains(&s.as_str()) {
+                if !position_names.contains(&s.as_str()) {
                     return Err(format!(
-                        "invalid 'free' value '{}'. Expected one of: {}, or null",
+                        "invalid 'free' value '{}'. Expected one of: {} (or null)",
                         s,
-                        format_options(positional_names)
+                        crate::or_list_quoted(position_names, '\'')
                     ));
                 }
                 Ok(())
             }
             ParameterValue::Array(arr) => {
-                // Validate each element is a valid positional name
+                // Validate each element is a valid position name
                 if arr.is_empty() {
                     return Err("invalid 'free' array: cannot be empty".to_string());
                 }
-                if arr.len() > positional_names.len() {
+                if arr.len() > position_names.len() {
                     return Err(format!(
                         "invalid 'free' array: too many elements ({} given, max {})",
                         arr.len(),
-                        positional_names.len()
+                        position_names.len()
                     ));
                 }
 
@@ -187,11 +191,11 @@ fn validate_free_property(facet: &Facet, positional_names: &[&str]) -> Result<()
                 for elem in arr {
                     match elem {
                         crate::plot::ArrayElement::String(s) => {
-                            if !positional_names.contains(&s.as_str()) {
+                            if !position_names.contains(&s.as_str()) {
                                 return Err(format!(
                                     "invalid 'free' array element '{}'. Expected one of: {}",
                                     s,
-                                    format_options(positional_names)
+                                    crate::or_list_quoted(position_names, '\'')
                                 ));
                             }
                             if !seen.insert(s.clone()) {
@@ -204,7 +208,7 @@ fn validate_free_property(facet: &Facet, positional_names: &[&str]) -> Result<()
                         _ => {
                             return Err(format!(
                                 "invalid 'free' array: elements must be strings. Expected: {}",
-                                format_options(positional_names)
+                                crate::or_list_quoted(position_names, '\'')
                             ));
                         }
                     }
@@ -212,8 +216,8 @@ fn validate_free_property(facet: &Facet, positional_names: &[&str]) -> Result<()
                 Ok(())
             }
             _ => Err(format!(
-                "'free' must be null, a string ({}), or an array of positional names",
-                format_options(positional_names)
+                "'free' must be null, a string ({}), or an array of position names",
+                crate::or_list_quoted(position_names, '\'')
             )),
         }
     } else {
@@ -221,32 +225,23 @@ fn validate_free_property(facet: &Facet, positional_names: &[&str]) -> Result<()
     }
 }
 
-/// Format positional names for error messages
-fn format_options(names: &[&str]) -> String {
-    names
-        .iter()
-        .map(|n| format!("'{}'", n))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 /// Normalize free property to a boolean vector
 ///
 /// Transforms user-provided values to a boolean vector (position-indexed):
 /// - User writes: `free => 'x'` → stored as: `free => [true, false]`
-/// - User writes: `free => 'theta'` → stored as: `free => [true, false]`
+/// - User writes: `free => 'angle'` → stored as: `free => [true, false]`
 /// - User writes: `free => ['x', 'y']` → stored as: `free => [true, true]`
 /// - User writes: `free => null` or absent → stored as: `free => [false, false]`
 ///
 /// This allows the writer to use the vector directly without any parsing.
-fn normalize_free_property(facet: &mut Facet, positional_names: &[&str]) {
-    let mut free_vec = vec![false; positional_names.len()];
+fn normalize_free_property(facet: &mut Facet, position_names: &[&str]) {
+    let mut free_vec = vec![false; position_names.len()];
 
     if let Some(value) = facet.properties.get("free") {
         match value {
             ParameterValue::String(s) => {
                 // Single string -> set that position to true
-                if let Some(idx) = positional_names.iter().position(|n| *n == s.as_str()) {
+                if let Some(idx) = position_names.iter().position(|n| *n == s.as_str()) {
                     free_vec[idx] = true;
                 }
             }
@@ -254,7 +249,7 @@ fn normalize_free_property(facet: &mut Facet, positional_names: &[&str]) {
                 // Array -> set each position to true
                 for elem in arr {
                     if let crate::plot::ArrayElement::String(s) = elem {
-                        if let Some(idx) = positional_names.iter().position(|n| *n == s.as_str()) {
+                        if let Some(idx) = position_names.iter().position(|n| *n == s.as_str()) {
                             free_vec[idx] = true;
                         }
                     }
@@ -279,41 +274,20 @@ fn normalize_free_property(facet: &mut Facet, positional_names: &[&str]) {
         .insert("free".to_string(), ParameterValue::Array(bool_array));
 }
 
-/// Validate ncol property value
-fn validate_ncol_property(facet: &Facet) -> Result<(), String> {
-    if let Some(value) = facet.properties.get("ncol") {
-        match value {
-            ParameterValue::Number(n) => {
-                if *n <= 0.0 || n.fract() != 0.0 {
-                    return Err(format!("`ncol` must be a positive integer, got {}", n));
-                }
-            }
-            _ => {
-                return Err("'ncol' must be a number".to_string());
-            }
-        }
-    }
-    Ok(())
-}
+/// Validate ncol and nrow mutual exclusivity
+///
+/// They cannot both be specified at the same time.
+/// Type and range validation is handled by the constraint system.
+fn validate_layout_exclusivity(facet: &Facet) -> Result<(), String> {
+    let has_ncol = facet.properties.contains_key("ncol");
+    let has_nrow = facet.properties.contains_key("nrow");
 
-/// Validate missing property value
-fn validate_missing_property(facet: &Facet) -> Result<(), String> {
-    if let Some(value) = facet.properties.get("missing") {
-        match value {
-            ParameterValue::String(s) => {
-                if !MISSING_VALUES.contains(&s.as_str()) {
-                    return Err(format!(
-                        "invalid 'missing' value '{}'. Expected one of: {}",
-                        s,
-                        MISSING_VALUES.join(", ")
-                    ));
-                }
-            }
-            _ => {
-                return Err("'missing' must be a string ('repeat' or 'null')".to_string());
-            }
-        }
+    if has_ncol && has_nrow {
+        return Err(
+            "'ncol' and 'nrow' cannot both be specified. Use one or the other.".to_string(),
+        );
     }
+
     Ok(())
 }
 
@@ -322,13 +296,29 @@ fn apply_defaults(facet: &mut Facet, context: &FacetDataContext) {
     // Note: absence of 'free' property means fixed/shared scales (default)
     // No need to insert a default value
 
-    // Default ncol for wrap facets (computed from data)
-    if facet.is_wrap() && !facet.properties.contains_key("ncol") {
-        let default_cols = compute_default_ncol(context.num_levels);
-        facet.properties.insert(
-            "ncol".to_string(),
-            ParameterValue::Number(default_cols as f64),
-        );
+    // Handle ncol/nrow for wrap facets
+    if facet.is_wrap() {
+        let has_ncol = facet.properties.contains_key("ncol");
+        let has_nrow = facet.properties.contains_key("nrow");
+
+        if has_nrow && !has_ncol {
+            // User provided nrow: compute ncol from it
+            if let Some(ParameterValue::Number(nrow)) = facet.properties.get("nrow") {
+                let nrow_val = *nrow as usize;
+                let ncol = ((context.num_levels as f64) / (nrow_val as f64)).ceil() as i64;
+                facet
+                    .properties
+                    .insert("ncol".to_string(), ParameterValue::Number(ncol as f64));
+                facet.properties.remove("nrow");
+            }
+        } else if !has_ncol && !has_nrow {
+            // Neither provided: apply default ncol
+            let default_cols = compute_default_ncol(context.num_levels);
+            facet.properties.insert(
+                "ncol".to_string(),
+                ParameterValue::Number(default_cols as f64),
+            );
+        }
     }
 }
 
@@ -338,10 +328,10 @@ mod tests {
     use crate::plot::facet::FacetLayout;
     use polars::prelude::*;
 
-    /// Default positional names for cartesian coords
+    /// Default position names for cartesian coords
     const CARTESIAN: &[&str] = &["x", "y"];
-    /// Positional names for polar coords
-    const POLAR: &[&str] = &["theta", "radius"];
+    /// Position names for polar coords
+    const POLAR: &[&str] = &["angle", "radius"];
 
     fn make_wrap_facet() -> Facet {
         Facet::new(FacetLayout::Wrap {
@@ -457,8 +447,7 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("Unknown setting"));
-        assert!(err.contains("columns"));
+        assert!(err.contains("not 'columns'"));
     }
 
     #[test]
@@ -489,7 +478,7 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("Unknown setting"));
+        assert!(err.contains("not 'unknown'"));
     }
 
     #[test]
@@ -522,7 +511,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("ncol"));
-        assert!(err.contains("positive"));
+        assert!(err.contains(">= 1")); // count constraint: >= 1
     }
 
     #[test]
@@ -538,7 +527,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("ncol"));
-        assert!(err.contains("integer"));
+        assert!(err.contains("whole number")); // count constraint checks for whole numbers
     }
 
     #[test]
@@ -649,7 +638,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("missing"));
-        assert!(err.contains("string"));
+        assert!(err.contains("String")); // type error uses capitalized type names
     }
 
     #[test]
@@ -679,7 +668,7 @@ mod tests {
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
         assert!(result.is_ok());
-        // x is first positional -> [true, false]
+        // x is first position -> [true, false]
         assert_eq!(get_free_bools(&facet), Some(vec![true, false]));
     }
 
@@ -693,7 +682,7 @@ mod tests {
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
         assert!(result.is_ok());
-        // y is second positional -> [false, true]
+        // y is second position -> [false, true]
         assert_eq!(get_free_bools(&facet), Some(vec![false, true]));
     }
 
@@ -822,17 +811,17 @@ mod tests {
     // ========================================
 
     #[test]
-    fn test_free_property_theta_valid() {
+    fn test_free_property_angle_valid() {
         let mut facet = make_wrap_facet();
         facet.properties.insert(
             "free".to_string(),
-            ParameterValue::String("theta".to_string()),
+            ParameterValue::String("angle".to_string()),
         );
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, POLAR);
         assert!(result.is_ok());
-        // theta is first positional -> [true, false]
+        // angle is first position -> [true, false]
         assert_eq!(get_free_bools(&facet), Some(vec![true, false]));
     }
 
@@ -847,7 +836,7 @@ mod tests {
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, POLAR);
         assert!(result.is_ok());
-        // radius is second positional -> [false, true]
+        // radius is second position -> [false, true]
         assert_eq!(get_free_bools(&facet), Some(vec![false, true]));
     }
 
@@ -857,7 +846,7 @@ mod tests {
         facet.properties.insert(
             "free".to_string(),
             ParameterValue::Array(vec![
-                crate::plot::ArrayElement::String("theta".to_string()),
+                crate::plot::ArrayElement::String("angle".to_string()),
                 crate::plot::ArrayElement::String("radius".to_string()),
             ]),
         );
@@ -883,16 +872,16 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("'x'"));
-        assert!(err.contains("theta") || err.contains("radius"));
+        assert!(err.contains("angle") || err.contains("radius"));
     }
 
     #[test]
     fn test_error_polar_names_in_cartesian() {
-        // theta/radius should not be valid for cartesian coords
+        // angle/radius should not be valid for cartesian coords
         let mut facet = make_wrap_facet();
         facet.properties.insert(
             "free".to_string(),
-            ParameterValue::String("theta".to_string()),
+            ParameterValue::String("angle".to_string()),
         );
 
         let context = make_context(5);
@@ -900,7 +889,186 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("'theta'"));
+        assert!(err.contains("'angle'"));
         assert!(err.contains("'x'") || err.contains("'y'"));
+    }
+
+    // ========================================
+    // nrow Property Tests
+    // ========================================
+
+    #[test]
+    fn test_nrow_computes_ncol() {
+        // 10 levels, nrow=2 -> ncol=5
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Number(2.0));
+
+        let context = make_context(10);
+        resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
+
+        // nrow should be removed and ncol computed
+        assert!(!facet.properties.contains_key("nrow"));
+        assert_eq!(
+            facet.properties.get("ncol"),
+            Some(&ParameterValue::Number(5.0))
+        );
+    }
+
+    #[test]
+    fn test_nrow_with_remainder() {
+        // 10 levels, nrow=3 -> ncol=ceil(10/3)=4
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Number(3.0));
+
+        let context = make_context(10);
+        resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
+
+        assert!(!facet.properties.contains_key("nrow"));
+        assert_eq!(
+            facet.properties.get("ncol"),
+            Some(&ParameterValue::Number(4.0))
+        );
+    }
+
+    #[test]
+    fn test_nrow_larger_than_num_levels() {
+        // 3 levels, nrow=10 -> ncol=ceil(3/10)=1
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Number(10.0));
+
+        let context = make_context(3);
+        resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
+
+        assert!(!facet.properties.contains_key("nrow"));
+        assert_eq!(
+            facet.properties.get("ncol"),
+            Some(&ParameterValue::Number(1.0))
+        );
+    }
+
+    #[test]
+    fn test_nrow_equals_num_levels() {
+        // 5 levels, nrow=5 -> ncol=ceil(5/5)=1
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Number(5.0));
+
+        let context = make_context(5);
+        resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
+
+        assert!(!facet.properties.contains_key("nrow"));
+        assert_eq!(
+            facet.properties.get("ncol"),
+            Some(&ParameterValue::Number(1.0))
+        );
+    }
+
+    #[test]
+    fn test_error_ncol_and_nrow_both_provided() {
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("ncol".to_string(), ParameterValue::Number(3.0));
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Number(2.0));
+
+        let context = make_context(10);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("ncol"));
+        assert!(err.contains("nrow"));
+        assert!(err.contains("cannot both be specified"));
+    }
+
+    #[test]
+    fn test_error_negative_nrow() {
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Number(-1.0));
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("nrow"));
+        assert!(err.contains(">= 1")); // count constraint: >= 1
+    }
+
+    #[test]
+    fn test_error_non_integer_nrow() {
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Number(2.5));
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("nrow"));
+        assert!(err.contains("whole number")); // count constraint checks for whole numbers
+    }
+
+    #[test]
+    fn test_error_nrow_on_grid() {
+        let mut facet = make_grid_facet();
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Number(2.0));
+
+        let context = make_context(10);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("nrow"));
+        assert!(err.contains("1 dimensional"));
+    }
+
+    #[test]
+    fn test_nrow_not_string() {
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::String("2".to_string()));
+
+        let context = make_context(5);
+        let result = resolve_properties(&mut facet, &context, CARTESIAN);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("nrow"));
+        assert!(err.contains("Number")); // type error uses capitalized type names
+    }
+
+    #[test]
+    fn test_user_ncol_preserved() {
+        // Existing behavior: user-provided ncol should be preserved
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("ncol".to_string(), ParameterValue::Number(2.0));
+
+        let context = make_context(10);
+        resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
+
+        // User's ncol should be preserved, not overwritten
+        assert_eq!(
+            facet.properties.get("ncol"),
+            Some(&ParameterValue::Number(2.0))
+        );
     }
 }

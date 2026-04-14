@@ -17,18 +17,18 @@ use crate::{naming, GgsqlError};
 #[cfg(feature = "builtin-data")]
 static PENGUINS: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../data/penguins.parquet"
+    "/data/penguins.parquet"
 ));
 
 #[cfg(feature = "builtin-data")]
 static AIRQUALITY: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../data/airquality.parquet"
+    "/data/airquality.parquet"
 ));
 
 /// Get the embedded parquet bytes for a known builtin dataset.
 #[cfg(feature = "builtin-data")]
-fn builtin_parquet_bytes(name: &str) -> Option<&'static [u8]> {
+pub fn builtin_parquet_bytes(name: &str) -> Option<&'static [u8]> {
     match name {
         "penguins" => Some(PENGUINS),
         "airquality" => Some(AIRQUALITY),
@@ -67,8 +67,8 @@ pub fn register_builtin_datasets_duckdb(
         }
 
         let create_sql = format!(
-            "CREATE TABLE IF NOT EXISTS \"{}\" AS SELECT * FROM read_parquet('{}')",
-            table_name,
+            "CREATE TABLE IF NOT EXISTS {} AS SELECT * FROM read_parquet('{}')",
+            naming::quote_ident(&table_name),
             tmp_path.display()
         );
 
@@ -86,7 +86,7 @@ pub fn register_builtin_datasets_duckdb(
 // Polars-based builtin data loading
 // =============================================================================
 
-#[cfg(feature = "builtin-data")]
+#[cfg(feature = "parquet")]
 pub fn load_builtin_dataframe(name: &str) -> Result<crate::DataFrame, GgsqlError> {
     use polars::prelude::*;
     use std::io::Cursor;
@@ -109,7 +109,7 @@ pub fn load_builtin_dataframe(name: &str) -> Result<crate::DataFrame, GgsqlError
 }
 
 /// Known builtin dataset names in the ggsql namespace
-const KNOWN_DATASETS: &[&str] = &["penguins", "airquality"];
+pub const KNOWN_DATASETS: &[&str] = &["penguins", "airquality"];
 
 /// Check if a dataset name is a known builtin
 pub fn is_known_builtin(name: &str) -> bool {
@@ -185,7 +185,7 @@ pub fn rewrite_namespaced_sql(sql: &str) -> Result<String, GgsqlError> {
                 replacements.push((
                     node.start_byte(),
                     node.end_byte(),
-                    naming::builtin_data_table(name),
+                    naming::quote_ident(&naming::builtin_data_table(name)),
                 ));
             }
         }
@@ -315,7 +315,7 @@ mod tests {
     fn test_rewrite_namespaced_sql_simple() {
         let sql = "SELECT * FROM ggsql:penguins";
         let rewritten = rewrite_namespaced_sql(sql).unwrap();
-        assert_eq!(rewritten, "SELECT * FROM __ggsql_data_penguins__");
+        assert_eq!(rewritten, "SELECT * FROM \"__ggsql_data_penguins__\"");
     }
 
     #[test]
@@ -324,7 +324,7 @@ mod tests {
         let rewritten = rewrite_namespaced_sql(sql).unwrap();
         assert_eq!(
             rewritten,
-            "SELECT * FROM __ggsql_data_penguins__ p, __ggsql_data_airquality__ a WHERE p.id = a.id"
+            "SELECT * FROM \"__ggsql_data_penguins__\" p, \"__ggsql_data_airquality__\" a WHERE p.id = a.id"
         );
     }
 
@@ -339,7 +339,7 @@ mod tests {
     fn test_rewrite_namespaced_sql_with_visualise() {
         let sql = "SELECT * FROM ggsql:penguins VISUALISE DRAW point MAPPING bill_len AS x, bill_dep AS y";
         let rewritten = rewrite_namespaced_sql(sql).unwrap();
-        assert!(rewritten.starts_with("SELECT * FROM __ggsql_data_penguins__"));
+        assert!(rewritten.starts_with("SELECT * FROM \"__ggsql_data_penguins__\""));
         assert!(!rewritten.contains("ggsql:"));
     }
 }
@@ -367,6 +367,131 @@ mod duckdb_tests {
         let dataframe = result.data.get(&naming::layer_key(0)).unwrap();
         assert!(dataframe.column("__ggsql_aes_pos1__").is_ok());
         assert!(dataframe.column("__ggsql_aes_pos2__").is_ok());
+    }
+
+    #[test]
+    fn test_ribbon_transposed_orientation() {
+        use crate::naming;
+
+        let reader =
+            crate::reader::DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Ribbon with y as domain axis and xmin/xmax as value range (transposed)
+        let query =
+            "VISUALISE FROM ggsql:airquality DRAW ribbon MAPPING Day AS y, Temp AS xmax, 0.0 AS xmin";
+        let result = crate::execute::prepare_data_with_reader(query, &reader);
+
+        // Debug: print the error if any
+        if let Err(ref e) = result {
+            eprintln!("Error: {:?}", e);
+        }
+
+        let result = result.unwrap();
+
+        // Debug: print orientation and scales
+        let layer = &result.specs[0].layers[0];
+        let orientation = layer.parameters.get("orientation");
+        eprintln!("Layer orientation: {:?}", orientation);
+        eprintln!(
+            "Scales: {:?}",
+            result.specs[0]
+                .scales
+                .iter()
+                .map(|s| (&s.aesthetic, &s.scale_type))
+                .collect::<Vec<_>>()
+        );
+        eprintln!(
+            "Layer mappings: {:?}",
+            layer.mappings.aesthetics.keys().collect::<Vec<_>>()
+        );
+
+        // Check orientation was detected correctly
+        assert_eq!(
+            orientation.and_then(|v| v.as_str()),
+            Some("transposed"),
+            "Should detect Transposed orientation"
+        );
+
+        let dataframe = result.data.get(&naming::layer_key(0)).unwrap();
+
+        // The flip-back restores user's original axis assignment:
+        // After flip-back:
+        // - pos2 = y (user's domain axis = Date/Day)
+        // - pos1min = xmin (user's value range min = 0.0)
+        // - pos1max = xmax (user's value range max = Temp)
+        // The orientation flag tells the writer how to map to x/y.
+        let cols: Vec<_> = dataframe.get_column_names().into_iter().collect();
+        eprintln!("Columns: {:?}", cols);
+
+        assert!(
+            dataframe.column("__ggsql_aes_pos2__").is_ok(),
+            "Should have pos2 (domain axis), got columns: {:?}",
+            cols
+        );
+        assert!(
+            dataframe.column("__ggsql_aes_pos1min__").is_ok(),
+            "Should have pos1min (value range min), got columns: {:?}",
+            cols
+        );
+        assert!(
+            dataframe.column("__ggsql_aes_pos1max__").is_ok(),
+            "Should have pos1max (value range max), got columns: {:?}",
+            cols
+        );
+    }
+
+    #[test]
+    fn test_ribbon_transposed_vegalite_encoding() {
+        use crate::reader::Reader;
+        use crate::writer::{VegaLiteWriter, Writer};
+
+        let reader =
+            crate::reader::DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Ribbon with y as domain axis and xmin/xmax as value range (transposed)
+        let query =
+            "VISUALISE FROM ggsql:airquality DRAW ribbon MAPPING Day AS y, Temp AS xmax, 0.0 AS xmin";
+        let spec = reader.execute(query).unwrap();
+
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.render(&spec).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        // For transposed ribbon, the encoding should have:
+        // - y: domain axis (Day)
+        // - x: value range max (Temp via xmax)
+        // - x2: value range min (0.0 via xmin)
+        // The encoding is inside layer[0] since VegaLite uses layered structure
+        let encoding = &vl_spec["layer"][0]["encoding"];
+        assert!(
+            encoding.get("y").is_some(),
+            "Should have y encoding for domain axis"
+        );
+        assert!(
+            encoding.get("x").is_some(),
+            "Should have x encoding for value max"
+        );
+        assert!(
+            encoding.get("x2").is_some(),
+            "Should have x2 encoding for value min"
+        );
+        // Should NOT have ymax/ymin/xmax/xmin (these should be remapped to x/x2/y/y2)
+        assert!(
+            encoding.get("ymax").is_none(),
+            "Should not have ymax encoding"
+        );
+        assert!(
+            encoding.get("ymin").is_none(),
+            "Should not have ymin encoding"
+        );
+        assert!(
+            encoding.get("xmax").is_none(),
+            "Should not have xmax encoding"
+        );
+        assert!(
+            encoding.get("xmin").is_none(),
+            "Should not have xmin encoding"
+        );
     }
 }
 

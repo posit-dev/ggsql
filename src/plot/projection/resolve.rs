@@ -6,21 +6,21 @@ use std::collections::HashMap;
 
 use super::coord::{Coord, CoordKind};
 use super::Projection;
-use crate::plot::aesthetic::{NON_POSITIONAL, POSITIONAL_SUFFIXES};
+use crate::plot::aesthetic::{MATERIAL_AESTHETICS, POSITION_SUFFIXES};
 use crate::plot::Mappings;
 
 /// Cartesian primary aesthetic names
 const CARTESIAN_PRIMARIES: &[&str] = &["x", "y"];
 
 /// Polar primary aesthetic names
-const POLAR_PRIMARIES: &[&str] = &["theta", "radius"];
+const POLAR_PRIMARIES: &[&str] = &["angle", "radius"];
 
 /// Resolve coordinate system for a Plot
 ///
 /// If `project` is `Some`, returns `Ok(None)` (keep existing, no changes needed).
 /// If `project` is `None`, infers coord from aesthetic mappings:
 /// - x/y/xmin/xmax/ymin/ymax → Cartesian
-/// - theta/radius/thetamin/... → Polar
+/// - angle/radius/anglemin/... → Polar
 /// - Both → Error
 /// - Neither → Ok(None) (caller should use default Cartesian)
 ///
@@ -54,7 +54,7 @@ pub fn resolve_coord(
     // Determine result
     if found_cartesian && found_polar {
         return Err(
-            "Conflicting aesthetics: cannot use both cartesian (x/y) and polar (theta/radius) \
+            "Conflicting aesthetics: cannot use both cartesian (x/y) and polar (angle/radius) \
              aesthetics in the same plot. Use PROJECT TO cartesian or PROJECT TO polar to \
              specify the coordinate system explicitly."
                 .to_string(),
@@ -65,7 +65,7 @@ pub fn resolve_coord(
         // Infer polar coordinate system
         let coord = Coord::from_kind(CoordKind::Polar);
         let aesthetics = coord
-            .positional_aesthetic_names()
+            .position_aesthetic_names()
             .iter()
             .map(|s| s.to_string())
             .collect();
@@ -80,7 +80,7 @@ pub fn resolve_coord(
         // Infer cartesian coordinate system
         let coord = Coord::from_kind(CoordKind::Cartesian);
         let aesthetics = coord
-            .positional_aesthetic_names()
+            .position_aesthetic_names()
             .iter()
             .map(|s| s.to_string())
             .collect();
@@ -98,13 +98,13 @@ pub fn resolve_coord(
 /// Check if an aesthetic name indicates cartesian or polar coordinate system.
 /// Updates the found flags accordingly.
 fn check_aesthetic(aesthetic: &str, found_cartesian: &mut bool, found_polar: &mut bool) {
-    // Skip non-positional aesthetics (color, size, etc.)
-    if NON_POSITIONAL.contains(&aesthetic) {
+    // Skip material aesthetics (color, size, etc.)
+    if MATERIAL_AESTHETICS.contains(&aesthetic) {
         return;
     }
 
-    // Strip positional suffix if present (xmin -> x, thetamax -> theta)
-    let primary = strip_positional_suffix(aesthetic);
+    // Strip position suffix if present (xmin -> x, anglemax -> angle)
+    let primary = strip_position_suffix(aesthetic);
 
     // Check against cartesian primaries
     if CARTESIAN_PRIMARIES.contains(&primary) {
@@ -117,10 +117,10 @@ fn check_aesthetic(aesthetic: &str, found_cartesian: &mut bool, found_polar: &mu
     }
 }
 
-/// Strip positional suffix from an aesthetic name.
-/// e.g., "xmin" -> "x", "thetamax" -> "theta", "y" -> "y"
-fn strip_positional_suffix(name: &str) -> &str {
-    for suffix in POSITIONAL_SUFFIXES {
+/// Strip position suffix from an aesthetic name.
+/// e.g., "xmin" -> "x", "anglemax" -> "angle", "y" -> "y"
+fn strip_position_suffix(name: &str) -> &str {
+    for suffix in POSITION_SUFFIXES {
         if let Some(base) = name.strip_suffix(suffix) {
             return base;
         }
@@ -153,7 +153,7 @@ mod tests {
             aesthetics: vec!["x".to_string(), "y".to_string()],
             properties: HashMap::new(),
         };
-        let global = mappings_with(&["theta", "radius"]); // Would infer polar
+        let global = mappings_with(&["angle", "radius"]); // Would infer polar
         let layers: Vec<&Mappings> = vec![];
 
         let result = resolve_coord(Some(&project), &global, &layers);
@@ -211,8 +211,8 @@ mod tests {
     // ========================================
 
     #[test]
-    fn test_infer_polar_from_theta_radius() {
-        let global = mappings_with(&["theta", "radius"]);
+    fn test_infer_polar_from_angle_radius() {
+        let global = mappings_with(&["angle", "radius"]);
         let layers: Vec<&Mappings> = vec![];
 
         let result = resolve_coord(None, &global, &layers);
@@ -221,12 +221,12 @@ mod tests {
         assert!(inferred.is_some());
         let proj = inferred.unwrap();
         assert_eq!(proj.coord.coord_kind(), CoordKind::Polar);
-        assert_eq!(proj.aesthetics, vec!["theta", "radius"]);
+        assert_eq!(proj.aesthetics, vec!["radius", "angle"]);
     }
 
     #[test]
     fn test_infer_polar_from_variants() {
-        let global = mappings_with(&["thetamin", "radiusmax"]);
+        let global = mappings_with(&["anglemin", "radiusmax"]);
         let layers: Vec<&Mappings> = vec![];
 
         let result = resolve_coord(None, &global, &layers);
@@ -240,7 +240,7 @@ mod tests {
     #[test]
     fn test_infer_polar_from_layer() {
         let global = Mappings::new();
-        let layer = mappings_with(&["theta", "radius"]);
+        let layer = mappings_with(&["angle", "radius"]);
         let layers: Vec<&Mappings> = vec![&layer];
 
         let result = resolve_coord(None, &global, &layers);
@@ -252,11 +252,11 @@ mod tests {
     }
 
     // ========================================
-    // Test: Non-positional aesthetics ignored
+    // Test: Material aesthetics ignored
     // ========================================
 
     #[test]
-    fn test_ignore_non_positional() {
+    fn test_ignore_material() {
         let global = mappings_with(&["color", "size", "fill", "opacity"]);
         let layers: Vec<&Mappings> = vec![];
 
@@ -266,7 +266,7 @@ mod tests {
     }
 
     #[test]
-    fn test_non_positional_with_cartesian() {
+    fn test_material_with_cartesian() {
         let global = mappings_with(&["x", "y", "color", "size"]);
         let layers: Vec<&Mappings> = vec![];
 
@@ -284,7 +284,7 @@ mod tests {
 
     #[test]
     fn test_conflict_error() {
-        let global = mappings_with(&["x", "theta"]);
+        let global = mappings_with(&["x", "angle"]);
         let layers: Vec<&Mappings> = vec![];
 
         let result = resolve_coord(None, &global, &layers);
@@ -298,7 +298,7 @@ mod tests {
     #[test]
     fn test_conflict_across_global_and_layer() {
         let global = mappings_with(&["x", "y"]);
-        let layer = mappings_with(&["theta"]);
+        let layer = mappings_with(&["angle"]);
         let layers: Vec<&Mappings> = vec![&layer];
 
         let result = resolve_coord(None, &global, &layers);
@@ -328,7 +328,7 @@ mod tests {
     #[test]
     fn test_wildcard_with_polar() {
         let mut global = Mappings::with_wildcard();
-        global.insert("theta", AestheticValue::standard_column("cat"));
+        global.insert("angle", AestheticValue::standard_column("cat"));
         let layers: Vec<&Mappings> = vec![];
 
         let result = resolve_coord(None, &global, &layers);
@@ -354,16 +354,16 @@ mod tests {
     // ========================================
 
     #[test]
-    fn test_strip_positional_suffix() {
-        assert_eq!(strip_positional_suffix("x"), "x");
-        assert_eq!(strip_positional_suffix("y"), "y");
-        assert_eq!(strip_positional_suffix("xmin"), "x");
-        assert_eq!(strip_positional_suffix("xmax"), "x");
-        assert_eq!(strip_positional_suffix("xend"), "x");
-        assert_eq!(strip_positional_suffix("ymin"), "y");
-        assert_eq!(strip_positional_suffix("ymax"), "y");
-        assert_eq!(strip_positional_suffix("theta"), "theta");
-        assert_eq!(strip_positional_suffix("thetamin"), "theta");
-        assert_eq!(strip_positional_suffix("radiusmax"), "radius");
+    fn test_strip_position_suffix() {
+        assert_eq!(strip_position_suffix("x"), "x");
+        assert_eq!(strip_position_suffix("y"), "y");
+        assert_eq!(strip_position_suffix("xmin"), "x");
+        assert_eq!(strip_position_suffix("xmax"), "x");
+        assert_eq!(strip_position_suffix("xend"), "x");
+        assert_eq!(strip_position_suffix("ymin"), "y");
+        assert_eq!(strip_position_suffix("ymax"), "y");
+        assert_eq!(strip_position_suffix("angle"), "angle");
+        assert_eq!(strip_position_suffix("anglemin"), "angle");
+        assert_eq!(strip_position_suffix("radiusmax"), "radius");
     }
 }

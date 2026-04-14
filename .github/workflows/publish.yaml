@@ -25,10 +25,16 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "22"
 
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
+
+      - name: Install LLVM
+        run: sudo apt-get install -y llvm
+
+      - name: Install ODBC
+        run: sudo apt-get install -y unixodbc-dev
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -38,9 +44,18 @@ jobs:
         with:
           shared-key: ${{ runner.os }}-publish
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+
+      - name: Install wasm-opt
+        run: cargo install wasm-opt
 
       - name: Setup quarto
         uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: pre-release
 
       - name: Setup Jupyter
         run: python3 -m pip install jupyter jupyterlab
@@ -50,6 +65,26 @@ jobs:
 
       - name: Install Jupyter kernel
         run: ./target/release/ggsql-jupyter --install
+
+      - name: Build WASM library
+        working-directory: ggsql-wasm/library
+        run: npm install && npm run build
+
+      - name: Build WASM package
+        working-directory: ggsql-wasm
+        run: wasm-pack build --target web --profile wasm --no-opt
+
+      - name: Optimise WASM binary
+        working-directory: ggsql-wasm
+        run: wasm-opt pkg/ggsql_wasm_bg.wasm -o pkg/ggsql_wasm_bg.wasm -Oz --all-features
+
+      - name: Build WASM demo
+        working-directory: ggsql-wasm/demo
+        run: npm install && npm run build
+
+      - name: Copying output to doc/wasm...
+        working-directory: ggsql-wasm/demo
+        run: cp -r dist ../../doc/wasm
 
       - name: Render and Publish
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'

@@ -73,16 +73,18 @@ Direct visualization from tables/CTEs (auto-injects `SELECT * FROM`):
 ```sql
 -- Direct table visualization
 VISUALISE FROM sales
-DRAW bar MAPPING region AS x, total AS y
+DRAW bar
+  MAPPING region AS x, total AS y
 
 -- CTE visualization
 WITH monthly_totals AS (
-    SELECT DATE_TRUNC('month', sale_date) as month, SUM(revenue) as total
-    FROM sales
-    GROUP BY month
+  SELECT DATE_TRUNC('month', sale_date) as month, SUM(revenue) as total
+  FROM sales
+  GROUP BY month
 )
 VISUALISE FROM monthly_totals
-DRAW line MAPPING month AS x, total AS y
+DRAW line
+  MAPPING month AS x, total AS y
 ```
 
 ---
@@ -320,23 +322,39 @@ pub enum GlobalMappingItem {
 
 pub struct Layer {
     pub geom: Geom,                  // Geometric object type
+    pub position: Position,          // Position adjustment (from SETTING position)
     pub aesthetics: HashMap<String, AestheticValue>,  // Aesthetic mappings (from MAPPING)
     pub parameters: HashMap<String, ParameterValue>,  // Geom parameters (from SETTING)
+    pub source: Option<DataSource>,  // Data source (from MAPPING ... FROM or PLACE)
     pub filter: Option<FilterExpression>,  // Layer filter (from FILTER)
     pub partition_by: Vec<String>,   // Grouping columns (from PARTITION BY)
 }
 
 pub enum Geom {
     // Basic geoms
-    Point, Line, Path, Bar, Col, Area, Tile, Polygon, Ribbon,
+    Point, Line, Path, Bar, Col, Area, Rect, Polygon, Ribbon,
     // Statistical geoms
     Histogram, Density, Smooth, Boxplot, Violin,
     // Annotation geoms
-    Text, Label, Segment, Arrow, Rule, Linear, ErrorBar,
+    Text, Segment, Arrow, Rule, ErrorBar,
+}
+
+pub enum DataSource {
+    Identifier(String),  // Table/CTE name
+    FilePath(String),    // File path (quoted)
+    Annotation,          // PLACE clause (no external data)
+}
+
+pub enum Position {
+    Identity,  // No adjustment
+    Stack,     // Stack elements (bars, areas)
+    Dodge,     // Dodge side-by-side (bars)
+    Jitter,    // Jitter points randomly
 }
 
 pub enum AestheticValue {
-    Column(String),                  // Unquoted column reference: revenue AS x
+    Column(String),                  // Column from data: revenue AS x
+    AnnotationColumn(String),        // Annotation literal (PLACE): uses identity scale
     Literal(ParameterValue),         // Quoted literal: 'value' AS fill
 }
 
@@ -431,7 +449,7 @@ pub struct Theme {
 - `Layer::with_parameter(parameter, value)` - Add a geom parameter (builder pattern)
 - `Layer::get_column(aesthetic)` - Get column name for an aesthetic (if mapped to column)
 - `Layer::get_literal(aesthetic)` - Get literal value for an aesthetic (if literal)
-- `Layer::validate_required_aesthetics()` - Validate that required aesthetics are present for the geom type
+- `Layer::validate_mapping()` - Validate that required aesthetics are present for the geom type
 
 **Type conversions:**
 
@@ -550,7 +568,9 @@ The codebase includes connection string parsing and feature flags for additional
 
 **Responsibility**: Convert DataFrame + Plot → output format (JSON, PNG, R code, etc.)
 
-#### Writer Trait (`mod.rs`)
+**Internal Architecture**: For Vega-Lite writer implementation details (unified dataset system, layer rendering pipeline, GeomRenderer lifecycle), see [`src/writer/vegalite/CLAUDE.md`](src/writer/vegalite/CLAUDE.md).
+
+#### Writer Trait
 
 ```rust
 pub trait Writer {
@@ -559,143 +579,13 @@ pub trait Writer {
 }
 ```
 
-#### Vega-Lite Writer (`vegalite.rs`)
+#### Available Writers
 
-**Current Production Writer** - Fully implemented and tested.
-
-**Features**:
-
-- Converts Plot → Vega-Lite JSON specification
-- Multi-layer composition support
-- Scale type → Vega field type mapping
-- Faceting (wrap and grid layouts)
-- Axis label customization
-- Inline data embedding
-
-**Architecture**:
-
-```rust
-impl Writer for VegaLiteWriter {
-    fn write(&self, df: &DataFrame, spec: &Plot) -> Result<String> {
-        // 1. Convert DataFrame to JSON values
-        let data_values = self.dataframe_to_json(df)?;
-
-        // 2. Build Vega-Lite spec
-        let mut vl_spec = json!({
-            "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
-            "data": {"values": data_values},
-            "width": 600,
-            "autosize": {"type": "fit", "contains": "padding"}
-        });
-
-        // 3. Handle single vs multi-layer
-        if spec.layers.len() == 1 {
-            // Single layer: flat structure
-            vl_spec["mark"] = self.geom_to_mark(&spec.layers[0].geom);
-            vl_spec["encoding"] = self.build_encoding(&spec.layers[0], df, spec)?;
-        } else {
-            // Multi-layer: layered structure
-            let layers: Vec<Value> = spec.layers.iter()
-                .map(|layer| {
-                    let mut layer_spec = json!({
-                        "mark": self.geom_to_mark(&layer.geom),
-                        "encoding": self.build_encoding(layer, df, spec)?
-                    });
-                    // Apply axis labels to each layer
-                    apply_axis_labels(&mut layer_spec, &spec.labels);
-                    Ok(layer_spec)
-                })
-                .collect::<Result<Vec<_>>>()?;
-            vl_spec["layer"] = json!(layers);
-        }
-
-        // 4. Add faceting, title, etc.
-        self.add_faceting(&mut vl_spec, spec)?;
-        if let Some(labels) = &spec.labels {
-            if let Some(title) = labels.labels.get("title") {
-                vl_spec["title"] = json!(title);
-            }
-        }
-
-        Ok(serde_json::to_string_pretty(&vl_spec)?)
-    }
-}
-```
-
----
-
-### 4. REST API (`src/rest.rs`)
-
-**Responsibility**: HTTP interface for executing ggsql queries.
-
-**Technology**: Axum web framework with CORS support
-
-**Endpoints**:
-
-```rust
-// POST /api/v1/query - Execute ggsql query
-// Request:
-{
-  "query": "SELECT ... VISUALISE ...",
-  "reader": "duckdb://memory",  // optional, default
-  "writer": "vegalite"            // optional, default
-}
-
-// Response (success):
-{
-  "status": "success",
-  "data": {
-    "spec": { /* Vega-Lite JSON */ },
-    "metadata": {
-      "rows": 100,
-      "columns": ["date", "revenue", "region", "..."],
-      "global_mapping": "Mappings",
-      "layers": 2
-    }
-  }
-}
-
-// Response (error):
-{
-  "status": "error",
-  "error": {
-    "type": "ParseError",
-    "message": "..."
-  }
-}
-```
-
-**Additional Endpoints**:
-
-- `GET /` - Root endpoint (returns API information and status)
-- `POST /api/v1/parse` - Parse query and return AST (debugging)
-- `GET /api/v1/health` - Health check
-- `GET /api/v1/version` - Version info
-
-**CORS Configuration**: Allows cross-origin requests for web frontends
-
-**CLI Options**:
-
-```bash
-# Basic usage
-ggsql-rest --host 127.0.0.1 --port 3334
-
-# With sample data (pre-loaded products, sales, employees tables)
-ggsql-rest --load-sample-data
-
-# Load custom data files (CSV, Parquet, JSON)
-ggsql-rest --load-data data.csv --load-data other.parquet
-
-# Configure CORS origins
-ggsql-rest --cors-origin "http://localhost:5173,http://localhost:3000"
-```
-
-**Sample Data Loading**:
-
-- `--load-sample-data`: Loads built-in sample data (products, sales, employees)
-- `--load-data <file>`: Loads data from CSV, Parquet, or JSON files into in-memory database
-- Multiple `--load-data` flags can be used to load multiple files
-- Pre-loaded data persists for the lifetime of the server session
+**VegaLiteWriter** (Production-ready):
+- Generates Vega-Lite v6 JSON specifications
+- Multi-layer composition with unified dataset architecture
+- Full support for scales, faceting, projections, and labels
+- Automatic geom-specific optimizations (segmentation, decomposition)
 
 ---
 
@@ -771,14 +661,15 @@ cargo build --release --package ggsql-jupyter
 -- Cell 1: Create data
 CREATE TABLE sales AS
 SELECT * FROM (VALUES
-    ('2024-01-01'::DATE, 100, 'North'),
-    ('2024-01-02'::DATE, 120, 'South')
+  ('2024-01-01'::DATE, 100, 'North'),
+  ('2024-01-02'::DATE, 120, 'South')
 ) AS t(date, revenue, region)
 
 -- Cell 2: Visualize
 SELECT * FROM sales
 VISUALISE
-DRAW line MAPPING date AS x, revenue AS y, region AS color
+DRAW line
+  MAPPING date AS x, revenue AS y, region AS color
 SCALE x VIA date
 LABEL title => 'Sales Trends'
 ```
@@ -1039,12 +930,6 @@ ggsql uses Cargo feature flags to enable optional functionality and reduce binar
 - `plotters` - Enable plotters-based rendering (planned, not implemented)
 - `all-writers` - Enable all writer implementations
 
-**API features**:
-
-- `rest-api` - Enable REST API server (`ggsql-rest` binary)
-  - Includes: `axum`, `tokio`, `tower-http`, `tracing`, `duckdb`, `vegalite`
-  - Required for building `ggsql-rest` server
-
 **Python bindings**:
 
 - `ggsql-python` - Python bindings via PyO3 (separate crate, not a feature flag)
@@ -1058,9 +943,6 @@ cargo build --no-default-features
 # With specific features
 cargo build --features "duckdb,vegalite"
 
-# REST API server
-cargo build --bin ggsql-rest --features rest-api
-
 # All features
 cargo build --all-features
 ```
@@ -1072,7 +954,6 @@ cargo build --all-features
 - `duckdb` → `duckdb` crate
 - `postgres` → `postgres` crate (future)
 - `sqlite` → `rusqlite` crate (future)
-- `rest-api` → `axum`, `tokio`, `tower-http`, `tracing`, `tracing-subscriber`
 - `ggsql-python` → `pyo3`, `narwhals`, `altair` (separate workspace crate)
 
 ---
@@ -1092,7 +973,6 @@ ggsql uses [cargo-packager](https://github.com/crabnebula-dev/cargo-packager) to
 **What Gets Packaged**:
 
 - ✅ `ggsql` CLI binary only
-- ❌ `ggsql-rest` API server (install separately with `cargo install ggsql --features rest-api`)
 - ❌ `ggsql-jupyter` kernel (install separately with `cargo install ggsql-jupyter`)
 
 ### Release Process
@@ -1120,6 +1000,7 @@ ggsql uses [cargo-packager](https://github.com/crabnebula-dev/cargo-packager) to
    - Generate release notes
 
 **Manual Workflow Trigger** (for testing):
+
 ```bash
 gh workflow run release-installers.yml
 ```
@@ -1176,9 +1057,10 @@ Where `<global_mapping>` can be:
 | ----------- | ---------- | ----------------- | ----------------------------------------- |
 | `VISUALISE` | ✅ Yes     | Entry point       | `VISUALISE date AS x, revenue AS y`       |
 | `DRAW`      | ✅ Yes     | Define layers     | `DRAW line MAPPING date AS x, value AS y` |
+| `PLACE`     | ✅ Yes     | Annotation layers | `PLACE point SETTING x => 5, y => 10`     |
 | `SCALE`     | ✅ Yes     | Configure scales  | `SCALE x VIA date`                        |
 | `FACET`     | ❌ No      | Small multiples   | `FACET region`                            |
-| `PROJECT`   | ❌ No      | Coordinate system | `PROJECT TO cartesian` |
+| `PROJECT`   | ❌ No      | Coordinate system | `PROJECT TO cartesian`                    |
 | `LABEL`     | ❌ No      | Text labels       | `LABEL title => 'My Chart', x => 'Date'`  |
 
 ### DRAW Clause (Layers)
@@ -1187,19 +1069,19 @@ Where `<global_mapping>` can be:
 
 ```sql
 DRAW <geom>
-    [MAPPING <value> AS <aesthetic>, ...]
-    [SETTING <param> => <value>, ...]
-    [PARTITION BY <column>, ...]
-    [FILTER <condition>]
+  [MAPPING <value> AS <aesthetic>, ...]
+  [SETTING <param> => <value>, ...]
+  [PARTITION BY <column>, ...]
+  [FILTER <condition>]
 ```
 
 All clauses (MAPPING, SETTING, PARTITION BY, FILTER) are optional.
 
 **Geom Types**:
 
-- **Basic**: `point`, `line`, `path`, `bar`, `col`, `area`, `tile`, `polygon`, `ribbon`
+- **Basic**: `point`, `line`, `path`, `bar`, `col`, `area`, `rect`, `polygon`, `ribbon`
 - **Statistical**: `histogram`, `density`, `smooth`, `boxplot`, `violin`
-- **Annotation**: `text`, `label`, `segment`, `arrow`, `rule`, `linear`, `errorbar`
+- **Annotation**: `text`, `label`, `segment`, `arrow`, `rule`, `errorbar`
 
 **MAPPING Clause** (Aesthetic Mappings):
 
@@ -1208,7 +1090,7 @@ Maps data values (columns or literals) to visual aesthetics. Syntax: `value AS a
 - **Position**: `x`, `y`, `xmin`, `xmax`, `ymin`, `ymax`
 - **Color**: `color`, `fill`, `stroke`, `opacity`
 - **Size/Shape**: `size`, `shape`, `linetype`, `linewidth`
-- **Text**: `label`, `family`, `fontface`
+- **Text**: `label`, `typeface`, `fontweight`, `italic`
 
 **Literal vs Column**:
 
@@ -1241,49 +1123,73 @@ Applies a filter to the layer data. Supports basic comparison operators.
 ```sql
 -- Basic mapping
 DRAW line
-    MAPPING date AS x, revenue AS y, region AS color
+  MAPPING date AS x, revenue AS y, region AS color
 
 -- Mapping with literal
 DRAW point
-    MAPPING date AS x, revenue AS y, 'value' AS color
+  MAPPING date AS x, revenue AS y, 'value' AS color
 
 -- Setting parameters
 DRAW point
-    MAPPING x AS x, y AS y
-    SETTING size => 5, opacity => 0.7
+  MAPPING x AS x, y AS y
+  SETTING size => 5, opacity => 0.7
 
 -- With filter
 DRAW point
-    MAPPING x AS x, y AS y, category AS color
-    FILTER value > 100
+  MAPPING x AS x, y AS y, category AS color
+  FILTER value > 100
 
 -- Combined
 DRAW line
-    MAPPING date AS x, value AS y
-    SETTING stroke_width => 2
-    FILTER category = 'A' AND year >= 2024
+  MAPPING date AS x, value AS y
+  SETTING stroke_width => 2
+  FILTER category = 'A' AND year >= 2024
 
 -- With PARTITION BY (single column)
 DRAW line
-    MAPPING date AS x, value AS y
-    PARTITION BY category
+  MAPPING date AS x, value AS y
+  PARTITION BY category
 
 -- With PARTITION BY (multiple columns)
 DRAW line
-    MAPPING date AS x, value AS y
-    PARTITION BY category, region
+  MAPPING date AS x, value AS y
+  PARTITION BY category, region
 
 -- PARTITION BY with color (grouped lines with different colors)
 DRAW line
-    MAPPING date AS x, value AS y, region AS color
-    PARTITION BY category
+  MAPPING date AS x, value AS y, region AS color
+  PARTITION BY category
 
 -- All clauses combined
 DRAW line
-    MAPPING date AS x, value AS y
-    SETTING stroke_width => 2
-    PARTITION BY category, region
-    FILTER year >= 2020
+  MAPPING date AS x, value AS y
+  SETTING stroke_width => 2
+  PARTITION BY category, region
+  FILTER year >= 2020
+```
+
+### PLACE Clause (Annotation Layers)
+
+**Syntax**:
+
+```sql
+PLACE <geom>
+  SETTING <aesthetic/parameter> => <value>, ...
+```
+
+Creates annotation layers with literal values only (no data mappings). All aesthetics set via SETTING; supports arrays that are recycled to longest length. No FILTER/PARTITION BY/ORDER BY support.
+
+**Examples**:
+
+```sql
+-- Single annotation
+PLACE point SETTING x => 5, y => 10, color => 'red'
+
+-- Multiple annotations (array recycling)
+PLACE point SETTING x => [1, 2, 3], y => [10, 20, 30]
+
+-- Reference line
+PLACE rule SETTING x => 5, color => 'red'
 ```
 
 ### SCALE Clause
@@ -1291,7 +1197,8 @@ DRAW line
 **Syntax**:
 
 ```sql
-SCALE [TYPE] <aesthetic> [FROM <input>] [TO <output>] [VIA <transform>] [SETTING <properties>]
+SCALE [TYPE] <aesthetic> [FROM <input>] [TO <output>] [VIA <transform>]
+  [SETTING <properties>]
 ```
 
 **Type Modifiers** (optional, placed before aesthetic):
@@ -1361,7 +1268,8 @@ SCALE DISCRETE color FROM ['A', 'B', 'C'] TO ['red', 'green', 'blue']
 SCALE color TO viridis
 
 -- Scale with input range and additional settings
-SCALE x VIA date FROM ['2024-01-01', '2024-12-31'] SETTING breaks => '1 month'
+SCALE x VIA date FROM ['2024-01-01', '2024-12-31']
+  SETTING breaks => '1 month'
 ```
 
 ### FACET Clause
@@ -1370,10 +1278,12 @@ SCALE x VIA date FROM ['2024-01-01', '2024-12-31'] SETTING breaks => '1 month'
 
 ```sql
 -- Wrap layout (single variable = automatic wrap)
-FACET <vars> [SETTING <param> => <value>, ...]
+FACET <vars>
+  [SETTING <param> => <value>, ...]
 
 -- Grid layout (BY clause for row × column)
-FACET <row_vars> BY <col_vars> [SETTING ...]
+FACET <row_vars> BY <col_vars>
+  [SETTING ...]
 ```
 
 **SETTING Properties**:
@@ -1403,18 +1313,21 @@ FACET region
 FACET region BY category
 
 -- With free y-axis scales
-FACET region SETTING free => 'y'
+FACET region
+  SETTING free => 'y'
 
 -- With column count for wrap
-FACET region SETTING ncol => 3
+FACET region
+  SETTING ncol => 3
 
 -- With label renaming via scale
 FACET region
-SCALE panel RENAMING 'N' => 'North', 'S' => 'South'
+SCALE panel
+  RENAMING 'N' => 'North', 'S' => 'South'
 
 -- Combined grid with settings
 FACET region BY category
-    SETTING free => ['x', 'y'], spacing => 10
+  SETTING free => ['x', 'y'], spacing => 10
 ```
 
 ### PROJECT Clause
@@ -1422,22 +1335,23 @@ FACET region BY category
 **Syntax**:
 
 ```sql
-PROJECT [<aesthetic>, ...] TO <coord_type> [SETTING <properties>]
+PROJECT [<aesthetic>, ...] TO <coord_type>
+  [SETTING <properties>]
 ```
 
 **Components**:
 
-- **Aesthetics** (optional): Comma-separated list of positional aesthetic names. If omitted, uses coord defaults.
+- **Aesthetics** (optional): Comma-separated list of position aesthetic names. If omitted, uses coord defaults.
 - **TO**: Required keyword separating aesthetics from coord type.
 - **coord_type**: Either `cartesian` or `polar`.
 - **SETTING** (optional): Additional properties.
 
 **Coordinate Types**:
 
-| Coord Type | Default Aesthetics | Description |
-|------------|-------------------|-------------|
-| `cartesian` | `x`, `y` | Standard x/y Cartesian coordinates |
-| `polar` | `theta`, `radius` | Polar coordinates (for pie charts, rose plots) |
+| Coord Type  | Default Aesthetics | Description                                    |
+| ----------- | ------------------ | ---------------------------------------------- |
+| `cartesian` | `x`, `y`           | Standard x/y Cartesian coordinates             |
+| `polar`     | `angle`, `radius`  | Polar coordinates (for pie charts, rose plots) |
 
 **Flipping Axes**:
 
@@ -1462,13 +1376,13 @@ Note: For axis limits, use `SCALE x FROM [min, max]` or `SCALE y FROM [min, max]
 
 **Polar**:
 
-- `theta => <aesthetic>` - Which aesthetic maps to angle (defaults to `y`)
+- No special properties (angle/radius aesthetics are used directly)
 
 **Important Notes**:
 
 1. **Axis limits**: Use `SCALE x/y FROM [min, max]` to set axis limits
 2. **Aesthetic domains**: Use `SCALE <aesthetic> FROM [...]` to set aesthetic domains
-3. **Custom aesthetics**: User can define custom positional names (e.g., `PROJECT a, b TO cartesian`)
+3. **Custom aesthetics**: User can define custom position names (e.g., `PROJECT a, b TO cartesian`)
 4. **Multi-layer support**: All projection transforms apply to all layers
 
 **Status**:
@@ -1491,23 +1405,26 @@ PROJECT y, x TO cartesian
 -- Custom aesthetic names
 PROJECT myX, myY TO cartesian
 
--- Polar for pie chart (using default theta/radius aesthetics)
+-- Polar for pie chart (using default angle/radius aesthetics)
 PROJECT TO polar
 
--- Polar with y/x aesthetics (y becomes theta, x becomes radius)
+-- Polar with y/x aesthetics (y becomes angle, x becomes radius)
 PROJECT y, x TO polar
 
 -- Polar with start angle offset (3 o'clock position)
 PROJECT y, x TO polar SETTING start => 90
 
 -- Clip marks to plot area
-PROJECT TO cartesian SETTING clip => true
+PROJECT TO cartesian
+  SETTING clip => true
 
 -- Combined with other clauses
-DRAW bar MAPPING category AS x, value AS y
+DRAW bar
+  MAPPING category AS x, value AS y
 SCALE x FROM [0, 100]
 SCALE y FROM [0, 200]
-PROJECT y, x TO cartesian SETTING clip => true
+PROJECT y, x TO cartesian
+  SETTING clip => true
 LABEL x => 'Category', y => 'Count'
 ```
 
@@ -1536,8 +1453,6 @@ LABEL
   caption => 'Data from Q4 2024'
 ```
 
----
-
 ## Complete Example Walkthrough
 
 ### Query
@@ -1548,14 +1463,18 @@ FROM sales
 WHERE sale_date >= '2024-01-01'
 GROUP BY sale_date, region
 ORDER BY sale_date
+
 VISUALISE
 DRAW line
-    MAPPING sale_date AS x, total AS y, region AS color
+  MAPPING sale_date AS x, total AS y, region AS color
 DRAW point
-    MAPPING sale_date AS x, total AS y, region AS color
+  MAPPING sale_date AS x, total AS y, region AS color
 SCALE x VIA date
 FACET region
-LABEL title => 'Sales Trends by Region', x => 'Date', y => 'Total Quantity'
+LABEL
+  title => 'Sales Trends by Region',
+  x => 'Date',
+  y => 'Total Quantity'
 ```
 
 ### Execution Flow

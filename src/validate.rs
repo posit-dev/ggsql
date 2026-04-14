@@ -178,7 +178,7 @@ pub fn validate(query: &str) -> Result<Validated> {
             // Note: Without schema data, we can only check if mappings exist,
             // not if the columns are valid. We skip this check for wildcards.
             if !layer.mappings.wildcard {
-                if let Err(e) = layer.validate_required_aesthetics() {
+                if let Err(e) = layer.validate_mapping(&plot.aesthetic_context, false) {
                     errors.push(ValidationError {
                         message: format!("{}: {}", context, e),
                         location: None,

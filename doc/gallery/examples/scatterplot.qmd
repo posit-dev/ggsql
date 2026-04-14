@@ -1,0 +1,40 @@
+---
+title: "Scatter plot"
+description: "Basic scatter plot mapping two numeric variables to position"
+image: thumbnails/scatterplot.svg
+categories: [basic, point]
+order: 1
+---
+
+A scatter plot displays the relationship between two numeric variables by mapping them to x and y positions. This is one of the most fundamental visualization types for exploring correlations and patterns.
+
+## Code
+
+```{ggsql}
+VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
+DRAW point
+LABEL
+  title => 'Penguin Bill Dimensions',
+  x => 'Bill Length (mm)',
+  y => 'Bill Depth (mm)'
+```
+
+## Explanation
+
+- `VISUALISE ... FROM ggsql:penguins` loads the built-in penguins dataset
+- `bill_len AS x, bill_dep AS y` maps bill length to the x-axis and bill depth to the y-axis
+- `DRAW point` creates a scatter plot using points
+- `LABEL` adds descriptive axis labels and a title
+
+## Variations
+
+### With color by species
+
+```{ggsql}
+VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
+DRAW point
+LABEL
+  title => 'Penguin Bill Dimensions by Species',
+  x => 'Bill Length (mm)',
+  y => 'Bill Depth (mm)'
+```

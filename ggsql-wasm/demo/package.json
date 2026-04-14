@@ -1,0 +1,25 @@
+{
+  "name": "ggsql-wasm-demo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch",
+    "serve": "npx http-server dist -p 8080 -c-1"
+  },
+  "dependencies": {
+    "ggsql-wasm": "file:../pkg",
+    "hyparquet": "^1.25.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.0",
+    "monaco-editor": "^0.55.0",
+    "typescript": "^5.9.0",
+    "vega": "^6.2.0",
+    "vega-embed": "^7.1.0",
+    "vega-lite": "6.4.1",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.3.0"
+  }
+}
