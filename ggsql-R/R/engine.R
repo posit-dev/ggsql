@@ -9,9 +9,11 @@ get_engine_reader <- function() {
     assign("sql", proxy, envir = knitr::knit_global())
     # Also inject into Python if reticulate is available, so Python chunks
     # can use sql.tablename directly (without the r. prefix)
-    if (requireNamespace("reticulate", quietly = TRUE) &&
-        reticulate::py_available(initialize = FALSE)) {
-      reticulate::py_run_string("pass")  # ensure Python is initialized
+    if (
+      requireNamespace("reticulate", quietly = TRUE) &&
+        reticulate::py_available(initialize = FALSE)
+    ) {
+      reticulate::py_run_string("pass") # ensure Python is initialized
       reticulate::py[["sql"]] <- proxy
     }
     # Register ggsql syntax highlighting with Pandoc
@@ -22,7 +24,9 @@ get_engine_reader <- function() {
 
 register_syntax_highlighting <- function() {
   syntax_file <- system.file("ggsql.xml", package = "ggsql")
-  if (!nzchar(syntax_file)) return()
+  if (!nzchar(syntax_file)) {
+    return()
+  }
 
   # For rmarkdown: add --syntax-definition to Pandoc args
   current <- knitr::opts_knit$get("rmarkdown.pandoc.args")
@@ -82,28 +86,43 @@ names.ggsql_tables <- function(x) {
 # ---------------------------------------------------------------------------
 
 resolve_data_refs <- function(query, reader) {
-  refs <- gregexpr("(?:r|py):[a-zA-Z_][a-zA-Z0-9_.]*", query, ignore.case = TRUE, perl = TRUE)
+  refs <- gregexpr(
+    "(?:r|py):[a-zA-Z_][a-zA-Z0-9_.]*",
+    query,
+    ignore.case = TRUE,
+    perl = TRUE
+  )
   matches <- regmatches(query, refs)[[1]]
 
-  if (length(matches) == 0) return(query)
+  if (length(matches) == 0) {
+    return(query)
+  }
 
   for (ref in unique(matches)) {
     parts <- strsplit(ref, ":", fixed = TRUE)[[1]]
     prefix <- parts[1]
     name <- parts[2]
 
-    df <- switch(prefix,
+    df <- switch(
+      prefix,
       r = try_fetch(
         get(name, envir = knitr::knit_global()),
         error = function(cnd) {
-          cli::cli_abort("Column reference {.code {ref}}: object {.val {name}} not found in R environment.")
+          cli::cli_abort(
+            "Column reference {.code {ref}}: object {.val {name}} not found in R environment."
+          )
         }
       ),
       py = {
-        rlang::check_installed("reticulate", reason = "to use py: data references.")
+        rlang::check_installed(
+          "reticulate",
+          reason = "to use py: data references."
+        )
         obj <- reticulate::py[[name]]
         if (is.null(obj)) {
-          cli::cli_abort("Column reference {.code {ref}}: object {.val {name}} not found in Python environment.")
+          cli::cli_abort(
+            "Column reference {.code {ref}}: object {.val {name}} not found in Python environment."
+          )
         }
         obj
       }
@@ -125,14 +144,23 @@ resolve_data_refs <- function(query, reader) {
 # Vega-Lite HTML rendering (bypasses vegawidget for v6 compatibility)
 # ---------------------------------------------------------------------------
 
-vegalite_html <- function(spec_json, width = NULL, height = NULL, caption = NULL) {
+vegalite_html <- function(
+  spec_json,
+  width = NULL,
+  height = NULL,
+  caption = NULL
+) {
   ggsql_env$vis_counter <- (ggsql_env$vis_counter %||% 0L) + 1L
   vis_id <- paste0("ggsql-vis-", ggsql_env$vis_counter)
 
   # Convert fig.width/fig.height (inches) to pixels at 96 dpi,
   # or use defaults if not specified
   css_width <- if (!is.null(width)) paste0(round(width * 96), "px") else "100%"
-  css_height <- if (!is.null(height)) paste0(round(height * 96), "px") else "400px"
+  css_height <- if (!is.null(height)) {
+    paste0(round(height * 96), "px")
+  } else {
+    "400px"
+  }
 
   html <- sprintf(
     '<div id="%s" style="width: %s; height: %s;"></div>
@@ -164,13 +192,18 @@ vegalite_html <- function(spec_json, width = NULL, height = NULL, caption = NULL
     });
 })();
 </script>',
-    vis_id, css_width, css_height, spec_json, vis_id
+    vis_id,
+    css_width,
+    css_height,
+    spec_json,
+    vis_id
   )
 
   if (!is.null(caption) && nzchar(caption)) {
     html <- sprintf(
       '<figure>\n%s\n<figcaption>%s</figcaption>\n</figure>',
-      html, htmltools::htmlEscape(caption)
+      html,
+      htmltools::htmlEscape(caption)
     )
   }
 
@@ -220,8 +253,7 @@ ggsql_engine_eval <- function(query, reader, options) {
 
     # Suppress output for DDL/DML statements that return metadata rows
     # (e.g., COPY TO returns a "Count" column)
-    is_result <- nrow(df) > 0 && ncol(df) > 0 &&
-      !identical(names(df), "Count")
+    is_result <- nrow(df) > 0 && ncol(df) > 0 && !identical(names(df), "Count")
     if (!is_result) {
       return(knitr::engine_output(options, options$code, ""))
     }

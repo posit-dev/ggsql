@@ -117,7 +117,8 @@ test_that("output.var captures SQL result as data frame", {
 
 test_that("output.var captures Vega-Lite JSON for viz queries", {
   assign("test_df", mtcars[1:5, c("mpg", "disp")], envir = knitr::knit_global())
-  on.exit(rm(list = c("test_df", "captured_json"), envir = knitr::knit_global()),
+  on.exit(
+    rm(list = c("test_df", "captured_json"), envir = knitr::knit_global()),
     add = TRUE
   )
 

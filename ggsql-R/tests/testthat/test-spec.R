@@ -1,7 +1,8 @@
 test_that("ggsql_metadata returns correct structure", {
   reader <- duckdb_reader()
   ggsql_register(reader, mtcars, "cars")
-  spec <- ggsql_execute(reader,
+  spec <- ggsql_execute(
+    reader,
     "SELECT * FROM cars VISUALISE mpg AS x, disp AS y DRAW point"
   )
   m <- ggsql_metadata(spec)
@@ -14,7 +15,8 @@ test_that("ggsql_metadata returns correct structure", {
 test_that("ggsql_sql returns the SQL portion", {
   reader <- duckdb_reader()
   ggsql_register(reader, mtcars, "cars")
-  spec <- ggsql_execute(reader,
+  spec <- ggsql_execute(
+    reader,
     "SELECT * FROM cars VISUALISE mpg AS x, disp AS y DRAW point"
   )
   sql <- ggsql_sql(spec)
@@ -25,7 +27,8 @@ test_that("ggsql_sql returns the SQL portion", {
 test_that("ggsql_visual returns the VISUALISE portion", {
   reader <- duckdb_reader()
   ggsql_register(reader, mtcars, "cars")
-  spec <- ggsql_execute(reader,
+  spec <- ggsql_execute(
+    reader,
     "SELECT * FROM cars VISUALISE mpg AS x, disp AS y DRAW point"
   )
   vis <- ggsql_visual(spec)
@@ -36,7 +39,8 @@ test_that("ggsql_visual returns the VISUALISE portion", {
 test_that("ggsql_layer_count returns integer", {
   reader <- duckdb_reader()
   ggsql_register(reader, mtcars, "cars")
-  spec <- ggsql_execute(reader,
+  spec <- ggsql_execute(
+    reader,
     "SELECT * FROM cars VISUALISE mpg AS x, disp AS y DRAW point DRAW line MAPPING mpg AS x, disp AS y"
   )
   expect_equal(ggsql_layer_count(spec), 2L)
@@ -45,7 +49,8 @@ test_that("ggsql_layer_count returns integer", {
 test_that("ggsql_layer_data returns a data frame", {
   reader <- duckdb_reader()
   ggsql_register(reader, mtcars, "cars")
-  spec <- ggsql_execute(reader,
+  spec <- ggsql_execute(
+    reader,
     "SELECT * FROM cars VISUALISE mpg AS x, disp AS y DRAW point"
   )
   df <- ggsql_layer_data(spec, 1L)
@@ -56,7 +61,8 @@ test_that("ggsql_layer_data returns a data frame", {
 test_that("ggsql_warnings returns a data frame", {
   reader <- duckdb_reader()
   ggsql_register(reader, mtcars, "cars")
-  spec <- ggsql_execute(reader,
+  spec <- ggsql_execute(
+    reader,
     "SELECT * FROM cars VISUALISE mpg AS x, disp AS y DRAW point"
   )
   w <- ggsql_warnings(spec)
@@ -66,7 +72,8 @@ test_that("ggsql_warnings returns a data frame", {
 test_that("spec print method works", {
   reader <- duckdb_reader()
   ggsql_register(reader, mtcars, "cars")
-  spec <- ggsql_execute(reader,
+  spec <- ggsql_execute(
+    reader,
     "SELECT * FROM cars VISUALISE mpg AS x, disp AS y DRAW point"
   )
   expect_invisible(print(spec))

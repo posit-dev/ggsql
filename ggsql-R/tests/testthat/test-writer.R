@@ -6,7 +6,8 @@ test_that("vegalite_writer creates a writer", {
 test_that("ggsql_render returns Vega-Lite JSON", {
   reader <- duckdb_reader()
   ggsql_register(reader, mtcars, "cars")
-  spec <- ggsql_execute(reader,
+  spec <- ggsql_execute(
+    reader,
     "SELECT * FROM cars VISUALISE mpg AS x, disp AS y DRAW point"
   )
   writer <- vegalite_writer()

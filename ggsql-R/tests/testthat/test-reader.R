@@ -39,7 +39,8 @@ test_that("ggsql_execute_sql returns a data frame", {
 test_that("ggsql_execute returns a spec", {
   reader <- duckdb_reader()
   ggsql_register(reader, mtcars, "cars")
-  spec <- ggsql_execute(reader,
+  spec <- ggsql_execute(
+    reader,
     "SELECT * FROM cars VISUALISE mpg AS x, disp AS y DRAW point"
   )
   expect_s3_class(spec, "GgsqlSpecR6")

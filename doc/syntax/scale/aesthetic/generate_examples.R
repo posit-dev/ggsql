@@ -9,25 +9,84 @@ CONTINUOUS_PALETTES <- c(
   # ggsql default
   "sequential",
   # Crameri Sequential
-  "navia", "batlow", "batlowk", "batloww", "hawaii", "lajolla", "tokyo",
-  "turku", "acton", "bamako", "bilbao", "buda", "davos", "devon", "glasgow",
-  "grayc", "imola", "lapaz", "lipari", "nuuk", "oslo",
+  "navia",
+  "batlow",
+  "batlowk",
+  "batloww",
+  "hawaii",
+  "lajolla",
+  "tokyo",
+  "turku",
+  "acton",
+  "bamako",
+  "bilbao",
+  "buda",
+  "davos",
+  "devon",
+  "glasgow",
+  "grayc",
+  "imola",
+  "lapaz",
+  "lipari",
+  "nuuk",
+  "oslo",
   # Crameri Multi-Sequential
-  "bukavu", "fes", "oleron",
+  "bukavu",
+  "fes",
+  "oleron",
   # Crameri Diverging
-  "vik", "berlin", "roma", "bam", "broc", "cork", "lisbon", "managua",
-  "tofino", "vanimo",
+  "vik",
+  "berlin",
+  "roma",
+  "bam",
+  "broc",
+  "cork",
+  "lisbon",
+  "managua",
+  "tofino",
+  "vanimo",
   # Crameri Cyclic
-  "romao", "bamo", "broco", "corko", "viko",
+  "romao",
+  "bamo",
+  "broco",
+  "corko",
+  "viko",
   # ColorBrewer Single-hue
-  "blues", "greens", "oranges", "reds", "purples", "greys",
+  "blues",
+  "greens",
+  "oranges",
+  "reds",
+  "purples",
+  "greys",
   # ColorBrewer Multi-hue
-  "ylorbr", "ylorrd", "ylgn", "ylgnbu", "gnbu", "bugn", "bupu", "pubu",
-  "pubugn", "purd", "rdpu", "orrd",
+  "ylorbr",
+  "ylorrd",
+  "ylgn",
+  "ylgnbu",
+  "gnbu",
+  "bugn",
+  "bupu",
+  "pubu",
+  "pubugn",
+  "purd",
+  "rdpu",
+  "orrd",
   # ColorBrewer Diverging
-  "rdbu", "rdylbu", "rdylgn", "spectral", "brbg", "prgn", "piyg", "rdgy", "puor",
+  "rdbu",
+  "rdylbu",
+  "rdylgn",
+  "spectral",
+  "brbg",
+  "prgn",
+  "piyg",
+  "rdgy",
+  "puor",
   # Matplotlib
-  "viridis", "plasma", "magma", "inferno", "cividis"
+  "viridis",
+  "plasma",
+  "magma",
+  "inferno",
+  "cividis"
 )
 
 # Discrete palettes referenced in color_disc.qmd
@@ -39,8 +98,11 @@ DISCRETE_PALETTES <- c(
   # D3
   "category10",
   # ColorBrewer qualitative
-  "set1", "set2", "set3",
-  "pastel1", "pastel2",
+  "set1",
+  "set2",
+  "set3",
+  "pastel1",
+  "pastel2",
   "dark2",
   "paired",
   "accent",
@@ -52,18 +114,27 @@ DISCRETE_PALETTES <- c(
 # Format: name = c(dash, gap, dash, gap, ...)
 # Empty vector means solid line
 NAMED_LINETYPES <- list(
-  solid    = c(),
-  dashed   = c(6, 4),
-  dotted   = c(1, 2),
-  dotdash  = c(1, 2, 6, 2),
+  solid = c(),
+  dashed = c(6, 4),
+  dotted = c(1, 2),
+  dotdash = c(1, 2, 6, 2),
   longdash = c(10, 4),
-  twodash  = c(6, 2, 2, 2)
+  twodash = c(6, 2, 2, 2)
 )
 
 # Shape definitions
 # Closed shapes (filled)
-SHAPES_CLOSED <- c("circle", "square", "diamond", "triangle-up", "triangle-down",
-                   "star", "square-cross", "circle-plus", "square-plus")
+SHAPES_CLOSED <- c(
+  "circle",
+  "square",
+  "diamond",
+  "triangle-up",
+  "triangle-down",
+  "star",
+  "square-cross",
+  "circle-plus",
+  "square-plus"
+)
 # Open shapes (stroke only)
 SHAPES_OPEN <- c("cross", "plus", "asterisk", "bowtie", "hline", "vline")
 # All shapes
@@ -78,7 +149,6 @@ parse_palettes <- function(rust_file) {
 
   palettes <- list()
 
-
   # Pattern to match: pub const NAME: &[&str] = &[ ... ];
   # We need to find each palette definition
   pattern <- 'pub const ([A-Z_0-9]+): &\\[&str\\] = &\\[([^;]+)\\];'
@@ -89,14 +159,23 @@ parse_palettes <- function(rust_file) {
 
   for (match in all_matches) {
     # Extract name
-    name_match <- regmatches(match, regexec('pub const ([A-Z_0-9]+):', match, perl = TRUE))[[1]]
-    if (length(name_match) < 2) next
+    name_match <- regmatches(
+      match,
+      regexec('pub const ([A-Z_0-9]+):', match, perl = TRUE)
+    )[[1]]
+    if (length(name_match) < 2) {
+      next
+    }
     name <- tolower(name_match[2])
 
     # Extract colors
     colors_section <- sub('.*&\\[', '', match)
     colors_section <- sub('\\];.*', '', colors_section)
-    color_matches <- gregexpr('"(#[0-9A-Fa-f]{6})"', colors_section, perl = TRUE)
+    color_matches <- gregexpr(
+      '"(#[0-9A-Fa-f]{6})"',
+      colors_section,
+      perl = TRUE
+    )
     colors <- regmatches(colors_section, color_matches)[[1]]
     colors <- gsub('"', '', colors)
 
@@ -124,15 +203,23 @@ generate_gradient_svg <- function(colors, width = 600, height = 60) {
   }
 
   # Build gradient stops
-  stops <- vapply(seq_along(sampled), function(i) {
-    offset <- (i - 1) / (length(sampled) - 1) * 100
-    sprintf('      <stop offset="%.1f%%" stop-color="%s"/>', offset, sampled[i])
-  }, character(1))
+  stops <- vapply(
+    seq_along(sampled),
+    function(i) {
+      offset <- (i - 1) / (length(sampled) - 1) * 100
+      sprintf(
+        '      <stop offset="%.1f%%" stop-color="%s"/>',
+        offset,
+        sampled[i]
+      )
+    },
+    character(1)
+  )
 
   stops_str <- paste(stops, collapse = "\n")
 
   svg <- sprintf(
-'<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
+    '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
   <defs>
     <linearGradient id="grad" x1="0%%" y1="0%%" x2="100%%" y2="0%%">
 %s
@@ -140,7 +227,11 @@ generate_gradient_svg <- function(colors, width = 600, height = 60) {
   </defs>
   <rect width="%d" height="%d" fill="url(#grad)" rx="3" ry="3"/>
 </svg>',
-    width, height, stops_str, width, height
+    width,
+    height,
+    stops_str,
+    width,
+    height
   )
 
   svg
@@ -152,24 +243,40 @@ generate_gradient_svg <- function(colors, width = 600, height = 60) {
 #' @param swatch_height Height of each swatch in pixels
 #' @param gap Gap between swatches in pixels
 #' @return SVG content as string
-generate_swatch_svg <- function(colors, swatch_width = 40, swatch_height = 60, gap = 2) {
+generate_swatch_svg <- function(
+  colors,
+  swatch_width = 40,
+  swatch_height = 60,
+  gap = 2
+) {
   n <- length(colors)
   total_width <- n * swatch_width + (n - 1) * gap
 
   # Build rectangles for each color
-  rects <- vapply(seq_along(colors), function(i) {
-    x <- (i - 1) * (swatch_width + gap)
-    sprintf('  <rect x="%d" y="0" width="%d" height="%d" fill="%s" rx="3" ry="3"/>',
-            x, swatch_width, swatch_height, colors[i])
-  }, character(1))
+  rects <- vapply(
+    seq_along(colors),
+    function(i) {
+      x <- (i - 1) * (swatch_width + gap)
+      sprintf(
+        '  <rect x="%d" y="0" width="%d" height="%d" fill="%s" rx="3" ry="3"/>',
+        x,
+        swatch_width,
+        swatch_height,
+        colors[i]
+      )
+    },
+    character(1)
+  )
 
   rects_str <- paste(rects, collapse = "\n")
 
   svg <- sprintf(
-'<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
+    '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
 %s
 </svg>',
-    total_width, swatch_height, rects_str
+    total_width,
+    swatch_height,
+    rects_str
   )
 
   svg
@@ -182,7 +289,13 @@ generate_swatch_svg <- function(colors, swatch_width = 40, swatch_height = 60, g
 #' @param height SVG height in pixels
 #' @param stroke_width Width of the line
 #' @return SVG content as string
-generate_linetype_svg <- function(name, dasharray, width = 200, height = 40, stroke_width = 3) {
+generate_linetype_svg <- function(
+  name,
+  dasharray,
+  width = 200,
+  height = 40,
+  stroke_width = 3
+) {
   y <- height / 2
 
   if (length(dasharray) == 0) {
@@ -190,14 +303,23 @@ generate_linetype_svg <- function(name, dasharray, width = 200, height = 40, str
   } else {
     # Scale dasharray values by stroke width (ggplot2 convention)
     scaled_dash <- dasharray * stroke_width
-    dash_attr <- sprintf(' stroke-dasharray="%s"', paste(scaled_dash, collapse=" "))
+    dash_attr <- sprintf(
+      ' stroke-dasharray="%s"',
+      paste(scaled_dash, collapse = " ")
+    )
   }
 
   svg <- sprintf(
-'<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
+    '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
   <line x1="10" y1="%.1f" x2="%d" y2="%.1f" stroke="#333333" stroke-width="%d"%s stroke-linecap="butt"/>
 </svg>',
-    width, height, y, width - 10, y, stroke_width, dash_attr
+    width,
+    height,
+    y,
+    width - 10,
+    y,
+    stroke_width,
+    dash_attr
   )
 
   svg
@@ -214,7 +336,8 @@ get_shape_path <- function(name, size = 12, cx = 20, cy = 20) {
   # Reference: circle with radius 1.0 has area π
   # All shapes scaled to have approximately equal visual area
 
-  path <- switch(name,
+  path <- switch(
+    name,
     "circle" = {
       # Circle as SVG circle element (handled separately)
       NULL
@@ -222,27 +345,59 @@ get_shape_path <- function(name, size = 12, cx = 20, cy = 20) {
     "square" = {
       # Half-side 0.71/0.8 = 0.89 of base size for equal area
       s <- size * 0.89
-      sprintf("M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
-              cx - s, cy - s, cx + s, cy - s, cx + s, cy + s, cx - s, cy + s)
+      sprintf(
+        "M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
+        cx - s,
+        cy - s,
+        cx + s,
+        cy - s,
+        cx + s,
+        cy + s,
+        cx - s,
+        cy + s
+      )
     },
     "diamond" = {
       # Half-diagonal 0.89/0.8 = 1.11 of base size for equal area
       d <- size * 1.11
-      sprintf("M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
-              cx, cy - d, cx + d, cy, cx, cy + d, cx - d, cy)
+      sprintf(
+        "M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
+        cx,
+        cy - d,
+        cx + d,
+        cy,
+        cx,
+        cy + d,
+        cx - d,
+        cy
+      )
     },
     "triangle-up" = {
       # Scaled up by 0.92/0.8 = 1.15 for equal area
       r <- size * 1.15
       h <- r * 0.75
-      sprintf("M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
-              cx, cy - r, cx + r, cy + h, cx - r, cy + h)
+      sprintf(
+        "M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
+        cx,
+        cy - r,
+        cx + r,
+        cy + h,
+        cx - r,
+        cy + h
+      )
     },
     "triangle-down" = {
       r <- size * 1.15
       h <- r * 0.75
-      sprintf("M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
-              cx - r, cy - h, cx + r, cy - h, cx, cy + r)
+      sprintf(
+        "M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
+        cx - r,
+        cy - h,
+        cx + r,
+        cy - h,
+        cx,
+        cy + r
+      )
     },
     "star" = {
       # Outer radius 0.95/0.8 = 1.19 of base size for equal area
@@ -261,14 +416,32 @@ get_shape_path <- function(name, size = 12, cx = 20, cy = 20) {
     "cross" = {
       # X shape - scaled by 1/√2 so diagonal length matches plus's axis-aligned length
       s <- size / sqrt(2)
-      sprintf("M%.1f,%.1f L%.1f,%.1f M%.1f,%.1f L%.1f,%.1f",
-              cx - s, cy - s, cx + s, cy + s, cx + s, cy - s, cx - s, cy + s)
+      sprintf(
+        "M%.1f,%.1f L%.1f,%.1f M%.1f,%.1f L%.1f,%.1f",
+        cx - s,
+        cy - s,
+        cx + s,
+        cy + s,
+        cx + s,
+        cy - s,
+        cx - s,
+        cy + s
+      )
     },
     "plus" = {
       # + shape
       s <- size
-      sprintf("M%.1f,%.1f L%.1f,%.1f M%.1f,%.1f L%.1f,%.1f",
-              cx - s, cy, cx + s, cy, cx, cy - s, cx, cy + s)
+      sprintf(
+        "M%.1f,%.1f L%.1f,%.1f M%.1f,%.1f L%.1f,%.1f",
+        cx - s,
+        cy,
+        cx + s,
+        cy,
+        cx,
+        cy - s,
+        cx,
+        cy + s
+      )
     },
     "hline" = {
       # Horizontal line
@@ -297,9 +470,21 @@ get_shape_path <- function(name, size = 12, cx = 20, cy = 20) {
     "bowtie" = {
       # Two triangles pointing inward
       s <- size
-      sprintf("M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
-              cx - s, cy - s * 0.7, cx, cy, cx - s, cy + s * 0.7,
-              cx + s, cy - s * 0.7, cx, cy, cx + s, cy + s * 0.7)
+      sprintf(
+        "M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
+        cx - s,
+        cy - s * 0.7,
+        cx,
+        cy,
+        cx - s,
+        cy + s * 0.7,
+        cx + s,
+        cy - s * 0.7,
+        cx,
+        cy,
+        cx + s,
+        cy + s * 0.7
+      )
     },
     "square-cross" = {
       # Square with X-shaped cutout (handled specially in generate_shape_svg)
@@ -332,10 +517,14 @@ generate_shape_svg <- function(name, size = 40, is_closed = TRUE) {
   # Special handling for circle
   if (name == "circle") {
     svg <- sprintf(
-'<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
+      '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
   <circle cx="%.1f" cy="%.1f" r="%.1f" fill="%s"/>
 </svg>',
-      size, size, cx, cy, shape_size,
+      size,
+      size,
+      cx,
+      cy,
+      shape_size,
       if (is_closed) "#333333" else "none"
     )
     return(svg)
@@ -344,34 +533,36 @@ generate_shape_svg <- function(name, size = 40, is_closed = TRUE) {
   # Special handling for circle-plus (circle divided into 4 quarters with constant-width gap)
   if (name == "circle-plus") {
     r <- shape_size
-    g <- shape_size * 0.15 / sqrt(2)  # gap half-width, scaled to match X visually
-    n <- 8  # points per quarter arc
+    g <- shape_size * 0.15 / sqrt(2) # gap half-width, scaled to match X visually
+    n <- 8 # points per quarter arc
 
     # Where circle intersects gap edge
     edge <- sqrt(r^2 - g^2)
 
     # Start angle for arc (where y = g on circle)
     start_angle <- asin(g / r)
-    end_angle <- pi/2 - start_angle
+    end_angle <- pi / 2 - start_angle
 
     paths <- character(4)
     for (q in 0:3) {
       base_angle <- q * pi / 2
 
       # Inner corner point
-      corner <- switch(q + 1,
-        c(cx + g, cy + g),   # q=0: top-right
-        c(cx - g, cy + g),   # q=1: top-left
-        c(cx - g, cy - g),   # q=2: bottom-left
-        c(cx + g, cy - g)    # q=3: bottom-right
+      corner <- switch(
+        q + 1,
+        c(cx + g, cy + g), # q=0: top-right
+        c(cx - g, cy + g), # q=1: top-left
+        c(cx - g, cy - g), # q=2: bottom-left
+        c(cx + g, cy - g) # q=3: bottom-right
       )
 
       # Point where gap meets circle (start of arc)
-      gap_start <- switch(q + 1,
-        c(cx + edge, cy + g),   # right edge of horizontal gap
-        c(cx - g, cy + edge),   # top edge of vertical gap
-        c(cx - edge, cy - g),   # left edge of horizontal gap
-        c(cx + g, cy - edge)    # bottom edge of vertical gap
+      gap_start <- switch(
+        q + 1,
+        c(cx + edge, cy + g), # right edge of horizontal gap
+        c(cx - g, cy + edge), # top edge of vertical gap
+        c(cx - edge, cy - g), # left edge of horizontal gap
+        c(cx + g, cy - edge) # bottom edge of vertical gap
       )
 
       # Arc points
@@ -384,27 +575,34 @@ generate_shape_svg <- function(name, size = 40, is_closed = TRUE) {
       })
 
       # Point where arc meets gap (end of arc)
-      gap_end <- switch(q + 1,
-        c(cx + g, cy + edge),   # top edge of vertical gap
-        c(cx - edge, cy + g),   # left edge of horizontal gap
-        c(cx - g, cy - edge),   # bottom edge of vertical gap
-        c(cx + edge, cy - g)    # right edge of horizontal gap
+      gap_end <- switch(
+        q + 1,
+        c(cx + g, cy + edge), # top edge of vertical gap
+        c(cx - edge, cy + g), # left edge of horizontal gap
+        c(cx - g, cy - edge), # bottom edge of vertical gap
+        c(cx + edge, cy - g) # right edge of horizontal gap
       )
 
       # Build path: corner -> gap_start -> arc -> gap_end -> close
-      paths[q + 1] <- sprintf("M%.1f,%.1f L%.1f,%.1f L%s L%.1f,%.1f Z",
-        corner[1], corner[2],
-        gap_start[1], gap_start[2],
+      paths[q + 1] <- sprintf(
+        "M%.1f,%.1f L%.1f,%.1f L%s L%.1f,%.1f Z",
+        corner[1],
+        corner[2],
+        gap_start[1],
+        gap_start[2],
         paste(arc_pts, collapse = " L"),
-        gap_end[1], gap_end[2]
+        gap_end[1],
+        gap_end[2]
       )
     }
     combined_path <- paste(paths, collapse = " ")
     svg <- sprintf(
-'<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
+      '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
   <path d="%s" fill="#333333"/>
 </svg>',
-      size, size, combined_path
+      size,
+      size,
+      combined_path
     )
     return(svg)
   }
@@ -412,25 +610,55 @@ generate_shape_svg <- function(name, size = 40, is_closed = TRUE) {
   # Special handling for square-cross (square divided into 4 triangles by X)
   if (name == "square-cross") {
     s <- shape_size * 0.89
-    g <- shape_size * 0.15  # gap half-width
+    g <- shape_size * 0.15 # gap half-width
 
     # 4 triangles (top, right, bottom, left)
     paths <- c(
-      sprintf("M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
-              cx - s + g, cy - s, cx + s - g, cy - s, cx, cy - g),  # top
-      sprintf("M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
-              cx + s, cy - s + g, cx + s, cy + s - g, cx + g, cy),  # right
-      sprintf("M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
-              cx + s - g, cy + s, cx - s + g, cy + s, cx, cy + g),  # bottom
-      sprintf("M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
-              cx - s, cy + s - g, cx - s, cy - s + g, cx - g, cy)   # left
+      sprintf(
+        "M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
+        cx - s + g,
+        cy - s,
+        cx + s - g,
+        cy - s,
+        cx,
+        cy - g
+      ), # top
+      sprintf(
+        "M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
+        cx + s,
+        cy - s + g,
+        cx + s,
+        cy + s - g,
+        cx + g,
+        cy
+      ), # right
+      sprintf(
+        "M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
+        cx + s - g,
+        cy + s,
+        cx - s + g,
+        cy + s,
+        cx,
+        cy + g
+      ), # bottom
+      sprintf(
+        "M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
+        cx - s,
+        cy + s - g,
+        cx - s,
+        cy - s + g,
+        cx - g,
+        cy
+      ) # left
     )
     combined_path <- paste(paths, collapse = " ")
     svg <- sprintf(
-'<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
+      '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
   <path d="%s" fill="#333333"/>
 </svg>',
-      size, size, combined_path
+      size,
+      size,
+      combined_path
     )
     return(svg)
   }
@@ -438,47 +666,91 @@ generate_shape_svg <- function(name, size = 40, is_closed = TRUE) {
   # Special handling for square-plus (square divided into 4 smaller squares by +)
   if (name == "square-plus") {
     s <- shape_size * 0.89
-    g <- shape_size * 0.15 / sqrt(2)  # gap half-width, scaled to match X visually
+    g <- shape_size * 0.15 / sqrt(2) # gap half-width, scaled to match X visually
 
     # 4 smaller squares in corners
     paths <- c(
-      sprintf("M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
-              cx - s, cy - s, cx - g, cy - s, cx - g, cy - g, cx - s, cy - g),  # top-left
-      sprintf("M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
-              cx + g, cy - s, cx + s, cy - s, cx + s, cy - g, cx + g, cy - g),  # top-right
-      sprintf("M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
-              cx + g, cy + g, cx + s, cy + g, cx + s, cy + s, cx + g, cy + s),  # bottom-right
-      sprintf("M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
-              cx - s, cy + g, cx - g, cy + g, cx - g, cy + s, cx - s, cy + s)   # bottom-left
+      sprintf(
+        "M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
+        cx - s,
+        cy - s,
+        cx - g,
+        cy - s,
+        cx - g,
+        cy - g,
+        cx - s,
+        cy - g
+      ), # top-left
+      sprintf(
+        "M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
+        cx + g,
+        cy - s,
+        cx + s,
+        cy - s,
+        cx + s,
+        cy - g,
+        cx + g,
+        cy - g
+      ), # top-right
+      sprintf(
+        "M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
+        cx + g,
+        cy + g,
+        cx + s,
+        cy + g,
+        cx + s,
+        cy + s,
+        cx + g,
+        cy + s
+      ), # bottom-right
+      sprintf(
+        "M%.1f,%.1f L%.1f,%.1f L%.1f,%.1f L%.1f,%.1f Z",
+        cx - s,
+        cy + g,
+        cx - g,
+        cy + g,
+        cx - g,
+        cy + s,
+        cx - s,
+        cy + s
+      ) # bottom-left
     )
     combined_path <- paste(paths, collapse = " ")
     svg <- sprintf(
-'<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
+      '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
   <path d="%s" fill="#333333"/>
 </svg>',
-      size, size, combined_path
+      size,
+      size,
+      combined_path
     )
     return(svg)
   }
 
   path <- get_shape_path(name, shape_size, cx, cy)
-  if (is.null(path)) return(NULL)
+  if (is.null(path)) {
+    return(NULL)
+  }
 
   if (is_closed) {
     # Closed shapes: fill only, no stroke
     svg <- sprintf(
-'<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
+      '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
   <path d="%s" fill="#333333"/>
 </svg>',
-      size, size, path
+      size,
+      size,
+      path
     )
   } else {
     # Open shapes: stroke only, no fill
     svg <- sprintf(
-'<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
+      '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
   <path d="%s" fill="none" stroke="#333333" stroke-width="2.5" stroke-linecap="butt" stroke-linejoin="round"/>
 </svg>',
-      size, size, path
+      size,
+      size,
+      path
     )
   }
 
@@ -489,8 +761,12 @@ generate_shape_svg <- function(name, size = 40, is_closed = TRUE) {
 #' @param count Number of linetypes to generate
 #' @return List with names and dasharray values
 generate_sequential_linetypes <- function(count) {
-  if (count <= 0) return(list())
-  if (count == 1) return(list(solid = c()))
+  if (count <= 0) {
+    return(list())
+  }
+  if (count == 1) {
+    return(list(solid = c()))
+  }
 
   # Generate linetypes from sparse to solid
 
@@ -503,8 +779,8 @@ generate_sequential_linetypes <- function(count) {
       result[[paste0("seq_", i)]] <- c()
     } else {
       # Calculate ink ratio (evenly spaced from min to max)
-      min_ink <- 1/16
-      max_ink <- 15/16
+      min_ink <- 1 / 16
+      max_ink <- 15 / 16
       ink_ratio <- min_ink + (i - 1) * (max_ink - min_ink) / (count - 1)
 
       # Convert to on/off pattern (cycle of 16 units)
@@ -525,24 +801,39 @@ main <- function() {
   script_dir <- if (interactive()) {
     getwd()
   } else {
-    dirname(commandArgs(trailingOnly = FALSE)[grep("--file=", commandArgs(trailingOnly = FALSE))])
-    script_dir <- sub("--file=", "", commandArgs(trailingOnly = FALSE)[grep("--file=", commandArgs(trailingOnly = FALSE))])
+    dirname(commandArgs(trailingOnly = FALSE)[grep(
+      "--file=",
+      commandArgs(trailingOnly = FALSE)
+    )])
+    script_dir <- sub(
+      "--file=",
+      "",
+      commandArgs(trailingOnly = FALSE)[grep(
+        "--file=",
+        commandArgs(trailingOnly = FALSE)
+      )]
+    )
     dirname(script_dir)
   }
 
   # Try to find the repo root
   # Navigate up from doc/syntax/scale/palette to repo root
-  repo_root <- normalizePath(file.path(script_dir, "..", "..", "..", ".."), mustWork = FALSE)
+  repo_root <- normalizePath(
+    file.path(script_dir, "..", "..", "..", ".."),
+    mustWork = FALSE
+  )
   palettes_file <- file.path(repo_root, "src", "plot", "scale", "palettes.rs")
 
- # If that doesn't work, try relative to current working directory
+  # If that doesn't work, try relative to current working directory
   if (!file.exists(palettes_file)) {
     # Try from repo root directly
     palettes_file <- "src/plot/scale/palettes.rs"
   }
 
   if (!file.exists(palettes_file)) {
-    stop("Error: Could not find palettes.rs. Run from repo root or palette directory.")
+    stop(
+      "Error: Could not find palettes.rs. Run from repo root or palette directory."
+    )
   }
 
   # Output directory (subfolder called "examples")
@@ -582,7 +873,11 @@ main <- function() {
     output_file <- file.path(output_dir, sprintf("gradient_%s.svg", name))
     writeLines(svg_content, output_file)
     generated <- generated + 1
-    message(sprintf("Generated: gradient_%s.svg (%d colors)", name, length(colors)))
+    message(sprintf(
+      "Generated: gradient_%s.svg (%d colors)",
+      name,
+      length(colors)
+    ))
   }
 
   # Generate swatch SVGs for discrete palettes
@@ -598,7 +893,11 @@ main <- function() {
     output_file <- file.path(output_dir, sprintf("swatch_%s.svg", name))
     writeLines(svg_content, output_file)
     generated <- generated + 1
-    message(sprintf("Generated: swatch_%s.svg (%d colors)", name, length(colors)))
+    message(sprintf(
+      "Generated: swatch_%s.svg (%d colors)",
+      name,
+      length(colors)
+    ))
   }
 
   # Generate linetype SVGs for named linetypes
@@ -630,7 +929,10 @@ main <- function() {
   for (name in SHAPES_CLOSED) {
     svg_content <- generate_shape_svg(name, size = 40, is_closed = TRUE)
     if (!is.null(svg_content)) {
-      output_file <- file.path(output_dir, sprintf("shape_%s.svg", gsub("-", "_", name)))
+      output_file <- file.path(
+        output_dir,
+        sprintf("shape_%s.svg", gsub("-", "_", name))
+      )
       writeLines(svg_content, output_file)
       generated <- generated + 1
       message(sprintf("Generated: shape_%s.svg", gsub("-", "_", name)))
@@ -642,7 +944,10 @@ main <- function() {
   for (name in SHAPES_OPEN) {
     svg_content <- generate_shape_svg(name, size = 40, is_closed = FALSE)
     if (!is.null(svg_content)) {
-      output_file <- file.path(output_dir, sprintf("shape_%s.svg", gsub("-", "_", name)))
+      output_file <- file.path(
+        output_dir,
+        sprintf("shape_%s.svg", gsub("-", "_", name))
+      )
       writeLines(svg_content, output_file)
       generated <- generated + 1
       message(sprintf("Generated: shape_%s.svg", gsub("-", "_", name)))
@@ -652,7 +957,10 @@ main <- function() {
   message(sprintf("\nGenerated %d SVG files total", generated))
 
   if (length(missing) > 0) {
-    message(sprintf("\nWarning: %d palettes not found in source:", length(missing)))
+    message(sprintf(
+      "\nWarning: %d palettes not found in source:",
+      length(missing)
+    ))
     for (name in missing) {
       message(sprintf("  - %s", name))
     }

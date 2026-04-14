@@ -76,7 +76,9 @@ ggsql_layer_data <- function(spec, index = 1L) {
   rlang::check_required(spec)
   # Convert R 1-based to Rust 0-based
   ipc_bytes <- spec$.ptr$layer_data_ipc(as.integer(index - 1L))
-  if (is.null(ipc_bytes)) return(NULL)
+  if (is.null(ipc_bytes)) {
+    return(NULL)
+  }
   ipc_to_df(ipc_bytes)
 }
 
@@ -89,7 +91,9 @@ ggsql_layer_data <- function(spec, index = 1L) {
 ggsql_stat_data <- function(spec, index = 1L) {
   rlang::check_required(spec)
   ipc_bytes <- spec$.ptr$stat_data_ipc(as.integer(index - 1L))
-  if (is.null(ipc_bytes)) return(NULL)
+  if (is.null(ipc_bytes)) {
+    return(NULL)
+  }
   ipc_to_df(ipc_bytes)
 }
 
@@ -126,7 +130,11 @@ ggsql_warnings <- function(spec) {
   json <- spec$.ptr$warnings_json()
   warnings_list <- jsonlite::fromJSON(json)
   if (length(warnings_list) == 0) {
-    return(data.frame(message = character(), line = integer(), column = integer()))
+    return(data.frame(
+      message = character(),
+      line = integer(),
+      column = integer()
+    ))
   }
   warnings_list
 }
