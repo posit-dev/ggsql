@@ -798,7 +798,10 @@ mod tests {
         let labels = spec.labels.as_ref().unwrap();
         // x maps to pos2 (second position), y maps to pos1 (first position)
         assert_eq!(labels.labels.get("pos1"), Some(&Some("Value".to_string())));
-        assert_eq!(labels.labels.get("pos2"), Some(&Some("Category".to_string())));
+        assert_eq!(
+            labels.labels.get("pos2"),
+            Some(&Some("Category".to_string()))
+        );
     }
 
     #[test]
@@ -824,7 +827,10 @@ mod tests {
 
         let labels = spec.labels.as_ref().unwrap();
         assert_eq!(labels.labels.get("pos1"), Some(&Some("Angle".to_string())));
-        assert_eq!(labels.labels.get("pos2"), Some(&Some("Distance".to_string())));
+        assert_eq!(
+            labels.labels.get("pos2"),
+            Some(&Some("Distance".to_string()))
+        );
     }
 
     #[test]
@@ -851,8 +857,14 @@ mod tests {
 
         let labels = spec.labels.as_ref().unwrap();
         // Material labels should remain unchanged
-        assert_eq!(labels.labels.get("title"), Some(&Some("My Chart".to_string())));
-        assert_eq!(labels.labels.get("color"), Some(&Some("Category".to_string())));
+        assert_eq!(
+            labels.labels.get("title"),
+            Some(&Some("My Chart".to_string()))
+        );
+        assert_eq!(
+            labels.labels.get("color"),
+            Some(&Some("Category".to_string()))
+        );
         // Position label should be transformed
         assert_eq!(labels.labels.get("pos1"), Some(&Some("X Axis".to_string())));
     }
