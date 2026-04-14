@@ -653,6 +653,34 @@ impl TextRenderer {
         Ok((result_df, run_lengths))
     }
 
+    /// Split label values containing newlines into arrays of strings
+    ///
+    /// Uses the shared split_label_on_newlines function to ensure consistent
+    /// newline handling across all label types (text data, axis labels, titles, etc.)
+    fn split_label_newlines(values: &mut [Value]) -> Result<()> {
+        let label_col = naming::aesthetic_column("label");
+
+        for row in values.iter_mut() {
+            // Get the object, skip if not an object
+            let Some(obj) = row.as_object_mut() else {
+                continue;
+            };
+
+            // Get the label value, skip if not present
+            let Some(label_value) = obj.get(&label_col) else {
+                continue;
+            };
+            // Get the string value, skip if not a string
+            let Some(label_str) = label_value.as_str() else {
+                continue;
+            };
+
+            // Use shared function for consistent newline splitting
+            obj.insert(label_col.clone(), super::split_label_on_newlines(label_str));
+        }
+        Ok(())
+    }
+
     /// Convert typeface to Vega-Lite font value
     /// Prefers literal over column value
     fn convert_typeface(
@@ -1032,11 +1060,14 @@ impl GeomRenderer for TextRenderer {
             // Slice the contiguous run from the DataFrame (more efficient than boolean masking)
             let sliced = df.slice(position as i64, length);
 
-            let values = if binned_columns.is_empty() {
+            let mut values = if binned_columns.is_empty() {
                 dataframe_to_values(&sliced)?
             } else {
                 dataframe_to_values_with_bins(&sliced, binned_columns)?
             };
+
+            // Post-process label values to split on newlines
+            Self::split_label_newlines(&mut values)?;
 
             components.insert(suffix, values);
             position += length;
@@ -2776,6 +2807,81 @@ mod tests {
         assert!(labels.contains(&"$0.00"));
         assert!(labels.contains(&"$10.50"));
         assert!(labels.contains(&"$21.00"));
+    }
+
+    #[test]
+    fn test_text_label_newline_splitting() {
+        use crate::execute;
+        use crate::reader::DuckDBReader;
+        use crate::writer::vegalite::VegaLiteWriter;
+        use crate::writer::Writer;
+
+        // Test that labels containing newlines are split into arrays
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Query with labels containing newlines in DRAW and PLACE
+        let query = r#"
+            SELECT
+                n::INTEGER as x,
+                n::INTEGER as y,
+                CASE
+                    WHEN n = 0 THEN 'First Line\nSecond Line'
+                    WHEN n = 1 THEN 'Single Line'
+                    ELSE 'Line 1\nLine 2\nLine 3'
+                END as label
+            FROM generate_series(0, 2) as t(n)
+            VISUALISE x, y, label
+            DRAW text
+            PLACE text SETTING x => 5, y => 15, label => 'Annotation\nWith Newline'
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &prepared.specs[0];
+
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        let label_col = crate::naming::aesthetic_column("label");
+
+        // Check first label (contains newline - should be array)
+        let label_0 = &data_values[0][&label_col];
+        assert!(label_0.is_array(), "Label with newline should be an array");
+        let lines_0 = label_0.as_array().unwrap();
+        assert_eq!(lines_0.len(), 2);
+        assert_eq!(lines_0[0].as_str().unwrap(), "First Line");
+        assert_eq!(lines_0[1].as_str().unwrap(), "Second Line");
+
+        // Check second label (no newline - should be string)
+        let label_1 = &data_values[1][&label_col];
+        assert!(
+            label_1.is_string(),
+            "Label without newline should be a string"
+        );
+        assert_eq!(label_1.as_str().unwrap(), "Single Line");
+
+        // Check third label (multiple newlines - should be array with 3 elements)
+        let label_2 = &data_values[2][&label_col];
+        assert!(label_2.is_array(), "Label with newlines should be an array");
+        let lines_2 = label_2.as_array().unwrap();
+        assert_eq!(lines_2.len(), 3);
+        assert_eq!(lines_2[0].as_str().unwrap(), "Line 1");
+        assert_eq!(lines_2[1].as_str().unwrap(), "Line 2");
+        assert_eq!(lines_2[2].as_str().unwrap(), "Line 3");
+
+        // Check PLACE annotation layer (index 3, after the 3 DRAW data rows)
+        assert!(data_values.len() > 3, "Should have annotation data");
+        let annotation_label = &data_values[3][&label_col];
+        assert!(
+            annotation_label.is_array(),
+            "Annotation label with newline should be an array"
+        );
+        let annotation_lines = annotation_label.as_array().unwrap();
+        assert_eq!(annotation_lines.len(), 2);
+        assert_eq!(annotation_lines[0].as_str().unwrap(), "Annotation");
+        assert_eq!(annotation_lines[1].as_str().unwrap(), "With Newline");
     }
 
     #[test]

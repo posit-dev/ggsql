@@ -700,6 +700,7 @@ fn process_annotation_layer(layer: &mut Layer, dialect: &dyn SqlDialect) -> Resu
     // Only process position aesthetics, required aesthetics, and array parameters
     // (material non-required scalars stay in parameters as geom settings)
     let required_aesthetics = layer.geom.aesthetics().required();
+    let supported_aesthetics = layer.geom.aesthetics().supported();
     let param_keys: Vec<String> = layer.parameters.keys().cloned().collect();
 
     // Collect parameters we'll use, checking criteria and filtering NULLs
@@ -720,10 +721,11 @@ fn process_annotation_layer(layer: &mut Layer, dialect: &dyn SqlDialect) -> Resu
             continue;
         }
 
-        // Check if this is a position aesthetic OR a required aesthetic OR an array
+        // Check if this is a position aesthetic OR a required aesthetic OR an array for supported aesthetic
         let is_position = crate::plot::aesthetic::is_position_aesthetic(&param_name);
         let is_required = required_aesthetics.contains(&param_name.as_str());
-        let is_array = matches!(value, ParameterValue::Array(_));
+        let is_array = matches!(value, ParameterValue::Array(_))
+            && supported_aesthetics.contains(&param_name.as_str());
 
         // Only process position/required/array parameters
         if is_position || is_required || is_array {
