@@ -32,6 +32,12 @@ The particular incarnation of the data that we're using here is adapted from the
 
 ## Getting started
 
+Before building a graphic it is always good to be aware of the columns and data structures that are present in your data.
+
+```{ggsql}
+SELECT * FROM 'minard_troops.csv' LIMIT 5
+```
+
 Our first goal is commit *something* to paper. We'll iron out mistakes and polish the graphic later.
 
 ```{ggsql}
