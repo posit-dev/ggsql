@@ -4459,8 +4459,7 @@ mod tests {
             "fill legend should have symbolStrokeColor"
         );
         assert_eq!(
-            legend["symbolStrokeColor"]["expr"],
-            "scale('fill', datum.value)",
+            legend["symbolStrokeColor"]["expr"], "scale('fill', datum.value)",
             "symbolStrokeColor should use fill scale"
         );
     }
