@@ -510,7 +510,7 @@ impl GeomRenderer for PathRenderer {
 
         // Handle varying linewidth: switch to trail mark and translate encodings
         if varying_aesthetics.contains(&"linewidth") {
-            layer_spec["mark"] = json!({"type": "trail", "clip": true, "stroke": null});
+            layer_spec["mark"] = json!({"type": "trail", "clip": true, "strokeWidth": 0});
 
             // Translate line encodings to trail encodings
             if let Some(encoding_obj) = layer_spec.get_mut("encoding") {
