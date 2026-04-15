@@ -1,0 +1,1585 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.3">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="Re-creating the famous visualisation from Minard.">
+
+<title>Napoleon’s march to Moscow – ggsql</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+/* CSS for citations */
+div.csl-bib-body { }
+div.csl-entry {
+  clear: both;
+}
+.hanging-indent div.csl-entry {
+  margin-left:2em;
+  text-indent:-2em;
+}
+div.csl-left-margin {
+  min-width:2em;
+  float:left;
+}
+div.csl-right-inline {
+  margin-left:2em;
+  padding-left:1em;
+}
+div.csl-indent {
+  margin-left: 2em;
+}</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<link href="../../assets/icon.svg" rel="icon" type="image/svg+xml">
+<script src="../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-286b0d4f737c5af6226422bdceee2d85.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-dark-286b0d4f737c5af6226422bdceee2d85.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-286b0d4f737c5af6226422bdceee2d85.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap-b068bd8fbd0943443b2767a143b5203c.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-dark-c0e6253991c03487a1849754f0ab8899.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-b068bd8fbd0943443b2767a143b5203c.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [],
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+<script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
+<!-- Privacy-friendly analytics by Plausible -->
+<script async="" src="https://plausible.io/js/pa-eH2pS73nQmBLURrhxXgML.js"></script>
+<script>
+    window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+    plausible.init()
+</script>
+
+
+<meta property="og:title" content="Napoleon’s march to Moscow – ggsql">
+<meta property="og:description" content="Re-creating the famous visualisation from Minard.">
+<meta property="og:image" content="https://ggsql.org/gallery/examples/thumbnails/minard.svg">
+<meta property="og:site_name" content="ggsql">
+<meta name="twitter:title" content="Napoleon’s march to Moscow – ggsql">
+<meta name="twitter:description" content="Re-creating the famous visualisation from Minard.">
+<meta name="twitter:image" content="https://ggsql.org/gallery/examples/thumbnails/minard.svg">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a href="../../index.html" class="navbar-brand navbar-brand-logo">
+    <img src="../../assets/icon.svg" alt="" class="navbar-logo light-content">
+    <img src="../../assets/icon.svg" alt="" class="navbar-logo dark-content">
+    </a>
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">ggsql</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../get_started/installation.html"> 
+<span class="menu-text">Get started</span></a>
+  </li>  
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-syntax" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Syntax</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-syntax">    
+        <li>
+    <a class="dropdown-item" href="../../syntax/index.html">
+ <span class="dropdown-text">Overview</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/visualise.html">
+ <span class="dropdown-text"><code>VISUALISE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/draw.html">
+ <span class="dropdown-text"><code>DRAW</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/place.html">
+ <span class="dropdown-text"><code>PLACE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/scale.html">
+ <span class="dropdown-text"><code>SCALE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/facet.html">
+ <span class="dropdown-text"><code>FACET</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/project.html">
+ <span class="dropdown-text"><code>PROJECT</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/label.html">
+ <span class="dropdown-text"><code>LABEL</code></span></a>
+  </li>  
+    </ul>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../../gallery/index.html"> 
+<span class="menu-text">Gallery</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../faq.html"> 
+<span class="menu-text">FAQ</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../wasm/index.html"> 
+<span class="menu-text">Playground</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+    <div class="dropdown">
+      <a href="" title="" id="quarto-navigation-tool-dropdown-0" class="quarto-navigation-tool dropdown-toggle px-1" data-bs-toggle="dropdown" aria-expanded="false" role="link" aria-label=""><i class="bi bi-github"></i></a>
+      <ul class="dropdown-menu" aria-labelledby="quarto-navigation-tool-dropdown-0">
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/ggsql-dev/ggsql">
+            Source Code
+            </a>
+          </li>
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/ggsql-dev/ggsql/issues">
+            Report a Bug
+            </a>
+          </li>
+      </ul>
+    </div>
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <div id="quarto-announcement" data-announcement-id="a3e2a40f560b81649f1436c0b08f2025" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
+<p>ggsql is still in early development and all functionality is subject to change</p>
+</div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#getting-started" id="toc-getting-started" class="nav-link active" data-scroll-target="#getting-started">Getting started</a></li>
+  <li><a href="#correcting-mistakes" id="toc-correcting-mistakes" class="nav-link" data-scroll-target="#correcting-mistakes">Correcting mistakes</a></li>
+  <li><a href="#enriching" id="toc-enriching" class="nav-link" data-scroll-target="#enriching">Enriching</a></li>
+  <li><a href="#detailing" id="toc-detailing" class="nav-link" data-scroll-target="#detailing">Detailing</a></li>
+  <li><a href="#polishing" id="toc-polishing" class="nav-link" data-scroll-target="#polishing">Polishing</a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Napoleon’s march to Moscow</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">line</div>
+    <div class="quarto-category">advanced</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    Re-creating the famous visualisation from Minard.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<p>In 1812 the French emperor Napoleon waged a military campaign invading Russia. The campaign had early tactical success and Napoleon briefly occupied Moscow. However, the campaign was a strategic failure because the retreat from Russia back to France was a catastrophe. Charles Joseph Minard is best known for visualising numerical data about this campaign showing the advance and retreat.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="../../assets/minard.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="The original infographic drawn by Charles Minard"><img src="../../assets/minard.png" class="img-fluid figure-img" alt="The original infographic drawn by Charles Minard"></a></p>
+<figcaption>The original infographic drawn by Charles Minard</figcaption>
+</figure>
+</div>
+<p>In this example, we’ll recreate the top part of the infographic. The particular incarnation of the data that we’re using here is adapted from the <a href="https://cran.r-project.org/package=HistData">HistData</a> R package <span class="citation" data-cites="friendly2002">(<a href="#ref-friendly2002" role="doc-biblioref">Friendly 2002</a>)</span>.</p>
+<section id="getting-started" class="level2">
+<h2 class="anchored" data-anchor-id="getting-started">Getting started</h2>
+<p>Before building a graphic it is always good to be aware of the columns and data structures that are present in your data.</p>
+<div id="51367fa1" class="cell" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span> <span class="kw">LIMIT</span> <span class="dv">5</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="1">
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th">long</th>
+<th data-quarto-table-cell-role="th">lat</th>
+<th data-quarto-table-cell-role="th">survivors</th>
+<th data-quarto-table-cell-role="th">direction</th>
+<th data-quarto-table-cell-role="th">group</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>37.7</td>
+<td>55.7</td>
+<td>100000</td>
+<td>"R"</td>
+<td>1</td>
+</tr>
+<tr class="even">
+<td>37.5</td>
+<td>55.7</td>
+<td>98000</td>
+<td>"R"</td>
+<td>1</td>
+</tr>
+<tr class="odd">
+<td>37.0</td>
+<td>55.0</td>
+<td>97000</td>
+<td>"R"</td>
+<td>1</td>
+</tr>
+<tr class="even">
+<td>36.8</td>
+<td>55.0</td>
+<td>96000</td>
+<td>"R"</td>
+<td>1</td>
+</tr>
+<tr class="odd">
+<td>35.4</td>
+<td>55.3</td>
+<td>87000</td>
+<td>"R"</td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p>Our first goal is commit <em>something</em> to paper. We’ll iron out mistakes and polish the graphic later.</p>
+<div id="85806f16" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">line</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<div id="vis-1776252304687"></div>
+
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.2,"__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.1,"__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":54.9,"__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.4,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.3,"__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.2,"__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.0,"__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":25.0,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":13,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.7,"__ggsql_row_index__":14,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.5,"__ggsql_row_index__":15,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":26.0,"__ggsql_aes_pos2__":54.7,"__ggsql_row_index__":16,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":26.4,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":17,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":26.6,"__ggsql_aes_pos2__":55.7,"__ggsql_row_index__":18,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":26.8,"__ggsql_aes_pos2__":54.3,"__ggsql_row_index__":19,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":27.0,"__ggsql_aes_pos2__":54.8,"__ggsql_row_index__":20,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":27.4,"__ggsql_aes_pos2__":55.6,"__ggsql_row_index__":21,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":27.5,"__ggsql_aes_pos2__":54.5,"__ggsql_row_index__":22,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":28.0,"__ggsql_aes_pos2__":54.9,"__ggsql_row_index__":23,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.3,"__ggsql_row_index__":24,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.2,"__ggsql_row_index__":25,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.2,"__ggsql_row_index__":26,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.1,"__ggsql_row_index__":27,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":55.0,"__ggsql_row_index__":28,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_row_index__":29,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_row_index__":30,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":29.0,"__ggsql_aes_pos2__":55.1,"__ggsql_row_index__":31,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.2,"__ggsql_row_index__":32,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.3,"__ggsql_row_index__":33,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":30.0,"__ggsql_aes_pos2__":55.2,"__ggsql_row_index__":34,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":30.3,"__ggsql_aes_pos2__":55.3,"__ggsql_row_index__":35,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":30.4,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":36,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.8,"__ggsql_row_index__":37,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.6,"__ggsql_row_index__":38,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":33.2,"__ggsql_aes_pos2__":54.9,"__ggsql_row_index__":39,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":33.3,"__ggsql_aes_pos2__":54.8,"__ggsql_row_index__":40,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":34.3,"__ggsql_aes_pos2__":55.2,"__ggsql_row_index__":41,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":34.4,"__ggsql_aes_pos2__":55.5,"__ggsql_row_index__":42,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":35.4,"__ggsql_aes_pos2__":55.3,"__ggsql_row_index__":43,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":35.5,"__ggsql_aes_pos2__":55.4,"__ggsql_row_index__":44,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.0,"__ggsql_aes_pos2__":55.5,"__ggsql_row_index__":45,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.8,"__ggsql_aes_pos2__":55.0,"__ggsql_row_index__":46,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.0,"__ggsql_aes_pos2__":55.0,"__ggsql_row_index__":47,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.5,"__ggsql_aes_pos2__":55.7,"__ggsql_row_index__":48,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.6,"__ggsql_aes_pos2__":55.8,"__ggsql_row_index__":49,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.7,"__ggsql_aes_pos2__":55.7,"__ggsql_row_index__":50,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"opacity":{"value":1.0},"order":{"field":"__ggsql_row_index__","type":"quantitative"},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":2.0},"x":{"axis":{"labelExpr":"datum.label == '35' ? '35' : datum.label == '25' ? '25' : datum.label == '30' ? '30' : datum.label","values":[25.0,30.0,35.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[23.315,38.385000000000005],"zero":false},"title":"long","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '54.5' ? '54.5' : datum.label == '55' ? '55' : datum.label == '55.5' ? '55.5' : datum.label","values":[54.5,55.0,55.5]},"field":"__ggsql_aes_pos2__","scale":{"domain":[54.015,55.885],"zero":false},"stack":null,"title":"lat","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1776252304687';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>To explain what we have done here:</p>
+<ul>
+<li><code>VISUALISE ... 'minard_troops.csv'</code> queries a local CSV file for Napoleon’s troops.</li>
+<li><code>long AS x</code> sets the <code>long</code> (longitude) column as the <code>x</code> aesthetic.</li>
+<li><code>lat AS y</code> sets the <code>lat</code> (latitude) column as the <code>y</code> aesthetic.</li>
+<li><code>DRAW line</code> instructs to plot to use the <code>line</code> layer.</li>
+</ul>
+<p>No celebrated military strategist would plan his troup movements towards Moscow in this fashion though. The chart only shows movement in the west-east direction, meaning that we are not capturing the retreat properly.</p>
+</section>
+<section id="correcting-mistakes" class="level2">
+<h2 class="anchored" data-anchor-id="correcting-mistakes">Correcting mistakes</h2>
+<p>The first ‘mistake’ we made is chosing the <code>line</code> layer. Line layers automatically sort along the axis, so we’re mixing coordinates from the advance and the retreat. To rectify this, we should use the <code>path</code> layer instead. Path layers connect datapoints in the order they appear in, so we’re no long sorting along west-east.</p>
+<div id="42d4fc65" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<div id="vis-1776252304707"></div>
+
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":37.7,"__ggsql_aes_pos2__":55.7,"__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.5,"__ggsql_aes_pos2__":55.7,"__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.0,"__ggsql_aes_pos2__":55.0,"__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.8,"__ggsql_aes_pos2__":55.0,"__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":35.4,"__ggsql_aes_pos2__":55.3,"__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":34.3,"__ggsql_aes_pos2__":55.2,"__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":33.3,"__ggsql_aes_pos2__":54.8,"__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.6,"__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":30.4,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.3,"__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.2,"__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.3,"__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":27.5,"__ggsql_aes_pos2__":54.5,"__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":26.8,"__ggsql_aes_pos2__":54.3,"__ggsql_row_index__":13,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":26.4,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":14,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":25.0,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":15,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.4,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":16,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":17,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":18,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_row_index__":19,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.2,"__ggsql_row_index__":20,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.1,"__ggsql_row_index__":21,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.2,"__ggsql_row_index__":22,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_row_index__":23,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":24,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":25,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":54.9,"__ggsql_row_index__":26,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.0,"__ggsql_row_index__":27,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.5,"__ggsql_row_index__":28,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":26.0,"__ggsql_aes_pos2__":54.7,"__ggsql_row_index__":29,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":27.0,"__ggsql_aes_pos2__":54.8,"__ggsql_row_index__":30,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":28.0,"__ggsql_aes_pos2__":54.9,"__ggsql_row_index__":31,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":55.0,"__ggsql_row_index__":32,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":29.0,"__ggsql_aes_pos2__":55.1,"__ggsql_row_index__":33,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":30.0,"__ggsql_aes_pos2__":55.2,"__ggsql_row_index__":34,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":30.3,"__ggsql_aes_pos2__":55.3,"__ggsql_row_index__":35,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.8,"__ggsql_row_index__":36,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":33.2,"__ggsql_aes_pos2__":54.9,"__ggsql_row_index__":37,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":34.4,"__ggsql_aes_pos2__":55.5,"__ggsql_row_index__":38,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":35.5,"__ggsql_aes_pos2__":55.4,"__ggsql_row_index__":39,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":36.0,"__ggsql_aes_pos2__":55.5,"__ggsql_row_index__":40,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":37.6,"__ggsql_aes_pos2__":55.8,"__ggsql_row_index__":41,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.1,"__ggsql_row_index__":42,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.2,"__ggsql_row_index__":43,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.7,"__ggsql_row_index__":44,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":26.6,"__ggsql_aes_pos2__":55.7,"__ggsql_row_index__":45,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":27.4,"__ggsql_aes_pos2__":55.6,"__ggsql_row_index__":46,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_row_index__":47,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.2,"__ggsql_row_index__":48,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.3,"__ggsql_row_index__":49,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_row_index__":50,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"opacity":{"value":1.0},"order":{"field":"__ggsql_row_index__","type":"quantitative"},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":2.0},"x":{"axis":{"labelExpr":"datum.label == '25' ? '25' : datum.label == '35' ? '35' : datum.label == '30' ? '30' : datum.label","values":[25.0,30.0,35.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[23.315,38.385000000000005],"zero":false},"title":"long","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '54.5' ? '54.5' : datum.label == '55' ? '55' : datum.label == '55.5' ? '55.5' : datum.label","values":[54.5,55.0,55.5]},"field":"__ggsql_aes_pos2__","scale":{"domain":[54.015,55.885],"zero":false},"stack":null,"title":"lat","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1776252304707';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>The second mistake is that Napoleon’s retreat was not a simple linear path. For example: a detachment of soldiers arrived in Polotsk to guard the northern flank. This detachment later joined up with the remainder of the army during the retreat. What that means for us is that we have to account for additional grouping. This grouping allows us to resolve separate paths.</p>
+<div id="b6ac9c13" class="cell" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PARTITION</span> BY direction, group</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<div id="vis-1776252304728"></div>
+
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":37.7,"__ggsql_aes_pos2__":55.7,"__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":37.5,"__ggsql_aes_pos2__":55.7,"__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":37.0,"__ggsql_aes_pos2__":55.0,"__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":36.8,"__ggsql_aes_pos2__":55.0,"__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":35.4,"__ggsql_aes_pos2__":55.3,"__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":34.3,"__ggsql_aes_pos2__":55.2,"__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":33.3,"__ggsql_aes_pos2__":54.8,"__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.6,"__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":30.4,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.3,"__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.2,"__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.3,"__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":27.5,"__ggsql_aes_pos2__":54.5,"__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":26.8,"__ggsql_aes_pos2__":54.3,"__ggsql_row_index__":13,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":26.4,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":14,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":25.0,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":15,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":24.4,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":16,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":17,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":18,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_row_index__":19,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.2,"__ggsql_row_index__":20,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.1,"__ggsql_row_index__":21,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.2,"__ggsql_row_index__":22,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_row_index__":23,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":24,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_row_index__":25,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":54.9,"__ggsql_row_index__":26,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.0,"__ggsql_row_index__":27,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.5,"__ggsql_row_index__":28,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":26.0,"__ggsql_aes_pos2__":54.7,"__ggsql_row_index__":29,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":27.0,"__ggsql_aes_pos2__":54.8,"__ggsql_row_index__":30,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":28.0,"__ggsql_aes_pos2__":54.9,"__ggsql_row_index__":31,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":55.0,"__ggsql_row_index__":32,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":29.0,"__ggsql_aes_pos2__":55.1,"__ggsql_row_index__":33,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":30.0,"__ggsql_aes_pos2__":55.2,"__ggsql_row_index__":34,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":30.3,"__ggsql_aes_pos2__":55.3,"__ggsql_row_index__":35,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.8,"__ggsql_row_index__":36,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":33.2,"__ggsql_aes_pos2__":54.9,"__ggsql_row_index__":37,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":34.4,"__ggsql_aes_pos2__":55.5,"__ggsql_row_index__":38,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":35.5,"__ggsql_aes_pos2__":55.4,"__ggsql_row_index__":39,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":36.0,"__ggsql_aes_pos2__":55.5,"__ggsql_row_index__":40,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":37.6,"__ggsql_aes_pos2__":55.8,"__ggsql_row_index__":41,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.1,"__ggsql_row_index__":42,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.2,"__ggsql_row_index__":43,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.7,"__ggsql_row_index__":44,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_pos1__":26.6,"__ggsql_aes_pos2__":55.7,"__ggsql_row_index__":45,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_pos1__":27.4,"__ggsql_aes_pos2__":55.6,"__ggsql_row_index__":46,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_row_index__":47,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.2,"__ggsql_row_index__":48,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3},{"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.3,"__ggsql_row_index__":49,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3},{"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_row_index__":50,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3}]},"height":"container","layer":[{"encoding":{"detail":[{"field":"direction","type":"nominal"},{"field":"group","type":"nominal"}],"opacity":{"value":1.0},"order":{"field":"__ggsql_row_index__","type":"quantitative"},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":2.0},"x":{"axis":{"labelExpr":"datum.label == '35' ? '35' : datum.label == '25' ? '25' : datum.label == '30' ? '30' : datum.label","values":[25.0,30.0,35.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[23.315,38.385000000000005],"zero":false},"title":"long","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '55.5' ? '55.5' : datum.label == '55' ? '55' : datum.label == '54.5' ? '54.5' : datum.label","values":[54.5,55.0,55.5]},"field":"__ggsql_aes_pos2__","scale":{"domain":[54.015,55.885],"zero":false},"stack":null,"title":"lat","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1776252304728';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="enriching" class="level2">
+<h2 class="anchored" data-anchor-id="enriching">Enriching</h2>
+<p>One of the appealing aspects of Minard’s visualisation is that it is rich. Not only does it display a map and the route of the army; it also separates the advance from the retreat in different colours, and displays the troop numbers as line thickness. We can also separate the advance from the retreat by mapping the <code>direction</code> variable to the stroke colour.</p>
+<div id="909e83b0" class="cell" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> direction AS <span class="at">stroke</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PARTITION</span> BY direction, group</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<div id="vis-1776252304750"></div>
+
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":37.7,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":37.5,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":37.0,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":36.8,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":35.4,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":34.3,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":33.3,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.6,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":30.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":27.5,"__ggsql_aes_pos2__":54.5,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":26.8,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":13,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":26.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":14,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":25.0,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":15,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":24.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":16,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":17,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":18,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":19,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":20,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.1,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":21,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":22,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":23,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":24,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":25,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":26,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":27,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":28,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":26.0,"__ggsql_aes_pos2__":54.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":29,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":27.0,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":30,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":28.0,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":31,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":32,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":29.0,"__ggsql_aes_pos2__":55.1,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":33,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":30.0,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":34,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":30.3,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":35,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":36,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":33.2,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":37,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":34.4,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":38,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":35.5,"__ggsql_aes_pos2__":55.4,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":39,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":36.0,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":40,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":37.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":41,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.1,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":42,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":43,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":44,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_pos1__":26.6,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":45,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_pos1__":27.4,"__ggsql_aes_pos2__":55.6,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":46,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":47,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":48,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3},{"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":49,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3},{"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":50,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3}]},"height":"container","layer":[{"encoding":{"detail":[{"field":"direction","type":"nominal"},{"field":"group","type":"nominal"},{"field":"__ggsql_aes_stroke__","type":"nominal"}],"opacity":{"value":1.0},"order":{"field":"__ggsql_row_index__","type":"quantitative"},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'A' ? 'A' : datum.label == 'R' ? 'R' : datum.label"},"scale":{"domain":["A","R"],"range":["#0067A5","#F38400"]},"title":"direction","type":"nominal"},"strokeDash":{"value":[]},"strokeWidth":{"value":2.0},"x":{"axis":{"labelExpr":"datum.label == '35' ? '35' : datum.label == '30' ? '30' : datum.label == '25' ? '25' : datum.label","values":[25.0,30.0,35.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[23.315,38.385000000000005],"zero":false},"title":"long","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '55' ? '55' : datum.label == '55.5' ? '55.5' : datum.label == '54.5' ? '54.5' : datum.label","values":[54.5,55.0,55.5]},"field":"__ggsql_aes_pos2__","scale":{"domain":[54.015,55.885],"zero":false},"stack":null,"title":"lat","type":"quantitative"}},"mark":{"clip":true,"type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1776252304750';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>Similarly, we can include the troop numbers by mapping the <code>survivors</code> variable to the line width.</p>
+<div id="14e82ac9" class="cell" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> direction AS <span class="at">stroke</span>, survivors AS <span class="at">linewidth</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PARTITION</span> BY direction, group</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<div id="vis-1776252304774"></div>
+
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":37.7,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":98000,"__ggsql_aes_pos1__":37.5,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":97000,"__ggsql_aes_pos1__":37.0,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":96000,"__ggsql_aes_pos1__":36.8,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":87000,"__ggsql_aes_pos1__":35.4,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":55000,"__ggsql_aes_pos1__":34.3,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":37000,"__ggsql_aes_pos1__":33.3,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":24000,"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.6,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":30.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":27.5,"__ggsql_aes_pos2__":54.5,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":12000,"__ggsql_aes_pos1__":26.8,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":13,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":14000,"__ggsql_aes_pos1__":26.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":14,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":8000,"__ggsql_aes_pos1__":25.0,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":15,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":4000,"__ggsql_aes_pos1__":24.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":16,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":4000,"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":17,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":4000,"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":18,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":33000,"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":19,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_linewidth__":30000,"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":20,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_linewidth__":30000,"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.1,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":21,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_linewidth__":28000,"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":22,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":23,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":24,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":25,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_linewidth__":340000,"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":26,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":340000,"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":27,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":340000,"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":28,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":320000,"__ggsql_aes_pos1__":26.0,"__ggsql_aes_pos2__":54.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":29,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":300000,"__ggsql_aes_pos1__":27.0,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":30,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":280000,"__ggsql_aes_pos1__":28.0,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":31,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":240000,"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":32,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":210000,"__ggsql_aes_pos1__":29.0,"__ggsql_aes_pos2__":55.1,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":33,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":180000,"__ggsql_aes_pos1__":30.0,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":34,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":175000,"__ggsql_aes_pos1__":30.3,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":35,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":145000,"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":36,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":140000,"__ggsql_aes_pos1__":33.2,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":37,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":127100,"__ggsql_aes_pos1__":34.4,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":38,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":35.5,"__ggsql_aes_pos2__":55.4,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":39,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":36.0,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":40,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":37.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":41,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":60000,"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.1,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":42,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":60000,"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":43,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":60000,"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":44,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":40000,"__ggsql_aes_pos1__":26.6,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":45,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":33000,"__ggsql_aes_pos1__":27.4,"__ggsql_aes_pos2__":55.6,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":46,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":33000,"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":47,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":22000,"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":48,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3},{"__ggsql_aes_linewidth__":22000,"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":49,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3},{"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":50,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3}]},"height":"container","layer":[{"encoding":{"detail":[{"field":"direction","type":"nominal"},{"field":"group","type":"nominal"},{"field":"__ggsql_aes_stroke__","type":"nominal"}],"fill":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'R' ? 'R' : datum.label == 'A' ? 'A' : datum.label"},"scale":{"domain":["A","R"],"range":["#0067A5","#F38400"]},"title":"direction","type":"nominal"},"fillOpacity":{"value":1.0},"order":{"field":"__ggsql_row_index__","type":"quantitative"},"size":{"field":"__ggsql_aes_linewidth__","legend":{"labelExpr":"datum.label == '100000' ? '100000' : datum.label == '200000' ? '200000' : datum.label == '300000' ? '300000' : datum.label","values":[100000.0,200000.0,300000.0]},"scale":{"domain":[4000.0,340000.0],"range":[1.3333333333333333,8.0]},"title":"survivors","type":"quantitative"},"strokeDash":{"value":[]},"x":{"axis":{"labelExpr":"datum.label == '30' ? '30' : datum.label == '35' ? '35' : datum.label == '25' ? '25' : datum.label","values":[25.0,30.0,35.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[23.315,38.385000000000005],"zero":false},"title":"long","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '55.5' ? '55.5' : datum.label == '55' ? '55' : datum.label == '54.5' ? '54.5' : datum.label","values":[54.5,55.0,55.5]},"field":"__ggsql_aes_pos2__","scale":{"domain":[54.015,55.885],"zero":false},"stack":null,"title":"lat","type":"quantitative"}},"mark":{"clip":true,"stroke":null,"type":"trail"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1776252304774';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="detailing" class="level2">
+<h2 class="anchored" data-anchor-id="detailing">Detailing</h2>
+<p>Now that we have all the data included in the ways we want, we can start detailing the graphic to our tastes. The first thing we might do is to pick some better colours. Because we have two levels for the <code>direction</code> variable —<strong>A</strong>dvance and <strong>R</strong>etreat— we can create a new colour scale for the <code>stroke</code> aesthetic. We’ll choose the colours to more closely resemble the original graphic by Minard. We set the palette using the <code>TO</code> keyword, and format the labels using <code>RENAMING</code>.</p>
+<div id="e8c55b9a" class="cell" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> direction AS <span class="at">stroke</span>, survivors AS <span class="at">linewidth</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PARTITION</span> BY direction, group</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SCALE</span> <span class="at">stroke</span> <span class="kw">TO</span> [<span class="st">'burlywood'</span>, <span class="st">'black'</span>]</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">RENAMING</span> <span class="st">'A'</span> <span class="op">=&gt;</span> <span class="st">'Advance'</span>, <span class="st">'R'</span> <span class="op">=&gt;</span> <span class="st">'Retreat'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<div id="vis-1776252304799"></div>
+
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":37.7,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":98000,"__ggsql_aes_pos1__":37.5,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":97000,"__ggsql_aes_pos1__":37.0,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":96000,"__ggsql_aes_pos1__":36.8,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":87000,"__ggsql_aes_pos1__":35.4,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":55000,"__ggsql_aes_pos1__":34.3,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":37000,"__ggsql_aes_pos1__":33.3,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":24000,"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.6,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":30.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":27.5,"__ggsql_aes_pos2__":54.5,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":12000,"__ggsql_aes_pos1__":26.8,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":13,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":14000,"__ggsql_aes_pos1__":26.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":14,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":8000,"__ggsql_aes_pos1__":25.0,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":15,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":4000,"__ggsql_aes_pos1__":24.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":16,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":4000,"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":17,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":4000,"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":18,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":33000,"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":19,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_linewidth__":30000,"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":20,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_linewidth__":30000,"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.1,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":21,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_linewidth__":28000,"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":22,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":23,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":24,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":25,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_linewidth__":340000,"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":26,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":340000,"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":27,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":340000,"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":28,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":320000,"__ggsql_aes_pos1__":26.0,"__ggsql_aes_pos2__":54.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":29,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":300000,"__ggsql_aes_pos1__":27.0,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":30,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":280000,"__ggsql_aes_pos1__":28.0,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":31,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":240000,"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":32,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":210000,"__ggsql_aes_pos1__":29.0,"__ggsql_aes_pos2__":55.1,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":33,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":180000,"__ggsql_aes_pos1__":30.0,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":34,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":175000,"__ggsql_aes_pos1__":30.3,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":35,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":145000,"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":36,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":140000,"__ggsql_aes_pos1__":33.2,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":37,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":127100,"__ggsql_aes_pos1__":34.4,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":38,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":35.5,"__ggsql_aes_pos2__":55.4,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":39,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":36.0,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":40,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":37.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":41,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":60000,"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.1,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":42,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":60000,"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":43,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":60000,"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":44,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":40000,"__ggsql_aes_pos1__":26.6,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":45,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":33000,"__ggsql_aes_pos1__":27.4,"__ggsql_aes_pos2__":55.6,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":46,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":33000,"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":47,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":22000,"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":48,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3},{"__ggsql_aes_linewidth__":22000,"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":49,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3},{"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":50,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3}]},"height":"container","layer":[{"encoding":{"detail":[{"field":"direction","type":"nominal"},{"field":"group","type":"nominal"},{"field":"__ggsql_aes_stroke__","type":"nominal"}],"fill":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'A' ? 'Advance' : datum.label == 'R' ? 'Retreat' : datum.label"},"scale":{"domain":["A","R"],"range":["#deb887","#000000"]},"title":"direction","type":"nominal"},"fillOpacity":{"value":1.0},"order":{"field":"__ggsql_row_index__","type":"quantitative"},"size":{"field":"__ggsql_aes_linewidth__","legend":{"labelExpr":"datum.label == '300000' ? '300000' : datum.label == '100000' ? '100000' : datum.label == '200000' ? '200000' : datum.label","values":[100000.0,200000.0,300000.0]},"scale":{"domain":[4000.0,340000.0],"range":[1.3333333333333333,8.0]},"title":"survivors","type":"quantitative"},"strokeDash":{"value":[]},"x":{"axis":{"labelExpr":"datum.label == '35' ? '35' : datum.label == '30' ? '30' : datum.label == '25' ? '25' : datum.label","values":[25.0,30.0,35.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[23.315,38.385000000000005],"zero":false},"title":"long","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '55' ? '55' : datum.label == '55.5' ? '55.5' : datum.label == '54.5' ? '54.5' : datum.label","values":[54.5,55.0,55.5]},"field":"__ggsql_aes_pos2__","scale":{"domain":[54.015,55.885],"zero":false},"stack":null,"title":"lat","type":"quantitative"}},"mark":{"clip":true,"stroke":null,"type":"trail"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1776252304799';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>Now for a slightly more complicated scale, we’re going to set one for the <code>linewidth</code> variable that represent the number of troops. If you want to build in some extra intuition for the scale, you can let 0 troops coincide with 0 linewidth. We define the output range using <code>TO [0, 20]</code> because for a continuous variable it expects the output limits. Slightly more elaborate is the input domain, where we use <code>FROM [0, null]</code> to state that the scale should start at 0 and go up to the largest value in the data. Because both the input and output ranges start at 0, we get a well-proportioned line.</p>
+<div id="ac360023" class="cell" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> direction AS <span class="at">stroke</span>, survivors AS <span class="at">linewidth</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PARTITION</span> BY direction, group</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SCALE</span> <span class="at">stroke</span> <span class="kw">TO</span> [<span class="st">'burlywood'</span>, <span class="st">'black'</span>]</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">RENAMING</span> <span class="st">'A'</span> <span class="op">=&gt;</span> <span class="st">'Advance'</span>, <span class="st">'R'</span> <span class="op">=&gt;</span> <span class="st">'Retreat'</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SCALE</span> <span class="at">linewidth</span> <span class="kw">FROM</span> [<span class="dv">0</span>, null] <span class="kw">TO</span> [<span class="dv">0</span>, <span class="dv">20</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<div id="vis-1776252304827"></div>
+
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":37.7,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":98000,"__ggsql_aes_pos1__":37.5,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":97000,"__ggsql_aes_pos1__":37.0,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":96000,"__ggsql_aes_pos1__":36.8,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":87000,"__ggsql_aes_pos1__":35.4,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":55000,"__ggsql_aes_pos1__":34.3,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":37000,"__ggsql_aes_pos1__":33.3,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":24000,"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.6,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":30.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":27.5,"__ggsql_aes_pos2__":54.5,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":12000,"__ggsql_aes_pos1__":26.8,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":13,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":14000,"__ggsql_aes_pos1__":26.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":14,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":8000,"__ggsql_aes_pos1__":25.0,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":15,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":4000,"__ggsql_aes_pos1__":24.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":16,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":4000,"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":17,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":4000,"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":18,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_linewidth__":33000,"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":19,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_linewidth__":30000,"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":20,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_linewidth__":30000,"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.1,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":21,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_linewidth__":28000,"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":22,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":23,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":24,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":25,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_linewidth__":340000,"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":26,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":340000,"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":27,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":340000,"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":28,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":320000,"__ggsql_aes_pos1__":26.0,"__ggsql_aes_pos2__":54.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":29,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":300000,"__ggsql_aes_pos1__":27.0,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":30,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":280000,"__ggsql_aes_pos1__":28.0,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":31,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":240000,"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":32,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":210000,"__ggsql_aes_pos1__":29.0,"__ggsql_aes_pos2__":55.1,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":33,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":180000,"__ggsql_aes_pos1__":30.0,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":34,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":175000,"__ggsql_aes_pos1__":30.3,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":35,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":145000,"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":36,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":140000,"__ggsql_aes_pos1__":33.2,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":37,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":127100,"__ggsql_aes_pos1__":34.4,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":38,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":35.5,"__ggsql_aes_pos2__":55.4,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":39,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":36.0,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":40,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":37.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":41,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_linewidth__":60000,"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.1,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":42,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":60000,"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":43,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":60000,"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":44,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":40000,"__ggsql_aes_pos1__":26.6,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":45,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":33000,"__ggsql_aes_pos1__":27.4,"__ggsql_aes_pos2__":55.6,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":46,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":33000,"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":47,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_linewidth__":22000,"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":48,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3},{"__ggsql_aes_linewidth__":22000,"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":49,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3},{"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":50,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3}]},"height":"container","layer":[{"encoding":{"detail":[{"field":"direction","type":"nominal"},{"field":"group","type":"nominal"},{"field":"__ggsql_aes_stroke__","type":"nominal"}],"fill":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'A' ? 'Advance' : datum.label == 'R' ? 'Retreat' : datum.label"},"scale":{"domain":["A","R"],"range":["#deb887","#000000"]},"title":"direction","type":"nominal"},"fillOpacity":{"value":1.0},"order":{"field":"__ggsql_row_index__","type":"quantitative"},"size":{"field":"__ggsql_aes_linewidth__","legend":{"labelExpr":"datum.label == '0' ? '0' : datum.label == '100000' ? '100000' : datum.label == '300000' ? '300000' : datum.label == '200000' ? '200000' : datum.label","values":[0.0,100000.0,200000.0,300000.0]},"scale":{"domain":[0.0,340000.0],"range":[0.0,26.666666666666664]},"title":"survivors","type":"quantitative"},"strokeDash":{"value":[]},"x":{"axis":{"labelExpr":"datum.label == '35' ? '35' : datum.label == '30' ? '30' : datum.label == '25' ? '25' : datum.label","values":[25.0,30.0,35.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[23.315,38.385000000000005],"zero":false},"title":"long","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '55' ? '55' : datum.label == '55.5' ? '55.5' : datum.label == '54.5' ? '54.5' : datum.label","values":[54.5,55.0,55.5]},"field":"__ggsql_aes_pos2__","scale":{"domain":[54.015,55.885],"zero":false},"stack":null,"title":"lat","type":"quantitative"}},"mark":{"clip":true,"stroke":null,"type":"trail"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1776252304827';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="polishing" class="level2">
+<h2 class="anchored" data-anchor-id="polishing">Polishing</h2>
+<p>While this map is nice, it is a little bit lacking in context. For sure the longitude and latitude coordinates are meaningful to cartographers among us. However, for the rest of us we may like some city names to contextualise the march a bit. There is a separate dataset wherein we’ve saved the city coordinates and their names. We can use this by adding a second <code>DRAW</code> layer. Note that <code>long AS x, lat AS y</code> is applied globally, so it also applies to our city layer. In our new layer, we need so set additional mapping <code>city AS label</code> and the new dataset using <code>FROM</code>. We can also make text a little bit smaller by setting the font size.</p>
+<div id="668de40a" class="cell" data-execution_count="9">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> direction AS <span class="at">stroke</span>, survivors AS <span class="at">linewidth</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PARTITION</span> BY direction, group</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">text</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> city AS <span class="kw">label</span> <span class="kw">FROM</span> <span class="st">'minard_cities.csv'</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    SETTING fontsize <span class="op">=&gt;</span> <span class="dv">6</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SCALE</span> <span class="at">stroke</span> <span class="kw">TO</span> [<span class="st">'burlywood'</span>, <span class="st">'black'</span>]</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">RENAMING</span> <span class="st">'A'</span> <span class="op">=&gt;</span> <span class="st">'Advance'</span>, <span class="st">'R'</span> <span class="op">=&gt;</span> <span class="st">'Retreat'</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SCALE</span> <span class="at">linewidth</span> <span class="kw">FROM</span> [<span class="dv">0</span>, null] <span class="kw">TO</span> [<span class="dv">0</span>, <span class="dv">30</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="9">
+<div id="vis-1776252304873"></div>
+
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":37.7,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":98000,"__ggsql_aes_pos1__":37.5,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":97000,"__ggsql_aes_pos1__":37.0,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":96000,"__ggsql_aes_pos1__":36.8,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":87000,"__ggsql_aes_pos1__":35.4,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":55000,"__ggsql_aes_pos1__":34.3,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":37000,"__ggsql_aes_pos1__":33.3,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":24000,"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.6,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":30.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":27.5,"__ggsql_aes_pos2__":54.5,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":12000,"__ggsql_aes_pos1__":26.8,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":13,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":14000,"__ggsql_aes_pos1__":26.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":14,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":8000,"__ggsql_aes_pos1__":25.0,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":15,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":4000,"__ggsql_aes_pos1__":24.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":16,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":4000,"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":17,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":4000,"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":18,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":33000,"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":19,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":30000,"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":20,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":30000,"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.1,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":21,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":28000,"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":22,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":23,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":24,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":25,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":340000,"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":26,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":340000,"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":27,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":340000,"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":28,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":320000,"__ggsql_aes_pos1__":26.0,"__ggsql_aes_pos2__":54.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":29,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":300000,"__ggsql_aes_pos1__":27.0,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":30,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":280000,"__ggsql_aes_pos1__":28.0,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":31,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":240000,"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":32,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":210000,"__ggsql_aes_pos1__":29.0,"__ggsql_aes_pos2__":55.1,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":33,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":180000,"__ggsql_aes_pos1__":30.0,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":34,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":175000,"__ggsql_aes_pos1__":30.3,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":35,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":145000,"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":36,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":140000,"__ggsql_aes_pos1__":33.2,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":37,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":127100,"__ggsql_aes_pos1__":34.4,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":38,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":35.5,"__ggsql_aes_pos2__":55.4,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":39,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":36.0,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":40,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":37.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":41,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":60000,"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.1,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":42,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":60000,"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":43,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":60000,"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":44,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":40000,"__ggsql_aes_pos1__":26.6,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":45,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":33000,"__ggsql_aes_pos1__":27.4,"__ggsql_aes_pos2__":55.6,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":46,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":33000,"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":47,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":22000,"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":48,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":22000,"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":49,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":50,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3},{"__ggsql_aes_label__":"Kowno","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":51,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Wilna","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":25.3,"__ggsql_aes_pos2__":54.7,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":52,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Smorgoni","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":26.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":53,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Moiodexno","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":26.8,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":54,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Gloubokoe","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":27.7,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":55,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Minsk","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":27.6,"__ggsql_aes_pos2__":53.9,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":56,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Studienska","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":57,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Polotzk","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":58,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Bobr","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":59,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Witebsk","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":30.2,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":60,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Orscha","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":30.4,"__ggsql_aes_pos2__":54.5,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":61,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Mohilow","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":30.4,"__ggsql_aes_pos2__":53.9,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":62,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Smolensk","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":63,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Dorogobouge","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":33.2,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":64,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Wixma","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":34.3,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":65,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Chjat","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":34.4,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":66,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Mojaisk","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":36.0,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":67,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Moscou","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":37.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":68,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Tarantino","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":36.6,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":69,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Malo-Jarosewii","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":36.5,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":70,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null}]},"height":"container","layer":[{"encoding":{"detail":[{"field":"direction","type":"nominal"},{"field":"group","type":"nominal"},{"field":"__ggsql_aes_stroke__","type":"nominal"}],"fill":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'A' ? 'Advance' : datum.label == 'R' ? 'Retreat' : datum.label"},"scale":{"domain":["A","R"],"range":["#deb887","#000000"]},"title":"direction","type":"nominal"},"fillOpacity":{"value":1.0},"order":{"field":"__ggsql_row_index__","type":"quantitative"},"size":{"field":"__ggsql_aes_linewidth__","legend":{"labelExpr":"datum.label == '100000' ? '100000' : datum.label == '200000' ? '200000' : datum.label == '0' ? '0' : datum.label == '300000' ? '300000' : datum.label","values":[0.0,100000.0,200000.0,300000.0]},"scale":{"domain":[0.0,340000.0],"range":[0.0,40.0]},"title":"survivors","type":"quantitative"},"strokeDash":{"value":[]},"x":{"axis":{"labelExpr":"datum.label == '30' ? '30' : datum.label == '25' ? '25' : datum.label == '35' ? '35' : datum.label","values":[25.0,30.0,35.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[23.315,38.385000000000005],"zero":false},"title":"long","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '55.5' ? '55.5' : datum.label == '54.5' ? '54.5' : datum.label == '54' ? '54' : datum.label == '55' ? '55' : datum.label","values":[54.0,54.5,55.0,55.5]},"field":"__ggsql_aes_pos2__","scale":{"domain":[53.805,55.895],"zero":false},"stack":null,"title":"lat","type":"quantitative"}},"mark":{"clip":true,"stroke":null,"type":"trail"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":1.0},"size":{"value":8.0},"text":{"field":"__ggsql_aes_label__","legend":null,"scale":null,"title":"city","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '30' ? '30' : datum.label == '25' ? '25' : datum.label == '35' ? '35' : datum.label","values":[25.0,30.0,35.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[23.315,38.385000000000005],"zero":false},"title":"long","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '55.5' ? '55.5' : datum.label == '54.5' ? '54.5' : datum.label == '54' ? '54' : datum.label == '55' ? '55' : datum.label","values":[54.0,54.5,55.0,55.5]},"field":"__ggsql_aes_pos2__","scale":{"domain":[53.805,55.895],"zero":false},"stack":null,"title":"lat","type":"quantitative"}},"layer":[{"mark":{"align":"center","angle":0.0,"baseline":"middle","fontStyle":"normal","fontWeight":"normal","type":"text"},"transform":[{"filter":{"equal":"__ggsql_layer_1___font_0","field":"__ggsql_source__"}}]}]}],"width":"container"};
+    const visId = 'vis-1776252304873';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>An additional obvious way to polish your graphic is to add nicer titles for all your variables. We can use the <code>LABEL</code> statement to add custom labels for our plot. In the title, we escape the single quote mark by using <code>\'</code> so that we know it is not the end of the string yet. Moreover, we can use <code>null</code> to note that a title should be removed. In that way we can hide the <code>long</code> and <code>lat</code> labels from the position mapping.</p>
+<div id="741f0a25" class="cell" data-execution_count="10">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> direction AS <span class="at">stroke</span>, survivors AS <span class="at">linewidth</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PARTITION</span> BY direction, group</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">text</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> city AS <span class="kw">label</span> <span class="kw">FROM</span> <span class="st">'minard_cities.csv'</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    SETTING fontsize <span class="op">=&gt;</span> <span class="dv">6</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SCALE</span> <span class="at">stroke</span> <span class="kw">TO</span> [<span class="st">'burlywood'</span>, <span class="st">'black'</span>]</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">RENAMING</span> <span class="st">'A'</span> <span class="op">=&gt;</span> <span class="st">'Advance'</span>, <span class="st">'R'</span> <span class="op">=&gt;</span> <span class="st">'Retreat'</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SCALE</span> <span class="at">linewidth</span> <span class="kw">FROM</span> [<span class="dv">0</span>, null] <span class="kw">TO</span> [<span class="dv">0</span>, <span class="dv">20</span>]</span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>  <span class="kw">LABEL</span></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">title</span> <span class="op">=&gt;</span> <span class="st">'Napoleon</span><span class="sc">\'</span><span class="st">s Russian Campaign'</span>,</span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">subtitle</span> <span class="op">=&gt;</span> <span class="st">'Inspired by the graphic of C.J. Minard'</span>,</span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">linewidth</span> <span class="op">=&gt;</span> <span class="st">'Troops'</span>,</span>
+<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">stroke</span> <span class="op">=&gt;</span> <span class="st">'Direction'</span>,</span>
+<span id="cb10-16"><a href="#cb10-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">x</span> <span class="op">=&gt;</span> null,</span>
+<span id="cb10-17"><a href="#cb10-17" aria-hidden="true" tabindex="-1"></a>    <span class="at">y</span> <span class="op">=&gt;</span> null</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="10">
+<div id="vis-1776252304921"></div>
+
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":37.7,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":98000,"__ggsql_aes_pos1__":37.5,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":97000,"__ggsql_aes_pos1__":37.0,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":96000,"__ggsql_aes_pos1__":36.8,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":87000,"__ggsql_aes_pos1__":35.4,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":55000,"__ggsql_aes_pos1__":34.3,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":37000,"__ggsql_aes_pos1__":33.3,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":24000,"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.6,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":30.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":20000,"__ggsql_aes_pos1__":27.5,"__ggsql_aes_pos2__":54.5,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":12000,"__ggsql_aes_pos1__":26.8,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":13,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":14000,"__ggsql_aes_pos1__":26.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":14,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":8000,"__ggsql_aes_pos1__":25.0,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":15,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":4000,"__ggsql_aes_pos1__":24.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":16,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":4000,"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":17,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":4000,"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":18,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":33000,"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":19,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":30000,"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":20,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":30000,"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.1,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":21,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":28000,"__ggsql_aes_pos1__":28.3,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":22,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":23,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.2,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":24,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.1,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":"R","__ggsql_row_index__":25,"__ggsql_source__":"__ggsql_layer_0__","direction":"R","group":3},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":340000,"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":26,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":340000,"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":27,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":340000,"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":28,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":320000,"__ggsql_aes_pos1__":26.0,"__ggsql_aes_pos2__":54.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":29,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":300000,"__ggsql_aes_pos1__":27.0,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":30,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":280000,"__ggsql_aes_pos1__":28.0,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":31,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":240000,"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":32,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":210000,"__ggsql_aes_pos1__":29.0,"__ggsql_aes_pos2__":55.1,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":33,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":180000,"__ggsql_aes_pos1__":30.0,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":34,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":175000,"__ggsql_aes_pos1__":30.3,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":35,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":145000,"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":36,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":140000,"__ggsql_aes_pos1__":33.2,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":37,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":127100,"__ggsql_aes_pos1__":34.4,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":38,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":35.5,"__ggsql_aes_pos2__":55.4,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":39,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":36.0,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":40,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":100000,"__ggsql_aes_pos1__":37.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":41,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":1},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":60000,"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.1,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":42,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":60000,"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":43,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":60000,"__ggsql_aes_pos1__":25.5,"__ggsql_aes_pos2__":54.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":44,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":40000,"__ggsql_aes_pos1__":26.6,"__ggsql_aes_pos2__":55.7,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":45,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":33000,"__ggsql_aes_pos1__":27.4,"__ggsql_aes_pos2__":55.6,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":46,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":33000,"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":47,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":2},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":22000,"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":48,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":22000,"__ggsql_aes_pos1__":24.5,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":49,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3},{"__ggsql_aes_label__":null,"__ggsql_aes_linewidth__":6000,"__ggsql_aes_pos1__":24.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":50,"__ggsql_source__":"__ggsql_layer_0__","direction":"A","group":3},{"__ggsql_aes_label__":"Kowno","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":24.0,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":51,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Wilna","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":25.3,"__ggsql_aes_pos2__":54.7,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":52,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Smorgoni","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":26.4,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":53,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Moiodexno","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":26.8,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":54,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Gloubokoe","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":27.7,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":55,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Minsk","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":27.6,"__ggsql_aes_pos2__":53.9,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":56,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Studienska","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":28.5,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":57,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Polotzk","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":28.7,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":58,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Bobr","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":29.2,"__ggsql_aes_pos2__":54.4,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":59,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Witebsk","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":30.2,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":60,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Orscha","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":30.4,"__ggsql_aes_pos2__":54.5,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":61,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Mohilow","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":30.4,"__ggsql_aes_pos2__":53.9,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":62,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Smolensk","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":32.0,"__ggsql_aes_pos2__":54.8,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":63,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Dorogobouge","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":33.2,"__ggsql_aes_pos2__":54.9,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":64,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Wixma","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":34.3,"__ggsql_aes_pos2__":55.2,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":65,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Chjat","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":34.4,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":66,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Mojaisk","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":36.0,"__ggsql_aes_pos2__":55.5,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":67,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Moscou","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":37.6,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":68,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Tarantino","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":36.6,"__ggsql_aes_pos2__":55.3,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":69,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null},{"__ggsql_aes_label__":"Malo-Jarosewii","__ggsql_aes_linewidth__":null,"__ggsql_aes_pos1__":36.5,"__ggsql_aes_pos2__":55.0,"__ggsql_aes_stroke__":null,"__ggsql_row_index__":70,"__ggsql_source__":"__ggsql_layer_1___font_0","direction":null,"group":null}]},"height":"container","layer":[{"encoding":{"detail":[{"field":"direction","type":"nominal"},{"field":"group","type":"nominal"},{"field":"__ggsql_aes_stroke__","type":"nominal"}],"fill":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'R' ? 'Retreat' : datum.label == 'A' ? 'Advance' : datum.label"},"scale":{"domain":["A","R"],"range":["#deb887","#000000"]},"title":"Direction","type":"nominal"},"fillOpacity":{"value":1.0},"order":{"field":"__ggsql_row_index__","type":"quantitative"},"size":{"field":"__ggsql_aes_linewidth__","legend":{"labelExpr":"datum.label == '300000' ? '300000' : datum.label == '0' ? '0' : datum.label == '200000' ? '200000' : datum.label == '100000' ? '100000' : datum.label","values":[0.0,100000.0,200000.0,300000.0]},"scale":{"domain":[0.0,340000.0],"range":[0.0,26.666666666666664]},"title":"Troops","type":"quantitative"},"strokeDash":{"value":[]},"x":{"axis":{"labelExpr":"datum.label == '25' ? '25' : datum.label == '30' ? '30' : datum.label == '35' ? '35' : datum.label","values":[25.0,30.0,35.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[23.315,38.385000000000005],"zero":false},"title":null,"type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '55.5' ? '55.5' : datum.label == '54.5' ? '54.5' : datum.label == '54' ? '54' : datum.label == '55' ? '55' : datum.label","values":[54.0,54.5,55.0,55.5]},"field":"__ggsql_aes_pos2__","scale":{"domain":[53.805,55.895],"zero":false},"stack":null,"title":null,"type":"quantitative"}},"mark":{"clip":true,"stroke":null,"type":"trail"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":1.0},"size":{"value":8.0},"text":{"field":"__ggsql_aes_label__","legend":null,"scale":null,"title":"city","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '25' ? '25' : datum.label == '30' ? '30' : datum.label == '35' ? '35' : datum.label","values":[25.0,30.0,35.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[23.315,38.385000000000005],"zero":false},"title":null,"type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '55.5' ? '55.5' : datum.label == '54.5' ? '54.5' : datum.label == '54' ? '54' : datum.label == '55' ? '55' : datum.label","values":[54.0,54.5,55.0,55.5]},"field":"__ggsql_aes_pos2__","scale":{"domain":[53.805,55.895],"zero":false},"stack":null,"title":null,"type":"quantitative"}},"layer":[{"mark":{"align":"center","angle":0.0,"baseline":"middle","fontStyle":"normal","fontWeight":"normal","type":"text"},"transform":[{"filter":{"equal":"__ggsql_layer_1___font_0","field":"__ggsql_source__"}}]}]}],"title":{"subtitle":"Inspired by the graphic of C.J. Minard","text":"Napoleon's Russian Campaign"},"width":"container"};
+    const visId = 'vis-1776252304921';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>And there we have it: a reproduction of Minard’s infographic on Napoleon’s Russian campaign.</p>
+
+
+
+</section>
+
+<div id="quarto-appendix" class="default"><section class="quarto-appendix-contents" role="doc-bibliography" id="quarto-bibliography"><h2 class="anchored quarto-appendix-heading">References</h2><div id="refs" class="references csl-bib-body hanging-indent" role="list">
+<div id="ref-friendly2002" class="csl-entry" role="listitem">
+Friendly, Michael. 2002. <span>“Visions and Re-Visions of Charles Joseph Minard.”</span> <em>Journal of Educational and Behavioral Statistics</em> 27 (1): 31–51. <a href="https://doi.org/10.3102/10769986027001031">https://doi.org/10.3102/10769986027001031</a>.
+</div>
+</div></section></div></main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/ggsql\.org");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer><script type="module">
+  const offset = document.querySelector('meta[name="quarto:offset"]')?.content || './';
+  const base = offset + 'wasm/';
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = base + 'quarto.css';
+  document.head.appendChild(link);
+  import(base + 'quarto.js');
+</script>
+<script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","descPosition":"bottom","loop":false,"openEffect":"zoom","selector":".lightbox"});
+(function() {
+  let previousOnload = window.onload;
+  window.onload = () => {
+    if (previousOnload) {
+      previousOnload();
+    }
+    lightboxQuarto.on('slide_before_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      const href = trigger.getAttribute('href');
+      if (href !== null) {
+        const imgEl = window.document.querySelector(`a[href="${href}"] img`);
+        if (imgEl !== null) {
+          const srcAttr = imgEl.getAttribute("src");
+          if (srcAttr && srcAttr.startsWith("data:")) {
+            slideConfig.href = srcAttr;
+          }
+        }
+      } 
+    });
+  
+    lightboxQuarto.on('slide_after_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(slideNode);
+      }
+    });
+  
+  };
+  
+})();
+          </script>
+
+
+
+
+</body></html>

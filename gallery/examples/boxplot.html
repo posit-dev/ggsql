@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.3">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="Showing groups of distributions of single numeric variables">
+
+<title>Box plots – ggsql</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<link href="../../assets/icon.svg" rel="icon" type="image/svg+xml">
+<script src="../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-286b0d4f737c5af6226422bdceee2d85.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-dark-286b0d4f737c5af6226422bdceee2d85.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-286b0d4f737c5af6226422bdceee2d85.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap-b068bd8fbd0943443b2767a143b5203c.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-dark-c0e6253991c03487a1849754f0ab8899.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-b068bd8fbd0943443b2767a143b5203c.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [],
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+<script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
+<!-- Privacy-friendly analytics by Plausible -->
+<script async="" src="https://plausible.io/js/pa-eH2pS73nQmBLURrhxXgML.js"></script>
+<script>
+    window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+    plausible.init()
+</script>
+
+
+<meta property="og:title" content="Box plots – ggsql">
+<meta property="og:description" content="Showing groups of distributions of single numeric variables">
+<meta property="og:image" content="https://ggsql.org/gallery/examples/thumbnails/boxplot.svg">
+<meta property="og:site_name" content="ggsql">
+<meta name="twitter:title" content="Box plots – ggsql">
+<meta name="twitter:description" content="Showing groups of distributions of single numeric variables">
+<meta name="twitter:image" content="https://ggsql.org/gallery/examples/thumbnails/boxplot.svg">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a href="../../index.html" class="navbar-brand navbar-brand-logo">
+    <img src="../../assets/icon.svg" alt="" class="navbar-logo light-content">
+    <img src="../../assets/icon.svg" alt="" class="navbar-logo dark-content">
+    </a>
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">ggsql</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../get_started/installation.html"> 
+<span class="menu-text">Get started</span></a>
+  </li>  
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-syntax" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Syntax</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-syntax">    
+        <li>
+    <a class="dropdown-item" href="../../syntax/index.html">
+ <span class="dropdown-text">Overview</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/visualise.html">
+ <span class="dropdown-text"><code>VISUALISE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/draw.html">
+ <span class="dropdown-text"><code>DRAW</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/place.html">
+ <span class="dropdown-text"><code>PLACE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/scale.html">
+ <span class="dropdown-text"><code>SCALE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/facet.html">
+ <span class="dropdown-text"><code>FACET</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/project.html">
+ <span class="dropdown-text"><code>PROJECT</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/label.html">
+ <span class="dropdown-text"><code>LABEL</code></span></a>
+  </li>  
+    </ul>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../../gallery/index.html"> 
+<span class="menu-text">Gallery</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../faq.html"> 
+<span class="menu-text">FAQ</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../wasm/index.html"> 
+<span class="menu-text">Playground</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+    <div class="dropdown">
+      <a href="" title="" id="quarto-navigation-tool-dropdown-0" class="quarto-navigation-tool dropdown-toggle px-1" data-bs-toggle="dropdown" aria-expanded="false" role="link" aria-label=""><i class="bi bi-github"></i></a>
+      <ul class="dropdown-menu" aria-labelledby="quarto-navigation-tool-dropdown-0">
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/ggsql-dev/ggsql">
+            Source Code
+            </a>
+          </li>
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/ggsql-dev/ggsql/issues">
+            Report a Bug
+            </a>
+          </li>
+      </ul>
+    </div>
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <div id="quarto-announcement" data-announcement-id="a3e2a40f560b81649f1436c0b08f2025" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
+<p>ggsql is still in early development and all functionality is subject to change</p>
+</div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#code" id="toc-code" class="nav-link active" data-scroll-target="#code">Code</a></li>
+  <li><a href="#explanation" id="toc-explanation" class="nav-link" data-scroll-target="#explanation">Explanation</a></li>
+  <li><a href="#variations" id="toc-variations" class="nav-link" data-scroll-target="#variations">Variations</a>
+  <ul class="collapse">
+  <li><a href="#dodging" id="toc-dodging" class="nav-link" data-scroll-target="#dodging">Dodging</a></li>
+  <li><a href="#horizontal" id="toc-horizontal" class="nav-link" data-scroll-target="#horizontal">Horizontal</a></li>
+  <li><a href="#with-individual-datapoints" id="toc-with-individual-datapoints" class="nav-link" data-scroll-target="#with-individual-datapoints">With individual datapoints</a></li>
+  </ul></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Box plots</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">basic</div>
+    <div class="quarto-category">boxplot</div>
+    <div class="quarto-category">distribution</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    Showing groups of distributions of single numeric variables
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<p>Boxplots are a popular way to display a summary of a distribution of single continuous variables. It is good to keep in mind boxplots hide the actual distribution of the data behind a summary, for example when the data is bi- or multi-modal. For every group, a boxplot displays the following 6 things:</p>
+<ol type="1">
+<li>The 25<sup>th</sup> percentile, or Q1, as the start of the box.</li>
+<li>The 50<sup>th</sup> percentile, i.e.&nbsp;median or Q2, as a line across the box.</li>
+<li>The 75<sup>th</sup> percentile, or Q3, as the end of the box. Together with Q1 we can compute the interquartile range: IQR = Q3 - Q1.</li>
+<li>The minimum data value or Q1 - 1.5 * IQR, whichever is larger. This is displayed as the lower whisker.</li>
+<li>The maximum data value or Q3 + 1.5 * IQR, whichever is smaller. This is displayed as the upper whisker.</li>
+<li>Outliers outside the whiskers, if present. These are drawn as individual points.</li>
+</ol>
+<section id="code" class="level2">
+<h2 class="anchored" data-anchor-id="code">Code</h2>
+<div id="586da85f" class="cell" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span>, bill_len <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">boxplot</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="1">
+<div id="vis-1776252314889"></div>
+
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":45.3,"__ggsql_aes_pos2end__":49.55,"__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":36.75,"__ggsql_aes_pos2end__":40.75,"__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":46.349999999999994,"__ggsql_aes_pos2end__":51.075,"__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":45.3,"__ggsql_aes_pos2end__":40.9,"__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":36.75,"__ggsql_aes_pos2end__":32.1,"__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":46.349999999999994,"__ggsql_aes_pos2end__":40.9,"__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":47.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":38.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":49.55,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":59.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__outlier"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":49.55,"__ggsql_aes_pos2end__":55.925,"__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":40.75,"__ggsql_aes_pos2end__":46.0,"__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":51.075,"__ggsql_aes_pos2end__":58.0,"__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"}]},"height":"container","layer":[{"encoding":{"fill":{"value":"white"},"fillOpacity":{"value":0.8},"shape":{"value":"circle"},"size":{"value":50.26548245743668},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'median' ? 'median' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'box' ? 'box' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'outlier' ? 'outlier' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '60' ? '60' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__"}},"mark":{"type":"point"},"transform":[{"filter":{"equal":"__ggsql_layer_0__outlier","field":"__ggsql_source__"}}]},{"encoding":{"fill":{"value":"white"},"fillOpacity":{"value":0.8},"size":{"value":1.3333333333333333},"stroke":{"value":"black"},"strokeDash":{"value":[]},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'median' ? 'median' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'box' ? 'box' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'outlier' ? 'outlier' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '60' ? '60' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '60' ? '60' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":null,"type":"quantitative"}},"mark":{"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__lower_whisker","field":"__ggsql_source__"}}]},{"encoding":{"fill":{"value":"white"},"fillOpacity":{"value":0.8},"size":{"value":1.3333333333333333},"stroke":{"value":"black"},"strokeDash":{"value":[]},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'median' ? 'median' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'box' ? 'box' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'outlier' ? 'outlier' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '60' ? '60' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '60' ? '60' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":null,"type":"quantitative"}},"mark":{"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__upper_whisker","field":"__ggsql_source__"}}]},{"encoding":{"fill":{"value":"white"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'median' ? 'median' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'box' ? 'box' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'outlier' ? 'outlier' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '60' ? '60' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '60' ? '60' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":null,"type":"quantitative"}},"mark":{"align":"center","type":"bar","width":{"expr":"bandwidth('x') * 0.9"}},"transform":[{"filter":{"equal":"__ggsql_layer_0__box","field":"__ggsql_source__"}}]},{"encoding":{"fill":{"value":"white"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'median' ? 'median' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'box' ? 'box' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'outlier' ? 'outlier' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '60' ? '60' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__"}},"mark":{"align":"center","type":"tick","width":{"expr":"bandwidth('x') * 0.9"}},"transform":[{"filter":{"equal":"__ggsql_layer_0__median","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1776252314889';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="explanation" class="level2">
+<h2 class="anchored" data-anchor-id="explanation">Explanation</h2>
+<ul>
+<li>The <code>VISUALISE ... FROM ggsql:penguins</code> loads the built-in penguins dataset.</li>
+<li><code>species AS x</code> sets a categorical variable to separate different groups.</li>
+<li><code>bill_len AS y</code> sets the numeric variable to summarise.</li>
+<li><code>DRAW boxplot</code> gives instructions to draw the boxplot layer.</li>
+</ul>
+</section>
+<section id="variations" class="level2">
+<h2 class="anchored" data-anchor-id="variations">Variations</h2>
+<section id="dodging" class="level3">
+<h3 class="anchored" data-anchor-id="dodging">Dodging</h3>
+<p>You can refine groups beyond the axis categorical variable, and the boxplots will be displayed in a dodged way.</p>
+<div id="b76bc87a" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span>, bill_len <span class="kw">AS</span> <span class="at">y</span>, island <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">boxplot</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<div id="vis-1776252314923"></div>
+
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"Torgersen","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.3,"__ggsql_aes_pos2__":36.650000000000006,"__ggsql_aes_pos2end__":41.1,"__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.3,"__ggsql_aes_pos2__":37.675,"__ggsql_aes_pos2end__":40.7,"__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.0,"__ggsql_aes_pos2__":36.75,"__ggsql_aes_pos2end__":40.375,"__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.3,"__ggsql_aes_pos2__":45.3,"__ggsql_aes_pos2end__":49.55,"__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.0,"__ggsql_aes_pos2__":46.349999999999994,"__ggsql_aes_pos2end__":51.075,"__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.0,"__ggsql_aes_pos2__":46.349999999999994,"__ggsql_aes_pos2end__":40.9,"__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_fill__":"Torgersen","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.3,"__ggsql_aes_pos2__":36.650000000000006,"__ggsql_aes_pos2end__":33.5,"__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.3,"__ggsql_aes_pos2__":37.675,"__ggsql_aes_pos2end__":34.5,"__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.0,"__ggsql_aes_pos2__":36.75,"__ggsql_aes_pos2end__":32.1,"__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.3,"__ggsql_aes_pos2__":45.3,"__ggsql_aes_pos2end__":40.9,"__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.0,"__ggsql_aes_pos2__":49.55,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_fill__":"Torgersen","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.3,"__ggsql_aes_pos2__":38.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.3,"__ggsql_aes_pos2__":38.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.0,"__ggsql_aes_pos2__":38.55,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":13,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.3,"__ggsql_aes_pos2__":47.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":14,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.3,"__ggsql_aes_pos2__":45.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":15,"__ggsql_source__":"__ggsql_layer_0__outlier"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.3,"__ggsql_aes_pos2__":59.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":16,"__ggsql_source__":"__ggsql_layer_0__outlier"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.0,"__ggsql_aes_pos2__":51.075,"__ggsql_aes_pos2end__":58.0,"__ggsql_row_index__":17,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_fill__":"Torgersen","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.3,"__ggsql_aes_pos2__":41.1,"__ggsql_aes_pos2end__":46.0,"__ggsql_row_index__":18,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.3,"__ggsql_aes_pos2__":40.7,"__ggsql_aes_pos2end__":45.2375,"__ggsql_row_index__":19,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.0,"__ggsql_aes_pos2__":40.375,"__ggsql_aes_pos2end__":44.1,"__ggsql_row_index__":20,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.3,"__ggsql_aes_pos2__":49.55,"__ggsql_aes_pos2end__":55.925,"__ggsql_row_index__":21,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Biscoe' ? 'Biscoe' : datum.label == 'Dream' ? 'Dream' : datum.label == 'Torgersen' ? 'Torgersen' : datum.label"},"scale":{"domain":["Biscoe","Dream","Torgersen"],"range":["#0067A5","#F38400","#008856"]},"title":"island","type":"nominal"},"fillOpacity":{"value":0.8},"shape":{"value":"circle"},"size":{"value":50.26548245743668},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'outlier' ? 'outlier' : datum.label == 'box' ? 'box' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"xOffset":{"field":"__ggsql_aes_pos1offset__","scale":{"domain":[-0.5,0.5]},"type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__"}},"mark":{"type":"point"},"transform":[{"filter":{"equal":"__ggsql_layer_0__outlier","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Biscoe' ? 'Biscoe' : datum.label == 'Dream' ? 'Dream' : datum.label == 'Torgersen' ? 'Torgersen' : datum.label"},"scale":{"domain":["Biscoe","Dream","Torgersen"],"range":["#0067A5","#F38400","#008856"]},"title":"island","type":"nominal"},"fillOpacity":{"value":0.8},"size":{"value":1.3333333333333333},"stroke":{"value":"black"},"strokeDash":{"value":[]},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'outlier' ? 'outlier' : datum.label == 'box' ? 'box' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"xOffset":{"field":"__ggsql_aes_pos1offset__","scale":{"domain":[-0.5,0.5]},"type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":null,"type":"quantitative"}},"mark":{"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__lower_whisker","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Biscoe' ? 'Biscoe' : datum.label == 'Dream' ? 'Dream' : datum.label == 'Torgersen' ? 'Torgersen' : datum.label"},"scale":{"domain":["Biscoe","Dream","Torgersen"],"range":["#0067A5","#F38400","#008856"]},"title":"island","type":"nominal"},"fillOpacity":{"value":0.8},"size":{"value":1.3333333333333333},"stroke":{"value":"black"},"strokeDash":{"value":[]},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'outlier' ? 'outlier' : datum.label == 'box' ? 'box' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"xOffset":{"field":"__ggsql_aes_pos1offset__","scale":{"domain":[-0.5,0.5]},"type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":null,"type":"quantitative"}},"mark":{"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__upper_whisker","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Biscoe' ? 'Biscoe' : datum.label == 'Dream' ? 'Dream' : datum.label == 'Torgersen' ? 'Torgersen' : datum.label"},"scale":{"domain":["Biscoe","Dream","Torgersen"],"range":["#0067A5","#F38400","#008856"]},"title":"island","type":"nominal"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'outlier' ? 'outlier' : datum.label == 'box' ? 'box' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"xOffset":{"field":"__ggsql_aes_pos1offset__","scale":{"domain":[-0.5,0.5]},"type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":null,"type":"quantitative"}},"mark":{"align":"center","type":"bar","width":{"expr":"bandwidth('x') * 0.3"}},"transform":[{"filter":{"equal":"__ggsql_layer_0__box","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Biscoe' ? 'Biscoe' : datum.label == 'Dream' ? 'Dream' : datum.label == 'Torgersen' ? 'Torgersen' : datum.label"},"scale":{"domain":["Biscoe","Dream","Torgersen"],"range":["#0067A5","#F38400","#008856"]},"title":"island","type":"nominal"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'outlier' ? 'outlier' : datum.label == 'box' ? 'box' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"xOffset":{"field":"__ggsql_aes_pos1offset__","scale":{"domain":[-0.5,0.5]},"type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__"}},"mark":{"align":"center","type":"tick","width":{"expr":"bandwidth('x') * 0.3"}},"transform":[{"filter":{"equal":"__ggsql_layer_0__median","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1776252314923';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>However, dodging might be unproductive or counterintuitive in some cases. For example if we double-encode groups, like <code>species</code> as both <code>x</code> <em>and</em> <code>fill</code> in the plot below, dodging looks bad.</p>
+<div id="b1d46f57" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span>, bill_len <span class="kw">AS</span> <span class="at">y</span>, species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">boxplot</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<div id="vis-1776252314956"></div>
+
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.3,"__ggsql_aes_pos2__":36.75,"__ggsql_aes_pos2end__":40.75,"__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.3,"__ggsql_aes_pos2__":45.3,"__ggsql_aes_pos2end__":49.55,"__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.0,"__ggsql_aes_pos2__":46.349999999999994,"__ggsql_aes_pos2end__":51.075,"__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.3,"__ggsql_aes_pos2__":36.75,"__ggsql_aes_pos2end__":32.1,"__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.3,"__ggsql_aes_pos2__":45.3,"__ggsql_aes_pos2end__":40.9,"__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.0,"__ggsql_aes_pos2__":46.349999999999994,"__ggsql_aes_pos2end__":40.9,"__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.3,"__ggsql_aes_pos2__":47.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.0,"__ggsql_aes_pos2__":49.55,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.3,"__ggsql_aes_pos2__":38.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.3,"__ggsql_aes_pos2__":59.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__outlier"},{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.3,"__ggsql_aes_pos2__":49.55,"__ggsql_aes_pos2end__":55.925,"__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.0,"__ggsql_aes_pos2__":51.075,"__ggsql_aes_pos2end__":58.0,"__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.3,"__ggsql_aes_pos2__":40.75,"__ggsql_aes_pos2end__":46.0,"__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F38400","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"shape":{"value":"circle"},"size":{"value":50.26548245743668},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'box' ? 'box' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'outlier' ? 'outlier' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"xOffset":{"field":"__ggsql_aes_pos1offset__","scale":{"domain":[-0.5,0.5]},"type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '50' ? '50' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__"}},"mark":{"type":"point"},"transform":[{"filter":{"equal":"__ggsql_layer_0__outlier","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F38400","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"size":{"value":1.3333333333333333},"stroke":{"value":"black"},"strokeDash":{"value":[]},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'box' ? 'box' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'outlier' ? 'outlier' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"xOffset":{"field":"__ggsql_aes_pos1offset__","scale":{"domain":[-0.5,0.5]},"type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '50' ? '50' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '50' ? '50' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":null,"type":"quantitative"}},"mark":{"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__lower_whisker","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F38400","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"size":{"value":1.3333333333333333},"stroke":{"value":"black"},"strokeDash":{"value":[]},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'box' ? 'box' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'outlier' ? 'outlier' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"xOffset":{"field":"__ggsql_aes_pos1offset__","scale":{"domain":[-0.5,0.5]},"type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '50' ? '50' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '50' ? '50' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":null,"type":"quantitative"}},"mark":{"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__upper_whisker","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F38400","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'box' ? 'box' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'outlier' ? 'outlier' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"xOffset":{"field":"__ggsql_aes_pos1offset__","scale":{"domain":[-0.5,0.5]},"type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '50' ? '50' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '50' ? '50' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":null,"type":"quantitative"}},"mark":{"align":"center","type":"bar","width":{"expr":"bandwidth('x') * 0.3"}},"transform":[{"filter":{"equal":"__ggsql_layer_0__box","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F38400","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'box' ? 'box' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'outlier' ? 'outlier' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"xOffset":{"field":"__ggsql_aes_pos1offset__","scale":{"domain":[-0.5,0.5]},"type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '50' ? '50' : datum.label == '60' ? '60' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__"}},"mark":{"align":"center","type":"tick","width":{"expr":"bandwidth('x') * 0.3"}},"transform":[{"filter":{"equal":"__ggsql_layer_0__median","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1776252314956';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+<p>We can disable the dodging by setting <code>position =&gt; 'identity'</code>.</p>
+<div id="c38b6ee9" class="cell" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span>, bill_len <span class="kw">AS</span> <span class="at">y</span>, species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">boxplot</span> <span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'identity'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<div id="vis-1776252314989"></div>
+
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":36.75,"__ggsql_aes_pos2end__":40.75,"__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":45.3,"__ggsql_aes_pos2end__":49.55,"__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":46.349999999999994,"__ggsql_aes_pos2end__":51.075,"__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":36.75,"__ggsql_aes_pos2end__":32.1,"__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":45.3,"__ggsql_aes_pos2end__":40.9,"__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":46.349999999999994,"__ggsql_aes_pos2end__":40.9,"__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":38.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":47.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":49.55,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":59.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__outlier"},{"__ggsql_aes_fill__":"Adelie","__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":40.75,"__ggsql_aes_pos2end__":46.0,"__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_fill__":"Gentoo","__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":49.55,"__ggsql_aes_pos2end__":55.925,"__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_fill__":"Chinstrap","__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":51.075,"__ggsql_aes_pos2end__":58.0,"__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F38400","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"shape":{"value":"circle"},"size":{"value":50.26548245743668},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'outlier' ? 'outlier' : datum.label == 'box' ? 'box' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__"}},"mark":{"type":"point"},"transform":[{"filter":{"equal":"__ggsql_layer_0__outlier","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F38400","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"size":{"value":1.3333333333333333},"stroke":{"value":"black"},"strokeDash":{"value":[]},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'outlier' ? 'outlier' : datum.label == 'box' ? 'box' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":null,"type":"quantitative"}},"mark":{"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__lower_whisker","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F38400","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"size":{"value":1.3333333333333333},"stroke":{"value":"black"},"strokeDash":{"value":[]},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'outlier' ? 'outlier' : datum.label == 'box' ? 'box' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":null,"type":"quantitative"}},"mark":{"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__upper_whisker","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F38400","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'outlier' ? 'outlier' : datum.label == 'box' ? 'box' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":null,"type":"quantitative"}},"mark":{"align":"center","type":"bar","width":{"expr":"bandwidth('x') * 0.9"}},"transform":[{"filter":{"equal":"__ggsql_layer_0__box","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"scale":{"domain":["Adelie","Chinstrap","Gentoo"],"range":["#0067A5","#F38400","#008856"]},"title":"species","type":"nominal"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'outlier' ? 'outlier' : datum.label == 'box' ? 'box' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__"}},"mark":{"align":"center","type":"tick","width":{"expr":"bandwidth('x') * 0.9"}},"transform":[{"filter":{"equal":"__ggsql_layer_0__median","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1776252314989';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="horizontal" class="level3">
+<h3 class="anchored" data-anchor-id="horizontal">Horizontal</h3>
+<p>To draw the boxplots horizontally, simply swap the <code>x</code> and <code>y</code> mapping. The orientation is detected automatically based on which variable is continuous and which is discrete.</p>
+<div id="566d5215" class="cell" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, species <span class="kw">AS</span> <span class="at">y</span>, island <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">boxplot</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<div id="vis-1776252315023"></div>
+
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":46.349999999999994,"__ggsql_aes_pos1end__":51.075,"__ggsql_aes_pos2__":"Chinstrap","__ggsql_aes_pos2offset__":0.0,"__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":37.675,"__ggsql_aes_pos1end__":40.7,"__ggsql_aes_pos2__":"Adelie","__ggsql_aes_pos2offset__":-0.3,"__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":36.75,"__ggsql_aes_pos1end__":40.375,"__ggsql_aes_pos2__":"Adelie","__ggsql_aes_pos2offset__":0.0,"__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":45.3,"__ggsql_aes_pos1end__":49.55,"__ggsql_aes_pos2__":"Gentoo","__ggsql_aes_pos2offset__":-0.3,"__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_fill__":"Torgersen","__ggsql_aes_pos1__":36.650000000000006,"__ggsql_aes_pos1end__":41.1,"__ggsql_aes_pos2__":"Adelie","__ggsql_aes_pos2offset__":0.3,"__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__box"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":37.675,"__ggsql_aes_pos1end__":34.5,"__ggsql_aes_pos2__":"Adelie","__ggsql_aes_pos2offset__":-0.3,"__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":36.75,"__ggsql_aes_pos1end__":32.1,"__ggsql_aes_pos2__":"Adelie","__ggsql_aes_pos2offset__":0.0,"__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":45.3,"__ggsql_aes_pos1end__":40.9,"__ggsql_aes_pos2__":"Gentoo","__ggsql_aes_pos2offset__":-0.3,"__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_fill__":"Torgersen","__ggsql_aes_pos1__":36.650000000000006,"__ggsql_aes_pos1end__":33.5,"__ggsql_aes_pos2__":"Adelie","__ggsql_aes_pos2offset__":0.3,"__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":46.349999999999994,"__ggsql_aes_pos1end__":40.9,"__ggsql_aes_pos2__":"Chinstrap","__ggsql_aes_pos2offset__":0.0,"__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__lower_whisker"},{"__ggsql_aes_fill__":"Torgersen","__ggsql_aes_pos1__":38.9,"__ggsql_aes_pos1end__":null,"__ggsql_aes_pos2__":"Adelie","__ggsql_aes_pos2offset__":0.3,"__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":38.7,"__ggsql_aes_pos1end__":null,"__ggsql_aes_pos2__":"Adelie","__ggsql_aes_pos2offset__":-0.3,"__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":38.55,"__ggsql_aes_pos1end__":null,"__ggsql_aes_pos2__":"Adelie","__ggsql_aes_pos2offset__":0.0,"__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":47.3,"__ggsql_aes_pos1end__":null,"__ggsql_aes_pos2__":"Gentoo","__ggsql_aes_pos2offset__":-0.3,"__ggsql_row_index__":13,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":49.55,"__ggsql_aes_pos1end__":null,"__ggsql_aes_pos2__":"Chinstrap","__ggsql_aes_pos2offset__":0.0,"__ggsql_row_index__":14,"__ggsql_source__":"__ggsql_layer_0__median"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":45.6,"__ggsql_aes_pos1end__":null,"__ggsql_aes_pos2__":"Adelie","__ggsql_aes_pos2offset__":-0.3,"__ggsql_row_index__":15,"__ggsql_source__":"__ggsql_layer_0__outlier"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":59.6,"__ggsql_aes_pos1end__":null,"__ggsql_aes_pos2__":"Gentoo","__ggsql_aes_pos2offset__":-0.3,"__ggsql_row_index__":16,"__ggsql_source__":"__ggsql_layer_0__outlier"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":40.7,"__ggsql_aes_pos1end__":45.2375,"__ggsql_aes_pos2__":"Adelie","__ggsql_aes_pos2offset__":-0.3,"__ggsql_row_index__":17,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":40.375,"__ggsql_aes_pos1end__":44.1,"__ggsql_aes_pos2__":"Adelie","__ggsql_aes_pos2offset__":0.0,"__ggsql_row_index__":18,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_fill__":"Biscoe","__ggsql_aes_pos1__":49.55,"__ggsql_aes_pos1end__":55.925,"__ggsql_aes_pos2__":"Gentoo","__ggsql_aes_pos2offset__":-0.3,"__ggsql_row_index__":19,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_fill__":"Torgersen","__ggsql_aes_pos1__":41.1,"__ggsql_aes_pos1end__":46.0,"__ggsql_aes_pos2__":"Adelie","__ggsql_aes_pos2offset__":0.3,"__ggsql_row_index__":20,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"},{"__ggsql_aes_fill__":"Dream","__ggsql_aes_pos1__":51.075,"__ggsql_aes_pos1end__":58.0,"__ggsql_aes_pos2__":"Chinstrap","__ggsql_aes_pos2offset__":0.0,"__ggsql_row_index__":21,"__ggsql_source__":"__ggsql_layer_0__upper_whisker"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Biscoe' ? 'Biscoe' : datum.label == 'Torgersen' ? 'Torgersen' : datum.label == 'Dream' ? 'Dream' : datum.label"},"scale":{"domain":["Biscoe","Dream","Torgersen"],"range":["#0067A5","#F38400","#008856"]},"title":"island","type":"nominal"},"fillOpacity":{"value":0.8},"shape":{"value":"circle"},"size":{"value":50.26548245743668},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'box' ? 'box' : datum.label == 'median' ? 'median' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'outlier' ? 'outlier' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[30.725,60.975],"zero":false},"title":"bill_len","type":"quantitative"},"x2":{"field":"__ggsql_aes_pos1end__"},"y":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos2__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"stack":null,"title":"species","type":"nominal"},"yOffset":{"field":"__ggsql_aes_pos2offset__","scale":{"domain":[-0.5,0.5]},"type":"quantitative"}},"mark":{"type":"point"},"transform":[{"filter":{"equal":"__ggsql_layer_0__outlier","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Biscoe' ? 'Biscoe' : datum.label == 'Torgersen' ? 'Torgersen' : datum.label == 'Dream' ? 'Dream' : datum.label"},"scale":{"domain":["Biscoe","Dream","Torgersen"],"range":["#0067A5","#F38400","#008856"]},"title":"island","type":"nominal"},"fillOpacity":{"value":0.8},"size":{"value":1.3333333333333333},"stroke":{"value":"black"},"strokeDash":{"value":[]},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'box' ? 'box' : datum.label == 'median' ? 'median' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'outlier' ? 'outlier' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[30.725,60.975],"zero":false},"title":"bill_len","type":"quantitative"},"x2":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos1end__","scale":{"domain":[30.725,60.975],"zero":false},"title":null,"type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos2__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"stack":null,"title":"species","type":"nominal"},"yOffset":{"field":"__ggsql_aes_pos2offset__","scale":{"domain":[-0.5,0.5]},"type":"quantitative"}},"mark":{"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__lower_whisker","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Biscoe' ? 'Biscoe' : datum.label == 'Torgersen' ? 'Torgersen' : datum.label == 'Dream' ? 'Dream' : datum.label"},"scale":{"domain":["Biscoe","Dream","Torgersen"],"range":["#0067A5","#F38400","#008856"]},"title":"island","type":"nominal"},"fillOpacity":{"value":0.8},"size":{"value":1.3333333333333333},"stroke":{"value":"black"},"strokeDash":{"value":[]},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'box' ? 'box' : datum.label == 'median' ? 'median' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'outlier' ? 'outlier' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[30.725,60.975],"zero":false},"title":"bill_len","type":"quantitative"},"x2":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos1end__","scale":{"domain":[30.725,60.975],"zero":false},"title":null,"type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos2__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"stack":null,"title":"species","type":"nominal"},"yOffset":{"field":"__ggsql_aes_pos2offset__","scale":{"domain":[-0.5,0.5]},"type":"quantitative"}},"mark":{"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__upper_whisker","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Biscoe' ? 'Biscoe' : datum.label == 'Torgersen' ? 'Torgersen' : datum.label == 'Dream' ? 'Dream' : datum.label"},"scale":{"domain":["Biscoe","Dream","Torgersen"],"range":["#0067A5","#F38400","#008856"]},"title":"island","type":"nominal"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'box' ? 'box' : datum.label == 'median' ? 'median' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'outlier' ? 'outlier' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[30.725,60.975],"zero":false},"title":"bill_len","type":"quantitative"},"x2":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos1end__","scale":{"domain":[30.725,60.975],"zero":false},"title":null,"type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos2__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"stack":null,"title":"species","type":"nominal"},"yOffset":{"field":"__ggsql_aes_pos2offset__","scale":{"domain":[-0.5,0.5]},"type":"quantitative"}},"mark":{"baseline":"middle","height":{"expr":"bandwidth('y') * 0.3"},"type":"bar"},"transform":[{"filter":{"equal":"__ggsql_layer_0__box","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_fill__","type":"nominal"},"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'Biscoe' ? 'Biscoe' : datum.label == 'Torgersen' ? 'Torgersen' : datum.label == 'Dream' ? 'Dream' : datum.label"},"scale":{"domain":["Biscoe","Dream","Torgersen"],"range":["#0067A5","#F38400","#008856"]},"title":"island","type":"nominal"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'box' ? 'box' : datum.label == 'median' ? 'median' : datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'outlier' ? 'outlier' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == '40' ? '40' : datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[30.725,60.975],"zero":false},"title":"bill_len","type":"quantitative"},"x2":{"field":"__ggsql_aes_pos1end__"},"y":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos2__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"stack":null,"title":"species","type":"nominal"},"yOffset":{"field":"__ggsql_aes_pos2offset__","scale":{"domain":[-0.5,0.5]},"type":"quantitative"}},"mark":{"baseline":"middle","height":{"expr":"bandwidth('y') * 0.3"},"type":"tick"},"transform":[{"filter":{"equal":"__ggsql_layer_0__median","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1776252315023';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+</section>
+<section id="with-individual-datapoints" class="level3">
+<h3 class="anchored" data-anchor-id="with-individual-datapoints">With individual datapoints</h3>
+<p>Because a boxplot is a summary, it may be a good idea to supplement them with individual datapoints so that you can’t be accused of ‘hiding’ the distribution. The datapoints can be jittered by setting <code>position =&gt; 'jitter'</code>. When you do this, make sure to turn <code>outliers =&gt; false</code> to not draw the outlier points twice across the two layers.</p>
+<!-- TODO: Figure out why the boxplot width is so small -->
+<div id="ec69453e" class="cell" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span>, bill_len <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">point</span> <span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'jitter'</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">boxplot</span> <span class="kw">SETTING</span> outliers <span class="op">=&gt;</span> false</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<div id="vis-1776252315070"></div>
+
+<script type="text/javascript">
+  (function() {
+    const spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.01881773498313593,"__ggsql_aes_pos2__":39.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.3829420979419069,"__ggsql_aes_pos2__":39.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.28940391599155646,"__ggsql_aes_pos2__":40.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.23792942485834528,"__ggsql_aes_pos2__":null,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.28686179122009503,"__ggsql_aes_pos2__":36.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.24585863151762935,"__ggsql_aes_pos2__":39.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.3461074873357396,"__ggsql_aes_pos2__":38.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.2230287017247047,"__ggsql_aes_pos2__":39.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.36658919296909903,"__ggsql_aes_pos2__":34.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.112875059559138,"__ggsql_aes_pos2__":42.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.3148295438551249,"__ggsql_aes_pos2__":37.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.08602643879856212,"__ggsql_aes_pos2__":37.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.0025749598401397455,"__ggsql_aes_pos2__":41.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.10991182691190818,"__ggsql_aes_pos2__":38.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":13,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.06618119676145794,"__ggsql_aes_pos2__":34.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":14,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.40210206194570713,"__ggsql_aes_pos2__":36.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":15,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.2786466484685758,"__ggsql_aes_pos2__":38.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":16,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.3626836971131169,"__ggsql_aes_pos2__":42.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":17,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.12533589907693785,"__ggsql_aes_pos2__":34.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":18,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.3805438959199334,"__ggsql_aes_pos2__":46.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":19,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.3838712634854348,"__ggsql_aes_pos2__":37.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":20,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.3041198503750777,"__ggsql_aes_pos2__":37.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":21,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.04584558634996327,"__ggsql_aes_pos2__":35.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":22,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.33506705727241765,"__ggsql_aes_pos2__":38.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":23,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.25527246832076095,"__ggsql_aes_pos2__":38.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":24,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.34271217707614693,"__ggsql_aes_pos2__":35.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":25,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.27220285380168846,"__ggsql_aes_pos2__":40.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":26,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.20884208518495215,"__ggsql_aes_pos2__":40.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":27,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.2407142742111743,"__ggsql_aes_pos2__":37.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":28,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.21989789931267095,"__ggsql_aes_pos2__":40.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":29,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.43010954552688824,"__ggsql_aes_pos2__":39.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":30,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.19607007438729795,"__ggsql_aes_pos2__":37.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":31,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.34722073486839816,"__ggsql_aes_pos2__":39.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":32,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.17379160290778675,"__ggsql_aes_pos2__":40.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":33,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.39473838675170214,"__ggsql_aes_pos2__":36.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":34,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.23746943244729551,"__ggsql_aes_pos2__":39.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":35,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.14993091720961008,"__ggsql_aes_pos2__":38.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":36,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.2833344410213965,"__ggsql_aes_pos2__":42.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":37,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.26643521902195155,"__ggsql_aes_pos2__":37.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":38,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.12058600387812714,"__ggsql_aes_pos2__":39.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":39,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.0715316987453109,"__ggsql_aes_pos2__":36.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":40,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.4017626724860798,"__ggsql_aes_pos2__":40.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":41,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.26564771280408617,"__ggsql_aes_pos2__":36.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":42,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.4185549049680185,"__ggsql_aes_pos2__":44.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":43,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.014157120704846538,"__ggsql_aes_pos2__":37.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":44,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.004219849846679491,"__ggsql_aes_pos2__":39.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":45,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.23785691826037372,"__ggsql_aes_pos2__":41.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":46,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.26647876868799314,"__ggsql_aes_pos2__":37.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":47,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.03390845049794117,"__ggsql_aes_pos2__":36.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":48,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.1749464818352607,"__ggsql_aes_pos2__":42.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":49,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.16942663366656965,"__ggsql_aes_pos2__":39.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":50,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.009732930537686911,"__ggsql_aes_pos2__":40.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":51,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.15305301703408922,"__ggsql_aes_pos2__":35.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":52,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.04970899547565492,"__ggsql_aes_pos2__":42.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":53,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.23390732696496072,"__ggsql_aes_pos2__":34.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":54,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.23918740615638784,"__ggsql_aes_pos2__":41.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":55,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.3663430891023709,"__ggsql_aes_pos2__":39.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":56,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.07414503328068393,"__ggsql_aes_pos2__":40.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":57,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.4233784038312397,"__ggsql_aes_pos2__":36.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":58,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.22247070113069772,"__ggsql_aes_pos2__":37.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":59,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.40191983328383063,"__ggsql_aes_pos2__":35.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":60,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.05044860994243732,"__ggsql_aes_pos2__":41.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":61,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.09850400996644593,"__ggsql_aes_pos2__":37.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":62,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.17974429846567727,"__ggsql_aes_pos2__":41.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":63,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.3070248447454019,"__ggsql_aes_pos2__":36.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":64,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.0903393679783483,"__ggsql_aes_pos2__":41.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":65,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.011515790992386388,"__ggsql_aes_pos2__":35.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":66,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.027625347259940022,"__ggsql_aes_pos2__":41.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":67,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.28179033284255167,"__ggsql_aes_pos2__":35.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":68,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.12817068005038515,"__ggsql_aes_pos2__":41.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":69,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.3581686548011369,"__ggsql_aes_pos2__":33.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":70,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.03091663945220968,"__ggsql_aes_pos2__":39.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":71,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.3822282314200335,"__ggsql_aes_pos2__":39.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":72,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.3803553442408934,"__ggsql_aes_pos2__":45.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":73,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.03788869712437833,"__ggsql_aes_pos2__":35.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":74,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.1406975685915874,"__ggsql_aes_pos2__":42.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":75,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.37871960142105593,"__ggsql_aes_pos2__":40.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":76,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.08277241694483585,"__ggsql_aes_pos2__":37.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":77,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.0991611431642531,"__ggsql_aes_pos2__":36.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":78,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.3456222911068911,"__ggsql_aes_pos2__":42.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":79,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.13323887943202337,"__ggsql_aes_pos2__":34.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":80,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.03860497966166,"__ggsql_aes_pos2__":42.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":81,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.14105724574862907,"__ggsql_aes_pos2__":36.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":82,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.1874158805651206,"__ggsql_aes_pos2__":35.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":83,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.16549350222784076,"__ggsql_aes_pos2__":37.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":84,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.09389714849270696,"__ggsql_aes_pos2__":41.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":85,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.35426779384177937,"__ggsql_aes_pos2__":36.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":86,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.021503893711319732,"__ggsql_aes_pos2__":36.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":87,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.35097323491318094,"__ggsql_aes_pos2__":38.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":88,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.11386905824445412,"__ggsql_aes_pos2__":38.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":89,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.10561458091765014,"__ggsql_aes_pos2__":35.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":90,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.25674761656055844,"__ggsql_aes_pos2__":41.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":91,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.2617042765503233,"__ggsql_aes_pos2__":34.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":92,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.35009579590101136,"__ggsql_aes_pos2__":39.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":93,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.3805564462898783,"__ggsql_aes_pos2__":36.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":94,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.2807449817907151,"__ggsql_aes_pos2__":40.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":95,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.38909991313394665,"__ggsql_aes_pos2__":38.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":96,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.3417759070409136,"__ggsql_aes_pos2__":40.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":97,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.189554419636096,"__ggsql_aes_pos2__":33.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":98,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.3769500188982974,"__ggsql_aes_pos2__":43.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":99,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.11386815266753147,"__ggsql_aes_pos2__":35.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":100,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.0271160882519897,"__ggsql_aes_pos2__":41.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":101,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.21031058379473355,"__ggsql_aes_pos2__":37.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":102,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.05481963123790127,"__ggsql_aes_pos2__":37.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":103,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.2676332391522496,"__ggsql_aes_pos2__":37.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":104,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.18568606428569792,"__ggsql_aes_pos2__":39.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":105,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.4414946790292092,"__ggsql_aes_pos2__":38.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":106,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.4251364415210728,"__ggsql_aes_pos2__":38.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":107,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.023905907030666307,"__ggsql_aes_pos2__":38.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":108,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.0615421129429382,"__ggsql_aes_pos2__":43.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":109,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.39847348737664434,"__ggsql_aes_pos2__":38.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":110,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.42653354618143174,"__ggsql_aes_pos2__":45.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":111,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.39172255157963687,"__ggsql_aes_pos2__":39.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":112,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.25385232957386455,"__ggsql_aes_pos2__":42.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":113,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.4397365975701836,"__ggsql_aes_pos2__":39.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":114,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.11468075365028668,"__ggsql_aes_pos2__":42.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":115,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.3013208627356732,"__ggsql_aes_pos2__":38.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":116,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.12332595949383995,"__ggsql_aes_pos2__":37.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":117,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.08997955405931657,"__ggsql_aes_pos2__":35.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":118,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.17575293830945904,"__ggsql_aes_pos2__":41.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":119,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.11055867332939692,"__ggsql_aes_pos2__":36.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":120,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.21009758612599125,"__ggsql_aes_pos2__":37.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":121,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.10554332656611774,"__ggsql_aes_pos2__":40.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":122,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.2587404353885958,"__ggsql_aes_pos2__":41.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":123,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.013918018751251603,"__ggsql_aes_pos2__":35.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":124,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.4133592087393123,"__ggsql_aes_pos2__":40.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":125,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.015826905036708038,"__ggsql_aes_pos2__":38.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":126,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.30322549000253873,"__ggsql_aes_pos2__":41.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":127,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.009080865912326376,"__ggsql_aes_pos2__":39.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":128,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.43625275182400214,"__ggsql_aes_pos2__":44.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":129,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.03561970580427526,"__ggsql_aes_pos2__":38.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":130,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.2916756916107977,"__ggsql_aes_pos2__":43.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":131,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.28942825406689426,"__ggsql_aes_pos2__":36.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":132,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.13502915613646546,"__ggsql_aes_pos2__":37.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":133,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.24231752245827848,"__ggsql_aes_pos2__":38.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":134,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.022617195424627468,"__ggsql_aes_pos2__":41.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":135,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.21167468710659765,"__ggsql_aes_pos2__":35.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":136,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.4418599544726666,"__ggsql_aes_pos2__":40.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":137,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.2071371548729976,"__ggsql_aes_pos2__":37.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":138,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.2316560651930388,"__ggsql_aes_pos2__":39.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":139,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.1792554288623346,"__ggsql_aes_pos2__":40.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":140,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.2430573712674148,"__ggsql_aes_pos2__":40.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":141,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.39283065176973625,"__ggsql_aes_pos2__":32.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":142,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.269093925997601,"__ggsql_aes_pos2__":40.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":143,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.12626848768038434,"__ggsql_aes_pos2__":37.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":144,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.27866039434428724,"__ggsql_aes_pos2__":39.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":145,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.12518215670556918,"__ggsql_aes_pos2__":39.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":146,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.09845445447323796,"__ggsql_aes_pos2__":36.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":147,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.3655557124015517,"__ggsql_aes_pos2__":36.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":148,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.2412187715969069,"__ggsql_aes_pos2__":37.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":149,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":-0.08550809218553723,"__ggsql_aes_pos2__":36.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":150,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":0.4434905517385464,"__ggsql_aes_pos2__":41.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":151,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.4266272936603834,"__ggsql_aes_pos2__":46.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":152,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.12330556088564368,"__ggsql_aes_pos2__":50.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":153,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.2694069566330886,"__ggsql_aes_pos2__":48.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":154,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.13423283452968715,"__ggsql_aes_pos2__":50.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":155,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.37793238573031807,"__ggsql_aes_pos2__":47.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":156,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.4181196735415838,"__ggsql_aes_pos2__":46.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":157,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.11226136489457628,"__ggsql_aes_pos2__":45.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":158,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.026973891323789224,"__ggsql_aes_pos2__":46.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":159,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.1656072910436324,"__ggsql_aes_pos2__":43.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":160,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.42317952287320937,"__ggsql_aes_pos2__":46.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":161,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.391379407343749,"__ggsql_aes_pos2__":40.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":162,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.314634723170468,"__ggsql_aes_pos2__":49.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":163,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.3185191151006369,"__ggsql_aes_pos2__":45.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":164,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.38722521597698134,"__ggsql_aes_pos2__":48.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":165,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.023986522901094688,"__ggsql_aes_pos2__":45.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":166,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.2728248549315305,"__ggsql_aes_pos2__":49.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":167,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.32115708179050734,"__ggsql_aes_pos2__":42.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":168,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.3521087089763528,"__ggsql_aes_pos2__":49.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":169,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.06563076927206984,"__ggsql_aes_pos2__":46.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":170,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.221954989309817,"__ggsql_aes_pos2__":48.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":171,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.4443565496093818,"__ggsql_aes_pos2__":50.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":172,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.2220298703703767,"__ggsql_aes_pos2__":45.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":173,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.37970993917473145,"__ggsql_aes_pos2__":46.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":174,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.35213066437097695,"__ggsql_aes_pos2__":46.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":175,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.06197379935017318,"__ggsql_aes_pos2__":42.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":176,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.030920980876467177,"__ggsql_aes_pos2__":46.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":177,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.41894036425522535,"__ggsql_aes_pos2__":44.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":178,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.10122567173233704,"__ggsql_aes_pos2__":47.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":179,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.1890497187250233,"__ggsql_aes_pos2__":48.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":180,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.1517271724353711,"__ggsql_aes_pos2__":50.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":181,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.21616481929196063,"__ggsql_aes_pos2__":47.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":182,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.3621746769548032,"__ggsql_aes_pos2__":42.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":183,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.09162834412677852,"__ggsql_aes_pos2__":45.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":184,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.007476569573159253,"__ggsql_aes_pos2__":59.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":185,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.3945360481583098,"__ggsql_aes_pos2__":49.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":186,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.05478847621938964,"__ggsql_aes_pos2__":48.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":187,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.24097560523992503,"__ggsql_aes_pos2__":42.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":188,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.449529470958424,"__ggsql_aes_pos2__":44.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":189,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.3115306855825278,"__ggsql_aes_pos2__":44.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":190,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.2976535234611327,"__ggsql_aes_pos2__":48.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":191,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.4040394637244972,"__ggsql_aes_pos2__":42.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":192,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.20827118288457624,"__ggsql_aes_pos2__":49.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":193,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.4005974220147626,"__ggsql_aes_pos2__":45.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":194,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.2783348989576647,"__ggsql_aes_pos2__":49.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":195,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.2683861132569485,"__ggsql_aes_pos2__":50.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":196,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.3073430387495257,"__ggsql_aes_pos2__":43.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":197,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.26028990936828217,"__ggsql_aes_pos2__":45.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":198,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.11280894811988322,"__ggsql_aes_pos2__":50.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":199,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.36258368379419414,"__ggsql_aes_pos2__":44.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":200,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.2790771547470519,"__ggsql_aes_pos2__":45.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":201,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.13742816437234068,"__ggsql_aes_pos2__":46.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":202,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.3617390854459964,"__ggsql_aes_pos2__":48.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":203,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.3433813846674212,"__ggsql_aes_pos2__":45.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":204,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.4371363403950928,"__ggsql_aes_pos2__":50.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":205,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.28517616398236073,"__ggsql_aes_pos2__":46.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":206,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.12403168041283988,"__ggsql_aes_pos2__":45.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":207,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.3536022038175794,"__ggsql_aes_pos2__":43.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":208,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.38089113585940454,"__ggsql_aes_pos2__":45.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":209,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.29282774818860297,"__ggsql_aes_pos2__":43.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":210,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.06209825880426486,"__ggsql_aes_pos2__":50.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":211,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.1336302086865319,"__ggsql_aes_pos2__":45.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":212,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.2121671244797222,"__ggsql_aes_pos2__":46.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":213,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.3367787375152251,"__ggsql_aes_pos2__":45.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":214,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.09030986272351674,"__ggsql_aes_pos2__":54.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":215,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.1341564856562605,"__ggsql_aes_pos2__":45.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":216,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.20961184250865375,"__ggsql_aes_pos2__":49.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":217,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.31712248831723383,"__ggsql_aes_pos2__":46.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":218,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.025124183606507023,"__ggsql_aes_pos2__":49.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":219,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.15337603729450658,"__ggsql_aes_pos2__":43.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":220,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.3425022460604693,"__ggsql_aes_pos2__":50.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":221,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.2605835769250005,"__ggsql_aes_pos2__":47.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":222,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.40441635635453654,"__ggsql_aes_pos2__":46.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":223,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.30296786287374977,"__ggsql_aes_pos2__":48.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":224,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.3574355422582112,"__ggsql_aes_pos2__":46.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":225,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.3917863524496781,"__ggsql_aes_pos2__":46.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":226,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.40566172128065053,"__ggsql_aes_pos2__":48.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":227,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.2605049366668229,"__ggsql_aes_pos2__":47.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":228,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.20673788592050305,"__ggsql_aes_pos2__":51.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":229,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.226574081487246,"__ggsql_aes_pos2__":45.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":230,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.019206167685964337,"__ggsql_aes_pos2__":45.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":231,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.44164984781776256,"__ggsql_aes_pos2__":49.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":232,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.30071133401584027,"__ggsql_aes_pos2__":52.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":233,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.13533920493872317,"__ggsql_aes_pos2__":47.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":234,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.31724210469483677,"__ggsql_aes_pos2__":50.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":235,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.01935475911920079,"__ggsql_aes_pos2__":44.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":236,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.0340452959412746,"__ggsql_aes_pos2__":50.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":237,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.041932041928078936,"__ggsql_aes_pos2__":43.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":238,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.2044245233917556,"__ggsql_aes_pos2__":51.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":239,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.07447183001693745,"__ggsql_aes_pos2__":47.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":240,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.2155605702149153,"__ggsql_aes_pos2__":52.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":241,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.2204866435661499,"__ggsql_aes_pos2__":47.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":242,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.1941086557857217,"__ggsql_aes_pos2__":52.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":243,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.1461651666622595,"__ggsql_aes_pos2__":45.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":244,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.1200244828498758,"__ggsql_aes_pos2__":49.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":245,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.0648675666752869,"__ggsql_aes_pos2__":44.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":246,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.11313905014582548,"__ggsql_aes_pos2__":50.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":247,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.221696737147756,"__ggsql_aes_pos2__":49.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":248,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.21978677660337193,"__ggsql_aes_pos2__":46.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":249,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.08065922804429619,"__ggsql_aes_pos2__":48.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":250,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.06904945974504854,"__ggsql_aes_pos2__":51.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":251,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.16670993154700275,"__ggsql_aes_pos2__":48.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":252,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.011112830400202356,"__ggsql_aes_pos2__":55.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":253,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.2591431821203419,"__ggsql_aes_pos2__":47.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":254,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.2934271984669692,"__ggsql_aes_pos2__":49.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":255,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.14959955617082285,"__ggsql_aes_pos2__":47.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":256,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.44979169336884617,"__ggsql_aes_pos2__":46.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":257,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.23235027451207876,"__ggsql_aes_pos2__":41.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":258,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.21403988028315585,"__ggsql_aes_pos2__":53.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":259,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.04472479740697628,"__ggsql_aes_pos2__":43.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":260,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.3132318988735954,"__ggsql_aes_pos2__":48.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":261,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.009940706610831218,"__ggsql_aes_pos2__":50.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":262,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.1220421087029736,"__ggsql_aes_pos2__":49.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":263,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.042353050833718424,"__ggsql_aes_pos2__":43.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":264,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.24235999812653403,"__ggsql_aes_pos2__":51.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":265,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.31661011094990743,"__ggsql_aes_pos2__":46.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":266,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.3464822582448679,"__ggsql_aes_pos2__":55.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":267,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.32556337319358,"__ggsql_aes_pos2__":44.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":268,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.35380374051498975,"__ggsql_aes_pos2__":48.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":269,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.15915815999272698,"__ggsql_aes_pos2__":47.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":270,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.22342832666882248,"__ggsql_aes_pos2__":null,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":271,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.05234669019283579,"__ggsql_aes_pos2__":46.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":272,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.4474906104196451,"__ggsql_aes_pos2__":50.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":273,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":0.31175258117004917,"__ggsql_aes_pos2__":45.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":274,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":-0.1133850149908104,"__ggsql_aes_pos2__":49.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":275,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.1317078305680194,"__ggsql_aes_pos2__":46.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":276,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.35060951006107344,"__ggsql_aes_pos2__":50.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":277,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.2856590439998128,"__ggsql_aes_pos2__":51.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":278,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.37590661818759824,"__ggsql_aes_pos2__":45.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":279,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.3013461358560457,"__ggsql_aes_pos2__":52.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":280,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.2686482528064013,"__ggsql_aes_pos2__":45.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":281,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.1852282293600228,"__ggsql_aes_pos2__":46.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":282,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.1975131075014904,"__ggsql_aes_pos2__":51.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":283,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.15777110525574334,"__ggsql_aes_pos2__":46.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":284,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.09234298037671394,"__ggsql_aes_pos2__":51.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":285,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.18273959481914456,"__ggsql_aes_pos2__":46.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":286,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.3416942809139843,"__ggsql_aes_pos2__":51.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":287,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.03711734343221292,"__ggsql_aes_pos2__":47.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":288,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.4217183588559772,"__ggsql_aes_pos2__":52.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":289,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.032400437136016015,"__ggsql_aes_pos2__":45.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":290,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.4237206914938446,"__ggsql_aes_pos2__":50.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":291,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.42707943029038214,"__ggsql_aes_pos2__":50.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":292,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.15662009378616962,"__ggsql_aes_pos2__":58.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":293,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.20370745471450605,"__ggsql_aes_pos2__":46.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":294,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.3809855690545711,"__ggsql_aes_pos2__":49.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":295,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.4038107058587032,"__ggsql_aes_pos2__":42.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":296,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.17522458782045916,"__ggsql_aes_pos2__":48.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":297,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.24079694076853445,"__ggsql_aes_pos2__":43.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":298,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.4135655198151929,"__ggsql_aes_pos2__":50.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":299,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.08803399604947558,"__ggsql_aes_pos2__":46.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":300,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.022823526516317184,"__ggsql_aes_pos2__":52.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":301,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.29161314859077153,"__ggsql_aes_pos2__":50.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":302,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.16173264334250156,"__ggsql_aes_pos2__":49.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":303,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.2533350730242881,"__ggsql_aes_pos2__":46.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":304,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.1106497156438002,"__ggsql_aes_pos2__":52.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":305,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.01033550719435108,"__ggsql_aes_pos2__":40.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":306,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.3534149042065396,"__ggsql_aes_pos2__":54.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":307,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.13820031906125865,"__ggsql_aes_pos2__":42.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":308,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.13906074971322205,"__ggsql_aes_pos2__":51.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":309,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.1358615124119826,"__ggsql_aes_pos2__":49.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":310,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.01340292273682322,"__ggsql_aes_pos2__":47.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":311,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.414044564618909,"__ggsql_aes_pos2__":47.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":312,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.34644942475464147,"__ggsql_aes_pos2__":52.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":313,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.19521115799900576,"__ggsql_aes_pos2__":46.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":314,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.21117798997347648,"__ggsql_aes_pos2__":53.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":315,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.43356351162845375,"__ggsql_aes_pos2__":49.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":316,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.33126359837928676,"__ggsql_aes_pos2__":46.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":317,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.2771407839250973,"__ggsql_aes_pos2__":50.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":318,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.34653628096359124,"__ggsql_aes_pos2__":45.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":319,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.04525987140235771,"__ggsql_aes_pos2__":50.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":320,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.025536843164751744,"__ggsql_aes_pos2__":50.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":321,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.23702246377901112,"__ggsql_aes_pos2__":50.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":322,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.40671893951999655,"__ggsql_aes_pos2__":49.0,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":323,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.16177035052533031,"__ggsql_aes_pos2__":51.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":324,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.17163353069601503,"__ggsql_aes_pos2__":49.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":325,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.05472248095362431,"__ggsql_aes_pos2__":48.1,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":326,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.2339789783292169,"__ggsql_aes_pos2__":51.4,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":327,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.17258698646288273,"__ggsql_aes_pos2__":45.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":328,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.3728394603212797,"__ggsql_aes_pos2__":50.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":329,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.021166244306358717,"__ggsql_aes_pos2__":42.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":330,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.2116435617691988,"__ggsql_aes_pos2__":52.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":331,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.028293926600029308,"__ggsql_aes_pos2__":45.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":332,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.15184272559884235,"__ggsql_aes_pos2__":49.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":333,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.3126898014280421,"__ggsql_aes_pos2__":50.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":334,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.009993031737632042,"__ggsql_aes_pos2__":45.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":335,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.26505388520030626,"__ggsql_aes_pos2__":51.9,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":336,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.30706278634887757,"__ggsql_aes_pos2__":46.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":337,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.09392262378138852,"__ggsql_aes_pos2__":45.7,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":338,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.1391318803752512,"__ggsql_aes_pos2__":55.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":339,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.25666527772254016,"__ggsql_aes_pos2__":43.5,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":340,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.286160755192562,"__ggsql_aes_pos2__":49.6,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":341,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":-0.23110842613788124,"__ggsql_aes_pos2__":50.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":342,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":0.23504894591597364,"__ggsql_aes_pos2__":50.2,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":343,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":null,"__ggsql_aes_pos2__":36.75,"__ggsql_aes_pos2end__":40.75,"__ggsql_row_index__":344,"__ggsql_source__":"__ggsql_layer_1__box"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":null,"__ggsql_aes_pos2__":46.349999999999994,"__ggsql_aes_pos2end__":51.075,"__ggsql_row_index__":345,"__ggsql_source__":"__ggsql_layer_1__box"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":null,"__ggsql_aes_pos2__":45.3,"__ggsql_aes_pos2end__":49.55,"__ggsql_row_index__":346,"__ggsql_source__":"__ggsql_layer_1__box"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":null,"__ggsql_aes_pos2__":45.3,"__ggsql_aes_pos2end__":40.9,"__ggsql_row_index__":347,"__ggsql_source__":"__ggsql_layer_1__lower_whisker"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":null,"__ggsql_aes_pos2__":36.75,"__ggsql_aes_pos2end__":32.1,"__ggsql_row_index__":348,"__ggsql_source__":"__ggsql_layer_1__lower_whisker"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":null,"__ggsql_aes_pos2__":46.349999999999994,"__ggsql_aes_pos2end__":40.9,"__ggsql_row_index__":349,"__ggsql_source__":"__ggsql_layer_1__lower_whisker"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":null,"__ggsql_aes_pos2__":38.8,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":350,"__ggsql_source__":"__ggsql_layer_1__median"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":null,"__ggsql_aes_pos2__":49.55,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":351,"__ggsql_source__":"__ggsql_layer_1__median"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":null,"__ggsql_aes_pos2__":47.3,"__ggsql_aes_pos2end__":null,"__ggsql_row_index__":352,"__ggsql_source__":"__ggsql_layer_1__median"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos1offset__":null,"__ggsql_aes_pos2__":49.55,"__ggsql_aes_pos2end__":55.925,"__ggsql_row_index__":353,"__ggsql_source__":"__ggsql_layer_1__upper_whisker"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos1offset__":null,"__ggsql_aes_pos2__":40.75,"__ggsql_aes_pos2end__":46.0,"__ggsql_row_index__":354,"__ggsql_source__":"__ggsql_layer_1__upper_whisker"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos1offset__":null,"__ggsql_aes_pos2__":51.075,"__ggsql_aes_pos2end__":58.0,"__ggsql_row_index__":355,"__ggsql_source__":"__ggsql_layer_1__upper_whisker"}]},"height":"container","layer":[{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"shape":{"value":"circle"},"size":{"value":50.26548245743668},"stroke":{"value":"black"},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"xOffset":{"field":"__ggsql_aes_pos1offset__","scale":{"domain":[-0.5,0.5]},"type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"}},"mark":{"clip":true,"type":"point"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"fill":{"value":"white"},"fillOpacity":{"value":0.8},"size":{"value":1.3333333333333333},"stroke":{"value":"black"},"strokeDash":{"value":[]},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'box' ? 'box' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":null,"type":"quantitative"}},"mark":{"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_1__lower_whisker","field":"__ggsql_source__"}}]},{"encoding":{"fill":{"value":"white"},"fillOpacity":{"value":0.8},"size":{"value":1.3333333333333333},"stroke":{"value":"black"},"strokeDash":{"value":[]},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'box' ? 'box' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":null,"type":"quantitative"}},"mark":{"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_1__upper_whisker","field":"__ggsql_source__"}}]},{"encoding":{"fill":{"value":"white"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'box' ? 'box' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2end__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":null,"type":"quantitative"}},"mark":{"align":"center","type":"bar","width":{"expr":"bandwidth('x') * 0.9"}},"transform":[{"filter":{"equal":"__ggsql_layer_1__box","field":"__ggsql_source__"}}]},{"encoding":{"fill":{"value":"white"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"type":{"field":"__ggsql_aes_type__","legend":{"labelExpr":"datum.label == 'lower_whisker' ? 'lower_whisker' : datum.label == 'box' ? 'box' : datum.label == 'upper_whisker' ? 'upper_whisker' : datum.label == 'median' ? 'median' : datum.label"},"scale":null,"title":"type","type":"nominal"},"x":{"axis":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.label == '60' ? '60' : datum.label == '50' ? '50' : datum.label == '40' ? '40' : datum.label","values":[40.0,50.0,60.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[30.725,60.975],"zero":false},"stack":null,"title":"bill_len","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__"}},"mark":{"align":"center","type":"tick","width":{"expr":"bandwidth('x') * 0.9"}},"transform":[{"filter":{"equal":"__ggsql_layer_1__median","field":"__ggsql_source__"}}]}],"width":"container"};
+    const visId = 'vis-1776252315070';
+    const container = document.getElementById(visId);
+    container.style.width = '100%';
+    container.style.height = '400px';
+
+    // Use full height in Positron's Plots pane
+    if (container.closest('.positron-output-container')) {
+      container.style.height = '100vh';
+    }
+
+    const options = {
+      "actions": true,
+    };
+
+    // Check if we're in a Jupyter environment with require.js
+    if (typeof window.requirejs !== 'undefined') {
+      // Use require.js to load Vega libraries
+      window.requirejs.config({
+        paths: {
+          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+        }
+      });
+
+      function docReady(fn) {
+        if (document.readyState === 'complete') fn();
+        else window.addEventListener("load", () => {
+          fn();
+        });
+      }
+      docReady(function() {
+        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
+            domReady(function () {
+              vegaEmbed('#' + visId, spec, options).catch(console.error);
+            });
+        });
+      });
+    } else {
+      // Fallback for non-Jupyter environments
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+      ])
+        .then(() => {
+          vegaEmbed('#' + visId, spec, options)
+            .catch(console.error);
+        })
+        .catch(err => {
+          console.error('Failed to load Vega libraries:', err);
+        });
+    }
+  })();
+</script>
+</div>
+</div>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/ggsql\.org");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer><script type="module">
+  const offset = document.querySelector('meta[name="quarto:offset"]')?.content || './';
+  const base = offset + 'wasm/';
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = base + 'quarto.css';
+  document.head.appendChild(link);
+  import(base + 'quarto.js');
+</script>
+
+
+
+
+</body></html>

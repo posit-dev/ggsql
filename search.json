@@ -1476,7 +1476,7 @@
     "href": "gallery/index.html",
     "title": "Example gallery",
     "section": "",
-    "text": "Browse examples of ggsql visualizations. Click any example to see the full code and explanation.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nScatter plot\n\n\nBasic scatter plot mapping two numeric variables to position\n\n\n\n\n\n\n\n\n\n\n\n\nLine chart\n\n\nTime series visualization with proper date scaling\n\n\n\n\n\n\n\n\n\n\n\n\nBar chart\n\n\nCategorical comparisons using bars\n\n\n\n\n\n\n\n\n\n\n\n\nHistogram\n\n\nDistribution of a single numeric variable\n\n\n\n\n\n\n\n\n\n\n\n\nMulti-layer plot\n\n\nCombining multiple geometric layers in one visualization\n\n\n\n\n\n\n\n\n\n\n\n\nFaceted plot\n\n\nSmall multiples showing data split by category\n\n\n\n\n\nNo matching items"
+    "text": "Browse examples of ggsql visualizations. Click any example to see the full code and explanation.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nScatter plot\n\n\nBasic scatter plot mapping two numeric variables to position\n\n\n\n\n\n\n\n\n\n\n\n\nNapoleon’s march to Moscow\n\n\nRe-creating the famous visualisation from Minard.\n\n\n\n\n\n\n\n\n\n\n\n\nLine chart\n\n\nTime series visualization with proper date scaling\n\n\n\n\n\n\n\n\n\n\n\n\nPie chart\n\n\nVisualisation of proportions\n\n\n\n\n\n\n\n\n\n\n\n\nDensity plots\n\n\nShowing smooth distributions of single numeric variables\n\n\n\n\n\n\n\n\n\n\n\n\nBox plots\n\n\nShowing groups of distributions of single numeric variables\n\n\n\n\n\n\n\n\n\n\n\n\nHeatmap\n\n\nArranging tiles on a grid\n\n\n\n\n\n\n\n\n\n\n\n\nViolin plots\n\n\nShowing groups of distributions of single numeric variables\n\n\n\n\n\n\n\n\n\n\n\n\nBar chart\n\n\nCategorical comparisons using bars\n\n\n\n\n\n\n\n\n\n\n\n\nHistogram\n\n\nDistribution of a single numeric variable\n\n\n\n\n\n\n\n\n\n\n\n\nMulti-layer plot\n\n\nCombining multiple geometric layers in one visualization\n\n\n\n\n\n\n\n\n\n\n\n\nFaceted plot\n\n\nSmall multiples showing data split by category\n\n\n\n\n\nNo matching items"
   },
   {
     "objectID": "gallery/examples/bar-chart.html",
@@ -1507,88 +1507,32 @@
     "text": "Variations\n\nHorizontal bars\nUse PROJECT y, x TO cartesian to flip the axes for horizontal bars:\n\nSELECT species, COUNT(*) as count FROM ggsql:penguins\nGROUP BY species\nVISUALISE species AS x, count AS y, species AS fill\nDRAW bar\nPROJECT y, x TO cartesian\nLABEL\n  title =&gt; 'Penguin Count by Species',\n  x =&gt; 'Species',\n  y =&gt; 'Count'\n\n\n\n\n\n\n\n\nAuto-count bar chart\nWhen you don’t specify a y aesthetic, ggsql automatically counts occurrences:\n\nSELECT species FROM ggsql:penguins\nVISUALISE species AS x\nDRAW bar\nLABEL\n  title =&gt; 'Penguin Distribution',\n  x =&gt; 'Species',\n  y =&gt; 'Count'"
   },
   {
-    "objectID": "gallery/examples/multi-layer.html",
-    "href": "gallery/examples/multi-layer.html",
-    "title": "Multi-layer plot",
+    "objectID": "gallery/examples/heatmap.html",
+    "href": "gallery/examples/heatmap.html",
+    "title": "Heatmap",
     "section": "",
-    "text": "Multi-layer plots combine different geometric elements (geoms) to create richer visualizations. Each DRAW clause adds a new layer."
+    "text": "A heatmap visusalised data values as colors in a grid layout. It makes it easy to see patterns and relationships through color intensity. It works best with discrete or ordinal arrangements."
   },
   {
-    "objectID": "gallery/examples/multi-layer.html#code",
-    "href": "gallery/examples/multi-layer.html#code",
-    "title": "Multi-layer plot",
+    "objectID": "gallery/examples/heatmap.html#code",
+    "href": "gallery/examples/heatmap.html#code",
+    "title": "Heatmap",
     "section": "Code",
-    "text": "Code\n\nSELECT Date, Temp FROM ggsql:airquality\nVISUALISE Date AS x, Temp AS y\nDRAW line\n  SETTING color =&gt; 'steelblue'\nDRAW point\n  SETTING size =&gt; 4, color =&gt; 'darkblue'\nSCALE x VIA date\nLABEL\n  title =&gt; 'Temperature with Line and Points',\n  x =&gt; 'Date',\n  y =&gt; 'Temperature (F)'"
+    "text": "Code\n\nVISUALISE Day AS x, Month AS y, Temp AS fill FROM ggsql:airquality\n  DRAW rect"
   },
   {
-    "objectID": "gallery/examples/multi-layer.html#explanation",
-    "href": "gallery/examples/multi-layer.html#explanation",
-    "title": "Multi-layer plot",
+    "objectID": "gallery/examples/heatmap.html#explanation",
+    "href": "gallery/examples/heatmap.html#explanation",
+    "title": "Heatmap",
     "section": "Explanation",
-    "text": "Explanation\n\nThe first DRAW line creates a line connecting all points\nThe second DRAW point adds point markers at each data point\nSETTING on each layer controls that layer’s visual properties\nBoth layers share the same x and y mappings from VISUALISE"
+    "text": "Explanation\n\nThe VISUALISE ... FROM ggsql:airquality loads the built-in air quality dataset.\nDay AS x, Month AS y defines a 2D grid ‘map’. The default width and height of each cell is 1. Because these variables are contiguous whole numbers, this creates a grid.\nTemp AS fill declares the ‘heat’ variable to display as colour intensity.\nDRAW rect gives instructions to draw a rectangle layer."
   },
   {
-    "objectID": "gallery/examples/multi-layer.html#variations",
-    "href": "gallery/examples/multi-layer.html#variations",
-    "title": "Multi-layer plot",
+    "objectID": "gallery/examples/heatmap.html#variations",
+    "href": "gallery/examples/heatmap.html#variations",
+    "title": "Heatmap",
     "section": "Variations",
-    "text": "Variations\n\nDifferent aesthetics per layer\nEach layer can have its own aesthetic mappings using MAPPING:\n\nSELECT Date, Temp, Ozone FROM ggsql:airquality\nVISUALISE Date AS x\nDRAW line\n  MAPPING Temp AS y, 'Temperature' AS color\nDRAW line\n  MAPPING Ozone AS y, 'Ozone' AS color\nSCALE x VIA date\nLABEL\n  title =&gt; 'Temperature and Ozone Over Time',\n  x =&gt; 'Date',\n  y =&gt; 'Value'\n\n\n\n\n\n\n\n\nLayers from different data sources\nUse MAPPING ... FROM to pull each layer from different CTEs:\n\nWITH temps AS (\n  SELECT Date, Temp as value FROM ggsql:airquality\n),\nozone AS (\n  SELECT Date, Ozone as value FROM ggsql:airquality WHERE Ozone IS NOT NULL\n)\nVISUALISE\nDRAW line\n  MAPPING Date AS x, value AS y, 'Temperature' AS color FROM temps\nDRAW point\n  MAPPING Date AS x, value AS y, 'Ozone' AS color FROM ozone\n  SETTING size =&gt; 3\nSCALE x VIA date\nLABEL\n  title =&gt; 'Temperature vs Ozone',\n  x =&gt; 'Date',\n  y =&gt; 'Value'"
-  },
-  {
-    "objectID": "gallery/examples/histogram.html",
-    "href": "gallery/examples/histogram.html",
-    "title": "Histogram",
-    "section": "",
-    "text": "Histograms show the distribution of a numeric variable by grouping values into bins and counting occurrences in each bin."
-  },
-  {
-    "objectID": "gallery/examples/histogram.html#code",
-    "href": "gallery/examples/histogram.html#code",
-    "title": "Histogram",
-    "section": "Code",
-    "text": "Code\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\nLABEL\n  title =&gt; 'Temperature Distribution',\n  x =&gt; 'Temperature (F)',\n  y =&gt; 'Count'"
-  },
-  {
-    "objectID": "gallery/examples/histogram.html#explanation",
-    "href": "gallery/examples/histogram.html#explanation",
-    "title": "Histogram",
-    "section": "Explanation",
-    "text": "Explanation\n\nVISUALISE Temp AS x specifies the variable to bin\nDRAW histogram automatically computes bins and counts\nNo y mapping is needed - ggsql computes the count automatically"
-  },
-  {
-    "objectID": "gallery/examples/histogram.html#variations",
-    "href": "gallery/examples/histogram.html#variations",
-    "title": "Histogram",
-    "section": "Variations",
-    "text": "Variations\n\nCustom bin count\nControl the number of bins with SETTING bins:\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\n  SETTING bins =&gt; 15\nLABEL\n  title =&gt; 'Temperature Distribution (15 bins)',\n  x =&gt; 'Temperature (F)',\n  y =&gt; 'Count'\n\n\n\n\n\n\n\n\nCustom bin width\nSet explicit bin width instead of count:\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\n  SETTING binwidth =&gt; 5\nLABEL\n  title =&gt; 'Temperature Distribution (5 degree bins)',\n  x =&gt; 'Temperature (F)',\n  y =&gt; 'Count'\n\n\n\n\n\n\n\n\nDensity instead of count\nUse REMAPPING to show density (proportion) instead of count:\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\n  REMAPPING density AS y\nLABEL\n  title =&gt; 'Temperature Density',\n  x =&gt; 'Temperature (F)',\n  y =&gt; 'Density'"
-  },
-  {
-    "objectID": "gallery/examples/faceted.html",
-    "href": "gallery/examples/faceted.html",
-    "title": "Faceted plot",
-    "section": "",
-    "text": "Faceted plots (small multiples) split data into separate panels by one or more categorical variables. This makes it easy to compare patterns across groups."
-  },
-  {
-    "objectID": "gallery/examples/faceted.html#code",
-    "href": "gallery/examples/faceted.html#code",
-    "title": "Faceted plot",
-    "section": "Code",
-    "text": "Code\n\nSELECT bill_len, bill_dep, species FROM ggsql:penguins\nVISUALISE bill_len AS x, bill_dep AS y\nDRAW point\nFACET species\nLABEL\n  title =&gt; 'Bill Dimensions by Species',\n  x =&gt; 'Bill Length (mm)',\n  y =&gt; 'Bill Depth (mm)'"
-  },
-  {
-    "objectID": "gallery/examples/faceted.html#explanation",
-    "href": "gallery/examples/faceted.html#explanation",
-    "title": "Faceted plot",
-    "section": "Explanation",
-    "text": "Explanation\n\nFACET species creates a separate panel for each penguin species\nEach panel shows the same scatter plot, filtered to that species\nThis reveals species-specific patterns that might be hidden in a combined view"
-  },
-  {
-    "objectID": "gallery/examples/faceted.html#variations",
-    "href": "gallery/examples/faceted.html#variations",
-    "title": "Faceted plot",
-    "section": "Variations",
-    "text": "Variations\n\nGrid layout with two variables\nUse FACET rows BY cols to create a grid layout:\n\nSELECT bill_len, bill_dep, species, island FROM ggsql:penguins\nVISUALISE bill_len AS x, bill_dep AS y\nDRAW point\nFACET species BY island\nLABEL\n  title =&gt; 'Bill Dimensions by Species and Island',\n  x =&gt; 'Bill Length (mm)',\n  y =&gt; 'Bill Depth (mm)'\n\n\n\n\n\n\n\n\nFree scales\nAllow each facet to have independent axis scales with SETTING free:\n\nSELECT bill_len, bill_dep, species FROM ggsql:penguins\nVISUALISE bill_len AS x, bill_dep AS y\nDRAW point\nFACET species SETTING free =&gt; 'y'\nLABEL\n  title =&gt; 'Bill Dimensions (Free Y Scale)',\n  x =&gt; 'Bill Length (mm)',\n  y =&gt; 'Bill Depth (mm)'"
+    "text": "Variations\nAs a stylistic choice, you can set the cells to be opaque without borders.\n\nVISUALISE Month AS y, Day AS x, Temp AS fill FROM ggsql:airquality\n  DRAW rect\n    SETTING stroke =&gt; null, opacity =&gt; 1\n\n\n\n\n\n\nYou can change the color by adapting the scale.\n\nVISUALISE Month AS y, Day AS x, Temp AS fill FROM ggsql:airquality\n  DRAW rect\n  SCALE fill TO magma \n    SETTING reverse =&gt; true\n\n\n\n\n\n\nIf you have centered data, you may want to use a divergent colour scale. It is important to the two extremes in FROM symmetrically around the midpoint.\n\nSELECT *, \n  Temp * 1.0 - AVG(Temp) OVER (PARTITION BY Month) AS centered \nFROM ggsql:airquality\n\nVISUALISE Month AS y, Day AS x, centered AS fill\n  DRAW rect\n  SCALE fill FROM [-20, 20] TO vik"
   },
   {
     "objectID": "gallery/examples/line-chart.html",
@@ -1619,6 +1563,244 @@
     "text": "Variations\n\nMultiple lines by category\n\nSELECT Date, Temp, Month FROM ggsql:airquality\nVISUALISE Date AS x, Temp AS y, Month AS color\nDRAW line\nSCALE x VIA date\nLABEL\n  title =&gt; 'Daily Temperature by Month',\n  x =&gt; 'Date',\n  y =&gt; 'Temperature (F)'"
   },
   {
+    "objectID": "gallery/examples/faceted.html",
+    "href": "gallery/examples/faceted.html",
+    "title": "Faceted plot",
+    "section": "",
+    "text": "Faceted plots (small multiples) split data into separate panels by one or more categorical variables. This makes it easy to compare patterns across groups."
+  },
+  {
+    "objectID": "gallery/examples/faceted.html#code",
+    "href": "gallery/examples/faceted.html#code",
+    "title": "Faceted plot",
+    "section": "Code",
+    "text": "Code\n\nSELECT bill_len, bill_dep, species FROM ggsql:penguins\nVISUALISE bill_len AS x, bill_dep AS y\nDRAW point\nFACET species\nLABEL\n  title =&gt; 'Bill Dimensions by Species',\n  x =&gt; 'Bill Length (mm)',\n  y =&gt; 'Bill Depth (mm)'"
+  },
+  {
+    "objectID": "gallery/examples/faceted.html#explanation",
+    "href": "gallery/examples/faceted.html#explanation",
+    "title": "Faceted plot",
+    "section": "Explanation",
+    "text": "Explanation\n\nFACET species creates a separate panel for each penguin species\nEach panel shows the same scatter plot, filtered to that species\nThis reveals species-specific patterns that might be hidden in a combined view"
+  },
+  {
+    "objectID": "gallery/examples/faceted.html#variations",
+    "href": "gallery/examples/faceted.html#variations",
+    "title": "Faceted plot",
+    "section": "Variations",
+    "text": "Variations\n\nGrid layout with two variables\nUse FACET rows BY cols to create a grid layout:\n\nSELECT bill_len, bill_dep, species, island FROM ggsql:penguins\nVISUALISE bill_len AS x, bill_dep AS y\nDRAW point\nFACET species BY island\nLABEL\n  title =&gt; 'Bill Dimensions by Species and Island',\n  x =&gt; 'Bill Length (mm)',\n  y =&gt; 'Bill Depth (mm)'\n\n\n\n\n\n\n\n\nFree scales\nAllow each facet to have independent axis scales with SETTING free:\n\nSELECT bill_len, bill_dep, species FROM ggsql:penguins\nVISUALISE bill_len AS x, bill_dep AS y\nDRAW point\nFACET species SETTING free =&gt; 'y'\nLABEL\n  title =&gt; 'Bill Dimensions (Free Y Scale)',\n  x =&gt; 'Bill Length (mm)',\n  y =&gt; 'Bill Depth (mm)'"
+  },
+  {
+    "objectID": "gallery/examples/histogram.html",
+    "href": "gallery/examples/histogram.html",
+    "title": "Histogram",
+    "section": "",
+    "text": "Histograms show the distribution of a numeric variable by grouping values into bins and counting occurrences in each bin."
+  },
+  {
+    "objectID": "gallery/examples/histogram.html#code",
+    "href": "gallery/examples/histogram.html#code",
+    "title": "Histogram",
+    "section": "Code",
+    "text": "Code\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\nLABEL\n  title =&gt; 'Temperature Distribution',\n  x =&gt; 'Temperature (F)',\n  y =&gt; 'Count'"
+  },
+  {
+    "objectID": "gallery/examples/histogram.html#explanation",
+    "href": "gallery/examples/histogram.html#explanation",
+    "title": "Histogram",
+    "section": "Explanation",
+    "text": "Explanation\n\nVISUALISE Temp AS x specifies the variable to bin\nDRAW histogram automatically computes bins and counts\nNo y mapping is needed - ggsql computes the count automatically"
+  },
+  {
+    "objectID": "gallery/examples/histogram.html#variations",
+    "href": "gallery/examples/histogram.html#variations",
+    "title": "Histogram",
+    "section": "Variations",
+    "text": "Variations\n\nCustom bin count\nControl the number of bins with SETTING bins:\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\n  SETTING bins =&gt; 15\nLABEL\n  title =&gt; 'Temperature Distribution (15 bins)',\n  x =&gt; 'Temperature (F)',\n  y =&gt; 'Count'\n\n\n\n\n\n\n\n\nCustom bin width\nSet explicit bin width instead of count:\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\n  SETTING binwidth =&gt; 5\nLABEL\n  title =&gt; 'Temperature Distribution (5 degree bins)',\n  x =&gt; 'Temperature (F)',\n  y =&gt; 'Count'\n\n\n\n\n\n\n\n\nDensity instead of count\nUse REMAPPING to show density (proportion) instead of count:\n\nSELECT Temp FROM ggsql:airquality\nVISUALISE Temp AS x\nDRAW histogram\n  REMAPPING density AS y\nLABEL\n  title =&gt; 'Temperature Density',\n  x =&gt; 'Temperature (F)',\n  y =&gt; 'Density'"
+  },
+  {
+    "objectID": "gallery/examples/minard.html",
+    "href": "gallery/examples/minard.html",
+    "title": "Napoleon’s march to Moscow",
+    "section": "",
+    "text": "In 1812 the French emperor Napoleon waged a military campaign invading Russia. The campaign had early tactical success and Napoleon briefly occupied Moscow. However, the campaign was a strategic failure because the retreat from Russia back to France was a catastrophe. Charles Joseph Minard is best known for visualising numerical data about this campaign showing the advance and retreat.\nIn this example, we’ll recreate the top part of the infographic. The particular incarnation of the data that we’re using here is adapted from the HistData R package (Friendly 2002)."
+  },
+  {
+    "objectID": "gallery/examples/minard.html#getting-started",
+    "href": "gallery/examples/minard.html#getting-started",
+    "title": "Napoleon’s march to Moscow",
+    "section": "Getting started",
+    "text": "Getting started\nBefore building a graphic it is always good to be aware of the columns and data structures that are present in your data.\n\nSELECT * FROM 'minard_troops.csv' LIMIT 5\n\n\n\n\nlong\nlat\nsurvivors\ndirection\ngroup\n\n\n\n\n37.7\n55.7\n100000\n\"R\"\n1\n\n\n37.5\n55.7\n98000\n\"R\"\n1\n\n\n37.0\n55.0\n97000\n\"R\"\n1\n\n\n36.8\n55.0\n96000\n\"R\"\n1\n\n\n35.4\n55.3\n87000\n\"R\"\n1\n\n\n\n\n\nOur first goal is commit something to paper. We’ll iron out mistakes and polish the graphic later.\n\nVISUALISE long AS x, lat AS y FROM 'minard_troops.csv'\n  DRAW line\n\n\n\n\n\n\nTo explain what we have done here:\n\nVISUALISE ... 'minard_troops.csv' queries a local CSV file for Napoleon’s troops.\nlong AS x sets the long (longitude) column as the x aesthetic.\nlat AS y sets the lat (latitude) column as the y aesthetic.\nDRAW line instructs to plot to use the line layer.\n\nNo celebrated military strategist would plan his troup movements towards Moscow in this fashion though. The chart only shows movement in the west-east direction, meaning that we are not capturing the retreat properly."
+  },
+  {
+    "objectID": "gallery/examples/minard.html#correcting-mistakes",
+    "href": "gallery/examples/minard.html#correcting-mistakes",
+    "title": "Napoleon’s march to Moscow",
+    "section": "Correcting mistakes",
+    "text": "Correcting mistakes\nThe first ‘mistake’ we made is chosing the line layer. Line layers automatically sort along the axis, so we’re mixing coordinates from the advance and the retreat. To rectify this, we should use the path layer instead. Path layers connect datapoints in the order they appear in, so we’re no long sorting along west-east.\n\nVISUALISE long AS x, lat AS y FROM 'minard_troops.csv'\n  DRAW path\n\n\n\n\n\n\nThe second mistake is that Napoleon’s retreat was not a simple linear path. For example: a detachment of soldiers arrived in Polotsk to guard the northern flank. This detachment later joined up with the remainder of the army during the retreat. What that means for us is that we have to account for additional grouping. This grouping allows us to resolve separate paths.\n\nVISUALISE long AS x, lat AS y FROM 'minard_troops.csv'\n  DRAW path\n    PARTITION BY direction, group"
+  },
+  {
+    "objectID": "gallery/examples/minard.html#enriching",
+    "href": "gallery/examples/minard.html#enriching",
+    "title": "Napoleon’s march to Moscow",
+    "section": "Enriching",
+    "text": "Enriching\nOne of the appealing aspects of Minard’s visualisation is that it is rich. Not only does it display a map and the route of the army; it also separates the advance from the retreat in different colours, and displays the troop numbers as line thickness. We can also separate the advance from the retreat by mapping the direction variable to the stroke colour.\n\nVISUALISE long AS x, lat AS y FROM 'minard_troops.csv'\n  DRAW path\n    MAPPING direction AS stroke\n    PARTITION BY direction, group\n\n\n\n\n\n\nSimilarly, we can include the troop numbers by mapping the survivors variable to the line width.\n\nVISUALISE long AS x, lat AS y FROM 'minard_troops.csv'\n  DRAW path\n    MAPPING direction AS stroke, survivors AS linewidth\n    PARTITION BY direction, group"
+  },
+  {
+    "objectID": "gallery/examples/minard.html#detailing",
+    "href": "gallery/examples/minard.html#detailing",
+    "title": "Napoleon’s march to Moscow",
+    "section": "Detailing",
+    "text": "Detailing\nNow that we have all the data included in the ways we want, we can start detailing the graphic to our tastes. The first thing we might do is to pick some better colours. Because we have two levels for the direction variable —Advance and Retreat— we can create a new colour scale for the stroke aesthetic. We’ll choose the colours to more closely resemble the original graphic by Minard. We set the palette using the TO keyword, and format the labels using RENAMING.\n\nVISUALISE long AS x, lat AS y FROM 'minard_troops.csv'\n  DRAW path\n    MAPPING direction AS stroke, survivors AS linewidth\n    PARTITION BY direction, group\n  SCALE stroke TO ['burlywood', 'black']\n    RENAMING 'A' =&gt; 'Advance', 'R' =&gt; 'Retreat'\n\n\n\n\n\n\nNow for a slightly more complicated scale, we’re going to set one for the linewidth variable that represent the number of troops. If you want to build in some extra intuition for the scale, you can let 0 troops coincide with 0 linewidth. We define the output range using TO [0, 20] because for a continuous variable it expects the output limits. Slightly more elaborate is the input domain, where we use FROM [0, null] to state that the scale should start at 0 and go up to the largest value in the data. Because both the input and output ranges start at 0, we get a well-proportioned line.\n\nVISUALISE long AS x, lat AS y FROM 'minard_troops.csv'\n  DRAW path\n    MAPPING direction AS stroke, survivors AS linewidth\n    PARTITION BY direction, group\n  SCALE stroke TO ['burlywood', 'black']\n    RENAMING 'A' =&gt; 'Advance', 'R' =&gt; 'Retreat'\n  SCALE linewidth FROM [0, null] TO [0, 20]"
+  },
+  {
+    "objectID": "gallery/examples/minard.html#polishing",
+    "href": "gallery/examples/minard.html#polishing",
+    "title": "Napoleon’s march to Moscow",
+    "section": "Polishing",
+    "text": "Polishing\nWhile this map is nice, it is a little bit lacking in context. For sure the longitude and latitude coordinates are meaningful to cartographers among us. However, for the rest of us we may like some city names to contextualise the march a bit. There is a separate dataset wherein we’ve saved the city coordinates and their names. We can use this by adding a second DRAW layer. Note that long AS x, lat AS y is applied globally, so it also applies to our city layer. In our new layer, we need so set additional mapping city AS label and the new dataset using FROM. We can also make text a little bit smaller by setting the font size.\n\nVISUALISE long AS x, lat AS y FROM 'minard_troops.csv'\n  DRAW path\n    MAPPING direction AS stroke, survivors AS linewidth\n    PARTITION BY direction, group\n  DRAW text\n    MAPPING city AS label FROM 'minard_cities.csv'\n    SETTING fontsize =&gt; 6\n  SCALE stroke TO ['burlywood', 'black']\n    RENAMING 'A' =&gt; 'Advance', 'R' =&gt; 'Retreat'\n  SCALE linewidth FROM [0, null] TO [0, 30]\n\n\n\n\n\n\nAn additional obvious way to polish your graphic is to add nicer titles for all your variables. We can use the LABEL statement to add custom labels for our plot. In the title, we escape the single quote mark by using \\' so that we know it is not the end of the string yet. Moreover, we can use null to note that a title should be removed. In that way we can hide the long and lat labels from the position mapping.\n\nVISUALISE long AS x, lat AS y FROM 'minard_troops.csv'\n  DRAW path\n    MAPPING direction AS stroke, survivors AS linewidth\n    PARTITION BY direction, group\n  DRAW text\n    MAPPING city AS label FROM 'minard_cities.csv'\n    SETTING fontsize =&gt; 6\n  SCALE stroke TO ['burlywood', 'black']\n    RENAMING 'A' =&gt; 'Advance', 'R' =&gt; 'Retreat'\n  SCALE linewidth FROM [0, null] TO [0, 20]\n  LABEL\n    title =&gt; 'Napoleon\\'s Russian Campaign',\n    subtitle =&gt; 'Inspired by the graphic of C.J. Minard',\n    linewidth =&gt; 'Troops',\n    stroke =&gt; 'Direction',\n    x =&gt; null,\n    y =&gt; null\n\n\n\n\n\n\nAnd there we have it: a reproduction of Minard’s infographic on Napoleon’s Russian campaign."
+  },
+  {
+    "objectID": "gallery/examples/density.html",
+    "href": "gallery/examples/density.html",
+    "title": "Density plots",
+    "section": "",
+    "text": "Like histograms, density plots show the distribution of a numeric variable. Instead of binning, density plots use kernel density estimation to estimate a smooth, continuous probability density. A kernel (like a Gaussian) is placed on each point and summed. The level of smoothing is controlled via the bandwidth which affects the width of the kernel."
+  },
+  {
+    "objectID": "gallery/examples/density.html#code",
+    "href": "gallery/examples/density.html#code",
+    "title": "Density plots",
+    "section": "Code",
+    "text": "Code\nThe x-axis gives the value of the numerical variable, whereas the y-axis gives the estimated probability density.\n\nVISUALISE bill_len AS x, species AS colour FROM ggsql:penguins\n  DRAW density"
+  },
+  {
+    "objectID": "gallery/examples/density.html#explanation",
+    "href": "gallery/examples/density.html#explanation",
+    "title": "Density plots",
+    "section": "Explanation",
+    "text": "Explanation\n\nThe VISUALISE ... FROM ggsql:penguins loads the built-in penguins dataset.\nbill_len AS x sets the numeric variable to use for density estimation.\nspecies AS colour sets implicit groups indicated by colour.\nDRAW density gives instructions to draw the density layer."
+  },
+  {
+    "objectID": "gallery/examples/density.html#variations",
+    "href": "gallery/examples/density.html#variations",
+    "title": "Density plots",
+    "section": "Variations",
+    "text": "Variations\n\nGroup contributions\nUsing the density gives all groups equal area that integrates to 1. This masks differences between the sizes of groups. Instead of using density, one can use the intensity that also encompasses differences in group size.\n\nVISUALISE bill_len AS x, species AS colour FROM ggsql:penguins\n  DRAW density REMAPPING intensity AS y\n\n\n\n\n\n\n\n\nStacking\nInstead of having independent groups, the density can also be stacked. Note that stacking alone does not account for relative contributions per group. For that reason, you may want to show the intensity instead.\n\nVISUALISE bill_len AS x, species AS colour FROM ggsql:penguins\n  DRAW density \n    REMAPPING intensity AS y\n    SETTING position =&gt; 'stack'\n\n\n\n\n\n\n\n\nAnnotation\nYou can use the rule layer to display precomputed summaries, like the mean.\n\n\nWITH mean_data AS (\n  SELECT \n    AVG(bill_len) AS bill_len, \n    species \n  FROM ggsql:penguins \n  GROUP BY species\n)\nVISUALISE bill_len AS x, species AS colour FROM ggsql:penguins\n  DRAW density SETTING opacity =&gt; 0.3\n  DRAW rule MAPPING FROM mean_data\n\n\n\n\n\n\n\n\nFaceting\nAnother way of comparing groups is by using facets to separate the groups into different panels.\n\nVISUALISE bill_len AS x, species AS colour FROM ggsql:penguins\n  DRAW density\n  FACET species SETTING ncol =&gt; 1\n\n\n\n\n\n\n\n\nRelation to violin plots\nConceptually, violin plots also display densities. The similarity becomes clearer if you make a ridgeline plot by displaying the violin density on a single side. The plot below is essentially showing the same thing as the plot above, but gathered in a single panel.\n\nVISUALISE bill_len AS x, species AS y, species AS colour FROM ggsql:penguins\n  DRAW violin SETTING side =&gt; 'top', width =&gt; 2"
+  },
+  {
+    "objectID": "gallery/examples/boxplot.html",
+    "href": "gallery/examples/boxplot.html",
+    "title": "Box plots",
+    "section": "",
+    "text": "Boxplots are a popular way to display a summary of a distribution of single continuous variables. It is good to keep in mind boxplots hide the actual distribution of the data behind a summary, for example when the data is bi- or multi-modal. For every group, a boxplot displays the following 6 things:"
+  },
+  {
+    "objectID": "gallery/examples/boxplot.html#code",
+    "href": "gallery/examples/boxplot.html#code",
+    "title": "Box plots",
+    "section": "Code",
+    "text": "Code\n\nVISUALISE species AS x, bill_len AS y FROM ggsql:penguins\n  DRAW boxplot"
+  },
+  {
+    "objectID": "gallery/examples/boxplot.html#explanation",
+    "href": "gallery/examples/boxplot.html#explanation",
+    "title": "Box plots",
+    "section": "Explanation",
+    "text": "Explanation\n\nThe VISUALISE ... FROM ggsql:penguins loads the built-in penguins dataset.\nspecies AS x sets a categorical variable to separate different groups.\nbill_len AS y sets the numeric variable to summarise.\nDRAW boxplot gives instructions to draw the boxplot layer."
+  },
+  {
+    "objectID": "gallery/examples/boxplot.html#variations",
+    "href": "gallery/examples/boxplot.html#variations",
+    "title": "Box plots",
+    "section": "Variations",
+    "text": "Variations\n\nDodging\nYou can refine groups beyond the axis categorical variable, and the boxplots will be displayed in a dodged way.\n\nVISUALISE species AS x, bill_len AS y, island AS fill FROM ggsql:penguins\n  DRAW boxplot\n\n\n\n\n\n\nHowever, dodging might be unproductive or counterintuitive in some cases. For example if we double-encode groups, like species as both x and fill in the plot below, dodging looks bad.\n\nVISUALISE species AS x, bill_len AS y, species AS fill FROM ggsql:penguins\n  DRAW boxplot\n\n\n\n\n\n\nWe can disable the dodging by setting position =&gt; 'identity'.\n\nVISUALISE species AS x, bill_len AS y, species AS fill FROM ggsql:penguins\n  DRAW boxplot SETTING position =&gt; 'identity'\n\n\n\n\n\n\n\n\nHorizontal\nTo draw the boxplots horizontally, simply swap the x and y mapping. The orientation is detected automatically based on which variable is continuous and which is discrete.\n\nVISUALISE bill_len AS x, species AS y, island AS fill FROM ggsql:penguins\n  DRAW boxplot\n\n\n\n\n\n\n\n\nWith individual datapoints\nBecause a boxplot is a summary, it may be a good idea to supplement them with individual datapoints so that you can’t be accused of ‘hiding’ the distribution. The datapoints can be jittered by setting position =&gt; 'jitter'. When you do this, make sure to turn outliers =&gt; false to not draw the outlier points twice across the two layers.\n\n\nVISUALISE species AS x, bill_len AS y FROM ggsql:penguins\n  DRAW point SETTING position =&gt; 'jitter'\n  DRAW boxplot SETTING outliers =&gt; false"
+  },
+  {
+    "objectID": "gallery/examples/multi-layer.html",
+    "href": "gallery/examples/multi-layer.html",
+    "title": "Multi-layer plot",
+    "section": "",
+    "text": "Multi-layer plots combine different geometric elements (geoms) to create richer visualizations. Each DRAW clause adds a new layer."
+  },
+  {
+    "objectID": "gallery/examples/multi-layer.html#code",
+    "href": "gallery/examples/multi-layer.html#code",
+    "title": "Multi-layer plot",
+    "section": "Code",
+    "text": "Code\n\nSELECT Date, Temp FROM ggsql:airquality\nVISUALISE Date AS x, Temp AS y\nDRAW line\n  SETTING color =&gt; 'steelblue'\nDRAW point\n  SETTING size =&gt; 4, color =&gt; 'darkblue'\nSCALE x VIA date\nLABEL\n  title =&gt; 'Temperature with Line and Points',\n  x =&gt; 'Date',\n  y =&gt; 'Temperature (F)'"
+  },
+  {
+    "objectID": "gallery/examples/multi-layer.html#explanation",
+    "href": "gallery/examples/multi-layer.html#explanation",
+    "title": "Multi-layer plot",
+    "section": "Explanation",
+    "text": "Explanation\n\nThe first DRAW line creates a line connecting all points\nThe second DRAW point adds point markers at each data point\nSETTING on each layer controls that layer’s visual properties\nBoth layers share the same x and y mappings from VISUALISE"
+  },
+  {
+    "objectID": "gallery/examples/multi-layer.html#variations",
+    "href": "gallery/examples/multi-layer.html#variations",
+    "title": "Multi-layer plot",
+    "section": "Variations",
+    "text": "Variations\n\nDifferent aesthetics per layer\nEach layer can have its own aesthetic mappings using MAPPING:\n\nSELECT Date, Temp, Ozone FROM ggsql:airquality\nVISUALISE Date AS x\nDRAW line\n  MAPPING Temp AS y, 'Temperature' AS color\nDRAW line\n  MAPPING Ozone AS y, 'Ozone' AS color\nSCALE x VIA date\nLABEL\n  title =&gt; 'Temperature and Ozone Over Time',\n  x =&gt; 'Date',\n  y =&gt; 'Value'\n\n\n\n\n\n\n\n\nLayers from different data sources\nUse MAPPING ... FROM to pull each layer from different CTEs:\n\nWITH temps AS (\n  SELECT Date, Temp as value FROM ggsql:airquality\n),\nozone AS (\n  SELECT Date, Ozone as value FROM ggsql:airquality WHERE Ozone IS NOT NULL\n)\nVISUALISE\nDRAW line\n  MAPPING Date AS x, value AS y, 'Temperature' AS color FROM temps\nDRAW point\n  MAPPING Date AS x, value AS y, 'Ozone' AS color FROM ozone\n  SETTING size =&gt; 3\nSCALE x VIA date\nLABEL\n  title =&gt; 'Temperature vs Ozone',\n  x =&gt; 'Date',\n  y =&gt; 'Value'"
+  },
+  {
+    "objectID": "gallery/examples/pie-chart.html",
+    "href": "gallery/examples/pie-chart.html",
+    "title": "Pie chart",
+    "section": "",
+    "text": "Pie charts are a popular but less effective way to display proportions of groups. No special syntax exists to create pie charts. In the Grammar of Graphics, pie charts are stacked bar charts displayed in a polar coordinate system."
+  },
+  {
+    "objectID": "gallery/examples/pie-chart.html#code",
+    "href": "gallery/examples/pie-chart.html#code",
+    "title": "Pie chart",
+    "section": "Code",
+    "text": "Code\nIt makes sense to construct pie charts first in a Cartesian coordinate system, which makes it easier to diagnose any potential problems. We start out with a stacked bar chart. The bar layer does not need x or y because if absent, it will count the number of observations per group. Stacking is the default position adjustment for the bar layer.\n\nVISUALISE island AS fill FROM ggsql:penguins\n  DRAW bar\n\n\n\n\n\n\nNow we need to add the polar coordinate system to make a pie chart.\n\nVISUALISE island AS fill FROM ggsql:penguins\n  DRAW bar\n  PROJECT TO polar"
+  },
+  {
+    "objectID": "gallery/examples/pie-chart.html#explanation",
+    "href": "gallery/examples/pie-chart.html#explanation",
+    "title": "Pie chart",
+    "section": "Explanation",
+    "text": "Explanation\n\nThe VISUALISE ... FROM ggsql:penguins loads the built-in penguins dataset.\nisland AS fill gives the instruction to colour by island. Groups are implicitly defined by this too.\nDRAW bar instructs to use a bar layer. Because we have no x or y, but we do have fill-based groups, this will be counted.\nPROJECT TO polar sets the polar coordinate system that uses the radius and angle instead of x/y-coordinates.\n\nWe need this when there are no position aesthetics, or we want to use additional SETTINGs.\nIf we use angle and radius aesthetics, polar coordinates are implied automatically.\nIf we use x and y aesthetics, we need to use PROJECT y, x TO polar instead. This is easiest when swapping between Cartesian and polar coordinates."
+  },
+  {
+    "objectID": "gallery/examples/pie-chart.html#variations",
+    "href": "gallery/examples/pie-chart.html#variations",
+    "title": "Pie chart",
+    "section": "Variations",
+    "text": "Variations\n\nPrecomputed summary\nIf we’ve pre-computed proportions or counts, we can build a pie chart by mapping to the angle and radius aesthetics. Going for a classic pie chart, you may have to define a dummy radius aesthetic, because the default behaviour would otherwise be to count the number of every n.\n\nWITH count_data AS (\n  SELECT \n    COUNT(*) AS n,\n    species\n  FROM ggsql:penguins\n  GROUP BY species\n)\n\nVISUALISE n AS angle, 'dummy' AS radius, species AS fill FROM count_data\n  DRAW bar\n\n\n\n\n\n\nNote that because we’re using angle and radius, we no longer need to specify PROJECT TO polar because it is inferred from the aesthetic names.\n\n\nDon’t use radius for pie charts\nYou could in theory also use a non-dummy variable for radius, but you may need to use SETTING total to fill in each ring. We must warn sternly that this is a bad idea though. We tend to judge pie charts by area, and the more central rings are allocated less area than the outer rings. This could mislead one into thinking that the ‘Adelie’ species makes up the vast majority of the observations by eyeballing the cart below. In reality, the ‘Adelie’ species makes up ~44% of the dataset: a narrow plurality.\n\nVISUALISE island AS radius, species AS fill FROM ggsql:penguins\n  DRAW bar SETTING total =&gt; 100\n\n\n\n\n\n\n\n\nDonut charts\nDonut charts are a variation of the pie chart that shows a ring instead of a full circle. You can create a donut chart by setting the inner of the polar coordinate system.\n\nVISUALISE island AS fill FROM ggsql:penguins\n  DRAW bar\n  PROJECT TO polar SETTING inner =&gt; 0.5\n\n\n\n\n\n\n\n\nSemicircular pie charts\nThese plots are a piece of cake. You can set their extent by tweaking the start and end setting in degrees. If you want the angle aesthetic to take up the full extent, you may turn off the expand setting in the angle scale.\n\nVISUALISE island AS fill FROM ggsql:penguins\n  DRAW bar\n  PROJECT TO polar SETTING start =&gt; -90, end =&gt; 90\n  SCALE angle SETTING expand =&gt; 0"
+  },
+  {
+    "objectID": "gallery/examples/violin.html",
+    "href": "gallery/examples/violin.html",
+    "title": "Violin plots",
+    "section": "",
+    "text": "Violin plots display the distribution of a single continuous variable, much like density plots. They are displayed differently, with mirrored densities and separated groups. The densities are mirrored, and each group has its own center."
+  },
+  {
+    "objectID": "gallery/examples/violin.html#code",
+    "href": "gallery/examples/violin.html#code",
+    "title": "Violin plots",
+    "section": "Code",
+    "text": "Code\n\nVISUALISE species AS x, bill_len AS y FROM ggsql:penguins\n  DRAW violin"
+  },
+  {
+    "objectID": "gallery/examples/violin.html#explanation",
+    "href": "gallery/examples/violin.html#explanation",
+    "title": "Violin plots",
+    "section": "Explanation",
+    "text": "Explanation\n\nThe VISUALISE ... FROM ggsql:penguins loads the built-in penguins dataset.\nspecies AS x sets a categorical variable to separate different groups.\nbill_len AS y sets the numeric variable to use for density estimation.\nDRAW violin gives instructions to draw the violin layer."
+  },
+  {
+    "objectID": "gallery/examples/violin.html#variations",
+    "href": "gallery/examples/violin.html#variations",
+    "title": "Violin plots",
+    "section": "Variations",
+    "text": "Variations\n\nDodging\nYou can refine groups beyond the axis categorical variable, and the violins will be displayed in a dodged way.\n\nVISUALISE species AS x, bill_len AS y, island AS colour FROM ggsql:penguins\n  DRAW violin\n\n\n\n\n\n\nHowever, dodging might be unproductive or counterintuitive in some cases. For example if we double-encode groups, like species as both x and colour in the plot below, dodging looks bad.\n\nVISUALISE species AS x, bill_len AS y, species AS colour FROM ggsql:penguins\n  DRAW violin\n\n\n\n\n\n\nWe can disable the dodging by setting position =&gt; 'identity'.\n\nVISUALISE species AS x, bill_len AS y, species AS colour FROM ggsql:penguins\n  DRAW violin SETTING position =&gt; 'identity'\n\n\n\n\n\n\n\n\nHalf-violins\nA ridgeline plot is a plot where violins are placed horizontally without mirroring. To place violins horizontally, we just need to swap the x and y variables.\n\nVISUALISE bill_len AS x, species AS y FROM ggsql:penguins\n  DRAW violin\n\n\n\n\n\n\nTo get ridges, we can set side =&gt; 'top'.\n\nVISUALISE bill_len AS x, species AS y FROM ggsql:penguins\n  DRAW violin SETTING side =&gt; 'top'\n\n\n\n\n\n\nTo display variables split across two different groups, you can combine two halves to get an asymmetrical violin. Here we’re using the FILTER clause to draw separate layers for the ‘male’ and ‘female’ groups.\n\nVISUALISE bill_len AS x, species AS y, sex AS colour FROM ggsql:penguins\n  DRAW violin\n    SETTING side =&gt; 'top'\n    FILTER sex == 'female'\n  DRAW violin\n    SETTING side =&gt; 'bottom'\n    FILTER sex == 'male'\n\n\n\n\n\n\n\n\nWith individual datapoints\nIt might be tempting to combine the display of individual datapoints with a violin to accentuate the distribution. The datapoints can be jittered by setting position =&gt; 'jitter'.\n\nVISUALISE species AS x, bill_len AS y FROM ggsql:penguins\n  DRAW point SETTING position =&gt; 'jitter'\n  DRAW violin SETTING opacity =&gt; 0.3\n\n\n\n\n\n\nThis can be made even more clear by also using the distrion =&gt; 'density' setting.\n\nVISUALISE species AS x, bill_len AS y FROM ggsql:penguins\n  DRAW point SETTING position =&gt; 'jitter', distribution =&gt; 'density'\n  DRAW violin SETTING opacity =&gt; 0.3"
+  },
+  {
     "objectID": "gallery/examples/scatterplot.html",
     "href": "gallery/examples/scatterplot.html",
     "title": "Scatter plot",
@@ -1644,7 +1826,7 @@
     "href": "gallery/examples/scatterplot.html#variations",
     "title": "Scatter plot",
     "section": "Variations",
-    "text": "Variations\n\nWith color by species\n\nVISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins\nDRAW point\nLABEL\n  title =&gt; 'Penguin Bill Dimensions by Species',\n  x =&gt; 'Bill Length (mm)',\n  y =&gt; 'Bill Depth (mm)'"
+    "text": "Variations\n\nWith color by species\nWe’re adding species AS color to the mapping to colour the points by species.\n\nVISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins\nDRAW point\nLABEL\n  title =&gt; 'Penguin Bill Dimensions by Species',\n  x =&gt; 'Bill Length (mm)',\n  y =&gt; 'Bill Depth (mm)'\n\n\n\n\n\n\nThe color palette can be changed by detailing the SCALE color clause.\n\nVISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins\nDRAW point\nSCALE color TO ['DeepSkyBlue', 'Fuchsia', 'Lime']\nLABEL\n    title =&gt; 'Penguin Bill Dimensions by Species',\n    x =&gt; 'Bill Length (mm)',\n    y =&gt; 'Bill Depth (mm)'\n\n\n\n\n\n\n\n\nEncoding even more data using shape\nWe can also encode a second layer of information by displaying island AS shape.\n\nVISUALISE \n  bill_len AS x, \n  bill_dep AS y, \n  species AS color, \n  island AS shape\nFROM ggsql:penguins\nDRAW point\nLABEL\n    title =&gt; 'Penguin Bill Dimensions by Species',\n    x =&gt; 'Bill Length (mm)',\n    y =&gt; 'Bill Depth (mm)'\n\n\n\n\n\n\n\n\nHighlighting groups\nUsing the layer’s FILTER clause we can split the data across layers. Using layer level MAPPING ensures we apply species AS color only to one layer and not the other. The SETTING is used here to directly set a property without mapping data.\n\nVISUALISE\n  bill_len AS x,\n  bill_dep AS y\nFROM ggsql:penguins\nDRAW point \n  MAPPING species AS color\n  FILTER island == 'Biscoe'\nDRAW point \n  SETTING color =&gt; 'grey'\n  FILTER island != 'Biscoe'"
   },
   {
     "objectID": "faq.html",
