@@ -301,4 +301,60 @@ mod tests {
         assert!(validated.valid());
         assert!(validated.errors().is_empty());
     }
+
+    #[test]
+    fn test_validate_color_aesthetic_on_line() {
+        // color should be valid on line geom (has stroke)
+        let validated = validate(
+            "SELECT 1 as x, 2 as y VISUALISE DRAW line MAPPING x AS x, y AS y, region AS color",
+        )
+        .unwrap();
+        assert!(
+            validated.valid(),
+            "color should be accepted on line geom: {:?}",
+            validated.errors()
+        );
+    }
+
+    #[test]
+    fn test_validate_color_aesthetic_on_point() {
+        // color should be valid on point geom (has stroke + fill)
+        let validated = validate(
+            "SELECT 1 as x, 2 as y VISUALISE DRAW point MAPPING x AS x, y AS y, cat AS color",
+        )
+        .unwrap();
+        assert!(
+            validated.valid(),
+            "color should be accepted on point geom: {:?}",
+            validated.errors()
+        );
+    }
+
+    #[test]
+    fn test_validate_colour_spelling() {
+        // British spelling 'colour' should work (normalized by parser to 'color')
+        let validated = validate(
+            "SELECT 1 as x, 2 as y VISUALISE DRAW line MAPPING x AS x, y AS y, region AS colour",
+        )
+        .unwrap();
+        assert!(
+            validated.valid(),
+            "colour (British) should be accepted: {:?}",
+            validated.errors()
+        );
+    }
+
+    #[test]
+    fn test_validate_global_color_mapping() {
+        // Global color mapping should validate correctly
+        let validated = validate(
+            "SELECT 1 as x, 2 as y VISUALISE x AS x, y AS y, region AS color DRAW line",
+        )
+        .unwrap();
+        assert!(
+            validated.valid(),
+            "global color mapping should be accepted: {:?}",
+            validated.errors()
+        );
+    }
 }
