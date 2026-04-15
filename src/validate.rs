@@ -182,8 +182,8 @@ pub fn validate(query: &str) -> Result<Validated> {
                 layer.source,
                 Some(crate::plot::types::DataSource::Annotation)
             );
-            let has_wildcard = layer.mappings.wildcard
-                || (!is_annotation && plot.global_mappings.wildcard);
+            let has_wildcard =
+                layer.mappings.wildcard || (!is_annotation && plot.global_mappings.wildcard);
             if !has_wildcard {
                 // Merge global mappings into a temporary copy for validation
                 // (mirrors execution-time merge, layer takes precedence)
@@ -347,10 +347,9 @@ mod tests {
     #[test]
     fn test_validate_global_color_mapping() {
         // Global color mapping should validate correctly
-        let validated = validate(
-            "SELECT 1 as x, 2 as y VISUALISE x AS x, y AS y, region AS color DRAW line",
-        )
-        .unwrap();
+        let validated =
+            validate("SELECT 1 as x, 2 as y VISUALISE x AS x, y AS y, region AS color DRAW line")
+                .unwrap();
         assert!(
             validated.valid(),
             "global color mapping should be accepted: {:?}",
