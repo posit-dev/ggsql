@@ -28,20 +28,20 @@ Charles Joseph Minard is best known for visualising numerical data about this ca
 ![The original infographic drawn by Charles Minard](../../assets/minard.png)
 
 In this example, we'll recreate the top part of the infographic.
-The particular incarnation of the data that we're using here comes from the [HistData](https://cran.r-project.org/package=HistData) R package [@friendly2002].
+The particular incarnation of the data that we're using here is adapted from the [HistData](https://cran.r-project.org/package=HistData) R package [@friendly2002].
 
 ## Getting started
 
 Our first goal is commit *something* to paper. We'll iron out mistakes and polish the graphic later.
 
 ```{ggsql}
-VISUALISE long AS x, lat AS y FROM '../../assets/data/minard_troops.csv'
+VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
   DRAW line
 ```
 
 To explain what we have done here:
 
-* `VISUALISE ... '../../assets/data/minard_troops.csv'` queries a local CSV file for Napoleon's troops.
+* `VISUALISE ... 'minard_troops.csv'` queries a local CSV file for Napoleon's troops.
 * `long AS x` sets the `long` (longitude) column as the `x` aesthetic.
 * `lat AS y` sets the `lat` (latitude) column as the `y` aesthetic.
 * `DRAW line` instructs to plot to use the `line` layer.
@@ -57,7 +57,7 @@ To rectify this, we should use the `path` layer instead.
 Path layers connect datapoints in the order they appear in, so we're no long sorting along west-east.
 
 ```{ggsql}
-VISUALISE long AS x, lat AS y FROM '../../assets/data/minard_troops.csv'
+VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
   DRAW path
 ```
 
@@ -68,7 +68,7 @@ What that means for us is that we have to account for additional grouping.
 This grouping allows us to resolve separate paths.
 
 ```{ggsql}
-VISUALISE long AS x, lat AS y FROM '../../assets/data/minard_troops.csv'
+VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
   DRAW path
     PARTITION BY direction, group
 ```
@@ -80,7 +80,7 @@ Not only does it display a map and the route of the army; it also separates the 
 We can also separate the advance from the retreat by mapping the `direction` variable to the stroke colour.
 
 ```{ggsql}
-VISUALISE long AS x, lat AS y FROM '../../assets/data/minard_troops.csv'
+VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
   DRAW path
     MAPPING direction AS stroke
     PARTITION BY direction, group
@@ -89,7 +89,7 @@ VISUALISE long AS x, lat AS y FROM '../../assets/data/minard_troops.csv'
 Similarly, we can include the troop numbers by mapping the `survivors` variable to the line width.
 
 ```{ggsql}
-VISUALISE long AS x, lat AS y FROM '../../assets/data/minard_troops.csv'
+VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
   DRAW path
     MAPPING direction AS stroke, survivors AS linewidth
     PARTITION BY direction, group
@@ -104,7 +104,7 @@ We'll choose the colours to more closely resemble the original graphic by Minard
 We set the palette using the `TO` keyword, and format the labels using `RENAMING`.
 
 ```{ggsql}
-VISUALISE long AS x, lat AS y FROM '../../assets/data/minard_troops.csv'
+VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
   DRAW path
     MAPPING direction AS stroke, survivors AS linewidth
     PARTITION BY direction, group
@@ -119,7 +119,7 @@ Slightly more elaborate is the input domain, where we use `FROM [0, null]` to st
 Because both the input and output ranges start at 0, we get a well-proportioned line.
 
 ```{ggsql}
-VISUALISE long AS x, lat AS y FROM '../../assets/data/minard_troops.csv'
+VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
   DRAW path
     MAPPING direction AS stroke, survivors AS linewidth
     PARTITION BY direction, group
@@ -140,12 +140,12 @@ In our new layer, we need so set additional mapping `city AS label` and the new 
 We can also make text a little bit smaller by setting the font size.
 
 ```{ggsql}
-VISUALISE long AS x, lat AS y FROM '../../assets/data/minard_troops.csv'
+VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
   DRAW path
     MAPPING direction AS stroke, survivors AS linewidth
     PARTITION BY direction, group
   DRAW text
-    MAPPING city AS label FROM '../../assets/data/minard_cities.csv'
+    MAPPING city AS label FROM 'minard_cities.csv'
     SETTING fontsize => 6
   SCALE stroke TO ['burlywood', 'black']
     RENAMING 'A' => 'Advance', 'R' => 'Retreat'
@@ -159,12 +159,12 @@ Moreover, we can use `null` to note that a title should be removed.
 In that way we can hide the `long` and `lat` labels from the position mapping.
 
 ```{ggsql}
-VISUALISE long AS x, lat AS y FROM '../../assets/data/minard_troops.csv'
+VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
   DRAW path
     MAPPING direction AS stroke, survivors AS linewidth
     PARTITION BY direction, group
   DRAW text
-    MAPPING city AS label FROM '../../assets/data/minard_cities.csv'
+    MAPPING city AS label FROM 'minard_cities.csv'
     SETTING fontsize => 6
   SCALE stroke TO ['burlywood', 'black']
     RENAMING 'A' => 'Advance', 'R' => 'Retreat'
