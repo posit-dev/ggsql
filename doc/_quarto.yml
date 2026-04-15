@@ -8,6 +8,7 @@ website:
   description: |
     The home of ggsql. A declarative visualisation language build on top of SQL
     and the grammar of graphics.
+  llms-txt: true
   site-url: https://ggsql.org
   repo-url: https://github.com/posit-dev/ggsql
   issue-url: https://github.com/posit-dev/ggsql/issues
