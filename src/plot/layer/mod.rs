@@ -300,6 +300,10 @@ impl Layer {
                 s = if extra.len() > 1 { "s" } else { "" }
             ));
         }
+
+        // Call geom-specific validation (e.g., XOR constraints for Rule)
+        self.geom.validate_aesthetics(&self.mappings)?;
+
         Ok(())
     }
 

@@ -15,7 +15,7 @@ impl GeomTrait for Rule {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("pos1", DefaultAestheticValue::Null),
+                ("pos1", DefaultAestheticValue::Required),
                 ("slope", DefaultAestheticValue::Number(0.0)),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
@@ -23,6 +23,20 @@ impl GeomTrait for Rule {
                 ("linetype", DefaultAestheticValue::String("solid")),
             ],
         }
+    }
+
+    fn validate_aesthetics(&self, mappings: &crate::Mappings) -> std::result::Result<(), String> {
+        // Rule requires exactly one of pos1 or pos2 (XOR logic)
+        let has_pos1 = mappings.contains_key("pos1");
+        let has_pos2 = mappings.contains_key("pos2");
+
+        if has_pos1 && has_pos2 {
+            return Err(
+                "Layer 'rule' requires exactly one of `x` or `y`, not both.".to_string()
+            );
+        }
+
+        Ok(())
     }
 
     fn setup_layer(
@@ -86,5 +100,58 @@ impl GeomTrait for Rule {
 impl std::fmt::Display for Rule {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "rule")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::plot::{AestheticContext, AestheticValue, Geom, Layer};
+
+    /// Helper function to create a layer with given mappings and validate it
+    fn validate_rule(mappings: &[(&str, &str)]) -> Result<(), String> {
+        let mut layer = Layer::new(Geom::rule());
+        for (aesthetic, column) in mappings {
+            layer.mappings.insert(
+                aesthetic.to_string(),
+                AestheticValue::standard_column(column.to_string()),
+            );
+        }
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+        layer.validate_mapping(&Some(ctx), false)
+    }
+
+    #[test]
+    fn test_rule_requires_exactly_one_position() {
+        // Rule requires exactly one of pos1 or pos2 (XOR logic)
+
+        // Missing both should fail
+        let result = validate_rule(&[]);
+        assert!(result.is_err(), "Should fail when missing both x and y");
+
+        // Both present should fail
+        let result = validate_rule(&[("pos1", "x"), ("pos2", "y")]);
+        assert!(result.is_err(), "Should fail when both x and y are present");
+    }
+
+    #[test]
+    fn test_rule_validates_with_x_only() {
+        // Vertical rule with only x
+        let result = validate_rule(&[("pos1", "x")]);
+        assert!(
+            result.is_ok(),
+            "Expected validation to pass with only x, got error: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_rule_validates_with_y_only() {
+        // Horizontal rule with only y
+        let result = validate_rule(&[("pos2", "y")]);
+        assert!(
+            result.is_ok(),
+            "Expected validation to pass with only y, got error: {:?}",
+            result.err()
+        );
     }
 }

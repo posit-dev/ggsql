@@ -686,28 +686,14 @@ impl GeomRenderer for RuleRenderer {
         layer: &Layer,
         context: &RenderContext,
     ) -> Result<()> {
-        let has_x = encoding.contains_key("x");
-        let has_y = encoding.contains_key("y");
-
-        // Remove slope from encoding (it's never a visual encoding, only metadata)
-        // and check if it's non-zero (diagonal line)
+        // Check if this is a diagonal rule (slope is non-zero)
         let diagonal = matches!(
             layer.parameters.get("diagonal"),
             Some(ParameterValue::Boolean(true))
         );
 
-        if !has_x && !has_y && !diagonal {
-            return Err(GgsqlError::ValidationError(
-                "The `rule` layer requires the `x` or `y` aesthetic. It currently has neither."
-                    .to_string(),
-            ));
-        } else if has_x && has_y && !diagonal {
-            return Err(GgsqlError::ValidationError(
-                "The `rule` layer requires exactly one of the `x` or `y` aesthetic, not both."
-                    .to_string(),
-            ));
-        }
         if !diagonal {
+            // Regular horizontal/vertical rule - no special rendering needed
             return Ok(());
         }
 

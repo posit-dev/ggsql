@@ -136,6 +136,16 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Returns aesthetic information (REQUIRED - each geom is different)
     fn aesthetics(&self) -> DefaultAesthetics;
 
+    /// Validate aesthetic mappings for this geom.
+    ///
+    /// Called during layer validation after basic checks (Required aesthetics, bidirectional)
+    /// to allow geoms to implement custom validation logic (e.g., XOR constraints).
+    ///
+    /// Default: no additional validation
+    fn validate_aesthetics(&self, _mappings: &crate::Mappings) -> std::result::Result<(), String> {
+        Ok(())
+    }
+
     /// Returns default remappings for stat-computed columns and literals to aesthetics.
     ///
     /// Each tuple is (aesthetic_name, value) where value can be:
@@ -443,6 +453,11 @@ impl Geom {
     /// Get valid settings
     pub fn valid_settings(&self) -> Vec<&'static str> {
         self.0.valid_settings()
+    }
+
+    /// Validate aesthetic mappings
+    pub fn validate_aesthetics(&self, mappings: &Mappings) -> std::result::Result<(), String> {
+        self.0.validate_aesthetics(mappings)
     }
 }
 
