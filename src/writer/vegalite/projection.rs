@@ -153,7 +153,7 @@ fn convert_geoms_to_polar(
         _ => false,
     };
 
-    let size = if is_faceted && inner > f64::EPSILON {
+    let size = if is_faceted {
         // Try to grab size from spec if available
         let height = vl_spec.get("height").and_then(|h| h.as_f64());
         let width = vl_spec.get("width").and_then(|w| w.as_f64());
@@ -452,11 +452,6 @@ fn apply_polar_angle_range(
 /// The inner parameter (0.0 to 1.0) specifies the inner radius as a proportion
 /// of the outer radius, creating a donut hole.
 fn apply_polar_radius_range(encoding: &mut Value, inner: f64, size: Option<f64>) -> Result<()> {
-    // Skip if no inner radius (full pie)
-    if inner <= f64::EPSILON {
-        return Ok(());
-    }
-
     let enc_obj = encoding
         .as_object_mut()
         .ok_or_else(|| GgsqlError::WriterError("Encoding is not an object".to_string()))?;
