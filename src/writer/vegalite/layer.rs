@@ -662,23 +662,12 @@ impl GeomRenderer for SegmentRenderer {
         _layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        let has_x2 = encoding.contains_key("x2");
-        let has_y2 = encoding.contains_key("y2");
-        if !has_x2 && !has_y2 {
-            return Err(GgsqlError::ValidationError(
-                "The `segment` layer requires at least one of the `xend` or `yend` aesthetics."
-                    .to_string(),
-            ));
+        // If endpoint is missing, use start point (creates vertical/horizontal line)
+        if let Some(x) = encoding.get("x").cloned() {
+            encoding.entry("x2".to_string()).or_insert(x);
         }
-        if !has_x2 {
-            if let Some(x) = encoding.get("x").cloned() {
-                encoding.insert("x2".to_string(), x);
-            }
-        }
-        if !has_y2 {
-            if let Some(y) = encoding.get("y").cloned() {
-                encoding.insert("y2".to_string(), y);
-            }
+        if let Some(y) = encoding.get("y").cloned() {
+            encoding.entry("y2".to_string()).or_insert(y);
         }
         Ok(())
     }
