@@ -146,6 +146,26 @@ fn convert_geoms_to_polar(
     end_radians: f64,
     inner: f64,
 ) -> Result<()> {
+    let is_faceted = match &spec.facet {
+        Some(facet) => !facet.get_variables().is_empty(),
+        _ => false,
+    };
+
+    let size = if is_faceted && inner > f64::EPSILON {
+        // Try to grab size from spec if available
+        let height = vl_spec.get("height").and_then(|h| h.as_f64());
+        let width = vl_spec.get("width").and_then(|w| w.as_f64());
+
+        Some(match (height, width) {
+            (Some(h), Some(w)) => h.min(w),
+            (Some(h), None) => h,
+            (None, Some(w)) => w,
+            _ => 350.0, // Fallback
+        })
+    } else {
+        None
+    };
+
     if let Some(layers_arr) = get_layers_mut(vl_spec) {
         for layer in layers_arr {
             if let Some(mark) = layer.get_mut("mark") {
@@ -156,13 +176,8 @@ fn convert_geoms_to_polar(
                 if is_arc {
                     // Arc marks natively support radius/theta channels
                     if let Some(encoding) = layer.get_mut("encoding") {
-                        // Remove dummy radius encoding — for pie charts the bar stat
-                        // creates a dummy pos1 column (all rows same value). VL's arc
-                        // mark uses full available radius by default, and a nominal
-                        // radius with a single dummy value breaks faceted arc rendering.
-                        strip_dummy_radius(encoding);
                         apply_polar_angle_range(encoding, start_radians, end_radians)?;
-                        apply_polar_radius_range(encoding, inner)?;
+                        apply_polar_radius_range(encoding, inner, size)?;
                     }
                 } else {
                     // Non-arc marks (point, line): convert polar to cartesian
@@ -385,26 +400,6 @@ fn convert_mark_to_polar(mark: &Value, _spec: &Plot) -> Result<Value> {
     Ok(json!(polar_mark))
 }
 
-/// Remove dummy radius encoding from arc marks.
-///
-/// For pie charts, the bar stat creates a dummy pos1 column where all rows have
-/// the same placeholder value. In cartesian this positions all bars at the same x.
-/// For arc marks, a nominal radius with a single dummy value is unnecessary (VL
-/// uses full available radius by default) and breaks faceted arc rendering.
-/// The dummy is identified by `"axis": null` which is set by build_column_encoding
-/// for dummy columns.
-fn strip_dummy_radius(encoding: &mut Value) {
-    let dominated = encoding
-        .get("radius")
-        .and_then(|r| r.get("axis"))
-        .is_some_and(|a| a.is_null());
-    if dominated {
-        if let Some(enc_obj) = encoding.as_object_mut() {
-            enc_obj.remove("radius");
-        }
-    }
-}
-
 /// Apply angle range to theta encoding for polar projection
 ///
 /// The encoding channels are already correctly named (theta/radius) by
@@ -454,7 +449,7 @@ fn apply_polar_angle_range(
 /// Sets the radius scale range using Vega-Lite expressions for proportional sizing.
 /// The inner parameter (0.0 to 1.0) specifies the inner radius as a proportion
 /// of the outer radius, creating a donut hole.
-fn apply_polar_radius_range(encoding: &mut Value, inner: f64) -> Result<()> {
+fn apply_polar_radius_range(encoding: &mut Value, inner: f64, size: Option<f64>) -> Result<()> {
     // Skip if no inner radius (full pie)
     if inner <= f64::EPSILON {
         return Ok(());
@@ -465,9 +460,17 @@ fn apply_polar_radius_range(encoding: &mut Value, inner: f64) -> Result<()> {
         .ok_or_else(|| GgsqlError::WriterError("Encoding is not an object".to_string()))?;
 
     // Use expressions for proportional sizing
-    // min(width,height)/2 is the default max radius in Vega-Lite
-    let inner_expr = format!("min(width,height)/2*{}", inner);
-    let outer_expr = "min(width,height)/2".to_string();
+    let (inner_expr, outer_expr) = match size {
+        Some(dim) => (format!("{}/2*{}", dim, inner), format!("{}/2", dim)),
+        _ => {
+            // min(width,height)/2 is the default max radius in Vega-Lite
+            (
+                format!("min(width,height)/2*{}", inner),
+                "min(width,height)/2".to_string(),
+            )
+        }
+    };
+
     let range_value = json!([{"expr": inner_expr}, {"expr": outer_expr}]);
 
     // Apply scale range to radius encoding (merge with existing scale)
