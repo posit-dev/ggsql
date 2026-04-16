@@ -1,0 +1,76 @@
+# Box plots
+
+basic
+
+boxplot
+
+distribution
+
+Showing groups of distributions of single numeric variables
+
+Boxplots are a popular way to display a summary of a distribution of single continuous variables. It is good to keep in mind boxplots hide the actual distribution of the data behind a summary, for example when the data is bi- or multi-modal. For every group, a boxplot displays the following 6 things:
+
+1.  The 25^(th) percentile, or Q1, as the start of the box.
+2.  The 50^(th) percentile, i.e. median or Q2, as a line across the box.
+3.  The 75^(th) percentile, or Q3, as the end of the box. Together with Q1 we can compute the interquartile range: IQR = Q3 - Q1.
+4.  The minimum data value or Q1 - 1.5 \* IQR, whichever is larger. This is displayed as the lower whisker.
+5.  The maximum data value or Q3 + 1.5 \* IQR, whichever is smaller. This is displayed as the upper whisker.
+6.  Outliers outside the whiskers, if present. These are drawn as individual points.
+
+## Code
+
+``` ggsql
+VISUALISE species AS x, bill_len AS y FROM ggsql:penguins
+  DRAW boxplot
+```
+
+## Explanation
+
+- The `VISUALISE ... FROM ggsql:penguins` loads the built-in penguins dataset.
+- `species AS x` sets a categorical variable to separate different groups.
+- `bill_len AS y` sets the numeric variable to summarise.
+- `DRAW boxplot` gives instructions to draw the boxplot layer.
+
+## Variations
+
+### Dodging
+
+You can refine groups beyond the axis categorical variable, and the boxplots will be displayed in a dodged way.
+
+``` ggsql
+VISUALISE species AS x, bill_len AS y, island AS fill FROM ggsql:penguins
+  DRAW boxplot
+```
+
+However, dodging might be unproductive or counterintuitive in some cases. For example if we double-encode groups, like `species` as both `x` *and* `fill` in the plot below, dodging looks bad.
+
+``` ggsql
+VISUALISE species AS x, bill_len AS y, species AS fill FROM ggsql:penguins
+  DRAW boxplot
+```
+
+We can disable the dodging by setting `position => 'identity'`.
+
+``` ggsql
+VISUALISE species AS x, bill_len AS y, species AS fill FROM ggsql:penguins
+  DRAW boxplot SETTING position => 'identity'
+```
+
+### Horizontal
+
+To draw the boxplots horizontally, simply swap the `x` and `y` mapping. The orientation is detected automatically based on which variable is continuous and which is discrete.
+
+``` ggsql
+VISUALISE bill_len AS x, species AS y, island AS fill FROM ggsql:penguins
+  DRAW boxplot
+```
+
+### With individual datapoints
+
+Because a boxplot is a summary, it may be a good idea to supplement them with individual datapoints so that you can’t be accused of ‘hiding’ the distribution. The datapoints can be jittered by setting `position => 'jitter'`. When you do this, make sure to turn `outliers => false` to not draw the outlier points twice across the two layers.
+
+``` ggsql
+VISUALISE species AS x, bill_len AS y FROM ggsql:penguins
+  DRAW point SETTING position => 'jitter'
+  DRAW boxplot SETTING outliers => false
+```

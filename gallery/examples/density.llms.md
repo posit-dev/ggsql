@@ -1,0 +1,85 @@
+# Density plots
+
+basic
+
+density
+
+distribution
+
+Showing smooth distributions of single numeric variables
+
+Like histograms, density plots show the distribution of a numeric variable. Instead of binning, density plots use [kernel density estimation](https://en.wikipedia.org/wiki/Kernel_density_estimation) to estimate a smooth, continuous probability density. A kernel (like a Gaussian) is placed on each point and summed. The level of smoothing is controlled via the bandwidth which affects the width of the kernel.
+
+## Code
+
+The x-axis gives the value of the numerical variable, whereas the y-axis gives the estimated probability density.
+
+``` ggsql
+VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
+  DRAW density
+```
+
+## Explanation
+
+- The `VISUALISE ... FROM ggsql:penguins` loads the built-in penguins dataset.
+- `bill_len AS x` sets the numeric variable to use for density estimation.
+- `species AS colour` sets implicit groups indicated by colour.
+- `DRAW density` gives instructions to draw the density layer.
+
+## Variations
+
+### Group contributions
+
+Using the density gives all groups equal area that integrates to 1. This masks differences between the sizes of groups. Instead of using density, one can use the `intensity` that also encompasses differences in group size.
+
+``` ggsql
+VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
+  DRAW density REMAPPING intensity AS y
+```
+
+### Stacking
+
+Instead of having independent groups, the density can also be stacked. Note that stacking alone does not account for relative contributions per group. For that reason, you may want to show the intensity instead.
+
+``` ggsql
+VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
+  DRAW density 
+    REMAPPING intensity AS y
+    SETTING position => 'stack'
+```
+
+### Annotation
+
+You can use the [rule](../../syntax/layer/type/rule.llms.md) layer to display precomputed summaries, like the mean.
+
+``` ggsql
+WITH mean_data AS (
+  SELECT 
+    AVG(bill_len) AS bill_len, 
+    species 
+  FROM ggsql:penguins 
+  GROUP BY species
+)
+VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
+  DRAW density SETTING opacity => 0.3
+  DRAW rule MAPPING FROM mean_data
+```
+
+### Faceting
+
+Another way of comparing groups is by using facets to separate the groups into different panels.
+
+``` ggsql
+VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
+  DRAW density
+  FACET species SETTING ncol => 1
+```
+
+### Relation to violin plots
+
+Conceptually, violin plots also display densities. The similarity becomes clearer if you make a ridgeline plot by displaying the violin density on a single side. The plot below is essentially showing the same thing as the plot above, but gathered in a single panel.
+
+``` ggsql
+VISUALISE bill_len AS x, species AS y, species AS colour FROM ggsql:penguins
+  DRAW violin SETTING side => 'top', width => 2
+```

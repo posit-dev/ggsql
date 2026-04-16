@@ -1,0 +1,89 @@
+# Scatter plot
+
+basic
+
+point
+
+Basic scatter plot mapping two numeric variables to position
+
+A scatter plot displays the relationship between two numeric variables by mapping them to x and y positions. This is one of the most fundamental visualization types for exploring correlations and patterns.
+
+## Code
+
+``` ggsql
+VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
+DRAW point
+LABEL
+  title => 'Penguin Bill Dimensions',
+  x => 'Bill Length (mm)',
+  y => 'Bill Depth (mm)'
+```
+
+## Explanation
+
+- `VISUALISE ... FROM ggsql:penguins` loads the built-in penguins dataset
+- `bill_len AS x, bill_dep AS y` maps bill length to the x-axis and bill depth to the y-axis
+- `DRAW point` creates a scatter plot using points
+- `LABEL` adds descriptive axis labels and a title
+
+## Variations
+
+### With color by species
+
+We’re adding `species AS color` to the mapping to colour the points by species.
+
+``` ggsql
+VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
+DRAW point
+LABEL
+  title => 'Penguin Bill Dimensions by Species',
+  x => 'Bill Length (mm)',
+  y => 'Bill Depth (mm)'
+```
+
+The color palette can be changed by detailing the `SCALE color` clause.
+
+``` ggsql
+VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
+DRAW point
+SCALE color TO ['DeepSkyBlue', 'Fuchsia', 'Lime']
+LABEL
+    title => 'Penguin Bill Dimensions by Species',
+    x => 'Bill Length (mm)',
+    y => 'Bill Depth (mm)'
+```
+
+### Encoding even more data using shape
+
+We can also encode a second layer of information by displaying `island AS shape`.
+
+``` ggsql
+VISUALISE 
+  bill_len AS x, 
+  bill_dep AS y, 
+  species AS color, 
+  island AS shape
+FROM ggsql:penguins
+DRAW point
+LABEL
+    title => 'Penguin Bill Dimensions by Species',
+    x => 'Bill Length (mm)',
+    y => 'Bill Depth (mm)'
+```
+
+### Highlighting groups
+
+Using the layer’s `FILTER` clause we can split the data across layers. Using layer level `MAPPING` ensures we apply `species AS color` only to one layer and not the other. The `SETTING` is used here to directly set a property without mapping data.
+
+``` ggsql
+VISUALISE
+  bill_len AS x,
+  bill_dep AS y
+FROM ggsql:penguins
+DRAW point 
+  MAPPING species AS color
+  FILTER island == 'Biscoe'
+DRAW point 
+  SETTING color => 'grey'
+  FILTER island != 'Biscoe'
+```

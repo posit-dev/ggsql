@@ -1,0 +1,75 @@
+# Polygon
+
+> Layers are declared with the [`DRAW` clause](../../../syntax/clause/draw.llms.md). Read the documentation for this clause for a thorough description of how to use it.
+
+Polygons can be used to draw arbitrary closed shapes based on an ordered sequence of x,y-coordinates. They are similar to [paths](../../../syntax/layer/type/path.llms.md), but close the shapes and fill the interior.
+
+## Aesthetics
+
+The following aesthetics are recognised by the polygon layer.
+
+### Required
+
+- Primary axis (e.g. `x`): Position along the primary axis.
+- Secondary axis (e.g. `y`): Position along the secondary axis.
+
+### Optional
+
+- `stroke` The colour of the contour lines.
+- `fill` The colour of the inner area.
+- `colour` Shorthand for setting `stroke` and `fill` simultaneously.
+- `opacity` The opacity of colours.
+- `linewidth` The width of the contour lines.
+- `linetype` The dash pattern of the contour line.
+
+## Settings
+
+- `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
+
+## Data transformation
+
+The polygon layer does not transform its data but passes it through unchanged
+
+## Orientation
+
+The polygon layer has no orientation. The axes are treated symmetrically.
+
+## Examples
+
+Create example data
+
+``` ggsql
+CREATE TABLE df AS
+WITH t(x, y, id) AS (VALUES
+  (1.0, 1.0, 'A'),
+  (1.0, 3.0, 'A'),
+  (2.0, 1.0, 'A'),
+  (2.0, 3.0, 'B'),
+  (3.0, 1.0, 'B'),
+  (3.0, 3.0, 'B')
+)
+SELECT * FROM t
+```
+
+Simple example polygon.
+
+``` ggsql
+VISUALISE x, y FROM df
+DRAW polygon
+```
+
+Groups of individual polygons can be declared via `PARTITION BY`.
+
+``` ggsql
+VISUALISE x, y FROM df
+DRAW polygon 
+  PARTITION BY id
+```
+
+Invoking a group through discrete aesthetics works as well.
+
+``` ggsql
+VISUALISE x, y FROM df
+DRAW polygon 
+  MAPPING id AS colour
+```

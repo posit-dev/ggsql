@@ -1,0 +1,32 @@
+# Define different titles with `LABEL`
+
+The `LABEL` clause is one of the simpler clauses in ggsql an allow you to override the default naming of axes and legends, as well as adding titles to the plot
+
+## Clause syntax
+
+The `LABEL` clause takes one or more labeling settings.
+
+``` ggsql
+LABEL <aesthetic/title> => <string>, ...
+```
+
+If an `aesthetic` is given, then the title will be used for the relevant axis or legend, e.g. `x => 'my x-axis'` will label the x axis, whereas `fill => 'Species'` will label the legend for fill (if any).
+
+There are a few additional labels beside the aesthetics that govern the different titles of the plot and can be given instead of an aesthetic name:
+
+- `title`: The main title of the plot
+- `subtitle`: An additional, often longer and more descriptive, title beneath the main title
+- `caption`: A string placed below the plot, often used to add additional information about the data source etc.
+
+## Automatic labelling logic
+
+Axes and legends get an automatic label from the mapping. The logic is as follows:
+
+1.  Start from the global mapping and then go through the layer mappings as they appear.
+2.  Collect mappings for each aesthetic in the order they appear
+3.  For each aesthetic determine the label based on the following priority:
+4.  An explicitly provided one with `LABEL`
+5.  The name of the first appearing column mapping
+6.  The name of the aesthetic
+
+This means that constants mapped to an aesthetic doesn’t contribute to the derived label, only data columns, and if all else fails the name of the aesthetic will be used.

@@ -1,0 +1,103 @@
+# Histogram
+
+> Layers are declared with the [`DRAW` clause](../../../syntax/clause/draw.llms.md). Read the documentation for this clause for a thorough description of how to use it.
+
+Visualise the distribution of a single continuous variable by dividing the primary axis into bins and counting the number of observations in each bin. If providing a weight then a weighted histogram is calculated instead.
+
+## Aesthetics
+
+The following aesthetics are recognised by the bar layer.
+
+### Required
+
+- Primary axis (e.g. `x`): The continuous variable to bin
+
+### Optional
+
+- `colour`: The default colour of each bar
+- `stroke`: The colour of the stroke around each bar. Overrides `colour`
+- `fill`: The fill colour of each bar. Overrides `colour`
+- `opacity`: The opacity of the bar fill
+- `linewidth`: The width of the stroke
+- `linetype`: The type of stroke, i.e. the dashing pattern
+
+## Settings
+
+- `position`: Position adjustment. One of `'identity'`, `'stack'` (default), `'dodge'`, or `'jitter'`
+- `bins`: The number of bins to calculate. Whole number \>= 1. Defaults to `30`
+- `binwidth`: The width of each bin (must be \> 0). If provided it will override the binwidth calculated from `bins`
+- `closed`: Either `'left'` or `'right'` (default). Determines whether the bin intervals are closed to the left or right side
+
+## Data transformation
+
+The histogram layer will bin the records in each group and count them. By default it will map the count to the secondary axis.
+
+### Properties
+
+- `weight`: If mapped, the sum of the weights within each bin is calculated instead of the count in each bin
+
+### Calculated statistics
+
+- `count`: The count or, if `weight` have been mapped, sum of weights in each bin.
+- `density`: The groupwise density, i.e. the `count` divided by the sum of `count` among all bins within each group
+
+### Default remappings
+
+- `count AS <secondary axis>`: By default the histogram will show count as the height of the bars
+
+## Orientation
+
+The histogram has its primary axis along the binned variable. The orientation is deduced directly from the mapping. To create a horizontal histogram, you map the variable to `y` instead of `x` (assuming a default Cartesian coordinate system).
+
+## Examples
+
+Show the number of each species in the data
+
+``` ggsql
+VISUALISE FROM ggsql:penguins
+DRAW histogram
+  MAPPING body_mass AS x
+```
+
+Split the histogram in two by mapping sex to fill
+
+``` ggsql
+VISUALISE FROM ggsql:penguins
+DRAW histogram
+  MAPPING body_mass AS x, sex AS fill
+```
+
+The default is to stack multiple histograms. To compare them from a baseline of 0 set position to identity
+
+``` ggsql
+VISUALISE FROM ggsql:penguins
+DRAW histogram
+  MAPPING body_mass AS x, sex AS fill
+  SETTING position => 'identity'
+```
+
+Make the two histograms the same scale by remapping to density
+
+``` ggsql
+VISUALISE FROM ggsql:penguins
+DRAW histogram
+  MAPPING body_mass AS x, sex AS fill
+  REMAPPING density AS y
+```
+
+Specify an exact binwidth if needed
+
+``` ggsql
+VISUALISE FROM ggsql:penguins
+DRAW histogram
+  MAPPING body_mass AS x
+  SETTING binwidth => 100
+```
+
+Create a histogram along the y axis by changing the mapping
+
+``` ggsql
+VISUALISE FROM ggsql:penguins
+DRAW histogram
+  MAPPING body_mass AS y
+```

@@ -1,0 +1,54 @@
+# Create small multiples with `FACET`
+
+The `FACET` clause allows you to split your data, by one or two variables, and plot each group as a small version of the plot: a technique called ‘small multiples’. The technique is great for preventing overplotting. Because each small plot shares the same position scales by default, visual comparisons between groups become easy.
+
+## Clause syntax
+
+The `FACET` syntax contains a number of subclauses that are all optional
+
+``` ggsql
+FACET <column> BY <column>
+  SETTING <parameter> => <value>, ...
+```
+
+The first `column` is mandatory. It names a column in the layer data that will be used for splitting the data. If the layer data does not contain the column the behavior for that layer depends on the `missing` parameter of the facet.
+
+### `BY`
+
+``` ggsql
+BY <column>
+```
+
+The optional `BY` clause is used to define an additional column to split the data by. If it is missing the small multiples are laid out in a grid with the facet panels filling the cells in a row-wise fashion. If `BY` is present then the categories of the first `column` defines the rows of the grid and the categories of the second `column` the columns of the grid. Each multiple is then positioned according to that.
+
+### `SETTING`
+
+``` ggsql
+SETTING <parameter> => <value>, ...
+```
+
+This clause behaves much like the `SETTINGS` clause in `DRAW`, in that it allows you to fine-tune specific behavior of the faceting. The following parameters exist:
+
+- `free`: Controls whether the position scales are independent across the small multiples. Permissible values are:
+  - `null` or omitted (default): Shared/fixed scales across all panels
+  - `'x'`: Independent x-axis scale, shared y-axis scale
+  - `'y'`: Shared x-axis scale, independent y-axis scale
+  - `['x', 'y']`: Independent scales for both axes
+- `missing`: Determines how layers behave when the faceting column is missing. It can take two values: `'repeat'` (default), and `'null'`. If `'repeat'` is set, then the layer data is repeated in each panel. If `'null'`, then such layers are only displayed if a null panel is shown, as controlled by the facet scale.
+- `ncol`/`nrow`: The dimensions of the layout when faceting by a single variable (whole number \>= 1). Only one of these can be given, as the other is derived based on the number of panels to draw. Default is 3 columns when fewer than 6 categories are present, 4 columns when fewer than 12 categories are present and otherwise 5 columns. When the `BY`-clause is used to set a second faceting variable, the `ncol` and `nrow` setting are not allowed.
+
+### Facet variables as aesthetics
+
+When you apply faceting to a plot you are creating new aesthetics you can control. For 1-dimensional faceting (no `BY` clause) the aesthetic is called `panel` and for 2-dimensional faceting the aesthetics are called `row` and `column`. You can read more about these aesthetics in [their documentation](../../syntax/scale/aesthetic/Z_faceting.llms.md)
+
+### Customizing facet strip labels
+
+To customize facet strip labels (e.g., renaming categories), use the `RENAMING` clause on the facet scale:
+
+``` ggsql
+FACET region
+SCALE panel 
+  RENAMING 'N' => 'North', 'S' => 'South'
+```
+
+See the [facet scale documentation](../../syntax/scale/aesthetic/Z_faceting.llms.md) for more details on label customization.

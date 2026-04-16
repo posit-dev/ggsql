@@ -1,0 +1,93 @@
+# Line
+
+> Layers are declared with the [`DRAW` clause](../../../syntax/clause/draw.llms.md). Read the documentation for this clause for a thorough description of how to use it.
+
+The line layer is used to create lineplots. Lineplots always connects records along the x-axis, in contrast to [path layers](../../../syntax/layer/type/path.llms.md) which use the order of data to connect records. Lines are divided due to their grouping, which is the combination of the discrete mapped aesthetics and the columns specified in the layers [`PARTITION BY`](../../../syntax/clause/draw.llms.md#partition-by).
+
+## Aesthetics
+
+The following aesthetics are recognised by the line layer.
+
+### Required
+
+- Primary axis (e.g. `x`): The value of the independent variable.
+- Secondary axis (e.g. `y`): The value of the dependent variable.
+
+### Optional
+
+- `colour`/`stroke`: The colour of the line.
+- `opacity`: The opacity of the line.
+- `linewidth`: The width of the line. If `linewidth` varies within a group, `linetype` is incompatible.
+- `linetype`: The type of line, i.e. the dashing pattern.
+
+## Settings
+
+- `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
+- `orientation`: The orientation of the layer, see the [Orientation section](#orientation). One of the following:
+  - `'aligned'` to align the layer’s primary axis with the coordinate system’s first axis.
+  - `'transposed'` to align the layer’s primary axis with the coordinate system’s second axis.
+
+## Data transformation
+
+The line layer sorts the data along its primary axis. If the line has a variable `stroke` or `opacity` aesthetic within groups, the line is broken into segments. Each segment gets the property of the preceding datapoint, so the last datapoint in a group does not transfer these properties.
+
+## Orientation
+
+Line plots are sorted and connected along their primary axis. Since the primary axis cannot be deduced from the mapping it must be specified using the `orientation` setting. If you wish to create a vertical line plot, you need to set `orientation => 'transposed'` to indicate that the primary layer axis follows the second axis of the coordinate system.
+
+## Examples
+
+Standard lineplot
+
+``` ggsql
+VISUALISE FROM ggsql:airquality
+DRAW line
+  MAPPING Date AS x, Temp AS y
+```
+
+Use `PARTITION BY` to create multiple lines
+
+``` ggsql
+VISUALISE FROM ggsql:airquality
+DRAW line
+  MAPPING Day AS x, Temp AS y
+  PARTITION BY Month
+```
+
+or split them with a *discrete* aesthetic. We can make a continuous variable (`Month`) discrete by using an ordinal scale.
+
+``` ggsql
+VISUALISE FROM ggsql:airquality
+DRAW line
+  MAPPING Day AS x, Temp AS y, Month AS stroke
+  SCALE ordinal stroke
+```
+
+When `stroke` or `opacity` varies, the properties of the preceding datapoint carry over. In the case below, we don’t see the blue of the last datapoint.
+
+``` ggsql
+WITH data(x, y, z) AS (VALUES
+  (1, 2, 1),
+  (2, 5, 3),
+  (3, 3, 5),
+)
+VISUALISE x, y FROM data
+DRAW line
+  MAPPING z AS stroke
+SCALE stroke TO ['red', 'green', 'blue']
+```
+
+The `linewidth` aesthetic can vary point to point.
+
+``` ggsql
+WITH data(x, y, z) AS (VALUES
+  (1, 2, 1),
+  (2, 5, 3),
+  (3, 3, 5),
+)
+
+VISUALISE x, y FROM data
+DRAW line
+  MAPPING z AS linewidth
+SCALE linewidth TO [0, 30]
+```

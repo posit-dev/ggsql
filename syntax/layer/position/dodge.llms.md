@@ -1,0 +1,48 @@
+# Dodge
+
+> Positions are set within the [`DRAW` clause](../../../syntax/clause/draw.llms.md), using the `SETTING` subclause. Read the documentation for this clause for a thorough description of how to use it.
+
+The dodge adjustment is intended to move entities that share the same position on a discrete scale side by side so they don’t overlap. It is most often used for boxplots and violin plots, but can also be used in e.g. bar plots as an alternative to [stacking](../../../syntax/layer/position/stack.llms.md).
+
+## Position scale requirements
+
+Dodge doesn’t have specific requirements to the scale type of the plot, but will only affect discrete scales (including binned and ordinal). If only one scale is discrete, the dodging happens in that scale’s direction. If both scales are discrete, the dodging happens as a 2D grid.
+
+## Settings
+
+Apart from the settings of the layer type, setting `position => 'dodge'` will allow these additional settings:
+
+- `width`: The total width the dodging will occupy as a proportion of the space available on the scale (0 to 1). Defaults to 0.9 but any defaults from the layer will take precedence.
+
+## Examples
+
+Dodging is default in boxplots (and violin plots)
+
+``` ggsql
+VISUALISE species AS x, bill_dep AS y, sex AS fill FROM ggsql:penguins
+DRAW boxplot
+```
+
+Turning it off allows you to see the effect of it
+
+``` ggsql
+VISUALISE species AS x, bill_dep AS y, sex AS fill FROM ggsql:penguins
+DRAW boxplot 
+  SETTING position => 'identity'
+```
+
+Dodge can be used for bar plots as an alternative to the default stack
+
+``` ggsql
+VISUALISE species AS x, island AS fill FROM ggsql:penguins
+DRAW bar 
+  SETTING position => 'dodge'
+```
+
+Often `width` is part of the layer settings and gets used directly by the dodge position, but for layers with no inherent width setting dodge provides that setting as well
+
+``` ggsql
+VISUALISE species AS x, bill_dep AS y, sex AS shape FROM ggsql:penguins
+DRAW point 
+  SETTING position => 'dodge', width => 0.5
+```

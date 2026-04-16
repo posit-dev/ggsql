@@ -1,0 +1,54 @@
+# Tooling
+
+Now that we understand some of the most important parts of the syntax let’s spend a bit of time on where and how to apply it. All the examples on this page are interactive and runs directly in the browser, which is obviously useful for teaching, but it will not suffice for your day-to-day work where you need to interact with your own data. ggsql is a general tool you can use in a multitude of ways and we’ll go over the most important below.
+
+## VS Code extension
+
+We provide an extension for VS Code/Positron that brings language support to the IDE. Positron is generally superior for data analysis and the ggsql integration is deeper there, which we will showcase below. Still, using the extension with VS Code should provide you with a good developer experience. You can grab the [ggsql extension](https://open-vsx.org/extension/ggsql/ggsql) directly from the marketplace.
+
+Once installed you will get access to ggsql as a language at the same level as R and Python. You can open and edit `.gsql` files with syntax highlighting, autocomplete, you can open up a REPL in the console pane and executing queries and you can see the resulting visualization appear in the plot pane. If you have any database connections in the connection pane you can directly attach these to your ggsql runtime and begin to visualize the tables in there.
+
+## Jupyter kernel
+
+Once the Jupyter kernel is installed you can use ggsql as an engine in your Jupyter notebooks and Quarto documents. For a Jupyter notebook you can select the kernel when you start a new notebook. For a Quarto document you use the ggsql language name to tell the renderer to use the ggsql kernel e.g.
+
+```` markdown
+```{ggsql}
+VISUALISE ...
+```
+````
+
+Each block in the document uses the same session, so tables created in one block will be available in subsequent blocks.
+
+## Python package
+
+We have a [python package](https://pypi.org/project/ggsql/) which you can install through pip (`pip install ggsql`). The package provides binding to ggsql and allows you to plot with ggsql directly from within python and register alternative data backends.
+
+A simple example could be
+
+``` python
+import ggsql
+import polars as pl
+
+# Create a DataFrame
+df = pl.DataFrame({
+    "x": [1, 2, 3, 4, 5],
+    "y": [10, 20, 15, 30, 25],
+    "category": ["A", "B", "A", "B", "A"]
+})
+
+# Render to Altair chart
+chart = ggsql.render_altair(df, "VISUALISE x, y DRAW point")
+
+# Display or save
+chart.display()  # In Jupyter
+chart.save("chart.html")  # Save to file
+```
+
+## Command line interface
+
+While maybe not the most ergonomic way to interact directly with ggsql, there is a CLI interface if you need to build tools around ggsql. The CLI tool allows you to execute a file or string and validate a query without executing it. A simple example of executing a query looks like this:
+
+``` bash
+ggsql --exec "VISUALISE species AS fill FROM ggsql:penguins DRAW bar"
+```

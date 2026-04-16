@@ -1,0 +1,76 @@
+# Multi-layer plot
+
+layers
+
+advanced
+
+Combining multiple geometric layers in one visualization
+
+Multi-layer plots combine different geometric elements (geoms) to create richer visualizations. Each `DRAW` clause adds a new layer.
+
+## Code
+
+``` ggsql
+SELECT Date, Temp FROM ggsql:airquality
+VISUALISE Date AS x, Temp AS y
+DRAW line
+  SETTING color => 'steelblue'
+DRAW point
+  SETTING size => 4, color => 'darkblue'
+SCALE x VIA date
+LABEL
+  title => 'Temperature with Line and Points',
+  x => 'Date',
+  y => 'Temperature (F)'
+```
+
+## Explanation
+
+- The first `DRAW line` creates a line connecting all points
+- The second `DRAW point` adds point markers at each data point
+- `SETTING` on each layer controls that layer’s visual properties
+- Both layers share the same x and y mappings from `VISUALISE`
+
+## Variations
+
+### Different aesthetics per layer
+
+Each layer can have its own aesthetic mappings using `MAPPING`:
+
+``` ggsql
+SELECT Date, Temp, Ozone FROM ggsql:airquality
+VISUALISE Date AS x
+DRAW line
+  MAPPING Temp AS y, 'Temperature' AS color
+DRAW line
+  MAPPING Ozone AS y, 'Ozone' AS color
+SCALE x VIA date
+LABEL
+  title => 'Temperature and Ozone Over Time',
+  x => 'Date',
+  y => 'Value'
+```
+
+### Layers from different data sources
+
+Use `MAPPING ... FROM` to pull each layer from different CTEs:
+
+``` ggsql
+WITH temps AS (
+  SELECT Date, Temp as value FROM ggsql:airquality
+),
+ozone AS (
+  SELECT Date, Ozone as value FROM ggsql:airquality WHERE Ozone IS NOT NULL
+)
+VISUALISE
+DRAW line
+  MAPPING Date AS x, value AS y, 'Temperature' AS color FROM temps
+DRAW point
+  MAPPING Date AS x, value AS y, 'Ozone' AS color FROM ozone
+  SETTING size => 3
+SCALE x VIA date
+LABEL
+  title => 'Temperature vs Ozone',
+  x => 'Date',
+  y => 'Value'
+```

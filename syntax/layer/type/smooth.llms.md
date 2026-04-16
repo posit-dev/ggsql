@@ -1,0 +1,132 @@
+# Smooth
+
+> Layers are declared with the [`DRAW` clause](../../../syntax/clause/draw.llms.md). Read the documentation for this clause for a thorough description of how to use it.
+
+Smooth layers are used to display a trendline among a series of observations.
+
+## Aesthetics
+
+### Required
+
+- Primary axis (e.g. `x`): Position along the primary axis.
+- Secondary axis (e.g. `y`): Position along the secondary axis.
+
+### Optional
+
+- `colour`/`stroke`: The colour of the line
+- `opacity`: The opacity of the line
+- `linewidth`: The width of the line
+- `linetype`: The type of line, i.e. the dashing pattern
+
+## Settings
+
+- `method`: Choice of the method for generating the trendline. One of the following:
+  - `'nw'` or `'nadaraya-watson'` estimates the trendline using the Nadaraya-Watson kernel regression method (default).
+  - `'ols'` estimates a straight trendline using ordinary least squares method.
+  - `'tls'` estimates a straight trendline using total least squares method.
+
+The settings below only apply when `method => 'nw'` and are ignored when using other methods. \* `bandwidth`: Smoothing bandwidth (must be \> 0). If absent (default), the bandwidth will be computed using Silverman’s rule of thumb. \* `adjust`: Multiplier for the `bandwidth` setting (must be \> 0). Defaults to 1. \* `kernel`: Determines the smoothing kernel shape. Can be one of the following: \* `'gaussian'` (default) \* `'epanechnikov'` \* `'triangular'` \* `'rectangular'` or `'uniform'` \* `'biweight'` or `'quartic'` \* `'cosine'`
+
+## Data transformation
+
+### Nadaraya-Watson kernel regression
+
+The default `method => 'nw'` computes a locally weighted average of \\y\\.
+
+\\ y(x) = \frac{\sum\_{i=1}^nW(x)y_i}{\sum\_{i=1}^nW(x)} \\
+
+Where:
+
+- \\W(x)\\ is kernel intensity \\w_iK(\frac{x - x_i}{h})\\ where
+  - \\K\\ is the kernel function
+  - \\h\\ is the bandwidth
+  - \\w_i\\ is the weight of observation \\i\\
+
+Please note the similarity of \\W(x)\\ to the [kernel density estimation formula](../../../syntax/layer/type/density.llms.md#data-transformation).
+
+### Ordinary least squares
+
+The `method => 'ols'` setting uses ordinary least squares to compute the intercept \\a\\ and slope \\b\\ of a straight line. The method minimizes the 1-dimensional distance between a point and the vertical projection of that point on the line. Only considering the vertical distances implies having measurement error in \\y\\, but not \\x\\.
+
+\\ y = a + bx \\
+
+Wherein:
+
+\\ a = E\[Y\] - bE\[X\] \\
+
+and
+
+\\ b = \frac{\text{cov}(X, Y)}{\text{var}(X)} = \frac{E\[XY\] - E\[X\]E\[Y\]}{E\[X^2\]-(E\[X\])^2} \\
+
+### Total least squares
+
+The `method => 'tls'` setting uses total least squares to compute the intercept \\a\\ and slope \\b\\ of a straight line. The method minimizes the 2-dimensiontal distance between a point and the perpendicular projection of that point on the line. Minimising the perpendicular distances (rather than just the vertical distances) makes sense if there is uncertainty or measurement error in not just \\y\\, but in \\x\\ as well. In such case, it is a more accurate depiction of the relationship between \\x\\ and \\y\\, but it isn’t the best predictor of \\y\\ given \\x\\.
+
+\\ y = a + bx \\
+
+Wherein:
+
+\\ a = E\[Y\] - bE\[X\] \\
+
+and
+
+\\ b = \frac{\text{var}(Y) - \text{var}(X) + \sqrt{(\text{var}(Y) - \text{var}(X))^2 + 4\text{cov}(X, Y)^2}}{2\text{cov}(X, Y)} \\
+
+### Properties
+
+- `weight` is available when using `method => 'nw'`, where when mapped, it sets the relative contribution of an observation \\w_i\\ to the average.
+
+### Calculated statistics
+
+- `intensity` corresponds to \\y\\ in the formulas described in the [data transformation](#data-transformation) section.
+
+### Default remappings
+
+- `intensity AS y`: By default the smooth layer will display the \\y\\ in the formulas along the y-axis.
+
+## Examples
+
+The default `method => 'nw'` might be too coarse for timeseries.
+
+``` ggsql
+SELECT * FROM ggsql:airquality
+VISUALISE Epoch AS x, Temp AS y
+DRAW point
+DRAW smooth
+```
+
+You can make the fit more granular by reducing the bandwidth, for example using `adjust`.
+
+``` ggsql
+SELECT * FROM ggsql:airquality
+VISUALISE Epoch AS x, Temp AS y
+DRAW point
+DRAW smooth 
+  SETTING adjust => 0.2
+```
+
+There is a subtle difference between the ordinary and total least squares method.
+
+``` ggsql
+VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
+DRAW point
+DRAW smooth 
+  MAPPING 'Ordinary' AS colour 
+  SETTING method => 'ols'
+DRAW smooth 
+  MAPPING 'Total' AS colour 
+  SETTING method => 'tls'
+```
+
+Simpson’s Paradox is a case where a trend of combined groups is reversed when groups are considered separately.
+
+``` ggsql
+VISUALISE bill_len AS x, bill_dep AS y, species AS stroke FROM ggsql:penguins
+DRAW point 
+  SETTING opacity => 0
+DRAW smooth 
+  SETTING method => 'ols'
+DRAW smooth 
+  MAPPING 'All' AS stroke 
+  SETTING method => 'ols'
+```

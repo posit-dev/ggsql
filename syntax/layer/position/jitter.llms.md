@@ -1,0 +1,68 @@
+# Jitter
+
+> Positions are set within the [`DRAW` clause](../../../syntax/clause/draw.llms.md), using the `SETTING` subclause. Read the documentation for this clause for a thorough description of how to use it.
+
+Jitter adjustment adds a random offset to the data point to avoid overplotting on discrete axes. It is mainly used in conjunction with point layers.
+
+## Position scale requirements
+
+Jitter requires at least one axis to be discrete as it only jitters along discrete axes.
+
+## Settings
+
+Apart from the settings of the layer type, setting `position => 'jitter'` will allow these additional settings:
+
+- `width`: The total width the jittering will occupy as a proportion of the space available on the scale (0 to 1). Defaults to 0.4
+- `dodge`: Should dodging be applied before jittering. The dodging behavior follows the [dodge position](../../../syntax/layer/position/dodge.llms.md) behavior? Default to `true`
+- `distribution`: Which kind of distribution should the jittering follow? One of:
+  - `'uniform'` (default): Jittering is sampled from a uniform distribution between `-width/2` and `width/2`
+  - `'normal'`: Jittering is sampled from a normal distribution with σ as `width/4` resulting in 95% of the points falling inside the given width
+  - `'density'`: Jittering follows the density distribution within the group so that the jitter occupies the same area as an equivalent [violin plot](../../../syntax/layer/type/violin.llms.md) with density remapped to offset
+  - `'intensity'`: Jittering follows the intensity distribution within the group so that the jitter occupies the same area as an equivalent [violin plot](../../../syntax/layer/type/violin.llms.md) with intensity remapped to offset
+
+  If `distribution` is either `'density'` or `'intensity'` then one of the axes must be continuous
+- `bandwidth`: Smoothing bandwidth for the `'density'` and `'intensity'` distributions (must be \> 0). If absent (default), the bandwidth will be computed using Silverman’s rule of thumb.
+- `adjust`: Multiplier for the `bandwidth` setting (must be \> 0). Defaults to 1.
+
+## Examples
+
+When plotting points on a discrete axis they are all placed in the middle
+
+``` ggsql
+VISUALISE species AS x, bill_dep AS y, sex AS fill FROM ggsql:penguins
+DRAW point
+```
+
+Use jittering to better see the individual points
+
+``` ggsql
+VISUALISE species AS x, bill_dep AS y, sex AS fill FROM ggsql:penguins
+DRAW point
+  SETTING position => 'jitter'
+```
+
+By default, dodging is applied to separate the groups. Turn this off if you want the jitter to occupy the same space regardless of grouping
+
+``` ggsql
+VISUALISE species AS x, bill_dep AS y, sex AS fill FROM ggsql:penguins
+DRAW point
+  SETTING position => 'jitter', dodge => false
+```
+
+Use a `'density'` distribution to also indicate the distribution shape with the jitter
+
+``` ggsql
+VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
+DRAW point
+  SETTING position => 'jitter', distribution => 'density'
+```
+
+When both axes are discrete the dodging follows a grid
+
+``` ggsql
+VISUALISE species AS x, sex AS y, body_mass AS fill FROM ggsql:penguins
+DRAW point
+  SETTING position => 'jitter'
+SCALE BINNED fill
+  SETTING breaks => 4, pretty => false
+```
