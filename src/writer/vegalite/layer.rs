@@ -1726,13 +1726,12 @@ impl GeomRenderer for ViolinRenderer {
 
         if let Some(cat_field) = categorical_field {
             match encoding.get_mut("detail") {
-                Some(detail) if detail.is_object() => {
+                Some(detail) if detail.is_object()
                     // Single field object - check if it's already the categorical field, otherwise convert to array
-                    if detail.get("field").and_then(|f| f.as_str()) != Some(&cat_field) {
+                    && detail.get("field").and_then(|f| f.as_str()) != Some(&cat_field) => {
                         let existing = detail.clone();
                         *detail = json!([existing, {"field": cat_field, "type": "nominal"}]);
                     }
-                }
                 Some(detail) if detail.is_array() => {
                     // Array - check if categorical field already present, add if not
                     let arr = detail.as_array_mut().unwrap();
