@@ -36,7 +36,7 @@ const GEOM_LINKS: Record<string, DocLink> = {
   path: { url: "syntax/layer/type/path", label: "path layer" },
   bar: { url: "syntax/layer/type/bar", label: "bar layer" },
   area: { url: "syntax/layer/type/area", label: "area layer" },
-  rect: { url: "syntax/layer/type/rect", label: "rect layer" },
+  tile: { url: "syntax/layer/type/tile", label: "tile layer" },
   polygon: { url: "syntax/layer/type/polygon", label: "polygon layer" },
   ribbon: { url: "syntax/layer/type/ribbon", label: "ribbon layer" },
   histogram: { url: "syntax/layer/type/histogram", label: "histogram layer" },
@@ -144,7 +144,7 @@ const CLAUSE_RE =
   /\b(VISUALISE|VISUALIZE|DRAW|PLACE|SCALE|FACET|PROJECT|LABEL)\b/gi;
 
 const GEOM_RE =
-  /\b(?:DRAW|PLACE)\s+(point|line|path|bar|area|rect|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|segment|rule|linear|errorbar)\b/gi;
+  /\b(?:DRAW|PLACE)\s+(point|line|path|bar|area|tile|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|segment|rule|linear|errorbar)\b/gi;
 
 const COORD_RE = /\bTO\s+(cartesian|polar)\b/gi;
 

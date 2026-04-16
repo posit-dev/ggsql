@@ -31,9 +31,7 @@ impl GeomTrait for Rule {
         let has_pos2 = mappings.contains_key("pos2");
 
         if has_pos1 && has_pos2 {
-            return Err(
-                "Layer 'rule' requires exactly one of `x` or `y`, not both.".to_string()
-            );
+            return Err("Layer 'rule' requires exactly one of `x` or `y`, not both.".to_string());
         }
 
         Ok(())

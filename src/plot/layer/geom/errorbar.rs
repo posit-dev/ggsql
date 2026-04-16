@@ -73,20 +73,13 @@ mod tests {
     fn test_errorbar_requires_all_aesthetics() {
         // ErrorBar requires pos1, pos2min, pos2max - test that missing any fails
         let result = validate_errorbar(&[("pos1", "x"), ("pos2max", "ymax")]);
-        assert!(
-            result.is_err(),
-            "Should fail when missing pos2min"
-        );
+        assert!(result.is_err(), "Should fail when missing pos2min");
     }
 
     #[test]
     fn test_errorbar_rejects_mixed_orientation() {
         // Mixed orientation should fail: pos1 (identity) + pos1max (flipped)
-        let result = validate_errorbar(&[
-            ("pos1", "x"),
-            ("pos2min", "ymin"),
-            ("pos1max", "xmax"),
-        ]);
+        let result = validate_errorbar(&[("pos1", "x"), ("pos2min", "ymin"), ("pos1max", "xmax")]);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -100,11 +93,7 @@ mod tests {
     #[test]
     fn test_errorbar_validates_successfully() {
         // ErrorBar with all required aesthetics should pass validation
-        let result = validate_errorbar(&[
-            ("pos1", "x"),
-            ("pos2min", "ymin"),
-            ("pos2max", "ymax"),
-        ]);
+        let result = validate_errorbar(&[("pos1", "x"), ("pos2min", "ymin"), ("pos2max", "ymax")]);
 
         assert!(
             result.is_ok(),

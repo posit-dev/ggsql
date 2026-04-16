@@ -1,4 +1,4 @@
-//! Rect geom implementation with flexible parameter specification
+//! Tile geom implementation with flexible parameter specification
 
 use std::collections::HashMap;
 
@@ -12,7 +12,7 @@ use crate::{DataFrame, GgsqlError, Mappings, Result};
 
 use super::types::Schema;
 
-/// Rect geom - rectangles with flexible parameter specification
+/// Tile geom - rectangles with flexible parameter specification
 ///
 /// Supports multiple ways to specify rectangles:
 /// - X-direction: any 2 of {x (center), width, xmin, xmax}
@@ -21,11 +21,11 @@ use super::types::Schema;
 /// For continuous scales, computes xmin/xmax and ymin/ymax
 /// For discrete scales, uses x/y with width/height as band fractions
 #[derive(Debug, Clone, Copy)]
-pub struct Rect;
+pub struct Tile;
 
-impl GeomTrait for Rect {
+impl GeomTrait for Tile {
     fn geom_type(&self) -> GeomType {
-        GeomType::Rect
+        GeomType::Tile
     }
 
     fn aesthetics(&self) -> DefaultAesthetics {
@@ -105,17 +105,17 @@ impl GeomTrait for Rect {
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         _dialect: &dyn crate::reader::SqlDialect,
     ) -> Result<StatResult> {
-        stat_rect(query, schema, aesthetics, group_by, parameters)
+        stat_tile(query, schema, aesthetics, group_by, parameters)
     }
 }
 
-impl std::fmt::Display for Rect {
+impl std::fmt::Display for Tile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "rect")
+        write!(f, "tile")
     }
 }
 
-/// Process a single direction (x or y) for rect stat transform
+/// Process a single direction (x or y) for tile stat transform
 /// Returns (select_parts, stat_column_names)
 fn process_direction(
     axis: &str,
@@ -189,8 +189,8 @@ fn process_direction(
     Ok((select_parts, stat_cols))
 }
 
-/// Statistical transformation for rect: consolidate parameters and compute min/max
-fn stat_rect(
+/// Statistical transformation for tile: consolidate parameters and compute min/max
+fn stat_tile(
     query: &str,
     schema: &Schema,
     aesthetics: &Mappings,
@@ -233,7 +233,7 @@ fn stat_rect(
 
     // Build transformed query
     let transformed_query = format!(
-        "SELECT {} FROM ({}) AS \"__ggsql_rect_stat__\"",
+        "SELECT {} FROM ({}) AS \"__ggsql_tile_stat__\"",
         select_list, query
     );
 
@@ -330,7 +330,7 @@ fn generate_continuous_position_expressions(
         }
         // Invalid: wrong number of parameters or invalid combination
         _ => Err(GgsqlError::ValidationError(format!(
-            "Rect requires exactly 2 {}-direction parameters from {{{}, {}min, {}max, {}}}.",
+            "Tile requires exactly 2 {}-direction parameters from {{{}, {}min, {}max, {}}}.",
             axis,
             axis,
             axis,
@@ -507,7 +507,7 @@ mod tests {
             let group_by = vec![];
             let parameters = HashMap::new();
 
-            let result = stat_rect(
+            let result = stat_tile(
                 "SELECT * FROM data",
                 &schema,
                 &aesthetics,
@@ -517,7 +517,7 @@ mod tests {
 
             assert!(
                 result.is_ok(),
-                "{}: stat_rect failed: {:?}",
+                "{}: stat_tile failed: {:?}",
                 name,
                 result.err()
             );
@@ -617,7 +617,7 @@ mod tests {
             let group_by = vec![];
             let parameters = HashMap::new();
 
-            let result = stat_rect(
+            let result = stat_tile(
                 "SELECT * FROM data",
                 &schema,
                 &aesthetics,
@@ -627,7 +627,7 @@ mod tests {
 
             assert!(
                 result.is_ok(),
-                "{}: stat_rect failed: {:?}",
+                "{}: stat_tile failed: {:?}",
                 name,
                 result.err()
             );
@@ -682,7 +682,7 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
-        let result = stat_rect(
+        let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,
@@ -713,7 +713,7 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
-        let result = stat_rect(
+        let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,
@@ -744,7 +744,7 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
-        let result = stat_rect(
+        let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,
@@ -777,7 +777,7 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
-        let result = stat_rect(
+        let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,
@@ -808,7 +808,7 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
-        let result = stat_rect(
+        let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,
@@ -827,7 +827,7 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
-        let result = stat_rect(
+        let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,
@@ -847,7 +847,7 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
-        let result = stat_rect(
+        let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,
@@ -879,7 +879,7 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
-        let result = stat_rect(
+        let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,
@@ -908,7 +908,7 @@ mod tests {
         parameters.insert("width".to_string(), ParameterValue::Number(0.7));
         parameters.insert("height".to_string(), ParameterValue::Number(0.9));
 
-        let result = stat_rect(
+        let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,

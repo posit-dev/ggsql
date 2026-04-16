@@ -1,13 +1,13 @@
 ---
-title: "Rectangle"
+title: "Tile"
 ---
 
 > Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
 
-Rectangles can be used to draw heatmaps or indicate ranges.
+Tiles can be used to draw rectangles in heatmaps or indicate ranges.
 
 ## Aesthetics
-The following aesthetics are recognised by the rectangle layer.
+The following aesthetics are recognised by the tile layer.
 
 ### Required
 
@@ -43,7 +43,7 @@ When the primary aesthetics are continuous, primary data is reparameterised to {
 When the secondary aesthetics are continuous, secondary data is reparameterised to {start, end}, e.g. `ymin` and `ymax`.
 
 ## Orientation
-The rectangle layer has no orientation. The axes are treated symmetrically.
+The tile layer has no orientation. The axes are treated symmetrically.
 
 ## Examples
 
@@ -51,14 +51,14 @@ Just using `x` and `y`. Note that `width` and `height` are set to 1.
 
 ```{ggsql}
 VISUALISE Day AS x, Month AS y, Temp AS colour FROM ggsql:airquality
-DRAW rect 
+DRAW tile 
 ```
 
 Customising `width` and `height` with either the `MAPPING` or `SETTING` clauses.
 
 ```{ggsql}
 VISUALISE Day AS x, Month AS y, Temp AS colour FROM ggsql:airquality
-DRAW rect 
+DRAW tile 
   MAPPING 0.5 AS width 
   SETTING height => 0.8
 ```
@@ -72,7 +72,7 @@ SELECT
 FROM ggsql:airquality
 
 VISUALISE Day AS x, Month AS y, Temp AS colour
-DRAW rect 
+DRAW tile 
   MAPPING norm_temp AS width, norm_temp AS height
 ```
 
@@ -88,14 +88,14 @@ FROM ggsql:airquality
 GROUP BY Week
 
 VISUALISE start AS xmin, end AS xmax, min AS ymin, max AS ymax
-DRAW rect
+DRAW tile
 ```
 
-Using a rectangle as an annotation. Note we're using the `PLACE` clause here instead of `DRAW` because we're not mapping from data.
+Using a tile as an annotation. Note we're using the `PLACE` clause here instead of `DRAW` because we're not mapping from data.
 
 ```{ggsql}
 VISUALISE FROM ggsql:airquality
-PLACE rect 
+PLACE tile 
   SETTING
     xmin => '1973-06-01', 
     xmax => '1973-06-30',

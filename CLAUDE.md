@@ -332,7 +332,7 @@ pub struct Layer {
 
 pub enum Geom {
     // Basic geoms
-    Point, Line, Path, Bar, Col, Area, Rect, Polygon, Ribbon,
+    Point, Line, Path, Bar, Col, Area, Tile, Polygon, Ribbon,
     // Statistical geoms
     Histogram, Density, Smooth, Boxplot, Violin,
     // Annotation geoms
@@ -1079,7 +1079,7 @@ All clauses (MAPPING, SETTING, PARTITION BY, FILTER) are optional.
 
 **Geom Types**:
 
-- **Basic**: `point`, `line`, `path`, `bar`, `col`, `area`, `rect`, `polygon`, `ribbon`
+- **Basic**: `point`, `line`, `path`, `bar`, `col`, `area`, `tile`, `polygon`, `ribbon`
 - **Statistical**: `histogram`, `density`, `smooth`, `boxplot`, `violin`
 - **Annotation**: `text`, `label`, `segment`, `arrow`, `rule`, `errorbar`
 

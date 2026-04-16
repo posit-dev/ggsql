@@ -32,7 +32,7 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Path => "line",
         GeomType::Bar => "bar",
         GeomType::Area => "area",
-        GeomType::Rect => "rect",
+        GeomType::Tile => "tile",
         GeomType::Ribbon => "area",
         GeomType::Polygon => "line",
         GeomType::Histogram => "bar",
@@ -1385,16 +1385,16 @@ impl GeomRenderer for TextRenderer {
 }
 
 // =============================================================================
-// Rect Renderer
+// Tile Renderer
 // =============================================================================
 
-/// Renderer for rect geom - handles continuous and discrete rectangles
+/// Renderer for tile geom - handles continuous and discrete rectangles
 ///
 /// For continuous scales: remaps xmin/xmax → x/x2, ymin/ymax → y/y2
 /// For discrete scales: keeps x/y as-is and applies width/height as band fractions
-pub struct RectRenderer;
+pub struct TileRenderer;
 
-impl GeomRenderer for RectRenderer {
+impl GeomRenderer for TileRenderer {
     fn modify_spec(
         &self,
         layer_spec: &mut Value,
@@ -1737,9 +1737,9 @@ impl GeomRenderer for ErrorBarRenderer {
         // Determine which encoding channel is used for the error range (transposition happens upstream)
         let is_vertical = !is_transposed(layer);
         let (orient, position) = if is_vertical {
-            ("horizontal", "y")  // pos2min/pos2max are on y-axis, tick is horizontal
+            ("horizontal", "y") // pos2min/pos2max are on y-axis, tick is horizontal
         } else {
-            ("vertical", "x")    // pos2min/pos2max are on x-axis, tick is vertical
+            ("vertical", "x") // pos2min/pos2max are on x-axis, tick is vertical
         };
 
         // First hinge (at min position)
@@ -2094,7 +2094,7 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Path => Box::new(PathRenderer),
         GeomType::Line => Box::new(PathRenderer),
         GeomType::Bar => Box::new(BarRenderer),
-        GeomType::Rect => Box::new(RectRenderer),
+        GeomType::Tile => Box::new(TileRenderer),
         GeomType::Polygon => Box::new(PolygonRenderer),
         GeomType::Boxplot => Box::new(BoxplotRenderer),
         GeomType::Violin => Box::new(ViolinRenderer),
@@ -2221,7 +2221,7 @@ mod tests {
     }
 
     // =============================================================================
-    // RectRenderer Test Helpers
+    // TileRenderer Test Helpers
     // =============================================================================
 
     /// Helper to create a quantitative encoding entry
@@ -2251,10 +2251,10 @@ mod tests {
         })
     }
 
-    /// Helper to run rect rendering pipeline (modify_encoding + modify_spec)
-    fn render_rect(encoding: &mut Map<String, Value>) -> Result<Value> {
-        let renderer = RectRenderer;
-        let layer = Layer::new(crate::plot::Geom::rect());
+    /// Helper to run tile rendering pipeline (modify_encoding + modify_spec)
+    fn render_tile(encoding: &mut Map<String, Value>) -> Result<Value> {
+        let renderer = TileRenderer;
+        let layer = Layer::new(crate::plot::Geom::tile());
         let context = RenderContext::new(&[]);
 
         renderer.modify_encoding(encoding, &layer, &context)?;
@@ -2269,12 +2269,12 @@ mod tests {
     }
 
     // =============================================================================
-    // RectRenderer Tests
+    // TileRenderer Tests
     // =============================================================================
 
     #[test]
-    fn test_rect_discrete_x_continuous_y() {
-        // Test rect with discrete x scale and continuous y scale
+    fn test_tile_discrete_x_continuous_y() {
+        // Test tile with discrete x scale and continuous y scale
         // x/width (discrete) and y/y2 (continuous, already mapped from pos2min/pos2max)
         let mut encoding = serde_json::Map::new();
         encoding.insert("x".to_string(), nominal("day"));
@@ -2282,7 +2282,7 @@ mod tests {
         encoding.insert("y".to_string(), quant("ymin_col"));
         encoding.insert("y2".to_string(), quant("ymax_col"));
 
-        let spec = render_rect(&mut encoding).unwrap();
+        let spec = render_tile(&mut encoding).unwrap();
         let enc = spec["encoding"].as_object().unwrap();
 
         // x should remain as x (discrete)
@@ -2301,15 +2301,15 @@ mod tests {
     }
 
     #[test]
-    fn test_rect_discrete_both_axes_literal_width() {
-        // Test rect with discrete scales on both axes with literal width/height
+    fn test_tile_discrete_both_axes_literal_width() {
+        // Test tile with discrete scales on both axes with literal width/height
         let mut encoding = serde_json::Map::new();
         encoding.insert("x".to_string(), nominal("day"));
         encoding.insert("width".to_string(), literal(0.7));
         encoding.insert("y".to_string(), nominal("hour"));
         encoding.insert("height".to_string(), literal(0.9));
 
-        let spec = render_rect(&mut encoding).unwrap();
+        let spec = render_tile(&mut encoding).unwrap();
         let enc = spec["encoding"].as_object().unwrap();
 
         // x and y should remain
@@ -2326,30 +2326,30 @@ mod tests {
     }
 
     #[test]
-    fn test_rect_discrete_both_axes_default_width() {
-        // Test rect with discrete scales on both axes without explicit width/height
+    fn test_tile_discrete_both_axes_default_width() {
+        // Test tile with discrete scales on both axes without explicit width/height
         // Should use default band size (1.0)
         let mut encoding = serde_json::Map::new();
         encoding.insert("x".to_string(), nominal("day"));
         encoding.insert("y".to_string(), nominal("hour"));
 
-        let spec = render_rect(&mut encoding).unwrap();
+        let spec = render_tile(&mut encoding).unwrap();
 
         // With no width/height specified, should have no mark-level width/height
-        // (rects will fill the full band by default)
+        // (tiles will fill the full band by default)
         assert!(spec["mark"].get("width").is_none());
         assert!(spec["mark"].get("height").is_none());
     }
 
     #[test]
-    fn test_rect_discrete_with_field_width() {
+    fn test_tile_discrete_with_field_width() {
         // Test that field-based width on discrete scales uses datum expressions
         // (works for both variable and constant domains, or no domain)
         let mut encoding = serde_json::Map::new();
         encoding.insert("x".to_string(), nominal("day"));
         encoding.insert("width".to_string(), scale("width_col", 0.5, 0.9));
 
-        let spec = render_rect(&mut encoding).unwrap();
+        let spec = render_tile(&mut encoding).unwrap();
 
         // Should use mark-level width with datum expression
         assert_eq!(
@@ -2359,15 +2359,15 @@ mod tests {
     }
 
     #[test]
-    fn test_rect_continuous_x_discrete_y() {
-        // Test rect with continuous x (already mapped to x/x2) and discrete y (y/height)
+    fn test_tile_continuous_x_discrete_y() {
+        // Test tile with continuous x (already mapped to x/x2) and discrete y (y/height)
         let mut encoding = serde_json::Map::new();
         encoding.insert("x".to_string(), quant("xmin_col"));
         encoding.insert("x2".to_string(), quant("xmax_col"));
         encoding.insert("y".to_string(), nominal("category"));
         encoding.insert("height".to_string(), literal(0.6));
 
-        let spec = render_rect(&mut encoding).unwrap();
+        let spec = render_tile(&mut encoding).unwrap();
         let enc = spec["encoding"].as_object().unwrap();
 
         // x/x2 should be preserved
