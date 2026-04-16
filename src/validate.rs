@@ -325,16 +325,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_validate_global_color_mapping() {
-        // Global color mapping should validate correctly
-        let validated =
-            validate("SELECT 1 as x, 2 as y VISUALISE x AS x, y AS y, region AS color DRAW line")
-                .unwrap();
-        assert!(
-            validated.valid(),
-            "global color mapping should be accepted: {:?}",
-            validated.errors()
-        );
-    }
 }

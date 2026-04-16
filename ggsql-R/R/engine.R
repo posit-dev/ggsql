@@ -184,7 +184,8 @@ vegalite_html <- function(
   spec_json,
   width = NULL,
   height = NULL,
-  caption = NULL
+  caption = NULL,
+  align = "center"
 ) {
   ggsql_env$vis_counter <- (ggsql_env$vis_counter %||% 0L) + 1L
   vis_id <- paste0("ggsql-vis-", ggsql_env$vis_counter)
@@ -202,9 +203,16 @@ vegalite_html <- function(
     "400px"
   }
 
+  margin_style <- switch(
+    align %||% "center",
+    center = "margin-left: auto; margin-right: auto;",
+    right = "margin-left: auto;",
+    ""
+  )
+
   html <- sprintf(
-    '<div id="%s-outer" style="width: %s; overflow: hidden;">
-<div id="%s" style="min-width: 450px; height: %s;"></div>
+    '<div id="%s-outer" style="width: %s; overflow: hidden; %s">
+<div id="%s" style="width: 100%%; min-width: 450px; height: %s;"></div>
 </div>
 
 <script type="text/javascript">
@@ -255,6 +263,7 @@ vegalite_html <- function(
 </script>',
     vis_id,
     css_width,
+    margin_style,
     vis_id,
     css_height,
     spec_json,
@@ -409,7 +418,8 @@ ggsql_engine_eval <- function(query, reader, options) {
         json,
         width = options$fig.width,
         height = options$fig.height,
-        caption = options$fig.cap
+        caption = options$fig.cap,
+        align = options$fig.align
       )
       knitr::engine_output(options, options$code, out = out)
     },

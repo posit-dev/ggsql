@@ -1,18 +1,16 @@
 ---
 title: "Getting started"
-output: rmarkdown::html_vignette
+knitr:
+  opts_chunk:
+    collapse: true
+    comment: "#>"
+description: |
+  A short introduction to interacting with ggsql from R
 vignette: >
-  %\VignetteIndexEntry{ggsql}
-  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteIndexEntry{Getting started}
+  %\VignetteEngine{quarto::html}
   %\VignetteEncoding{UTF-8}
 ---
-
-```{r, include = FALSE}
-knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>"
-)
-```
 
 ```{r setup}
 library(ggsql)
@@ -35,7 +33,7 @@ ddb <- duckdb_reader()
 By default it creates a connection to an in-memory database, but you can point it at a database file to connect to that instead:
 
 ```{r}
-#| eval: false
+#| eval: false
 ddb2 <- duckdb_reader("my/amazing/data.db")
 ```
 
@@ -68,5 +66,51 @@ LIMIT 6
 The main motivation is of course to create visualizations. This vignette will not go into detail with the ggsql syntax. For that, head to the [documentation on the website](https://ggsql.org/syntax/). If you are familiar with ggplot2 you should be able to understand the gist of it.
 
 ```{r}
+plot <- ggsql_execute(ddb, "
+SELECT * FROM gapminder
+WHERE year = 2007
 
+VISUALIZE gdpPercap AS x, lifeExp AS y, continent AS stroke, pop AS size
+DRAW point
+  SETTING fill => null
+SCALE size TO [2, 15]
+")
+
+str(plot)
+```
+
+As you can see, executing a visual query does not in itself produce a plot, but
+creates a data structure that contains the information necessary to render it. The analogue is the ggplot object you create when using ggplot2.
+
+You can use this object for introspection, e.g. get the visual part of the query:
+
+```{r}
+ggsql_visual(plot)
+```
+
+### Rendering a plot
+Finally we arrive at what we was here for all along: How to get a plot out of it. ggsql works with the concept of writers which are somewhat analogous to graphics devices in R. They are responsible for figuring out a visual representation of the abstract encoding in the plot specification. For the moment ggsql only comes with a vegalite writer so this is also the only one available in the R package:
+
+```{r}
+vlr <- vegalite_writer()
+```
+
+Often you don't have to think about this at all since printing the result of a query automatically creates a writer and renders it so that it behaves in the same way as ggplot object:
+
+```{r}
+plot
+```
+
+However, if you are interested in capturing what the writer produces you can call `ggsql_render()` explicitly:
+
+```{r}
+ggsql_render(vlr, plot)
+```
+
+We might also be interested in capturing the plot as a static image. We can use the `ggsql_save()` function for that which can save the output to either a vegalite json object (like the one above), an SVG or a PNG. For the latter two the plot is rendered using the V8 package and the final image captured.
+
+```{r}
+tmp <- tempfile(fileext = ".svg")
+ggsql_save(plot, tmp)
+readLines(tmp)
 ```

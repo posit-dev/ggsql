@@ -74,7 +74,7 @@ fn format_vegalite(spec: String) -> Value {
 
     let html = format!(
         r#"<div id="{vis_id}-outer" style="width: 100%; overflow: hidden;">
-<div id="{vis_id}" style="min-width: 450px; height: 400px;"></div>
+<div id="{vis_id}" style="width: 100%; min-width: 450px; height: 400px;"></div>
 </div>
 <script type="text/javascript">
   (function() {{
