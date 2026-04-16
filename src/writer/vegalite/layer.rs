@@ -1385,43 +1385,6 @@ impl GeomRenderer for TextRenderer {
 }
 
 // =============================================================================
-// Ribbon Renderer
-// =============================================================================
-
-/// Renderer for ribbon geom - remaps ymin/ymax to y/y2 and preserves data order
-pub struct RibbonRenderer;
-
-impl GeomRenderer for RibbonRenderer {
-    fn modify_encoding(
-        &self,
-        encoding: &mut Map<String, Value>,
-        layer: &Layer,
-        _context: &RenderContext,
-    ) -> Result<()> {
-        let is_horizontal = is_transposed(layer);
-
-        // Remap min/max to primary/secondary based on orientation:
-        // - Aligned (vertical): ymax→y, ymin→y2
-        // - Transposed (horizontal): xmax→x, xmin→x2
-        let (max_key, min_key, target, target2) = if is_horizontal {
-            ("xmax", "xmin", "x", "x2")
-        } else {
-            ("ymax", "ymin", "y", "y2")
-        };
-
-        if let Some(max_val) = encoding.remove(max_key) {
-            encoding.insert(target.to_string(), max_val);
-        }
-        if let Some(min_val) = encoding.remove(min_key) {
-            encoding.insert(target2.to_string(), min_val);
-        }
-
-        // Note: Don't add order encoding for area marks - it interferes with rendering
-        Ok(())
-    }
-}
-
-// =============================================================================
 // Rect Renderer
 // =============================================================================
 
@@ -1432,31 +1395,6 @@ impl GeomRenderer for RibbonRenderer {
 pub struct RectRenderer;
 
 impl GeomRenderer for RectRenderer {
-    fn modify_encoding(
-        &self,
-        encoding: &mut Map<String, Value>,
-        _layer: &Layer,
-        _context: &RenderContext,
-    ) -> Result<()> {
-        // Handle x-direction: continuous if has xmin/xmax, discrete otherwise
-        if let Some(xmin) = encoding.remove("xmin") {
-            encoding.insert("x".to_string(), xmin);
-        }
-        if let Some(xmax) = encoding.remove("xmax") {
-            encoding.insert("x2".to_string(), xmax);
-        }
-
-        // Handle y-direction: continuous if has ymin/ymax, discrete otherwise
-        if let Some(ymin) = encoding.remove("ymin") {
-            encoding.insert("y".to_string(), ymin);
-        }
-        if let Some(ymax) = encoding.remove("ymax") {
-            encoding.insert("y2".to_string(), ymax);
-        }
-
-        Ok(())
-    }
-
     fn modify_spec(
         &self,
         layer_spec: &mut Value,
@@ -1774,23 +1712,6 @@ impl GeomRenderer for ViolinRenderer {
 struct ErrorBarRenderer;
 
 impl GeomRenderer for ErrorBarRenderer {
-    fn modify_encoding(
-        &self,
-        encoding: &mut Map<String, Value>,
-        _layer: &Layer,
-        _context: &RenderContext,
-    ) -> Result<()> {
-        // Map pos2min/pos2max to Vega-Lite's y/y2 encoding channels
-        // (or x/x2 if transposed via PROJECT)
-        if let Some(ymax) = encoding.remove("ymax") {
-            encoding.insert("y".to_string(), ymax);
-        }
-        if let Some(ymin) = encoding.remove("ymin") {
-            encoding.insert("y2".to_string(), ymin);
-        }
-        Ok(())
-    }
-
     fn finalize(
         &self,
         layer_spec: Value,
@@ -2174,7 +2095,6 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Line => Box::new(PathRenderer),
         GeomType::Bar => Box::new(BarRenderer),
         GeomType::Rect => Box::new(RectRenderer),
-        GeomType::Ribbon => Box::new(RibbonRenderer),
         GeomType::Polygon => Box::new(PolygonRenderer),
         GeomType::Boxplot => Box::new(BoxplotRenderer),
         GeomType::Violin => Box::new(ViolinRenderer),
@@ -2182,7 +2102,7 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Segment => Box::new(SegmentRenderer),
         GeomType::ErrorBar => Box::new(ErrorBarRenderer),
         GeomType::Rule => Box::new(RuleRenderer),
-        // All other geoms (Point, Area, Density, Tile, etc.) use the default renderer
+        // All other geoms (Point, Area, Ribbon, Density, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }
 }
@@ -2353,44 +2273,14 @@ mod tests {
     // =============================================================================
 
     #[test]
-    fn test_rect_continuous_both_axes() {
-        // Test rect with continuous scales on both axes (xmin/xmax, ymin/ymax)
-        // Should remap xmin->x, xmax->x2, ymin->y, ymax->y2
-        let mut encoding = serde_json::Map::new();
-        encoding.insert("xmin".to_string(), quant("xmin_col"));
-        encoding.insert("xmax".to_string(), quant("xmax_col"));
-        encoding.insert("ymin".to_string(), quant("ymin_col"));
-        encoding.insert("ymax".to_string(), quant("ymax_col"));
-
-        let spec = render_rect(&mut encoding).unwrap();
-
-        // Should remap to x/x2/y/y2
-        let enc = spec["encoding"].as_object().unwrap();
-        assert_eq!(enc.get("x"), Some(&quant("xmin_col")));
-        assert_eq!(enc.get("x2"), Some(&quant("xmax_col")));
-        assert_eq!(enc.get("y"), Some(&quant("ymin_col")));
-        assert_eq!(enc.get("y2"), Some(&quant("ymax_col")));
-
-        // Original min/max should be removed
-        assert!(enc.get("xmin").is_none());
-        assert!(enc.get("xmax").is_none());
-        assert!(enc.get("ymin").is_none());
-        assert!(enc.get("ymax").is_none());
-
-        // Should not have band sizing (both continuous)
-        assert!(spec["mark"].get("width").is_none());
-        assert!(spec["mark"].get("height").is_none());
-    }
-
-    #[test]
     fn test_rect_discrete_x_continuous_y() {
         // Test rect with discrete x scale and continuous y scale
-        // x/width (discrete) and ymin/ymax (continuous)
+        // x/width (discrete) and y/y2 (continuous, already mapped from pos2min/pos2max)
         let mut encoding = serde_json::Map::new();
         encoding.insert("x".to_string(), nominal("day"));
         encoding.insert("width".to_string(), literal(0.8));
-        encoding.insert("ymin".to_string(), quant("ymin_col"));
-        encoding.insert("ymax".to_string(), quant("ymax_col"));
+        encoding.insert("y".to_string(), quant("ymin_col"));
+        encoding.insert("y2".to_string(), quant("ymax_col"));
 
         let spec = render_rect(&mut encoding).unwrap();
         let enc = spec["encoding"].as_object().unwrap();
@@ -2398,7 +2288,7 @@ mod tests {
         // x should remain as x (discrete)
         assert_eq!(enc.get("x"), Some(&nominal("day")));
 
-        // y should be remapped from ymin/ymax
+        // y/y2 should be preserved
         assert_eq!(enc.get("y"), Some(&quant("ymin_col")));
         assert_eq!(enc.get("y2"), Some(&quant("ymax_col")));
 
@@ -2470,17 +2360,17 @@ mod tests {
 
     #[test]
     fn test_rect_continuous_x_discrete_y() {
-        // Test rect with continuous x (xmin/xmax) and discrete y (y/height)
+        // Test rect with continuous x (already mapped to x/x2) and discrete y (y/height)
         let mut encoding = serde_json::Map::new();
-        encoding.insert("xmin".to_string(), quant("xmin_col"));
-        encoding.insert("xmax".to_string(), quant("xmax_col"));
+        encoding.insert("x".to_string(), quant("xmin_col"));
+        encoding.insert("x2".to_string(), quant("xmax_col"));
         encoding.insert("y".to_string(), nominal("category"));
         encoding.insert("height".to_string(), literal(0.6));
 
         let spec = render_rect(&mut encoding).unwrap();
         let enc = spec["encoding"].as_object().unwrap();
 
-        // x should be remapped from xmin/xmax
+        // x/x2 should be preserved
         assert_eq!(enc.get("x"), Some(&quant("xmin_col")));
         assert_eq!(enc.get("x2"), Some(&quant("xmax_col")));
 
@@ -4041,47 +3931,6 @@ mod tests {
             encoding["x2"]["field"], "secondary_max",
             "x2 should reference secondary_max field for horizontal orientation"
         );
-    }
-
-    #[test]
-    fn test_errorbar_encoding_transformation() {
-        // Test that ErrorBarRenderer correctly transforms ymin/ymax to y/y2
-        // Validation is now handled in the geom layer (see errorbar.rs tests)
-        let renderer = ErrorBarRenderer;
-        let layer = Layer::new(crate::plot::Geom::errorbar());
-        let context = RenderContext::new(&[]);
-
-        let mut encoding = serde_json::Map::new();
-        encoding.insert(
-            "x".to_string(),
-            json!({"field": "species", "type": "nominal"}),
-        );
-        encoding.insert(
-            "ymin".to_string(),
-            json!({"field": "low", "type": "quantitative"}),
-        );
-        encoding.insert(
-            "ymax".to_string(),
-            json!({"field": "high", "type": "quantitative"}),
-        );
-
-        renderer
-            .modify_encoding(&mut encoding, &layer, &context)
-            .unwrap();
-
-        assert_eq!(
-            encoding.get("y"),
-            Some(&json!({"field": "high", "type": "quantitative"})),
-            "ymax should be mapped to y"
-        );
-        assert_eq!(
-            encoding.get("y2"),
-            Some(&json!({"field": "low", "type": "quantitative"})),
-            "ymin should be mapped to y2"
-        );
-        assert!(!encoding.contains_key("ymin"), "ymin should be removed");
-        assert!(!encoding.contains_key("ymax"), "ymax should be removed");
-        assert!(encoding.contains_key("x"), "x should be preserved");
     }
 
     #[test]

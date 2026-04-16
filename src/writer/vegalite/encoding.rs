@@ -1020,18 +1020,14 @@ fn map_position_to_vegalite(aesthetic: &str, coord_kind: CoordKind) -> Option<St
     };
 
     // Match internal position aesthetic patterns
+    // Convention: min → primary channel (x/y), max → secondary channel (x2/y2)
     match aesthetic {
-        // Primary position
-        "pos1" => Some(primary.to_string()),
-        "pos2" => Some(secondary.to_string()),
-        // End variants (Vega-Lite uses x2/y2/theta2/radius2)
-        "pos1end" => Some(format!("{}2", primary)),
-        "pos2end" => Some(format!("{}2", secondary)),
-        // Min/Max variants
-        "pos1min" => Some(format!("{}min", primary)),
-        "pos1max" => Some(format!("{}max", primary)),
-        "pos2min" => Some(format!("{}min", secondary)),
-        "pos2max" => Some(format!("{}max", secondary)),
+        // Primary position and min variants
+        "pos1" | "pos1min" => Some(primary.to_string()),
+        "pos2" | "pos2min" => Some(secondary.to_string()),
+        // End and max variants (Vega-Lite uses x2/y2/theta2/radius2)
+        "pos1end" | "pos1max" => Some(format!("{}2", primary)),
+        "pos2end" | "pos2max" => Some(format!("{}2", secondary)),
         _ => None,
     }
 }
