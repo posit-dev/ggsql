@@ -503,3 +503,69 @@ fn apply_polar_radius_range(encoding: &mut Value, inner: f64, size: Option<f64>)
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_polar_inner_radius_non_faceted() {
+        // Non-faceted donut should use dynamic min(width,height) expressions
+        let mut encoding = json!({
+            "radius": {
+                "field": "dummy",
+                "type": "nominal",
+                "scale": {"domain": ["dummy"]}
+            }
+        });
+
+        apply_polar_radius_range(&mut encoding, 0.5, None).unwrap();
+
+        let range = encoding["radius"]["scale"]["range"].as_array().unwrap();
+        assert_eq!(range.len(), 2);
+        assert_eq!(
+            range[0]["expr"].as_str().unwrap(),
+            "min(width,height)/2*0.5"
+        );
+        assert_eq!(range[1]["expr"].as_str().unwrap(), "min(width,height)/2");
+    }
+
+    #[test]
+    fn test_polar_inner_radius_faceted() {
+        // Faceted donut should use explicit size calculation
+        let mut encoding = json!({
+            "radius": {
+                "field": "dummy",
+                "type": "nominal",
+                "scale": {"domain": ["dummy"]}
+            }
+        });
+
+        apply_polar_radius_range(&mut encoding, 0.5, Some(350.0)).unwrap();
+
+        let range = encoding["radius"]["scale"]["range"].as_array().unwrap();
+        assert_eq!(range.len(), 2);
+        assert_eq!(range[0]["expr"].as_str().unwrap(), "350/2*0.5");
+        assert_eq!(range[1]["expr"].as_str().unwrap(), "350/2");
+    }
+
+    #[test]
+    fn test_polar_inner_radius_zero() {
+        // inner = 0 should still apply range (full pie, no donut hole)
+        let mut encoding = json!({
+            "radius": {
+                "field": "dummy",
+                "type": "nominal",
+                "scale": {"domain": ["dummy"]}
+            }
+        });
+
+        apply_polar_radius_range(&mut encoding, 0.0, Some(350.0)).unwrap();
+
+        // Range should be [0, 350/2] for full pie
+        let range = encoding["radius"]["scale"]["range"].as_array().unwrap();
+        assert_eq!(range.len(), 2);
+        assert_eq!(range[0]["expr"].as_str().unwrap(), "350/2*0");
+        assert_eq!(range[1]["expr"].as_str().unwrap(), "350/2");
+    }
+}
