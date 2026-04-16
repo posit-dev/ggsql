@@ -49,6 +49,10 @@ const POINTS_TO_PIXELS: f64 = 96.0 / 72.0;
 /// So: area_px^2 = pi * (r_pt * POINTS_TO_PIXELS)^2 = pi * r_pt^2 * (96/72)^2
 const POINTS_TO_AREA: f64 = std::f64::consts::PI * POINTS_TO_PIXELS * POINTS_TO_PIXELS;
 
+/// Default size (in pixels) for polar coordinate visualizations
+/// Used as fallback when explicit dimensions are not specified
+pub(super) const DEFAULT_POLAR_SIZE: f64 = 350.0;
+
 /// Split a label string on newlines and return appropriate JSON value
 ///
 /// Returns a JSON array if the string contains multiple lines, or a JSON string
@@ -1104,8 +1108,8 @@ impl Writer for VegaLiteWriter {
                 .as_ref()
                 .is_some_and(|p| p.coord.coord_kind() == CoordKind::Polar);
             if is_polar {
-                vl_spec["width"] = json!(350);
-                vl_spec["height"] = json!(350);
+                vl_spec["width"] = json!(DEFAULT_POLAR_SIZE);
+                vl_spec["height"] = json!(DEFAULT_POLAR_SIZE);
             }
         }
 

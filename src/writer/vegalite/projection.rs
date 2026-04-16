@@ -7,6 +7,8 @@ use crate::plot::{CoordKind, ParameterValue, Projection};
 use crate::{DataFrame, GgsqlError, Plot, Result};
 use serde_json::{json, Value};
 
+use super::DEFAULT_POLAR_SIZE;
+
 /// Apply projection transformations to the spec and data
 /// Returns (possibly transformed DataFrame, possibly modified spec)
 pub(super) fn apply_project_transforms(
@@ -160,7 +162,7 @@ fn convert_geoms_to_polar(
             (Some(h), Some(w)) => h.min(w),
             (Some(h), None) => h,
             (None, Some(w)) => w,
-            _ => 350.0, // Fallback
+            _ => DEFAULT_POLAR_SIZE, // Fallback
         })
     } else {
         None
