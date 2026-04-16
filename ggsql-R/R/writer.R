@@ -1,14 +1,22 @@
 #' Create a Vega-Lite writer
 #'
-#' @return A `GgsqlWriterR6` object.
+#' This function creates a vegalite writer which is currently the only writer
+#' type for ggsql
+#'
+#' @return A `Writer` object.
+#'
 #' @export
+#'
+#' @examples
+#' vegalite_writer()
+#'
 vegalite_writer <- function() {
-  GgsqlWriterR6$new()
+  Writer$new()
 }
 
 #' @noRd
-GgsqlWriterR6 <- R6::R6Class(
-  "GgsqlWriterR6",
+Writer <- R6::R6Class(
+  "Writer",
   cloneable = FALSE,
   public = list(
     .ptr = NULL,
@@ -24,12 +32,30 @@ GgsqlWriterR6 <- R6::R6Class(
   )
 )
 
-#' Render a spec to Vega-Lite JSON
+#' Render a spec with a writer
 #'
-#' @param writer A `GgsqlWriterR6` object created by [vegalite_writer()].
-#' @param spec A `GgsqlSpecR6` object returned by [ggsql_execute()].
-#' @return A Vega-Lite JSON string.
+#' This function takes a `Spec` object as returned by [ggsql_execute()] and
+#' renders it with the provided writer.
+#'
+#' @param writer A `Writer` object created by e.g. [vegalite_writer()].
+#' @param spec A `Spec` object returned by [ggsql_execute()].
+#'
+#' @return Writer dependent:
+#'
+#' * `vegalite_writer`: A string holding the vegalite JSON representation of the
+#' visualization
+#'
 #' @export
+#'
+#' @examples
+#' reader <- duckdb_reader()
+#' ggsql_register(reader, mtcars, "cars")
+#' spec <- ggsql_execute(reader,
+#'   "SELECT * FROM cars VISUALISE mpg AS x DRAW histogram"
+#' )
+#'
+#' ggsql_render(vegalite_writer(), spec)
+#'
 ggsql_render <- function(writer, spec) {
   rlang::check_required(writer)
   rlang::check_required(spec)

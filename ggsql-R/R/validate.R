@@ -4,11 +4,17 @@
 #' validation result that can be inspected for errors and warnings.
 #'
 #' @param query A ggsql query string.
-#' @return A `ggsql_validated` object (a list with class).
+#' @param x A `ggsql_validated` object
+#'
+#' @return A `ggsql_validated` object for  `ggsql_validate()`. A boolean for
+#' `ggsql_has_visual()` and `ggsql_is_valid()`
+#'
 #' @export
+#'
 #' @examples
 #' result <- ggsql_validate("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
 #' result
+#'
 ggsql_validate <- function(query) {
   rlang::check_required(query)
   result <- ggsql_validate_impl(query)
@@ -43,17 +49,13 @@ print.ggsql_validated <- function(x, ...) {
   invisible(x)
 }
 
-#' Check if a validated query has a VISUALISE clause
-#' @param x A `ggsql_validated` object.
-#' @return Logical.
+#' @rdname ggsql_validate
 #' @export
 ggsql_has_visual <- function(x) {
   x$has_visual
 }
 
-#' Check if a validated query is valid
-#' @param x A `ggsql_validated` object.
-#' @return Logical.
+#' @rdname ggsql_validate
 #' @export
 ggsql_is_valid <- function(x) {
   x$valid

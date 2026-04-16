@@ -7,3 +7,4 @@ src/*.o
 src/*.so
 src/*.dll
 src/rust/test_files
+inst/doc

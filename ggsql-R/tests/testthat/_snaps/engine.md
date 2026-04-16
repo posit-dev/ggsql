@@ -77,3 +77,23 @@
       |  2| 11| 21|
       |  3| 12| 22|
 
+# connection option creates a DuckDB reader
+
+    Code
+      cat(out)
+    Output
+      SELECT 1 AS x, 2 AS y
+      |  x|  y|
+      |--:|--:|
+      |  1|  2|
+
+# writer option is ignored for plain SQL
+
+    Code
+      cat(out)
+    Output
+      SELECT 1 AS x, 2 AS y
+      |  x|  y|
+      |--:|--:|
+      |  1|  2|
+

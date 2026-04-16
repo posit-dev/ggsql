@@ -282,7 +282,11 @@ module.exports = grammar({
       caseInsensitive('ROW'),
       caseInsensitive('NULLS'),
       caseInsensitive('FIRST'),
-      caseInsensitive('LAST')
+      caseInsensitive('LAST'),
+      caseInsensitive('QUALIFY'),
+      caseInsensitive('UNION'),
+      caseInsensitive('INTERSECT'),
+      caseInsensitive('EXCEPT')
     ),
 
     // Window function: func() OVER (PARTITION BY ... ORDER BY ... frame)

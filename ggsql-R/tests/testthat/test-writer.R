@@ -1,6 +1,6 @@
 test_that("vegalite_writer creates a writer", {
   writer <- vegalite_writer()
-  expect_s3_class(writer, "GgsqlWriterR6")
+  expect_s3_class(writer, "Writer")
 })
 
 test_that("ggsql_render returns Vega-Lite JSON", {

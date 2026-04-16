@@ -1,6 +1,6 @@
 test_that("duckdb_reader creates a reader", {
   reader <- duckdb_reader()
-  expect_s3_class(reader, "GgsqlReaderR6")
+  expect_s3_class(reader, "Reader")
 })
 
 test_that("ggsql_register registers a data frame", {
@@ -9,7 +9,7 @@ test_that("ggsql_register registers a data frame", {
   expect_invisible(ggsql_register(reader, iris, "iris"))
   # Returns reader for piping
 
-  expect_s3_class(result, "GgsqlReaderR6")
+  expect_s3_class(result, "Reader")
 })
 
 test_that("ggsql_register with replace works", {
@@ -43,7 +43,7 @@ test_that("ggsql_execute returns a spec", {
     reader,
     "SELECT * FROM cars VISUALISE mpg AS x, disp AS y DRAW point"
   )
-  expect_s3_class(spec, "GgsqlSpecR6")
+  expect_s3_class(spec, "Spec")
 })
 
 test_that("piping works", {

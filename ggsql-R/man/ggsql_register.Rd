@@ -2,12 +2,15 @@
 % Please edit documentation in R/reader.R
 \name{ggsql_register}
 \alias{ggsql_register}
-\title{Register a data frame as a queryable table}
+\alias{ggsql_unregister}
+\title{Register and unregisters a data frame as a queryable table}
 \usage{
 ggsql_register(reader, df, name, replace = FALSE)
+
+ggsql_unregister(reader, name)
 }
 \arguments{
-\item{reader}{A \code{GgsqlReaderR6} object created by \code{\link[=duckdb_reader]{duckdb_reader()}}.}
+\item{reader}{A \code{Reader} object created by e.g. \code{\link[=duckdb_reader]{duckdb_reader()}}.}
 
 \item{df}{A data frame to register.}
 
@@ -21,4 +24,15 @@ Defaults to \code{FALSE}.}
 }
 \description{
 After registration, the data frame can be queried by name in SQL statements.
+}
+\examples{
+reader <- duckdb_reader()
+ggsql_register(reader, mtcars, "cars")
+
+ggsql_execute_sql(reader, "SHOW TABLES")
+
+ggsql_unregister(reader, "cars")
+
+ggsql_execute_sql(reader, "SHOW TABLES")
+
 }

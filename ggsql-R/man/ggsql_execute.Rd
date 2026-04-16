@@ -2,21 +2,25 @@
 % Please edit documentation in R/reader.R
 \name{ggsql_execute}
 \alias{ggsql_execute}
+\alias{ggsql_execute_sql}
 \title{Execute a ggsql query}
 \usage{
 ggsql_execute(reader, query)
+
+ggsql_execute_sql(reader, query)
 }
 \arguments{
-\item{reader}{A \code{GgsqlReaderR6} object created by \code{\link[=duckdb_reader]{duckdb_reader()}}.}
+\item{reader}{A \code{Reader} object created by \code{\link[=duckdb_reader]{duckdb_reader()}}.}
 
 \item{query}{A ggsql query string (SQL + VISUALISE clause).}
 }
 \value{
-A \code{GgsqlSpecR6} object.
+A \code{Spec} object.
 }
 \description{
-Parses the query, executes the SQL portion against the reader's database,
-and returns a visualization specification ready for rendering.
+Parses the query, and execute it against the reader's database. Returns
+either a visualization specification ready for rendering (\code{ggsql_execute}) or
+a data frame with the query result (\code{ggsql_execute_sql}).
 }
 \examples{
 reader <- duckdb_reader()
@@ -24,4 +28,5 @@ ggsql_register(reader, mtcars, "cars")
 spec <- ggsql_execute(reader,
   "SELECT * FROM cars VISUALISE mpg AS x, disp AS y DRAW point"
 )
+
 }

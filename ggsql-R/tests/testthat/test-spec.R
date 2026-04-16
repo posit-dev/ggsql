@@ -69,12 +69,12 @@ test_that("ggsql_warnings returns a data frame", {
   expect_s3_class(w, "data.frame")
 })
 
-test_that("spec print method works", {
+test_that("spec str method shows metadata", {
   reader <- duckdb_reader()
   ggsql_register(reader, mtcars, "cars")
   spec <- ggsql_execute(
     reader,
     "SELECT * FROM cars VISUALISE mpg AS x, disp AS y DRAW point"
   )
-  expect_invisible(print(spec))
+  expect_invisible(str(spec))
 })

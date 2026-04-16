@@ -58,23 +58,44 @@ fn format_vegalite(spec: String) -> Value {
     let vis_id = format!("vis-{}", timestamp);
 
     let html = format!(
-        r#"<div id="{}"></div>
+        r#"<div id="{vis_id}-outer" style="width: 100%; overflow: hidden;">
+<div id="{vis_id}" style="min-width: 450px; height: 400px;"></div>
+</div>
 <script type="text/javascript">
   (function() {{
-    const spec = {};
-    const visId = '{}';
-    const container = document.getElementById(visId);
-    container.style.width = '100%';
-    container.style.height = '400px';
+    const spec = {spec_json};
+    const visId = '{vis_id}';
+    const minWidth = 450;
+    const inner = document.getElementById(visId);
+    const outer = document.getElementById(visId + '-outer');
 
     // Use full height in Positron's Plots pane
-    if (container.closest('.positron-output-container')) {{
-      container.style.height = '100vh';
+    if (inner.closest('.positron-output-container')) {{
+      inner.style.height = '100vh';
     }}
 
     const options = {{
       "actions": true,
     }};
+
+    function scaleToFit(outer, inner) {{
+      const available = outer.clientWidth;
+      if (available < minWidth) {{
+        const scale = available / minWidth;
+        inner.style.transform = 'scale(' + scale + ')';
+        inner.style.transformOrigin = 'top left';
+        outer.style.height = (inner.scrollHeight * scale) + 'px';
+      }} else {{
+        inner.style.transform = '';
+        outer.style.height = '';
+      }}
+    }}
+
+    function onRendered() {{
+      scaleToFit(outer, inner);
+      const ro = new ResizeObserver(() => scaleToFit(outer, inner));
+      ro.observe(outer);
+    }}
 
     // Check if we're in a Jupyter environment with require.js
     if (typeof window.requirejs !== 'undefined') {{
@@ -97,7 +118,7 @@ fn format_vegalite(spec: String) -> Value {
       docReady(function() {{
         window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {{
             domReady(function () {{
-              vegaEmbed('#' + visId, spec, options).catch(console.error);
+              vegaEmbed('#' + visId, spec, options).then(onRendered).catch(console.error);
             }});
         }});
       }});
@@ -118,17 +139,16 @@ fn format_vegalite(spec: String) -> Value {
         loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
         loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
       ])
-        .then(() => {{
-          vegaEmbed('#' + visId, spec, options)
-            .catch(console.error);
-        }})
+        .then(() => vegaEmbed('#' + visId, spec, options))
+        .then(onRendered)
         .catch(err => {{
           console.error('Failed to load Vega libraries:', err);
         }});
     }}
   }})();
 </script>"#,
-        vis_id, spec_json, vis_id
+        vis_id = vis_id,
+        spec_json = spec_json
     );
 
     json!({

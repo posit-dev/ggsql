@@ -1,7 +1,3 @@
-skip_if_not_installed("png")
-skip_if_not_installed("rsvg")
-skip_if_not_installed("V8")
-
 run_query <- function(query, ...) {
   opts <- knitr::opts_current$get()
   opts$code <- query
@@ -152,6 +148,144 @@ test_that("sql proxy names() lists tables", {
   sql_obj <- get("sql", envir = knitr::knit_global())
   tbl_names <- names(sql_obj)
   expect_true("names_test" %in% tbl_names)
+})
+
+# --- Inline chunk options (--| and #|) ---
+
+test_that("--| prefix parses chunk options", {
+  query <- c(
+    "--| output.var: my_result",
+    "SELECT 1 AS x, 2 AS y"
+  )
+  run_query(query)
+  df <- get("my_result", envir = knitr::knit_global())
+  on.exit(rm("my_result", envir = knitr::knit_global()))
+
+  expect_s3_class(df, "data.frame")
+  expect_equal(names(df), c("x", "y"))
+})
+
+test_that("#| prefix parses chunk options", {
+  query <- c(
+    "#| output.var: my_result2",
+    "SELECT 1 AS a, 2 AS b"
+  )
+  run_query(query)
+  df <- get("my_result2", envir = knitr::knit_global())
+  on.exit(rm("my_result2", envir = knitr::knit_global()))
+
+  expect_s3_class(df, "data.frame")
+  expect_equal(names(df), c("a", "b"))
+})
+
+test_that("Quarto-style kebab-case options are converted", {
+  query <- c(
+    "--| output-var: my_result3",
+    "SELECT 10 AS val"
+  )
+  run_query(query)
+  df <- get("my_result3", envir = knitr::knit_global())
+  on.exit(rm("my_result3", envir = knitr::knit_global()))
+
+  expect_s3_class(df, "data.frame")
+})
+
+# --- Connection option tests ---
+
+test_that("connection option creates a DuckDB reader", {
+  query <- "SELECT 1 AS x, 2 AS y"
+  out <- run_query(query, connection = "duckdb://memory")
+  expect_snapshot(cat(out))
+})
+
+test_that("connection option rejects unsupported schemes", {
+  query <- "SELECT 1 AS x"
+  out <- run_query(query, connection = "mysql://localhost")
+  expect_match(out, "Unsupported connection scheme")
+})
+
+test_that("connection option rejects invalid format", {
+  query <- "SELECT 1 AS x"
+  out <- run_query(query, connection = "not-a-uri")
+  expect_match(out, "Invalid connection string")
+})
+
+# --- Writer option tests ---
+
+test_that("writer defaults to interactive vegalite", {
+  query <- c(
+    paste0("SELECT mpg, disp FROM '", data_file, "'"),
+    "VISUALISE mpg AS x, disp AS y",
+    "DRAW point"
+  )
+  out <- run_query(query)
+  expect_match(out, "vega-embed")
+})
+
+test_that("writer = 'vegalite_svg' produces SVG output", {
+  skip_if_not_installed("V8")
+  skip_on_cran()
+  skip_if_not_installed("withr")
+
+  fig_dir <- withr::local_tempdir()
+
+  query <- c(
+    paste0("SELECT mpg, disp FROM '", data_file, "'"),
+    "VISUALISE mpg AS x, disp AS y",
+    "DRAW point"
+  )
+  out <- run_query(
+    query,
+    writer = "vegalite_svg",
+    fig.path = paste0(fig_dir, "/fig-"),
+    label = "test-svg"
+  )
+
+  svg_files <- list.files(fig_dir, pattern = "\\.svg$")
+  expect_length(svg_files, 1L)
+  expect_match(out, "\\.svg")
+})
+
+test_that("writer = 'vegalite_png' produces PNG output", {
+  skip_if_not_installed("V8")
+  skip_if_not_installed("rsvg")
+  skip_on_cran()
+  skip_if_not_installed("withr")
+
+  fig_dir <- withr::local_tempdir()
+
+  query <- c(
+    paste0("SELECT mpg, disp FROM '", data_file, "'"),
+    "VISUALISE mpg AS x, disp AS y",
+    "DRAW point"
+  )
+  out <- run_query(
+    query,
+    writer = "vegalite_png",
+    fig.path = paste0(fig_dir, "/fig-"),
+    label = "test-png"
+  )
+
+  png_files <- list.files(fig_dir, pattern = "\\.png$")
+  expect_length(png_files, 1L)
+  expect_match(out, "\\.png")
+})
+
+test_that("writer option is ignored for plain SQL", {
+  query <- "SELECT 1 AS x, 2 AS y"
+  out <- run_query(query, writer = "vegalite_png")
+  # Should produce a table, not an image
+  expect_snapshot(cat(out))
+})
+
+test_that("invalid writer option produces error", {
+  query <- c(
+    paste0("SELECT mpg, disp FROM '", data_file, "'"),
+    "VISUALISE mpg AS x, disp AS y",
+    "DRAW point"
+  )
+  out <- run_query(query, writer = "ggplot2")
+  expect_match(out, "Unsupported writer")
 })
 
 test_that("we can knit a mixed-chunk document", {

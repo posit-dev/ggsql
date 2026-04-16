@@ -7,8 +7,13 @@
 vegalite_writer()
 }
 \value{
-A \code{GgsqlWriterR6} object.
+A \code{Writer} object.
 }
 \description{
-Create a Vega-Lite writer
+This function creates a vegalite writer which is currently the only writer
+type for ggsql
+}
+\examples{
+vegalite_writer()
+
 }

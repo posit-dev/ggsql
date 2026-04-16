@@ -4,22 +4,24 @@
 \alias{duckdb_reader}
 \title{Create a DuckDB reader}
 \usage{
-duckdb_reader(connection = "duckdb://memory")
+duckdb_reader(database = NULL)
 }
 \arguments{
-\item{connection}{Connection string. Use \code{"duckdb://memory"} for an
-in-memory database or \code{"duckdb:///path/to/file.db"} for a file-based
-database.}
+\item{database}{Path to a DuckDB database file, or \code{NULL} (the default)
+for an in-memory database.}
 }
 \value{
-A \code{GgsqlReaderR6} object.
+A \code{Reader} object.
 }
 \description{
 Creates a DuckDB database connection that can execute SQL queries and
-register data frames as queryable tables.
+register data frames as queryable tables. The default creates an empty
+in-memory database but you can also pass the path to a DuckDB database to
+directly interact with that.
 }
 \examples{
 reader <- duckdb_reader()
 ggsql_register(reader, mtcars, "cars")
 df <- ggsql_execute_sql(reader, "SELECT mpg, disp FROM cars LIMIT 5")
+
 }

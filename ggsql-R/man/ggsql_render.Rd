@@ -2,18 +2,33 @@
 % Please edit documentation in R/writer.R
 \name{ggsql_render}
 \alias{ggsql_render}
-\title{Render a spec to Vega-Lite JSON}
+\title{Render a spec with a writer}
 \usage{
 ggsql_render(writer, spec)
 }
 \arguments{
-\item{writer}{A \code{GgsqlWriterR6} object created by \code{\link[=vegalite_writer]{vegalite_writer()}}.}
+\item{writer}{A \code{Writer} object created by e.g. \code{\link[=vegalite_writer]{vegalite_writer()}}.}
 
-\item{spec}{A \code{GgsqlSpecR6} object returned by \code{\link[=ggsql_execute]{ggsql_execute()}}.}
+\item{spec}{A \code{Spec} object returned by \code{\link[=ggsql_execute]{ggsql_execute()}}.}
 }
 \value{
-A Vega-Lite JSON string.
+Writer dependent:
+\itemize{
+\item \code{vegalite_writer}: A string holding the vegalite JSON representation of the
+visualization
+}
 }
 \description{
-Render a spec to Vega-Lite JSON
+This function takes a \code{Spec} object as returned by \code{\link[=ggsql_execute]{ggsql_execute()}} and
+renders it with the provided writer.
+}
+\examples{
+reader <- duckdb_reader()
+ggsql_register(reader, mtcars, "cars")
+spec <- ggsql_execute(reader,
+  "SELECT * FROM cars VISUALISE mpg AS x DRAW histogram"
+)
+
+ggsql_render(vegalite_writer(), spec)
+
 }

@@ -2,15 +2,24 @@
 % Please edit documentation in R/validate.R
 \name{ggsql_validate}
 \alias{ggsql_validate}
+\alias{ggsql_has_visual}
+\alias{ggsql_is_valid}
 \title{Validate a ggsql query}
 \usage{
 ggsql_validate(query)
+
+ggsql_has_visual(x)
+
+ggsql_is_valid(x)
 }
 \arguments{
 \item{query}{A ggsql query string.}
+
+\item{x}{A \code{ggsql_validated} object}
 }
 \value{
-A \code{ggsql_validated} object (a list with class).
+A \code{ggsql_validated} object for  \code{ggsql_validate()}. A boolean for
+\code{ggsql_has_visual()} and \code{ggsql_is_valid()}
 }
 \description{
 Checks query syntax and semantics without executing SQL. Returns a
@@ -19,4 +28,5 @@ validation result that can be inspected for errors and warnings.
 \examples{
 result <- ggsql_validate("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
 result
+
 }

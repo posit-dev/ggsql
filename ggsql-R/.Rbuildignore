@@ -7,3 +7,4 @@
 ^src/rust/target$
 ^src/Makevars$
 ^src/Makevars\.win$
+^README\.Rmd$

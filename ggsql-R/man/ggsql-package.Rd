@@ -6,6 +6,8 @@
 \alias{ggsql-package}
 \title{ggsql: A SQL extension for declarative data visualization based on the Grammar of Graphics}
 \description{
+\if{html}{\figure{logo.png}{options: style='float: right' alt='logo' width='120'}}
+
 ggsql allows you to write queries that combine SQL data retrieval with visualization specifications in a single, composable syntax.
 }
 \author{
