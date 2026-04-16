@@ -1805,38 +1805,15 @@ impl GeomRenderer for ErrorBarRenderer {
         _layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        // Check combinations of aesthetics
-        let has_x = encoding.contains_key("x");
-        let has_y = encoding.contains_key("y");
-        if has_x && has_y {
-            Err(GgsqlError::ValidationError(
-                "In errorbar layer, the `x` and `y` aesthetics are mutually exclusive".to_string(),
-            ))
-        } else if has_x && (encoding.contains_key("xmin") || encoding.contains_key("xmax")) {
-            Err(GgsqlError::ValidationError("In errorbar layer, cannot use `x` aesthetic with `xmin` and `xmax`. `x` must be used with `ymin` and `ymax`.".to_string()))
-        } else if has_y && (encoding.contains_key("ymin") || encoding.contains_key("ymax")) {
-            Err(GgsqlError::ValidationError("In errorbar layer, cannot use `y` aesthetic with `ymin` and `ymax`. `y` must be used with `xmin` and `xmax`.".to_string()))
-        } else if has_x {
-            if let Some(ymax) = encoding.remove("ymax") {
-                encoding.insert("y".to_string(), ymax);
-            }
-            if let Some(ymin) = encoding.remove("ymin") {
-                encoding.insert("y2".to_string(), ymin);
-            }
-            Ok(())
-        } else if has_y {
-            if let Some(xmax) = encoding.remove("xmax") {
-                encoding.insert("x".to_string(), xmax);
-            }
-            if let Some(xmin) = encoding.remove("xmin") {
-                encoding.insert("x2".to_string(), xmin);
-            }
-            Ok(())
-        } else {
-            Err(GgsqlError::ValidationError(
-                "In errorbar layer, aesthetics are incomplete. Either use `x`/`ymin`/`ymax` or `y`/`xmin`/`xmax` combinations.".to_string()
-            ))
+        // Map pos2min/pos2max to Vega-Lite's y/y2 encoding channels
+        // (or x/x2 if transposed via PROJECT)
+        if let Some(ymax) = encoding.remove("ymax") {
+            encoding.insert("y".to_string(), ymax);
         }
+        if let Some(ymin) = encoding.remove("ymin") {
+            encoding.insert("y2".to_string(), ymin);
+        }
+        Ok(())
     }
 
     fn finalize(
@@ -1856,22 +1833,17 @@ impl GeomRenderer for ErrorBarRenderer {
 
         let mut layers = vec![layer_spec.clone()];
 
-        // Determine if this is a vertical or horizontal error bar and set up parameters
+        // Error bars use pos1 (categorical position, already in layer_spec)
+        // and pos2min/pos2max (error range, mapped to y/y2 or x/x2 depending on PROJECT)
+        let min_field = naming::aesthetic_column("pos2min");
+        let max_field = naming::aesthetic_column("pos2max");
+
+        // Determine which encoding channel is used for the error range (transposition happens upstream)
         let is_vertical = !is_transposed(layer);
-        let (orient, position, min_field, max_field) = if is_vertical {
-            (
-                "horizontal",
-                "y",
-                naming::aesthetic_column("pos2min"),
-                naming::aesthetic_column("pos2max"),
-            )
+        let (orient, position) = if is_vertical {
+            ("horizontal", "y")  // pos2min/pos2max are on y-axis, tick is horizontal
         } else {
-            (
-                "vertical",
-                "x",
-                naming::aesthetic_column("pos1min"),
-                naming::aesthetic_column("pos1max"),
-            )
+            ("vertical", "x")    // pos2min/pos2max are on x-axis, tick is vertical
         };
 
         // First hinge (at min position)
@@ -4097,13 +4069,13 @@ mod tests {
     }
 
     #[test]
-    fn test_errorbar_encoding() {
+    fn test_errorbar_encoding_transformation() {
+        // Test that ErrorBarRenderer correctly transforms ymin/ymax to y/y2
+        // Validation is now handled in the geom layer (see errorbar.rs tests)
         let renderer = ErrorBarRenderer;
         let layer = Layer::new(crate::plot::Geom::errorbar());
         let context = RenderContext::new(&[]);
 
-        // Case 1: Vertical errorbar (x + ymin + ymax)
-        // Should map ymax → y and ymin → y2
         let mut encoding = serde_json::Map::new();
         encoding.insert(
             "x".to_string(),
@@ -4134,143 +4106,7 @@ mod tests {
         );
         assert!(!encoding.contains_key("ymin"), "ymin should be removed");
         assert!(!encoding.contains_key("ymax"), "ymax should be removed");
-
-        // Case 2: Horizontal errorbar (y + xmin + xmax)
-        // Should map xmax → x and xmin → x2
-        let mut encoding = serde_json::Map::new();
-        encoding.insert(
-            "y".to_string(),
-            json!({"field": "species", "type": "nominal"}),
-        );
-        encoding.insert(
-            "xmin".to_string(),
-            json!({"field": "low", "type": "quantitative"}),
-        );
-        encoding.insert(
-            "xmax".to_string(),
-            json!({"field": "high", "type": "quantitative"}),
-        );
-
-        renderer
-            .modify_encoding(&mut encoding, &layer, &context)
-            .unwrap();
-
-        assert_eq!(
-            encoding.get("x"),
-            Some(&json!({"field": "high", "type": "quantitative"})),
-            "xmax should be mapped to x"
-        );
-        assert_eq!(
-            encoding.get("x2"),
-            Some(&json!({"field": "low", "type": "quantitative"})),
-            "xmin should be mapped to x2"
-        );
-        assert!(!encoding.contains_key("xmin"), "xmin should be removed");
-        assert!(!encoding.contains_key("xmax"), "xmax should be removed");
-
-        // Case 3: Error - neither x nor y is present
-        let mut encoding = serde_json::Map::new();
-        encoding.insert(
-            "xmin".to_string(),
-            json!({"field": "low", "type": "quantitative"}),
-        );
-        encoding.insert(
-            "xmax".to_string(),
-            json!({"field": "high", "type": "quantitative"}),
-        );
-
-        let result = renderer.modify_encoding(&mut encoding, &layer, &context);
-        assert!(
-            result.is_err(),
-            "Should error when neither x nor y is present"
-        );
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("aesthetics are incomplete"),
-            "Error message should mention incomplete aesthetics"
-        );
-
-        // Case 4: Error - both x and y present
-        let mut encoding = serde_json::Map::new();
-        encoding.insert(
-            "x".to_string(),
-            json!({"field": "x_col", "type": "quantitative"}),
-        );
-        encoding.insert(
-            "y".to_string(),
-            json!({"field": "y_col", "type": "quantitative"}),
-        );
-
-        let result = renderer.modify_encoding(&mut encoding, &layer, &context);
-        assert!(
-            result.is_err(),
-            "Should error when both x and y are present"
-        );
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("mutually exclusive"),
-            "Error message should mention mutual exclusivity"
-        );
-
-        // Case 5: Error - x with xmin/xmax
-        let mut encoding = serde_json::Map::new();
-        encoding.insert(
-            "x".to_string(),
-            json!({"field": "species", "type": "nominal"}),
-        );
-        encoding.insert(
-            "xmin".to_string(),
-            json!({"field": "low", "type": "quantitative"}),
-        );
-        encoding.insert(
-            "xmax".to_string(),
-            json!({"field": "high", "type": "quantitative"}),
-        );
-
-        let result = renderer.modify_encoding(&mut encoding, &layer, &context);
-        assert!(
-            result.is_err(),
-            "Should error when x is used with xmin/xmax"
-        );
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("cannot use `x` aesthetic with `xmin` and `xmax`"),
-            "Error message should mention conflicting aesthetics"
-        );
-
-        // Case 6: Error - y with ymin/ymax
-        let mut encoding = serde_json::Map::new();
-        encoding.insert(
-            "y".to_string(),
-            json!({"field": "species", "type": "nominal"}),
-        );
-        encoding.insert(
-            "ymin".to_string(),
-            json!({"field": "low", "type": "quantitative"}),
-        );
-        encoding.insert(
-            "ymax".to_string(),
-            json!({"field": "high", "type": "quantitative"}),
-        );
-
-        let result = renderer.modify_encoding(&mut encoding, &layer, &context);
-        assert!(
-            result.is_err(),
-            "Should error when y is used with ymin/ymax"
-        );
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("cannot use `y` aesthetic with `ymin` and `ymax`"),
-            "Error message should mention conflicting aesthetics"
-        );
+        assert!(encoding.contains_key("x"), "x should be preserved");
     }
 
     #[test]

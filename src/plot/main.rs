@@ -523,8 +523,11 @@ mod tests {
         // Segment/arrow require endpoints
         assert_eq!(Geom::segment().aesthetics().required(), &["pos1", "pos2"]);
 
-        // ErrorBar has no strict requirements
-        assert_eq!(Geom::errorbar().aesthetics().required(), &[] as &[&str]);
+        // ErrorBar requires pos1, pos2min, pos2max
+        assert_eq!(
+            Geom::errorbar().aesthetics().required(),
+            &["pos1", "pos2min", "pos2max"]
+        );
     }
 
     #[test]
