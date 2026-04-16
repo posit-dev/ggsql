@@ -25,6 +25,8 @@ const KERNEL_VALUES: &[&str] = &[
     "cosine",
 ];
 
+const SIDE_VALUES: &[&str] = &["both", "left", "top", "right", "bottom"];
+
 /// Violin geom - violin plots (mirrored density)
 #[derive(Debug, Clone, Copy)]
 pub struct Violin;
@@ -79,7 +81,13 @@ impl GeomTrait for Violin {
             ParamDefinition {
                 name: "width",
                 default: DefaultParamValue::Number(0.9),
-                constraint: ParamConstraint::number_range(0.0, 1.0),
+                // We allow >1 width to make ridgeline plots
+                constraint: ParamConstraint::number_min_exclusive(0.0),
+            },
+            ParamDefinition {
+                name: "side",
+                default: DefaultParamValue::String("both"),
+                constraint: ParamConstraint::string_option(SIDE_VALUES),
             },
             ParamDefinition {
                 name: "tails",

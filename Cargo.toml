@@ -43,6 +43,10 @@ arrow = { version = "56", default-features = false, features = ["ipc"] }
 postgres = "0.19"
 rusqlite = { version = "0.38", features = ["bundled", "chrono", "functions", "window"] }
 
+# ODBC
+odbc-api = "13"
+toml_edit = "0.22"
+
 # Writers
 plotters = "0.3"
 
@@ -70,11 +74,7 @@ chrono = "0.4"
 rand = "0.8"
 const_format = "0.2"
 uuid = { version = "1.0", features = ["v4"] }
-
-# Web server
-axum = "0.7"
 tokio = { version = "1.35", default-features = false }
-tower-http = { version = "0.5", features = ["cors", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

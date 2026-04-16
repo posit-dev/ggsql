@@ -32,6 +32,9 @@ jobs:
       - name: Install LLVM
         run: sudo apt-get install -y llvm
 
+      - name: Install ODBC
+        run: sudo apt-get install -y unixodbc-dev
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 

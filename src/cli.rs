@@ -315,9 +315,6 @@ fn cmd_parse(query: String, format: String) {
                 if spec.facet.is_some() {
                     println!("  Faceting: Yes");
                 }
-                if spec.theme.is_some() {
-                    println!("  Theme: Yes");
-                }
             }
         }
         _ => {

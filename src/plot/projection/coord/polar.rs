@@ -16,7 +16,7 @@ impl CoordTrait for Polar {
         "polar"
     }
 
-    fn positional_aesthetic_names(&self) -> &'static [&'static str] {
+    fn position_aesthetic_names(&self) -> &'static [&'static str] {
         &["radius", "angle"]
     }
 

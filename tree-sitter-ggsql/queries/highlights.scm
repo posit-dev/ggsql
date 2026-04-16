@@ -25,42 +25,64 @@
   "segment"
   "arrow"
   "rule"
-  "linear"
   "errorbar"
 ] @type.builtin
 
 ; Aesthetic names
 [
+  ; Position aesthetics (cartesian)
   "x"
   "y"
-  "weight"
   "xmin"
   "xmax"
   "ymin"
   "ymax"
   "xend"
   "yend"
+  ; Position aesthetics (polar)
+  "angle"
+  "radius"
+  "anglemin"
+  "anglemax"
+  "radiusmin"
+  "radiusmax"
+  "angleend"
+  "radiusend"
+  ; Aggregation aesthetic
+  "weight"
+  ; Color aesthetics
   "color"
   "colour"
   "fill"
   "stroke"
   "opacity"
+  ; Size and shape
   "size"
   "shape"
   "linetype"
   "linewidth"
   "width"
   "height"
+  ; Text aesthetics
   "label"
   "typeface"
   "fontweight"
   "italic"
+  "fontsize"
   "hjust"
   "vjust"
   "rotation"
+  ; Specialty aesthetics
+  "slope"
+  ; Facet aesthetics
   "panel"
   "row"
   "column"
+  ; Computed variables
+  "offset"
+  "density"
+  "count"
+  "intensity"
 ] @attribute
 
 ; String literals
@@ -83,7 +105,6 @@
 
 ; Property names
 (project_property_name) @property
-(theme_property_name) @property
 (label_type) @property
 
 ; Operators

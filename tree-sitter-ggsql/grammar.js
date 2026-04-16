@@ -210,7 +210,7 @@ module.exports = grammar({
     cast_expression: $ => prec(3, seq(
       choice(caseInsensitive('CAST'), caseInsensitive('TRY_CAST')),
       '(',
-      $.positional_arg,
+      $.position_arg,
       caseInsensitive('AS'),
       $.type_name,
       ')'
@@ -305,25 +305,25 @@ module.exports = grammar({
       repeat(seq(',', $.function_arg))
     ),
 
-    // Function argument: positional or named
+    // Function argument: position or named
     function_arg: $ => choice(
       $.named_arg,
-      $.positional_arg
+      $.position_arg
     ),
 
     named_arg: $ => seq(
       field('name', $.identifier),
       choice(':=', '=>'),
-      field('value', $.positional_arg)
+      field('value', $.position_arg)
     ),
 
-    // Positional argument: supports complex expressions including:
+    // Position argument: supports complex expressions including:
     // - Simple values: identifier, number, string, *
     // - Qualified names: table.column
     // - Nested function calls: ROUND(AVG(x), 2)
     // - Arithmetic expressions: quantity * price
     // - Type casts: value::type
-    positional_arg: $ => prec.left(choice(
+    position_arg: $ => prec.left(choice(
       // Simple values
       $.qualified_name,  // Handles both simple identifiers and table.column
       $.number,
@@ -336,9 +336,9 @@ module.exports = grammar({
       // Scalar subquery: (SELECT ...) or (WITH ... SELECT ...)
       $.scalar_subquery,
       // Arithmetic/comparison expression (binary operators)
-      seq($.positional_arg, choice('+', '-', '*', '/', '%', '||', '::', '<', '>', '<=', '>=', '=', '!=', '<>'), $.positional_arg),
+      seq($.position_arg, choice('+', '-', '*', '/', '%', '||', '::', '<', '>', '<=', '>=', '=', '!=', '<>'), $.position_arg),
       // Parenthesized expression
-      seq('(', $.positional_arg, ')')
+      seq('(', $.position_arg, ')')
     )),
 
     // Namespaced identifier: matches "namespace:name" pattern
@@ -471,7 +471,6 @@ module.exports = grammar({
       $.facet_clause,
       $.project_clause,
       $.label_clause,
-      $.theme_clause,
     ),
 
     // DRAW clause - syntax: DRAW geom [MAPPING ...] [REMAPPING ...] [SETTING ...] [FILTER ...] [PARTITION BY ...] [ORDER BY ...]
@@ -505,7 +504,7 @@ module.exports = grammar({
     geom_type: $ => choice(
       'point', 'line', 'path', 'bar', 'area', 'rect', 'polygon', 'ribbon',
       'histogram', 'density', 'smooth', 'boxplot', 'violin',
-      'text', 'label', 'segment', 'arrow', 'rule', 'linear', 'errorbar'
+      'text', 'label', 'segment', 'arrow', 'rule', 'errorbar'
     ),
 
     // MAPPING clause for aesthetic mappings: MAPPING col AS x, "blue" AS color [FROM source]
@@ -687,11 +686,11 @@ module.exports = grammar({
       // Text aesthetics
       'label', 'typeface', 'fontweight', 'italic', 'fontsize', 'hjust', 'vjust', 'rotation',
       // Specialty aesthetics,
-      'coef', 'intercept',
+      'slope',
       // Facet aesthetics
       'panel', 'row', 'column',
       // Computed variables
-      'offset',
+      'offset', 'density', 'count', 'intensity',
       // Allow any identifier for custom PROJECT aesthetics (e.g., PROJECT a, b TO polar)
       $.identifier
     ),
@@ -808,7 +807,7 @@ module.exports = grammar({
       optional(seq(caseInsensitive('SETTING'), $.project_properties))
     ),
 
-    // Optional list of positional aesthetic names for PROJECT clause
+    // Optional list of position aesthetic names for PROJECT clause
     project_aesthetics: $ => seq(
       $.identifier,
       repeat(seq(',', $.identifier))
@@ -841,38 +840,10 @@ module.exports = grammar({
     label_assignment: $ => seq(
       field('name', $.label_type),
       '=>',
-      field('value', $.string)
+      field('value', choice($.string, $.null_literal))
     ),
 
     label_type: $ => $.identifier,
-
-    // THEME clause - THEME [name] [SETTING prop => value, ...]
-    theme_clause: $ => choice(
-      // Just theme name
-      seq(caseInsensitive('THEME'), $.theme_name),
-      // Theme name with properties
-      seq(
-        caseInsensitive('THEME'), $.theme_name, caseInsensitive('SETTING'),
-        $.theme_property,
-        repeat(seq(',', $.theme_property))
-      ),
-      // Just properties (custom theme)
-      seq(
-        caseInsensitive('THEME'), caseInsensitive('SETTING'),
-        $.theme_property,
-        repeat(seq(',', $.theme_property))
-      )
-    ),
-
-    theme_name: $ => $.identifier,
-
-    theme_property: $ => seq(
-      field('name', $.theme_property_name),
-      '=>',
-      field('value', choice($.string, $.number, $.boolean))
-    ),
-
-    theme_property_name: $ => $.identifier,
 
     // Basic tokens
     bare_identifier: $ => token(/[a-zA-Z_][a-zA-Z0-9_]*/),

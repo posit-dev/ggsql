@@ -49,6 +49,24 @@ const POINTS_TO_PIXELS: f64 = 96.0 / 72.0;
 /// So: area_px^2 = pi * (r_pt * POINTS_TO_PIXELS)^2 = pi * r_pt^2 * (96/72)^2
 const POINTS_TO_AREA: f64 = std::f64::consts::PI * POINTS_TO_PIXELS * POINTS_TO_PIXELS;
 
+/// Split a label string on newlines and return appropriate JSON value
+///
+/// Returns a JSON array if the string contains multiple lines, or a JSON string
+/// if it's a single line. Handles both actual newlines (from database columns,
+/// CHAR(10), imported data) and literal \\n (from SQL string literals).
+fn split_label_on_newlines(label: &str) -> Value {
+    // Normalize literal \\n to actual \n, then split on any newline type
+    let normalized = label.replace("\\n", "\n");
+    let lines: Vec<&str> = normalized.lines().collect();
+
+    // Return array if multiple lines, string if single line
+    if lines.len() > 1 {
+        json!(lines)
+    } else {
+        json!(label)
+    }
+}
+
 /// Result of preparing layer data for rendering
 ///
 /// Contains the datasets, renderers, and prepared data needed to build Vega-Lite layers.
@@ -101,7 +119,7 @@ fn prepare_layer_data(
 
         // Add data to individual datasets based on prepared type
         match &prepared {
-            PreparedData::Single { values } => {
+            PreparedData::Single { values, .. } => {
                 individual_datasets.insert(data_key.clone(), json!(values));
             }
             PreparedData::Composite { components, .. } => {
@@ -131,16 +149,16 @@ fn prepare_layer_data(
 /// - Creates layer spec with mark type
 /// - Builds transform array with source filter
 /// - Builds encoding channels for each aesthetic mapping
-/// - Handles binned positional aesthetics (x2/y2 channels)
+/// - Handles binned position aesthetics (x2/y2 channels)
 /// - Adds aesthetic parameters from SETTING as literal encodings
 /// - Adds detail encoding for partition_by columns
 /// - Applies geom-specific modifications via renderer
 /// - Finalizes layers (may expand composite geoms into multiple layers)
 ///
-/// The `free_scales` array indicates which positional aesthetics have independent scales
+/// The `free_scales` array indicates which position aesthetics have independent scales
 /// per facet panel. When a position is free, explicit domains should not be set.
 ///
-/// The `coord_kind` determines how internal positional aesthetics are mapped to
+/// The `coord_kind` determines how internal position aesthetics are mapped to
 /// Vega-Lite encoding channel names.
 fn build_layers(
     spec: &Plot,
@@ -186,7 +204,21 @@ fn build_layers(
         layer_spec["transform"] = json!(transforms);
 
         // Build encoding for this layer (pass free scales and coord kind)
-        let encoding = build_layer_encoding(layer, df, spec, free_scales, coord_kind)?;
+        let mut encoding = build_layer_encoding(layer, df, spec, free_scales, coord_kind)?;
+
+        // For point marks, remove fill: null from encoding — Vega-Lite point marks
+        // are unfilled by default, so omitting it achieves the same visual result
+        // without making legend symbols (e.g., size) invisible. Other mark types
+        // (bar, area, etc.) are filled by default, so fill: null must be preserved.
+        if layer.geom.geom_type() == crate::plot::layer::geom::GeomType::Point
+            && encoding
+                .get("fill")
+                .and_then(|v| v.get("value"))
+                .is_some_and(|v| v.is_null())
+        {
+            encoding.remove("fill");
+        }
+
         layer_spec["encoding"] = Value::Object(encoding);
 
         // Apply geom-specific spec modifications via renderer
@@ -205,15 +237,15 @@ fn build_layers(
 /// Handles:
 /// - Tracking titled aesthetic families (one title per family)
 /// - Building encoding channels for each aesthetic mapping
-/// - Binned positional aesthetics (x2/y2 channels for bin width)
+/// - Binned position aesthetics (x2/y2 channels for bin width)
 /// - Aesthetic parameters from SETTING as literal encodings
 /// - Detail encoding for partition_by columns
 /// - Geom-specific encoding modifications via renderer
 ///
-/// The `free_scales` array indicates which positional aesthetics have independent scales
+/// The `free_scales` array indicates which position aesthetics have independent scales
 /// per facet panel. When a position is free, explicit domains should not be set.
 ///
-/// The `coord_kind` determines how internal positional aesthetics (pos1, pos2) are
+/// The `coord_kind` determines how internal position aesthetics (pos1, pos2) are
 /// mapped to Vega-Lite encoding channel names (x/y for cartesian, theta/radius for polar).
 fn build_layer_encoding(
     layer: &crate::plot::Layer,
@@ -238,7 +270,7 @@ fn build_layer_encoding(
         .keys()
         .filter(|a| {
             aesthetic_ctx
-                .primary_internal_positional(a)
+                .primary_internal_position(a)
                 .map(|p| p == a.as_str())
                 .unwrap_or(false)
         })
@@ -274,7 +306,7 @@ fn build_layer_encoding(
             channel_name = "fillOpacity".to_string();
         }
 
-        // Secondary positional channels (x2, y2, theta2, radius2) only support
+        // Secondary position channels (x2, y2, theta2, radius2) only support
         // field/datum/value in Vega-Lite — not type, scale, axis, or title
         if matches!(channel_name.as_str(), "x2" | "y2" | "theta2" | "radius2") {
             let secondary_encoding = match value {
@@ -289,7 +321,7 @@ fn build_layer_encoding(
         let channel_encoding = build_encoding_channel(aesthetic, value, &mut enc_ctx)?;
         encoding.insert(channel_name, channel_encoding);
 
-        // For binned positional aesthetics (pos1, pos2), add end channel with bin_end column
+        // For binned position aesthetics (pos1, pos2), add end channel with bin_end column
         // This enables proper bin width rendering in Vega-Lite (maps to x2/y2 channels)
         if aesthetic_ctx.is_primary_internal(aesthetic) && is_binned_aesthetic(aesthetic, spec) {
             if let AestheticValue::Column { name: col, .. } = value {
@@ -1063,11 +1095,42 @@ impl Writer for VegaLiteWriter {
         if spec.facet.is_none() {
             vl_spec["width"] = json!("container");
             vl_spec["height"] = json!("container");
+        } else {
+            // Faceted charts need explicit numeric dimensions (moved into inner spec
+            // by apply_faceting). Arc marks especially need this since their radius
+            // range is [0, min(width, height) / 2] — without dimensions, arcs are invisible.
+            let is_polar = spec
+                .project
+                .as_ref()
+                .is_some_and(|p| p.coord.coord_kind() == CoordKind::Polar);
+            if is_polar {
+                vl_spec["width"] = json!(350);
+                vl_spec["height"] = json!(350);
+            }
         }
 
         if let Some(labels) = &spec.labels {
-            if let Some(title) = labels.labels.get("title") {
-                vl_spec["title"] = json!(title);
+            let title = labels.labels.get("title").and_then(|v| v.as_ref());
+            let subtitle = labels.labels.get("subtitle").and_then(|v| v.as_ref());
+            match (title, subtitle) {
+                (Some(t), Some(st)) => {
+                    // Vega-Lite uses an object for title + subtitle
+                    // Split both title and subtitle on newlines
+                    vl_spec["title"] = json!({
+                        "text": split_label_on_newlines(t),
+                        "subtitle": split_label_on_newlines(st)
+                    });
+                }
+                (Some(t), None) => {
+                    vl_spec["title"] = split_label_on_newlines(t);
+                }
+                (None, Some(st)) => {
+                    vl_spec["title"] = json!({
+                        "text": "",
+                        "subtitle": split_label_on_newlines(st)
+                    });
+                }
+                (None, None) => {}
             }
         }
 
@@ -1343,7 +1406,7 @@ mod tests {
         // Test with cartesian coord kind
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
 
-        // Internal positional names should map to Vega-Lite channel names based on coord kind
+        // Internal position names should map to Vega-Lite channel names based on coord kind
         assert_eq!(map_aesthetic_name("pos1", &ctx, CoordKind::Cartesian), "x");
         assert_eq!(map_aesthetic_name("pos2", &ctx, CoordKind::Cartesian), "y");
         assert_eq!(
@@ -1355,7 +1418,7 @@ mod tests {
             "y2"
         );
 
-        // Non-positional aesthetics pass through directly
+        // Material aesthetics pass through directly
         assert_eq!(
             map_aesthetic_name("color", &ctx, CoordKind::Cartesian),
             "color"
@@ -1399,7 +1462,7 @@ mod tests {
             "size"
         );
 
-        // Test with polar coord kind - internal positional maps to radius/theta
+        // Test with polar coord kind - internal position maps to radius/theta
         // regardless of the context's user-facing names
         let polar_ctx = AestheticContext::from_static(&["radius", "theta"], &[]);
         assert_eq!(
@@ -1419,7 +1482,7 @@ mod tests {
             "theta2"
         );
 
-        // Even with custom positional names (e.g., PROJECT y, x TO polar),
+        // Even with custom position names (e.g., PROJECT y, x TO polar),
         // internal pos1/pos2 should still map to radius/theta for Vega-Lite
         let custom_ctx = AestheticContext::from_static(&["y", "x"], &[]);
         assert_eq!(
@@ -1501,7 +1564,7 @@ mod tests {
         };
         labels
             .labels
-            .insert("title".to_string(), "My Chart".to_string());
+            .insert("title".to_string(), Some("My Chart".to_string()));
         spec.labels = Some(labels);
 
         let df = df! {
@@ -1518,6 +1581,94 @@ mod tests {
         assert_eq!(vl_spec["title"], "My Chart");
         assert_eq!(vl_spec["layer"][0]["mark"]["type"], "line");
         assert_eq!(vl_spec["layer"][0]["mark"]["clip"], true);
+    }
+
+    #[test]
+    fn test_labels_newline_splitting() {
+        use crate::execute;
+        use crate::reader::DuckDBReader;
+
+        // Test that LABEL clause values with newlines are split into arrays
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            SELECT
+                n::INTEGER as x,
+                n::INTEGER as y,
+                CASE WHEN n % 2 = 0 THEN 'Group A' ELSE 'Group B' END as category
+            FROM generate_series(0, 2) as t(n)
+            VISUALISE x, y, category AS stroke
+            DRAW point
+            LABEL
+                title => 'Multi-line\nChart Title',
+                subtitle => 'Line 1\nLine 2\nLine 3',
+                x => 'X Axis\nWith Newline',
+                y => 'Single Line',
+                stroke => 'Category\nMulti-line Legend'
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &prepared.specs[0];
+
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // Check title (should be object with text and subtitle)
+        assert!(vl_spec["title"].is_object(), "Title should be an object");
+        let title_obj = vl_spec["title"].as_object().unwrap();
+
+        // Check title text (multi-line, should be array)
+        assert!(
+            title_obj["text"].is_array(),
+            "Title with newline should be an array"
+        );
+        let title_lines = title_obj["text"].as_array().unwrap();
+        assert_eq!(title_lines.len(), 2);
+        assert_eq!(title_lines[0].as_str().unwrap(), "Multi-line");
+        assert_eq!(title_lines[1].as_str().unwrap(), "Chart Title");
+
+        // Check subtitle (multi-line, should be array)
+        assert!(
+            title_obj["subtitle"].is_array(),
+            "Subtitle with newlines should be an array"
+        );
+        let subtitle_lines = title_obj["subtitle"].as_array().unwrap();
+        assert_eq!(subtitle_lines.len(), 3);
+        assert_eq!(subtitle_lines[0].as_str().unwrap(), "Line 1");
+        assert_eq!(subtitle_lines[1].as_str().unwrap(), "Line 2");
+        assert_eq!(subtitle_lines[2].as_str().unwrap(), "Line 3");
+
+        // Check x axis label (multi-line, should be array)
+        let x_encoding = &vl_spec["layer"][0]["encoding"]["x"];
+        assert!(
+            x_encoding["title"].is_array(),
+            "X axis label with newline should be an array"
+        );
+        let x_label_lines = x_encoding["title"].as_array().unwrap();
+        assert_eq!(x_label_lines.len(), 2);
+        assert_eq!(x_label_lines[0].as_str().unwrap(), "X Axis");
+        assert_eq!(x_label_lines[1].as_str().unwrap(), "With Newline");
+
+        // Check y axis label (single line, should be string)
+        let y_encoding = &vl_spec["layer"][0]["encoding"]["y"];
+        assert!(
+            y_encoding["title"].is_string(),
+            "Y axis label without newline should be a string"
+        );
+        assert_eq!(y_encoding["title"].as_str().unwrap(), "Single Line");
+
+        // Check stroke legend label (multi-line, should be array)
+        let stroke_encoding = &vl_spec["layer"][0]["encoding"]["stroke"];
+        assert!(
+            stroke_encoding["title"].is_array(),
+            "Stroke legend title with newline should be an array"
+        );
+        let stroke_label_lines = stroke_encoding["title"].as_array().unwrap();
+        assert_eq!(stroke_label_lines.len(), 2);
+        assert_eq!(stroke_label_lines[0].as_str().unwrap(), "Category");
+        assert_eq!(stroke_label_lines[1].as_str().unwrap(), "Multi-line Legend");
     }
 
     #[test]

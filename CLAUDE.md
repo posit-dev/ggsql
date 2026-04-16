@@ -258,7 +258,7 @@ For detailed API documentation, see [`src/doc/API.md`](src/doc/API.md).
 
 - Uses `tree-sitter-ggsql` grammar (507 lines, simplified approach)
 - Parses **full query** (SQL + VISUALISE) into concrete syntax tree (CST)
-- Grammar supports: PLOT/TABLE/MAP types, DRAW/SCALE/FACET/PROJECT/LABEL/THEME clauses
+- Grammar supports: PLOT/TABLE/MAP types, DRAW/SCALE/FACET/PROJECT/LABEL clauses
 - British and American spellings: `VISUALISE` / `VISUALIZE`
 - **SQL portion parsing**: Basic SQL structure (SELECT, WITH, CREATE, INSERT, subqueries)
 - **Recursive subquery support**: Fully recursive grammar for complex SQL
@@ -306,7 +306,6 @@ pub struct Plot {
     pub facet: Option<Facet>,          // FACET clause
     pub project: Option<Project>,          // PROJECT clause
     pub labels: Option<Labels>,        // LABEL clause
-    pub theme: Option<Theme>,          // THEME clause
 }
 
 /// Global mapping specification from VISUALISE clause
@@ -337,7 +336,7 @@ pub enum Geom {
     // Statistical geoms
     Histogram, Density, Smooth, Boxplot, Violin,
     // Annotation geoms
-    Text, Segment, Arrow, Rule, Linear, ErrorBar,
+    Text, Segment, Arrow, Rule, ErrorBar,
 }
 
 pub enum DataSource {
@@ -569,7 +568,9 @@ The codebase includes connection string parsing and feature flags for additional
 
 **Responsibility**: Convert DataFrame + Plot → output format (JSON, PNG, R code, etc.)
 
-#### Writer Trait (`mod.rs`)
+**Internal Architecture**: For Vega-Lite writer implementation details (unified dataset system, layer rendering pipeline, GeomRenderer lifecycle), see [`src/writer/vegalite/CLAUDE.md`](src/writer/vegalite/CLAUDE.md).
+
+#### Writer Trait
 
 ```rust
 pub trait Writer {
@@ -578,143 +579,13 @@ pub trait Writer {
 }
 ```
 
-#### Vega-Lite Writer (`vegalite.rs`)
+#### Available Writers
 
-**Current Production Writer** - Fully implemented and tested.
-
-**Features**:
-
-- Converts Plot → Vega-Lite JSON specification
-- Multi-layer composition support
-- Scale type → Vega field type mapping
-- Faceting (wrap and grid layouts)
-- Axis label customization
-- Inline data embedding
-
-**Architecture**:
-
-```rust
-impl Writer for VegaLiteWriter {
-    fn write(&self, df: &DataFrame, spec: &Plot) -> Result<String> {
-        // 1. Convert DataFrame to JSON values
-        let data_values = self.dataframe_to_json(df)?;
-
-        // 2. Build Vega-Lite spec
-        let mut vl_spec = json!({
-            "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
-            "data": {"values": data_values},
-            "width": 600,
-            "autosize": {"type": "fit", "contains": "padding"}
-        });
-
-        // 3. Handle single vs multi-layer
-        if spec.layers.len() == 1 {
-            // Single layer: flat structure
-            vl_spec["mark"] = self.geom_to_mark(&spec.layers[0].geom);
-            vl_spec["encoding"] = self.build_encoding(&spec.layers[0], df, spec)?;
-        } else {
-            // Multi-layer: layered structure
-            let layers: Vec<Value> = spec.layers.iter()
-                .map(|layer| {
-                    let mut layer_spec = json!({
-                        "mark": self.geom_to_mark(&layer.geom),
-                        "encoding": self.build_encoding(layer, df, spec)?
-                    });
-                    // Apply axis labels to each layer
-                    apply_axis_labels(&mut layer_spec, &spec.labels);
-                    Ok(layer_spec)
-                })
-                .collect::<Result<Vec<_>>>()?;
-            vl_spec["layer"] = json!(layers);
-        }
-
-        // 4. Add faceting, title, etc.
-        self.add_faceting(&mut vl_spec, spec)?;
-        if let Some(labels) = &spec.labels {
-            if let Some(title) = labels.labels.get("title") {
-                vl_spec["title"] = json!(title);
-            }
-        }
-
-        Ok(serde_json::to_string_pretty(&vl_spec)?)
-    }
-}
-```
-
----
-
-### 4. REST API (`src/rest.rs`)
-
-**Responsibility**: HTTP interface for executing ggsql queries.
-
-**Technology**: Axum web framework with CORS support
-
-**Endpoints**:
-
-```rust
-// POST /api/v1/query - Execute ggsql query
-// Request:
-{
-  "query": "SELECT ... VISUALISE ...",
-  "reader": "duckdb://memory",  // optional, default
-  "writer": "vegalite"            // optional, default
-}
-
-// Response (success):
-{
-  "status": "success",
-  "data": {
-    "spec": { /* Vega-Lite JSON */ },
-    "metadata": {
-      "rows": 100,
-      "columns": ["date", "revenue", "region", "..."],
-      "global_mapping": "Mappings",
-      "layers": 2
-    }
-  }
-}
-
-// Response (error):
-{
-  "status": "error",
-  "error": {
-    "type": "ParseError",
-    "message": "..."
-  }
-}
-```
-
-**Additional Endpoints**:
-
-- `GET /` - Root endpoint (returns API information and status)
-- `POST /api/v1/parse` - Parse query and return AST (debugging)
-- `GET /api/v1/health` - Health check
-- `GET /api/v1/version` - Version info
-
-**CORS Configuration**: Allows cross-origin requests for web frontends
-
-**CLI Options**:
-
-```bash
-# Basic usage
-ggsql-rest --host 127.0.0.1 --port 3334
-
-# With sample data (pre-loaded products, sales, employees tables)
-ggsql-rest --load-sample-data
-
-# Load custom data files (CSV, Parquet, JSON)
-ggsql-rest --load-data data.csv --load-data other.parquet
-
-# Configure CORS origins
-ggsql-rest --cors-origin "http://localhost:5173,http://localhost:3000"
-```
-
-**Sample Data Loading**:
-
-- `--load-sample-data`: Loads built-in sample data (products, sales, employees)
-- `--load-data <file>`: Loads data from CSV, Parquet, or JSON files into in-memory database
-- Multiple `--load-data` flags can be used to load multiple files
-- Pre-loaded data persists for the lifetime of the server session
+**VegaLiteWriter** (Production-ready):
+- Generates Vega-Lite v6 JSON specifications
+- Multi-layer composition with unified dataset architecture
+- Full support for scales, faceting, projections, and labels
+- Automatic geom-specific optimizations (segmentation, decomposition)
 
 ---
 
@@ -1059,12 +930,6 @@ ggsql uses Cargo feature flags to enable optional functionality and reduce binar
 - `plotters` - Enable plotters-based rendering (planned, not implemented)
 - `all-writers` - Enable all writer implementations
 
-**API features**:
-
-- `rest-api` - Enable REST API server (`ggsql-rest` binary)
-  - Includes: `axum`, `tokio`, `tower-http`, `tracing`, `duckdb`, `vegalite`
-  - Required for building `ggsql-rest` server
-
 **Python bindings**:
 
 - `ggsql-python` - Python bindings via PyO3 (separate crate, not a feature flag)
@@ -1078,9 +943,6 @@ cargo build --no-default-features
 # With specific features
 cargo build --features "duckdb,vegalite"
 
-# REST API server
-cargo build --bin ggsql-rest --features rest-api
-
 # All features
 cargo build --all-features
 ```
@@ -1092,7 +954,6 @@ cargo build --all-features
 - `duckdb` → `duckdb` crate
 - `postgres` → `postgres` crate (future)
 - `sqlite` → `rusqlite` crate (future)
-- `rest-api` → `axum`, `tokio`, `tower-http`, `tracing`, `tracing-subscriber`
 - `ggsql-python` → `pyo3`, `narwhals`, `altair` (separate workspace crate)
 
 ---
@@ -1112,7 +973,6 @@ ggsql uses [cargo-packager](https://github.com/crabnebula-dev/cargo-packager) to
 **What Gets Packaged**:
 
 - ✅ `ggsql` CLI binary only
-- ❌ `ggsql-rest` API server (install separately with `cargo install ggsql --features rest-api`)
 - ❌ `ggsql-jupyter` kernel (install separately with `cargo install ggsql-jupyter`)
 
 ### Release Process
@@ -1140,6 +1000,7 @@ ggsql uses [cargo-packager](https://github.com/crabnebula-dev/cargo-packager) to
    - Generate release notes
 
 **Manual Workflow Trigger** (for testing):
+
 ```bash
 gh workflow run release-installers.yml
 ```
@@ -1199,9 +1060,8 @@ Where `<global_mapping>` can be:
 | `PLACE`     | ✅ Yes     | Annotation layers | `PLACE point SETTING x => 5, y => 10`     |
 | `SCALE`     | ✅ Yes     | Configure scales  | `SCALE x VIA date`                        |
 | `FACET`     | ❌ No      | Small multiples   | `FACET region`                            |
-| `PROJECT`   | ❌ No      | Coordinate system | `PROJECT TO cartesian` |
+| `PROJECT`   | ❌ No      | Coordinate system | `PROJECT TO cartesian`                    |
 | `LABEL`     | ❌ No      | Text labels       | `LABEL title => 'My Chart', x => 'Date'`  |
-| `THEME`     | ❌ No      | Visual styling    | `THEME minimal`                           |
 
 ### DRAW Clause (Layers)
 
@@ -1221,7 +1081,7 @@ All clauses (MAPPING, SETTING, PARTITION BY, FILTER) are optional.
 
 - **Basic**: `point`, `line`, `path`, `bar`, `col`, `area`, `rect`, `polygon`, `ribbon`
 - **Statistical**: `histogram`, `density`, `smooth`, `boxplot`, `violin`
-- **Annotation**: `text`, `label`, `segment`, `arrow`, `rule`, `linear`, `errorbar`
+- **Annotation**: `text`, `label`, `segment`, `arrow`, `rule`, `errorbar`
 
 **MAPPING Clause** (Aesthetic Mappings):
 
@@ -1481,17 +1341,17 @@ PROJECT [<aesthetic>, ...] TO <coord_type>
 
 **Components**:
 
-- **Aesthetics** (optional): Comma-separated list of positional aesthetic names. If omitted, uses coord defaults.
+- **Aesthetics** (optional): Comma-separated list of position aesthetic names. If omitted, uses coord defaults.
 - **TO**: Required keyword separating aesthetics from coord type.
 - **coord_type**: Either `cartesian` or `polar`.
 - **SETTING** (optional): Additional properties.
 
 **Coordinate Types**:
 
-| Coord Type | Default Aesthetics | Description |
-|------------|-------------------|-------------|
-| `cartesian` | `x`, `y` | Standard x/y Cartesian coordinates |
-| `polar` | `angle`, `radius` | Polar coordinates (for pie charts, rose plots) |
+| Coord Type  | Default Aesthetics | Description                                    |
+| ----------- | ------------------ | ---------------------------------------------- |
+| `cartesian` | `x`, `y`           | Standard x/y Cartesian coordinates             |
+| `polar`     | `angle`, `radius`  | Polar coordinates (for pie charts, rose plots) |
 
 **Flipping Axes**:
 
@@ -1522,7 +1382,7 @@ Note: For axis limits, use `SCALE x FROM [min, max]` or `SCALE y FROM [min, max]
 
 1. **Axis limits**: Use `SCALE x/y FROM [min, max]` to set axis limits
 2. **Aesthetic domains**: Use `SCALE <aesthetic> FROM [...]` to set aesthetic domains
-3. **Custom aesthetics**: User can define custom positional names (e.g., `PROJECT a, b TO cartesian`)
+3. **Custom aesthetics**: User can define custom position names (e.g., `PROJECT a, b TO cartesian`)
 4. **Multi-layer support**: All projection transforms apply to all layers
 
 **Status**:
@@ -1654,8 +1514,7 @@ Plot {
     Scale { aesthetic: "x", scale_type: Some(ScaleType::Date) }
   ],
   facet: Some(Facet::Wrap { variables: ["region"], scales: "fixed" }),
-  labels: Some(Labels { labels: {"title": "...", "x": "Date", "y": "Total Quantity"} }),
-  theme: Some(Theme::Minimal)
+  labels: Some(Labels { labels: {"title": "...", "x": "Date", "y": "Total Quantity"} })
 }
 ```
 

@@ -21,7 +21,6 @@ There are many different layers to choose from when visualising your data. Some 
 - [`line`](layer/type/line.qmd) is used to produce lineplots with the data sorted along the x axis.
 - [`path`](layer/type/path.qmd) is like `line` above but does not sort the data but plot it according to its own order.
 - [`segment`](layer/type/segment.qmd) connects two points with a line segment.
-- [`linear`](layer/type/linear.qmd) draws a long line parameterised by a coefficient and intercept.
 - [`rule`](layer/type/rule.qmd) draws horizontal and vertical reference lines.
 - [`area`](layer/type/area.qmd) is used to display series as an area chart.
 - [`ribbon`](layer/type/ribbon.qmd) is used to display series extrema.
@@ -62,7 +61,8 @@ A scale is responsible for translating a data value to an aesthetic literal, e.g
 - [`identity`](scale/type/identity.qmd) scales passes the data through unchanged
 
 ## Coordinate systems
-The coordinate system defines how the abstract positional aesthetics are projected onto the screen or paper where the final plot appears. As such, it has great influence over the final look of the plot.
+The coordinate system defines how the abstract position aesthetics are projected onto the screen or paper where the final plot appears. 
+As such, it has great influence over the final look of the plot.
 
 - [`cartesian`](coord/cartesian.qmd) is the classic coordinate system consisting of two perpendicular axes, one being horizontal and one being vertical
 - [`polar`](coord/polar.qmd) interprets the primary position as the angular location relative to the center and the secondary position as the distance (radius) from the center, and this creates a circular coordinate system

@@ -4,6 +4,7 @@ use polars::prelude::DataType;
 
 use super::super::transform::{Transform, TransformKind};
 use super::{ScaleTypeKind, ScaleTypeTrait};
+use crate::naming;
 use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
 use crate::plot::ArrayElement;
 
@@ -259,11 +260,12 @@ impl ScaleTypeTrait for Discrete {
         }
 
         // Always censor - discrete scales have no other valid OOB behavior
+        let quoted = naming::quote_ident(column_name);
         Some(format!(
             "(CASE WHEN {} IN ({}) THEN {} ELSE NULL END)",
-            column_name,
+            quoted,
             allowed_values.join(", "),
-            column_name
+            quoted
         ))
     }
 }

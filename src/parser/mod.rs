@@ -193,7 +193,6 @@ mod tests {
             VISUALISE x, y
             DRAW point
             LABEL title => 'Scatter Plot'
-            THEME minimal
             VISUALIZE
             DRAW bar MAPPING x AS x, y AS y
         "#;
@@ -201,15 +200,13 @@ mod tests {
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 2);
 
-        // First viz should have layers, labels, and theme
+        // First viz should have layers and labels
         assert_eq!(specs[0].layers.len(), 1);
         assert!(specs[0].labels.is_some());
-        assert!(specs[0].theme.is_some());
 
-        // Second viz should have layer but no labels/theme
+        // Second viz should have layer but no labels
         assert_eq!(specs[1].layers.len(), 1);
         assert!(specs[1].labels.is_none());
-        assert!(specs[1].theme.is_none());
     }
 
     #[test]
@@ -241,7 +238,6 @@ mod tests {
             DRAW line MAPPING cost AS y
             SCALE x VIA date
             LABEL title => 'Revenue and Cost Trends'
-            THEME minimal
             VISUALIZE
             DRAW bar MAPPING date AS x, revenue AS y
             VISUALISE
@@ -251,11 +247,10 @@ mod tests {
         let specs = parse_query(query).unwrap();
         assert_eq!(specs.len(), 3);
 
-        // Plot with 2 layers, scale, labels, theme
+        // Plot with 2 layers, scale, labels
         assert_eq!(specs[0].layers.len(), 2);
         assert_eq!(specs[0].scales.len(), 1);
         assert!(specs[0].labels.is_some());
-        assert!(specs[0].theme.is_some());
 
         // Second viz with 1 layer
         assert_eq!(specs[1].layers.len(), 1);

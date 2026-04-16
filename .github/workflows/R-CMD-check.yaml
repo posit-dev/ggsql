@@ -28,6 +28,9 @@ jobs:
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
 
+      - name: Install ODBC
+        run: sudo apt-get install -y unixodbc-dev
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 

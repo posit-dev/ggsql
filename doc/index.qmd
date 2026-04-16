@@ -44,8 +44,8 @@ WHERE island = 'Biscoe'
 -- Followed by visualization declaration
 VISUALISE bill_len AS x, bill_dep AS y, body_mass AS fill
 DRAW point
-DRAW linear 
-  MAPPING 0.4 AS coef, -1 AS intercept
+PLACE rule 
+  SETTING slope => 0.4, y => -1
 SCALE BINNED fill
 LABEL
   title => 'Relationship between bill dimensions in 3 species of penguins',
@@ -270,4 +270,9 @@ Or try our [online playground](wasm/) to experience the syntax _right now_.
 :::
 
 :::
+
+```{=html}
+<canvas id="bg-lines" aria-hidden="true"></canvas>
+<script src="bg-lines.js"></script>
+```
 

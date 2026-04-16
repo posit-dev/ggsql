@@ -4,7 +4,7 @@
 //! Works on both native targets and wasm32-unknown-unknown (via sqlite-wasm-rs).
 
 use crate::reader::Reader;
-use crate::{DataFrame, GgsqlError, Result};
+use crate::{naming, DataFrame, GgsqlError, Result};
 use chrono::Datelike;
 use polars::prelude::*;
 use rusqlite::Connection;
@@ -66,6 +66,29 @@ impl super::SqlDialect for SqliteDialect {
         } else {
             "0".to_string()
         }
+    }
+
+    fn sql_list_catalogs(&self) -> String {
+        "SELECT name AS catalog_name FROM pragma_database_list ORDER BY name".into()
+    }
+
+    fn sql_list_schemas(&self, _catalog: &str) -> String {
+        "SELECT 'main' AS schema_name".into()
+    }
+
+    fn sql_list_tables(&self, catalog: &str, _schema: &str) -> String {
+        format!(
+            "SELECT name AS table_name, type AS table_type FROM {}.sqlite_master \
+             WHERE type IN ('table', 'view') ORDER BY name",
+            naming::quote_ident(catalog)
+        )
+    }
+
+    fn sql_list_columns(&self, _catalog: &str, _schema: &str, table: &str) -> String {
+        format!(
+            "SELECT name AS column_name, type AS data_type FROM pragma_table_info('{}') ORDER BY cid",
+            table.replace('\'', "''")
+        )
     }
 }
 
@@ -153,7 +176,7 @@ fn validate_table_name(name: &str) -> Result<()> {
         return Err(GgsqlError::ReaderError("Table name cannot be empty".into()));
     }
 
-    let forbidden = ['"', '\0', '\n', '\r'];
+    let forbidden = ['\0', '\n', '\r'];
     for ch in forbidden {
         if name.contains(ch) {
             return Err(GgsqlError::ReaderError(format!(
@@ -162,13 +185,6 @@ fn validate_table_name(name: &str) -> Result<()> {
                 ch.escape_default()
             )));
         }
-    }
-
-    if name.len() > 128 {
-        return Err(GgsqlError::ReaderError(format!(
-            "Table name '{}' exceeds maximum length of 128 characters",
-            name
-        )));
     }
 
     Ok(())
@@ -248,7 +264,7 @@ impl Reader for SqliteReader {
         {
             let dataset_names = super::data::extract_builtin_dataset_names(sql)?;
             for name in &dataset_names {
-                let table_name = crate::naming::builtin_data_table(name);
+                let table_name = naming::builtin_data_table(name);
                 if !self.table_exists(&table_name) {
                     let df = super::data::load_builtin_dataframe(name)?;
                     self.register(&table_name, df, true)?;
@@ -331,7 +347,7 @@ impl Reader for SqliteReader {
 
         if self.table_exists(name) {
             if replace {
-                let sql = format!("DROP TABLE IF EXISTS \"{}\"", name);
+                let sql = format!("DROP TABLE IF EXISTS {}", naming::quote_ident(name));
                 self.conn.execute(&sql, []).map_err(|e| {
                     GgsqlError::ReaderError(format!("Failed to drop table '{}': {}", name, e))
                 })?;
@@ -351,11 +367,15 @@ impl Reader for SqliteReader {
             .map(|col| {
                 let col_name = col.name().to_string();
                 let col_type = polars_type_to_sqlite(col.dtype());
-                format!("\"{}\" {}", col_name, col_type)
+                format!("{} {}", naming::quote_ident(&col_name), col_type)
             })
             .collect();
 
-        let create_sql = format!("CREATE TABLE \"{}\" ({})", name, col_defs.join(", "));
+        let create_sql = format!(
+            "CREATE TABLE {} ({})",
+            naming::quote_ident(name),
+            col_defs.join(", ")
+        );
         self.conn.execute(&create_sql, []).map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to create table '{}': {}", name, e))
         })?;
@@ -364,8 +384,8 @@ impl Reader for SqliteReader {
         if df.height() > 0 {
             let placeholders: Vec<&str> = vec!["?"; df.width()];
             let insert_sql = format!(
-                "INSERT INTO \"{}\" VALUES ({})",
-                name,
+                "INSERT INTO {} VALUES ({})",
+                naming::quote_ident(name),
                 placeholders.join(", ")
             );
 
@@ -433,13 +453,17 @@ impl Reader for SqliteReader {
             )));
         }
 
-        let sql = format!("DROP TABLE IF EXISTS \"{}\"", name);
+        let sql = format!("DROP TABLE IF EXISTS {}", naming::quote_ident(name));
         self.conn.execute(&sql, []).map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to unregister table '{}': {}", name, e))
         })?;
 
         self.registered_tables.borrow_mut().remove(name);
         Ok(())
+    }
+
+    fn execute(&self, query: &str) -> Result<super::Spec> {
+        super::execute_with_reader(self, query)
     }
 
     fn dialect(&self) -> &dyn super::SqlDialect {
@@ -716,12 +740,10 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("cannot be empty"));
 
+        // Name with double quote should succeed (quote_ident escapes it)
         let result = reader.register("bad\"name", df.clone(), false);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("invalid character"));
+        assert!(result.is_ok());
+        reader.unregister("bad\"name").unwrap();
 
         let result = reader.register("bad\0name", df.clone(), false);
         assert!(result.is_err());
@@ -729,14 +751,6 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("invalid character"));
-
-        let long_name = "a".repeat(200);
-        let result = reader.register(&long_name, df, false);
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("exceeds maximum length"));
     }
 
     #[test]

@@ -13,7 +13,6 @@
     { "include": "#facet-clause" },
     { "include": "#project-clause" },
     { "include": "#label-clause" },
-    { "include": "#theme-clause" },
     { "include": "#sql-keywords" },
     { "include": "#visualise-clause" },
     { "include": "#operators" }
@@ -83,6 +82,10 @@
         {
           "name": "keyword.operator.cast.ggsql",
           "match": "::"
+        },
+        {
+          "name": "keyword.operator.regex.ggsql",
+          "match": "!~\\*|~\\*|!~|~"
         },
         {
           "name": "punctuation.separator.comma.ggsql",
@@ -218,7 +221,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         { "include": "#comments" },
         { "include": "#strings" },
@@ -249,8 +252,29 @@
     "aesthetics": {
       "patterns": [
         {
+          "comment": "Position aesthetics (cartesian and polar)",
           "name": "support.type.aesthetic.ggsql",
-          "match": "\\b(x|y|xmin|xmax|ymin|ymax|xend|yend|weight|color|colour|fill|stroke|opacity|size|shape|linetype|linewidth|width|height|label|typeface|fontweight|italic|hjust|vjust|panel|row|column)\\b"
+          "match": "\\b(x|y|xmin|xmax|ymin|ymax|xend|yend|theta|radius|thetamin|thetamax|radiusmin|radiusmax|thetaend|radiusend)\\b"
+        },
+        {
+          "comment": "Color and appearance aesthetics",
+          "name": "support.type.aesthetic.ggsql",
+          "match": "\\b(color|colour|fill|stroke|opacity|size|shape|linetype|linewidth|width|height)\\b"
+        },
+        {
+          "comment": "Text aesthetics",
+          "name": "support.type.aesthetic.ggsql",
+          "match": "\\b(label|family|fontface|hjust|vjust)\\b"
+        },
+        {
+          "comment": "Specialty and computed aesthetics",
+          "name": "support.type.aesthetic.ggsql",
+          "match": "\\b(weight|coef|intercept|offset|density|count|intensity)\\b"
+        },
+        {
+          "comment": "Facet aesthetics",
+          "name": "support.type.aesthetic.ggsql",
+          "match": "\\b(panel|row|column)\\b"
         }
       ]
     },
@@ -291,11 +315,12 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
+          "comment": "Geom types from grammar.js",
           "name": "support.type.geom.ggsql",
-          "match": "\\b(point|line|path|bar|col|area|tile|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|linear|errorbar)\\b"
+          "match": "\\b(point|line|path|bar|col|area|tile|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|errorbar)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]
@@ -305,11 +330,11 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "name": "support.type.geom.ggsql",
-          "match": "\\b(point|line|path|bar|col|area|rect|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|linear|errorbar)\\b"
+          "match": "\\b(point|line|path|bar|col|area|rect|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|errorbar)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]
@@ -319,9 +344,10 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
+          "comment": "Scale type identifiers from grammar.js",
           "name": "keyword.control.scale-modifier.ggsql",
           "match": "\\b(?i:CONTINUOUS|DISCRETE|BINNED|ORDINAL|IDENTITY)\\b"
         },
@@ -330,10 +356,12 @@
           "match": "\\b(?i:TO|VIA|RENAMING)\\b"
         },
         {
+          "comment": "Transform/palette names",
           "name": "constant.language.scale-type.ggsql",
-          "match": "\\b(linear|log|log10|log2|sqrt|reverse|categorical|ordinal|date|datetime|time|viridis|plasma|magma|inferno|cividis|diverging|sequential|identity|manual)\\b"
+          "match": "\\b(linear|log|log10|log2|sqrt|reverse|date|datetime|time|viridis|plasma|magma|inferno|cividis|diverging|sequential|identity)\\b"
         },
         {
+          "comment": "Scale properties",
           "name": "support.type.property.ggsql",
           "match": "\\b(type|limits|breaks|labels|expand|direction|na_value|palette|domain|range)\\b"
         },
@@ -345,7 +373,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "name": "support.type.property.ggsql",
@@ -367,15 +395,17 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
+          "comment": "Coord types (currently implemented: cartesian, polar)",
           "name": "support.type.project.ggsql",
-          "match": "\\b(cartesian|polar|flip|fixed|trans|map|quickmap)\\b"
+          "match": "\\b(cartesian|polar)\\b"
         },
         {
+          "comment": "Project properties",
           "name": "support.type.property.ggsql",
-          "match": "\\b(xlim|ylim|ratio|angle|clip)\\b"
+          "match": "\\b(xlim|ylim|ratio|angle|clip|start)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]
@@ -385,29 +415,12 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
+          "comment": "Label types",
           "name": "support.type.property.ggsql",
           "match": "\\b(title|subtitle|x|y|caption|tag|color|colour|fill|size|shape|linetype)\\b"
-        },
-        { "include": "#common-clause-patterns" }
-      ]
-    },
-    "theme-clause": {
-      "begin": "(?i)\\b(THEME)\\b",
-      "beginCaptures": {
-        "1": { "name": "keyword.other.ggsql" }
-      },
-      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|THEME|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
-      "patterns": [
-        {
-          "name": "support.type.theme.ggsql",
-          "match": "\\b(minimal|classic|gray|grey|bw|dark|light|void)\\b"
-        },
-        {
-          "name": "support.type.property.ggsql",
-          "match": "\\b(background|panel_background|panel_grid|panel_grid_major|panel_grid_minor|text_size|text_family|title_size|axis_text_size|axis_line|axis_line_width|panel_border|plot_margin|panel_spacing|legend_background|legend_position|legend_direction)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]

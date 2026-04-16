@@ -177,28 +177,8 @@ pub fn validate(query: &str) -> Result<Validated> {
             // Check required aesthetics
             // Note: Without schema data, we can only check if mappings exist,
             // not if the columns are valid. We skip this check for wildcards.
-            let has_wildcard = layer.mappings.wildcard || plot.global_mappings.wildcard;
-            if !has_wildcard {
-                // Merge global mappings into a temporary copy so validation
-                // accounts for aesthetics inherited from the VISUALISE clause
-                let mut merged = layer.clone();
-                let supported = layer.geom.aesthetics().supported();
-                for (aesthetic, value) in &plot.global_mappings.aesthetics {
-                    let is_color_alias = matches!(aesthetic.as_str(), "color" | "colour");
-                    let is_facet_aesthetic =
-                        crate::plot::scale::is_facet_aesthetic(aesthetic.as_str());
-                    if supported.contains(&aesthetic.as_str())
-                        || is_color_alias
-                        || is_facet_aesthetic
-                    {
-                        merged
-                            .mappings
-                            .aesthetics
-                            .entry(aesthetic.clone())
-                            .or_insert(value.clone());
-                    }
-                }
-                if let Err(e) = merged.validate_mapping(&plot.aesthetic_context, false) {
+            if !layer.mappings.wildcard {
+                if let Err(e) = layer.validate_mapping(&plot.aesthetic_context, false) {
                     errors.push(ValidationError {
                         message: format!("{}: {}", context, e),
                         location: None,
@@ -301,5 +281,60 @@ mod tests {
         // SQL-only queries should be valid (just syntax check)
         assert!(validated.valid());
         assert!(validated.errors().is_empty());
+    }
+
+    #[test]
+    fn test_validate_color_aesthetic_on_line() {
+        // color should be valid on line geom (has stroke)
+        let validated = validate(
+            "SELECT 1 as x, 2 as y VISUALISE DRAW line MAPPING x AS x, y AS y, region AS color",
+        )
+        .unwrap();
+        assert!(
+            validated.valid(),
+            "color should be accepted on line geom: {:?}",
+            validated.errors()
+        );
+    }
+
+    #[test]
+    fn test_validate_color_aesthetic_on_point() {
+        // color should be valid on point geom (has stroke + fill)
+        let validated = validate(
+            "SELECT 1 as x, 2 as y VISUALISE DRAW point MAPPING x AS x, y AS y, cat AS color",
+        )
+        .unwrap();
+        assert!(
+            validated.valid(),
+            "color should be accepted on point geom: {:?}",
+            validated.errors()
+        );
+    }
+
+    #[test]
+    fn test_validate_colour_spelling() {
+        // British spelling 'colour' should work (normalized by parser to 'color')
+        let validated = validate(
+            "SELECT 1 as x, 2 as y VISUALISE DRAW line MAPPING x AS x, y AS y, region AS colour",
+        )
+        .unwrap();
+        assert!(
+            validated.valid(),
+            "colour (British) should be accepted: {:?}",
+            validated.errors()
+        );
+    }
+
+    #[test]
+    fn test_validate_global_color_mapping() {
+        // Global color mapping should validate correctly
+        let validated =
+            validate("SELECT 1 as x, 2 as y VISUALISE x AS x, y AS y, region AS color DRAW line")
+                .unwrap();
+        assert!(
+            validated.valid(),
+            "global color mapping should be accepted: {:?}",
+            validated.errors()
+        );
     }
 }

@@ -95,7 +95,6 @@
       <item>PROJECT</item>
       <item>FACET</item>
       <item>LABEL</item>
-      <item>THEME</item>
       <item>VISUALISE</item>
       <item>VISUALIZE</item>
     </list>
@@ -128,7 +127,6 @@
       <item>line</item>
       <item>path</item>
       <item>bar</item>
-      <item>col</item>
       <item>area</item>
       <item>rect</item>
       <item>polygon</item>
@@ -143,12 +141,12 @@
       <item>segment</item>
       <item>arrow</item>
       <item>rule</item>
-      <item>linear</item>
       <item>errorbar</item>
     </list>
 
     <!-- Aesthetics -->
     <list name="aesthetics">
+      <!-- Position aesthetics (cartesian) -->
       <item>x</item>
       <item>y</item>
       <item>xmin</item>
@@ -157,23 +155,48 @@
       <item>ymax</item>
       <item>xend</item>
       <item>yend</item>
+      <!-- Position aesthetics (polar) -->
+      <item>theta</item>
+      <item>radius</item>
+      <item>thetamin</item>
+      <item>thetamax</item>
+      <item>radiusmin</item>
+      <item>radiusmax</item>
+      <item>thetaend</item>
+      <item>radiusend</item>
+      <!-- Aggregation aesthetic -->
       <item>weight</item>
+      <!-- Color aesthetics -->
       <item>color</item>
       <item>colour</item>
       <item>fill</item>
       <item>stroke</item>
       <item>opacity</item>
+      <!-- Size and shape -->
       <item>size</item>
       <item>shape</item>
       <item>linetype</item>
       <item>linewidth</item>
       <item>width</item>
       <item>height</item>
-      <item>typeface</item>
-      <item>fontweight</item>
-      <item>italic</item>
+      <!-- Text aesthetics -->
+      <item>label</item>
+      <item>family</item>
+      <item>fontface</item>
       <item>hjust</item>
       <item>vjust</item>
+      <!-- Specialty aesthetics -->
+      <item>slope</item>
+      <item>intercept</item>
+      <!-- Facet aesthetics -->
+      <item>panel</item>
+      <item>row</item>
+      <item>column</item>
+      <!-- Computed variables -->
+      <item>offset</item>
+      <item>density</item>
+      <item>count</item>
+      <item>intensity</item>
     </list>
 
     <!-- Scale Types (only in SCALE context) -->
@@ -204,23 +227,6 @@
     <list name="project_types">
       <item>cartesian</item>
       <item>polar</item>
-      <item>flip</item>
-      <item>fixed</item>
-      <item>trans</item>
-      <item>map</item>
-      <item>quickmap</item>
-    </list>
-
-    <!-- Theme Names (only in THEME context) -->
-    <list name="theme_names">
-      <item>minimal</item>
-      <item>classic</item>
-      <item>gray</item>
-      <item>grey</item>
-      <item>bw</item>
-      <item>dark</item>
-      <item>light</item>
-      <item>void</item>
     </list>
 
     <!-- Scale Properties -->
@@ -252,27 +258,6 @@
       <item>subtitle</item>
       <item>caption</item>
       <item>tag</item>
-    </list>
-
-    <!-- Theme Properties -->
-    <list name="theme_properties">
-      <item>background</item>
-      <item>panel_background</item>
-      <item>panel_grid</item>
-      <item>panel_grid_major</item>
-      <item>panel_grid_minor</item>
-      <item>text_size</item>
-      <item>text_family</item>
-      <item>title_size</item>
-      <item>axis_text_size</item>
-      <item>axis_line</item>
-      <item>axis_line_width</item>
-      <item>panel_border</item>
-      <item>plot_margin</item>
-      <item>panel_spacing</item>
-      <item>legend_background</item>
-      <item>legend_position</item>
-      <item>legend_direction</item>
     </list>
 
     <!-- SQL Functions -->
@@ -410,7 +395,6 @@
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
 
         <!-- Fat arrow operator -->
         <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
@@ -458,7 +442,6 @@
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
@@ -499,7 +482,6 @@
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
@@ -539,7 +521,6 @@
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
@@ -586,7 +567,6 @@
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
@@ -630,7 +610,6 @@
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
@@ -673,7 +652,6 @@
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
@@ -686,47 +664,6 @@
 
         <!-- Aesthetics (for legend labels) -->
         <keyword attribute="Attribute" context="#stay" String="aesthetics"/>
-
-        <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
-        <AnyChar attribute="Operator" context="#stay" String="=!&lt;&gt;+-*/%"/>
-        <DetectChar char="(" attribute="Symbol" context="#stay"/>
-        <DetectChar char=")" attribute="Symbol" context="#stay"/>
-        <DetectChar char="[" attribute="Symbol" context="#stay"/>
-        <DetectChar char="]" attribute="Symbol" context="#stay"/>
-        <DetectChar char="," attribute="Symbol" context="#stay"/>
-      </context>
-
-      <!-- THEME clause context -->
-      <context name="ThemeClause" attribute="Normal Text" lineEndContext="#stay">
-        <Detect2Chars char="-" char1="-" attribute="Comment" context="Comment"/>
-        <Detect2Chars char="/" char1="*" attribute="Comment" context="CommentMulti" beginRegion="comment"/>
-        <DetectChar char="'" attribute="String" context="StringSingle"/>
-        <DetectChar char="&quot;" attribute="String" context="StringDouble"/>
-        <RegExpr attribute="Number" context="#stay" String="-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?"/>
-
-        <!-- Exit to other clause contexts -->
-        <WordDetect attribute="Keyword" context="DrawClause" String="DRAW" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="PlaceClause" String="PLACE" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="#stay" String="FROM" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
-
-        <!-- Theme names - only highlighted here -->
-        <keyword attribute="Data Type" context="#stay" String="theme_names"/>
-
-        <!-- Theme properties -->
-        <keyword attribute="Attribute" context="#stay" String="theme_properties"/>
-
-        <!-- Sub-keywords -->
-        <keyword attribute="Keyword" context="#stay" String="viz_subkeywords"/>
 
         <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
         <AnyChar attribute="Operator" context="#stay" String="=!&lt;&gt;+-*/%"/>
@@ -752,7 +689,6 @@
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="ThemeClause" String="THEME" insensitive="true"/>
         <WordDetect attribute="Keyword" context="VisualiseClause" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="VisualiseClause" String="VISUALIZE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>

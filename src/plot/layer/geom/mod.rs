@@ -36,7 +36,6 @@ mod density;
 mod errorbar;
 mod histogram;
 mod line;
-mod linear;
 mod path;
 mod point;
 mod polygon;
@@ -62,7 +61,6 @@ pub use density::Density;
 pub use errorbar::ErrorBar;
 pub use histogram::Histogram;
 pub use line::Line;
-pub use linear::Linear;
 pub use path::Path;
 pub use point::Point;
 pub use polygon::Polygon;
@@ -98,7 +96,6 @@ pub enum GeomType {
     Segment,
     Arrow,
     Rule,
-    Linear,
     ErrorBar,
 }
 
@@ -122,7 +119,6 @@ impl std::fmt::Display for GeomType {
             GeomType::Segment => "segment",
             GeomType::Arrow => "arrow",
             GeomType::Rule => "rule",
-            GeomType::Linear => "linear",
             GeomType::ErrorBar => "errorbar",
         };
         write!(f, "{}", s)
@@ -217,6 +213,21 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         _parameters: &HashMap<String, ParameterValue>,
     ) -> Result<DataFrame> {
         Ok(df)
+    }
+
+    /// Adjust layer mappings and parameters based on geom-specific logic.
+    ///
+    /// This method is called during layer execution to allow geoms to customize
+    /// how aesthetics and parameters should be treated.
+    /// This is called after parameters are validated, which allows for internal
+    /// parameters.
+    /// The default implementation does nothing.
+    fn setup_layer(
+        &self,
+        _mappings: &mut Mappings,
+        _parameters: &mut HashMap<String, ParameterValue>,
+    ) -> Result<()> {
+        Ok(())
     }
 
     /// Returns valid parameter names for SETTING clause.
@@ -324,11 +335,6 @@ impl Geom {
         Self(Arc::new(Rule))
     }
 
-    /// Create an Linear geom
-    pub fn linear() -> Self {
-        Self(Arc::new(Linear))
-    }
-
     /// Create an ErrorBar geom
     pub fn errorbar() -> Self {
         Self(Arc::new(ErrorBar))
@@ -354,7 +360,6 @@ impl Geom {
             GeomType::Segment => Self::segment(),
             GeomType::Arrow => Self::arrow(),
             GeomType::Rule => Self::rule(),
-            GeomType::Linear => Self::linear(),
             GeomType::ErrorBar => Self::errorbar(),
         }
     }
@@ -424,6 +429,15 @@ impl Geom {
         parameters: &HashMap<String, ParameterValue>,
     ) -> Result<DataFrame> {
         self.0.post_process(df, parameters)
+    }
+
+    /// Adjust layer mappings and parameters based on geom-specific logic
+    pub fn setup_layer(
+        &self,
+        mappings: &mut Mappings,
+        parameters: &mut HashMap<String, ParameterValue>,
+    ) -> Result<()> {
+        self.0.setup_layer(mappings, parameters)
     }
 
     /// Get valid settings
@@ -553,7 +567,6 @@ mod tests {
             GeomType::Segment,
             GeomType::Arrow,
             GeomType::Rule,
-            GeomType::Linear,
             GeomType::ErrorBar,
         ];
 
@@ -577,7 +590,6 @@ mod tests {
             | GeomType::Segment
             | GeomType::Arrow
             | GeomType::Rule
-            | GeomType::Linear
             | GeomType::ErrorBar => {}
         };
 

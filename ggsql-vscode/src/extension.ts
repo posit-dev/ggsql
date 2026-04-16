@@ -8,6 +8,7 @@
 import * as vscode from 'vscode';
 import { tryAcquirePositronApi } from '@posit-dev/positron';
 import { GgsqlRuntimeManager } from './manager';
+import { createConnectionDrivers } from './connections';
 
 // Output channel for logging
 const outputChannel = vscode.window.createOutputChannel('ggsql');
@@ -42,6 +43,30 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(disposable);
 
     log('ggsql runtime manager registered successfully');
+
+    // Register connection drivers for the Connections pane
+    const drivers = createConnectionDrivers(positronApi);
+    for (const driver of drivers) {
+        const driverDisposable = positronApi.connections.registerConnectionDriver(driver);
+        context.subscriptions.push(driverDisposable);
+    }
+
+    log(`Registered ${drivers.length} connection drivers`);
+
+    // Register "Source Current File" command for the editor run button
+    context.subscriptions.push(
+        vscode.commands.registerCommand('ggsql.sourceCurrentFile', async () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor || editor.document.languageId !== 'ggsql') {
+                return;
+            }
+            const code = editor.document.getText();
+            if (code.trim().length === 0) {
+                return;
+            }
+            positronApi.runtime.executeCode('ggsql', code, true);
+        })
+    );
 }
 
 /**

@@ -43,7 +43,6 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Segment => "rule",
         GeomType::Smooth => "line",
         GeomType::Rule => "rule",
-        GeomType::Linear => "rule",
         GeomType::ErrorBar => "rule",
         _ => "point", // Default fallback
     };
@@ -110,7 +109,10 @@ pub fn validate_layer_columns(layer: &Layer, data: &DataFrame, layer_idx: usize)
 /// Data prepared for a layer - either single dataset or multiple components
 pub enum PreparedData {
     /// Standard single dataset (most geoms)
-    Single { values: Vec<Value> },
+    Single {
+        values: Vec<Value>,
+        metadata: Box<dyn Any + Send + Sync>,
+    },
     /// Multiple component datasets (boxplot, violin, errorbar)
     Composite {
         components: HashMap<String, Vec<Value>>,
@@ -199,7 +201,10 @@ pub trait GeomRenderer: Send + Sync {
         } else {
             dataframe_to_values_with_bins(df, binned_columns)?
         };
-        Ok(PreparedData::Single { values })
+        Ok(PreparedData::Single {
+            values,
+            metadata: Box::new(()),
+        })
     }
 
     // === Phase 2: Encoding Modifications ===
@@ -271,22 +276,25 @@ impl GeomRenderer for BarRenderer {
         layer: &Layer,
         _context: &RenderContext,
     ) -> Result<()> {
-        let width = match layer.parameters.get("width") {
-            Some(ParameterValue::Number(w)) => *w,
-            _ => 0.9,
+        let width = match layer.adjusted_width {
+            // The adjusted width comes from position adjustments
+            Some(adjusted) => adjusted,
+            _ => match layer.parameters.get("width") {
+                // Fallback to width parameter value if there is no adjustment
+                Some(ParameterValue::Number(n)) => *n,
+                _ => 0.9,
+            },
         };
 
         // For horizontal bars, use "height" for band size; for vertical, use "width"
         let is_horizontal = is_transposed(layer);
+        let axis = if is_horizontal { "y" } else { "x" };
 
-        // For dodged bars, use expression-based size with the adjusted width
-        // For non-dodged bars, use band-relative size
-        let size_value = if let Some(adjusted) = layer.adjusted_width {
-            // Use bandwidth expression for dodged bars
-            let axis = if is_horizontal { "y" } else { "x" };
-            json!({"expr": format!("bandwidth('{}') * {}", axis, adjusted)})
-        } else {
-            json!({"band": width})
+        let size_value = match layer_spec["encoding"][axis]["bin"].as_str() {
+            // I don't think binned scales obey 'band', but they don't tolerate the 'expr' option.
+            Some("binned") => json!({"band": width}),
+            // Use expression-based size with the adjusted width
+            _ => json!({"expr": format!("bandwidth('{}') * {}", axis, width)}),
         };
 
         layer_spec["mark"] = if is_horizontal {
@@ -312,33 +320,160 @@ impl GeomRenderer for BarRenderer {
 // Path Renderer
 // =============================================================================
 
-/// Renderer for path geom - adds order channel for natural data order
+/// Renderer for path and line geoms - preserves data order for correct rendering
+///
+/// Automatically detects when continuous material aesthetics (stroke, linewidth, opacity) vary
+/// within partition groups and converts to segmented rendering using detail encoding.
+/// Discrete material aesthetics (linetype, or discrete stroke) already define groups
+/// via partition_by and don't require special handling.
+///
+/// Handles both `line` and `path` geoms - the only difference is the mark type used.
 pub struct PathRenderer;
 
-impl GeomRenderer for PathRenderer {
-    fn modify_encoding(
-        &self,
-        encoding: &mut Map<String, Value>,
-        _layer: &Layer,
-        _context: &RenderContext,
-    ) -> Result<()> {
-        // Use row index field to preserve natural data order
-        encoding.insert(
-            "order".to_string(),
-            json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
-        );
-        Ok(())
+// =============================================================================
+// Helper functions for path/line segmentation
+// =============================================================================
+
+/// Find row indices where any of the specified columns change value.
+///
+/// Returns a sorted vector starting with 0 (first row), followed by indices
+/// where any column value differs from the previous row. Does not include
+/// the final boundary (n_rows).
+///
+/// Used by both line segmentation and text font run-length encoding.
+fn find_change_starts(df: &DataFrame, columns: &[String]) -> Result<Vec<usize>> {
+    use polars::prelude::*;
+
+    let n_rows = df.height();
+
+    if columns.is_empty() || n_rows <= 1 {
+        return Ok(vec![0]);
     }
+
+    // Initialize change mask as all false (no changes)
+    let mut change_mask = BooleanChunked::full("change_mask".into(), false, n_rows - 1);
+
+    // For each column, OR its change mask into the accumulator
+    for col_name in columns {
+        let series = df.column(col_name).map_err(|e| {
+            GgsqlError::InternalError(format!("Column '{}' not found: {}", col_name, e))
+        })?;
+
+        // Compare each row with the previous row
+        // curr = series[1..n], prev = series[0..n-1]
+        let curr = series.slice(1, n_rows - 1);
+        let prev = series.slice(0, n_rows - 1);
+
+        // Get boolean mask where values differ
+        let not_equal = curr.not_equal(&prev).map_err(|e| {
+            GgsqlError::InternalError(format!("Failed to compare column '{}': {}", col_name, e))
+        })?;
+
+        // OR with accumulator (change if this column OR any previous column changed)
+        change_mask = &change_mask | &not_equal;
+    }
+
+    // Extract indices where mask is true (offset by 1 since we compared with previous)
+    let mut change_starts = vec![0];
+    for (idx, changed) in change_mask.into_iter().enumerate() {
+        if changed == Some(true) {
+            change_starts.push(idx + 1);
+        }
+    }
+
+    Ok(change_starts)
 }
 
-// =============================================================================
-// Line Renderer
-// =============================================================================
+/// Check if an aesthetic varies within any group segment
+///
+/// Uses precomputed group boundaries to efficiently check if the aesthetic
+/// has multiple distinct values within any group segment.
+fn aesthetic_varies_within_groups(
+    df: &DataFrame,
+    aesthetic_col: &str,
+    group_boundaries: &[usize],
+) -> Result<bool> {
+    let series = df.column(aesthetic_col).map_err(|e| {
+        GgsqlError::InternalError(format!("Column '{}' not found: {}", aesthetic_col, e))
+    })?;
 
-/// Renderer for line geom - preserves data order for correct line rendering
-pub struct LineRenderer;
+    // Check each group segment
+    for window in group_boundaries.windows(2) {
+        let start = window[0];
+        let end = window[1];
 
-impl GeomRenderer for LineRenderer {
+        if end - start < 2 {
+            continue; // Single-row groups can't vary
+        }
+
+        // Slice the series for this group and check uniqueness
+        let segment = series.slice(start as i64, end - start);
+        let n_unique = segment.n_unique().map_err(|e| {
+            GgsqlError::InternalError(format!("Failed to count unique values: {}", e))
+        })?;
+
+        if n_unique > 1 {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+impl GeomRenderer for PathRenderer {
+    fn prepare_data(
+        &self,
+        df: &DataFrame,
+        layer: &Layer,
+        _data_key: &str,
+        binned_columns: &HashMap<String, Vec<f64>>,
+    ) -> Result<PreparedData> {
+        // Continuous material aesthetics that can trigger segmentation
+        // (linetype is always discrete and already handled via partition_by)
+        let material_aesthetics: &[&'static str] = &["stroke", "linewidth", "opacity"];
+
+        // Start with existing partition_by (includes discrete material aesthetics already)
+        let partition_columns: Vec<String> = layer.partition_by.clone();
+
+        // Compute group boundaries based on existing partitions
+        let n_rows = df.height();
+        let group_boundaries = if partition_columns.is_empty() || n_rows <= 1 {
+            vec![0, n_rows]
+        } else {
+            let mut boundaries = find_change_starts(df, &partition_columns)?;
+            boundaries.push(n_rows);
+            boundaries
+        };
+
+        // Check continuous material aesthetics (not in partition_by) for within-group variation
+        let mut varying_aesthetics: Vec<&'static str> = Vec::new();
+
+        for &aesthetic in material_aesthetics {
+            if let Some(AestheticValue::Column { name: col, .. }) = layer.mappings.get(aesthetic) {
+                // Skip if already in partition_by (discrete, already defines groups)
+                if !layer.partition_by.contains(col) {
+                    // Continuous: check if varies within groups
+                    if aesthetic_varies_within_groups(df, col, &group_boundaries)? {
+                        varying_aesthetics.push(aesthetic);
+                        // Don't add to partition_columns - continuous values shouldn't partition
+                    }
+                }
+            }
+        }
+
+        // Return the data with segmentation metadata if needed
+        let values = if binned_columns.is_empty() {
+            dataframe_to_values(df)?
+        } else {
+            dataframe_to_values_with_bins(df, binned_columns)?
+        };
+
+        Ok(PreparedData::Single {
+            values,
+            metadata: Box::new(varying_aesthetics),
+        })
+    }
+
     fn modify_encoding(
         &self,
         encoding: &mut Map<String, Value>,
@@ -352,6 +487,176 @@ impl GeomRenderer for LineRenderer {
             json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
         );
         Ok(())
+    }
+
+    fn finalize(
+        &self,
+        mut layer_spec: Value,
+        layer: &Layer,
+        _data_key: &str,
+        prepared: &PreparedData,
+    ) -> Result<Vec<Value>> {
+        // Get metadata from prepared data
+        let PreparedData::Single { metadata, .. } = prepared else {
+            return Err(GgsqlError::InternalError(
+                "PathRenderer expects PreparedData::Single".to_string(),
+            ));
+        };
+
+        // Get varying aesthetics from metadata
+        let Some(varying_aesthetics) = metadata.downcast_ref::<Vec<&'static str>>() else {
+            return Ok(vec![layer_spec]);
+        };
+
+        // Handle varying linewidth: switch to trail mark and translate encodings
+        if varying_aesthetics.contains(&"linewidth") {
+            layer_spec["mark"] = json!({"type": "trail", "clip": true, "strokeWidth": 0});
+
+            // Translate line encodings to trail encodings
+            if let Some(encoding_obj) = layer_spec.get_mut("encoding") {
+                if let Some(encoding_map) = encoding_obj.as_object_mut() {
+                    // strokeWidth → size
+                    if let Some(stroke_width) = encoding_map.remove("strokeWidth") {
+                        encoding_map.insert("size".to_string(), stroke_width);
+                    }
+
+                    // stroke → fill
+                    if let Some(mut stroke) = encoding_map.remove("stroke") {
+                        // Add symbolStrokeColor to legend so symbols display with color
+                        if let Some(stroke_obj) = stroke.as_object_mut() {
+                            if let Some(legend) = stroke_obj.get_mut("legend") {
+                                if let Some(legend_obj) = legend.as_object_mut() {
+                                    legend_obj.insert(
+                                        "symbolStrokeColor".to_string(),
+                                        json!({"expr": "scale('fill', datum.value)"}),
+                                    );
+                                }
+                            }
+                        }
+                        encoding_map.insert("fill".to_string(), stroke);
+                    }
+
+                    // opacity → fillOpacity
+                    if let Some(opacity) = encoding_map.remove("opacity") {
+                        encoding_map.insert("fillOpacity".to_string(), opacity);
+                    }
+                }
+            }
+        }
+
+        // Handle varying stroke/opacity: apply segmentation
+        if !varying_aesthetics.contains(&"stroke") && !varying_aesthetics.contains(&"opacity") {
+            // Only linewidth varies, trail mark handles it natively
+            return Ok(vec![layer_spec]);
+        }
+
+        // Build list of fields to segment (always x/y, plus size if linewidth varies)
+        let mut segment_fields = vec![
+            ("x", naming::aesthetic_column("pos1")),
+            ("y", naming::aesthetic_column("pos2")),
+        ];
+        if varying_aesthetics.contains(&"linewidth") {
+            segment_fields.push(("size", naming::aesthetic_column("linewidth")));
+        }
+
+        // Segmented rendering using detail encoding:
+        // 1. Create segment IDs (row_index serves as segment ID)
+        // 2. Create next row's values using window transform
+        // 3. Flatten to create 2 rows per segment (point_index: 0=start, 1=end)
+        // 4. Use calculate to pick current or next based on point_index
+        // 5. Add segment ID to detail encoding
+
+        // Preserve existing transforms (e.g., source filter)
+        let mut transforms = layer_spec
+            .get("transform")
+            .and_then(|t| t.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        // Step 1 & 2: Window transform to get next row's values
+        let window_ops: Vec<Value> = segment_fields
+            .iter()
+            .map(|(_, field)| {
+                json!({
+                    "op": "lead",
+                    "field": field,
+                    "as": format!("{}_next", field)
+                })
+            })
+            .collect();
+
+        let mut window_transform = json!({
+            "window": window_ops,
+            "sort": [{"field": ROW_INDEX_COLUMN}]
+        });
+
+        if !layer.partition_by.is_empty() {
+            window_transform["groupby"] = json!(layer.partition_by);
+        }
+
+        transforms.push(window_transform);
+
+        // Step 2b: Filter out last row in each group (no next point)
+        // Check the first field (x) for null to detect end of segments
+        let first_field = &segment_fields[0].1;
+        transforms.push(json!({
+            "filter": format!("datum.{}_next != null", first_field)
+        }));
+
+        // Step 3: Flatten to create 2 rows per segment
+        // Create a constant array [0, 1] to flatten
+        transforms.push(json!({
+            "calculate": "[0, 1]",
+            "as": "__segment_points__"
+        }));
+
+        transforms.push(json!({
+            "flatten": ["__segment_points__"],
+            "as": ["__point_index__"]
+        }));
+
+        // Step 4: Calculate actual field values based on point_index
+        for (_, field) in &segment_fields {
+            transforms.push(json!({
+                "calculate": format!("datum.__point_index__ == 0 ? datum.{} : datum.{}_next", field, field),
+                "as": format!("{}_final", field)
+            }));
+        }
+
+        // Step 5: Create segment ID (use original row_index)
+        transforms.push(json!({
+            "calculate": format!("datum.{}", ROW_INDEX_COLUMN),
+            "as": "__segment_id__"
+        }));
+
+        layer_spec["transform"] = json!(transforms);
+        // Don't set layer_spec["data"] - use the unified top-level dataset
+        // The source filter transform will select the correct rows
+
+        // Update encodings to use final field values and add segment_id to detail
+        if let Some(encoding_obj) = layer_spec.get_mut("encoding") {
+            if let Some(encoding_map) = encoding_obj.as_object_mut() {
+                // Update each field encoding to use _final
+                for (encoding_name, field) in &segment_fields {
+                    if let Some(enc) = encoding_map.get_mut(*encoding_name) {
+                        if let Some(enc_obj) = enc.as_object_mut() {
+                            enc_obj.insert("field".to_string(), json!(format!("{}_final", field)));
+                        }
+                    }
+                }
+
+                // Add segment_id to detail encoding
+                encoding_map.insert(
+                    "detail".to_string(),
+                    json!({
+                        "field": "__segment_id__",
+                        "type": "nominal"
+                    }),
+                );
+            }
+        }
+
+        Ok(vec![layer_spec])
     }
 }
 
@@ -400,78 +705,52 @@ impl GeomRenderer for RuleRenderer {
     fn modify_encoding(
         &self,
         encoding: &mut Map<String, Value>,
-        _layer: &Layer,
-        _context: &RenderContext,
+        layer: &Layer,
+        context: &RenderContext,
     ) -> Result<()> {
         let has_x = encoding.contains_key("x");
         let has_y = encoding.contains_key("y");
-        if !has_x && !has_y {
+
+        // Remove slope from encoding (it's never a visual encoding, only metadata)
+        // and check if it's non-zero (diagonal line)
+        let diagonal = matches!(
+            layer.parameters.get("diagonal"),
+            Some(ParameterValue::Boolean(true))
+        );
+
+        if !has_x && !has_y && !diagonal {
             return Err(GgsqlError::ValidationError(
                 "The `rule` layer requires the `x` or `y` aesthetic. It currently has neither."
                     .to_string(),
             ));
-        } else if has_x && has_y {
+        } else if has_x && has_y && !diagonal {
             return Err(GgsqlError::ValidationError(
                 "The `rule` layer requires exactly one of the `x` or `y` aesthetic, not both."
                     .to_string(),
             ));
         }
-        Ok(())
-    }
-}
+        if !diagonal {
+            return Ok(());
+        }
 
-// =============================================================================
-// Linear Renderer
-// =============================================================================
-
-/// Renderer for linear geom - draws lines based on coefficient and intercept
-pub struct LinearRenderer;
-
-impl GeomRenderer for LinearRenderer {
-    fn prepare_data(
-        &self,
-        df: &DataFrame,
-        _layer: &Layer,
-        _data_key: &str,
-        _binned_columns: &HashMap<String, Vec<f64>>,
-    ) -> Result<PreparedData> {
-        // Just convert DataFrame to JSON values
-        // No need to add xmin/xmax - they'll be encoded as literal values
-        let values = dataframe_to_values(df)?;
-        Ok(PreparedData::Single { values })
-    }
-
-    fn modify_encoding(
-        &self,
-        encoding: &mut Map<String, Value>,
-        layer: &Layer,
-        _context: &RenderContext,
-    ) -> Result<()> {
-        // Remove coefficient and intercept from encoding - they're only used in transforms
-        encoding.remove("coef");
-        encoding.remove("intercept");
-
-        // Check orientation
-        let is_horizontal = is_transposed(layer);
-
-        // For aligned (default): x is primary axis, y is computed (secondary)
-        // For transposed: y is primary axis, x is computed (secondary)
-        let (primary, primary2, secondary, secondary2) = if is_horizontal {
-            ("y", "y2", "x", "x2")
+        // Use layer's pre-computed orientation
+        let (primary, primary2, secondary, secondary2, extent_aes) = if is_transposed(layer) {
+            ("y", "y2", "x", "x2", "pos2")
         } else {
-            ("x", "x2", "y", "y2")
+            ("x", "x2", "y", "y2", "pos1")
+        };
+
+        // Get primary axis extent from context to set explicit scale domain
+        // This prevents an axis drift
+        let mut primary_enco = json!({"field": "primary_min", "type": "quantitative"});
+        if let Ok((min, max)) = context.get_extent(extent_aes) {
+            primary_enco["scale"] = json!({"domain": [min, max]})
         };
 
         // Add encodings for rule mark
         // primary_min/primary_max are created by transforms (extent of the axis)
         // secondary_min/secondary_max are computed via formula
-        encoding.insert(
-            primary.to_string(),
-            json!({
-                "field": "primary_min",
-                "type": "quantitative"
-            }),
-        );
+        encoding.insert(primary.to_string(), primary_enco);
         encoding.insert(
             primary2.to_string(),
             json!({
@@ -501,22 +780,46 @@ impl GeomRenderer for LinearRenderer {
         layer: &Layer,
         context: &RenderContext,
     ) -> Result<()> {
-        // Field names for coef and intercept (with aesthetic column prefix)
-        let coef_field = naming::aesthetic_column("coef");
-        let intercept_field = naming::aesthetic_column("intercept");
+        // Determine slope expression: either a literal value or a field reference
+        let slope_expr = match layer.mappings.get("slope") {
+            Some(AestheticValue::Literal(ParameterValue::Number(n))) if *n == 0.0 => {
+                // Slope is 0 - no diagonal
+                None
+            }
+            Some(AestheticValue::Literal(ParameterValue::Number(n))) => {
+                // Literal non-zero slope - inline the value
+                Some(n.to_string())
+            }
+            Some(AestheticValue::Column { .. }) | Some(AestheticValue::AnnotationColumn { .. }) => {
+                // Column-based slope - reference the field
+                let slope_field = naming::aesthetic_column("slope");
+                Some(format!("datum.{}", slope_field))
+            }
+            _ => {
+                // No slope mapping - no diagonal
+                None
+            }
+        };
 
-        // Check orientation
-        let is_horizontal = is_transposed(layer);
+        let Some(slope_expr) = slope_expr else {
+            return Ok(());
+        };
+
+        let (intercept_field, extent_aes) = if is_transposed(layer) {
+            // x is intercept
+            (naming::aesthetic_column("pos1"), "pos2")
+        } else {
+            // y is intercept
+            (naming::aesthetic_column("pos2"), "pos1")
+        };
 
         // Get extent from appropriate axis:
-        // - Aligned (default): extent from pos1 (x-axis), compute y from x
-        // - Transposed: extent from pos2 (y-axis), compute x from y
-        let extent_aesthetic = if is_horizontal { "pos2" } else { "pos1" };
-        let (primary_min, primary_max) = context.get_extent(extent_aesthetic)?;
+        let (primary_min, primary_max) = context.get_extent(extent_aes)?;
 
         // Add transforms:
         // 1. Create constant primary_min/primary_max fields (extent of the primary axis)
-        // 2. Compute secondary values at those primary positions: secondary = coef * primary + intercept
+        // 2. Compute secondary values at those primary positions: secondary = slope * primary + intercept
+        //    (where intercept is pos1 for x-mapped or pos2 for y-mapped)
         let transforms = json!([
             {
                 "calculate": primary_min.to_string(),
@@ -527,11 +830,11 @@ impl GeomRenderer for LinearRenderer {
                 "as": "primary_max"
             },
             {
-                "calculate": format!("datum.{} * datum.primary_min + datum.{}", coef_field, intercept_field),
+                "calculate": format!("{} * datum.primary_min + datum.{}", slope_expr, intercept_field),
                 "as": "secondary_min"
             },
             {
-                "calculate": format!("datum.{} * datum.primary_max + datum.{}", coef_field, intercept_field),
+                "calculate": format!("{} * datum.primary_max + datum.{}", slope_expr, intercept_field),
                 "as": "secondary_max"
             }
         ]);
@@ -573,43 +876,29 @@ impl TextRenderer {
             return Ok((DataFrame::default(), Vec::new()));
         }
 
-        // Build boolean mask showing where any font property changes
-        let mut changed = BooleanChunked::full("changed".into(), false, nrows);
-        let mut font_columns: HashMap<&str, &polars::prelude::Column> = HashMap::new();
-
-        for aesthetic in [
+        // Collect font property column names that exist in the DataFrame
+        let font_aesthetics = [
             "typeface",
             "fontweight",
             "italic",
             "hjust",
             "vjust",
             "rotation",
-        ] {
-            if let Ok(col) = df.column(&naming::aesthetic_column(aesthetic)) {
-                let col_changed = col.not_equal(&col.shift(1)).map_err(|e| {
-                    GgsqlError::InternalError(format!("Failed to compare column: {}", e))
-                })?;
-                changed = &changed | &col_changed;
+        ];
+
+        let mut font_column_names = Vec::new();
+        let mut font_columns: HashMap<&str, &polars::prelude::Column> = HashMap::new();
+
+        for aesthetic in font_aesthetics {
+            let col_name = naming::aesthetic_column(aesthetic);
+            if let Ok(col) = df.column(&col_name) {
+                font_column_names.push(col_name);
                 font_columns.insert(aesthetic, col);
             }
         }
 
-        // Extract change indices (where mask is true)
-        // shift() creates nulls at position 0, which we treat as a change point
-        let mut change_indices: Vec<usize> = Vec::new();
-        for (i, val) in changed.iter().enumerate() {
-            if val == Some(true) || val.is_none() {
-                // Treat null (from shift) or true as change point
-                change_indices.push(i);
-            }
-        }
-
-        // First row is always a change point (shift comparison is null)
-        if !change_indices.is_empty() && change_indices[0] != 0 {
-            change_indices.insert(0, 0);
-        } else if change_indices.is_empty() {
-            change_indices.push(0);
-        }
+        // Find indices where any font property changes
+        let change_indices = find_change_starts(df, &font_column_names)?;
 
         // Calculate run lengths
         let run_lengths: Vec<usize> = change_indices
@@ -626,14 +915,6 @@ impl TextRenderer {
             "indices".into(),
             change_indices.iter().map(|&i| i as u32).collect(),
         );
-        let font_aesthetics = [
-            "typeface",
-            "fontweight",
-            "italic",
-            "hjust",
-            "vjust",
-            "rotation",
-        ];
 
         let mut result_cols = Vec::new();
         for aesthetic in font_aesthetics {
@@ -654,6 +935,34 @@ impl TextRenderer {
         })?;
 
         Ok((result_df, run_lengths))
+    }
+
+    /// Split label values containing newlines into arrays of strings
+    ///
+    /// Uses the shared split_label_on_newlines function to ensure consistent
+    /// newline handling across all label types (text data, axis labels, titles, etc.)
+    fn split_label_newlines(values: &mut [Value]) -> Result<()> {
+        let label_col = naming::aesthetic_column("label");
+
+        for row in values.iter_mut() {
+            // Get the object, skip if not an object
+            let Some(obj) = row.as_object_mut() else {
+                continue;
+            };
+
+            // Get the label value, skip if not present
+            let Some(label_value) = obj.get(&label_col) else {
+                continue;
+            };
+            // Get the string value, skip if not a string
+            let Some(label_str) = label_value.as_str() else {
+                continue;
+            };
+
+            // Use shared function for consistent newline splitting
+            obj.insert(label_col.clone(), super::split_label_on_newlines(label_str));
+        }
+        Ok(())
     }
 
     /// Convert typeface to Vega-Lite font value
@@ -1035,11 +1344,14 @@ impl GeomRenderer for TextRenderer {
             // Slice the contiguous run from the DataFrame (more efficient than boolean masking)
             let sliced = df.slice(position as i64, length);
 
-            let values = if binned_columns.is_empty() {
+            let mut values = if binned_columns.is_empty() {
                 dataframe_to_values(&sliced)?
             } else {
                 dataframe_to_values_with_bins(&sliced, binned_columns)?
             };
+
+            // Post-process label values to split on newlines
+            Self::split_label_newlines(&mut values)?;
 
             components.insert(suffix, values);
             position += length;
@@ -1311,11 +1623,25 @@ impl GeomRenderer for ViolinRenderer {
         });
         let offset_col = naming::aesthetic_column("offset");
 
-        // It'll be implemented as an offset.
-        let violin_offset = format!("[datum.{offset}, -datum.{offset}]", offset = offset_col);
-
         // Read orientation from layer (already resolved during execution)
         let is_horizontal = is_transposed(layer);
+
+        // It'll be implemented as an offset.
+        let violin_offset = match layer.parameters.get("side") {
+            Some(ParameterValue::String(side)) if side != "both" => {
+                let positive = if is_horizontal {
+                    matches!(side.as_str(), "bottom" | "left")
+                } else {
+                    matches!(side.as_str(), "top" | "right")
+                };
+                if positive {
+                    format!("[datum.{offset}]", offset = offset_col)
+                } else {
+                    format!("[-datum.{offset}]", offset = offset_col)
+                }
+            }
+            _ => format!("[datum.{offset}, -datum.{offset}]", offset = offset_col),
+        };
 
         // Continuous axis column for order calculation:
         // - Vertical: pos2 (y-axis has continuous density values)
@@ -1382,6 +1708,8 @@ impl GeomRenderer for ViolinRenderer {
     ) -> Result<()> {
         // Read orientation from layer (already resolved during execution)
         let is_horizontal = is_transposed(layer);
+
+        encoding.remove("offset");
 
         // Categorical axis for detail encoding:
         // - Vertical: x channel (categorical groups on x-axis)
@@ -1697,25 +2025,19 @@ impl BoxplotRenderer {
 
         let value_var1 = if is_horizontal { "x" } else { "y" };
         let value_var2 = if is_horizontal { "x2" } else { "y2" };
+        let axis = if is_horizontal { "y" } else { "x" };
 
         // Get width parameter
-        let base_width = layer
-            .parameters
-            .get("width")
-            .and_then(|v| match v {
-                ParameterValue::Number(n) => Some(*n),
-                _ => None,
-            })
-            .unwrap_or(0.9);
-
-        // For dodged boxplots, use expression-based width with adjusted_width
-        // For non-dodged boxplots, use band-relative width
-        let axis = if is_horizontal { "y" } else { "x" };
-        let width_value = if let Some(adjusted) = layer.adjusted_width {
-            json!({"expr": format!("bandwidth('{}') * {}", axis, adjusted)})
-        } else {
-            json!({"band": base_width})
+        let width = match layer.adjusted_width {
+            // The adjusted width comes from position adjustments
+            Some(adjusted) => adjusted,
+            _ => match layer.parameters.get("width") {
+                // Fallback to width parameter value if there is no adjustment
+                Some(ParameterValue::Number(n)) => *n,
+                _ => 0.9,
+            },
         };
+        let width_value = json!({"expr": format!("bandwidth('{}') * {}", axis, width)});
 
         // Helper to create filter transform for source selection
         let make_source_filter = |type_suffix: &str| -> Value {
@@ -1913,7 +2235,7 @@ impl GeomRenderer for BoxplotRenderer {
 pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
     match geom.geom_type() {
         GeomType::Path => Box::new(PathRenderer),
-        GeomType::Line => Box::new(LineRenderer),
+        GeomType::Line => Box::new(PathRenderer),
         GeomType::Bar => Box::new(BarRenderer),
         GeomType::Rect => Box::new(RectRenderer),
         GeomType::Ribbon => Box::new(RibbonRenderer),
@@ -1922,7 +2244,6 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Violin => Box::new(ViolinRenderer),
         GeomType::Text => Box::new(TextRenderer),
         GeomType::Segment => Box::new(SegmentRenderer),
-        GeomType::Linear => Box::new(LinearRenderer),
         GeomType::ErrorBar => Box::new(ErrorBarRenderer),
         GeomType::Rule => Box::new(RuleRenderer),
         // All other geoms (Point, Area, Density, Tile, etc.) use the default renderer
@@ -2773,6 +3094,81 @@ mod tests {
     }
 
     #[test]
+    fn test_text_label_newline_splitting() {
+        use crate::execute;
+        use crate::reader::DuckDBReader;
+        use crate::writer::vegalite::VegaLiteWriter;
+        use crate::writer::Writer;
+
+        // Test that labels containing newlines are split into arrays
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Query with labels containing newlines in DRAW and PLACE
+        let query = r#"
+            SELECT
+                n::INTEGER as x,
+                n::INTEGER as y,
+                CASE
+                    WHEN n = 0 THEN 'First Line\nSecond Line'
+                    WHEN n = 1 THEN 'Single Line'
+                    ELSE 'Line 1\nLine 2\nLine 3'
+                END as label
+            FROM generate_series(0, 2) as t(n)
+            VISUALISE x, y, label
+            DRAW text
+            PLACE text SETTING x => 5, y => 15, label => 'Annotation\nWith Newline'
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &prepared.specs[0];
+
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let data_values = vl_spec["data"]["values"].as_array().unwrap();
+        let label_col = crate::naming::aesthetic_column("label");
+
+        // Check first label (contains newline - should be array)
+        let label_0 = &data_values[0][&label_col];
+        assert!(label_0.is_array(), "Label with newline should be an array");
+        let lines_0 = label_0.as_array().unwrap();
+        assert_eq!(lines_0.len(), 2);
+        assert_eq!(lines_0[0].as_str().unwrap(), "First Line");
+        assert_eq!(lines_0[1].as_str().unwrap(), "Second Line");
+
+        // Check second label (no newline - should be string)
+        let label_1 = &data_values[1][&label_col];
+        assert!(
+            label_1.is_string(),
+            "Label without newline should be a string"
+        );
+        assert_eq!(label_1.as_str().unwrap(), "Single Line");
+
+        // Check third label (multiple newlines - should be array with 3 elements)
+        let label_2 = &data_values[2][&label_col];
+        assert!(label_2.is_array(), "Label with newlines should be an array");
+        let lines_2 = label_2.as_array().unwrap();
+        assert_eq!(lines_2.len(), 3);
+        assert_eq!(lines_2[0].as_str().unwrap(), "Line 1");
+        assert_eq!(lines_2[1].as_str().unwrap(), "Line 2");
+        assert_eq!(lines_2[2].as_str().unwrap(), "Line 3");
+
+        // Check PLACE annotation layer (index 3, after the 3 DRAW data rows)
+        assert!(data_values.len() > 3, "Should have annotation data");
+        let annotation_label = &data_values[3][&label_col];
+        assert!(
+            annotation_label.is_array(),
+            "Annotation label with newline should be an array"
+        );
+        let annotation_lines = annotation_label.as_array().unwrap();
+        assert_eq!(annotation_lines.len(), 2);
+        assert_eq!(annotation_lines[0].as_str().unwrap(), "Annotation");
+        assert_eq!(annotation_lines[1].as_str().unwrap(), "With Newline");
+    }
+
+    #[test]
     fn test_text_setting_fontweight() {
         use crate::execute;
         use crate::reader::DuckDBReader;
@@ -3215,6 +3611,132 @@ mod tests {
     }
 
     #[test]
+    fn test_violin_ridge_parameter() {
+        use crate::naming;
+        use crate::plot::ParameterValue;
+
+        let offset_col = naming::aesthetic_column("offset");
+
+        fn get_violin_offset_expr(ridge: Option<&str>, is_horizontal: bool) -> String {
+            let mut layer = Layer::new(crate::plot::Geom::violin());
+            if let Some(r) = ridge {
+                layer
+                    .parameters
+                    .insert("side".to_string(), ParameterValue::String(r.to_string()));
+            }
+
+            // Set orientation parameter for horizontal case
+            if is_horizontal {
+                layer.parameters.insert(
+                    "orientation".to_string(),
+                    ParameterValue::String("transposed".to_string()),
+                );
+            }
+
+            let mut layer_spec = if is_horizontal {
+                json!({
+                    "mark": {"type": "line"},
+                    "encoding": {
+                        "x": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"},
+                        "y": {"field": "species", "type": "nominal"}
+                    }
+                })
+            } else {
+                json!({
+                    "mark": {"type": "line"},
+                    "encoding": {
+                        "x": {"field": "species", "type": "nominal"},
+                        "y": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"}
+                    }
+                })
+            };
+
+            ViolinRenderer
+                .modify_spec(&mut layer_spec, &layer, &RenderContext::new(&[]))
+                .unwrap();
+
+            layer_spec["transform"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t.get("as").and_then(|a| a.as_str()) == Some("violin_offsets"))
+                .unwrap()["calculate"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        }
+
+        // Default "both" - mirrors on both sides (vertical orientation)
+        let expr = get_violin_offset_expr(None, false);
+        assert!(
+            expr.contains(&format!("[datum.{}, -datum.{}]", offset_col, offset_col))
+                || expr.contains(&format!("[-datum.{}, datum.{}]", offset_col, offset_col)),
+            "Default should mirror both sides: {}",
+            expr
+        );
+
+        // Explicit "both" - mirrors on both sides (vertical orientation)
+        let expr = get_violin_offset_expr(Some("both"), false);
+        assert!(
+            expr.contains(&format!("[datum.{}, -datum.{}]", offset_col, offset_col))
+                || expr.contains(&format!("[-datum.{}, datum.{}]", offset_col, offset_col)),
+            "Explicit 'both' should mirror both sides (vertical): {}",
+            expr
+        );
+
+        // Explicit "both" - mirrors on both sides (horizontal orientation)
+        let expr = get_violin_offset_expr(Some("both"), true);
+        assert!(
+            expr.contains(&format!("[datum.{}, -datum.{}]", offset_col, offset_col))
+                || expr.contains(&format!("[-datum.{}, datum.{}]", offset_col, offset_col)),
+            "Explicit 'both' should mirror both sides (horizontal): {}",
+            expr
+        );
+
+        // Vertical orientation (default): x=nominal, y=quantitative
+        // "left" and "bottom" - only negative offset
+        assert_eq!(
+            get_violin_offset_expr(Some("left"), false),
+            format!("[-datum.{}]", offset_col)
+        );
+        assert_eq!(
+            get_violin_offset_expr(Some("bottom"), false),
+            format!("[-datum.{}]", offset_col)
+        );
+
+        // "right" and "top" - only positive offset
+        assert_eq!(
+            get_violin_offset_expr(Some("right"), false),
+            format!("[datum.{}]", offset_col)
+        );
+        assert_eq!(
+            get_violin_offset_expr(Some("top"), false),
+            format!("[datum.{}]", offset_col)
+        );
+
+        // Horizontal orientation: x=quantitative, y=nominal
+        // "bottom" and "left" - only positive offset
+        assert_eq!(
+            get_violin_offset_expr(Some("bottom"), true),
+            format!("[datum.{}]", offset_col)
+        );
+        assert_eq!(
+            get_violin_offset_expr(Some("left"), true),
+            format!("[datum.{}]", offset_col)
+        );
+
+        // "top" and "right" - only negative offset
+        assert_eq!(
+            get_violin_offset_expr(Some("top"), true),
+            format!("[-datum.{}]", offset_col)
+        );
+        assert_eq!(
+            get_violin_offset_expr(Some("right"), true),
+            format!("[-datum.{}]", offset_col)
+        );
+    }
+
+    #[test]
     fn test_render_context_get_extent() {
         use crate::plot::{ArrayElement, Scale};
 
@@ -3292,11 +3814,11 @@ mod tests {
     }
 
     #[test]
-    fn test_linear_renderer_multiple_lines() {
+    fn test_rule_renderer_multiple_diagonal_lines() {
         use crate::reader::{DuckDBReader, Reader};
         use crate::writer::{VegaLiteWriter, Writer};
 
-        // Test that linear with 3 different coefficients renders 3 separate lines
+        // Test that rule with 3 different slopes renders 3 separate lines
         let query = r#"
             WITH points AS (
                 SELECT * FROM (VALUES (0, 5), (5, 15), (10, 25)) AS t(x, y)
@@ -3306,12 +3828,12 @@ mod tests {
                     (2, 5, 'A'),
                     (1, 10, 'B'),
                     (3, 0, 'C')
-                ) AS t(coef, intercept, line_id)
+                ) AS t(slope, y, line_id)
             )
             SELECT * FROM points
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            DRAW linear MAPPING coef AS coef, intercept AS intercept, line_id AS color FROM lines
+            DRAW rule MAPPING slope AS slope, y AS y, line_id AS color FROM lines
         "#;
 
         // Execute query
@@ -3327,21 +3849,21 @@ mod tests {
         let vl_spec: serde_json::Value =
             serde_json::from_str(&vl_json).expect("Failed to parse Vega-Lite JSON");
 
-        // Verify we have 2 layers (point + linear)
+        // Verify we have 2 layers (point + rule)
         let layers = vl_spec["layer"].as_array().expect("No layers found");
-        assert_eq!(layers.len(), 2, "Should have 2 layers (point + linear)");
+        assert_eq!(layers.len(), 2, "Should have 2 layers (point + rule)");
 
-        // Get the linear layer (second layer)
-        let linear_layer = &layers[1];
+        // Get the rule layer (second layer)
+        let rule_layer = &layers[1];
 
         // Verify it's a rule mark
         assert_eq!(
-            linear_layer["mark"]["type"], "rule",
-            "Linear should use rule mark"
+            rule_layer["mark"]["type"], "rule",
+            "Rule should use rule mark"
         );
 
         // Verify transforms exist
-        let transforms = linear_layer["transform"]
+        let transforms = rule_layer["transform"]
             .as_array()
             .expect("No transforms found");
 
@@ -3371,7 +3893,7 @@ mod tests {
             "primary_max should have calculate expression"
         );
 
-        // Verify secondary_min and secondary_max transforms use coef and intercept with primary_min/primary_max
+        // Verify secondary_min and secondary_max transforms use slope and intercept with primary_min/primary_max
         let secondary_min_transform = transforms
             .iter()
             .find(|t| t["as"] == "secondary_min")
@@ -3388,26 +3910,18 @@ mod tests {
             .as_str()
             .expect("secondary_max calculate should be string");
 
-        // Should reference coef, intercept, and primary_min/primary_max
+        // Should reference slope, pos2 (acting as intercept for y-mapped rules), and primary_min/primary_max
         assert!(
-            secondary_min_calc.contains("__ggsql_aes_coef__"),
-            "secondary_min should reference coef"
-        );
-        assert!(
-            secondary_min_calc.contains("__ggsql_aes_intercept__"),
-            "secondary_min should reference intercept"
+            secondary_min_calc.contains("__ggsql_aes_pos2__"),
+            "secondary_min should reference pos2 (y intercept)"
         );
         assert!(
             secondary_min_calc.contains("datum.primary_min"),
             "secondary_min should reference datum.primary_min"
         );
         assert!(
-            secondary_max_calc.contains("__ggsql_aes_coef__"),
-            "secondary_max should reference coef"
-        );
-        assert!(
-            secondary_max_calc.contains("__ggsql_aes_intercept__"),
-            "secondary_max should reference intercept"
+            secondary_max_calc.contains("__ggsql_aes_pos2__"),
+            "secondary_max should reference pos2 (y intercept)"
         );
         assert!(
             secondary_max_calc.contains("datum.primary_max"),
@@ -3415,7 +3929,7 @@ mod tests {
         );
 
         // Verify encoding has x, x2, y, y2 with consistent field names
-        let encoding = linear_layer["encoding"]
+        let encoding = rule_layer["encoding"]
             .as_object()
             .expect("No encoding found");
 
@@ -3448,52 +3962,56 @@ mod tests {
             "Should have stroke encoding for line_id"
         );
 
-        // Verify data has 3 linear rows (one per coef)
+        // Verify data has 3 rule rows (one per slope)
         let data_values = vl_spec["data"]["values"]
             .as_array()
             .expect("No data values found");
 
-        let linear_rows: Vec<_> = data_values
+        let rule_rows: Vec<_> = data_values
             .iter()
             .filter(|row| {
                 row["__ggsql_source__"] == "__ggsql_layer_1__"
-                    && row["__ggsql_aes_coef__"].is_number()
+                    && row["__ggsql_aes_slope__"].is_number()
             })
             .collect();
 
         assert_eq!(
-            linear_rows.len(),
+            rule_rows.len(),
             3,
-            "Should have 3 linear rows (3 different coefficients)"
+            "Should have 3 rule rows (3 different slopes)"
         );
 
-        // Verify we have coefs 1, 2, 3
-        let mut coefs: Vec<f64> = linear_rows
+        // Verify we have slopes 1, 2, 3
+        let mut slopes: Vec<f64> = rule_rows
             .iter()
-            .map(|row| row["__ggsql_aes_coef__"].as_f64().unwrap())
+            .map(|row| row["__ggsql_aes_slope__"].as_f64().unwrap())
             .collect();
-        coefs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        slopes.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-        assert_eq!(coefs, vec![1.0, 2.0, 3.0], "Should have coefs 1, 2, and 3");
+        assert_eq!(
+            slopes,
+            vec![1.0, 2.0, 3.0],
+            "Should have slopes 1, 2, and 3"
+        );
     }
 
     #[test]
-    fn test_linear_renderer_transposed_orientation() {
+    fn test_sloped_rule_renderer_horizontal_orientation() {
         use crate::reader::{DuckDBReader, Reader};
         use crate::writer::{VegaLiteWriter, Writer};
 
-        // Test that linear with transposed orientation swaps x/y axes
+        // Test that sloped rule with x mapping (horizontal) infers y varies
         let query = r#"
             WITH points AS (
                 SELECT * FROM (VALUES (0, 5), (5, 15), (10, 25)) AS t(x, y)
             ),
             lines AS (
-                SELECT * FROM (VALUES (0.4, -1, 'A')) AS t(coef, intercept, line_id)
+                SELECT * FROM (VALUES (0.4, -1, 'A')) AS t(slope, x, line_id)
             )
             SELECT * FROM points
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
-            DRAW linear MAPPING coef AS coef, intercept AS intercept, line_id AS color FROM lines SETTING orientation => 'transposed'
+            DRAW rule MAPPING slope AS slope, x AS x, line_id AS color FROM lines
         "#;
 
         // Execute query
@@ -3509,16 +4027,16 @@ mod tests {
         let vl_spec: serde_json::Value =
             serde_json::from_str(&vl_json).expect("Failed to parse Vega-Lite JSON");
 
-        // Get the linear layer (second layer)
+        // Get the rule layer (second layer)
         let layers = vl_spec["layer"].as_array().expect("No layers found");
-        let linear_layer = &layers[1];
+        let rule_layer = &layers[1];
 
         // Verify transforms exist
-        let transforms = linear_layer["transform"]
+        let transforms = rule_layer["transform"]
             .as_array()
             .expect("No transforms found");
 
-        // Verify primary_min/max use pos2 extent (y-axis) for transposed orientation
+        // Verify primary_min/max use pos2 extent (y-axis) for horizontal (x-mapped) orientation
         let primary_min_transform = transforms
             .iter()
             .find(|t| t["as"] == "primary_min")
@@ -3528,7 +4046,7 @@ mod tests {
             .find(|t| t["as"] == "primary_max")
             .expect("primary_max transform not found");
 
-        // The primary extent should come from the y-axis for transposed
+        // The primary extent should come from the y-axis for horizontal orientation
         assert!(
             primary_min_transform["calculate"].is_string(),
             "primary_min should have calculate expression"
@@ -3538,27 +4056,54 @@ mod tests {
             "primary_max should have calculate expression"
         );
 
+        // Verify secondary_min and secondary_max use pos1 (x intercept) for horizontal orientation
+        let secondary_min_transform = transforms
+            .iter()
+            .find(|t| t["as"] == "secondary_min")
+            .expect("secondary_min transform not found");
+        let secondary_max_transform = transforms
+            .iter()
+            .find(|t| t["as"] == "secondary_max")
+            .expect("secondary_max transform not found");
+
+        let secondary_min_calc = secondary_min_transform["calculate"]
+            .as_str()
+            .expect("secondary_min calculate should be string");
+        let secondary_max_calc = secondary_max_transform["calculate"]
+            .as_str()
+            .expect("secondary_max calculate should be string");
+
+        // Should reference pos1 (x intercept) for horizontal orientation
+        assert!(
+            secondary_min_calc.contains("__ggsql_aes_pos1__"),
+            "secondary_min should reference pos1 (x intercept)"
+        );
+        assert!(
+            secondary_max_calc.contains("__ggsql_aes_pos1__"),
+            "secondary_max should reference pos1 (x intercept)"
+        );
+
         // Verify encoding has y as primary axis (mapped to primary_min/max)
-        let encoding = linear_layer["encoding"]
+        let encoding = rule_layer["encoding"]
             .as_object()
             .expect("No encoding found");
 
-        // For transposed orientation: y is primary (uses primary_min/max), x is secondary
+        // For horizontal orientation (x-mapped): y is primary (uses primary_min/max), x is secondary
         assert_eq!(
             encoding["y"]["field"], "primary_min",
-            "y should reference primary_min field for transposed"
+            "y should reference primary_min field for horizontal orientation"
         );
         assert_eq!(
             encoding["y2"]["field"], "primary_max",
-            "y2 should reference primary_max field for transposed"
+            "y2 should reference primary_max field for horizontal orientation"
         );
         assert_eq!(
             encoding["x"]["field"], "secondary_min",
-            "x should reference secondary_min field for transposed"
+            "x should reference secondary_min field for horizontal orientation"
         );
         assert_eq!(
             encoding["x2"]["field"], "secondary_max",
-            "x2 should reference secondary_max field for transposed"
+            "x2 should reference secondary_max field for horizontal orientation"
         );
     }
 
@@ -3736,6 +4281,268 @@ mod tests {
                 .to_string()
                 .contains("cannot use `y` aesthetic with `ymin` and `ymax`"),
             "Error message should mention conflicting aesthetics"
+        );
+    }
+
+    #[test]
+    fn test_path_renderer_varying_aesthetics_metadata() {
+        use crate::plot::{AestheticValue, Geom, Layer};
+        use polars::prelude::*;
+
+        let renderer = PathRenderer;
+        let mut layer = Layer::new(Geom::line());
+
+        // Create DataFrame with varying stroke
+        let df = df! {
+            naming::aesthetic_column("pos1").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("pos2").as_str() => &[10.0, 20.0, 30.0],
+            "color".to_string().as_str() => &[1.0, 2.0, 3.0],
+        }
+        .unwrap();
+
+        // Map stroke to color column (continuous, not in partition_by)
+        layer.mappings.insert(
+            "stroke".to_string(),
+            AestheticValue::standard_column("color"),
+        );
+
+        // Prepare data - should detect varying stroke
+        let prepared = renderer
+            .prepare_data(&df, &layer, "test", &HashMap::new())
+            .unwrap();
+
+        match prepared {
+            PreparedData::Single { metadata, .. } => {
+                let varying_aesthetics = metadata
+                    .downcast_ref::<Vec<&'static str>>()
+                    .expect("Metadata should be Vec<&str>");
+                assert_eq!(varying_aesthetics.len(), 1);
+                assert!(varying_aesthetics.contains(&"stroke"));
+            }
+            _ => panic!("Expected Single variant"),
+        }
+    }
+
+    #[test]
+    fn test_path_renderer_trail_mark_for_varying_linewidth() {
+        use crate::plot::{AestheticValue, Geom, Layer};
+        use polars::prelude::*;
+
+        let renderer = PathRenderer;
+        let mut layer = Layer::new(Geom::line());
+
+        // Create DataFrame with varying linewidth
+        let df = df! {
+            naming::aesthetic_column("pos1").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("pos2").as_str() => &[10.0, 20.0, 30.0],
+            naming::aesthetic_column("linewidth").as_str() => &[1.0, 3.0, 5.0],
+        }
+        .unwrap();
+
+        // Map linewidth to column
+        layer.mappings.insert(
+            "linewidth".to_string(),
+            AestheticValue::standard_column(naming::aesthetic_column("linewidth")),
+        );
+
+        // Prepare data
+        let prepared = renderer
+            .prepare_data(&df, &layer, "test", &HashMap::new())
+            .unwrap();
+
+        // Create a mock layer spec
+        let layer_spec = json!({
+            "mark": {"type": "line", "clip": true},
+            "encoding": {
+                "x": {"field": naming::aesthetic_column("pos1"), "type": "quantitative"},
+                "y": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"},
+                "strokeWidth": {"field": naming::aesthetic_column("linewidth"), "type": "quantitative"}
+            }
+        });
+
+        // Finalize should switch to trail mark and translate encodings
+        let result = renderer
+            .finalize(layer_spec.clone(), &layer, "test", &prepared)
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        let spec = &result[0];
+
+        // Check mark type is trail
+        assert_eq!(spec["mark"]["type"], "trail");
+        assert_eq!(spec["mark"]["strokeWidth"], 0);
+
+        // Check encoding translations
+        let encoding = spec["encoding"].as_object().unwrap();
+        assert!(encoding.contains_key("size"), "Should have size encoding");
+        assert!(
+            !encoding.contains_key("strokeWidth"),
+            "strokeWidth should be removed"
+        );
+        // No stroke mapping in this test, so no fill expected
+        assert!(!encoding.contains_key("stroke"), "stroke should be removed");
+    }
+
+    #[test]
+    fn test_path_renderer_trail_mark_with_stroke_legend() {
+        use crate::plot::{AestheticValue, Geom, Layer};
+        use polars::prelude::*;
+
+        let renderer = PathRenderer;
+        let mut layer = Layer::new(Geom::line());
+
+        // Create DataFrame with varying linewidth and stroke
+        let df = df! {
+            naming::aesthetic_column("pos1").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("pos2").as_str() => &[10.0, 20.0, 30.0],
+            naming::aesthetic_column("linewidth").as_str() => &[1.0, 3.0, 5.0],
+            naming::aesthetic_column("stroke").as_str() => &["A", "A", "B"],
+        }
+        .unwrap();
+
+        // Map linewidth and stroke to columns
+        layer.mappings.insert(
+            "linewidth".to_string(),
+            AestheticValue::standard_column(naming::aesthetic_column("linewidth")),
+        );
+        layer.mappings.insert(
+            "stroke".to_string(),
+            AestheticValue::standard_column(naming::aesthetic_column("stroke")),
+        );
+
+        // Prepare data
+        let prepared = renderer
+            .prepare_data(&df, &layer, "test", &HashMap::new())
+            .unwrap();
+
+        // Create a mock layer spec with stroke legend
+        let layer_spec = json!({
+            "mark": {"type": "line", "clip": true},
+            "encoding": {
+                "x": {"field": naming::aesthetic_column("pos1"), "type": "quantitative"},
+                "y": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"},
+                "strokeWidth": {"field": naming::aesthetic_column("linewidth"), "type": "quantitative"},
+                "stroke": {
+                    "field": naming::aesthetic_column("stroke"),
+                    "type": "nominal",
+                    "legend": {
+                        "title": "direction"
+                    }
+                }
+            }
+        });
+
+        // Finalize should switch to trail mark and translate encodings
+        let result = renderer
+            .finalize(layer_spec.clone(), &layer, "test", &prepared)
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        let spec = &result[0];
+
+        // Check mark type is trail
+        assert_eq!(spec["mark"]["type"], "trail");
+        assert_eq!(spec["mark"]["strokeWidth"], 0);
+
+        // Check encoding translations
+        let encoding = spec["encoding"].as_object().unwrap();
+        assert!(encoding.contains_key("size"), "Should have size encoding");
+        assert!(encoding.contains_key("fill"), "Should have fill encoding");
+        assert!(!encoding.contains_key("stroke"), "stroke should be removed");
+
+        // Check that fill legend has symbolStrokeColor
+        let fill = &encoding["fill"];
+        assert!(fill["legend"].is_object(), "fill should have legend");
+        let legend = fill["legend"].as_object().unwrap();
+        assert!(
+            legend.contains_key("symbolStrokeColor"),
+            "fill legend should have symbolStrokeColor"
+        );
+        assert_eq!(
+            legend["symbolStrokeColor"]["expr"], "scale('fill', datum.value)",
+            "symbolStrokeColor should use fill scale"
+        );
+    }
+
+    #[test]
+    fn test_path_renderer_segmentation_for_varying_stroke() {
+        use crate::plot::{AestheticValue, Geom, Layer};
+        use polars::prelude::*;
+
+        let renderer = PathRenderer;
+        let mut layer = Layer::new(Geom::line());
+
+        // Create DataFrame with varying stroke
+        let df = df! {
+            naming::aesthetic_column("pos1").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("pos2").as_str() => &[10.0, 20.0, 30.0],
+            "color".to_string().as_str() => &[1.0, 2.0, 3.0],
+            ROW_INDEX_COLUMN => &[0, 1, 2],
+        }
+        .unwrap();
+
+        // Map stroke to color column
+        layer.mappings.insert(
+            "stroke".to_string(),
+            AestheticValue::standard_column("color"),
+        );
+
+        // Prepare data
+        let prepared = renderer
+            .prepare_data(&df, &layer, "test", &HashMap::new())
+            .unwrap();
+
+        // Create a mock layer spec
+        let layer_spec = json!({
+            "mark": {"type": "line", "clip": true},
+            "encoding": {
+                "x": {"field": naming::aesthetic_column("pos1"), "type": "quantitative"},
+                "y": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"},
+                "stroke": {"field": "color", "type": "nominal"}
+            }
+        });
+
+        // Finalize should apply segmentation transforms
+        let result = renderer
+            .finalize(layer_spec.clone(), &layer, "test", &prepared)
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        let spec = &result[0];
+
+        // Check transforms exist
+        let transforms = spec["transform"]
+            .as_array()
+            .expect("Should have transforms");
+        assert!(!transforms.is_empty());
+
+        // Check for window transform (lead operation)
+        let has_window = transforms.iter().any(|t| t.get("window").is_some());
+        assert!(has_window, "Should have window transform for lead");
+
+        // Check for flatten transform
+        let has_flatten = transforms.iter().any(|t| t.get("flatten").is_some());
+        assert!(has_flatten, "Should have flatten transform");
+
+        // Check for detail encoding with segment_id
+        let encoding = spec["encoding"].as_object().unwrap();
+        assert!(
+            encoding.contains_key("detail"),
+            "Should have detail encoding"
+        );
+        assert_eq!(
+            encoding["detail"]["field"], "__segment_id__",
+            "Detail should use segment_id"
+        );
+
+        // Check that x/y use _final fields
+        assert!(
+            encoding["x"]["field"].as_str().unwrap().ends_with("_final"),
+            "x should use _final field"
+        );
+        assert!(
+            encoding["y"]["field"].as_str().unwrap().ends_with("_final"),
+            "y should use _final field"
         );
     }
 }

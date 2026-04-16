@@ -2,8 +2,8 @@
 //!
 //! These types are used by all geom implementations and are shared across the module.
 
-use crate::plot::aesthetic::parse_positional;
-use crate::{plot::types::DefaultAestheticValue, Mappings};
+use crate::plot::aesthetic::parse_position;
+use crate::{naming, plot::types::DefaultAestheticValue, Mappings};
 
 // Re-export shared types from the central location
 pub use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
@@ -17,6 +17,16 @@ pub const POSITION_VALUES: &[&str] = &["identity", "stack", "dodge", "jitter"];
 
 /// Closed interval side values for binned data
 pub const CLOSED_VALUES: &[&str] = &["left", "right"];
+
+/// Aesthetic aliases: user-facing names that resolve to concrete aesthetics.
+///
+/// An alias is considered supported if any of its target aesthetics are supported
+/// by a geom. For example, `color` resolves to `stroke` and/or `fill` — so any geom
+/// that supports either `stroke` or `fill` also accepts `color`.
+///
+/// Note: Spelling variants (`colour`/`col` → `color`) are handled separately at parse
+/// time by `normalise_aes_name()` in `parser/builder.rs`.
+pub const AESTHETIC_ALIASES: &[(&str, &[&str])] = &[("color", &["stroke", "fill"])];
 
 /// Default aesthetic values for a geom type
 ///
@@ -32,21 +42,37 @@ pub struct DefaultAesthetics {
 }
 
 impl DefaultAesthetics {
-    /// Get all aesthetic names (including Delayed)
+    /// Get all aesthetic names (including Delayed and aliases)
     pub fn names(&self) -> Vec<&'static str> {
-        self.defaults.iter().map(|(name, _)| *name).collect()
+        let mut result: Vec<&'static str> = self.defaults.iter().map(|(name, _)| *name).collect();
+        // Include alias names if any of their targets are in the defaults
+        for &(alias, targets) in AESTHETIC_ALIASES {
+            if targets.iter().any(|t| result.contains(t)) {
+                result.push(alias);
+            }
+        }
+        result
     }
 
     /// Get supported aesthetic names (excludes Delayed, for MAPPING validation)
     ///
-    /// Returns the literal names from defaults. For bidirectional positional checking,
-    /// use `is_supported()` which handles pos1/pos2 equivalence.
+    /// Returns the literal names from defaults plus any aliases whose targets are
+    /// supported. For bidirectional position checking, use `is_supported()` which
+    /// handles pos1/pos2 equivalence.
     pub fn supported(&self) -> Vec<&'static str> {
-        self.defaults
+        let mut result: Vec<&'static str> = self
+            .defaults
             .iter()
             .filter(|(_, value)| !matches!(value, DefaultAestheticValue::Delayed))
             .map(|(name, _)| *name)
-            .collect()
+            .collect();
+        // Include alias names if any of their targets are supported
+        for &(alias, targets) in AESTHETIC_ALIASES {
+            if targets.iter().any(|t| result.contains(t)) {
+                result.push(alias);
+            }
+        }
+        result
     }
 
     /// Get required aesthetic names (those marked as Required)
@@ -65,8 +91,9 @@ impl DefaultAesthetics {
 
     /// Check if an aesthetic is supported (not Delayed)
     ///
-    /// Positional aesthetics are bidirectional: if pos1* is supported, pos2* is also
-    /// considered supported (and vice versa).
+    /// Position aesthetics are bidirectional: if pos1* is supported, pos2* is also
+    /// considered supported (and vice versa). Aliases (e.g., `color`) are supported
+    /// if any of their target aesthetics are supported.
     pub fn is_supported(&self, name: &str) -> bool {
         // Check for direct match first
         let direct_match = self
@@ -77,13 +104,20 @@ impl DefaultAesthetics {
             return true;
         }
 
-        // Check for bidirectional positional match
-        if let Some((slot, suffix)) = parse_positional(name) {
+        // Check for bidirectional position match
+        if let Some((slot, suffix)) = parse_position(name) {
             let other_slot = if slot == 1 { 2 } else { 1 };
             let equivalent = format!("pos{}{}", other_slot, suffix);
             return self.defaults.iter().any(|(n, value)| {
                 !matches!(value, DefaultAestheticValue::Delayed) && *n == equivalent
             });
+        }
+
+        // Check if name is an alias that resolves to a supported aesthetic
+        for &(alias, targets) in AESTHETIC_ALIASES {
+            if alias == name {
+                return targets.iter().any(|t| self.is_supported(t));
+            }
         }
 
         false
@@ -150,6 +184,11 @@ pub fn get_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String>
     })
 }
 
+/// Helper to extract a double-quoted column name for use in SQL expressions.
+pub fn get_quoted_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String> {
+    get_column_name(aesthetics, aesthetic).map(|n| naming::quote_ident(&n))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -179,18 +218,20 @@ mod tests {
         assert_eq!(aes.get("yend"), Some(&DefaultAestheticValue::Delayed));
         assert_eq!(aes.get("nonexistent"), None);
 
-        // Test names() - includes all aesthetics
+        // Test names() - includes all aesthetics + aliases
         let names = aes.names();
-        assert_eq!(names.len(), 6);
+        assert_eq!(names.len(), 7); // 6 defaults + "color" alias (has stroke+fill)
         assert!(names.contains(&"x"));
         assert!(names.contains(&"yend"));
+        assert!(names.contains(&"color")); // alias resolved from stroke+fill
 
-        // Test supported() - excludes Delayed
+        // Test supported() - excludes Delayed, includes aliases
         let supported = aes.supported();
-        assert_eq!(supported.len(), 5);
+        assert_eq!(supported.len(), 6); // 5 non-delayed + "color" alias
         assert!(supported.contains(&"x"));
         assert!(supported.contains(&"size"));
         assert!(supported.contains(&"fill"));
+        assert!(supported.contains(&"color")); // alias
         assert!(!supported.contains(&"yend")); // Delayed excluded
 
         // Test required() - only Required variants
@@ -203,6 +244,7 @@ mod tests {
         // Test is_supported() - efficient membership check
         assert!(aes.is_supported("x"));
         assert!(aes.is_supported("size"));
+        assert!(aes.is_supported("color")); // alias: has stroke+fill
         assert!(!aes.is_supported("yend")); // Delayed not supported
         assert!(!aes.is_supported("nonexistent"));
 
@@ -216,5 +258,43 @@ mod tests {
         assert!(aes.is_required("y"));
         assert!(!aes.is_required("size"));
         assert!(!aes.is_required("yend"));
+    }
+
+    #[test]
+    fn test_color_alias_requires_stroke_or_fill() {
+        // Geom with neither stroke nor fill: color alias should NOT be supported
+        let aes = DefaultAesthetics {
+            defaults: &[
+                ("pos1", DefaultAestheticValue::Required),
+                ("pos2", DefaultAestheticValue::Required),
+                ("size", DefaultAestheticValue::Number(3.0)),
+            ],
+        };
+
+        assert!(!aes.is_supported("color"));
+        assert!(!aes.supported().contains(&"color"));
+        assert!(!aes.names().contains(&"color"));
+
+        // Geom with only stroke: color alias should be supported
+        let aes_stroke = DefaultAesthetics {
+            defaults: &[
+                ("pos1", DefaultAestheticValue::Required),
+                ("stroke", DefaultAestheticValue::String("black")),
+            ],
+        };
+
+        assert!(aes_stroke.is_supported("color"));
+        assert!(aes_stroke.supported().contains(&"color"));
+
+        // Geom with only fill: color alias should be supported
+        let aes_fill = DefaultAesthetics {
+            defaults: &[
+                ("pos1", DefaultAestheticValue::Required),
+                ("fill", DefaultAestheticValue::String("black")),
+            ],
+        };
+
+        assert!(aes_fill.is_supported("color"));
+        assert!(aes_fill.supported().contains(&"color"));
     }
 }

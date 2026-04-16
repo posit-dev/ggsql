@@ -9,7 +9,6 @@ DRAW point
 LABEL title => 'Horsepower vs Fuel Efficiency',
       x => 'Horsepower',
       y => 'Miles per Gallon'
-THEME minimal
 
 -- ============================================================================
 -- Example 2: Multi-Layer Visualization with CTE
@@ -34,7 +33,6 @@ LABEL title => 'Sales Trends by Region',
       x => 'Month',
       y => 'Total Quantity',
       caption => 'Data from 2024'
-THEME classic
 
 -- ============================================================================
 -- Example 3: Bar Chart with Projection
@@ -51,7 +49,6 @@ PROJECT y, x TO cartesian
 LABEL title => 'Top 10 Product Categories',
       x => 'Category',
       y => 'Total Sales'
-THEME dark
 
 -- ============================================================================
 -- Example 4: Polar Projection (Pie Chart)
@@ -107,7 +104,6 @@ LABEL title => 'Temperature Range (Last 30 Days)',
       x => 'Date',
       y => 'Temperature (°C)',
       caption => 'Source: Weather Station Alpha'
-THEME minimal
 
 -- ============================================================================
 -- Example 7: Complex Join with Multiple Aesthetics
@@ -134,7 +130,6 @@ LABEL title => 'Sales Performance Analysis',
       y => 'Revenue (log scale)',
       color => 'Product Category',
       size => 'Quantity Sold'
-THEME grey
 
 -- ============================================================================
 -- Example 8: Area Chart with Stacking
@@ -170,7 +165,6 @@ SCALE y FROM [0, 500]
 LABEL title => 'Price Distribution by Category',
       x => 'Product Category',
       y => 'Price ($)'
-THEME bw
 
 -- ============================================================================
 -- Example 10: Annotated Scatter Plot

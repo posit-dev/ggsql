@@ -21,16 +21,22 @@ pub type TypeInfo = (String, DataType, bool);
 pub fn build_minmax_query(source_query: &str, column_names: &[&str]) -> String {
     let min_exprs: Vec<String> = column_names
         .iter()
-        .map(|name| format!("MIN(\"{}\") AS \"{}\"", name, name))
+        .map(|name| {
+            let q = naming::quote_ident(name);
+            format!("MIN({q}) AS {q}")
+        })
         .collect();
 
     let max_exprs: Vec<String> = column_names
         .iter()
-        .map(|name| format!("MAX(\"{}\") AS \"{}\"", name, name))
+        .map(|name| {
+            let q = naming::quote_ident(name);
+            format!("MAX({q}) AS {q}")
+        })
         .collect();
 
     format!(
-        "WITH __ggsql_source__ AS ({}) SELECT {} FROM __ggsql_source__ UNION ALL SELECT {} FROM __ggsql_source__",
+        "WITH \"__ggsql_source__\" AS ({}) SELECT {} FROM \"__ggsql_source__\" UNION ALL SELECT {} FROM \"__ggsql_source__\"",
         source_query,
         min_exprs.join(", "),
         max_exprs.join(", ")

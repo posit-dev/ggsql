@@ -24,7 +24,7 @@ pub use schema::TypeInfo;
 
 use crate::naming;
 use crate::parser;
-use crate::plot::aesthetic::{is_positional_aesthetic, AestheticContext};
+use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
 use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDataContext};
 use crate::plot::layer::is_transposed;
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
@@ -166,6 +166,7 @@ fn is_null_sentinel(value: &AestheticValue) -> bool {
 /// 4. Moreover it propagates 'color' to 'fill' and 'stroke'
 fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema]) {
     for spec in specs {
+        let aesthetic_ctx = spec.get_aesthetic_context();
         for (layer, schema) in spec.layers.iter_mut().zip(layer_schemas.iter()) {
             // Skip annotation layers - they don't inherit global mappings
             if matches!(layer.source, Some(DataSource::Annotation)) {
@@ -173,17 +174,18 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             }
 
             let supported = layer.geom.aesthetics().supported();
+            let all_names = layer.geom.aesthetics().names();
             let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
 
             // 1. First merge explicit global aesthetics (layer overrides global)
-            // Note: "color"/"colour" are accepted even though not in supported,
-            // because split_color_aesthetic will convert them to fill/stroke later
             // Note: facet aesthetics (panel, row, column) are also accepted,
             // as they apply to all layers regardless of geom support
+            // Note: Use all_names (not supported) so that Delayed aesthetics like
+            // pos2 on histogram can be targeted by explicit global mappings, matching
+            // the behavior of layer-level MAPPING
             for (aesthetic, value) in &spec.global_mappings.aesthetics {
-                let is_color_alias = matches!(aesthetic.as_str(), "color" | "colour");
                 let is_facet_aesthetic = crate::plot::scale::is_facet_aesthetic(aesthetic.as_str());
-                if supported.contains(&aesthetic.as_str()) || is_color_alias || is_facet_aesthetic {
+                if all_names.contains(&aesthetic.as_str()) || is_facet_aesthetic {
                     layer
                         .mappings
                         .aesthetics
@@ -196,13 +198,15 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             let has_wildcard = layer.mappings.wildcard || spec.global_mappings.wildcard;
             if has_wildcard {
                 for aes in &supported {
-                    // Only create mapping if column exists in the schema
-                    if schema_columns.contains(*aes) {
+                    // Convert internal name to user-facing name for schema matching
+                    let user_name = aesthetic_ctx.map_internal_to_user(aes);
+                    // Only create mapping if the user-facing column exists in the schema
+                    if schema_columns.contains(user_name.as_str()) {
                         layer
                             .mappings
                             .aesthetics
                             .entry(crate::parser::builder::normalise_aes_name(aes))
-                            .or_insert(AestheticValue::standard_column(*aes));
+                            .or_insert(AestheticValue::standard_column(&user_name));
                     }
                 }
             }
@@ -219,69 +223,59 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
     }
 }
 
-/// Let 'color' aesthetics fill defaults for the 'stroke' and 'fill' aesthetics.
-/// Also splits 'color' scale to 'fill' and 'stroke' scales.
-/// Removes 'color' from both mappings and scales after splitting to avoid
-/// non-deterministic behavior from HashMap iteration order.
-fn split_color_aesthetic(spec: &mut Plot) {
-    // 1. Split color SCALE to fill/stroke scales
-    if let Some(color_scale_idx) = spec.scales.iter().position(|s| s.aesthetic == "color") {
-        let color_scale = spec.scales[color_scale_idx].clone();
+/// Resolve aesthetic aliases in a plot specification.
+///
+/// For each alias defined in [`AESTHETIC_ALIASES`], splits the alias in scales,
+/// layer mappings, and layer parameters into the concrete target aesthetics
+/// (only where the geom supports them). Removes the alias after splitting to
+/// avoid non-deterministic behavior from HashMap iteration order.
+fn resolve_aesthetic_aliases(spec: &mut Plot) {
+    use crate::plot::layer::geom::types::AESTHETIC_ALIASES;
 
-        // Add fill scale if not already present
-        if !spec.scales.iter().any(|s| s.aesthetic == "fill") {
-            let mut fill_scale = color_scale.clone();
-            fill_scale.aesthetic = "fill".to_string();
-            spec.scales.push(fill_scale);
-        }
-
-        // Add stroke scale if not already present
-        if !spec.scales.iter().any(|s| s.aesthetic == "stroke") {
-            let mut stroke_scale = color_scale.clone();
-            stroke_scale.aesthetic = "stroke".to_string();
-            spec.scales.push(stroke_scale);
-        }
-
-        // Remove the color scale
-        spec.scales.remove(color_scale_idx);
-    }
-
-    // 2. Split color mapping to fill/stroke in layers, then remove color
-    for layer in &mut spec.layers {
-        if let Some(color_value) = layer.mappings.aesthetics.get("color").cloned() {
-            let aesthetics = layer.geom.aesthetics();
-
-            for &aes in &["stroke", "fill"] {
-                if aesthetics.is_supported(aes) {
-                    layer
-                        .mappings
-                        .aesthetics
-                        .entry(aes.to_string())
-                        .or_insert(color_value.clone());
+    for &(alias, targets) in AESTHETIC_ALIASES {
+        // 1. Split alias SCALE to target scales
+        if let Some(idx) = spec.scales.iter().position(|s| s.aesthetic == alias) {
+            let alias_scale = spec.scales[idx].clone();
+            for &target in targets {
+                if !spec.scales.iter().any(|s| s.aesthetic == target) {
+                    let mut target_scale = alias_scale.clone();
+                    target_scale.aesthetic = target.to_string();
+                    spec.scales.push(target_scale);
                 }
             }
-
-            // Remove color after splitting
-            layer.mappings.aesthetics.remove("color");
+            spec.scales.remove(idx);
         }
-    }
 
-    // 3. Split color parameter (SETTING) to fill/stroke in layers
-    for layer in &mut spec.layers {
-        if let Some(color_value) = layer.parameters.get("color").cloned() {
+        // 2. Split alias mapping and parameters in each layer
+        for layer in &mut spec.layers {
             let aesthetics = layer.geom.aesthetics();
 
-            for &aes in &["stroke", "fill"] {
-                if aesthetics.is_supported(aes) {
-                    layer
-                        .parameters
-                        .entry(aes.to_string())
-                        .or_insert(color_value.clone());
+            // Split mapping
+            if let Some(value) = layer.mappings.aesthetics.get(alias).cloned() {
+                for &target in targets {
+                    if aesthetics.is_supported(target) {
+                        layer
+                            .mappings
+                            .aesthetics
+                            .entry(target.to_string())
+                            .or_insert(value.clone());
+                    }
                 }
+                layer.mappings.aesthetics.remove(alias);
             }
 
-            // Remove color after splitting
-            layer.parameters.remove("color");
+            // Split parameter (SETTING)
+            if let Some(value) = layer.parameters.get(alias).cloned() {
+                for &target in targets {
+                    if aesthetics.is_supported(target) {
+                        layer
+                            .parameters
+                            .entry(target.to_string())
+                            .or_insert(value.clone());
+                    }
+                }
+                layer.parameters.remove(alias);
+            }
         }
     }
 }
@@ -704,10 +698,10 @@ fn add_discrete_columns_to_partition_by(
         excluded_aesthetics.insert("label");
 
         for (aesthetic, value) in &layer.mappings.aesthetics {
-            // Skip positional aesthetics - these should not trigger auto-grouping.
-            // Stats that need to group by positional aesthetics (like bar/histogram)
+            // Skip position aesthetics - these should not trigger auto-grouping.
+            // Stats that need to group by position aesthetics (like bar/histogram)
             // already handle this themselves via stat_consumed_aesthetics().
-            if is_positional_aesthetic(aesthetic) {
+            if is_position_aesthetic(aesthetic) {
                 continue;
             }
 
@@ -729,7 +723,7 @@ fn add_discrete_columns_to_partition_by(
                 // Discrete and Binned scales produce categorical groupings.
                 // Continuous scales don't group. Identity defers to column type.
                 let primary_aes = aesthetic_ctx
-                    .primary_internal_positional(aesthetic)
+                    .primary_internal_position(aesthetic)
                     .unwrap_or(aesthetic);
                 let is_discrete = if let Some(scale) = scale_map.get(primary_aes) {
                     if let Some(ref scale_type) = scale.scale_type {
@@ -839,6 +833,8 @@ fn collect_layer_required_columns(layer: &Layer, spec: &Plot) -> HashSet<String>
 /// Prune columns from a DataFrame to only include required columns.
 ///
 /// Columns that don't exist in the DataFrame are silently ignored.
+/// If no required columns exist in the DataFrame (e.g., annotation layers with only
+/// literal aesthetics), returns a 0-column DataFrame with the same row count.
 fn prune_dataframe(df: &DataFrame, required: &HashSet<String>) -> Result<DataFrame> {
     let columns_to_keep: Vec<String> = df
         .get_column_names()
@@ -848,10 +844,28 @@ fn prune_dataframe(df: &DataFrame, required: &HashSet<String>) -> Result<DataFra
         .collect();
 
     if columns_to_keep.is_empty() {
-        return Err(GgsqlError::InternalError(format!(
-            "No columns remain after pruning. Required columns: {:?}",
-            required
-        )));
+        // Return a 0-column DataFrame with the same row count
+        // This happens for annotation layers with only literal aesthetics (e.g., PLACE rule SETTING slope => 0.4)
+        // The row count determines how many marks to draw; aesthetics come from Literal values in mappings
+        let row_count = df.height();
+
+        if row_count > 0 {
+            // Create a 0-column DataFrame with the correct row count
+            // We do this by creating a dummy column and then dropping it
+            use polars::prelude::df;
+            let with_rows = df! {
+                "__dummy__" => vec![0i32; row_count]
+            }
+            .map_err(|e| GgsqlError::InternalError(format!("Failed to create DataFrame: {}", e)))?;
+
+            let result = with_rows.drop("__dummy__").map_err(|e| {
+                GgsqlError::InternalError(format!("Failed to drop dummy column: {}", e))
+            })?;
+            return Ok(result);
+        } else {
+            // 0 rows - just return empty DataFrame
+            return Ok(DataFrame::default());
+        }
     }
 
     df.select(&columns_to_keep)
@@ -902,7 +916,7 @@ pub struct PreparedData {
 /// # Arguments
 /// * `query` - The full ggsql query string
 /// * `reader` - A Reader implementation for executing SQL
-pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<PreparedData> {
+pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<PreparedData> {
     let execute_query = |sql: &str| reader.execute_sql(sql);
     let dialect = reader.dialect();
 
@@ -997,10 +1011,10 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     // because transformation happens in builder.rs right after parsing
     merge_global_mappings_into_layers(&mut specs, &layer_schemas);
 
-    // Split 'color' aesthetic to 'fill' and 'stroke' early in the pipeline
-    // This must happen before validation so fill/stroke are validated (not color)
+    // Resolve aesthetic aliases (e.g., 'color' → 'fill'/'stroke') early in the pipeline
+    // This must happen before validation so concrete aesthetics are validated
     for spec in &mut specs {
-        split_color_aesthetic(spec);
+        resolve_aesthetic_aliases(spec);
     }
 
     // Add literal (constant) columns to type info programmatically
@@ -1038,6 +1052,16 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
         &layer_schemas,
         &specs[0].aesthetic_context,
     )?;
+
+    // Allow geoms to adjust mappings based on their specific logic
+    // (e.g., rule geom converts pos1/pos2 to AnnotationColumn when slope is present)
+    for spec in &mut specs {
+        for layer in &mut spec.layers {
+            layer
+                .geom
+                .setup_layer(&mut layer.mappings, &mut layer.parameters)?;
+        }
+    }
 
     // Create scales for all mapped aesthetics that don't have explicit SCALE clauses
     scale::create_missing_scales(&mut specs[0]);
@@ -1202,7 +1226,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
             // (which uses remapping keys to create mapping entries).
             // Phase 4.5 will then flip the DataFrame columns to match.
             if is_transposed(l) {
-                crate::plot::layer::orientation::flip_positional_aesthetics(
+                crate::plot::layer::orientation::flip_position_aesthetics(
                     &mut l.remappings.aesthetics,
                 );
             }
@@ -1220,7 +1244,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
     // Phase 4.5: Flip DataFrame columns for Transposed orientation layers
     // This must happen AFTER remappings (Phase 4) because remappings create columns
     // with ALIGNED orientation names, and the flip converts them to USER orientation.
-    // All positional columns (stat-produced and literal) are flipped together.
+    // All position columns (stat-produced and literal) are flipped together.
     let mut flipped_keys: HashSet<String> = HashSet::new();
     for layer in specs[0].layers.iter() {
         if is_transposed(layer) {
@@ -1229,7 +1253,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
                     // First time flipping this data key
                     if let Some(df) = data_map.remove(key) {
                         let flipped_df =
-                            crate::plot::layer::orientation::flip_dataframe_positional_columns(
+                            crate::plot::layer::orientation::flip_dataframe_position_columns(
                                 df,
                                 &aesthetic_ctx,
                             );
@@ -1275,11 +1299,11 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
 
     // Resolve facet properties (after data is available)
     for spec in &mut specs {
-        // Get positional aesthetic names from the aesthetic context (coord-specific)
+        // Get position aesthetic names from the aesthetic context (coord-specific)
         // This must be done before mutably borrowing facet
-        let positional_names: Vec<String> = spec.get_aesthetic_context().user_positional().to_vec();
+        let position_names: Vec<String> = spec.get_aesthetic_context().user_position().to_vec();
         // Convert to &str slice for resolve_facet_properties
-        let positional_refs: Vec<&str> = positional_names.iter().map(|s| s.as_str()).collect();
+        let position_refs: Vec<&str> = position_names.iter().map(|s| s.as_str()).collect();
 
         if let Some(ref mut facet) = spec.facet {
             // Get the first layer's data for computing facet defaults
@@ -1295,7 +1319,7 @@ pub fn prepare_data_with_reader<R: Reader>(query: &str, reader: &R) -> Result<Pr
                 .map(|aes| naming::aesthetic_column(aes))
                 .collect();
             let context = FacetDataContext::from_dataframe(facet_df, &aesthetic_cols);
-            resolve_facet_properties(facet, &context, &positional_refs)
+            resolve_facet_properties(facet, &context, &position_refs)
                 .map_err(|e| GgsqlError::ValidationError(format!("Facet: {}", e)))?;
         }
     }
@@ -2391,7 +2415,7 @@ mod tests {
             "Annotation layer should have exactly 1 row"
         );
 
-        // Verify positional aesthetics are moved from SETTING to mappings with transformed names
+        // Verify position aesthetics are moved from SETTING to mappings with transformed names
         // They become Column references (not Literals) so they can participate in scale training
         assert!(
             matches!(
@@ -2408,7 +2432,7 @@ mod tests {
             "y should be transformed to pos2, moved to mappings, and materialized as column"
         );
 
-        // Verify required non-positional aesthetic (label) is in mappings as AnnotationColumn
+        // Verify required material aesthetic (label) is in mappings as AnnotationColumn
         // After process_annotation_layer, required aesthetics are converted to AnnotationColumn
         assert!(
             matches!(
@@ -2418,9 +2442,9 @@ mod tests {
             "label (required) should be in mappings as AnnotationColumn with prefixed name"
         );
 
-        // Non-required, non-positional, non-array aesthetics like size may be processed
+        // Non-required, material, non-array aesthetics like size may be processed
         // by resolve_aesthetics or other downstream logic, so we don't strictly check
-        // where they end up. The key point is that required/positional aesthetics are
+        // where they end up. The key point is that required/position aesthetics are
         // correctly moved to mappings.
     }
 
@@ -2630,6 +2654,74 @@ mod tests {
             "PLACE layer should not have stroke (text geom default is null)"
         );
     }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_place_array_parameter_not_recycled() {
+        // Test that array parameters that are NOT supported aesthetics
+        // should not trigger row recycling in PLACE layers.
+        // Example: offset is a PARAMETER for text geom, not an aesthetic,
+        // so `offset => [0, 1]` should NOT create 2 rows.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            VISUALISE
+            PLACE text SETTING x => 5, y => 10, label => 'Test', offset => [0, 1]
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        assert_eq!(result.specs.len(), 1);
+        assert_eq!(
+            result.specs[0].layers.len(),
+            1,
+            "Should have one PLACE layer"
+        );
+
+        let text_layer = &result.specs[0].layers[0];
+        assert_eq!(text_layer.geom, crate::Geom::text());
+        assert!(
+            matches!(text_layer.source, Some(DataSource::Annotation)),
+            "PLACE layer should have Annotation source"
+        );
+
+        // Verify annotation layer has exactly 1 row (not 2)
+        // offset is a parameter, not an aesthetic, so it should NOT be recycled
+        let annotation_key = text_layer.data_key.as_ref().unwrap();
+        let annotation_df = result.data.get(annotation_key).unwrap();
+        assert_eq!(
+            annotation_df.height(),
+            1,
+            "Annotation layer should have exactly 1 row (offset array should not be recycled)"
+        );
+
+        // Verify offset remains as a parameter (not moved to aesthetics)
+        assert!(
+            text_layer.parameters.contains_key("offset"),
+            "offset should remain as a parameter"
+        );
+        assert!(
+            !text_layer.mappings.contains_key("offset"),
+            "offset should NOT be moved to aesthetics/mappings"
+        );
+
+        // Verify offset has the original array value
+        match text_layer.parameters.get("offset") {
+            Some(crate::plot::types::ParameterValue::Array(arr)) => {
+                assert_eq!(arr.len(), 2, "offset should have 2 elements");
+                assert!(
+                    matches!(arr[0], crate::plot::types::ArrayElement::Number(n) if (n - 0.0).abs() < 1e-10),
+                    "offset[0] should be 0"
+                );
+                assert!(
+                    matches!(arr[1], crate::plot::types::ArrayElement::Number(n) if (n - 1.0).abs() < 1e-10),
+                    "offset[1] should be 1"
+                );
+            }
+            other => panic!("Expected offset to be Array, got: {:?}", other),
+        }
+    }
+
     #[cfg(feature = "duckdb")]
     #[test]
     fn test_null_mapping_removes_global_aesthetic() {
