@@ -1,0 +1,20 @@
+---
+title: "The ggsql knitr engine"
+knitr:
+  opts_chunk:
+    collapse: true
+    comment: "#>"
+description: |
+  An introduction to using the ggsql knitr engine in Rmarkdown and 
+  Quarto
+vignette: >
+  %\VignetteIndexEntry{The ggsql knitr engine}
+  %\VignetteEngine{quarto::html}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup}
+library(ggsql)
+```
+
+The main selling point of the ggsql R package is arguably it's knitr engine that allows you to add `{ggsql}` blocks to your Rmarkdown and Quarto documents. While ggsql also provides a Jupyter kernel that Quarto can use, Jupyter only allows a single kernel at a time, so if you wish to mix R and/or Python blocks with ggsql visualizations, then the ggsql knitr engine is the way.
