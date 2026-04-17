@@ -18,6 +18,7 @@ use std::any::Any;
 use std::collections::HashMap;
 
 use super::data::{dataframe_to_values, dataframe_to_values_with_bins, ROW_INDEX_COLUMN};
+use super::encoding::RenderContext;
 
 // =============================================================================
 // Basic Geom Utilities
@@ -121,57 +122,6 @@ pub enum PreparedData {
 }
 
 // =============================================================================
-// RenderContext
-// =============================================================================
-
-/// Context information available to renderers during layer preparation
-pub struct RenderContext<'a> {
-    /// Scale definitions (for extent and properties)
-    pub scales: &'a [crate::Scale],
-}
-
-impl<'a> RenderContext<'a> {
-    /// Create a new render context
-    pub fn new(scales: &'a [crate::Scale]) -> Self {
-        Self { scales }
-    }
-
-    /// Find a scale by aesthetic name
-    pub fn find_scale(&self, aesthetic: &str) -> Option<&crate::Scale> {
-        self.scales.iter().find(|s| s.aesthetic == aesthetic)
-    }
-
-    /// Get the numeric extent (min, max) for a given aesthetic from its scale
-    pub fn get_extent(&self, aesthetic: &str) -> Result<(f64, f64)> {
-        use crate::plot::ArrayElement;
-
-        // Find the scale for this aesthetic
-        let scale = self.find_scale(aesthetic).ok_or_else(|| {
-            GgsqlError::ValidationError(format!(
-                "Cannot determine extent for aesthetic '{}': no scale found",
-                aesthetic
-            ))
-        })?;
-
-        // Extract continuous range from input_range
-        if let Some(range) = &scale.input_range {
-            if range.len() >= 2 {
-                if let (ArrayElement::Number(min), ArrayElement::Number(max)) =
-                    (&range[0], &range[1])
-                {
-                    return Ok((*min, *max));
-                }
-            }
-        }
-
-        Err(GgsqlError::ValidationError(format!(
-            "Cannot determine extent for aesthetic '{}': scale has no valid numeric range",
-            aesthetic
-        )))
-    }
-}
-
-// =============================================================================
 // GeomRenderer Trait System
 // =============================================================================
 
@@ -248,6 +198,7 @@ pub trait GeomRenderer: Send + Sync {
         _layer: &Layer,
         _data_key: &str,
         _prepared: &PreparedData,
+        _context: &RenderContext,
     ) -> Result<Vec<Value>> {
         Ok(vec![layer_spec])
     }
@@ -274,7 +225,7 @@ impl GeomRenderer for BarRenderer {
         &self,
         layer_spec: &mut Value,
         layer: &Layer,
-        _context: &RenderContext,
+        context: &RenderContext,
     ) -> Result<()> {
         let width = match layer.adjusted_width {
             // The adjusted width comes from position adjustments
@@ -288,7 +239,8 @@ impl GeomRenderer for BarRenderer {
 
         // For horizontal bars, use "height" for band size; for vertical, use "width"
         let is_horizontal = is_transposed(layer);
-        let axis = if is_horizontal { "y" } else { "x" };
+        let (pos1, _, _, pos2, _, _) = &context.channels;
+        let axis = if is_horizontal { pos2 } else { pos1 };
 
         let size_value = match layer_spec["encoding"][axis]["bin"].as_str() {
             // I don't think binned scales obey 'band', but they don't tolerate the 'expr' option.
@@ -495,6 +447,7 @@ impl GeomRenderer for PathRenderer {
         layer: &Layer,
         _data_key: &str,
         prepared: &PreparedData,
+        context: &RenderContext,
     ) -> Result<Vec<Value>> {
         // Get metadata from prepared data
         let PreparedData::Single { metadata, .. } = prepared else {
@@ -539,10 +492,11 @@ impl GeomRenderer for PathRenderer {
             return Ok(vec![layer_spec]);
         }
 
-        // Build list of fields to segment (always x/y, plus size if linewidth varies)
+        // Build list of fields to segment (always pos1/pos2, plus size if linewidth varies)
+        let (pos1, _, _, pos2, _, _) = &context.channels;
         let mut segment_fields = vec![
-            ("x", naming::aesthetic_column("pos1")),
-            ("y", naming::aesthetic_column("pos2")),
+            (pos1.as_str(), naming::aesthetic_column("pos1")),
+            (pos2.as_str(), naming::aesthetic_column("pos2")),
         ];
         if varying_aesthetics.contains(&"linewidth") {
             segment_fields.push(("size", naming::aesthetic_column("linewidth")));
@@ -660,14 +614,15 @@ impl GeomRenderer for SegmentRenderer {
         &self,
         encoding: &mut Map<String, Value>,
         _layer: &Layer,
-        _context: &RenderContext,
+        context: &RenderContext,
     ) -> Result<()> {
+        let (pos1, pos1_end, _, pos2, pos2_end, _) = &context.channels;
         // If endpoint is missing, use start point (creates vertical/horizontal line)
-        if let Some(x) = encoding.get("x").cloned() {
-            encoding.entry("x2".to_string()).or_insert(x);
+        if let Some(v) = encoding.get(pos1.as_str()).cloned() {
+            encoding.entry(pos1_end.clone()).or_insert(v);
         }
-        if let Some(y) = encoding.get("y").cloned() {
-            encoding.entry("y2".to_string()).or_insert(y);
+        if let Some(v) = encoding.get(pos2.as_str()).cloned() {
+            encoding.entry(pos2_end.clone()).or_insert(v);
         }
         Ok(())
     }
@@ -698,10 +653,11 @@ impl GeomRenderer for RuleRenderer {
         }
 
         // Use layer's pre-computed orientation
+        let (pos1, pos1_end, _, pos2, pos2_end, _) = &context.channels;
         let (primary, primary2, secondary, secondary2, extent_aes) = if is_transposed(layer) {
-            ("y", "y2", "x", "x2", "pos2")
+            (pos2, pos2_end, pos1, pos1_end, "pos2")
         } else {
-            ("x", "x2", "y", "y2", "pos1")
+            (pos1, pos1_end, pos2, pos2_end, "pos1")
         };
 
         // Get primary axis extent from context to set explicit scale domain
@@ -714,22 +670,22 @@ impl GeomRenderer for RuleRenderer {
         // Add encodings for rule mark
         // primary_min/primary_max are created by transforms (extent of the axis)
         // secondary_min/secondary_max are computed via formula
-        encoding.insert(primary.to_string(), primary_enco);
+        encoding.insert(primary.clone(), primary_enco);
         encoding.insert(
-            primary2.to_string(),
+            primary2.clone(),
             json!({
                 "field": "primary_max"
             }),
         );
         encoding.insert(
-            secondary.to_string(),
+            secondary.clone(),
             json!({
                 "field": "secondary_min",
                 "type": "quantitative"
             }),
         );
         encoding.insert(
-            secondary2.to_string(),
+            secondary2.clone(),
             json!({
                 "field": "secondary_max"
             }),
@@ -1367,6 +1323,7 @@ impl GeomRenderer for TextRenderer {
         layer: &Layer,
         data_key: &str,
         prepared: &PreparedData,
+        _context: &RenderContext,
     ) -> Result<Vec<Value>> {
         let PreparedData::Composite { metadata, .. } = prepared else {
             return Err(GgsqlError::InternalError(
@@ -1399,7 +1356,7 @@ impl GeomRenderer for TileRenderer {
         &self,
         layer_spec: &mut Value,
         _layer: &Layer,
-        _context: &RenderContext,
+        context: &RenderContext,
     ) -> Result<()> {
         let encoding = layer_spec
             .get_mut("encoding")
@@ -1409,12 +1366,14 @@ impl GeomRenderer for TileRenderer {
             return Ok(());
         };
 
+        let (pos1, pos1_end, _, pos2, pos2_end, _) = &context.channels;
+
         // Check which directions are discrete
-        let x_is_discrete = !encoding.contains_key("x2");
-        let y_is_discrete = !encoding.contains_key("y2");
+        let pos1_is_discrete = !encoding.contains_key(pos1_end.as_str());
+        let pos2_is_discrete = !encoding.contains_key(pos2_end.as_str());
 
         // Early return if both continuous
-        if !x_is_discrete && !y_is_discrete {
+        if !pos1_is_discrete && !pos2_is_discrete {
             return Ok(());
         }
 
@@ -1424,13 +1383,13 @@ impl GeomRenderer for TileRenderer {
             "clip": true
         });
 
-        if x_is_discrete {
+        if pos1_is_discrete {
             if let Some(width_enc) = encoding.remove("width") {
                 // Check if it's a field encoding or literal value
                 if let Some(field) = width_enc.get("field").and_then(|f| f.as_str()) {
                     // Field encoding: use expression with datum reference
                     mark["width"] = json!({
-                        "expr": format!("datum.{} * bandwidth('x')", field)
+                        "expr": format!("datum.{} * bandwidth('{}')", field, pos1)
                     });
                 } else if let Some(value) = width_enc.get("value") {
                     // Literal value: use band syntax
@@ -1439,13 +1398,13 @@ impl GeomRenderer for TileRenderer {
             }
         }
 
-        if y_is_discrete {
+        if pos2_is_discrete {
             if let Some(height_enc) = encoding.remove("height") {
                 // Check if it's a field encoding or literal value
                 if let Some(field) = height_enc.get("field").and_then(|f| f.as_str()) {
                     // Field encoding: use expression with datum reference
                     mark["height"] = json!({
-                        "expr": format!("datum.{} * bandwidth('y')", field)
+                        "expr": format!("datum.{} * bandwidth('{}')", field, pos2)
                     });
                 } else if let Some(value) = height_enc.get("value") {
                     // Literal value: use band syntax
@@ -1606,22 +1565,23 @@ impl GeomRenderer for ViolinRenderer {
         &self,
         encoding: &mut Map<String, Value>,
         layer: &Layer,
-        _context: &RenderContext,
+        context: &RenderContext,
     ) -> Result<()> {
         // Read orientation from layer (already resolved during execution)
         let is_horizontal = is_transposed(layer);
+        let (pos1, _, pos1_offset, pos2, _, pos2_offset) = &context.channels;
 
         encoding.remove("offset");
 
         // Categorical axis for detail encoding:
-        // - Vertical: x channel (categorical groups on x-axis)
-        // - Horizontal: y channel (categorical groups on y-axis)
-        let categorical_channel = if is_horizontal { "y" } else { "x" };
+        // - Vertical: pos1 channel (categorical groups)
+        // - Horizontal: pos2 channel (categorical groups)
+        let categorical_channel = if is_horizontal { pos2 } else { pos1 };
 
         // Ensure categorical field is in detail encoding to create separate violins per category
         // This is needed because line marks with filled:true require detail to create separate paths
         let categorical_field = encoding
-            .get(categorical_channel)
+            .get(categorical_channel.as_str())
             .and_then(|x| x.get("field"))
             .and_then(|f| f.as_str())
             .map(|s| s.to_string());
@@ -1681,12 +1641,10 @@ impl GeomRenderer for ViolinRenderer {
             }
         }
 
-        // Offset channel:
-        // - Vertical: xOffset (offsets left/right from category)
-        // - Horizontal: yOffset (offsets up/down from category)
-        let offset_channel = if is_horizontal { "yOffset" } else { "xOffset" };
+        // Offset channel based on orientation
+        let offset_channel = if is_horizontal { pos2_offset } else { pos1_offset };
         encoding.insert(
-            offset_channel.to_string(),
+            offset_channel.clone(),
             json!({
                 "field": "__final_offset",
                 "type": "quantitative",
@@ -1719,6 +1677,7 @@ impl GeomRenderer for ErrorBarRenderer {
         layer: &Layer,
         _data_key: &str,
         _prepared: &PreparedData,
+        context: &RenderContext,
     ) -> Result<Vec<Value>> {
         // Get width parameter (in points)
         let width = if let Some(ParameterValue::Number(num)) = layer.parameters.get("width") {
@@ -1736,11 +1695,12 @@ impl GeomRenderer for ErrorBarRenderer {
         let max_field = naming::aesthetic_column("pos2max");
 
         // Determine which encoding channel is used for the error range (transposition happens upstream)
+        let (pos1, pos1_end, _, pos2, pos2_end, _) = &context.channels;
         let is_vertical = !is_transposed(layer);
         let (orient, position) = if is_vertical {
-            ("horizontal", "y") // pos2min/pos2max are on y-axis, tick is horizontal
+            ("horizontal", pos2) // pos2min/pos2max are on pos2 axis, tick is horizontal
         } else {
-            ("vertical", "x") // pos2min/pos2max are on x-axis, tick is vertical
+            ("vertical", pos1) // pos2min/pos2max are on pos1 axis, tick is vertical
         };
 
         // First hinge (at min position)
@@ -1753,10 +1713,10 @@ impl GeomRenderer for ErrorBarRenderer {
             "clip": true
         });
         hinge["encoding"][position]["field"] = json!(min_field);
-        // Remove x2 and y2 (not needed for tick mark)
+        // Remove end channels (not needed for tick mark)
         if let Some(e) = hinge["encoding"].as_object_mut() {
-            e.remove("x2");
-            e.remove("y2");
+            e.remove(pos1_end.as_str());
+            e.remove(pos2_end.as_str());
         }
         layers.push(hinge.clone());
 
@@ -1843,6 +1803,7 @@ impl BoxplotRenderer {
         layer: &Layer,
         base_key: &str,
         has_outliers: bool,
+        context: &RenderContext,
     ) -> Result<Vec<Value>> {
         let mut layers: Vec<Value> = Vec::new();
 
@@ -1864,7 +1825,7 @@ impl BoxplotRenderer {
             )
         };
 
-        // Validate x aesthetic exists (required for boxplot)
+        // Validate pos1 aesthetic exists (required for boxplot)
         layer
             .mappings
             .get("pos1")
@@ -1872,7 +1833,7 @@ impl BoxplotRenderer {
             .ok_or_else(|| {
                 GgsqlError::WriterError("Boxplot requires 'x' aesthetic mapping".to_string())
             })?;
-        // Validate y aesthetic exists (required for boxplot)
+        // Validate pos2 aesthetic exists (required for boxplot)
         layer
             .mappings
             .get("pos2")
@@ -1881,9 +1842,10 @@ impl BoxplotRenderer {
                 GgsqlError::WriterError("Boxplot requires 'y' aesthetic mapping".to_string())
             })?;
 
-        let value_var1 = if is_horizontal { "x" } else { "y" };
-        let value_var2 = if is_horizontal { "x2" } else { "y2" };
-        let axis = if is_horizontal { "y" } else { "x" };
+        let (pos1, pos1_end, _, pos2, pos2_end, _) = &context.channels;
+        let value_var1 = if is_horizontal { pos1 } else { pos2 };
+        let value_var2 = if is_horizontal { pos1_end } else { pos2_end };
+        let axis = if is_horizontal { pos2 } else { pos1 };
 
         // Get width parameter
         let width = match layer.adjusted_width {
@@ -2070,6 +2032,7 @@ impl GeomRenderer for BoxplotRenderer {
         layer: &Layer,
         data_key: &str,
         prepared: &PreparedData,
+        context: &RenderContext,
     ) -> Result<Vec<Value>> {
         let PreparedData::Composite { metadata, .. } = prepared else {
             return Err(GgsqlError::InternalError(
@@ -2081,7 +2044,7 @@ impl GeomRenderer for BoxplotRenderer {
             GgsqlError::InternalError("Failed to downcast boxplot metadata".to_string())
         })?;
 
-        self.render_layers(prototype, layer, data_key, info.has_outliers)
+        self.render_layers(prototype, layer, data_key, info.has_outliers, context)
     }
 }
 
@@ -2111,6 +2074,7 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plot::projection::CoordKind;
 
     #[test]
     fn test_violin_detail_encoding() {
@@ -2123,7 +2087,7 @@ mod tests {
             "x".to_string(),
             json!({"field": "species", "type": "nominal"}),
         );
-        let context = RenderContext::new(&[]);
+        let context = RenderContext::default_for_test();
         renderer
             .modify_encoding(&mut encoding, &layer, &context)
             .unwrap();
@@ -2142,7 +2106,7 @@ mod tests {
             "detail".to_string(),
             json!({"field": "island", "type": "nominal"}),
         );
-        let context = RenderContext::new(&[]);
+        let context = RenderContext::default_for_test();
         renderer
             .modify_encoding(&mut encoding, &layer, &context)
             .unwrap();
@@ -2164,7 +2128,7 @@ mod tests {
             "detail".to_string(),
             json!({"field": "species", "type": "nominal"}),
         );
-        let context = RenderContext::new(&[]);
+        let context = RenderContext::default_for_test();
         renderer
             .modify_encoding(&mut encoding, &layer, &context)
             .unwrap();
@@ -2183,7 +2147,7 @@ mod tests {
             "detail".to_string(),
             json!([{"field": "island", "type": "nominal"}]),
         );
-        let context = RenderContext::new(&[]);
+        let context = RenderContext::default_for_test();
         renderer
             .modify_encoding(&mut encoding, &layer, &context)
             .unwrap();
@@ -2208,7 +2172,7 @@ mod tests {
                 {"field": "species", "type": "nominal"}
             ]),
         );
-        let context = RenderContext::new(&[]);
+        let context = RenderContext::default_for_test();
         renderer
             .modify_encoding(&mut encoding, &layer, &context)
             .unwrap();
@@ -2256,7 +2220,7 @@ mod tests {
     fn render_tile(encoding: &mut Map<String, Value>) -> Result<Value> {
         let renderer = TileRenderer;
         let layer = Layer::new(crate::plot::Geom::tile());
-        let context = RenderContext::new(&[]);
+        let context = RenderContext::default_for_test();
 
         renderer.modify_encoding(encoding, &layer, &context)?;
 
@@ -2497,10 +2461,11 @@ mod tests {
 
         // Create a dummy layer
         let layer = crate::plot::Layer::new(crate::plot::Geom::text());
+        let context = RenderContext::default_for_test();
 
         // Call finalize to get layers
         let layers = renderer
-            .finalize(prototype.clone(), &layer, "test", &prepared)
+            .finalize(prototype.clone(), &layer, "test", &prepared, &context)
             .unwrap();
 
         // For multiple font groups, should return single parent spec with nested layers
@@ -2576,10 +2541,11 @@ mod tests {
 
         // Create a dummy layer
         let layer = crate::plot::Layer::new(crate::plot::Geom::text());
+        let context = RenderContext::default_for_test();
 
         // Call finalize to get layers
         let layers = renderer
-            .finalize(prototype.clone(), &layer, "test", &prepared)
+            .finalize(prototype.clone(), &layer, "test", &prepared, &context)
             .unwrap();
 
         // Should return single parent spec with nested layers
@@ -3379,7 +3345,7 @@ mod tests {
         use crate::naming;
 
         let renderer = ViolinRenderer;
-        let context = RenderContext::new(&[]);
+        let context = RenderContext::default_for_test();
 
         let layer = Layer::new(crate::plot::Geom::violin());
         let mut layer_spec = json!({
@@ -3479,7 +3445,7 @@ mod tests {
             };
 
             ViolinRenderer
-                .modify_spec(&mut layer_spec, &layer, &RenderContext::new(&[]))
+                .modify_spec(&mut layer_spec, &layer, &RenderContext::default_for_test())
                 .unwrap();
 
             layer_spec["transform"]
@@ -3581,13 +3547,13 @@ mod tests {
             label_mapping: None,
             label_template: "{}".to_string(),
         }];
-        let context = RenderContext::new(&scales);
+        let context = RenderContext::new(&scales, CoordKind::Cartesian);
         let result = context.get_extent("x");
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), (0.0, 10.0));
 
         // Test error case: scale not found
-        let context = RenderContext::new(&scales);
+        let context = RenderContext::new(&scales, CoordKind::Cartesian);
         let result = context.get_extent("y");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("no scale found"));
@@ -3606,7 +3572,7 @@ mod tests {
             label_mapping: None,
             label_template: "{}".to_string(),
         }];
-        let context = RenderContext::new(&scales);
+        let context = RenderContext::new(&scales, CoordKind::Cartesian);
         let result = context.get_extent("x");
         assert!(result.is_err());
         assert!(result
@@ -3631,7 +3597,7 @@ mod tests {
             label_mapping: None,
             label_template: "{}".to_string(),
         }];
-        let context = RenderContext::new(&scales);
+        let context = RenderContext::new(&scales, CoordKind::Cartesian);
         let result = context.get_extent("x");
         assert!(result.is_err());
         assert!(result
@@ -4011,8 +3977,9 @@ mod tests {
         });
 
         // Finalize should switch to trail mark and translate encodings
+        let context = RenderContext::default_for_test();
         let result = renderer
-            .finalize(layer_spec.clone(), &layer, "test", &prepared)
+            .finalize(layer_spec.clone(), &layer, "test", &prepared, &context)
             .unwrap();
 
         assert_eq!(result.len(), 1);
@@ -4072,8 +4039,9 @@ mod tests {
         });
 
         // Finalize should apply segmentation transforms
+        let context = RenderContext::default_for_test();
         let result = renderer
-            .finalize(layer_spec.clone(), &layer, "test", &prepared)
+            .finalize(layer_spec.clone(), &layer, "test", &prepared, &context)
             .unwrap();
 
         assert_eq!(result.len(), 1);

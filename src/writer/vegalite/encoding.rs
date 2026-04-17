@@ -6,7 +6,7 @@
 use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
 use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path, ScaleTypeKind};
 use crate::plot::{CoordKind, ParameterValue};
-use crate::{AestheticValue, DataFrame, Plot, Result};
+use crate::{AestheticValue, DataFrame, GgsqlError, Plot, Result};
 use polars::prelude::*;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
@@ -1006,7 +1006,7 @@ pub(super) fn map_aesthetic_name(
 ///
 /// Returns `Some(channel_name)` for internal position aesthetics (pos1, pos2, etc.),
 /// or `None` for material aesthetics.
-fn map_position_to_vegalite(aesthetic: &str, coord_kind: CoordKind) -> Option<String> {
+pub(super) fn map_position_to_vegalite(aesthetic: &str, coord_kind: CoordKind) -> Option<String> {
     let (primary, secondary) = match coord_kind {
         CoordKind::Cartesian => ("x", "y"),
         CoordKind::Polar => ("radius", "theta"),
@@ -1022,6 +1022,85 @@ fn map_position_to_vegalite(aesthetic: &str, coord_kind: CoordKind) -> Option<St
         "pos1end" | "pos1max" => Some(format!("{}2", primary)),
         "pos2end" | "pos2max" => Some(format!("{}2", secondary)),
         _ => None,
+    }
+}
+
+// =============================================================================
+// RenderContext
+// =============================================================================
+
+/// Resolved Vega-Lite position channel names for the active coordinate system.
+///
+/// Order: `(pos1, pos1_end, pos1_offset, pos2, pos2_end, pos2_offset)`
+///
+/// For Cartesian: `("x", "x2", "xOffset", "y", "y2", "yOffset")`
+/// For Polar: `("theta", "theta2", "thetaOffset", "radius", "radius2", "radiusOffset")`
+pub type PositionChannels = (String, String, String, String, String, String);
+
+/// Context information available to renderers during layer preparation
+pub struct RenderContext<'a> {
+    /// Scale definitions (for extent and properties)
+    pub scales: &'a [crate::Scale],
+    /// Resolved position channel names for the active coordinate system
+    pub channels: PositionChannels,
+}
+
+impl<'a> RenderContext<'a> {
+    /// Create a new render context
+    pub fn new(scales: &'a [crate::Scale], coord_kind: CoordKind) -> Self {
+        let pos1 = map_position_to_vegalite("pos1", coord_kind).unwrap();
+        let pos1_end = map_position_to_vegalite("pos1end", coord_kind).unwrap();
+        let pos2 = map_position_to_vegalite("pos2", coord_kind).unwrap();
+        let pos2_end = map_position_to_vegalite("pos2end", coord_kind).unwrap();
+
+        let (pos1_offset, pos2_offset) = match coord_kind {
+            CoordKind::Cartesian => ("xOffset".to_string(), "yOffset".to_string()),
+            CoordKind::Polar => ("thetaOffset".to_string(), "radiusOffset".to_string()),
+        };
+
+        Self {
+            scales,
+            channels: (pos1, pos1_end, pos1_offset, pos2, pos2_end, pos2_offset),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn default_for_test() -> Self {
+        Self::new(&[], CoordKind::Cartesian)
+    }
+
+    /// Find a scale by aesthetic name
+    pub fn find_scale(&self, aesthetic: &str) -> Option<&crate::Scale> {
+        self.scales.iter().find(|s| s.aesthetic == aesthetic)
+    }
+
+    /// Get the numeric extent (min, max) for a given aesthetic from its scale
+    pub fn get_extent(&self, aesthetic: &str) -> Result<(f64, f64)> {
+        use crate::plot::ArrayElement;
+
+        // Find the scale for this aesthetic
+        let scale = self.find_scale(aesthetic).ok_or_else(|| {
+            GgsqlError::ValidationError(format!(
+                "Cannot determine extent for aesthetic '{}': no scale found",
+                aesthetic
+            ))
+        })?;
+
+        // Extract continuous range from input_range
+        if let Some(range) = &scale.input_range {
+            if range.len() >= 2 {
+                if let (ArrayElement::Number(min), ArrayElement::Number(max)) =
+                    (&range[0], &range[1])
+                {
+                    return Ok((*min, *max));
+                }
+            }
+        }
+
+        Err(GgsqlError::ValidationError(format!(
+            "Cannot determine extent for aesthetic '{}': scale has no valid numeric range",
+            aesthetic
+        )))
     }
 }
 

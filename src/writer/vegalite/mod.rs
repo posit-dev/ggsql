@@ -172,7 +172,7 @@ fn build_layers(
     let mut layers = Vec::new();
 
     // Build context once for all layers
-    let context = layer::RenderContext::new(&spec.scales);
+    let context = encoding::RenderContext::new(&spec.scales, coord_kind);
 
     for (layer_idx, layer) in spec.layers.iter().enumerate() {
         let data_key = &layer_data_keys[layer_idx];
@@ -225,7 +225,7 @@ fn build_layers(
         renderer.modify_spec(&mut layer_spec, layer, &context)?;
 
         // Finalize the layer (may expand into multiple layers for composite geoms)
-        let final_layers = renderer.finalize(layer_spec, layer, data_key, prepared)?;
+        let final_layers = renderer.finalize(layer_spec, layer, data_key, prepared, &context)?;
         layers.extend(final_layers);
     }
 
@@ -338,19 +338,18 @@ fn build_layer_encoding(
         encoding.insert("detail".to_string(), detail);
     }
 
-    // Add xOffset encoding for dodged positions (pos1offset column)
+    // Build context for renderer (also provides resolved position channel names)
+    let context = encoding::RenderContext::new(&spec.scales, coord_kind);
+    let (_, _, pos1_offset, pos2, _, pos2_offset) = &context.channels;
+
+    // Add pos1 offset encoding for dodged positions (pos1offset column)
     // This column is created by position::apply_dodge() for Position::Dodge
     // The offset values are centered around 0 (e.g., -0.3, 0, +0.3 for 3 groups)
     // We set domain [-0.5, 0.5] to ensure the scale is symmetric and maps to full band width
     let pos1offset_col = naming::aesthetic_column("pos1offset");
     if df.column(&pos1offset_col).is_ok() {
-        // Map to appropriate offset channel based on coord type
-        let offset_channel = match coord_kind {
-            CoordKind::Cartesian => "xOffset",
-            CoordKind::Polar => "thetaOffset",
-        };
         encoding.insert(
-            offset_channel.to_string(),
+            pos1_offset.clone(),
             json!({
                 "field": pos1offset_col,
                 "type": "quantitative",
@@ -361,17 +360,12 @@ fn build_layer_encoding(
         );
     }
 
-    // Add yOffset encoding for vertical jitter (pos2offset column)
+    // Add pos2 offset encoding for vertical jitter (pos2offset column)
     // This column is created by position::Jitter when pos2 axis is discrete
     let pos2offset_col = naming::aesthetic_column("pos2offset");
     if df.column(&pos2offset_col).is_ok() {
-        // Map to appropriate offset channel based on coord type
-        let offset_channel = match coord_kind {
-            CoordKind::Cartesian => "yOffset",
-            CoordKind::Polar => "radiusOffset",
-        };
         encoding.insert(
-            offset_channel.to_string(),
+            pos2_offset.clone(),
             json!({
                 "field": pos2offset_col,
                 "type": "quantitative",
@@ -386,11 +380,7 @@ fn build_layer_encoding(
     // This prevents Vega-Lite from applying its own stack/dodge logic on top of ours.
     // Only set stack: null on primary position channels (y/radius) — Vega-Lite does
     // not support 'stack' on secondary channels (y2/radius2) and Altair rejects it.
-    let y_channel = match coord_kind {
-        CoordKind::Cartesian => "y",
-        CoordKind::Polar => "radius",
-    };
-    if let Some(y_enc) = encoding.get_mut(y_channel) {
+    if let Some(y_enc) = encoding.get_mut(pos2.as_str()) {
         if let Some(obj) = y_enc.as_object_mut() {
             obj.insert("stack".to_string(), Value::Null);
         }
@@ -398,7 +388,6 @@ fn build_layer_encoding(
 
     // Apply geom-specific encoding modifications via renderer
     let renderer = get_renderer(&layer.geom);
-    let context = layer::RenderContext::new(&spec.scales);
     renderer.modify_encoding(&mut encoding, layer, &context)?;
 
     Ok(encoding)
