@@ -73,79 +73,83 @@ fn format_vegalite(spec: String) -> Value {
     let vis_id = format!("vis-{}", timestamp);
 
     let html = format!(
-        r#"<div id="{}"></div>
-
+        r#"<div id="{vis_id}-outer" style="width: 100%; overflow: hidden;">
+<div id="{vis_id}" style="width: 100%; min-width: 450px; height: 400px;"></div>
+</div>
 <script type="text/javascript">
-  (function() {{
-    const spec = {};
-    const visId = '{}';
-    const container = document.getElementById(visId);
-    container.style.width = '100%';
-    container.style.height = '400px';
-
-    // Use full height in Positron's Plots pane
-    if (container.closest('.positron-output-container')) {{
-      container.style.height = '100vh';
-    }}
-
-    const options = {{
-      "actions": true,
-    }};
-
-    // Check if we're in a Jupyter environment with require.js
-    if (typeof window.requirejs !== 'undefined') {{
-      // Use require.js to load Vega libraries
-      window.requirejs.config({{
-        paths: {{
-          'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
-          'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-          'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
-          'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
-        }}
-      }});
-
-      function docReady(fn) {{
-        if (document.readyState === 'complete') fn();
-        else window.addEventListener("load", () => {{
-          fn();
-        }});
-      }}
-      docReady(function() {{
-        window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {{
-            domReady(function () {{
-              vegaEmbed('#' + visId, spec, options).catch(console.error);
-            }});
-        }});
-      }});
-    }} else {{
-      // Fallback for non-Jupyter environments
-      function loadScript(src) {{
-        return new Promise((resolve, reject) => {{
-          const script = document.createElement('script');
-          script.src = src;
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        }});
-      }}
-
-      Promise.all([
-        loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
-        loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
-      ])
-        .then(() => {{
-          vegaEmbed('#' + visId, spec, options)
-            .catch(console.error);
-        }})
-        .catch(err => {{
-          console.error('Failed to load Vega libraries:', err);
-        }});
-    }}
-  }})();
+(function() {{
+var spec = {spec_json};
+var visId = '{vis_id}';
+var minWidth = 450;
+var inner = document.getElementById(visId);
+var outer = document.getElementById(visId + '-outer');
+if (inner.closest('.positron-output-container')) {{
+inner.style.height = '100vh';
+}}
+var options = {{"actions": true}};
+function scaleToFit(o, i) {{
+var available = o.clientWidth;
+if (available < minWidth) {{
+var scale = available / minWidth;
+i.style.transform = 'scale(' + scale + ')';
+i.style.transformOrigin = 'top left';
+o.style.height = (i.scrollHeight * scale) + 'px';
+}} else {{
+i.style.transform = '';
+o.style.height = '';
+}}
+}}
+function onRendered() {{
+scaleToFit(outer, inner);
+var ro = new ResizeObserver(function() {{ scaleToFit(outer, inner); }});
+ro.observe(outer);
+}}
+if (typeof window.requirejs !== 'undefined') {{
+window.requirejs.config({{
+paths: {{
+'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
+'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
+'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
+'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
+}}
+}});
+function docReady(fn) {{
+if (document.readyState === 'complete') fn();
+else window.addEventListener("load", function() {{ fn(); }});
+}}
+docReady(function() {{
+window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {{
+domReady(function () {{
+vegaEmbed('#' + visId, spec, options).then(onRendered).catch(console.error);
+}});
+}});
+}});
+}} else {{
+function loadScript(src) {{
+return new Promise(function(resolve, reject) {{
+var script = document.createElement('script');
+script.src = src;
+script.onload = resolve;
+script.onerror = reject;
+document.head.appendChild(script);
+}});
+}}
+Promise.all([
+loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
+loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
+loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
+])
+.then(function() {{ return vegaEmbed('#' + visId, spec, options); }})
+.then(onRendered)
+.catch(function(err) {{
+console.error('Failed to load Vega libraries:', err);
+}});
+}}
+}})();
 </script>
 "#,
-        vis_id, spec_json, vis_id
+        vis_id = vis_id,
+        spec_json = spec_json
     );
 
     json!({

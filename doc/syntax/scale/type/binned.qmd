@@ -9,7 +9,7 @@ The binned scale type maps continuous data types into a discrete output domain. 
 The binned scale is never chosen automatically so it must be selected explicitly if needed using `SCALE BINNED ...`
 
 ## Input range
-The input range for binned scales are defined by their minimum and maximum values. These can be given explicitly or deduced from the mapped data. If `FROM` is omitted then the range will be given as the minimum and maximum break values, whether provided directly or calculated. If provided as an array of length 2 then the first element will set the minimum and the second element will set the maximum. If either of these elements are `null` then that part of the range will be deduced from the data. As an example `SCALE BINNED x FROM [0, null]` will set the minimum part of the range to 0 and the maximum part to the maximal value of the mapped data. However, if neither input range nor explicit breaks are provided then the input range will be modified so that the calculated bins are even sized and include all data. This means that the range in most cases will expand past the minimum and maximum data values.
+The input range for binned scales are defined by their minimum and maximum values. These can be given explicitly or deduced from the mapped data. If `FROM` is omitted then the range will be given as the minimum and maximum break values, whether provided directly or calculated. If provided as an array of length 2 then the first element will set the minimum and the second element will set the maximum. If either of these elements are `null` then that part of the range will be deduced from the data. As an example `SCALE BINNED x FROM (0, null)` will set the minimum part of the range to 0 and the maximum part to the maximal value of the mapped data. However, if neither input range nor explicit breaks are provided then the input range will be modified so that the calculated bins are even sized and include all data. This means that the range in most cases will expand past the minimum and maximum data values.
 
 Position aesthetics (`x` and `y`) will have their range expanded based on the `expand` setting. 
 If values in the mapped data falls outside of the input domain the values will be changed based on the `oob` setting.
@@ -33,7 +33,7 @@ SCALE BINNED x
 ```{ggsql}
 VISUALISE body_mass AS x FROM ggsql:penguins
 DRAW bar
-SCALE BINNED x FROM [2700, 6300]
+SCALE BINNED x FROM (2700, 6300)
 ```
 
 ## Output range
@@ -43,8 +43,8 @@ All aesthetics have a default output range so it is never required to provide on
 
 * `x`/`y`: Ignored (values used directly)
 * `stroke`/`fill`: The `navia` palette
-* `size`/`linewidth`: `[1, 6]` (points)
-* `opacity`: `[0.1, 1.0]` (0 being fully transparent and 1 being fully opaque)
+* `size`/`linewidth`: `(1, 6)` (points)
+* `opacity`: `(0.1, 1.0)` (0 being fully transparent and 1 being fully opaque)
 * `linetype`: The `sequential` palette
 * `shape`: The `shapes` palette
 
@@ -125,7 +125,7 @@ SCALE BINNED x VIA date
 ## Settings
 The following settings are recognised by binned scales:
 
-* `expand` (only for `x`/`y`): Either a scalar number or 2-element array of numbers (values must be >= 0). Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to `0.05` (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as `SCALE x FROM [0, null]` expansion will only be applied to the upper range.
+* `expand` (only for `x`/`y`): Either a scalar number or 2-element array of numbers (values must be >= 0). Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to `0.05` (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as `SCALE x FROM (0, null)` expansion will only be applied to the upper range.
 * `oob`: How should values outside of the scale input range be treated. One of `'censor'` (set to `null`), or `'squish'` (set to the nearest bin). Default is `'censor'`. When set to `'squish'` the terminal bin labels will be removed to reflect that they extend to -Inf and Inf.
 * `breaks`: Either a scalar (whole number >= 1) as described in [the section on breaks](#breaks), or an array of values to place breaks at. Defaults to `5`.
 * `pretty`: A boolean indicating which algorithm to use for automatic calculation of breaks as described in [the section on breaks](#breaks). Defaults to `true`.
@@ -142,7 +142,7 @@ DRAW bar
 SCALE BINNED x
   SETTING 
     oob => 'squish', 
-    breaks => [4000, 4250, 4500, 4750, 5000, 5250, 5500]
+    breaks => (4000, 4250, 4500, 4750, 5000, 5250, 5500)
 ```
 
 ## Renaming

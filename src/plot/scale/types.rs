@@ -20,8 +20,8 @@ fn default_label_template() -> String {
 ///
 /// Examples:
 /// - `SCALE x VIA date`
-/// - `SCALE CONTINUOUS y FROM [0, 100]`
-/// - `SCALE DISCRETE color FROM ['A', 'B'] TO ['red', 'blue']`
+/// - `SCALE CONTINUOUS y FROM (0, 100)`
+/// - `SCALE DISCRETE color FROM ('A', 'B') TO ('red', 'blue')`
 /// - `SCALE color TO viridis`
 /// - `SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -36,7 +36,7 @@ pub struct Scale {
     pub input_range: Option<Vec<ArrayElement>>,
     /// Whether the input_range was explicitly specified by the user (FROM clause).
     /// Used to determine whether to apply pre-stat OOB handling in SQL.
-    /// If true, the range was specified explicitly (e.g., `FROM ['A', 'B']`).
+    /// If true, the range was specified explicitly (e.g., `FROM ('A', 'B')`).
     /// If false, the range was inferred from the data.
     #[serde(default)]
     pub explicit_input_range: bool,
@@ -95,7 +95,7 @@ impl Scale {
 /// Either explicit values or a named palette identifier
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum OutputRange {
-    /// Explicit array of values: TO ['red', 'blue']
+    /// Explicit array of values: TO ('red', 'blue')
     Array(Vec<ArrayElement>),
     /// Named palette identifier: TO viridis
     Palette(String),

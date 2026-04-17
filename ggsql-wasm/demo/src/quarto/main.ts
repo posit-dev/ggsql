@@ -100,9 +100,12 @@ function gatherCells(): CellInfo[] {
       const visCandidates = outputDiv.querySelectorAll<HTMLElement>(
         'div[id^="vis-"]'
       );
-      if (visCandidates.length > 0) {
-        visContainer = visCandidates[0];
-        visId = visContainer.id;
+      const match = Array.from(visCandidates).find((el) =>
+        /^vis-\d+$/.test(el.id)
+      );
+      if (match) {
+        visContainer = match;
+        visId = match.id;
       }
     }
 

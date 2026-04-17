@@ -30,6 +30,6 @@ Just like discrete position aesthetics. You can also use `RENAMING` on the scale
 VISUALISE sex AS x FROM ggsql:penguins
 DRAW bar
 FACET species
-SCALE panel FROM ['Adelie', null]
+SCALE panel FROM ('Adelie', null)
   RENAMING null => 'The rest'
 ```

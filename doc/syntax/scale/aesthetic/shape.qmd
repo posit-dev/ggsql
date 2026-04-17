@@ -53,7 +53,7 @@ VISUALISE FROM ggsql:penguins
 DRAW point
   MAPPING bill_dep AS x, body_mass AS y, species AS shape
   SETTING linewidth => 1, size => 5
-SCALE shape TO ['star', 'bowtie', 'square-plus']
+SCALE shape TO ('star', 'bowtie', 'square-plus')
 ```
 
 ### Default palette (`closed`)

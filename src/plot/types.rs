@@ -375,7 +375,7 @@ pub enum ArrayElement {
     String(String),
     Number(f64),
     Boolean(bool),
-    /// Null placeholder for partial input range inference (e.g., SCALE x FROM [0, null])
+    /// Null placeholder for partial input range inference (e.g., SCALE x FROM (0, null))
     Null,
     /// Date value (days since Unix epoch 1970-01-01)
     Date(i32),

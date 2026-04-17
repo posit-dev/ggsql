@@ -178,17 +178,14 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
 
             // 1. First merge explicit global aesthetics (layer overrides global)
-            // Note: "color"/"colour" are accepted even though not in supported,
-            // because split_color_aesthetic will convert them to fill/stroke later
             // Note: facet aesthetics (panel, row, column) are also accepted,
             // as they apply to all layers regardless of geom support
             // Note: Use all_names (not supported) so that Delayed aesthetics like
             // pos2 on histogram can be targeted by explicit global mappings, matching
             // the behavior of layer-level MAPPING
             for (aesthetic, value) in &spec.global_mappings.aesthetics {
-                let is_color_alias = matches!(aesthetic.as_str(), "color" | "colour");
                 let is_facet_aesthetic = crate::plot::scale::is_facet_aesthetic(aesthetic.as_str());
-                if all_names.contains(&aesthetic.as_str()) || is_color_alias || is_facet_aesthetic {
+                if all_names.contains(&aesthetic.as_str()) || is_facet_aesthetic {
                     layer
                         .mappings
                         .aesthetics
@@ -226,69 +223,59 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
     }
 }
 
-/// Let 'color' aesthetics fill defaults for the 'stroke' and 'fill' aesthetics.
-/// Also splits 'color' scale to 'fill' and 'stroke' scales.
-/// Removes 'color' from both mappings and scales after splitting to avoid
-/// non-deterministic behavior from HashMap iteration order.
-fn split_color_aesthetic(spec: &mut Plot) {
-    // 1. Split color SCALE to fill/stroke scales
-    if let Some(color_scale_idx) = spec.scales.iter().position(|s| s.aesthetic == "color") {
-        let color_scale = spec.scales[color_scale_idx].clone();
+/// Resolve aesthetic aliases in a plot specification.
+///
+/// For each alias defined in [`AESTHETIC_ALIASES`], splits the alias in scales,
+/// layer mappings, and layer parameters into the concrete target aesthetics
+/// (only where the geom supports them). Removes the alias after splitting to
+/// avoid non-deterministic behavior from HashMap iteration order.
+fn resolve_aesthetic_aliases(spec: &mut Plot) {
+    use crate::plot::layer::geom::types::AESTHETIC_ALIASES;
 
-        // Add fill scale if not already present
-        if !spec.scales.iter().any(|s| s.aesthetic == "fill") {
-            let mut fill_scale = color_scale.clone();
-            fill_scale.aesthetic = "fill".to_string();
-            spec.scales.push(fill_scale);
-        }
-
-        // Add stroke scale if not already present
-        if !spec.scales.iter().any(|s| s.aesthetic == "stroke") {
-            let mut stroke_scale = color_scale.clone();
-            stroke_scale.aesthetic = "stroke".to_string();
-            spec.scales.push(stroke_scale);
-        }
-
-        // Remove the color scale
-        spec.scales.remove(color_scale_idx);
-    }
-
-    // 2. Split color mapping to fill/stroke in layers, then remove color
-    for layer in &mut spec.layers {
-        if let Some(color_value) = layer.mappings.aesthetics.get("color").cloned() {
-            let aesthetics = layer.geom.aesthetics();
-
-            for &aes in &["stroke", "fill"] {
-                if aesthetics.is_supported(aes) {
-                    layer
-                        .mappings
-                        .aesthetics
-                        .entry(aes.to_string())
-                        .or_insert(color_value.clone());
+    for &(alias, targets) in AESTHETIC_ALIASES {
+        // 1. Split alias SCALE to target scales
+        if let Some(idx) = spec.scales.iter().position(|s| s.aesthetic == alias) {
+            let alias_scale = spec.scales[idx].clone();
+            for &target in targets {
+                if !spec.scales.iter().any(|s| s.aesthetic == target) {
+                    let mut target_scale = alias_scale.clone();
+                    target_scale.aesthetic = target.to_string();
+                    spec.scales.push(target_scale);
                 }
             }
-
-            // Remove color after splitting
-            layer.mappings.aesthetics.remove("color");
+            spec.scales.remove(idx);
         }
-    }
 
-    // 3. Split color parameter (SETTING) to fill/stroke in layers
-    for layer in &mut spec.layers {
-        if let Some(color_value) = layer.parameters.get("color").cloned() {
+        // 2. Split alias mapping and parameters in each layer
+        for layer in &mut spec.layers {
             let aesthetics = layer.geom.aesthetics();
 
-            for &aes in &["stroke", "fill"] {
-                if aesthetics.is_supported(aes) {
-                    layer
-                        .parameters
-                        .entry(aes.to_string())
-                        .or_insert(color_value.clone());
+            // Split mapping
+            if let Some(value) = layer.mappings.aesthetics.get(alias).cloned() {
+                for &target in targets {
+                    if aesthetics.is_supported(target) {
+                        layer
+                            .mappings
+                            .aesthetics
+                            .entry(target.to_string())
+                            .or_insert(value.clone());
+                    }
                 }
+                layer.mappings.aesthetics.remove(alias);
             }
 
-            // Remove color after splitting
-            layer.parameters.remove("color");
+            // Split parameter (SETTING)
+            if let Some(value) = layer.parameters.get(alias).cloned() {
+                for &target in targets {
+                    if aesthetics.is_supported(target) {
+                        layer
+                            .parameters
+                            .entry(target.to_string())
+                            .or_insert(value.clone());
+                    }
+                }
+                layer.parameters.remove(alias);
+            }
         }
     }
 }
@@ -1024,10 +1011,10 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // because transformation happens in builder.rs right after parsing
     merge_global_mappings_into_layers(&mut specs, &layer_schemas);
 
-    // Split 'color' aesthetic to 'fill' and 'stroke' early in the pipeline
-    // This must happen before validation so fill/stroke are validated (not color)
+    // Resolve aesthetic aliases (e.g., 'color' → 'fill'/'stroke') early in the pipeline
+    // This must happen before validation so concrete aesthetics are validated
     for spec in &mut specs {
-        split_color_aesthetic(spec);
+        resolve_aesthetic_aliases(spec);
     }
 
     // Add literal (constant) columns to type info programmatically

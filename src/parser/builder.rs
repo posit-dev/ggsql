@@ -3275,6 +3275,31 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_array_node_parenthesized() {
+        let source = make_source("VISUALISE DRAW point SCALE x FROM ('a', 'b', 'c')");
+        let root = source.root();
+
+        let array_node = source.find_node(&root, "(array) @arr").unwrap();
+        let parsed = parse_array_node(&array_node, &source).unwrap();
+
+        assert_eq!(parsed.len(), 3);
+        assert!(matches!(parsed[0], ArrayElement::String(ref s) if s == "a"));
+        assert!(matches!(parsed[1], ArrayElement::String(ref s) if s == "b"));
+        assert!(matches!(parsed[2], ArrayElement::String(ref s) if s == "c"));
+
+        let source2 = make_source("VISUALISE DRAW point SCALE x FROM (0, 50, 100)");
+        let root2 = source2.root();
+
+        let array_node2 = source2.find_node(&root2, "(array) @arr").unwrap();
+        let parsed2 = parse_array_node(&array_node2, &source2).unwrap();
+
+        assert_eq!(parsed2.len(), 3);
+        assert!(matches!(parsed2[0], ArrayElement::Number(n) if n == 0.0));
+        assert!(matches!(parsed2[1], ArrayElement::Number(n) if n == 50.0));
+        assert!(matches!(parsed2[2], ArrayElement::Number(n) if n == 100.0));
+    }
+
+    #[test]
     fn test_parse_data_source() {
         // Test identifier
         let source = make_source("VISUALISE FROM sales DRAW bar");

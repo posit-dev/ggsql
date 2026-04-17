@@ -463,7 +463,7 @@ impl GeomRenderer for PathRenderer {
 
         // Handle varying linewidth: switch to trail mark and translate encodings
         if varying_aesthetics.contains(&"linewidth") {
-            layer_spec["mark"] = json!({"type": "trail", "clip": true, "stroke": null});
+            layer_spec["mark"] = json!({"type": "trail", "clip": true, "strokeWidth": 0});
 
             // Translate line encodings to trail encodings
             if let Some(encoding_obj) = layer_spec.get_mut("encoding") {
@@ -474,7 +474,18 @@ impl GeomRenderer for PathRenderer {
                     }
 
                     // stroke → fill
-                    if let Some(stroke) = encoding_map.remove("stroke") {
+                    if let Some(mut stroke) = encoding_map.remove("stroke") {
+                        // Add symbolStrokeColor to legend so symbols display with color
+                        if let Some(stroke_obj) = stroke.as_object_mut() {
+                            if let Some(legend) = stroke_obj.get_mut("legend") {
+                                if let Some(legend_obj) = legend.as_object_mut() {
+                                    legend_obj.insert(
+                                        "symbolStrokeColor".to_string(),
+                                        json!({"expr": "scale('fill', datum.value)"}),
+                                    );
+                                }
+                            }
+                        }
                         encoding_map.insert("fill".to_string(), stroke);
                     }
 
@@ -3987,7 +3998,7 @@ mod tests {
 
         // Check mark type is trail
         assert_eq!(spec["mark"]["type"], "trail");
-        assert_eq!(spec["mark"]["stroke"], json!(null));
+        assert_eq!(spec["mark"]["strokeWidth"], 0);
 
         // Check encoding translations
         let encoding = spec["encoding"].as_object().unwrap();
@@ -3998,6 +4009,87 @@ mod tests {
         );
         // No stroke mapping in this test, so no fill expected
         assert!(!encoding.contains_key("stroke"), "stroke should be removed");
+    }
+
+    #[test]
+    fn test_path_renderer_trail_mark_with_stroke_legend() {
+        use crate::plot::{AestheticValue, Geom, Layer};
+        use polars::prelude::*;
+
+        let renderer = PathRenderer;
+        let mut layer = Layer::new(Geom::line());
+
+        // Create DataFrame with varying linewidth and stroke
+        let df = df! {
+            naming::aesthetic_column("pos1").as_str() => &[1.0, 2.0, 3.0],
+            naming::aesthetic_column("pos2").as_str() => &[10.0, 20.0, 30.0],
+            naming::aesthetic_column("linewidth").as_str() => &[1.0, 3.0, 5.0],
+            naming::aesthetic_column("stroke").as_str() => &["A", "A", "B"],
+        }
+        .unwrap();
+
+        // Map linewidth and stroke to columns
+        layer.mappings.insert(
+            "linewidth".to_string(),
+            AestheticValue::standard_column(naming::aesthetic_column("linewidth")),
+        );
+        layer.mappings.insert(
+            "stroke".to_string(),
+            AestheticValue::standard_column(naming::aesthetic_column("stroke")),
+        );
+
+        // Prepare data
+        let prepared = renderer
+            .prepare_data(&df, &layer, "test", &HashMap::new())
+            .unwrap();
+
+        // Create a mock layer spec with stroke legend
+        let layer_spec = json!({
+            "mark": {"type": "line", "clip": true},
+            "encoding": {
+                "x": {"field": naming::aesthetic_column("pos1"), "type": "quantitative"},
+                "y": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"},
+                "strokeWidth": {"field": naming::aesthetic_column("linewidth"), "type": "quantitative"},
+                "stroke": {
+                    "field": naming::aesthetic_column("stroke"),
+                    "type": "nominal",
+                    "legend": {
+                        "title": "direction"
+                    }
+                }
+            }
+        });
+
+        // Finalize should switch to trail mark and translate encodings
+        let result = renderer
+            .finalize(layer_spec.clone(), &layer, "test", &prepared)
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        let spec = &result[0];
+
+        // Check mark type is trail
+        assert_eq!(spec["mark"]["type"], "trail");
+        assert_eq!(spec["mark"]["strokeWidth"], 0);
+
+        // Check encoding translations
+        let encoding = spec["encoding"].as_object().unwrap();
+        assert!(encoding.contains_key("size"), "Should have size encoding");
+        assert!(encoding.contains_key("fill"), "Should have fill encoding");
+        assert!(!encoding.contains_key("stroke"), "stroke should be removed");
+
+        // Check that fill legend has symbolStrokeColor
+        let fill = &encoding["fill"];
+        assert!(fill["legend"].is_object(), "fill should have legend");
+        let legend = fill["legend"].as_object().unwrap();
+        assert!(
+            legend.contains_key("symbolStrokeColor"),
+            "fill legend should have symbolStrokeColor"
+        );
+        assert_eq!(
+            legend["symbolStrokeColor"]["expr"], "scale('fill', datum.value)",
+            "symbolStrokeColor should use fill scale"
+        );
     }
 
     #[test]

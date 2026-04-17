@@ -282,7 +282,11 @@ module.exports = grammar({
       caseInsensitive('ROW'),
       caseInsensitive('NULLS'),
       caseInsensitive('FIRST'),
-      caseInsensitive('LAST')
+      caseInsensitive('LAST'),
+      caseInsensitive('QUALIFY'),
+      caseInsensitive('UNION'),
+      caseInsensitive('INTERSECT'),
+      caseInsensitive('EXCEPT')
     ),
 
     // Window function: func() OVER (PARTITION BY ... ORDER BY ... frame)
@@ -870,13 +874,23 @@ module.exports = grammar({
 
     boolean: $ => choice('true', 'false'),
 
-    array: $ => seq(
-      '[',
-      optional(seq(
-        $.array_element,
-        repeat(seq(',', $.array_element))
-      )),
-      ']'
+    array: $ => choice(
+      seq(
+        '[',
+        optional(seq(
+          $.array_element,
+          repeat(seq(',', $.array_element))
+        )),
+        ']'
+      ),
+      seq(
+        '(',
+        optional(seq(
+          $.array_element,
+          repeat(seq(',', $.array_element))
+        )),
+        ')'
+      )
     ),
 
     array_element: $ => choice(

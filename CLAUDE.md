@@ -11,7 +11,7 @@ SELECT date, revenue, region FROM sales WHERE year = 2024
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
 SCALE x VIA date
-SCALE y FROM [0, 100000]
+SCALE y FROM (0, 100000)
 LABEL title => 'Sales by Region', x => 'Date', y => 'Revenue'
 ```
 
@@ -1186,7 +1186,7 @@ Creates annotation layers with literal values only (no data mappings). All aesth
 PLACE point SETTING x => 5, y => 10, color => 'red'
 
 -- Multiple annotations (array recycling)
-PLACE point SETTING x => [1, 2, 3], y => [10, 20, 30]
+PLACE point SETTING x => (1, 2, 3), y => (10, 20, 30)
 
 -- Reference line
 PLACE rule SETTING x => 5, color => 'red'
@@ -1211,8 +1211,8 @@ SCALE [TYPE] <aesthetic> [FROM <input>] [TO <output>] [VIA <transform>]
 
 **Subclauses**:
 
-- **`FROM [...]`** - Input range specification (maps to Vega-Lite `scale.domain`)
-- **`TO [...]`** or **`TO palette`** - Output range as array or named palette (maps to Vega-Lite `scale.range` or `scale.scheme`)
+- **`FROM (...)`** - Input range specification (maps to Vega-Lite `scale.domain`). Square brackets `[...]` are also accepted.
+- **`TO (...)`** or **`TO palette`** - Output range as array or named palette (maps to Vega-Lite `scale.range` or `scale.scheme`). Square brackets `[...]` are also accepted.
 - **`VIA transform`** - Transformation method (reserved for future use)
 - **`SETTING ...`** - Additional properties (e.g., `breaks`)
 
@@ -1234,10 +1234,10 @@ The `FROM` clause explicitly sets the input range for a scale:
 
 ```sql
 -- Set range for discrete scale
-SCALE DISCRETE color FROM ['A', 'B', 'C']
+SCALE DISCRETE color FROM ('A', 'B', 'C')
 
 -- Set range for continuous scale
-SCALE CONTINUOUS x FROM [0, 100]
+SCALE CONTINUOUS x FROM (0, 100)
 ```
 
 **Range Specification** (TO clause):
@@ -1246,7 +1246,7 @@ The `TO` clause sets the output range - either explicit values or a named palett
 
 ```sql
 -- Explicit color values
-SCALE color FROM ['A', 'B'] TO ['red', 'blue']
+SCALE color FROM ('A', 'B') TO ('red', 'blue')
 
 -- Named palette
 SCALE color TO viridis
@@ -1259,16 +1259,16 @@ SCALE color TO viridis
 SCALE x VIA date
 
 -- Continuous scale with input range
-SCALE CONTINUOUS y FROM [0, 100]
+SCALE CONTINUOUS y FROM (0, 100)
 
 -- Discrete color scale with input range and output range
-SCALE DISCRETE color FROM ['A', 'B', 'C'] TO ['red', 'green', 'blue']
+SCALE DISCRETE color FROM ('A', 'B', 'C') TO ('red', 'green', 'blue')
 
 -- Color scale with named palette
 SCALE color TO viridis
 
 -- Scale with input range and additional settings
-SCALE x VIA date FROM ['2024-01-01', '2024-12-31']
+SCALE x VIA date FROM ('2024-01-01', '2024-12-31')
   SETTING breaks => '1 month'
 ```
 
@@ -1297,7 +1297,7 @@ FACET <row_vars> BY <col_vars>
 - `null` or omitted (default) - Shared/fixed scales across all facets
 - `'x'` - Independent x-axis, shared y-axis
 - `'y'` - Shared x-axis, independent y-axis
-- `['x', 'y']` - Independent scales for both axes
+- `('x', 'y')` - Independent scales for both axes
 
 **Customizing Strip Labels**:
 
@@ -1327,7 +1327,7 @@ SCALE panel
 
 -- Combined grid with settings
 FACET region BY category
-  SETTING free => ['x', 'y'], spacing => 10
+  SETTING free => ('x', 'y'), spacing => 10
 ```
 
 ### PROJECT Clause
@@ -1372,7 +1372,7 @@ PROJECT y, x TO cartesian
 
 - `ratio => <number>` - Set aspect ratio (not yet implemented)
 
-Note: For axis limits, use `SCALE x FROM [min, max]` or `SCALE y FROM [min, max]`.
+Note: For axis limits, use `SCALE x FROM (min, max)` or `SCALE y FROM (min, max)`.
 
 **Polar**:
 
@@ -1380,8 +1380,8 @@ Note: For axis limits, use `SCALE x FROM [min, max]` or `SCALE y FROM [min, max]
 
 **Important Notes**:
 
-1. **Axis limits**: Use `SCALE x/y FROM [min, max]` to set axis limits
-2. **Aesthetic domains**: Use `SCALE <aesthetic> FROM [...]` to set aesthetic domains
+1. **Axis limits**: Use `SCALE x/y FROM (min, max)` to set axis limits
+2. **Aesthetic domains**: Use `SCALE <aesthetic> FROM (...)` to set aesthetic domains
 3. **Custom aesthetics**: User can define custom position names (e.g., `PROJECT a, b TO cartesian`)
 4. **Multi-layer support**: All projection transforms apply to all layers
 
@@ -1421,8 +1421,8 @@ PROJECT TO cartesian
 -- Combined with other clauses
 DRAW bar
   MAPPING category AS x, value AS y
-SCALE x FROM [0, 100]
-SCALE y FROM [0, 200]
+SCALE x FROM (0, 100)
+SCALE y FROM (0, 200)
 PROJECT y, x TO cartesian
   SETTING clip => true
 LABEL x => 'Category', y => 'Count'
