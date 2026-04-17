@@ -237,14 +237,7 @@ pub(super) fn infer_field_type(df: &DataFrame, field: &str) -> String {
                 "quantitative"
             }
             Boolean => "nominal",
-            String => {
-                // Check if string column contains numeric values
-                if is_numeric_string_column(column.as_materialized_series()) {
-                    "quantitative"
-                } else {
-                    "nominal"
-                }
-            }
+            String if is_numeric_string_column(column.as_materialized_series()) => "quantitative",
             Date | Datetime(_, _) | Time => "temporal",
             _ => "nominal",
         }
