@@ -33,10 +33,14 @@ jobs:
 
   linux:
     needs: generate
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        target: [x86_64, aarch64]
+        include:
+          - target: x86_64
+            runner: ubuntu-latest
+          - target: aarch64
+            runner: ubuntu-24.04-arm
     env:
       GGSQL_SKIP_GENERATE: "1"
     steps:
@@ -71,9 +75,9 @@ jobs:
       matrix:
         include:
           - target: x86_64
-            runner: macos-latest
+            runner: macos-15-intel
           - target: aarch64
-            runner: macos-latest
+            runner: macos-15
     env:
       GGSQL_SKIP_GENERATE: "1"
     steps:
