@@ -33,7 +33,7 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Path => "line",
         GeomType::Bar => "bar",
         GeomType::Area => "area",
-        GeomType::Tile => "tile",
+        GeomType::Tile => "rect",
         GeomType::Ribbon => "area",
         GeomType::Polygon => "line",
         GeomType::Histogram => "bar",
