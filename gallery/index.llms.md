@@ -38,7 +38,7 @@ Showing smooth distributions of single numeric variables
 
 Showing groups of distributions of single numeric variables
 
-![](../gallery/examples/thumbnails/violin-plot.svg)
+![](../gallery/examples/thumbnails/heatmap.svg)
 
 ##### Heatmap
 

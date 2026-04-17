@@ -12,7 +12,7 @@ A heatmap visusalised data values as colors in a grid layout. It makes it easy t
 
 ``` ggsql
 VISUALISE Day AS x, Month AS y, Temp AS fill FROM ggsql:airquality
-  DRAW rect
+  DRAW tile
 ```
 
 ## Explanation
@@ -20,7 +20,7 @@ VISUALISE Day AS x, Month AS y, Temp AS fill FROM ggsql:airquality
 - The `VISUALISE ... FROM ggsql:airquality` loads the built-in air quality dataset.
 - `Day AS x, Month AS y` defines a 2D grid ‘map’. The default width and height of each cell is 1. Because these variables are contiguous whole numbers, this creates a grid.
 - `Temp AS fill` declares the ‘heat’ variable to display as colour intensity.
-- `DRAW rect` gives instructions to draw a rectangle layer.
+- `DRAW tile` gives instructions to draw a tile layer.
 
 ## Variations
 
@@ -28,7 +28,7 @@ As a stylistic choice, you can set the cells to be opaque without borders.
 
 ``` ggsql
 VISUALISE Month AS y, Day AS x, Temp AS fill FROM ggsql:airquality
-  DRAW rect
+  DRAW tile
     SETTING stroke => null, opacity => 1
 ```
 
@@ -36,7 +36,7 @@ You can change the color by adapting the scale.
 
 ``` ggsql
 VISUALISE Month AS y, Day AS x, Temp AS fill FROM ggsql:airquality
-  DRAW rect
+  DRAW tile
   SCALE fill TO magma 
     SETTING reverse => true
 ```
@@ -49,6 +49,6 @@ SELECT *,
 FROM ggsql:airquality
 
 VISUALISE Month AS y, Day AS x, centered AS fill
-  DRAW rect
+  DRAW tile
   SCALE fill FROM (-20, 20) TO vik
 ```

@@ -1,0 +1,109 @@
+# Tile
+
+> Layers are declared with the [`DRAW` clause](../../../syntax/clause/draw.llms.md). Read the documentation for this clause for a thorough description of how to use it.
+
+Tiles can be used to draw rectangles in heatmaps or indicate ranges.
+
+## Aesthetics
+
+The following aesthetics are recognised by the tile layer.
+
+### Required
+
+- Pick two of the following for the primary axis:
+  - Center (e.g. `x`)
+  - `width`
+  - Start position (e.g. `xmin`). Unavailable when the center is discrete.
+  - End position (e.g. `xmax`). Unavailable when the center is discrete.
+
+Alternatively, use only the center, which will set `width` to 1 by default.
+
+- Pick two of the following for the secondary axis:
+  - Center (e.g. `y`)
+  - `height`: The size of the rectangle in the vertical dimension.
+  - Start position (e.g. `ymin`). Unavailable when the center is discrete.
+  - End position (e.g. `ymax`) Unavailable when the center is discrete.
+
+Alternatively, use only the center, which will set `height` to 1 by default.
+
+### Optional
+
+- `stroke`: The colour of the contour lines.
+- `fill`: The colour of the inner area.
+- `colour`: Shorthand for setting `stroke` and `fill` simultaneously.
+- `opacity`: The opacity of colours.
+- `linewidth`: The width of the contour lines.
+- `linetype`: The dash pattern of the contour line.
+
+## Settings
+
+- `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
+
+## Data transformation.
+
+When the primary aesthetics are continuous, primary data is reparameterised to {start, end}, e.g. `xmin` and `xmax`. When the secondary aesthetics are continuous, secondary data is reparameterised to {start, end}, e.g. `ymin` and `ymax`.
+
+## Orientation
+
+The tile layer has no orientation. The axes are treated symmetrically.
+
+## Examples
+
+Just using `x` and `y`. Note that `width` and `height` are set to 1.
+
+``` ggsql
+VISUALISE Day AS x, Month AS y, Temp AS colour FROM ggsql:airquality
+DRAW tile 
+```
+
+Customising `width` and `height` with either the `MAPPING` or `SETTING` clauses.
+
+``` ggsql
+VISUALISE Day AS x, Month AS y, Temp AS colour FROM ggsql:airquality
+DRAW tile 
+  MAPPING 0.5 AS width 
+  SETTING height => 0.8
+```
+
+If `x` is continuous, then `width` can be variable. Likewise for `y` and `height`.
+
+``` ggsql
+SELECT 
+  *, 
+  CAST(Temp AS REAL) / (SELECT MAX(Temp) FROM ggsql:airquality) AS norm_temp 
+FROM ggsql:airquality
+
+VISUALISE Day AS x, Month AS y, Temp AS colour
+DRAW tile 
+  MAPPING norm_temp AS width, norm_temp AS height
+```
+
+Using top, right, bottom, left parameterisation instead.
+
+``` ggsql
+SELECT
+  MIN(Date) AS start,
+  MAX(Date) AS end,
+  MIN(Temp) AS min,
+  MAX(Temp) AS max
+FROM ggsql:airquality
+GROUP BY Week
+
+VISUALISE start AS xmin, end AS xmax, min AS ymin, max AS ymax
+DRAW tile
+```
+
+Using a tile as an annotation. Note we’re using the `PLACE` clause here instead of `DRAW` because we’re not mapping from data.
+
+``` ggsql
+VISUALISE FROM ggsql:airquality
+PLACE tile 
+  SETTING
+    xmin => '1973-06-01', 
+    xmax => '1973-06-30',
+    ymin => 50, 
+    ymax => 100,
+    colour => 'dodgerblue'
+DRAW line 
+  MAPPING Date AS x, Temp AS y
+```
