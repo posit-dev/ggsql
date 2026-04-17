@@ -1059,7 +1059,7 @@ impl<'a> RenderContext<'a> {
 
         let (pos1_offset, pos2_offset) = match coord_kind {
             CoordKind::Cartesian => ("xOffset".to_string(), "yOffset".to_string()),
-            CoordKind::Polar => ("thetaOffset".to_string(), "radiusOffset".to_string()),
+            CoordKind::Polar => ("radiusOffset".to_string(), "thetaOffset".to_string()),
         };
 
         Self {
