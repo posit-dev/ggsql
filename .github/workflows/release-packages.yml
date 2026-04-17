@@ -24,7 +24,7 @@ jobs:
           node-version: "22"
 
       - name: Install ODBC
-        uses: Yarden-zamir/install-mssql-odbc@main
+        uses: Yarden-zamir/install-mssql-odbc@v1.0.2
 
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
