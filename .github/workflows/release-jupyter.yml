@@ -106,6 +106,9 @@ jobs:
           name: tree-sitter-generated
           path: tree-sitter-ggsql/src/
 
+      - name: Install ODBC
+        uses: Yarden-zamir/install-mssql-odbc@v1.0.2
+
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:

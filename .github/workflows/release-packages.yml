@@ -23,6 +23,9 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Install ODBC
+        uses: Yarden-zamir/install-mssql-odbc@main
+
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
 
@@ -101,6 +104,9 @@ jobs:
 
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
+
+      - name: Install ODBC
+        run: brew install unixodbc
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -188,7 +194,8 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            unixodbc-dev
 
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
@@ -224,6 +231,9 @@ jobs:
 
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
+
+      - name: Install ODBC
+        run: sudo apt-get install -y unixodbc-dev
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
