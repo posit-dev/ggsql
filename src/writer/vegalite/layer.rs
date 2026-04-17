@@ -1653,7 +1653,11 @@ impl GeomRenderer for ViolinRenderer {
         }
 
         // Offset channel based on orientation
-        let offset_channel = if is_horizontal { pos2_offset } else { pos1_offset };
+        let offset_channel = if is_horizontal {
+            pos2_offset
+        } else {
+            pos1_offset
+        };
         encoding.insert(
             offset_channel.clone(),
             json!({
