@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.2.0
+
+Alpha release.
+
+- Fix implicit mapping (#280)
+- Minor grammar edit (#283)
+- Finish Get started section (#274)
+- Manage ggsql kernel spec in Positron extension (#277)
+- Add animated linecharts to the background (#275)
+- Fix: global mappings silently dropped for stat geom aesthetics (#284)
+- Unify rule and linear layers (#252)
+- Send the ggsql REST binary to Valhalla (#286)
+- Add watermark icon to interactive editor (#279)
+- Ridgeline plot (#242)
+- Treat violin `side = 'both'` case correctly (#288)
+- (Non)Position aesthetics name formatting (#241)
+- Initial ODBC reader & integration with Positron connections pane and data viewer (#282)
+- Fix typo in pseudo_log description (#294)
+- Positron: improve execution of ggsql code (#296)
+- PLACE layers distinguish arrays for aesthetics vs arrays for parameters (#299)
+- Support multi-line text labels by splitting on newlines (#301)
+- Allow setting titles to null in LABEL (#302)
+- Boxplot width always uses bandwidth-expression instead of band (#291)
+- Variable width/color/opacity lines (#298)
+- Use 'transformation' rather than 'transform' for noun usage (#295)
+- Make sure syntax is current (#201)
+- Additional gallery examples (#293)
+- Improve legends when using line/path with `linewidth` (#308)
+- Add Quarto option to generate documentation for LLMs (#305)
+- Fix global mappings and aesthetic aliases in validation (#306)
+- Fix donuts (#309)
+- Proper bindings to rust library in R package (#281)
+- Move R package to own repo (#313)
+- Use parentheses for lists in grammar (#312)
+- Fix live editor output (#314)
+- Polish validation (#311)
+
 ## 0.1.9
 
 Pre-alpha release.
