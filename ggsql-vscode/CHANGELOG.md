@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3
+
+Alpha release.
+
+- Build natively for targets in GHA release workflows
+
 ## 0.2.2
 
 Alpha release.
