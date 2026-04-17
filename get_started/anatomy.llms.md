@@ -69,7 +69,7 @@ As [described above](#scales), ggsql automatically creates a default for mapped 
 The clause allows you to set the type of scale, the input range, the output range, the transformation, and lets you control breaks and label formatting. So, the clause can end up with a lot of information but the syntax has been designed so it reads very natural. Further, every part is optional and can be left out if the default fits. An example of a rather complex `SCALE` clause could be:
 
 ``` ggsql
-SCALE ORDINAL fill FROM ['Low', 'Mid', 'High'] TO viridis
+SCALE ORDINAL fill FROM ('Low', 'Mid', 'High') TO viridis
   SETTING breaks => 6
 ```
 
@@ -91,7 +91,7 @@ DRAW point
 DRAW smooth 
   SETTING method => 'ols'
 SCALE stroke TO dark2
-SCALE BINNED size TO [4, 15]
+SCALE BINNED size TO (4, 15)
   SETTING breaks => 4
 ```
 

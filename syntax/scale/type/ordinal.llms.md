@@ -30,13 +30,13 @@ VISUALISE Month AS x, Wind AS y, Wind_Category AS color
 DRAW point
   SETTING opacity => 1
 SCALE ORDINAL color 
-  FROM [
-    'Light Air', 
-    'Light Breeze', 
+  FROM (
+    'Light Air',
+    'Light Breeze',
     'Gentle Breeze',
     'Moderate Breeze',
     'Fresh Breeze'
-  ]
+  )
 ```
 
 ## Output range
@@ -47,8 +47,8 @@ All aesthetics has a default output range so it is never required to provide one
 
 - `x`/`y`: Ignored (values used directly)
 - `stroke`/`fill`: The `navia` palette
-- `size`/`linewidth`: `[1, 6]` (points)
-- `opacity`: `[0.1, 1.0]` (0 being fully transparent and 1 being fully opaque)
+- `size`/`linewidth`: `(1, 6)` (points)
+- `opacity`: `(0.1, 1.0)` (0 being fully transparent and 1 being fully opaque)
 - `linetype`: The `sequential` palette
 - `shape`: The `shapes` palette
 
@@ -150,12 +150,12 @@ VISUALISE Month AS x, Wind AS y, Wind_Category AS color
 DRAW point
   SETTING opacity => 1
 SCALE ORDINAL color 
-  FROM [
-    'Light Air', 
-    'Light Breeze', 
+  FROM (
+    'Light Air',
+    'Light Breeze',
     'Gentle Breeze',
     'Moderate Breeze',
     'Fresh Breeze'
-  ]
+  )
   RENAMING * => '{:UPPER}'
 ```

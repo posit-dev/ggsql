@@ -105,7 +105,7 @@ DRAW bar
 PROJECT TO polar
 FACET island
   SETTING free => 'angle'
-SCALE panel FROM ['Biscoe', 'Dream']
+SCALE panel FROM ('Biscoe', 'Dream')
 ```
 
 Above, we use the `free` parameter of facet to allow each facet to have their own angle scale. Further, we use `SCALE` on the panel aesthetic to only show panels for the Biscoe and Dream islands.
@@ -118,7 +118,7 @@ DRAW bar
 PROJECT TO polar
 FACET island
   SETTING free => 'angle'
-SCALE panel FROM ['Biscoe', 'Dream']
+SCALE panel FROM ('Biscoe', 'Dream')
 LABEL
   title => 'Distribution of penguin species between islands',
   subtitle => 'Compared across 344 penguins',

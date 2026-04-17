@@ -74,7 +74,7 @@ WITH data(x, y, z) AS (VALUES
 VISUALISE x, y FROM data
 DRAW line
   MAPPING z AS stroke
-SCALE stroke TO ['red', 'green', 'blue']
+SCALE stroke TO ('red', 'green', 'blue')
 ```
 
 The `linewidth` aesthetic can vary point to point.
@@ -89,5 +89,5 @@ WITH data(x, y, z) AS (VALUES
 VISUALISE x, y FROM data
 DRAW line
   MAPPING z AS linewidth
-SCALE linewidth TO [0, 30]
+SCALE linewidth TO (0, 30)
 ```

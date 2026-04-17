@@ -29,6 +29,6 @@ In order to show data where the facet variable is null, it is necessary to expli
 VISUALISE sex AS x FROM ggsql:penguins
 DRAW bar
 FACET species
-SCALE panel FROM ['Adelie', null]
+SCALE panel FROM ('Adelie', null)
   RENAMING null => 'The rest'
 ```

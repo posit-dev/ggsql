@@ -6,7 +6,7 @@ The continuous scale type maps various continuous data types into a continuous o
 
 ## Input range
 
-The input range for continuous scales are defined by their minimum and maximum values. These can be given explicitly or deduced from the mapped data. If `FROM` is omitted then the range of the mapped data is used. If provided as an array of length 2 then the first element will set the minimum and the second element will set the maximum. If either of these elements are `null` then that part of the range will be deduced from the data. As an example `SCALE x FROM [0, null]` will set the minimum part of the range to 0 and the maximum part to the maximal value of the mapped data.
+The input range for continuous scales are defined by their minimum and maximum values. These can be given explicitly or deduced from the mapped data. If `FROM` is omitted then the range of the mapped data is used. If provided as an array of length 2 then the first element will set the minimum and the second element will set the maximum. If either of these elements are `null` then that part of the range will be deduced from the data. As an example `SCALE x FROM (0, null)` will set the minimum part of the range to 0 and the maximum part to the maximal value of the mapped data.
 
 Position aesthetics (`x` and `y`) will have their range expanded based on the `expand` setting. If values in the mapped data falls outside of the input domain the values will be changed based on the `oob` setting.
 
@@ -19,7 +19,7 @@ The input range is converted to the type defined by the transformation. This mea
 ``` ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
-SCALE x FROM [40, 50]
+SCALE x FROM (40, 50)
 ```
 
 #### Allow one end of the range to be imputed
@@ -27,7 +27,7 @@ SCALE x FROM [40, 50]
 ``` ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
-SCALE x FROM [0, null]
+SCALE x FROM (0, null)
 ```
 
 ## Output range
@@ -38,8 +38,8 @@ All aesthetics have a default output range so it is never required to provide on
 
 - `x`/`y`: Ignored (values used directly)
 - `stroke`/`fill`: The `navia` palette
-- `size`/`linewidth`: `[1, 6]` (points)
-- `opacity`: `[0.1, 1.0]` (0 being fully transparent and 1 being fully opaque)
+- `size`/`linewidth`: `(1, 6)` (points)
+- `opacity`: `(0.1, 1.0)` (0 being fully transparent and 1 being fully opaque)
 
 The remaining aesthetics doesn’t have a meaningful continuous output domain and doesn’t work with continuous scales. Consider using a [binned scale](../../../syntax/scale/type/binned.llms.md) for these if necessary.
 
@@ -58,7 +58,7 @@ SCALE color TO batlow
 ``` ggsql
 VISUALISE bill_len AS x, bill_dep AS y, body_mass AS color FROM ggsql:penguins
 DRAW point
-SCALE color TO ['black', 'red', 'white']
+SCALE color TO ('black', 'red', 'white')
 ```
 
 ## Transformation
@@ -144,7 +144,7 @@ SCALE x
 
 The following settings are recognised by continuous scales:
 
-- `expand` (only for `x`/`y`): Either a scalar number or 2-element array of numbers (values must be \>= 0). Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to `0.05` (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as `SCALE x FROM [0, null]` expansion will only be applied to the upper range.
+- `expand` (only for `x`/`y`): Either a scalar number or 2-element array of numbers (values must be \>= 0). Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to `0.05` (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as `SCALE x FROM (0, null)` expansion will only be applied to the upper range.
 - `oob`: How should values outside of the scale input range be treated. One of `'keep'` (keep the values as-is), `'censor'` (set to `null`), or `'squish'` (set to the nearest values within the range). Default for `x`/`y` is `'keep'`, for the remaining it is `'censor'`.
 - `breaks`: Either a scalar (whole number \>= 1) as described in [the section on breaks](#breaks), or an array of values to place breaks at. Defaults to `5`.
 - `pretty`: A boolean indicating which algorithm to use for automatic calculation of breaks as described in [the section on breaks](#breaks). Defaults to `true`.
@@ -158,7 +158,7 @@ The following settings are recognised by continuous scales:
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x 
-  SETTING expand => [0.0, 10]
+  SETTING expand => (0.0, 10)
 ```
 
 #### Squish all y values to show them in the margin of the plot
@@ -166,7 +166,7 @@ SCALE x
 ``` ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
-SCALE y FROM [15, 20]
+SCALE y FROM (15, 20)
   SETTING oob => 'squish'
 ```
 
@@ -176,7 +176,7 @@ SCALE y FROM [15, 20]
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x 
-  SETTING breaks => [37, 42, 55]
+  SETTING breaks => (37, 42, 55)
 ```
 
 #### Reverse the x axis

@@ -15,8 +15,8 @@ The input range for discrete scales consists of all the unique values that the s
 ``` ggsql
 VISUALISE species AS x FROM ggsql:penguins
 DRAW bar
-SCALE x FROM ['Chinstrap', 'Gentoo', 'Adelie']
-SCALE y FROM [0, null]
+SCALE x FROM ('Chinstrap', 'Gentoo', 'Adelie')
+SCALE y FROM (0, null)
 ```
 
 #### Remove a category by omitting it
@@ -24,8 +24,8 @@ SCALE y FROM [0, null]
 ``` ggsql
 VISUALISE species AS x FROM ggsql:penguins
 DRAW bar
-SCALE x FROM ['Adelie', 'Chinstrap']
-SCALE y FROM [0, null]
+SCALE x FROM ('Adelie', 'Chinstrap')
+SCALE y FROM (0, null)
 ```
 
 #### Explicitly include null in range to show removed data
@@ -33,8 +33,8 @@ SCALE y FROM [0, null]
 ``` ggsql
 VISUALISE island AS x FROM ggsql:penguins
 DRAW bar
-SCALE x FROM ['Torgersen', 'Biscoe', null]
-SCALE y FROM [0, null]
+SCALE x FROM ('Torgersen', 'Biscoe', null)
+SCALE y FROM (0, null)
 ```
 
 ## Output range
@@ -65,7 +65,7 @@ SCALE color TO tableau
 ``` ggsql
 VISUALISE bill_len AS x, bill_dep AS y, island AS shape FROM ggsql:penguins
 DRAW point
-SCALE shape TO ['star', 'circle', 'diamond']
+SCALE shape TO ('star', 'circle', 'diamond')
 ```
 
 ## Transform
@@ -85,7 +85,7 @@ There is only one setting relevant for discrete scales:
 ``` ggsql
 VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
 DRAW point
-SCALE color FROM ['Adelie', 'Chinstrap', 'Gentoo']
+SCALE color FROM ('Adelie', 'Chinstrap', 'Gentoo')
   SETTING reverse => true
 ```
 
@@ -112,7 +112,7 @@ VISUALISE sex AS x FROM ggsql:penguins
 DRAW bar
 SCALE x
   RENAMING 'null' => 'missing'
-SCALE y FROM [0, null]
+SCALE y FROM (0, null)
 ```
 
 #### Add prefix
@@ -122,7 +122,7 @@ VISUALISE species AS x FROM ggsql:penguins
 DRAW bar
 SCALE x 
   RENAMING * => 'Species: {}'
-SCALE y FROM [0, null]
+SCALE y FROM (0, null)
 ```
 
 #### Apply formatting

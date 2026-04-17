@@ -50,5 +50,5 @@ FROM ggsql:airquality
 
 VISUALISE Month AS y, Day AS x, centered AS fill
   DRAW rect
-  SCALE fill FROM [-20, 20] TO vik
+  SCALE fill FROM (-20, 20) TO vik
 ```

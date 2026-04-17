@@ -101,7 +101,7 @@ DRAW text
     opacity => 0.8, 
     fontweight => 'bold', 
     typeface => 'Times New Roman'
-SCALE fontsize TO [6, 20]
+SCALE fontsize TO (6, 20)
 ```
 
 The ‘stroke’ aesthetic is applied to the outline of the text.
@@ -121,7 +121,7 @@ VISUALISE island AS x, n AS y
 DRAW bar
 DRAW text
   MAPPING n AS label
-  SETTING vjust => 'top', offset => [0, -11], fill => 'white'
+  SETTING vjust => 'top', offset => (0, -11), fill => 'white'
 ```
 
 If you label bars at the extreme end, you may need to expand the scale to accommodate the labels.
@@ -132,8 +132,8 @@ VISUALISE island AS x, n AS y
 DRAW bar
 DRAW text
   MAPPING n AS label
-  SETTING vjust => 'bottom', offset => [0, 11]
-SCALE y FROM [0, 200]
+  SETTING vjust => 'bottom', offset => (0, 11)
+SCALE y FROM (0, 200)
 ```
 
 You can use `PLACE` to annotate a plot directly without needing to map data.
@@ -143,7 +143,7 @@ VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point MAPPING species AS colour
 PLACE text 
   SETTING
-    label => ['Adelie', 'Chinstrap', 'Gentoo'],
-    x => [40, 50, 50],
-    y => [19, 19, 15]
+    label => ('Adelie', 'Chinstrap', 'Gentoo'),
+    x => (40, 50, 50),
+    y => (19, 19, 15)
 ```
