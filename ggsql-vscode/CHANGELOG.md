@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+Alpha release.
+
+- Install ODBC in release GHA workflows (#317)
+
 ## 0.2.0
 
 Alpha release.
