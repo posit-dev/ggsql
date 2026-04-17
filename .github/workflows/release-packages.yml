@@ -136,6 +136,11 @@ jobs:
       - name: Build ggsql binary (x86_64)
         run: cargo build --release --bin ggsql --bin ggsql-jupyter
 
+      - name: Ad-hoc sign binaries
+        run: |
+          codesign --force --sign - target/release/ggsql
+          codesign --force --sign - target/release/ggsql-jupyter
+
       - name: Build DMG installer (x86_64)
         run: cargo packager --release --formats dmg
         env:
