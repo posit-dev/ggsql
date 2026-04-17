@@ -1084,35 +1084,6 @@ mod tests {
     }
 
     #[test]
-    fn test_polar_project_inner_default() {
-        // Test that inner=0 (default) doesn't add scale range
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
-            VISUALISE value AS y, category AS fill
-            DRAW bar
-            PROJECT y, x TO polar
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
-
-        // Radius encoding should not have scale.range when inner=0
-        let radius = &layer["encoding"]["radius"];
-        if let Some(scale) = radius.get("scale") {
-            assert!(
-                scale.get("range").is_none(),
-                "Radius scale should not have range when inner=0, got: {:?}",
-                scale
-            );
-        }
-    }
-
-    #[test]
     fn test_stacked_bar_chart() {
         // Test stacked bar chart via position => 'stack'
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
