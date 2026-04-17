@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.5
+
+Alpha release.
+
+- Install ODBC in manylinux container in GHA release workflows
+
 ## 0.2.4
 
 Alpha release.

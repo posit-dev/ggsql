@@ -27,7 +27,7 @@ __all__ = [
     "execute",
     "render_altair",
 ]
-__version__ = "0.2.4"
+__version__ = "0.2.5"
 
 # Type alias for any Altair chart type
 AltairChart = Union[
