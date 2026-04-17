@@ -47,6 +47,9 @@ jobs:
           name: tree-sitter-generated
           path: tree-sitter-ggsql/src/
 
+      - name: Install ODBC
+        run: sudo apt-get install -y unixodbc-dev
+
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -80,6 +83,9 @@ jobs:
         with:
           name: tree-sitter-generated
           path: tree-sitter-ggsql/src/
+
+      - name: Install ODBC
+        run: brew install unixodbc
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
