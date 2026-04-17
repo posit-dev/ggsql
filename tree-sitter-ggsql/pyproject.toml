@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tree-sitter-ggsql"
-version = "0.1.9"
+version = "0.2.0"
 description = "Tree-sitter grammar for ggsql visualization language"
 readme = "README.md"
 license = {text = "MIT"}
