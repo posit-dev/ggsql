@@ -8,3 +8,4 @@
 ^src/Makevars$
 ^src/Makevars\.win$
 ^README\.Rmd$
+^air\.toml$

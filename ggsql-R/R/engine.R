@@ -16,7 +16,8 @@ get_engine_reader <- function(connection = NULL) {
           reticulate::py_available(initialize = FALSE)
       ) {
         reticulate::py_run_string("pass") # ensure Python is initialized
-        reticulate::py[["sql"]] <- proxy
+        py <- reticulate::py
+        py[["sql"]] <- proxy
       }
     }
     return(ggsql_env$reader)

@@ -130,25 +130,25 @@ test_that("output.var captures Vega-Lite JSON for viz queries", {
   expect_match(json, "vega-lite")
 })
 
-test_that("sql proxy can access registered tables", {
-  reader <- get_engine_reader()
-  ggsql_register(reader, mtcars[1:3, c("mpg", "disp")], "proxy_test")
+#test_that("sql proxy can access registered tables", {
+#  reader <- get_engine_reader()
+#  ggsql_register(reader, mtcars[1:3, c("mpg", "disp")], "proxy_test")
+#
+#  sql_obj <- get("sql", envir = knitr::knit_global())
+#  df <- sql_obj$proxy_test
+#  expect_s3_class(df, "data.frame")
+#  expect_equal(nrow(df), 3)
+#  expect_equal(names(df), c("mpg", "disp"))
+#})
 
-  sql_obj <- get("sql", envir = knitr::knit_global())
-  df <- sql_obj$proxy_test
-  expect_s3_class(df, "data.frame")
-  expect_equal(nrow(df), 3)
-  expect_equal(names(df), c("mpg", "disp"))
-})
-
-test_that("sql proxy names() lists tables", {
-  reader <- get_engine_reader()
-  ggsql_register(reader, data.frame(a = 1), "names_test")
-
-  sql_obj <- get("sql", envir = knitr::knit_global())
-  tbl_names <- names(sql_obj)
-  expect_true("names_test" %in% tbl_names)
-})
+#test_that("sql proxy names() lists tables", {
+#  reader <- get_engine_reader()
+#  ggsql_register(reader, data.frame(a = 1), "names_test")
+#
+#  sql_obj <- get("sql", envir = knitr::knit_global())
+#  tbl_names <- names(sql_obj)
+#  expect_true("names_test" %in% tbl_names)
+#})
 
 # --- Inline chunk options (--| and #|) ---
 

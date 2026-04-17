@@ -29,6 +29,7 @@ Imports:
     yaml
 Suggests:
     gapminder,
+    quarto,
     reticulate,
     rmarkdown,
     rsvg,
@@ -39,4 +40,4 @@ Config/testthat/edition: 3
 Config/rextendr/version: 0.4.2.9000
 Depends:
     R (>= 4.2)
-VignetteBuilder: knitr
+VignetteBuilder: quarto
