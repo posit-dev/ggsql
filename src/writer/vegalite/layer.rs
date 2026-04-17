@@ -1700,18 +1700,24 @@ impl GeomRenderer for ErrorBarRenderer {
 
         let mut layers = vec![layer_spec.clone()];
 
-        // Error bars use pos1 (categorical position, already in layer_spec)
-        // and pos2min/pos2max (error range, mapped to y/y2 or x/x2 depending on PROJECT)
-        let min_field = naming::aesthetic_column("pos2min");
-        let max_field = naming::aesthetic_column("pos2max");
-
-        // Determine which encoding channel is used for the error range (transposition happens upstream)
+        // Determine orientation and which axis holds the error range.
+        // Transposition flips DataFrame columns upstream: pos2min↔pos1min, pos2max↔pos1max.
         let (pos1, pos1_end, _, pos2, pos2_end, _) = &context.channels;
         let is_vertical = !is_transposed(layer);
-        let (orient, position) = if is_vertical {
-            ("horizontal", pos2) // pos2min/pos2max are on pos2 axis, tick is horizontal
+        let (orient, position, min_field, max_field) = if is_vertical {
+            (
+                "horizontal",
+                pos2,
+                naming::aesthetic_column("pos2min"),
+                naming::aesthetic_column("pos2max"),
+            )
         } else {
-            ("vertical", pos1) // pos2min/pos2max are on pos1 axis, tick is vertical
+            (
+                "vertical",
+                pos1,
+                naming::aesthetic_column("pos1min"),
+                naming::aesthetic_column("pos1max"),
+            )
         };
 
         // First hinge (at min position)
@@ -4016,6 +4022,7 @@ mod tests {
         use crate::plot::{AestheticValue, Geom, Layer};
         use polars::prelude::*;
 
+        let context = RenderContext::default_for_test();
         let renderer = PathRenderer;
         let mut layer = Layer::new(Geom::line());
 
@@ -4062,7 +4069,7 @@ mod tests {
 
         // Finalize should switch to trail mark and translate encodings
         let result = renderer
-            .finalize(layer_spec.clone(), &layer, "test", &prepared)
+            .finalize(layer_spec.clone(), &layer, "test", &prepared, &context)
             .unwrap();
 
         assert_eq!(result.len(), 1);
