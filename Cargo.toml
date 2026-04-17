@@ -16,7 +16,7 @@ default-members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 authors = ["ggsql Team"]
 license = "MIT"
@@ -26,8 +26,8 @@ description = "A declarative visualization language that extends SQL with powerf
 
 [workspace.dependencies]
 # workspace packages
-tree-sitter-ggsql = { path = "tree-sitter-ggsql", version = "0.2.1" }
-ggsql = { path = "src", version = "0.2.1" }
+tree-sitter-ggsql = { path = "tree-sitter-ggsql", version = "0.2.2" }
+ggsql = { path = "src", version = "0.2.2" }
 
 # Parsing
 csscolorparser = "0.8.1"

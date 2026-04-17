@@ -1791,7 +1791,7 @@ dependencies = [
 
 [[package]]
 name = "ggsql"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "arrow",
@@ -1826,7 +1826,7 @@ dependencies = [
 
 [[package]]
 name = "ggsql-jupyter"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1851,7 +1851,7 @@ dependencies = [
 
 [[package]]
 name = "ggsql-python"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "ggsql",
  "polars",
@@ -1860,7 +1860,7 @@ dependencies = [
 
 [[package]]
 name = "ggsql-wasm"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "csv",
  "ggsql",
@@ -5822,7 +5822,7 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-ggsql"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "cc",
  "tree-sitter",
