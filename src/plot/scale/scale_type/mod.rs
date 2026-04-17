@@ -1525,7 +1525,7 @@ pub(crate) fn size_output_range(
 ///
 /// Syntax:
 /// - Single number: `expand => 0.05` → (0.05, 0.0)
-/// - Two numbers: `expand => [0.05, 10]` → (0.05, 10.0)
+/// - Two numbers: `expand => (0.05, 10)` → (0.05, 10.0)
 pub(super) fn parse_expand_value(expand: &ParameterValue) -> Option<(f64, f64)> {
     match expand {
         ParameterValue::Number(m) => Some((*m, 0.0)),
@@ -1561,7 +1561,7 @@ pub(crate) fn expand_numeric_range(
 /// If `original_user_range` is provided, only expand values that were originally Null
 /// in the user range. This preserves explicit user limits while expanding inferred values.
 ///
-/// For example, with `FROM [0, null]`:
+/// For example, with `FROM (0, null)`:
 /// - min=0 is explicit, so it's preserved as 0
 /// - max was null (inferred from data), so it gets expanded
 ///
@@ -1770,7 +1770,7 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
     // Strategy: First merge user range with context (filling nulls), then apply expansion
     // This ensures expansion is calculated on the final range span.
     // IMPORTANT: Only expand values that were inferred (originally null), not explicit user values.
-    // For example, `FROM [0, null]` should keep min=0 and only expand max.
+    // For example, `FROM (0, null)` should keep min=0 and only expand max.
     //
     // For polar coordinates, pos2 (theta) defaults to zero expansion since it's angular/categorical.
     // Users can still explicitly set expand if they want.

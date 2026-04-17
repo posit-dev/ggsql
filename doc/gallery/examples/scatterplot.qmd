@@ -47,7 +47,7 @@ The color palette can be changed by detailing the `SCALE color` clause.
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
 DRAW point
-SCALE color TO ['DeepSkyBlue', 'Fuchsia', 'Lime']
+SCALE color TO ('DeepSkyBlue', 'Fuchsia', 'Lime')
 LABEL
     title => 'Penguin Bill Dimensions by Species',
     x => 'Bill Length (mm)',

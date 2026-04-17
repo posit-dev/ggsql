@@ -489,6 +489,108 @@ SCALE color TO viridis
             (bare_identifier)))))))
 
 ================================================================================
+Plot with scales using parenthesized arrays
+================================================================================
+
+VISUALISE x, y, group AS color
+DRAW point
+SCALE CONTINUOUS x FROM (0, 100)
+SCALE DISCRETE color FROM ('A', 'B') TO ('red', 'blue')
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_from_clause
+          (array
+            (array_element
+              (number))
+            (array_element
+              (number))))))
+    (viz_clause
+      (scale_clause
+        (scale_type_identifier)
+        (aesthetic_name)
+        (scale_from_clause
+          (array
+            (array_element
+              (string))
+            (array_element
+              (string))))
+        (scale_to_clause
+          (array
+            (array_element
+              (string))
+            (array_element
+              (string))))))))
+
+================================================================================
+PLACE with parenthesized array values in SETTING
+================================================================================
+
+VISUALISE
+PLACE point SETTING x => (1, 2, 3), y => (10, 20, 30)
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (viz_clause
+      (place_clause
+        (geom_type)
+        (setting_clause
+          (parameter_assignment
+            name: (parameter_name
+              (identifier
+                (bare_identifier)))
+            value: (parameter_value
+              (array
+                (array_element
+                  (number))
+                (array_element
+                  (number))
+                (array_element
+                  (number)))))
+          (parameter_assignment
+            name: (parameter_name
+              (identifier
+                (bare_identifier)))
+            value: (parameter_value
+              (array
+                (array_element
+                  (number))
+                (array_element
+                  (number))
+                (array_element
+                  (number))))))))))
+
+================================================================================
 Plot with labels
 ================================================================================
 

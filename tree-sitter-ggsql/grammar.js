@@ -874,13 +874,23 @@ module.exports = grammar({
 
     boolean: $ => choice('true', 'false'),
 
-    array: $ => seq(
-      '[',
-      optional(seq(
-        $.array_element,
-        repeat(seq(',', $.array_element))
-      )),
-      ']'
+    array: $ => choice(
+      seq(
+        '[',
+        optional(seq(
+          $.array_element,
+          repeat(seq(',', $.array_element))
+        )),
+        ']'
+      ),
+      seq(
+        '(',
+        optional(seq(
+          $.array_element,
+          repeat(seq(',', $.array_element))
+        )),
+        ')'
+      )
     ),
 
     array_element: $ => choice(

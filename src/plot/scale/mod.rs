@@ -72,14 +72,14 @@ pub fn gets_default_scale(aesthetic: &str) -> bool {
 /// Infer the target type for coercion based on scale kind.
 ///
 /// Different scale kinds determine type differently:
-/// - **Discrete/Ordinal**: Type from input range (e.g., `FROM [true, false]` → Boolean)
+/// - **Discrete/Ordinal**: Type from input range (e.g., `FROM (true, false)` → Boolean)
 /// - **Continuous**: Type from transform (e.g., `VIA date` → Date, `VIA log10` → Number)
 /// - **Binned**: No coercion (binning happens in SQL before DataFrame)
 /// - **Identity**: No coercion
 ///
 /// This is used to coerce DataFrame columns to the appropriate type before
 /// scale resolution (e.g., coercing string "true"/"false" to boolean when
-/// the scale has `FROM [true, false]`).
+/// the scale has `FROM (true, false)`).
 pub fn infer_scale_target_type(scale: &Scale) -> Option<ArrayElementType> {
     let scale_type = scale.scale_type.as_ref()?;
 

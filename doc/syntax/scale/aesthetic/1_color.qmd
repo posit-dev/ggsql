@@ -50,7 +50,7 @@ DRAW line
 when you define the output range of a fill or stroke scale manually, e.g.
 
 ```ggsql
-SCALE fill TO ['rgb(100%, 0%, 0%)', 'lemonchiffon']
+SCALE fill TO ('rgb(100%, 0%, 0%)', 'lemonchiffon')
 ```
 
 or when using an identity scale for color in which case the data values must be parsable as colors.
@@ -79,7 +79,7 @@ VISUALISE FROM ggsql:penguins
 DRAW point
   MAPPING bill_dep AS x, body_mass AS y, flipper_len AS fill
   SETTING stroke => null
-SCALE color TO ['antiquewhite', 'firebrick']
+SCALE color TO ('antiquewhite', 'firebrick')
 ```
 
 ### Continuous palettes
