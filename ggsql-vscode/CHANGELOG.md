@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+Alpha release.
+
+- Install ODBC in Jupyter release GHA workflows (#319)
+
 ## 0.2.1
 
 Alpha release.
