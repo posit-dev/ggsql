@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.6
+
+Alpha release.
+
+- Set auditwheel=repair for Jupyter macOS builds
+- Use dylibbundler to bundle libs on macOS
+
 ## 0.2.5
 
 Alpha release.
