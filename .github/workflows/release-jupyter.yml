@@ -98,7 +98,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist
+          args: --release --out dist --auditwheel=repair
           working-directory: ggsql-jupyter
 
       - uses: actions/upload-artifact@v4
