@@ -108,4 +108,4 @@ binaries = [
 ]
 
 # Resources to bundle (optional)
-resources = []
+resources = [{ src = "../libs/", target = "libs" }]

@@ -105,6 +105,9 @@ jobs:
       - name: Install ODBC
         run: brew install unixodbc
 
+      - name: Install dylibbundler
+        run: brew install dylibbundler
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -135,6 +138,11 @@ jobs:
 
       - name: Build ggsql binary (x86_64)
         run: cargo build --release --bin ggsql --bin ggsql-jupyter
+
+      - name: Bundle and sign dynamic library dependencies
+        run: |
+          dylibbundler -cd -of -b -x target/release/ggsql -d ./libs/ -p @executable_path/../Resources/libs/
+          dylibbundler -cd -of -b -x target/release/ggsql-jupyter -d ./libs/ -p @executable_path/../Resources/libs/
 
       - name: Ad-hoc sign binaries
         run: |
@@ -175,6 +183,9 @@ jobs:
       - name: Install ODBC
         run: brew install unixodbc
 
+      - name: Install dylibbundler
+        run: brew install dylibbundler
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -205,6 +216,11 @@ jobs:
 
       - name: Build ggsql binary (aarch64)
         run: cargo build --release --bin ggsql --bin ggsql-jupyter
+
+      - name: Bundle and sign dynamic library dependencies
+        run: |
+          dylibbundler -cd -of -b -x target/release/ggsql -d ./libs/ -p @executable_path/../Resources/libs/
+          dylibbundler -cd -of -b -x target/release/ggsql-jupyter -d ./libs/ -p @executable_path/../Resources/libs/
 
       - name: Build DMG installer (aarch64)
         run: cargo packager --release --formats dmg
@@ -306,6 +322,9 @@ jobs:
 
       - name: Build ggsql binary (aarch64)
         run: cargo build --release --bin ggsql --bin ggsql-jupyter
+
+      - name: Make empty libs dir for bundling
+        run: mkdir -p libs
 
       - name: Build Debian package (aarch64)
         run: cargo packager --release --formats deb
