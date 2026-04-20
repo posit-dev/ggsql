@@ -19,7 +19,7 @@ ggsql provides native installers for Windows, macOS, and Linux. Choose the best 
 |----------|----------|------|
 | **Windows** | `.exe` | |
 | | `.msi` | |
-| **macOS** | `.dmg` | |
+| **macOS** | `.pkg` | |
 | **Linux** | `.deb` | |
 
 Download from [GitHub Releases](https://github.com/posit-dev/ggsql/releases)
@@ -64,7 +64,7 @@ Download from [GitHub Releases](https://github.com/posit-dev/ggsql/releases)
   const patterns = {
     windows_exe: /^ggsql[_-]\d.*x64.*-setup\.exe$/i,
     windows_msi: /^ggsql[_-]\d.*x64.*\.msi$/i,
-    macos: /^ggsql[_-]\d.*(aarch64|arm64).*\.dmg$/i,
+    macos: /^ggsql[_-]\d.*(aarch64|arm64).*\.pkg$/i,
     linux: /^ggsql[_-]\d.*amd64.*\.deb$/i
   };
 
