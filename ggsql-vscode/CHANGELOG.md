@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.7
+
+Alpha release.
+
+- Switch macOS installer from .dmg to .pkg
+
 ## 0.2.6
 
 Alpha release.

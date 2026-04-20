@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "ggsql-jupyter"
-version = "0.2.6"
+version = "0.2.7"
 description = "Jupyter kernel for ggsql - SQL extension for declarative data visualization"
 readme = "README.md"
 license = { text = "MIT" }
