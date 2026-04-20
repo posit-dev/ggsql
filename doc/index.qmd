@@ -119,7 +119,7 @@ uv tool install ggsql
 
   const patterns = {
     windows_exe: /^ggsql[_-]\d.*x64.*-setup\.exe$/i,
-    macos: /^ggsql[_-]\d.*(aarch64|arm64).*\.dmg$/i,
+    macos: /^ggsql[_-]\d.*(aarch64|arm64).*\.pkg$/i,
     linux: /^ggsql[_-]\d.*amd64.*\.deb$/i
   };
 

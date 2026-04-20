@@ -99,6 +99,9 @@ function discoverKernelPaths(): KernelCandidate[] {
     // 3. Cargo-packager install locations
     const packagerPaths: string[] = [];
     if (process.platform === 'darwin') {
+        // PKG installer (current)
+        packagerPaths.push('/usr/local/bin/ggsql-jupyter');
+        // Legacy DMG / .app bundle install
         packagerPaths.push('/Applications/ggsql.app/Contents/MacOS/ggsql-jupyter');
     } else if (process.platform === 'win32') {
         const programFiles = process.env.PROGRAMFILES || 'C:\\Program Files';
