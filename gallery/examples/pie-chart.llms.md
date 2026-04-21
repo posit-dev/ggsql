@@ -85,3 +85,14 @@ VISUALISE island AS fill FROM ggsql:penguins
   PROJECT TO polar SETTING start => -90, end => 90
   SCALE angle SETTING expand => 0
 ```
+
+### Faceting pie charts
+
+When faceting, you will typically want to pies to be whole, which requires the `SETTING free => 'angle'` specification.
+
+``` ggsql
+VISUALISE island AS fill FROM ggsql:penguins
+  DRAW bar
+  PROJECT TO polar 
+  FACET species SETTING free => 'angle'
+```
