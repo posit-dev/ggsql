@@ -13,6 +13,6 @@ LABEL
   y => 'Bill depth'
 ```
 
-Congratulations! You have started your journey with ggsql! All examples you see on this site will be interactive. Please experiment to your heart’s content. If you want a more dedicated exploration experience head to [our playground](wasm/) which provides a simple IDE with a number of examples to try out.
+Congratulations! You have started your journey with ggsql! All examples you see on this site will be interactive. Please experiment to your heart’s content. If you want a more dedicated exploration experience head to [our playground](../wasm/) which provides a simple IDE with a number of examples to try out.
 
 Before we move further, you might have some questions about the syntax. For instance, “why isn’t there just a scatterplot function?”. The next section will give a brief glimpse into the concept of the grammar of graphics that underpin the ggsql syntax and why we think it is a superior approach to data visualisation.
