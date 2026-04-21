@@ -29,7 +29,7 @@ pub enum Commands {
         /// The ggsql query to execute
         query: String,
 
-        /// Data source connection string (duckdb://, sqlite://)
+        /// Data source connection string (duckdb://, sqlite://, odbc://)
         #[arg(long, default_value = "duckdb://memory")]
         reader: String,
 
@@ -51,7 +51,7 @@ pub enum Commands {
         /// Path to .sql file containing ggsql query
         file: PathBuf,
 
-        /// Data source connection string (duckdb://, sqlite://)
+        /// Data source connection string (duckdb://, sqlite://, odbc://)
         #[arg(long, default_value = "duckdb://memory")]
         reader: String,
 
@@ -182,6 +182,23 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
         #[cfg(not(feature = "sqlite"))]
         {
             eprintln!("SQLite reader not compiled in. Rebuild with --features sqlite");
+            std::process::exit(1);
+        }
+    } else if reader.starts_with("odbc://") {
+        #[cfg(feature = "odbc")]
+        {
+            let r = match ggsql::reader::OdbcReader::from_connection_string(&reader) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("Failed to create reader: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            exec_with_reader(&query, &r, &writer, output, verbose);
+        }
+        #[cfg(not(feature = "odbc"))]
+        {
+            eprintln!("ODBC reader not compiled in. Rebuild with --features odbc");
             std::process::exit(1);
         }
     } else if reader.starts_with("postgres://") || reader.starts_with("postgresql://") {
