@@ -83,12 +83,12 @@ LABEL
 
 ::: {.install-col .install-col-right}
 ```bash
-# Jupyter kernel
+# Jupyter kernel (PyPI)
 uv tool install ggsql-jupyter
 ggsql-jupyter --install
 
-# CLI
-uv tool install ggsql
+# CLI (crates.io)
+cargo install ggsql
 ```
 :::
 :::
