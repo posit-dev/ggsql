@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use polars::prelude::DataType;
+use arrow::datatypes::DataType;
 
 use super::{
     expand_numeric_range, resolve_common_steps, ScaleDataContext, ScaleTypeKind, ScaleTypeTrait,
@@ -93,13 +93,13 @@ impl ScaleTypeTrait for Binned {
             | DataType::Float32
             | DataType::Float64 => Ok(()),
             // Accept temporal types
-            DataType::Date | DataType::Datetime(_, _) | DataType::Time => Ok(()),
+            DataType::Date32 | DataType::Timestamp(_, _) | DataType::Time64(_) => Ok(()),
             // Reject discrete types
-            DataType::String => Err("Binned scale cannot be used with String data. \
+            DataType::Utf8 => Err("Binned scale cannot be used with String data. \
                  Use DISCRETE scale type instead, or ensure the column contains numeric or temporal data.".to_string()),
             DataType::Boolean => Err("Binned scale cannot be used with Boolean data. \
                  Use DISCRETE scale type instead, or ensure the column contains numeric or temporal data.".to_string()),
-            DataType::Categorical(_, _) => Err("Binned scale cannot be used with Categorical data. \
+            DataType::Dictionary(_, _) => Err("Binned scale cannot be used with Categorical data. \
                  Use DISCRETE scale type instead, or ensure the column contains numeric or temporal data.".to_string()),
             // Other types - provide generic message
             other => Err(format!(
@@ -138,9 +138,9 @@ impl ScaleTypeTrait for Binned {
         // First check column data type for temporal transforms
         if let Some(dtype) = column_dtype {
             match dtype {
-                DataType::Date => return TransformKind::Date,
-                DataType::Datetime(_, _) => return TransformKind::DateTime,
-                DataType::Time => return TransformKind::Time,
+                DataType::Date32 => return TransformKind::Date,
+                DataType::Timestamp(_, _) => return TransformKind::DateTime,
+                DataType::Time64(_) => return TransformKind::Time,
                 _ => {}
             }
         }
@@ -617,7 +617,7 @@ impl ScaleTypeTrait for Binned {
         let transform = scale.transform.as_ref();
         let is_temporal = matches!(
             column_dtype,
-            DataType::Date | DataType::Datetime(..) | DataType::Time
+            DataType::Date32 | DataType::Timestamp(..) | DataType::Time64(_)
         );
 
         // Build CASE WHEN clauses for each bin
@@ -833,6 +833,7 @@ pub fn add_range_boundaries_to_breaks(breaks: &mut Vec<ArrayElement>, range: &[A
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arrow::datatypes::TimeUnit;
     use crate::plot::scale::Scale;
     use crate::reader::AnsiDialect;
 
@@ -1018,7 +1019,7 @@ mod tests {
         );
 
         // Date column - no casting needed (types match)
-        let sql = binned.pre_stat_transform_sql("date_col", &DataType::Date, &scale, &AnsiDialect);
+        let sql = binned.pre_stat_transform_sql("date_col", &DataType::Date32, &scale, &AnsiDialect);
 
         // Should successfully generate SQL (not return None due to filtered-out breaks)
         assert!(sql.is_some(), "SQL should be generated for Date breaks");
@@ -1067,10 +1068,10 @@ mod tests {
             ]),
         );
 
-        use polars::prelude::TimeUnit;
+        use arrow::datatypes::TimeUnit;
         let sql = binned.pre_stat_transform_sql(
             "datetime_col",
-            &DataType::Datetime(TimeUnit::Microseconds, None),
+            &DataType::Timestamp(TimeUnit::Microsecond, None),
             &scale,
             &AnsiDialect,
         );
@@ -1101,7 +1102,7 @@ mod tests {
             ]),
         );
 
-        let sql = binned.pre_stat_transform_sql("time_col", &DataType::Time, &scale, &AnsiDialect);
+        let sql = binned.pre_stat_transform_sql("time_col", &DataType::Time64(TimeUnit::Nanosecond), &scale, &AnsiDialect);
 
         // Should successfully generate SQL
         assert!(sql.is_some(), "SQL should be generated for Time breaks");
@@ -1142,7 +1143,7 @@ mod tests {
 
         // Date column - no column casting, but break values are formatted as ISO dates
         let sql = binned
-            .pre_stat_transform_sql("date_col", &DataType::Date, &scale, &AnsiDialect)
+            .pre_stat_transform_sql("date_col", &DataType::Date32, &scale, &AnsiDialect)
             .unwrap();
 
         // Should NOT contain column CAST (column is already DATE)
@@ -1239,7 +1240,7 @@ mod tests {
     fn test_datetime_column_with_datetime_transform() {
         // DATETIME column + datetime transform → temporal literals
         use crate::plot::scale::transform::Transform;
-        use polars::prelude::TimeUnit;
+        use arrow::datatypes::TimeUnit;
 
         let binned = Binned;
         let mut scale = Scale::new("x");
@@ -1260,7 +1261,7 @@ mod tests {
         let sql = binned
             .pre_stat_transform_sql(
                 "datetime_col",
-                &DataType::Datetime(TimeUnit::Microseconds, None),
+                &DataType::Timestamp(TimeUnit::Microsecond, None),
                 &scale,
                 &AnsiDialect,
             )
@@ -1926,7 +1927,7 @@ mod tests {
     #[test]
     fn test_validate_dtype_accepts_numeric() {
         use super::ScaleTypeTrait;
-        use polars::prelude::DataType;
+        use arrow::datatypes::DataType;
 
         let binned = Binned;
         assert!(binned.validate_dtype(&DataType::Int64).is_ok());
@@ -1936,22 +1937,22 @@ mod tests {
     #[test]
     fn test_validate_dtype_accepts_temporal() {
         use super::ScaleTypeTrait;
-        use polars::prelude::{DataType, TimeUnit};
+        use arrow::datatypes::{DataType, TimeUnit};
 
         let binned = Binned;
-        assert!(binned.validate_dtype(&DataType::Date).is_ok());
+        assert!(binned.validate_dtype(&DataType::Date32).is_ok());
         assert!(binned
-            .validate_dtype(&DataType::Datetime(TimeUnit::Microseconds, None))
+            .validate_dtype(&DataType::Timestamp(TimeUnit::Microsecond, None))
             .is_ok());
     }
 
     #[test]
     fn test_validate_dtype_rejects_string() {
         use super::ScaleTypeTrait;
-        use polars::prelude::DataType;
+        use arrow::datatypes::DataType;
 
         let binned = Binned;
-        let result = binned.validate_dtype(&DataType::String);
+        let result = binned.validate_dtype(&DataType::Utf8);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("String"));
@@ -1961,7 +1962,7 @@ mod tests {
     #[test]
     fn test_validate_dtype_rejects_boolean() {
         use super::ScaleTypeTrait;
-        use polars::prelude::DataType;
+        use arrow::datatypes::DataType;
 
         let binned = Binned;
         let result = binned.validate_dtype(&DataType::Boolean);
@@ -1982,7 +1983,7 @@ mod tests {
         // Issue: breaks like [2600, 3550, 4050, 4750, 6400] were getting terminal
         // breaks removed when data range was ~[2700, 6300].
         use super::ScaleTypeTrait;
-        use polars::prelude::DataType;
+        use arrow::datatypes::DataType;
 
         let binned = Binned;
         let mut scale = Scale::new("fill");
@@ -2036,7 +2037,7 @@ mod tests {
         // When BOTH explicit breaks AND explicit range are provided,
         // breaks should be filtered to the range.
         use super::ScaleTypeTrait;
-        use polars::prelude::DataType;
+        use arrow::datatypes::DataType;
 
         let binned = Binned;
         let mut scale = Scale::new("fill");

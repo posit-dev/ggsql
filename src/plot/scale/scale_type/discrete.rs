@@ -1,6 +1,6 @@
 //! Discrete scale type implementation
 
-use polars::prelude::DataType;
+use arrow::datatypes::DataType;
 
 use super::super::transform::{Transform, TransformKind};
 use super::{ScaleTypeKind, ScaleTypeTrait};
@@ -24,7 +24,7 @@ impl ScaleTypeTrait for Discrete {
     fn validate_dtype(&self, dtype: &DataType) -> Result<(), String> {
         match dtype {
             // Accept discrete types
-            DataType::String | DataType::Boolean | DataType::Categorical(_, _) => Ok(()),
+            DataType::Utf8 | DataType::Boolean | DataType::Dictionary(_, _) => Ok(()),
             // Reject numeric types
             DataType::Int8
             | DataType::Int16
@@ -38,11 +38,11 @@ impl ScaleTypeTrait for Discrete {
             | DataType::Float64 => Err("Discrete scale cannot be used with numeric data. \
                  Use CONTINUOUS or BINNED scale type instead, or ensure the column contains categorical data.".to_string()),
             // Reject temporal types
-            DataType::Date => Err("Discrete scale cannot be used with Date data. \
+            DataType::Date32 => Err("Discrete scale cannot be used with Date data. \
                  Use CONTINUOUS scale type instead (dates are treated as continuous temporal data).".to_string()),
-            DataType::Datetime(_, _) => Err("Discrete scale cannot be used with DateTime data. \
+            DataType::Timestamp(_, _) => Err("Discrete scale cannot be used with DateTime data. \
                  Use CONTINUOUS scale type instead (datetimes are treated as continuous temporal data).".to_string()),
-            DataType::Time => Err("Discrete scale cannot be used with Time data. \
+            DataType::Time64(_) => Err("Discrete scale cannot be used with Time data. \
                  Use CONTINUOUS scale type instead (times are treated as continuous temporal data).".to_string()),
             // Other types - provide generic message
             other => Err(format!(
@@ -84,7 +84,7 @@ impl ScaleTypeTrait for Discrete {
         if let Some(dtype) = column_dtype {
             match dtype {
                 DataType::Boolean => return TransformKind::Bool,
-                DataType::String | DataType::Categorical(_, _) => return TransformKind::String,
+                DataType::Utf8 | DataType::Dictionary(_, _) => return TransformKind::String,
                 _ => {}
             }
         }
@@ -323,7 +323,7 @@ mod tests {
 
         // String column → String transform
         assert_eq!(
-            discrete.default_transform("color", Some(&DataType::String)),
+            discrete.default_transform("color", Some(&DataType::Utf8)),
             TransformKind::String
         );
 
@@ -397,7 +397,7 @@ mod tests {
         let result = discrete.resolve_transform(
             "color",
             None,
-            Some(&DataType::String), // String column
+            Some(&DataType::Utf8), // String column
             Some(&bool_range),       // But bool input range
         );
         assert!(result.is_ok());
@@ -427,7 +427,7 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap().transform_kind(), TransformKind::Bool);
 
-        let result = discrete.resolve_transform("color", None, Some(&DataType::String), None);
+        let result = discrete.resolve_transform("color", None, Some(&DataType::Utf8), None);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().transform_kind(), TransformKind::String);
     }
@@ -476,7 +476,7 @@ mod tests {
         scale.explicit_input_range = true;
 
         let sql =
-            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &AnsiDialect);
+            discrete.pre_stat_transform_sql("category", &DataType::Utf8, &scale, &AnsiDialect);
 
         assert!(sql.is_some());
         let sql = sql.unwrap();
@@ -500,7 +500,7 @@ mod tests {
         scale.explicit_input_range = false;
 
         let sql =
-            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &AnsiDialect);
+            discrete.pre_stat_transform_sql("category", &DataType::Utf8, &scale, &AnsiDialect);
 
         // Should return None (no OOB handling for inferred ranges)
         assert!(sql.is_none());
@@ -539,7 +539,7 @@ mod tests {
         ]);
         scale.explicit_input_range = true;
 
-        let sql = discrete.pre_stat_transform_sql("text", &DataType::String, &scale, &AnsiDialect);
+        let sql = discrete.pre_stat_transform_sql("text", &DataType::Utf8, &scale, &AnsiDialect);
 
         assert!(sql.is_some());
         let sql = sql.unwrap();
@@ -557,7 +557,7 @@ mod tests {
         scale.explicit_input_range = true;
 
         let sql =
-            discrete.pre_stat_transform_sql("category", &DataType::String, &scale, &AnsiDialect);
+            discrete.pre_stat_transform_sql("category", &DataType::Utf8, &scale, &AnsiDialect);
 
         // Should return None for empty range
         assert!(sql.is_none());
@@ -572,7 +572,7 @@ mod tests {
         use super::ScaleTypeTrait;
 
         let discrete = Discrete;
-        assert!(discrete.validate_dtype(&DataType::String).is_ok());
+        assert!(discrete.validate_dtype(&DataType::Utf8).is_ok());
     }
 
     #[test]
@@ -601,19 +601,19 @@ mod tests {
     #[test]
     fn test_validate_dtype_rejects_temporal() {
         use super::ScaleTypeTrait;
-        use polars::prelude::TimeUnit;
+        use arrow::datatypes::TimeUnit;
 
         let discrete = Discrete;
-        let result = discrete.validate_dtype(&DataType::Date);
+        let result = discrete.validate_dtype(&DataType::Date32);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("Date"));
         assert!(err.contains("CONTINUOUS"));
 
-        let result = discrete.validate_dtype(&DataType::Datetime(TimeUnit::Microseconds, None));
+        let result = discrete.validate_dtype(&DataType::Timestamp(TimeUnit::Microsecond, None));
         assert!(result.is_err());
 
-        let result = discrete.validate_dtype(&DataType::Time);
+        let result = discrete.validate_dtype(&DataType::Time64(TimeUnit::Nanosecond));
         assert!(result.is_err());
     }
 }

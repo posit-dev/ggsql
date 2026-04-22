@@ -20,8 +20,8 @@ path = "src/lib.rs"
 # Core ggsql library
 ggsql = { workspace = true, features = ["duckdb", "vegalite"] }
 
-# Need polars for DataFrame type
-polars = { workspace = true }
+# Arrow for DataFrame array types
+arrow = { workspace = true }
 
 # Async runtime
 tokio = { workspace = true }

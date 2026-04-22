@@ -1,17 +1,15 @@
 //! DuckDB data source implementation
 //!
-//! Provides a reader for DuckDB databases with direct Polars DataFrame integration.
+//! Provides a reader for DuckDB databases with Arrow DataFrame integration.
 
 use crate::reader::{connection::ConnectionInfo, Reader};
 use crate::{naming, DataFrame, GgsqlError, Result};
-use arrow::ipc::reader::FileReader;
+use arrow::array::ArrayRef;
 use duckdb::vtab::arrow::{arrow_recordbatch_to_query_params, ArrowVTab};
 use duckdb::{params, Connection};
-use polars::io::SerWriter;
-use polars::prelude::*;
 use std::cell::RefCell;
 use std::collections::HashSet;
-use std::io::Cursor;
+use std::sync::Arc;
 
 /// DuckDB SQL dialect with native function support.
 ///
@@ -155,40 +153,11 @@ impl DuckDBReader {
 
 use super::validate_table_name;
 
-/// Convert a Polars DataFrame to DuckDB Arrow query parameters via IPC serialization
-fn dataframe_to_arrow_params(df: DataFrame) -> Result<[usize; 2]> {
-    // Serialize DataFrame to IPC format
-    let mut buffer = Vec::new();
-    {
-        let mut writer = IpcWriter::new(&mut buffer);
-        writer.finish(&mut df.clone()).map_err(|e| {
-            GgsqlError::ReaderError(format!("Failed to serialize DataFrame: {}", e))
-        })?;
-    }
-
-    // Read IPC into arrow crate's RecordBatch
-    let cursor = Cursor::new(buffer);
-    let reader = FileReader::try_new(cursor, None)
-        .map_err(|e| GgsqlError::ReaderError(format!("Failed to read IPC: {}", e)))?;
-
-    // Collect all batches and concatenate if needed
-    let batches: Vec<_> = reader.filter_map(|r| r.ok()).collect();
-
-    if batches.is_empty() {
-        return Err(GgsqlError::ReaderError(
-            "DataFrame produced no Arrow batches".into(),
-        ));
-    }
-
-    // For single batch, use directly; for multiple, concatenate
-    let rb = if batches.len() == 1 {
-        batches.into_iter().next().unwrap()
-    } else {
-        arrow::compute::concat_batches(&batches[0].schema(), &batches)
-            .map_err(|e| GgsqlError::ReaderError(format!("Failed to concat batches: {}", e)))?
-    };
-
-    Ok(arrow_recordbatch_to_query_params(rb))
+/// Convert a DataFrame to DuckDB Arrow query parameters.
+///
+/// Since our DataFrame is already an Arrow RecordBatch, this is a simple passthrough.
+fn dataframe_to_arrow_params(df: &DataFrame) -> Result<[usize; 2]> {
+    Ok(arrow_recordbatch_to_query_params(df.inner().clone()))
 }
 
 /// Helper struct for building typed columns from rows
@@ -306,18 +275,19 @@ impl ColumnBuilder {
         Ok(())
     }
 
-    fn build(self, column_name: &str) -> Result<polars::prelude::Series> {
-        use polars::prelude::*;
+    fn build(self, column_name: &str) -> Result<(String, ArrayRef)> {
+        use arrow::array::*;
         use ColumnBuilder::*;
 
-        Ok(match self {
-            TinyInt(values) => Series::new(column_name.into(), values),
-            SmallInt(values) => Series::new(column_name.into(), values),
-            Int(values) => Series::new(column_name.into(), values),
-            BigInt(values) => Series::new(column_name.into(), values),
-            UTinyInt(values) => Series::new(column_name.into(), values),
-            USmallInt(values) => Series::new(column_name.into(), values),
-            UInt(values) => Series::new(column_name.into(), values),
+        let name = column_name.to_string();
+        let array: ArrayRef = match self {
+            TinyInt(values) => Arc::new(Int8Array::from(values)),
+            SmallInt(values) => Arc::new(Int16Array::from(values)),
+            Int(values) => Arc::new(Int32Array::from(values)),
+            BigInt(values) => Arc::new(Int64Array::from(values)),
+            UTinyInt(values) => Arc::new(Int16Array::from(values)),
+            USmallInt(values) => Arc::new(Int32Array::from(values)),
+            UInt(values) => Arc::new(Int64Array::from(values)),
             UBigInt(values) => {
                 // Check if all values fit in i64
                 let all_fit = values
@@ -329,7 +299,7 @@ impl ColumnBuilder {
                         .into_iter()
                         .map(|opt_val| opt_val.map(|val| val as i64))
                         .collect();
-                    Series::new(column_name.into(), i64_values)
+                    Arc::new(Int64Array::from(i64_values))
                 } else {
                     eprintln!(
                         "Warning: UBigInt overflow in column '{}', converting to string",
@@ -339,32 +309,36 @@ impl ColumnBuilder {
                         .into_iter()
                         .map(|opt_val| opt_val.map(|val| val.to_string()))
                         .collect();
-                    Series::new(column_name.into(), string_values)
+                    Arc::new(StringArray::from(
+                        string_values
+                            .iter()
+                            .map(|s| s.as_deref())
+                            .collect::<Vec<_>>(),
+                    ))
                 }
             }
-            Float(values) => Series::new(column_name.into(), values),
-            Double(values) => Series::new(column_name.into(), values),
-            Boolean(values) => Series::new(column_name.into(), values),
-            Text(values) => Series::new(column_name.into(), values),
+            Float(values) => Arc::new(Float32Array::from(values)),
+            Double(values) => Arc::new(Float64Array::from(values)),
+            Boolean(values) => Arc::new(BooleanArray::from(values)),
+            Text(values) => Arc::new(StringArray::from(
+                values
+                    .iter()
+                    .map(|s| s.as_deref())
+                    .collect::<Vec<_>>(),
+            )),
             Date32(values) => {
-                let series = Series::new(column_name.into(), values);
-                series
-                    .cast(&DataType::Date)
-                    .map_err(|e| GgsqlError::ReaderError(format!("Date cast failed: {}", e)))?
+                // Arrow Date32 stores days since epoch directly
+                Arc::new(Date32Array::from(values))
             }
             Timestamp(values) => {
-                let series = Series::new(column_name.into(), values);
-                series
-                    .cast(&DataType::Datetime(TimeUnit::Microseconds, None))
-                    .map_err(|e| GgsqlError::ReaderError(format!("Timestamp cast failed: {}", e)))?
+                // DuckDB timestamps are in microseconds
+                Arc::new(TimestampMicrosecondArray::from(values))
             }
             Time64(values) => {
-                let series = Series::new(column_name.into(), values);
-                series
-                    .cast(&DataType::Time)
-                    .map_err(|e| GgsqlError::ReaderError(format!("Time cast failed: {}", e)))?
+                // DuckDB time values are in nanoseconds
+                Arc::new(Time64NanosecondArray::from(values))
             }
-            Decimal(values) => Series::new(column_name.into(), values),
+            Decimal(values) => Arc::new(Float64Array::from(values)),
             HugeInt(values) => {
                 // Check if all values fit in i64
                 let all_fit = values.iter().all(|opt_val| {
@@ -378,7 +352,7 @@ impl ColumnBuilder {
                         .into_iter()
                         .map(|opt_val| opt_val.map(|val| val as i64))
                         .collect();
-                    Series::new(column_name.into(), i64_values)
+                    Arc::new(Int64Array::from(i64_values))
                 } else {
                     eprintln!(
                         "Warning: HugeInt overflow in column '{}', converting to string",
@@ -388,7 +362,12 @@ impl ColumnBuilder {
                         .into_iter()
                         .map(|opt_val| opt_val.map(|val| val.to_string()))
                         .collect();
-                    Series::new(column_name.into(), string_values)
+                    Arc::new(StringArray::from(
+                        string_values
+                            .iter()
+                            .map(|s| s.as_deref())
+                            .collect::<Vec<_>>(),
+                    ))
                 }
             }
             Blob(values) => {
@@ -396,23 +375,32 @@ impl ColumnBuilder {
                     "Warning: Converting Blob column '{}' to string (debug format)",
                     column_name
                 );
-                Series::new(column_name.into(), values)
+                Arc::new(StringArray::from(
+                    values
+                        .iter()
+                        .map(|s| s.as_deref())
+                        .collect::<Vec<_>>(),
+                ))
             }
             Fallback(values) => {
                 eprintln!(
                     "Warning: Using fallback string conversion for column '{}'",
                     column_name
                 );
-                Series::new(column_name.into(), values)
+                Arc::new(StringArray::from(
+                    values
+                        .iter()
+                        .map(|s| s.as_deref())
+                        .collect::<Vec<_>>(),
+                ))
             }
-        })
+        };
+        Ok((name, array))
     }
 }
 
 impl Reader for DuckDBReader {
     fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
-        use polars::prelude::*;
-
         // Register builtin datasets if referenced
         #[cfg(feature = "builtin-data")]
         super::data::register_builtin_datasets_duckdb(sql, &self.conn)?;
@@ -436,10 +424,7 @@ impl Reader for DuckDBReader {
                 .execute(&sql, params![])
                 .map_err(|e| GgsqlError::ReaderError(format!("Failed to execute DDL: {}", e)))?;
 
-            // Return empty DataFrame for DDL statements
-            return DataFrame::new(Vec::<polars::prelude::Column>::new()).map_err(|e| {
-                GgsqlError::ReaderError(format!("Failed to create empty DataFrame: {}", e))
-            });
+            return Ok(DataFrame::empty());
         }
 
         // Prepare and execute statement to get schema
@@ -510,19 +495,22 @@ impl Reader for DuckDBReader {
             return Err(err);
         }
 
-        // Build Series from column builders (may be empty if query returned 0 rows)
+        // Build named arrays from column builders
         let column_builders = builders_cell.into_inner();
-        let mut columns = Vec::new();
-        for (col_idx, builder) in column_builders.into_iter().enumerate() {
-            let series = builder.build(&column_names[col_idx])?;
-            columns.push(series.into());
+        let mut named_arrays: Vec<(&str, ArrayRef)> = Vec::new();
+        // We need to hold the (String, ArrayRef) pairs so we can borrow the names
+        let built: Vec<(String, ArrayRef)> = column_builders
+            .into_iter()
+            .enumerate()
+            .map(|(col_idx, builder)| builder.build(&column_names[col_idx]))
+            .collect::<Result<Vec<_>>>()?;
+
+        for (name, array) in &built {
+            named_arrays.push((name.as_str(), array.clone()));
         }
 
         // Create DataFrame from typed columns
-        let df = DataFrame::new(columns)
-            .map_err(|e| GgsqlError::ReaderError(format!("Failed to create DataFrame: {}", e)))?;
-
-        Ok(df)
+        DataFrame::new(named_arrays)
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
@@ -559,7 +547,7 @@ impl Reader for DuckDBReader {
 
         if total_rows <= MAX_ARROW_BATCH_ROWS {
             // Small DataFrame: register in a single batch
-            let params = dataframe_to_arrow_params(df)?;
+            let params = dataframe_to_arrow_params(&df)?;
             let sql = format!(
                 "{} TEMP TABLE {} AS SELECT * FROM arrow(?, ?)",
                 create_or_replace,
@@ -571,7 +559,7 @@ impl Reader for DuckDBReader {
         } else {
             // Large DataFrame: create table from first chunk, then insert remaining chunks
             let first_chunk = df.slice(0, MAX_ARROW_BATCH_ROWS);
-            let params = dataframe_to_arrow_params(first_chunk)?;
+            let params = dataframe_to_arrow_params(&first_chunk)?;
             let create_sql = format!(
                 "{} TEMP TABLE {} AS SELECT * FROM arrow(?, ?)",
                 create_or_replace,
@@ -584,8 +572,8 @@ impl Reader for DuckDBReader {
             let mut offset = MAX_ARROW_BATCH_ROWS;
             while offset < total_rows {
                 let chunk_size = std::cmp::min(MAX_ARROW_BATCH_ROWS, total_rows - offset);
-                let chunk = df.slice(offset as i64, chunk_size);
-                let params = dataframe_to_arrow_params(chunk)?;
+                let chunk = df.slice(offset, chunk_size);
+                let params = dataframe_to_arrow_params(&chunk)?;
                 let insert_sql = format!(
                     "INSERT INTO {} SELECT * FROM arrow(?, ?)",
                     naming::quote_ident(name)
@@ -638,6 +626,8 @@ impl Reader for DuckDBReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::array_util::{as_i32, as_i64, as_str};
+    use crate::df;
 
     #[test]
     fn test_create_in_memory() {
@@ -651,7 +641,10 @@ mod tests {
         let df = reader.execute_sql("SELECT 1 as x, 2 as y").unwrap();
 
         assert_eq!(df.shape(), (1, 2));
-        assert_eq!(df.get_column_names(), vec!["x", "y"]);
+        assert_eq!(
+            df.get_column_names(),
+            vec!["x".to_string(), "y".to_string()]
+        );
     }
 
     #[test]
@@ -674,7 +667,10 @@ mod tests {
         let df = reader.execute_sql("SELECT * FROM test").unwrap();
 
         assert_eq!(df.shape(), (2, 2));
-        assert_eq!(df.get_column_names(), vec!["x", "y"]);
+        assert_eq!(
+            df.get_column_names(),
+            vec!["x".to_string(), "y".to_string()]
+        );
     }
 
     #[test]
@@ -710,18 +706,21 @@ mod tests {
             .unwrap();
 
         assert_eq!(df.shape(), (2, 2));
-        assert_eq!(df.get_column_names(), vec!["region", "total"]);
+        assert_eq!(
+            df.get_column_names(),
+            vec!["region".to_string(), "total".to_string()]
+        );
     }
 
     #[test]
     fn test_register_and_query() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
-        // Create a DataFrame
-        let df = DataFrame::new(vec![
-            Column::new("x".into(), vec![1i32, 2, 3]),
-            Column::new("y".into(), vec![10i32, 20, 30]),
-        ])
+        // Create a DataFrame using the df! macro
+        let df = df! {
+            "x" => vec![1i32, 2, 3],
+            "y" => vec![10i32, 20, 30],
+        }
         .unwrap();
 
         // Register the DataFrame
@@ -732,15 +731,18 @@ mod tests {
             .execute_sql("SELECT * FROM my_table ORDER BY x")
             .unwrap();
         assert_eq!(result.shape(), (3, 2));
-        assert_eq!(result.get_column_names(), vec!["x", "y"]);
+        assert_eq!(
+            result.get_column_names(),
+            vec!["x".to_string(), "y".to_string()]
+        );
     }
 
     #[test]
     fn test_register_duplicate_name_errors() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
-        let df1 = DataFrame::new(vec![Column::new("a".into(), vec![1i32])]).unwrap();
-        let df2 = DataFrame::new(vec![Column::new("b".into(), vec![2i32])]).unwrap();
+        let df1 = df! { "a" => vec![1i32] }.unwrap();
+        let df2 = df! { "b" => vec![2i32] }.unwrap();
 
         // First registration should succeed
         reader.register("dup_table", df1, false).unwrap();
@@ -755,7 +757,7 @@ mod tests {
     #[test]
     fn test_register_invalid_table_names() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let df = DataFrame::new(vec![Column::new("a".into(), vec![1i32])]).unwrap();
+        let df = df! { "a" => vec![1i32] }.unwrap();
 
         // Empty name
         let result = reader.register("", df.clone(), false);
@@ -781,10 +783,10 @@ mod tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         // Create an empty DataFrame with schema
-        let df = DataFrame::new(vec![
-            Column::new("x".into(), Vec::<i32>::new()),
-            Column::new("y".into(), Vec::<String>::new()),
-        ])
+        let df = df! {
+            "x" => Vec::<i32>::new(),
+            "y" => Vec::<&str>::new(),
+        }
         .unwrap();
 
         reader.register("empty_table", df, false).unwrap();
@@ -792,13 +794,16 @@ mod tests {
         // Query should return empty result with correct schema
         let result = reader.execute_sql("SELECT * FROM empty_table").unwrap();
         assert_eq!(result.shape(), (0, 2));
-        assert_eq!(result.get_column_names(), vec!["x", "y"]);
+        assert_eq!(
+            result.get_column_names(),
+            vec!["x".to_string(), "y".to_string()]
+        );
     }
 
     #[test]
     fn test_unregister() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let df = DataFrame::new(vec![Column::new("x".into(), vec![1i32, 2, 3])]).unwrap();
+        let df = df! { "x" => vec![1i32, 2, 3] }.unwrap();
 
         reader.register("test_data", df, false).unwrap();
 
@@ -834,7 +839,7 @@ mod tests {
     #[test]
     fn test_reregister_after_unregister() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let df = DataFrame::new(vec![Column::new("x".into(), vec![1i32, 2, 3])]).unwrap();
+        let df = df! { "x" => vec![1i32, 2, 3] }.unwrap();
 
         reader.register("data", df.clone(), false).unwrap();
         reader.unregister("data").unwrap();
@@ -856,11 +861,11 @@ mod tests {
         let values: Vec<f64> = (0..n).map(|i| i as f64 * 1.5).collect();
         let names: Vec<String> = (0..n).map(|i| format!("item_{}", i)).collect();
 
-        let df = DataFrame::new(vec![
-            Column::new("id".into(), ids),
-            Column::new("value".into(), values),
-            Column::new("name".into(), names),
-        ])
+        let df = df! {
+            "id" => ids,
+            "value" => values,
+            "name" => names,
+        }
         .unwrap();
 
         reader.register("large_table", df, false).unwrap();
@@ -869,25 +874,16 @@ mod tests {
         let result = reader
             .execute_sql("SELECT COUNT(*) as cnt FROM large_table")
             .unwrap();
-        let count = result.column("cnt").unwrap().i64().unwrap().get(0).unwrap();
+        let count = as_i64(result.column("cnt").unwrap()).unwrap().value(0);
         assert_eq!(count, n as i64);
 
         // Verify first and last rows survived chunking intact
         let result = reader
             .execute_sql("SELECT id, name FROM large_table ORDER BY id LIMIT 1")
             .unwrap();
+        assert_eq!(as_i32(result.column("id").unwrap()).unwrap().value(0), 0);
         assert_eq!(
-            result.column("id").unwrap().i32().unwrap().get(0).unwrap(),
-            0
-        );
-        assert_eq!(
-            result
-                .column("name")
-                .unwrap()
-                .str()
-                .unwrap()
-                .get(0)
-                .unwrap(),
+            as_str(result.column("name").unwrap()).unwrap().value(0),
             "item_0"
         );
 
@@ -895,17 +891,11 @@ mod tests {
             .execute_sql("SELECT id, name FROM large_table ORDER BY id DESC LIMIT 1")
             .unwrap();
         assert_eq!(
-            result.column("id").unwrap().i32().unwrap().get(0).unwrap(),
+            as_i32(result.column("id").unwrap()).unwrap().value(0),
             (n - 1)
         );
         assert_eq!(
-            result
-                .column("name")
-                .unwrap()
-                .str()
-                .unwrap()
-                .get(0)
-                .unwrap(),
+            as_str(result.column("name").unwrap()).unwrap().value(0),
             format!("item_{}", n - 1)
         );
     }

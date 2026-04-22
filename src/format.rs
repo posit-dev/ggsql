@@ -206,11 +206,13 @@ pub fn apply_label_template(
 /// let formatted_df = format_dataframe_column(&df, "_aesthetic_label", "Region: {:Title}")?;
 /// ```
 pub fn format_dataframe_column(
-    df: &polars::prelude::DataFrame,
+    df: &crate::DataFrame,
     column_name: &str,
     template: &str,
-) -> Result<polars::prelude::DataFrame, String> {
-    use polars::prelude::*;
+) -> Result<crate::DataFrame, String> {
+    use crate::array_util::{as_f64, as_str, cast_array, new_str_array};
+    use arrow::array::Array;
+    use arrow::datatypes::DataType;
 
     // Get the column
     let column = df
@@ -218,48 +220,66 @@ pub fn format_dataframe_column(
         .map_err(|e| format!("Column '{}' not found: {}", column_name, e))?;
 
     // Step 1: Convert entire column to strings
-    let string_values: Vec<Option<String>> = if let Ok(str_col) = column.str() {
+    let string_values: Vec<Option<String>> = if let Ok(str_col) = as_str(column) {
         // String column (includes temporal data auto-converted to ISO format)
-        str_col
-            .into_iter()
-            .map(|opt| opt.map(|s| s.to_string()))
+        (0..str_col.len())
+            .map(|i| {
+                if str_col.is_null(i) {
+                    None
+                } else {
+                    Some(str_col.value(i).to_string())
+                }
+            })
             .collect()
-    } else if let Ok(num_col) = column.cast(&DataType::Float64) {
+    } else if let Ok(cast) = cast_array(column, &DataType::Float64) {
         // Numeric column - use shared format_number helper for clean integer formatting
         use crate::plot::format_number;
 
-        let f64_col = num_col
-            .f64()
+        let f64_col = as_f64(&cast)
             .map_err(|e| format!("Failed to cast column to f64: {}", e))?;
 
-        f64_col
-            .into_iter()
-            .map(|opt| opt.map(format_number))
+        (0..f64_col.len())
+            .map(|i| {
+                if f64_col.is_null(i) {
+                    None
+                } else {
+                    Some(format_number(f64_col.value(i)))
+                }
+            })
             .collect()
     } else {
         return Err(format!(
             "Formatting doesn't support type {:?} in column '{}'. Try string or numeric types instead.",
-            column.dtype(),
+            column.data_type(),
             column_name
         ));
     };
 
     // Step 2: Apply formatting template to all string values
     let placeholders = parse_placeholders(template);
-    let formatted_values: Vec<Option<String>> = string_values
+    let formatted_values: Vec<Option<&str>> = string_values
+        .iter()
+        .map(|opt| opt.as_ref().map(|s| {
+            // We need to own the formatted strings, so we'll collect differently
+            s.as_str()
+        }))
+        .collect();
+
+    // Apply formatting and collect owned strings
+    let formatted_owned: Vec<Option<String>> = string_values
         .into_iter()
         .map(|opt| opt.map(|s| format_value(&s, template, &placeholders)))
         .collect();
 
-    let formatted_col = Series::new(column_name.into(), formatted_values);
+    let formatted_refs: Vec<Option<&str>> = formatted_owned
+        .iter()
+        .map(|opt| opt.as_deref())
+        .collect();
+    let formatted_col = new_str_array(formatted_refs);
 
     // Replace column in DataFrame
-    let mut new_df = df.clone();
-    new_df
-        .replace(column_name, formatted_col)
-        .map_err(|e| format!("Failed to replace column: {}", e))?;
-
-    Ok(new_df)
+    df.with_column(column_name, formatted_col)
+        .map_err(|e| format!("Failed to replace column: {}", e))
 }
 
 /// Format a single value using template and parsed placeholders

@@ -381,11 +381,9 @@ fn get_unique_facet_values(
     facet_aesthetic: &str,
     layers: &[Layer],
     layers_missing_facet: &[bool],
-) -> Option<polars::prelude::Series> {
-    use polars::prelude::*;
-
+) -> Option<arrow::array::ArrayRef> {
     let aes_col = naming::aesthetic_column(facet_aesthetic);
-    let mut all_values: Vec<Series> = Vec::new();
+    let mut all_arrays: Vec<arrow::array::ArrayRef> = Vec::new();
 
     for (idx, layer) in layers.iter().enumerate() {
         // Skip layers that are missing the facet column
@@ -396,23 +394,32 @@ fn get_unique_facet_values(
         if let Some(ref data_key) = layer.data_key {
             if let Some(df) = data_map.get(data_key) {
                 if let Ok(col) = df.column(&aes_col) {
-                    all_values.push(col.as_materialized_series().clone());
+                    all_arrays.push(col.clone());
                 }
             }
         }
     }
 
-    if all_values.is_empty() {
+    if all_arrays.is_empty() {
         return None;
     }
 
-    // Concatenate all series and get unique values
-    let mut combined = all_values.remove(0);
-    for s in all_values {
-        let _ = combined.extend(&s);
-    }
+    // Concatenate all arrays
+    let refs: Vec<&dyn arrow::array::Array> = all_arrays.iter().map(|a| a.as_ref()).collect();
+    let combined = arrow::compute::concat(&refs).ok()?;
 
-    combined.unique().ok()
+    // Get unique values by collecting strings into a set
+    use crate::array_util::value_to_string;
+    let mut seen = std::collections::HashSet::new();
+    let mut unique_indices = Vec::new();
+    for i in 0..combined.len() {
+        let key = value_to_string(&combined, i);
+        if seen.insert(key) {
+            unique_indices.push(i as u32);
+        }
+    }
+    let indices = arrow::array::UInt32Array::from(unique_indices);
+    arrow::compute::take(&*combined, &indices, None).ok()
 }
 
 /// Cross-join a DataFrame with facet values (duplicate for each facet panel).
@@ -421,10 +428,10 @@ fn get_unique_facet_values(
 /// The facet column is added with the appropriate values.
 fn cross_join_with_facet_values(
     df: &DataFrame,
-    unique_values: &polars::prelude::Series,
+    unique_values: &arrow::array::ArrayRef,
     facet_aesthetic: &str,
 ) -> Result<DataFrame> {
-    use polars::prelude::*;
+    use arrow::array::{Array, UInt32Array};
 
     let aes_col = naming::aesthetic_column(facet_aesthetic);
     let n_values = unique_values.len();
@@ -435,22 +442,21 @@ fn cross_join_with_facet_values(
 
     let n_rows = df.height();
 
-    // Create the repeated data manually (polars cross_join requires an import we may not have)
-    // For each row in df, repeat n_values times
-    // For facet column, for each row's repetitions, cycle through unique_values
-
     // 1. Repeat each original column n_values times
-    let mut new_columns: Vec<Column> = Vec::new();
-    for col in df.get_columns() {
-        // Repeat each value n_values times: [a, b, c] with n_values=2 -> [a, a, b, b, c, c]
-        let indices: Vec<u32> = (0..n_rows)
-            .flat_map(|i| std::iter::repeat_n(i as u32, n_values))
-            .collect();
-        let idx = IdxCa::new(PlSmallStr::EMPTY, &indices);
-        let repeated = col.as_materialized_series().take(&idx).map_err(|e| {
-            crate::GgsqlError::InternalError(format!("Failed to repeat column: {}", e))
+    // [a, b, c] with n_values=2 -> [a, a, b, b, c, c]
+    let repeat_indices: Vec<u32> = (0..n_rows)
+        .flat_map(|i| std::iter::repeat_n(i as u32, n_values))
+        .collect();
+    let repeat_idx = UInt32Array::from(repeat_indices);
+
+    let col_names = df.get_column_names();
+    let mut new_columns: Vec<(&str, arrow::array::ArrayRef)> = Vec::new();
+    for name in &col_names {
+        let col = df.column(name)?;
+        let repeated = arrow::compute::take(col.as_ref(), &repeat_idx, None).map_err(|e| {
+            GgsqlError::InternalError(format!("Failed to repeat column '{}': {}", name, e))
         })?;
-        new_columns.push(repeated.into());
+        new_columns.push((name, repeated));
     }
 
     // 2. Create the facet column: tile unique_values for each row
@@ -458,18 +464,13 @@ fn cross_join_with_facet_values(
     let facet_indices: Vec<u32> = (0..n_rows)
         .flat_map(|_| (0..n_values).map(|j| j as u32))
         .collect();
-    let facet_idx = IdxCa::new(PlSmallStr::EMPTY, &facet_indices);
-    let facet_col = unique_values
-        .take(&facet_idx)
-        .map_err(|e| {
-            crate::GgsqlError::InternalError(format!("Failed to create facet column: {}", e))
-        })?
-        .with_name(aes_col.into());
-    new_columns.push(facet_col.into());
+    let facet_idx = UInt32Array::from(facet_indices);
+    let facet_col = arrow::compute::take(unique_values.as_ref(), &facet_idx, None).map_err(|e| {
+        GgsqlError::InternalError(format!("Failed to create facet column: {}", e))
+    })?;
+    new_columns.push((&aes_col, facet_col));
 
-    DataFrame::new(new_columns).map_err(|e| {
-        crate::GgsqlError::InternalError(format!("Failed to create expanded DataFrame: {}", e))
-    })
+    DataFrame::new(new_columns)
 }
 
 /// Handle layers missing the facet column based on facet.missing setting.
@@ -852,24 +853,22 @@ fn prune_dataframe(df: &DataFrame, required: &HashSet<String>) -> Result<DataFra
         if row_count > 0 {
             // Create a 0-column DataFrame with the correct row count
             // We do this by creating a dummy column and then dropping it
-            use polars::prelude::df;
-            let with_rows = df! {
+            let with_rows = crate::df! {
                 "__dummy__" => vec![0i32; row_count]
-            }
-            .map_err(|e| GgsqlError::InternalError(format!("Failed to create DataFrame: {}", e)))?;
-
-            let result = with_rows.drop("__dummy__").map_err(|e| {
-                GgsqlError::InternalError(format!("Failed to drop dummy column: {}", e))
-            })?;
-            return Ok(result);
+            }?;
+            return with_rows.drop("__dummy__");
         } else {
-            // 0 rows - just return empty DataFrame
-            return Ok(DataFrame::default());
+            return Ok(DataFrame::empty());
         }
     }
 
-    df.select(&columns_to_keep)
-        .map_err(|e| GgsqlError::InternalError(format!("Failed to prune columns: {}", e)))
+    // Keep only the columns in columns_to_keep
+    let drop_cols: Vec<String> = df
+        .get_column_names()
+        .into_iter()
+        .filter(|name| !columns_to_keep.contains(name))
+        .collect();
+    Ok(df.drop_many(&drop_cols))
 }
 
 /// Prune all DataFrames in the data map based on layer requirements.
@@ -1533,7 +1532,7 @@ mod tests {
 
         // Should have prefixed aesthetic-named columns (using internal names)
         let col_names: Vec<String> = layer_df
-            .get_column_names_str()
+            .get_column_names()
             .iter()
             .map(|s| s.to_string())
             .collect();
@@ -1588,7 +1587,7 @@ mod tests {
 
         // With new approach, columns are renamed to prefixed aesthetic names (using internal names)
         let col_names: Vec<String> = layer_df
-            .get_column_names_str()
+            .get_column_names()
             .iter()
             .map(|s| s.to_string())
             .collect();
@@ -1675,7 +1674,7 @@ mod tests {
             layer_df.column(&yend_col).is_ok(),
             "DataFrame should have '{}' column: {:?}",
             yend_col,
-            layer_df.get_column_names_str()
+            layer_df.get_column_names()
         );
     }
 
@@ -1813,7 +1812,7 @@ mod tests {
 
         // Should have prefixed aesthetic-named columns
         let col_names: Vec<String> = layer_df
-            .get_column_names_str()
+            .get_column_names()
             .iter()
             .map(|s| s.to_string())
             .collect();
@@ -2021,7 +2020,7 @@ mod tests {
             layer_df.column(&facet_col).is_ok(),
             "Should have '{}' column: {:?}",
             facet_col,
-            layer_df.get_column_names_str()
+            layer_df.get_column_names()
         );
     }
 
@@ -2201,7 +2200,7 @@ mod tests {
         assert!(
             ref_df.column(&facet_col).is_ok(),
             "ref data should have facet column after broadcast: {:?}",
-            ref_df.get_column_names_str()
+            ref_df.get_column_names()
         );
     }
 

@@ -20,7 +20,8 @@
 //! assert_eq!(continuous.name(), "continuous");
 //! ```
 
-use polars::prelude::{ChunkAgg, Column, DataType};
+use arrow::array::{Array, ArrayRef};
+use arrow::datatypes::DataType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -130,15 +131,15 @@ impl ScaleDataContext {
         }
     }
 
-    /// Create from multiple Polars Columns.
+    /// Create from multiple Arrow ArrayRef columns.
     ///
     /// Aggregates min/max or unique values across all columns.
-    pub fn from_columns(columns: &[&Column], is_discrete: bool) -> Self {
+    pub fn from_columns(columns: &[&ArrayRef], is_discrete: bool) -> Self {
         if columns.is_empty() {
             return Self::new();
         }
 
-        let dtype = Some(columns[0].dtype().clone());
+        let dtype = Some(columns[0].data_type().clone());
 
         let range = if is_discrete {
             // Aggregate unique values across all columns
@@ -180,18 +181,19 @@ impl Default for ScaleDataContext {
 }
 
 /// Compute numeric min/max from multiple columns.
-fn compute_column_range_multi(columns: &[&Column]) -> Option<Vec<ArrayElement>> {
+fn compute_column_range_multi(columns: &[&ArrayRef]) -> Option<Vec<ArrayElement>> {
+    use crate::array_util::cast_array;
+
     let mut global_min: Option<f64> = None;
     let mut global_max: Option<f64> = None;
 
     for column in columns {
-        let series = column.as_materialized_series();
-        if let Ok(ca) = series.cast(&DataType::Float64) {
-            if let Ok(f64_series) = ca.f64() {
-                if let Some(min) = f64_series.min() {
+        if let Ok(cast) = cast_array(column, &DataType::Float64) {
+            if let Ok(f64_arr) = crate::array_util::as_f64(&cast) {
+                if let Some(min) = arrow::compute::min(f64_arr) {
                     global_min = Some(global_min.map_or(min, |m| m.min(min)));
                 }
-                if let Some(max) = f64_series.max() {
+                if let Some(max) = arrow::compute::max(f64_arr) {
                     global_max = Some(global_max.map_or(max, |m| m.max(max)));
                 }
             }
@@ -227,7 +229,7 @@ fn merge_with_context(
 
 /// Compute unique values from multiple columns, sorted.
 /// NULL values are included at the end of the result.
-fn compute_unique_values_multi(columns: &[&Column]) -> Vec<ArrayElement> {
+fn compute_unique_values_multi(columns: &[&ArrayRef]) -> Vec<ArrayElement> {
     compute_unique_values_native(columns, true)
 }
 
@@ -243,13 +245,13 @@ fn compute_unique_values_multi(columns: &[&Column]) -> Vec<ArrayElement> {
 ///
 /// If `include_null` is true, `ArrayElement::Null` is appended at the end if any null
 /// values exist in the data.
-pub fn compute_unique_values_native(columns: &[&Column], include_null: bool) -> Vec<ArrayElement> {
+pub fn compute_unique_values_native(columns: &[&ArrayRef], include_null: bool) -> Vec<ArrayElement> {
     if columns.is_empty() {
         return Vec::new();
     }
 
     // Use first column's dtype to determine handling
-    let dtype = columns[0].dtype();
+    let dtype = columns[0].data_type();
 
     match dtype {
         DataType::Boolean => compute_unique_bool(columns, include_null),
@@ -263,34 +265,34 @@ pub fn compute_unique_values_native(columns: &[&Column], include_null: bool) -> 
         | DataType::UInt64
         | DataType::Float32
         | DataType::Float64 => compute_unique_numeric(columns, include_null),
-        DataType::Date => compute_unique_date(columns, include_null),
-        DataType::Datetime(_, _) => compute_unique_datetime(columns, include_null),
-        DataType::Time => compute_unique_time(columns, include_null),
-        _ => compute_unique_string(columns, include_null), // String/Categorical/fallback
+        DataType::Date32 => compute_unique_date(columns, include_null),
+        DataType::Timestamp(_, _) => compute_unique_datetime(columns, include_null),
+        DataType::Time64(_) => compute_unique_time(columns, include_null),
+        _ => compute_unique_string(columns, include_null), // Utf8/Dictionary/fallback
     }
 }
 
 /// Compute unique boolean values from columns.
-fn compute_unique_bool(columns: &[&Column], include_null: bool) -> Vec<ArrayElement> {
+fn compute_unique_bool(columns: &[&ArrayRef], include_null: bool) -> Vec<ArrayElement> {
     let mut has_false = false;
     let mut has_true = false;
     let mut has_null = false;
 
     for column in columns {
-        if let Ok(ca) = column.as_materialized_series().bool() {
-            for val in ca.into_iter() {
-                match val {
-                    Some(true) => has_true = true,
-                    Some(false) => has_false = true,
-                    None => has_null = true,
+        if let Ok(ca) = crate::array_util::as_bool(column) {
+            for i in 0..ca.len() {
+                if ca.is_null(i) {
+                    has_null = true;
+                } else if ca.value(i) {
+                    has_true = true;
+                } else {
+                    has_false = true;
                 }
-                // Early exit if all values have been encountered
                 if has_null && has_true && has_false {
                     break;
                 }
             }
         }
-        // Early exit if all values have been encountered
         if has_null && has_true && has_false {
             break;
         }
@@ -311,20 +313,21 @@ fn compute_unique_bool(columns: &[&Column], include_null: bool) -> Vec<ArrayElem
 }
 
 /// Compute unique numeric values from columns, sorted numerically.
-fn compute_unique_numeric(columns: &[&Column], include_null: bool) -> Vec<ArrayElement> {
+fn compute_unique_numeric(columns: &[&ArrayRef], include_null: bool) -> Vec<ArrayElement> {
     let mut values: Vec<f64> = Vec::new();
     let mut has_null = false;
 
     for column in columns {
-        if let Ok(series) = column.as_materialized_series().cast(&DataType::Float64) {
-            if let Ok(ca) = series.f64() {
-                for val in ca.into_iter() {
-                    match val {
-                        Some(v) if v.is_finite() && !values.contains(&v) => {
+        if let Ok(cast) = crate::array_util::cast_array(column, &DataType::Float64) {
+            if let Ok(f64_arr) = crate::array_util::as_f64(&cast) {
+                for i in 0..f64_arr.len() {
+                    if f64_arr.is_null(i) {
+                        has_null = true;
+                    } else {
+                        let v = f64_arr.value(i);
+                        if v.is_finite() && !values.contains(&v) {
                             values.push(v);
                         }
-                        None => has_null = true,
-                        _ => {} // Skip NaN/Inf or duplicates
                     }
                 }
             }
@@ -344,21 +347,19 @@ fn compute_unique_numeric(columns: &[&Column], include_null: bool) -> Vec<ArrayE
 }
 
 /// Compute unique date values from columns, sorted chronologically.
-fn compute_unique_date(columns: &[&Column], include_null: bool) -> Vec<ArrayElement> {
+fn compute_unique_date(columns: &[&ArrayRef], include_null: bool) -> Vec<ArrayElement> {
     use std::collections::BTreeSet;
 
     let mut values: BTreeSet<i32> = BTreeSet::new();
     let mut has_null = false;
 
     for column in columns {
-        if let Ok(ca) = column.as_materialized_series().date() {
-            // Access the underlying physical Int32 chunked array
-            for val in ca.phys.into_iter() {
-                match val {
-                    Some(days) => {
-                        values.insert(days);
-                    }
-                    None => has_null = true,
+        if let Ok(ca) = crate::array_util::as_date32(column) {
+            for i in 0..ca.len() {
+                if ca.is_null(i) {
+                    has_null = true;
+                } else {
+                    values.insert(ca.value(i));
                 }
             }
         }
@@ -374,21 +375,19 @@ fn compute_unique_date(columns: &[&Column], include_null: bool) -> Vec<ArrayElem
 }
 
 /// Compute unique datetime values from columns, sorted chronologically.
-fn compute_unique_datetime(columns: &[&Column], include_null: bool) -> Vec<ArrayElement> {
+fn compute_unique_datetime(columns: &[&ArrayRef], include_null: bool) -> Vec<ArrayElement> {
     use std::collections::BTreeSet;
 
     let mut values: BTreeSet<i64> = BTreeSet::new();
     let mut has_null = false;
 
     for column in columns {
-        if let Ok(ca) = column.as_materialized_series().datetime() {
-            // Access the underlying physical Int64 chunked array
-            for val in ca.phys.into_iter() {
-                match val {
-                    Some(micros) => {
-                        values.insert(micros);
-                    }
-                    None => has_null = true,
+        if let Ok(ca) = crate::array_util::as_timestamp_us(column) {
+            for i in 0..ca.len() {
+                if ca.is_null(i) {
+                    has_null = true;
+                } else {
+                    values.insert(ca.value(i));
                 }
             }
         }
@@ -404,21 +403,19 @@ fn compute_unique_datetime(columns: &[&Column], include_null: bool) -> Vec<Array
 }
 
 /// Compute unique time values from columns, sorted.
-fn compute_unique_time(columns: &[&Column], include_null: bool) -> Vec<ArrayElement> {
+fn compute_unique_time(columns: &[&ArrayRef], include_null: bool) -> Vec<ArrayElement> {
     use std::collections::BTreeSet;
 
     let mut values: BTreeSet<i64> = BTreeSet::new();
     let mut has_null = false;
 
     for column in columns {
-        if let Ok(ca) = column.as_materialized_series().time() {
-            // Access the underlying physical Int64 chunked array
-            for val in ca.phys.into_iter() {
-                match val {
-                    Some(nanos) => {
-                        values.insert(nanos);
-                    }
-                    None => has_null = true,
+        if let Ok(ca) = crate::array_util::as_time64_ns(column) {
+            for i in 0..ca.len() {
+                if ca.is_null(i) {
+                    has_null = true;
+                } else {
+                    values.insert(ca.value(i));
                 }
             }
         }
@@ -434,25 +431,28 @@ fn compute_unique_time(columns: &[&Column], include_null: bool) -> Vec<ArrayElem
 }
 
 /// Compute unique string values from columns, sorted alphabetically.
-fn compute_unique_string(columns: &[&Column], include_null: bool) -> Vec<ArrayElement> {
+fn compute_unique_string(columns: &[&ArrayRef], include_null: bool) -> Vec<ArrayElement> {
     use std::collections::BTreeSet;
 
     let mut values: BTreeSet<String> = BTreeSet::new();
     let mut has_null = false;
 
     for column in columns {
-        let series = column.as_materialized_series();
-        if let Ok(unique) = series.unique() {
-            for i in 0..unique.len() {
-                if let Ok(val) = unique.get(i) {
-                    if val.is_null() {
-                        has_null = true;
-                    } else {
-                        let s = val.to_string();
-                        // Remove surrounding quotes from string representation
-                        let clean = s.trim_matches('"').to_string();
-                        values.insert(clean);
-                    }
+        // Try to get as string array, falling back to value_to_string for other types
+        if let Ok(str_arr) = crate::array_util::as_str(column) {
+            for i in 0..str_arr.len() {
+                if str_arr.is_null(i) {
+                    has_null = true;
+                } else {
+                    values.insert(str_arr.value(i).to_string());
+                }
+            }
+        } else {
+            for i in 0..column.len() {
+                if column.is_null(i) {
+                    has_null = true;
+                } else {
+                    values.insert(crate::array_util::value_to_string(column, i));
                 }
             }
         }
@@ -575,9 +575,9 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         // First check column data type for temporal transforms
         if let Some(dtype) = column_dtype {
             match dtype {
-                DataType::Date => return TransformKind::Date,
-                DataType::Datetime(_, _) => return TransformKind::DateTime,
-                DataType::Time => return TransformKind::Time,
+                DataType::Date32 => return TransformKind::Date,
+                DataType::Timestamp(_, _) => return TransformKind::DateTime,
+                DataType::Time64(_) => return TransformKind::Time,
                 _ => {}
             }
         }
@@ -1119,8 +1119,8 @@ impl ScaleType {
             | DataType::Float64 => Self::continuous(),
             // Temporal types are fundamentally continuous (days/µs/ns since epoch)
             // The temporal transform is inferred from the column data type
-            DataType::Date | DataType::Datetime(_, _) | DataType::Time => Self::continuous(),
-            DataType::Boolean | DataType::String => Self::discrete(),
+            DataType::Date32 | DataType::Timestamp(_, _) | DataType::Time64(_) => Self::continuous(),
+            DataType::Boolean | DataType::Utf8 => Self::discrete(),
             _ => Self::discrete(),
         }
     }
@@ -1887,8 +1887,8 @@ fn type_family(dtype: &DataType) -> TypeFamily {
         | DataType::UInt64
         | DataType::Float32
         | DataType::Float64 => TypeFamily::Numeric,
-        DataType::Date | DataType::Datetime(_, _) | DataType::Time => TypeFamily::Temporal,
-        DataType::String => TypeFamily::String,
+        DataType::Date32 | DataType::Timestamp(_, _) | DataType::Time64(_) => TypeFamily::Temporal,
+        DataType::Utf8 => TypeFamily::String,
         _ => TypeFamily::String, // Unknown types treated as String
     }
 }
@@ -1927,7 +1927,7 @@ fn numeric_rank(dtype: &DataType) -> u8 {
 /// Returns Ok(DataType) with the common type, or Err if incompatible temporal types.
 pub fn coerce_dtypes(dtypes: &[DataType]) -> Result<DataType, String> {
     if dtypes.is_empty() {
-        return Ok(DataType::String); // Default to String for empty
+        return Ok(DataType::Utf8); // Default to String for empty
     }
 
     if dtypes.len() == 1 {
@@ -1939,7 +1939,7 @@ pub fn coerce_dtypes(dtypes: &[DataType]) -> Result<DataType, String> {
 
     // Check if any type is String - result is String
     if families.contains(&TypeFamily::String) {
-        return Ok(DataType::String);
+        return Ok(DataType::Utf8);
     }
 
     // Check for mixed families
@@ -1948,7 +1948,7 @@ pub fn coerce_dtypes(dtypes: &[DataType]) -> Result<DataType, String> {
 
     if has_numeric && has_temporal {
         // Incompatible families - coerce to String
-        return Ok(DataType::String);
+        return Ok(DataType::Utf8);
     }
 
     // All numeric - find highest rank
@@ -1971,9 +1971,9 @@ pub fn coerce_dtypes(dtypes: &[DataType]) -> Result<DataType, String> {
         let all_same = dtypes.iter().all(|d| {
             matches!(
                 (first, d),
-                (DataType::Date, DataType::Date)
-                    | (DataType::Datetime(_, _), DataType::Datetime(_, _))
-                    | (DataType::Time, DataType::Time)
+                (DataType::Date32, DataType::Date32)
+                    | (DataType::Timestamp(_, _), DataType::Timestamp(_, _))
+                    | (DataType::Time64(_), DataType::Time64(_))
             )
         });
 
@@ -1989,7 +1989,7 @@ pub fn coerce_dtypes(dtypes: &[DataType]) -> Result<DataType, String> {
     }
 
     // Fallback to String
-    Ok(DataType::String)
+    Ok(DataType::Utf8)
 }
 
 /// Convert a Polars DataType to the corresponding CastTargetType.
@@ -2008,10 +2008,10 @@ pub fn dtype_to_cast_target(dtype: &DataType) -> CastTargetType {
         | DataType::UInt64
         | DataType::Float32
         | DataType::Float64 => CastTargetType::Number,
-        DataType::Date => CastTargetType::Date,
-        DataType::Datetime(_, _) => CastTargetType::DateTime,
-        DataType::Time => CastTargetType::Time,
-        DataType::String => CastTargetType::String,
+        DataType::Date32 => CastTargetType::Date,
+        DataType::Timestamp(_, _) => CastTargetType::DateTime,
+        DataType::Time64(_) => CastTargetType::Time,
+        DataType::Utf8 => CastTargetType::String,
         _ => CastTargetType::String, // Unknown types treated as String
     }
 }
@@ -2027,10 +2027,10 @@ pub fn needs_cast(column_dtype: &DataType, target_dtype: &DataType) -> Option<Ca
     // Check if already the target type
     let is_already_target = match (column_dtype, target_dtype) {
         (DataType::Boolean, DataType::Boolean) => true,
-        (DataType::Date, DataType::Date) => true,
-        (DataType::Datetime(_, _), DataType::Datetime(_, _)) => true,
-        (DataType::Time, DataType::Time) => true,
-        (DataType::String, DataType::String) => true,
+        (DataType::Date32, DataType::Date32) => true,
+        (DataType::Timestamp(_, _), DataType::Timestamp(_, _)) => true,
+        (DataType::Time64(_), DataType::Time64(_)) => true,
+        (DataType::Utf8, DataType::Utf8) => true,
         // For numeric, check if target is Float64 and column is any numeric
         (
             DataType::Int8
@@ -2078,6 +2078,7 @@ pub fn needs_cast(column_dtype: &DataType, target_dtype: &DataType) -> Option<Ca
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arrow::datatypes::TimeUnit;
 
     #[test]
     fn test_scale_type_creation() {
@@ -2150,7 +2151,7 @@ mod tests {
 
     #[test]
     fn test_scale_type_infer() {
-        use polars::prelude::TimeUnit;
+        use arrow::datatypes::TimeUnit;
 
         // Numeric → Continuous
         assert_eq!(ScaleType::infer(&DataType::Int32), ScaleType::continuous());
@@ -2162,15 +2163,15 @@ mod tests {
         assert_eq!(ScaleType::infer(&DataType::UInt16), ScaleType::continuous());
 
         // Temporal - now inferred as Continuous (with temporal transforms)
-        assert_eq!(ScaleType::infer(&DataType::Date), ScaleType::continuous());
+        assert_eq!(ScaleType::infer(&DataType::Date32), ScaleType::continuous());
         assert_eq!(
-            ScaleType::infer(&DataType::Datetime(TimeUnit::Microseconds, None)),
+            ScaleType::infer(&DataType::Timestamp(TimeUnit::Microsecond, None)),
             ScaleType::continuous()
         );
-        assert_eq!(ScaleType::infer(&DataType::Time), ScaleType::continuous());
+        assert_eq!(ScaleType::infer(&DataType::Time64(TimeUnit::Nanosecond)), ScaleType::continuous());
 
         // Discrete
-        assert_eq!(ScaleType::infer(&DataType::String), ScaleType::discrete());
+        assert_eq!(ScaleType::infer(&DataType::Utf8), ScaleType::discrete());
         assert_eq!(ScaleType::infer(&DataType::Boolean), ScaleType::discrete());
     }
 
@@ -2570,7 +2571,7 @@ mod tests {
 
     #[test]
     fn test_default_transform_by_aesthetic_and_dtype() {
-        use polars::prelude::*;
+        use arrow::datatypes::{DataType, TimeUnit};
 
         // Most aesthetics default to identity (when no column dtype is specified)
         for aesthetic in &["x", "y", "color", "size"] {
@@ -2584,12 +2585,12 @@ mod tests {
 
         // Temporal types infer their transform
         let temporal_cases = vec![
-            (DataType::Date, TransformKind::Date),
+            (DataType::Date32, TransformKind::Date),
             (
-                DataType::Datetime(TimeUnit::Microseconds, None),
+                DataType::Timestamp(TimeUnit::Microsecond, None),
                 TransformKind::DateTime,
             ),
-            (DataType::Time, TransformKind::Time),
+            (DataType::Time64(TimeUnit::Nanosecond), TransformKind::Time),
             (DataType::Int64, TransformKind::Identity), // Non-temporal fallback
         ];
         for (dtype, expected) in temporal_cases {
@@ -2740,14 +2741,14 @@ mod tests {
 
     #[test]
     fn test_discrete_input_range_overrides_column_dtype() {
-        use polars::prelude::DataType;
+        use arrow::datatypes::DataType;
 
         // Bool input range should override String column dtype
         let bool_range = vec![ArrayElement::Boolean(true), ArrayElement::Boolean(false)];
         let result = ScaleType::discrete().resolve_transform(
             "fill",
             None,
-            Some(&DataType::String), // Column is String
+            Some(&DataType::Utf8), // Column is String
             Some(&bool_range),       // But input range is Bool
         );
         assert!(result.is_ok());
@@ -3238,10 +3239,10 @@ mod tests {
     fn test_coerce_dtypes_single_type() {
         assert_eq!(coerce_dtypes(&[DataType::Int64]).unwrap(), DataType::Int64);
         assert_eq!(
-            coerce_dtypes(&[DataType::String]).unwrap(),
-            DataType::String
+            coerce_dtypes(&[DataType::Utf8]).unwrap(),
+            DataType::Utf8
         );
-        assert_eq!(coerce_dtypes(&[DataType::Date]).unwrap(), DataType::Date);
+        assert_eq!(coerce_dtypes(&[DataType::Date32]).unwrap(), DataType::Date32);
     }
 
     #[test]
@@ -3265,12 +3266,12 @@ mod tests {
     fn test_coerce_dtypes_string_absorbs_all() {
         // String is most general
         assert_eq!(
-            coerce_dtypes(&[DataType::String, DataType::Int64]).unwrap(),
-            DataType::String
+            coerce_dtypes(&[DataType::Utf8, DataType::Int64]).unwrap(),
+            DataType::Utf8
         );
         assert_eq!(
-            coerce_dtypes(&[DataType::String, DataType::Date]).unwrap(),
-            DataType::String
+            coerce_dtypes(&[DataType::Utf8, DataType::Date32]).unwrap(),
+            DataType::Utf8
         );
     }
 
@@ -3278,34 +3279,34 @@ mod tests {
     fn test_coerce_dtypes_incompatible_families_to_string() {
         // Numeric + Temporal → String
         assert_eq!(
-            coerce_dtypes(&[DataType::Int64, DataType::Date]).unwrap(),
-            DataType::String
+            coerce_dtypes(&[DataType::Int64, DataType::Date32]).unwrap(),
+            DataType::Utf8
         );
         assert_eq!(
-            coerce_dtypes(&[DataType::Float64, DataType::Time]).unwrap(),
-            DataType::String
+            coerce_dtypes(&[DataType::Float64, DataType::Time64(TimeUnit::Nanosecond)]).unwrap(),
+            DataType::Utf8
         );
     }
 
     #[test]
     fn test_coerce_dtypes_temporal_same_type() {
-        use polars::prelude::TimeUnit;
+        use arrow::datatypes::TimeUnit;
         // Same temporal types pass through
         assert_eq!(
-            coerce_dtypes(&[DataType::Date, DataType::Date]).unwrap(),
-            DataType::Date
+            coerce_dtypes(&[DataType::Date32, DataType::Date32]).unwrap(),
+            DataType::Date32
         );
-        let dt = DataType::Datetime(TimeUnit::Microseconds, None);
+        let dt = DataType::Timestamp(TimeUnit::Microsecond, None);
         assert!(coerce_dtypes(&[dt.clone(), dt.clone()]).is_ok());
     }
 
     #[test]
     fn test_coerce_dtypes_temporal_mixed_error() {
-        use polars::prelude::TimeUnit;
+        use arrow::datatypes::TimeUnit;
         // Mixed temporal types error
         let result = coerce_dtypes(&[
-            DataType::Date,
-            DataType::Datetime(TimeUnit::Microseconds, None),
+            DataType::Date32,
+            DataType::Timestamp(TimeUnit::Microsecond, None),
         ]);
         assert!(result.is_err());
         assert!(result
@@ -3315,7 +3316,7 @@ mod tests {
 
     #[test]
     fn test_coerce_dtypes_empty() {
-        assert_eq!(coerce_dtypes(&[]).unwrap(), DataType::String);
+        assert_eq!(coerce_dtypes(&[]).unwrap(), DataType::Utf8);
     }
 
     // =========================================================================
@@ -3325,8 +3326,8 @@ mod tests {
     #[test]
     fn test_needs_cast_same_type() {
         // Same types - no cast needed
-        assert!(needs_cast(&DataType::String, &DataType::String).is_none());
-        assert!(needs_cast(&DataType::Date, &DataType::Date).is_none());
+        assert!(needs_cast(&DataType::Utf8, &DataType::Utf8).is_none());
+        assert!(needs_cast(&DataType::Date32, &DataType::Date32).is_none());
         assert!(needs_cast(&DataType::Boolean, &DataType::Boolean).is_none());
     }
 
@@ -3341,21 +3342,21 @@ mod tests {
     #[test]
     fn test_needs_cast_string_to_date() {
         // String to Date - needs explicit cast
-        let result = needs_cast(&DataType::String, &DataType::Date);
+        let result = needs_cast(&DataType::Utf8, &DataType::Date32);
         assert_eq!(result, Some(CastTargetType::Date));
     }
 
     #[test]
     fn test_needs_cast_int_to_string() {
         // Int to String - needs explicit cast
-        let result = needs_cast(&DataType::Int64, &DataType::String);
+        let result = needs_cast(&DataType::Int64, &DataType::Utf8);
         assert_eq!(result, Some(CastTargetType::String));
     }
 
     #[test]
     fn test_needs_cast_bool_to_string() {
         // Bool to String - needs explicit cast
-        let result = needs_cast(&DataType::Boolean, &DataType::String);
+        let result = needs_cast(&DataType::Boolean, &DataType::Utf8);
         assert_eq!(result, Some(CastTargetType::String));
     }
 
@@ -3373,9 +3374,9 @@ mod tests {
             dtype_to_cast_target(&DataType::Float64),
             CastTargetType::Number
         );
-        assert_eq!(dtype_to_cast_target(&DataType::Date), CastTargetType::Date);
+        assert_eq!(dtype_to_cast_target(&DataType::Date32), CastTargetType::Date);
         assert_eq!(
-            dtype_to_cast_target(&DataType::String),
+            dtype_to_cast_target(&DataType::Utf8),
             CastTargetType::String
         );
         assert_eq!(

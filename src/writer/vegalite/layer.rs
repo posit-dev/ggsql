@@ -12,7 +12,7 @@ use crate::plot::layer::is_transposed;
 use crate::plot::{ArrayElement, ParameterValue};
 use crate::writer::vegalite::POINTS_TO_PIXELS;
 use crate::{naming, AestheticValue, DataFrame, Geom, GgsqlError, Layer, Result};
-use polars::prelude::ChunkCompareEq;
+use arrow::array::Array;
 use serde_json::{json, Map, Value};
 use std::any::Any;
 use std::collections::HashMap;
@@ -342,7 +342,7 @@ pub struct PathRenderer;
 ///
 /// Used by both line segmentation and text font run-length encoding.
 fn find_change_starts(df: &DataFrame, columns: &[String]) -> Result<Vec<usize>> {
-    use polars::prelude::*;
+    use crate::array_util::value_to_string;
 
     let n_rows = df.height();
 
@@ -350,34 +350,35 @@ fn find_change_starts(df: &DataFrame, columns: &[String]) -> Result<Vec<usize>> 
         return Ok(vec![0]);
     }
 
-    // Initialize change mask as all false (no changes)
-    let mut change_mask = BooleanChunked::full("change_mask".into(), false, n_rows - 1);
-
-    // For each column, OR its change mask into the accumulator
-    for col_name in columns {
-        let series = df.column(col_name).map_err(|e| {
-            GgsqlError::InternalError(format!("Column '{}' not found: {}", col_name, e))
-        })?;
-
-        // Compare each row with the previous row
-        // curr = series[1..n], prev = series[0..n-1]
-        let curr = series.slice(1, n_rows - 1);
-        let prev = series.slice(0, n_rows - 1);
-
-        // Get boolean mask where values differ
-        let not_equal = curr.not_equal(&prev).map_err(|e| {
-            GgsqlError::InternalError(format!("Failed to compare column '{}': {}", col_name, e))
-        })?;
-
-        // OR with accumulator (change if this column OR any previous column changed)
-        change_mask = &change_mask | &not_equal;
-    }
-
-    // Extract indices where mask is true (offset by 1 since we compared with previous)
+    // Build a change mask manually: for each row i (1..n), check if any column differs from row i-1
     let mut change_starts = vec![0];
-    for (idx, changed) in change_mask.into_iter().enumerate() {
-        if changed == Some(true) {
-            change_starts.push(idx + 1);
+
+    for i in 1..n_rows {
+        let mut changed = false;
+        for col_name in columns {
+            let col = df.column(col_name).map_err(|e| {
+                GgsqlError::InternalError(format!("Column '{}' not found: {}", col_name, e))
+            })?;
+
+            // Compare values using string representation
+            let curr_null = col.is_null(i);
+            let prev_null = col.is_null(i - 1);
+
+            if curr_null != prev_null {
+                changed = true;
+                break;
+            }
+            if !curr_null {
+                let curr_val = value_to_string(col, i);
+                let prev_val = value_to_string(col, i - 1);
+                if curr_val != prev_val {
+                    changed = true;
+                    break;
+                }
+            }
+        }
+        if changed {
+            change_starts.push(i);
         }
     }
 
@@ -393,7 +394,10 @@ fn aesthetic_varies_within_groups(
     aesthetic_col: &str,
     group_boundaries: &[usize],
 ) -> Result<bool> {
-    let series = df.column(aesthetic_col).map_err(|e| {
+    use crate::array_util::value_to_string;
+    use std::collections::HashSet;
+
+    let col = df.column(aesthetic_col).map_err(|e| {
         GgsqlError::InternalError(format!("Column '{}' not found: {}", aesthetic_col, e))
     })?;
 
@@ -406,14 +410,17 @@ fn aesthetic_varies_within_groups(
             continue; // Single-row groups can't vary
         }
 
-        // Slice the series for this group and check uniqueness
-        let segment = series.slice(start as i64, end - start);
-        let n_unique = segment.n_unique().map_err(|e| {
-            GgsqlError::InternalError(format!("Failed to count unique values: {}", e))
-        })?;
-
-        if n_unique > 1 {
-            return Ok(true);
+        // Count unique values in this segment
+        let mut unique = HashSet::new();
+        for i in start..end {
+            if col.is_null(i) {
+                unique.insert("__null__".to_string());
+            } else {
+                unique.insert(value_to_string(col, i));
+            }
+            if unique.len() > 1 {
+                return Ok(true);
+            }
         }
     }
 
@@ -867,13 +874,14 @@ impl TextRenderer {
     /// - DataFrame where each row represents a run's font properties (family, fontweight, italic, hjust, vjust, angle)
     /// - Vec<usize> of run lengths corresponding to each row
     fn build_font_rle(df: &DataFrame) -> Result<(DataFrame, Vec<usize>)> {
-        use polars::prelude::*;
+        use arrow::array::ArrayRef;
+        use arrow::compute;
 
         let nrows = df.height();
 
         if nrows == 0 {
             // Return empty DataFrame and empty run lengths
-            return Ok((DataFrame::default(), Vec::new()));
+            return Ok((DataFrame::empty(), Vec::new()));
         }
 
         // Collect font property column names that exist in the DataFrame
@@ -887,7 +895,7 @@ impl TextRenderer {
         ];
 
         let mut font_column_names = Vec::new();
-        let mut font_columns: HashMap<&str, &polars::prelude::Column> = HashMap::new();
+        let mut font_columns: HashMap<&str, &ArrayRef> = HashMap::new();
 
         for aesthetic in font_aesthetics {
             let col_name = naming::aesthetic_column(aesthetic);
@@ -910,29 +918,30 @@ impl TextRenderer {
             })
             .collect();
 
-        // Extract rows at change indices (only font columns)
-        let indices_ca = UInt32Chunked::from_vec(
-            "indices".into(),
-            change_indices.iter().map(|&i| i as u32).collect(),
+        // Extract rows at change indices (only font columns) using arrow take
+        let indices_array: ArrayRef = std::sync::Arc::new(
+            arrow::array::UInt32Array::from(
+                change_indices.iter().map(|&i| i as u32).collect::<Vec<u32>>(),
+            ),
         );
 
-        let mut result_cols = Vec::new();
+        let mut result_cols: Vec<(&str, ArrayRef)> = Vec::new();
         for aesthetic in font_aesthetics {
             if let Some(col) = font_columns.get(aesthetic) {
-                let taken = col.take(&indices_ca).map_err(|e| {
-                    GgsqlError::InternalError(format!(
-                        "Failed to take indices from {}: {}",
-                        aesthetic, e
-                    ))
-                })?;
-                result_cols.push(taken);
+                let taken = compute::take(col.as_ref(), indices_array.as_any().downcast_ref::<arrow::array::UInt32Array>().unwrap(), None)
+                    .map_err(|e| {
+                        GgsqlError::InternalError(format!(
+                            "Failed to take indices from {}: {}",
+                            aesthetic, e
+                        ))
+                    })?;
+                let col_name = naming::aesthetic_column(aesthetic);
+                result_cols.push((Box::leak(col_name.into_boxed_str()), taken));
             }
         }
 
         // Create result DataFrame (only font properties, no run_length column)
-        let result_df = DataFrame::new(result_cols).map_err(|e| {
-            GgsqlError::InternalError(format!("Failed to create run DataFrame: {}", e))
-        })?;
+        let result_df = DataFrame::new(result_cols)?;
 
         Ok((result_df, run_lengths))
     }
@@ -1162,29 +1171,35 @@ impl TextRenderer {
     ) -> Result<()> {
         // Helper to extract string column values using aesthetic column naming
         let get_str = |aesthetic: &str| -> Option<String> {
+            use crate::array_util::as_str;
             let col_name = naming::aesthetic_column(aesthetic);
-            df.column(&col_name)
-                .ok()
-                .and_then(|col| col.str().ok())
-                .and_then(|ca| ca.get(row_idx))
-                .map(|s| s.to_string())
+            let col = df.column(&col_name).ok()?;
+            if col.is_null(row_idx) {
+                return None;
+            }
+            as_str(col).ok().map(|ca| ca.value(row_idx).to_string())
         };
 
         // Helper to extract numeric column values (for angle)
         let get_f64 = |aesthetic: &str| -> Option<f64> {
-            use polars::prelude::*;
+            use crate::array_util::{as_str, as_f64, cast_array};
+            use arrow::datatypes::DataType;
             let col_name = naming::aesthetic_column(aesthetic);
             let col = df.column(&col_name).ok()?;
 
+            if col.is_null(row_idx) {
+                return None;
+            }
+
             // Try as string first (for string-encoded numbers)
-            if let Ok(ca) = col.str() {
-                return ca.get(row_idx).and_then(|s| s.parse::<f64>().ok());
+            if let Ok(ca) = as_str(col) {
+                return ca.value(row_idx).parse::<f64>().ok();
             }
 
             // Try as numeric types directly
-            if let Ok(casted) = col.cast(&DataType::Float64) {
-                if let Ok(ca) = casted.f64() {
-                    return ca.get(row_idx);
+            if let Ok(casted) = cast_array(col, &DataType::Float64) {
+                if let Ok(ca) = as_f64(&casted) {
+                    return Some(ca.value(row_idx));
                 }
             }
 
@@ -1342,7 +1357,7 @@ impl GeomRenderer for TextRenderer {
             let suffix = format!("_font_{}", run_idx);
 
             // Slice the contiguous run from the DataFrame (more efficient than boolean masking)
-            let sliced = df.slice(position as i64, length);
+            let sliced = df.slice(position, length);
 
             let mut values = if binned_columns.is_empty() {
                 dataframe_to_values(&sliced)?
@@ -1938,32 +1953,54 @@ impl BoxplotRenderer {
         let type_col = type_col.as_str();
 
         // Get the type column for filtering
-        let type_series = data
+        let type_array = data
             .column(type_col)
-            .and_then(|s| s.str())
+            .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
+        let type_str_array = crate::array_util::as_str(type_array)
             .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
 
         // Check for outliers
-        let has_outliers = type_series.equal("outlier").any();
+        let has_outliers = (0..type_str_array.len())
+            .any(|i| !type_str_array.is_null(i) && type_str_array.value(i) == "outlier");
 
         // Split data by type into separate datasets
         let mut type_datasets: HashMap<String, Vec<Value>> = HashMap::new();
 
         for type_name in &["lower_whisker", "upper_whisker", "box", "median", "outlier"] {
-            let mask = type_series.equal(*type_name);
-            let filtered = data
-                .filter(&mask)
-                .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
+            // Collect row indices matching this type
+            let matching_indices: Vec<usize> = (0..type_str_array.len())
+                .filter(|&i| !type_str_array.is_null(i) && type_str_array.value(i) == *type_name)
+                .collect();
 
             // Skip empty datasets (e.g., no outliers)
-            if filtered.height() == 0 {
+            if matching_indices.is_empty() {
                 continue;
             }
 
-            // Drop the type column since type is now encoded in the source key
-            let filtered = filtered
-                .drop(type_col)
-                .map_err(|e| GgsqlError::WriterError(e.to_string()))?;
+            // Build filtered DataFrame by taking matching rows
+            let indices_arr: arrow::array::ArrayRef = std::sync::Arc::new(
+                arrow::array::UInt32Array::from(
+                    matching_indices.iter().map(|&i| i as u32).collect::<Vec<u32>>(),
+                ),
+            );
+            let indices_u32 = indices_arr
+                .as_any()
+                .downcast_ref::<arrow::array::UInt32Array>()
+                .unwrap();
+
+            let column_names = data.get_column_names();
+            let columns = data.get_columns();
+            let mut new_cols: Vec<(&str, arrow::array::ArrayRef)> = Vec::new();
+            for (col_idx, col_name) in column_names.iter().enumerate() {
+                if col_name == type_col {
+                    continue; // Drop the type column
+                }
+                let taken = arrow::compute::take(columns[col_idx].as_ref(), indices_u32, None)
+                    .map_err(|e| GgsqlError::WriterError(format!("Failed to filter column: {}", e)))?;
+                new_cols.push((Box::leak(col_name.clone().into_boxed_str()), taken));
+            }
+            let filtered = DataFrame::new(new_cols)
+                .map_err(|e| GgsqlError::WriterError(format!("Failed to create filtered DataFrame: {}", e)))?;
 
             let values = if binned_columns.is_empty() {
                 dataframe_to_values(&filtered)?
@@ -2562,17 +2599,21 @@ mod tests {
     #[test]
     fn test_text_constant_font() {
         use crate::naming;
-        use polars::prelude::*;
+        use crate::df;
 
         let renderer = TextRenderer;
         let layer = Layer::new(crate::plot::Geom::text());
 
         // Create DataFrame where all rows have the same font
+        let x_col = naming::aesthetic_column("x");
+        let y_col = naming::aesthetic_column("y");
+        let label_col = naming::aesthetic_column("label");
+        let typeface_col = naming::aesthetic_column("typeface");
         let df = df! {
-            naming::aesthetic_column("x").as_str() => &[1.0, 2.0, 3.0],
-            naming::aesthetic_column("y").as_str() => &[10.0, 20.0, 30.0],
-            naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
-            naming::aesthetic_column("typeface").as_str() => &["Arial", "Arial", "Arial"],
+            x_col.as_str() => vec![1.0, 2.0, 3.0],
+            y_col.as_str() => vec![10.0, 20.0, 30.0],
+            label_col.as_str() => vec!["A", "B", "C"],
+            typeface_col.as_str() => vec!["Arial", "Arial", "Arial"],
         }
         .unwrap();
 
@@ -2594,17 +2635,21 @@ mod tests {
     #[test]
     fn test_text_varying_font() {
         use crate::naming;
-        use polars::prelude::*;
+        use crate::df;
 
         let renderer = TextRenderer;
         let layer = Layer::new(crate::plot::Geom::text());
 
         // Create DataFrame with different fonts per row
+        let x_col = naming::aesthetic_column("x");
+        let y_col = naming::aesthetic_column("y");
+        let label_col = naming::aesthetic_column("label");
+        let typeface_col = naming::aesthetic_column("typeface");
         let df = df! {
-            naming::aesthetic_column("x").as_str() => &[1.0, 2.0, 3.0],
-            naming::aesthetic_column("y").as_str() => &[10.0, 20.0, 30.0],
-            naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
-            naming::aesthetic_column("typeface").as_str() => &["Arial", "Courier", "Times"],
+            x_col.as_str() => vec![1.0, 2.0, 3.0],
+            y_col.as_str() => vec![10.0, 20.0, 30.0],
+            label_col.as_str() => vec!["A", "B", "C"],
+            typeface_col.as_str() => vec!["Arial", "Courier", "Times"],
         }
         .unwrap();
 
@@ -2628,19 +2673,25 @@ mod tests {
     #[test]
     fn test_text_nested_layers_structure() {
         use crate::naming;
-        use polars::prelude::*;
+        use crate::df;
 
         let renderer = TextRenderer;
         let layer = Layer::new(crate::plot::Geom::text());
 
         // Create DataFrame with different fonts
+        let x_col = naming::aesthetic_column("x");
+        let y_col = naming::aesthetic_column("y");
+        let label_col = naming::aesthetic_column("label");
+        let typeface_col = naming::aesthetic_column("typeface");
+        let fontweight_col = naming::aesthetic_column("fontweight");
+        let italic_col = naming::aesthetic_column("italic");
         let df = df! {
-            naming::aesthetic_column("x").as_str() => &[1.0, 2.0, 3.0],
-            naming::aesthetic_column("y").as_str() => &[10.0, 20.0, 30.0],
-            naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
-            naming::aesthetic_column("typeface").as_str() => &["Arial", "Courier", "Arial"],
-            naming::aesthetic_column("fontweight").as_str() => &["bold", "normal", "bold"],
-            naming::aesthetic_column("italic").as_str() => &["false", "true", "false"],
+            x_col.as_str() => vec![1.0, 2.0, 3.0],
+            y_col.as_str() => vec![10.0, 20.0, 30.0],
+            label_col.as_str() => vec!["A", "B", "C"],
+            typeface_col.as_str() => vec!["Arial", "Courier", "Arial"],
+            fontweight_col.as_str() => vec!["bold", "normal", "bold"],
+            italic_col.as_str() => vec!["false", "true", "false"],
         }
         .unwrap();
 
@@ -2708,17 +2759,21 @@ mod tests {
     #[test]
     fn test_text_varying_angle() {
         use crate::naming;
-        use polars::prelude::*;
+        use crate::df;
 
         let renderer = TextRenderer;
         let layer = Layer::new(crate::plot::Geom::text());
 
         // Create DataFrame with different angles
+        let x_col = naming::aesthetic_column("x");
+        let y_col = naming::aesthetic_column("y");
+        let label_col = naming::aesthetic_column("label");
+        let rotation_col = naming::aesthetic_column("rotation");
         let df = df! {
-            naming::aesthetic_column("x").as_str() => &[1.0, 2.0, 3.0],
-            naming::aesthetic_column("y").as_str() => &[10.0, 20.0, 30.0],
-            naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
-            naming::aesthetic_column("rotation").as_str() => &["0", "45", "90"],
+            x_col.as_str() => vec![1.0, 2.0, 3.0],
+            y_col.as_str() => vec![10.0, 20.0, 30.0],
+            label_col.as_str() => vec!["A", "B", "C"],
+            rotation_col.as_str() => vec!["0", "45", "90"],
         }
         .unwrap();
 
@@ -2775,17 +2830,21 @@ mod tests {
     #[test]
     fn test_text_varying_angle_numeric() {
         use crate::naming;
-        use polars::prelude::*;
+        use crate::df;
 
         let renderer = TextRenderer;
         let layer = Layer::new(crate::plot::Geom::text());
 
         // Create DataFrame with numeric angle column (matching actual query)
+        let x_col = naming::aesthetic_column("x");
+        let y_col = naming::aesthetic_column("y");
+        let label_col = naming::aesthetic_column("label");
+        let rotation_col = naming::aesthetic_column("rotation");
         let df = df! {
-            naming::aesthetic_column("x").as_str() => &[1, 2, 3],
-            naming::aesthetic_column("y").as_str() => &[1, 2, 3],
-            naming::aesthetic_column("label").as_str() => &["A", "B", "C"],
-            naming::aesthetic_column("rotation").as_str() => &[0i32, 180i32, 0i32],  // integer column
+            x_col.as_str() => vec![1i32, 2, 3],
+            y_col.as_str() => vec![1i32, 2, 3],
+            label_col.as_str() => vec!["A", "B", "C"],
+            rotation_col.as_str() => vec![0i32, 180i32, 0i32],  // integer column
         }
         .unwrap();
 
@@ -4288,16 +4347,18 @@ mod tests {
     #[test]
     fn test_path_renderer_varying_aesthetics_metadata() {
         use crate::plot::{AestheticValue, Geom, Layer};
-        use polars::prelude::*;
+        use crate::df;
 
         let renderer = PathRenderer;
         let mut layer = Layer::new(Geom::line());
 
         // Create DataFrame with varying stroke
+        let pos1_col = naming::aesthetic_column("pos1");
+        let pos2_col = naming::aesthetic_column("pos2");
         let df = df! {
-            naming::aesthetic_column("pos1").as_str() => &[1.0, 2.0, 3.0],
-            naming::aesthetic_column("pos2").as_str() => &[10.0, 20.0, 30.0],
-            "color".to_string().as_str() => &[1.0, 2.0, 3.0],
+            pos1_col.as_str() => vec![1.0, 2.0, 3.0],
+            pos2_col.as_str() => vec![10.0, 20.0, 30.0],
+            "color" => vec![1.0, 2.0, 3.0],
         }
         .unwrap();
 
@@ -4327,16 +4388,19 @@ mod tests {
     #[test]
     fn test_path_renderer_trail_mark_for_varying_linewidth() {
         use crate::plot::{AestheticValue, Geom, Layer};
-        use polars::prelude::*;
+        use crate::df;
 
         let renderer = PathRenderer;
         let mut layer = Layer::new(Geom::line());
 
         // Create DataFrame with varying linewidth
+        let pos1_col = naming::aesthetic_column("pos1");
+        let pos2_col = naming::aesthetic_column("pos2");
+        let linewidth_col = naming::aesthetic_column("linewidth");
         let df = df! {
-            naming::aesthetic_column("pos1").as_str() => &[1.0, 2.0, 3.0],
-            naming::aesthetic_column("pos2").as_str() => &[10.0, 20.0, 30.0],
-            naming::aesthetic_column("linewidth").as_str() => &[1.0, 3.0, 5.0],
+            pos1_col.as_str() => vec![1.0, 2.0, 3.0],
+            pos2_col.as_str() => vec![10.0, 20.0, 30.0],
+            linewidth_col.as_str() => vec![1.0, 3.0, 5.0],
         }
         .unwrap();
 
@@ -4387,17 +4451,21 @@ mod tests {
     #[test]
     fn test_path_renderer_trail_mark_with_stroke_legend() {
         use crate::plot::{AestheticValue, Geom, Layer};
-        use polars::prelude::*;
+        use crate::df;
 
         let renderer = PathRenderer;
         let mut layer = Layer::new(Geom::line());
 
         // Create DataFrame with varying linewidth and stroke
+        let pos1_col = naming::aesthetic_column("pos1");
+        let pos2_col = naming::aesthetic_column("pos2");
+        let linewidth_col = naming::aesthetic_column("linewidth");
+        let stroke_col = naming::aesthetic_column("stroke");
         let df = df! {
-            naming::aesthetic_column("pos1").as_str() => &[1.0, 2.0, 3.0],
-            naming::aesthetic_column("pos2").as_str() => &[10.0, 20.0, 30.0],
-            naming::aesthetic_column("linewidth").as_str() => &[1.0, 3.0, 5.0],
-            naming::aesthetic_column("stroke").as_str() => &["A", "A", "B"],
+            pos1_col.as_str() => vec![1.0, 2.0, 3.0],
+            pos2_col.as_str() => vec![10.0, 20.0, 30.0],
+            linewidth_col.as_str() => vec![1.0, 3.0, 5.0],
+            stroke_col.as_str() => vec!["A", "A", "B"],
         }
         .unwrap();
 
@@ -4468,17 +4536,19 @@ mod tests {
     #[test]
     fn test_path_renderer_segmentation_for_varying_stroke() {
         use crate::plot::{AestheticValue, Geom, Layer};
-        use polars::prelude::*;
+        use crate::df;
 
         let renderer = PathRenderer;
         let mut layer = Layer::new(Geom::line());
 
         // Create DataFrame with varying stroke
+        let pos1_col = naming::aesthetic_column("pos1");
+        let pos2_col = naming::aesthetic_column("pos2");
         let df = df! {
-            naming::aesthetic_column("pos1").as_str() => &[1.0, 2.0, 3.0],
-            naming::aesthetic_column("pos2").as_str() => &[10.0, 20.0, 30.0],
-            "color".to_string().as_str() => &[1.0, 2.0, 3.0],
-            ROW_INDEX_COLUMN => &[0, 1, 2],
+            pos1_col.as_str() => vec![1.0, 2.0, 3.0],
+            pos2_col.as_str() => vec![10.0, 20.0, 30.0],
+            "color" => vec![1.0, 2.0, 3.0],
+            ROW_INDEX_COLUMN => vec![0i32, 1, 2],
         }
         .unwrap();
 

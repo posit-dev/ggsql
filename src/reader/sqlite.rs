@@ -1,15 +1,17 @@
 //! SQLite data source implementation
 //!
-//! Provides a reader for SQLite databases with Polars DataFrame integration.
+//! Provides a reader for SQLite databases with Arrow DataFrame integration.
 //! Works on both native targets and wasm32-unknown-unknown (via sqlite-wasm-rs).
 
 use crate::reader::Reader;
 use crate::{naming, DataFrame, GgsqlError, Result};
+use arrow::array::*;
+use arrow::datatypes::{DataType, TimeUnit};
 use chrono::Datelike;
-use polars::prelude::*;
 use rusqlite::Connection;
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 /// SQLite SQL dialect.
 ///
@@ -95,7 +97,7 @@ impl super::SqlDialect for SqliteDialect {
 /// SQLite database reader
 ///
 /// Executes SQL queries against SQLite databases (in-memory or file-based)
-/// and returns results as Polars DataFrames.
+/// and returns results as DataFrames.
 pub struct SqliteReader {
     conn: Connection,
     registered_tables: RefCell<HashSet<String>>,
@@ -190,8 +192,8 @@ fn validate_table_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Map a Polars DataType to a SQLite column type string
-fn polars_type_to_sqlite(dtype: &DataType) -> &'static str {
+/// Map an Arrow DataType to a SQLite column type string
+fn arrow_type_to_sqlite(dtype: &DataType) -> &'static str {
     match dtype {
         DataType::Float32 | DataType::Float64 => "REAL",
         DataType::Int8
@@ -203,47 +205,119 @@ fn polars_type_to_sqlite(dtype: &DataType) -> &'static str {
         | DataType::UInt32
         | DataType::UInt64 => "INTEGER",
         DataType::Boolean => "INTEGER",
-        DataType::Date => "TEXT",
-        DataType::Datetime(_, _) => "TEXT",
-        DataType::Time => "TEXT",
+        DataType::Date32 => "TEXT",
+        DataType::Timestamp(_, _) => "TEXT",
+        DataType::Time64(_) => "TEXT",
         _ => "TEXT",
     }
 }
 
-/// Convert a Polars AnyValue to a rusqlite Value for parameter binding
-fn anyvalue_to_sqlite(value: AnyValue, _dtype: &DataType) -> rusqlite::types::Value {
+/// Convert an Arrow array value at a given row index to a rusqlite Value for parameter binding.
+fn array_value_to_sqlite(
+    array: &ArrayRef,
+    row_idx: usize,
+) -> rusqlite::types::Value {
+    use crate::array_util;
     use rusqlite::types::Value;
 
-    match value {
-        AnyValue::Null => Value::Null,
-        AnyValue::Boolean(b) => Value::Integer(b as i64),
-        AnyValue::Int8(v) => Value::Integer(v as i64),
-        AnyValue::Int16(v) => Value::Integer(v as i64),
-        AnyValue::Int32(v) => Value::Integer(v as i64),
-        AnyValue::Int64(v) => Value::Integer(v),
-        AnyValue::UInt8(v) => Value::Integer(v as i64),
-        AnyValue::UInt16(v) => Value::Integer(v as i64),
-        AnyValue::UInt32(v) => Value::Integer(v as i64),
-        AnyValue::UInt64(v) => Value::Integer(v as i64),
-        AnyValue::Float32(v) => Value::Real(v as f64),
-        AnyValue::Float64(v) => Value::Real(v),
-        AnyValue::String(s) => Value::Text(s.to_string()),
-        AnyValue::StringOwned(s) => Value::Text(s.to_string()),
-        AnyValue::Date(days) => chrono::NaiveDate::from_num_days_from_ce_opt(days + 719_163)
-            .and_then(|d| to_sql_value(&d))
-            .unwrap_or(Value::Null),
-        AnyValue::Datetime(us, _, _) => chrono::DateTime::from_timestamp_micros(us)
-            .map(|d| d.naive_utc())
-            .and_then(|d| to_sql_value(&d))
-            .unwrap_or(Value::Null),
-        AnyValue::Time(ns) => {
+    if array.is_null(row_idx) {
+        return Value::Null;
+    }
+
+    match array.data_type() {
+        DataType::Boolean => {
+            let arr = array.as_any().downcast_ref::<BooleanArray>().unwrap();
+            Value::Integer(arr.value(row_idx) as i64)
+        }
+        DataType::Int8 => {
+            let arr = array_util::as_i8(array).unwrap();
+            Value::Integer(arr.value(row_idx) as i64)
+        }
+        DataType::Int16 => {
+            let arr = array_util::as_i16(array).unwrap();
+            Value::Integer(arr.value(row_idx) as i64)
+        }
+        DataType::Int32 => {
+            let arr = array_util::as_i32(array).unwrap();
+            Value::Integer(arr.value(row_idx) as i64)
+        }
+        DataType::Int64 => {
+            let arr = array_util::as_i64(array).unwrap();
+            Value::Integer(arr.value(row_idx))
+        }
+        DataType::UInt8 => {
+            let arr = array_util::as_u8(array).unwrap();
+            Value::Integer(arr.value(row_idx) as i64)
+        }
+        DataType::UInt16 => {
+            let arr = array_util::as_u16(array).unwrap();
+            Value::Integer(arr.value(row_idx) as i64)
+        }
+        DataType::UInt32 => {
+            let arr = array_util::as_u32(array).unwrap();
+            Value::Integer(arr.value(row_idx) as i64)
+        }
+        DataType::UInt64 => {
+            let arr = array_util::as_u64(array).unwrap();
+            Value::Integer(arr.value(row_idx) as i64)
+        }
+        DataType::Float32 => {
+            let arr = array_util::as_f32(array).unwrap();
+            Value::Real(arr.value(row_idx) as f64)
+        }
+        DataType::Float64 => {
+            let arr = array_util::as_f64(array).unwrap();
+            Value::Real(arr.value(row_idx))
+        }
+        DataType::Utf8 => {
+            let arr = array_util::as_str(array).unwrap();
+            Value::Text(arr.value(row_idx).to_string())
+        }
+        DataType::Date32 => {
+            let arr = array.as_any().downcast_ref::<Date32Array>().unwrap();
+            let days = arr.value(row_idx);
+            chrono::NaiveDate::from_num_days_from_ce_opt(days + 719_163)
+                .and_then(|d| to_sql_value(&d))
+                .unwrap_or(Value::Null)
+        }
+        DataType::Timestamp(TimeUnit::Microsecond, _) => {
+            let arr = array
+                .as_any()
+                .downcast_ref::<TimestampMicrosecondArray>()
+                .unwrap();
+            let us = arr.value(row_idx);
+            chrono::DateTime::from_timestamp_micros(us)
+                .map(|d| d.naive_utc())
+                .and_then(|d| to_sql_value(&d))
+                .unwrap_or(Value::Null)
+        }
+        DataType::Timestamp(TimeUnit::Millisecond, _) => {
+            let arr = array
+                .as_any()
+                .downcast_ref::<TimestampMillisecondArray>()
+                .unwrap();
+            let ms = arr.value(row_idx);
+            chrono::DateTime::from_timestamp_millis(ms)
+                .map(|d| d.naive_utc())
+                .and_then(|d| to_sql_value(&d))
+                .unwrap_or(Value::Null)
+        }
+        DataType::Time64(TimeUnit::Nanosecond) => {
+            let arr = array
+                .as_any()
+                .downcast_ref::<Time64NanosecondArray>()
+                .unwrap();
+            let ns = arr.value(row_idx);
             let secs = (ns / 1_000_000_000) as u32;
             let nanos = (ns % 1_000_000_000) as u32;
             chrono::NaiveTime::from_num_seconds_from_midnight_opt(secs, nanos)
                 .and_then(|t| to_sql_value(&t))
                 .unwrap_or(Value::Null)
         }
-        _ => Value::Text(format!("{}", value)),
+        _ => {
+            // Fallback: use array_util::value_to_string
+            Value::Text(crate::array_util::value_to_string(array, row_idx))
+        }
     }
 }
 
@@ -260,7 +334,7 @@ fn to_sql_value(v: &dyn rusqlite::types::ToSql) -> Option<rusqlite::types::Value
 impl Reader for SqliteReader {
     fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
         // Handle ggsql:name namespaced identifiers (builtin datasets)
-        #[cfg(feature = "parquet")]
+        #[cfg(all(feature = "builtin-data", feature = "parquet"))]
         {
             let dataset_names = super::data::extract_builtin_dataset_names(sql)?;
             for name in &dataset_names {
@@ -288,9 +362,7 @@ impl Reader for SqliteReader {
             self.conn
                 .execute_batch(&sql)
                 .map_err(|e| GgsqlError::ReaderError(format!("Failed to execute DDL: {}", e)))?;
-            return DataFrame::new(Vec::<Column>::new()).map_err(|e| {
-                GgsqlError::ReaderError(format!("Failed to create empty DataFrame: {}", e))
-            });
+            return Ok(DataFrame::empty());
         }
 
         let mut stmt = self
@@ -330,16 +402,24 @@ impl Reader for SqliteReader {
             }
         }
 
-        // Build Series from collected values
-        let mut columns = Vec::with_capacity(column_count);
-        for (col_idx, values) in col_values.into_iter().enumerate() {
-            let name = &column_names[col_idx];
-            let series = sqlite_values_to_series(name, values)?;
-            columns.push(series.into());
+        // Build named arrays from collected values
+        let mut named_arrays: Vec<(&str, ArrayRef)> = Vec::with_capacity(column_count);
+        // Hold the built arrays so we can borrow names
+        let built: Vec<(String, ArrayRef)> = col_values
+            .into_iter()
+            .enumerate()
+            .map(|(col_idx, values)| {
+                let name = column_names[col_idx].clone();
+                let array = sqlite_values_to_array(&name, values)?;
+                Ok((name, array))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        for (name, array) in &built {
+            named_arrays.push((name.as_str(), array.clone()));
         }
 
-        DataFrame::new(columns)
-            .map_err(|e| GgsqlError::ReaderError(format!("Failed to create DataFrame: {}", e)))
+        DataFrame::new(named_arrays)
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
@@ -361,13 +441,14 @@ impl Reader for SqliteReader {
         }
 
         // Build CREATE TABLE statement
-        let col_defs: Vec<String> = df
-            .get_columns()
+        let col_names = df.get_column_names();
+        let schema = df.schema();
+        let col_defs: Vec<String> = schema
+            .fields()
             .iter()
-            .map(|col| {
-                let col_name = col.name().to_string();
-                let col_type = polars_type_to_sqlite(col.dtype());
-                format!("{} {}", naming::quote_ident(&col_name), col_type)
+            .map(|field| {
+                let col_type = arrow_type_to_sqlite(field.data_type());
+                format!("{} {}", naming::quote_ident(field.name()), col_type)
             })
             .collect();
 
@@ -380,7 +461,7 @@ impl Reader for SqliteReader {
             GgsqlError::ReaderError(format!("Failed to create table '{}': {}", name, e))
         })?;
 
-        // Insert data using params_from_iter, wrapped in a transaction
+        // Insert data row by row, wrapped in a transaction
         if df.height() > 0 {
             let placeholders: Vec<&str> = vec!["?"; df.width()];
             let insert_sql = format!(
@@ -389,8 +470,8 @@ impl Reader for SqliteReader {
                 placeholders.join(", ")
             );
 
-            let dtypes: Vec<DataType> =
-                df.get_columns().iter().map(|c| c.dtype().clone()).collect();
+            let columns = df.get_columns();
+            let _ = &col_names; // keep col_names alive
 
             self.conn.execute_batch("BEGIN").map_err(|e| {
                 GgsqlError::ReaderError(format!("Failed to begin transaction: {}", e))
@@ -402,20 +483,10 @@ impl Reader for SqliteReader {
                 })?;
 
                 for row_idx in 0..df.height() {
-                    let values: Vec<rusqlite::types::Value> = df
-                        .get_columns()
+                    let values: Vec<rusqlite::types::Value> = columns
                         .iter()
-                        .enumerate()
-                        .map(|(col_idx, col)| {
-                            let value = col.get(row_idx).map_err(|e| {
-                                GgsqlError::ReaderError(format!(
-                                    "Failed to get value at row {}, col {}: {}",
-                                    row_idx, col_idx, e
-                                ))
-                            })?;
-                            Ok(anyvalue_to_sqlite(value, &dtypes[col_idx]))
-                        })
-                        .collect::<Result<Vec<_>>>()?;
+                        .map(|col| array_value_to_sqlite(col, row_idx))
+                        .collect();
 
                     stmt.execute(rusqlite::params_from_iter(values))
                         .map_err(|e| {
@@ -472,8 +543,8 @@ impl Reader for SqliteReader {
 }
 
 /// Try to parse all non-null TEXT values as ISO-8601 dates (YYYY-MM-DD).
-/// Returns a Date series if all non-null values parse, None otherwise.
-fn try_parse_as_date(name: &str, values: &[rusqlite::types::Value]) -> Option<Series> {
+/// Returns a Date32 array if all non-null values parse, None otherwise.
+fn try_parse_as_date(values: &[rusqlite::types::Value]) -> Option<ArrayRef> {
     use rusqlite::types::{FromSql, Value, ValueRef};
 
     // Days between 0001-01-01 (CE day 1) and 1970-01-01 (Unix epoch)
@@ -493,14 +564,13 @@ fn try_parse_as_date(name: &str, values: &[rusqlite::types::Value]) -> Option<Se
         }
     }
 
-    let series = Series::new(name.into(), parsed);
-    series.cast(&DataType::Date).ok()
+    Some(Arc::new(Date32Array::from(parsed)) as ArrayRef)
 }
 
 /// Try to parse all non-null TEXT values as ISO-8601 datetimes.
 /// Supports both "T" and space separators (e.g. "2024-01-15T10:30:00" or "2024-01-15 10:30:00").
-/// Returns a Datetime series if all non-null values parse, None otherwise.
-fn try_parse_as_datetime(name: &str, values: &[rusqlite::types::Value]) -> Option<Series> {
+/// Returns a TimestampMillisecond array if all non-null values parse, None otherwise.
+fn try_parse_as_datetime(values: &[rusqlite::types::Value]) -> Option<ArrayRef> {
     use rusqlite::types::{FromSql, Value, ValueRef};
 
     let mut parsed: Vec<Option<i64>> = Vec::with_capacity(values.len());
@@ -521,25 +591,24 @@ fn try_parse_as_datetime(name: &str, values: &[rusqlite::types::Value]) -> Optio
         }
     }
 
-    let series = Series::new(name.into(), parsed);
-    series
-        .cast(&DataType::Datetime(TimeUnit::Milliseconds, None))
-        .ok()
+    Some(Arc::new(TimestampMillisecondArray::from(parsed)) as ArrayRef)
 }
 
-/// Infer the best Polars type from a column of SQLite values and build a Series.
+/// Infer the best Arrow type from a column of SQLite values and build an ArrayRef.
 ///
 /// SQLite uses dynamic typing, so we infer the column type from all values:
-/// - All Integer → Int64
-/// - All Integer/Real → Float64
-/// - All Text → String
-/// - Mixed → String fallback
-fn sqlite_values_to_series(name: &str, values: Vec<rusqlite::types::Value>) -> Result<Series> {
+/// - All Integer -> Int64
+/// - All Integer/Real -> Float64
+/// - All Text -> String (with temporal detection)
+/// - Mixed -> String fallback
+fn sqlite_values_to_array(name: &str, values: Vec<rusqlite::types::Value>) -> Result<ArrayRef> {
     use rusqlite::types::Value;
+
+    let _ = name; // name is unused now but kept for consistency
 
     if values.is_empty() {
         // Default to String for empty columns
-        return Ok(Series::new(name.into(), Vec::<Option<String>>::new()));
+        return Ok(Arc::new(StringArray::from(Vec::<Option<&str>>::new())) as ArrayRef);
     }
 
     // Determine the dominant type
@@ -560,11 +629,11 @@ fn sqlite_values_to_series(name: &str, values: Vec<rusqlite::types::Value>) -> R
 
     // If we have text, try temporal detection before falling back to String
     if has_text && !has_blob {
-        if let Some(series) = try_parse_as_date(name, &values) {
-            return Ok(series);
+        if let Some(array) = try_parse_as_date(&values) {
+            return Ok(array);
         }
-        if let Some(series) = try_parse_as_datetime(name, &values) {
-            return Ok(series);
+        if let Some(array) = try_parse_as_datetime(&values) {
+            return Ok(array);
         }
     }
 
@@ -579,7 +648,8 @@ fn sqlite_values_to_series(name: &str, values: Vec<rusqlite::types::Value>) -> R
                 Value::Blob(b) => Some(format!("{:?}", b)),
             })
             .collect();
-        return Ok(Series::new(name.into(), vals));
+        let refs: Vec<Option<&str>> = vals.iter().map(|s| s.as_deref()).collect();
+        return Ok(Arc::new(StringArray::from(refs)) as ArrayRef);
     }
 
     // If we have any reals, use f64
@@ -593,7 +663,7 @@ fn sqlite_values_to_series(name: &str, values: Vec<rusqlite::types::Value>) -> R
                 _ => None,
             })
             .collect();
-        return Ok(Series::new(name.into(), vals));
+        return Ok(Arc::new(Float64Array::from(vals)) as ArrayRef);
     }
 
     // Pure integers
@@ -606,17 +676,19 @@ fn sqlite_values_to_series(name: &str, values: Vec<rusqlite::types::Value>) -> R
                 _ => None,
             })
             .collect();
-        return Ok(Series::new(name.into(), vals));
+        return Ok(Arc::new(Int64Array::from(vals)) as ArrayRef);
     }
 
     // All nulls — default to String
-    let vals: Vec<Option<String>> = values.into_iter().map(|_| None).collect();
-    Ok(Series::new(name.into(), vals))
+    let vals: Vec<Option<&str>> = values.iter().map(|_| None).collect();
+    Ok(Arc::new(StringArray::from(vals)) as ArrayRef)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::array_util::as_i64;
+    use crate::df;
 
     #[test]
     fn test_create_in_memory() {
@@ -630,7 +702,10 @@ mod tests {
         let df = reader.execute_sql("SELECT 1 as x, 2 as y").unwrap();
 
         assert_eq!(df.shape(), (1, 2));
-        assert_eq!(df.get_column_names(), vec!["x", "y"]);
+        assert_eq!(
+            df.get_column_names(),
+            vec!["x".to_string(), "y".to_string()]
+        );
     }
 
     #[test]
@@ -641,8 +716,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(df.shape(), (1, 2));
-        assert_eq!(df.column("x").unwrap().dtype(), &DataType::Int64);
-        assert_eq!(df.column("y").unwrap().dtype(), &DataType::Int64);
+        assert_eq!(df.column_dtype("x").unwrap(), DataType::Int64);
+        assert_eq!(df.column_dtype("y").unwrap(), DataType::Int64);
     }
 
     #[test]
@@ -687,7 +762,10 @@ mod tests {
         let df = reader.execute_sql("SELECT * FROM test").unwrap();
 
         assert_eq!(df.shape(), (2, 2));
-        assert_eq!(df.get_column_names(), vec!["x", "y"]);
+        assert_eq!(
+            df.get_column_names(),
+            vec!["x".to_string(), "y".to_string()]
+        );
     }
 
     #[test]
@@ -701,10 +779,10 @@ mod tests {
     fn test_register_and_query() {
         let reader = SqliteReader::new().unwrap();
 
-        let df = DataFrame::new(vec![
-            Column::new("x".into(), vec![1i32, 2, 3]),
-            Column::new("y".into(), vec![10i32, 20, 30]),
-        ])
+        let df = df! {
+            "x" => vec![1i32, 2, 3],
+            "y" => vec![10i32, 20, 30],
+        }
         .unwrap();
 
         reader.register("my_table", df, false).unwrap();
@@ -713,15 +791,18 @@ mod tests {
             .execute_sql("SELECT * FROM my_table ORDER BY x")
             .unwrap();
         assert_eq!(result.shape(), (3, 2));
-        assert_eq!(result.get_column_names(), vec!["x", "y"]);
+        assert_eq!(
+            result.get_column_names(),
+            vec!["x".to_string(), "y".to_string()]
+        );
     }
 
     #[test]
     fn test_register_duplicate_name_errors() {
         let reader = SqliteReader::new().unwrap();
 
-        let df1 = DataFrame::new(vec![Column::new("a".into(), vec![1i32])]).unwrap();
-        let df2 = DataFrame::new(vec![Column::new("b".into(), vec![2i32])]).unwrap();
+        let df1 = df! { "a" => vec![1i32] }.unwrap();
+        let df2 = df! { "b" => vec![2i32] }.unwrap();
 
         reader.register("dup_table", df1, false).unwrap();
 
@@ -734,7 +815,7 @@ mod tests {
     #[test]
     fn test_register_invalid_table_names() {
         let reader = SqliteReader::new().unwrap();
-        let df = DataFrame::new(vec![Column::new("a".into(), vec![1i32])]).unwrap();
+        let df = df! { "a" => vec![1i32] }.unwrap();
 
         let result = reader.register("", df.clone(), false);
         assert!(result.is_err());
@@ -757,23 +838,28 @@ mod tests {
     fn test_register_empty_dataframe() {
         let reader = SqliteReader::new().unwrap();
 
-        let df = DataFrame::new(vec![
-            Column::new("x".into(), Vec::<i32>::new()),
-            Column::new("y".into(), Vec::<String>::new()),
-        ])
-        .unwrap();
+        // Create an empty DataFrame with schema by slicing a 1-row df to 0 rows
+        let df = df! {
+            "x" => vec![0i32],
+            "y" => vec!["placeholder"],
+        }
+        .unwrap()
+        .slice(0, 0);
 
         reader.register("empty_table", df, false).unwrap();
 
         let result = reader.execute_sql("SELECT * FROM empty_table").unwrap();
         assert_eq!(result.shape(), (0, 2));
-        assert_eq!(result.get_column_names(), vec!["x", "y"]);
+        assert_eq!(
+            result.get_column_names(),
+            vec!["x".to_string(), "y".to_string()]
+        );
     }
 
     #[test]
     fn test_unregister() {
         let reader = SqliteReader::new().unwrap();
-        let df = DataFrame::new(vec![Column::new("x".into(), vec![1i32, 2, 3])]).unwrap();
+        let df = df! { "x" => vec![1i32, 2, 3] }.unwrap();
 
         reader.register("test_data", df, false).unwrap();
 
@@ -804,7 +890,7 @@ mod tests {
     #[test]
     fn test_reregister_after_unregister() {
         let reader = SqliteReader::new().unwrap();
-        let df = DataFrame::new(vec![Column::new("x".into(), vec![1i32, 2, 3])]).unwrap();
+        let df = df! { "x" => vec![1i32, 2, 3] }.unwrap();
 
         reader.register("data", df.clone(), false).unwrap();
         reader.unregister("data").unwrap();
@@ -823,11 +909,11 @@ mod tests {
         let values: Vec<f64> = (0..n).map(|i| i as f64 * 1.5).collect();
         let names: Vec<String> = (0..n).map(|i| format!("item_{}", i)).collect();
 
-        let df = DataFrame::new(vec![
-            Column::new("id".into(), ids),
-            Column::new("value".into(), values),
-            Column::new("name".into(), names),
-        ])
+        let df = df! {
+            "id" => ids,
+            "value" => values,
+            "name" => names,
+        }
         .unwrap();
 
         reader.register("large_table", df, false).unwrap();
@@ -835,7 +921,7 @@ mod tests {
         let result = reader
             .execute_sql("SELECT COUNT(*) as cnt FROM large_table")
             .unwrap();
-        let count = result.column("cnt").unwrap().i64().unwrap().get(0).unwrap();
+        let count = as_i64(result.column("cnt").unwrap()).unwrap().value(0);
         assert_eq!(count, n as i64);
     }
 
@@ -861,15 +947,18 @@ mod tests {
             .unwrap();
 
         assert_eq!(df.shape(), (2, 2));
-        assert_eq!(df.get_column_names(), vec!["region", "total"]);
+        assert_eq!(
+            df.get_column_names(),
+            vec!["region".to_string(), "total".to_string()]
+        );
     }
 
     #[test]
     fn test_register_with_replace() {
         let reader = SqliteReader::new().unwrap();
 
-        let df1 = DataFrame::new(vec![Column::new("x".into(), vec![1i32])]).unwrap();
-        let df2 = DataFrame::new(vec![Column::new("x".into(), vec![2i32, 3])]).unwrap();
+        let df1 = df! { "x" => vec![1i32] }.unwrap();
+        let df2 = df! { "x" => vec![2i32, 3] }.unwrap();
 
         reader.register("data", df1, false).unwrap();
         reader.register("data", df2, true).unwrap();
@@ -902,7 +991,7 @@ mod tests {
     fn test_boolean_roundtrip() {
         let reader = SqliteReader::new().unwrap();
 
-        let df = DataFrame::new(vec![Column::new("flag".into(), vec![true, false, true])]).unwrap();
+        let df = df! { "flag" => vec![true, false, true] }.unwrap();
 
         reader.register("bool_data", df, false).unwrap();
 
@@ -934,21 +1023,17 @@ mod tests {
     fn test_date_column_roundtrip() {
         let reader = SqliteReader::new().unwrap();
 
-        // Register a DataFrame with a Date column
-        let dates = Series::new("d".into(), vec![19000i32, 19001, 19002]);
-        let dates = dates.cast(&DataType::Date).unwrap();
-        let df = DataFrame::new(vec![
-            dates.into_column(),
-            Column::new("v".into(), vec![1, 2, 3]),
-        ])
-        .unwrap();
+        // Register a DataFrame with a Date column (Date32 in Arrow)
+        let dates: ArrayRef = Arc::new(Date32Array::from(vec![19000i32, 19001, 19002]));
+        let values: ArrayRef = Arc::new(Int32Array::from(vec![1, 2, 3]));
+        let df = DataFrame::new(vec![("d", dates), ("v", values)]).unwrap();
 
         reader.register("date_data", df, false).unwrap();
 
         let result = reader.execute_sql("SELECT * FROM date_data").unwrap();
         assert_eq!(result.height(), 3);
-        assert_eq!(result.column("d").unwrap().dtype(), &DataType::Date);
-        assert_eq!(result.column("v").unwrap().dtype(), &DataType::Int64);
+        assert_eq!(result.column_dtype("d").unwrap(), DataType::Date32);
+        assert_eq!(result.column_dtype("v").unwrap(), DataType::Int64);
     }
 
     #[test]
@@ -969,11 +1054,11 @@ mod tests {
         assert_eq!(result.height(), 2);
         assert!(
             matches!(
-                result.column("ts").unwrap().dtype(),
-                DataType::Datetime(_, _)
+                result.column_dtype("ts").unwrap(),
+                DataType::Timestamp(_, _)
             ),
-            "Expected Datetime, got {:?}",
-            result.column("ts").unwrap().dtype()
+            "Expected Timestamp, got {:?}",
+            result.column_dtype("ts").unwrap()
         );
     }
 
@@ -989,7 +1074,7 @@ mod tests {
             .unwrap();
 
         let result = reader.execute_sql("SELECT * FROM str_data").unwrap();
-        assert_eq!(result.column("name").unwrap().dtype(), &DataType::String);
+        assert_eq!(result.column_dtype("name").unwrap(), DataType::Utf8);
     }
 
     #[test]
@@ -998,14 +1083,10 @@ mod tests {
 
         let reader = SqliteReader::new().unwrap();
 
-        // Register a table with a date column
-        let dates = Series::new("date".into(), vec![19000i32, 19001, 19002]);
-        let dates = dates.cast(&DataType::Date).unwrap();
-        let df = DataFrame::new(vec![
-            dates.into_column(),
-            Column::new("value".into(), vec![10, 20, 30]),
-        ])
-        .unwrap();
+        // Register a table with a date column (Date32 in Arrow)
+        let dates: ArrayRef = Arc::new(Date32Array::from(vec![19000i32, 19001, 19002]));
+        let values: ArrayRef = Arc::new(Int32Array::from(vec![10, 20, 30]));
+        let df = DataFrame::new(vec![("date", dates), ("value", values)]).unwrap();
         reader.register("ts_data", df, false).unwrap();
 
         let spec = reader
@@ -1161,7 +1242,7 @@ mod tests {
     }
 }
 
-#[cfg(feature = "parquet")]
+#[cfg(all(feature = "builtin-data", feature = "parquet"))]
 #[cfg(test)]
 mod builtin_data_tests {
     use super::*;
@@ -1196,9 +1277,9 @@ mod builtin_data_tests {
             .execute_sql("SELECT Date FROM ggsql:airquality LIMIT 5")
             .unwrap();
         assert_eq!(
-            result.column("Date").unwrap().dtype(),
-            &DataType::Date,
-            "airquality Date column should be detected as Date, not String"
+            result.column_dtype("Date").unwrap(),
+            DataType::Date32,
+            "airquality Date column should be detected as Date32, not String"
         );
     }
 }

@@ -12,6 +12,26 @@ use crate::{naming, GgsqlError};
 //    beneath this block.
 // 3. Add a match arm in `builtin_parquet_bytes()` for your dataset.
 // 4. Add the dataset name to `KNOWN_DATASETS`.
+//
+// Parquet compatibility
+// ---------------------
+// The file must be readable by arrow-rs without `skip_arrow_metadata`.
+// The test `all_builtin_parquets_load` enforces this in CI.
+//
+// Known-compatible writers:
+//   - Python `pyarrow`            (`pq.write_table(...)`)
+//   - Rust `arrow-rs` + `parquet` (`ArrowWriter`)
+//   - DuckDB                      (`COPY ... TO 'file.parquet'`)
+//
+// Known-incompatible writers:
+//   - R `nanoparquet` — writes ARROW:schema with a different flatbuffers
+//     alignment that arrow-rs's strict reader rejects.
+//
+// If you receive a file from an incompatible source, round-trip it with a
+// compatible writer. Example with pyarrow:
+//   import pyarrow.parquet as pq
+//   pq.write_table(pq.read_table('input.parquet'), 'output.parquet',
+//                  compression='snappy')
 // =============================================================================
 
 #[cfg(feature = "builtin-data")]
@@ -83,13 +103,12 @@ pub fn register_builtin_datasets_duckdb(
 }
 
 // =============================================================================
-// Polars-based builtin data loading
+// Arrow-based builtin data loading
 // =============================================================================
 
-#[cfg(feature = "parquet")]
+#[cfg(all(feature = "builtin-data", feature = "parquet"))]
 pub fn load_builtin_dataframe(name: &str) -> Result<crate::DataFrame, GgsqlError> {
-    use polars::prelude::*;
-    use std::io::Cursor;
+    use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
     let parquet_bytes = match name {
         "penguins" => PENGUINS,
@@ -102,10 +121,35 @@ pub fn load_builtin_dataframe(name: &str) -> Result<crate::DataFrame, GgsqlError
         }
     };
 
-    let cursor = Cursor::new(parquet_bytes);
-    ParquetReader::new(cursor).finish().map_err(|e| {
-        GgsqlError::ReaderError(format!("Failed to load builtin dataset '{}': {}", name, e))
-    })
+    let bytes = bytes::Bytes::from_static(parquet_bytes);
+    let reader = ParquetRecordBatchReaderBuilder::try_new(bytes)
+        .map_err(|e| {
+            GgsqlError::ReaderError(format!("Failed to read builtin dataset '{}': {}", name, e))
+        })?
+        .build()
+        .map_err(|e| {
+            GgsqlError::ReaderError(format!("Failed to build reader for '{}': {}", name, e))
+        })?;
+
+    let batches: Vec<_> = reader
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|e| {
+            GgsqlError::ReaderError(format!("Failed to load builtin dataset '{}': {}", name, e))
+        })?;
+
+    if batches.is_empty() {
+        return Ok(crate::DataFrame::empty());
+    }
+
+    let rb = if batches.len() == 1 {
+        batches.into_iter().next().unwrap()
+    } else {
+        arrow::compute::concat_batches(&batches[0].schema(), &batches).map_err(|e| {
+            GgsqlError::ReaderError(format!("Failed to concat batches for '{}': {}", name, e))
+        })?
+    };
+
+    Ok(crate::DataFrame::from_record_batch(rb))
 }
 
 /// Known builtin dataset names in the ggsql namespace
@@ -495,23 +539,32 @@ mod duckdb_tests {
     }
 }
 
-#[cfg(feature = "builtin-data")]
+#[cfg(all(feature = "builtin-data", feature = "parquet"))]
 #[cfg(test)]
 mod builtin_data_tests {
     use super::*;
 
+    /// Every entry in `KNOWN_DATASETS` must load cleanly via arrow-rs without
+    /// the `skip_arrow_metadata` workaround. If this test fails on a newly
+    /// added parquet file, the file was written by an incompatible tool
+    /// (see the compatibility notes at the top of this module).
     #[test]
-    fn test_load_builtin_parquet_penguins() {
-        let df = load_builtin_dataframe("penguins").unwrap();
-        assert!(df.height() > 0);
-        assert!(df.width() > 0);
-    }
-
-    #[test]
-    fn test_load_builtin_parquet_airquality() {
-        let df = load_builtin_dataframe("airquality").unwrap();
-        assert!(df.height() > 0);
-        assert!(df.width() > 0);
+    fn all_builtin_parquets_load() {
+        for name in KNOWN_DATASETS {
+            let df = load_builtin_dataframe(name).unwrap_or_else(|e| {
+                panic!(
+                    "Builtin dataset '{}' failed to load — likely an incompatible \
+                     parquet writer. See parquet compatibility notes in \
+                     src/reader/data.rs. Underlying error: {}",
+                    name, e
+                )
+            });
+            assert!(
+                df.height() > 0 && df.width() > 0,
+                "Builtin dataset '{}' loaded with zero rows or columns",
+                name
+            );
+        }
     }
 
     #[test]

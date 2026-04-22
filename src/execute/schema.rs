@@ -6,9 +6,11 @@
 //! 2. Apply casting to queries
 //! 3. complete_schema_ranges() - get min/max from cast queries
 
+use crate::array_util::*;
 use crate::plot::{AestheticValue, ArrayElement, ColumnInfo, Layer, ParameterValue, Schema};
 use crate::{naming, DataFrame, Result};
-use polars::prelude::{DataType, TimeUnit};
+use arrow::array::Array;
+use arrow::datatypes::{DataType, TimeUnit};
 
 /// Simple type info tuple: (name, dtype, is_discrete)
 pub type TypeInfo = (String, DataType, bool);
@@ -45,7 +47,7 @@ pub fn build_minmax_query(source_query: &str, column_names: &[&str]) -> String {
 
 /// Extract a value from a DataFrame at a given column and row index
 ///
-/// Converts Polars values to ArrayElement for storage in ColumnInfo.
+/// Converts Arrow array values to ArrayElement for storage in ColumnInfo.
 pub fn extract_series_value(
     df: &DataFrame,
     column: &str,
@@ -54,96 +56,47 @@ pub fn extract_series_value(
     use crate::plot::ArrayElement;
 
     let col = df.column(column).ok()?;
-    let series = col.as_materialized_series();
 
-    if row >= series.len() {
+    if row >= col.len() {
         return None;
     }
 
-    match series.dtype() {
-        DataType::Int8 => series
-            .i8()
+    if col.is_null(row) {
+        return None;
+    }
+
+    match col.data_type() {
+        DataType::Int8 => as_i8(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::Int16 => as_i16(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::Int32 => as_i32(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::Int64 => as_i64(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::UInt8 => as_u8(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::UInt16 => as_u16(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::UInt32 => as_u32(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::UInt64 => as_u64(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::Float32 => as_f32(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::Float64 => as_f64(col).ok().map(|a| ArrayElement::Number(a.value(row))),
+        DataType::Boolean => as_bool(col).ok().map(|a| ArrayElement::Boolean(a.value(row))),
+        DataType::Utf8 => as_str(col)
             .ok()
-            .and_then(|ca| ca.get(row))
-            .map(|v| ArrayElement::Number(v as f64)),
-        DataType::Int16 => series
-            .i16()
-            .ok()
-            .and_then(|ca| ca.get(row))
-            .map(|v| ArrayElement::Number(v as f64)),
-        DataType::Int32 => series
-            .i32()
-            .ok()
-            .and_then(|ca| ca.get(row))
-            .map(|v| ArrayElement::Number(v as f64)),
-        DataType::Int64 => series
-            .i64()
-            .ok()
-            .and_then(|ca| ca.get(row))
-            .map(|v| ArrayElement::Number(v as f64)),
-        DataType::UInt8 => series
-            .u8()
-            .ok()
-            .and_then(|ca| ca.get(row))
-            .map(|v| ArrayElement::Number(v as f64)),
-        DataType::UInt16 => series
-            .u16()
-            .ok()
-            .and_then(|ca| ca.get(row))
-            .map(|v| ArrayElement::Number(v as f64)),
-        DataType::UInt32 => series
-            .u32()
-            .ok()
-            .and_then(|ca| ca.get(row))
-            .map(|v| ArrayElement::Number(v as f64)),
-        DataType::UInt64 => series
-            .u64()
-            .ok()
-            .and_then(|ca| ca.get(row))
-            .map(|v| ArrayElement::Number(v as f64)),
-        DataType::Float32 => series
-            .f32()
-            .ok()
-            .and_then(|ca| ca.get(row))
-            .map(|v| ArrayElement::Number(v as f64)),
-        DataType::Float64 => series
-            .f64()
-            .ok()
-            .and_then(|ca| ca.get(row))
-            .map(ArrayElement::Number),
-        DataType::Boolean => series
-            .bool()
-            .ok()
-            .and_then(|ca| ca.get(row))
-            .map(ArrayElement::Boolean),
-        DataType::String => series
-            .str()
-            .ok()
-            .and_then(|ca| ca.get(row))
-            .map(|s| ArrayElement::String(s.to_string())),
-        DataType::Date => {
+            .map(|a| ArrayElement::String(a.value(row).to_string())),
+        DataType::Date32 => {
             // Return numeric days since epoch (for range computation)
-            series
-                .date()
+            as_date32(col)
                 .ok()
-                .and_then(|ca| ca.physical().get(row))
-                .map(|days| ArrayElement::Number(days as f64))
+                .map(|a| ArrayElement::Number(a.value(row) as f64))
         }
-        DataType::Datetime(_, _) => {
+        DataType::Timestamp(_, _) => {
             // Return numeric microseconds since epoch (for range computation)
-            series
-                .datetime()
+            as_timestamp_us(col)
                 .ok()
-                .and_then(|ca| ca.physical().get(row))
-                .map(|us| ArrayElement::Number(us as f64))
+                .map(|a| ArrayElement::Number(a.value(row) as f64))
         }
-        DataType::Time => {
+        DataType::Time64(_) => {
             // Return numeric nanoseconds since midnight (for range computation)
-            series
-                .time()
+            as_time64_ns(col)
                 .ok()
-                .and_then(|ca| ca.physical().get(row))
-                .map(|ns| ArrayElement::Number(ns as f64))
+                .map(|a| ArrayElement::Number(a.value(row) as f64))
         }
         _ => None,
     }
@@ -169,16 +122,16 @@ where
     );
     let schema_df = execute_query(&schema_query)?;
 
-    let type_info: Vec<TypeInfo> = schema_df
-        .get_columns()
+    let schema = schema_df.schema();
+    let type_info: Vec<TypeInfo> = schema
+        .fields()
         .iter()
-        .map(|col| {
-            let dtype = col.dtype().clone();
-            let is_discrete =
-                matches!(dtype, DataType::String | DataType::Boolean) || dtype.is_categorical();
-            (col.name().to_string(), is_discrete, dtype)
+        .map(|field| {
+            let dtype = field.data_type().clone();
+            let is_discrete = matches!(dtype, DataType::Utf8 | DataType::Boolean)
+                || matches!(dtype, DataType::Dictionary(_, _));
+            (field.name().clone(), dtype, is_discrete)
         })
-        .map(|(name, is_discrete, dtype)| (name, dtype, is_discrete))
         .collect();
 
     Ok(type_info)
@@ -253,21 +206,21 @@ pub fn add_literal_columns_to_type_info(layers: &[Layer], layer_type_info: &mut 
         for (aesthetic, value) in &layer.mappings.aesthetics {
             if let AestheticValue::Literal(lit) = value {
                 let (dtype, is_discrete) = match lit {
-                    ParameterValue::String(_) => (DataType::String, true),
+                    ParameterValue::String(_) => (DataType::Utf8, true),
                     ParameterValue::Number(_) => (DataType::Float64, false),
                     ParameterValue::Boolean(_) => (DataType::Boolean, true),
                     ParameterValue::Array(arr) => {
                         // Infer dtype from first element (arrays are homogeneous)
                         if let Some(first) = arr.first() {
                             match first {
-                                ArrayElement::String(_) => (DataType::String, true),
+                                ArrayElement::String(_) => (DataType::Utf8, true),
                                 ArrayElement::Number(_) => (DataType::Float64, false),
                                 ArrayElement::Boolean(_) => (DataType::Boolean, true),
-                                ArrayElement::Date(_) => (DataType::Date, false),
+                                ArrayElement::Date(_) => (DataType::Date32, false),
                                 ArrayElement::DateTime(_) => {
-                                    (DataType::Datetime(TimeUnit::Microseconds, None), false)
+                                    (DataType::Timestamp(TimeUnit::Microsecond, None), false)
                                 }
-                                ArrayElement::Time(_) => (DataType::Time, false),
+                                ArrayElement::Time(_) => (DataType::Time64(TimeUnit::Nanosecond), false),
                                 ArrayElement::Null => {
                                     // Null element: default to Float64
                                     (DataType::Float64, false)
@@ -328,7 +281,7 @@ pub fn build_aesthetic_schema(layer: &Layer, schema: &Schema) -> Schema {
                     // Column not in schema - add with Unknown type
                     aesthetic_schema.push(ColumnInfo {
                         name: aes_col_name,
-                        dtype: DataType::Unknown(Default::default()),
+                        dtype: DataType::Utf8,
                         is_discrete: false,
                         min: None,
                         max: None,
@@ -338,21 +291,21 @@ pub fn build_aesthetic_schema(layer: &Layer, schema: &Schema) -> Schema {
             AestheticValue::Literal(lit) => {
                 // Literals become columns with appropriate type
                 let (dtype, is_discrete) = match lit {
-                    ParameterValue::String(_) => (DataType::String, true),
+                    ParameterValue::String(_) => (DataType::Utf8, true),
                     ParameterValue::Number(_) => (DataType::Float64, false),
                     ParameterValue::Boolean(_) => (DataType::Boolean, true),
                     ParameterValue::Array(arr) => {
                         // Infer dtype from first element (arrays are homogeneous)
                         if let Some(first) = arr.first() {
                             match first {
-                                ArrayElement::String(_) => (DataType::String, true),
+                                ArrayElement::String(_) => (DataType::Utf8, true),
                                 ArrayElement::Number(_) => (DataType::Float64, false),
                                 ArrayElement::Boolean(_) => (DataType::Boolean, true),
-                                ArrayElement::Date(_) => (DataType::Date, false),
+                                ArrayElement::Date(_) => (DataType::Date32, false),
                                 ArrayElement::DateTime(_) => {
-                                    (DataType::Datetime(TimeUnit::Microseconds, None), false)
+                                    (DataType::Timestamp(TimeUnit::Microsecond, None), false)
                                 }
-                                ArrayElement::Time(_) => (DataType::Time, false),
+                                ArrayElement::Time(_) => (DataType::Time64(TimeUnit::Nanosecond), false),
                                 ArrayElement::Null => {
                                     // Null element: default to Float64
                                     (DataType::Float64, false)

@@ -5,15 +5,16 @@
 
 use crate::reader::Reader;
 use crate::{naming, DataFrame, GgsqlError, Result};
+use arrow::array::*;
+use arrow::datatypes::DataType;
 use odbc_api::sys::{Date as OdbcDate, Time as OdbcTime, Timestamp as OdbcTimestamp};
 use odbc_api::{
     buffers::{AnyBuffer, AnySlice, BufferDesc, ColumnarBuffer},
     ConnectionOptions, Cursor, DataType as OdbcDataType, Environment,
 };
-use polars::prelude::*;
 use std::cell::RefCell;
 use std::collections::HashSet;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 /// Global ODBC environment (must be a singleton per process).
 fn odbc_env() -> &'static Environment {
@@ -115,8 +116,7 @@ impl Reader for OdbcReader {
 
         let Some(cursor) = cursor else {
             // DDL or non-query statement — return empty DataFrame
-            return DataFrame::new(Vec::<Column>::new())
-                .map_err(|e| GgsqlError::ReaderError(format!("Empty DataFrame error: {}", e)));
+            return Ok(DataFrame::empty());
         };
 
         cursor_to_dataframe(cursor)
@@ -134,12 +134,13 @@ impl Reader for OdbcReader {
         // Build CREATE TEMP TABLE with typed columns
         let schema = df.schema();
         let col_defs: Vec<String> = schema
+            .fields()
             .iter()
-            .map(|(col_name, dtype)| {
+            .map(|field| {
                 format!(
                     "{} {}",
-                    naming::quote_ident(col_name),
-                    polars_dtype_to_sql(dtype)
+                    naming::quote_ident(field.name()),
+                    arrow_dtype_to_sql(field.data_type())
                 )
             })
             .collect();
@@ -166,17 +167,16 @@ impl Reader for OdbcReader {
             );
 
             // Convert all columns to string representation for text insertion
-            let string_columns: Vec<Vec<Option<String>>> = df
-                .get_columns()
+            let columns = df.get_columns();
+            let string_columns: Vec<Vec<Option<String>>> = columns
                 .iter()
                 .map(|col| {
                     (0..num_rows)
                         .map(|row| {
-                            let val = col.get(row).ok()?;
-                            if val == AnyValue::Null {
+                            if col.is_null(row) {
                                 None
                             } else {
-                                Some(format!("{}", val))
+                                Some(crate::array_util::value_to_string(col, row))
                             }
                         })
                         .collect()
@@ -278,16 +278,16 @@ impl Reader for OdbcReader {
     }
 }
 
-/// Map a Polars data type to a SQL column type string.
-fn polars_dtype_to_sql(dtype: &DataType) -> &'static str {
+/// Map an Arrow data type to a SQL column type string.
+fn arrow_dtype_to_sql(dtype: &DataType) -> &'static str {
     match dtype {
         DataType::Boolean => "BOOLEAN",
         DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::Int64 => "BIGINT",
         DataType::UInt8 | DataType::UInt16 | DataType::UInt32 | DataType::UInt64 => "BIGINT",
         DataType::Float32 | DataType::Float64 => "DOUBLE PRECISION",
-        DataType::Date => "DATE",
-        DataType::Datetime(_, _) => "TIMESTAMP",
-        DataType::Time => "TIME",
+        DataType::Date32 => "DATE",
+        DataType::Timestamp(_, _) => "TIMESTAMP",
+        DataType::Time64(_) => "TIME",
         _ => "TEXT",
     }
 }
@@ -439,29 +439,24 @@ impl ColumnBuilder {
         Ok(())
     }
 
-    fn into_series(self, name: &str) -> Series {
-        match self {
-            Self::Int8(v) => Series::new(name.into(), v),
-            Self::Int16(v) => Series::new(name.into(), v),
-            Self::Int32(v) => Series::new(name.into(), v),
-            Self::Int64(v) => Series::new(name.into(), v),
-            Self::Float32(v) => Series::new(name.into(), v),
-            Self::Float64(v) => Series::new(name.into(), v),
-            Self::Boolean(v) => Series::new(name.into(), v),
-            Self::Date(v) => {
-                let ca = Int32Chunked::new(name.into(), &v);
-                ca.into_date().into_series()
+    fn into_named_array(self, name: &str) -> (String, ArrayRef) {
+        let array: ArrayRef = match self {
+            Self::Int8(v) => Arc::new(Int8Array::from(v)),
+            Self::Int16(v) => Arc::new(Int16Array::from(v)),
+            Self::Int32(v) => Arc::new(Int32Array::from(v)),
+            Self::Int64(v) => Arc::new(Int64Array::from(v)),
+            Self::Float32(v) => Arc::new(Float32Array::from(v)),
+            Self::Float64(v) => Arc::new(Float64Array::from(v)),
+            Self::Boolean(v) => Arc::new(BooleanArray::from(v)),
+            Self::Date(v) => Arc::new(Date32Array::from(v)),
+            Self::Time(v) => Arc::new(Time64NanosecondArray::from(v)),
+            Self::Timestamp(v) => Arc::new(TimestampMicrosecondArray::from(v)),
+            Self::Text(v) => {
+                let refs: Vec<Option<&str>> = v.iter().map(|s| s.as_deref()).collect();
+                Arc::new(StringArray::from(refs))
             }
-            Self::Time(v) => {
-                let ca = Int64Chunked::new(name.into(), &v);
-                ca.into_time().into_series()
-            }
-            Self::Timestamp(v) => {
-                let ca = Int64Chunked::new(name.into(), &v);
-                ca.into_datetime(TimeUnit::Microseconds, None).into_series()
-            }
-            Self::Text(v) => Series::new(name.into(), v),
-        }
+        };
+        (name.to_string(), array)
     }
 }
 
@@ -492,7 +487,7 @@ fn odbc_timestamp_to_micros(ts: &OdbcTimestamp) -> Option<i64> {
         .map(|dt| dt.and_utc().timestamp_micros())
 }
 
-/// Convert an ODBC cursor to a Polars DataFrame using typed buffers.
+/// Convert an ODBC cursor to a DataFrame using typed buffers.
 fn cursor_to_dataframe(mut cursor: impl Cursor) -> Result<DataFrame> {
     let col_count = cursor
         .num_result_cols()
@@ -500,8 +495,7 @@ fn cursor_to_dataframe(mut cursor: impl Cursor) -> Result<DataFrame> {
         as usize;
 
     if col_count == 0 {
-        return DataFrame::new(Vec::<Column>::new())
-            .map_err(|e| GgsqlError::ReaderError(e.to_string()));
+        return Ok(DataFrame::empty());
     }
 
     // Collect column names and types, build buffer descriptors
@@ -551,14 +545,19 @@ fn cursor_to_dataframe(mut cursor: impl Cursor) -> Result<DataFrame> {
         }
     }
 
-    // Convert builders to Polars Series
-    let series: Vec<Column> = col_names
+    // Convert builders to named arrays
+    let built: Vec<(String, ArrayRef)> = col_names
         .iter()
         .zip(builders)
-        .map(|(name, builder)| Column::from(builder.into_series(name)))
+        .map(|(name, builder)| builder.into_named_array(name))
         .collect();
 
-    DataFrame::new(series).map_err(|e| GgsqlError::ReaderError(e.to_string()))
+    let named_arrays: Vec<(&str, ArrayRef)> = built
+        .iter()
+        .map(|(name, arr)| (name.as_str(), arr.clone()))
+        .collect();
+
+    DataFrame::new(named_arrays)
 }
 
 // ============================================================================
@@ -844,11 +843,11 @@ account = "otheraccount"
     }
 
     #[test]
-    fn test_polars_dtype_to_sql() {
-        assert_eq!(polars_dtype_to_sql(&DataType::Int64), "BIGINT");
-        assert_eq!(polars_dtype_to_sql(&DataType::Float64), "DOUBLE PRECISION");
-        assert_eq!(polars_dtype_to_sql(&DataType::Boolean), "BOOLEAN");
-        assert_eq!(polars_dtype_to_sql(&DataType::Date), "DATE");
-        assert_eq!(polars_dtype_to_sql(&DataType::String), "TEXT");
+    fn test_arrow_dtype_to_sql() {
+        assert_eq!(arrow_dtype_to_sql(&DataType::Int64), "BIGINT");
+        assert_eq!(arrow_dtype_to_sql(&DataType::Float64), "DOUBLE PRECISION");
+        assert_eq!(arrow_dtype_to_sql(&DataType::Boolean), "BOOLEAN");
+        assert_eq!(arrow_dtype_to_sql(&DataType::Date32), "DATE");
+        assert_eq!(arrow_dtype_to_sql(&DataType::Utf8), "TEXT");
     }
 }

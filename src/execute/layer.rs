@@ -11,7 +11,7 @@ use crate::plot::{
 };
 use crate::reader::SqlDialect;
 use crate::{naming, DataFrame, GgsqlError, Result};
-use polars::prelude::DataType;
+use arrow::datatypes::DataType;
 use std::collections::{HashMap, HashSet};
 
 use super::casting::TypeRequirement;
@@ -153,8 +153,6 @@ pub fn build_layer_select_list(
 /// Note: Prefixed aesthetic names persist through the entire pipeline.
 /// We do NOT rename `__ggsql_aes_x__` back to `x`.
 pub fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataFrame> {
-    use polars::prelude::IntoColumn;
-
     let mut df = df;
     let row_count = df.height();
 
@@ -168,7 +166,7 @@ pub fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataF
             AestheticValue::Column { name, .. } | AestheticValue::AnnotationColumn { name } => {
                 // Check if this stat column exists in the DataFrame
                 if df.column(name).is_ok() {
-                    df.rename(name, target_col_name.into()).map_err(|e| {
+                    df = df.rename(name, &target_col_name).map_err(|e| {
                         GgsqlError::InternalError(format!(
                             "Failed to rename stat column '{}' to '{}': {}",
                             name, target_aesthetic, e
@@ -178,16 +176,15 @@ pub fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataF
             }
             AestheticValue::Literal(lit) => {
                 // Add constant column for literal values
-                let series = literal_to_series(&target_col_name, lit, row_count);
+                let array = literal_to_array(lit, row_count);
                 df = df
-                    .with_column(series.into_column())
+                    .with_column(&target_col_name, array)
                     .map_err(|e| {
                         GgsqlError::InternalError(format!(
                             "Failed to add literal column '{}': {}",
                             target_col_name, e
                         ))
-                    })?
-                    .clone();
+                    })?;
             }
         }
     }
@@ -197,46 +194,56 @@ pub fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataF
         .get_column_names()
         .into_iter()
         .filter(|name| naming::is_stat_column(name))
-        .map(|name| name.to_string())
         .collect();
     if !stat_cols.is_empty() {
-        df = df.drop_many(stat_cols);
+        df = df.drop_many(&stat_cols);
     }
 
     Ok(df)
 }
 
-/// Convert a literal value to a Polars Series with constant values.
+/// Convert a literal value to an Arrow ArrayRef with constant values.
 ///
 /// For string literals, attempts to parse as temporal types (date/datetime/time)
 /// using the same format precedence as the rest of ggsql. Falls back to string
 /// if parsing fails.
-pub fn literal_to_series(name: &str, lit: &ParameterValue, len: usize) -> polars::prelude::Series {
+pub fn literal_to_array(lit: &ParameterValue, len: usize) -> arrow::array::ArrayRef {
+    use crate::array_util::{cast_array, new_constant_bool, new_constant_f64, new_constant_str};
     use crate::plot::ArrayElement;
-    use polars::prelude::{DataType, NamedFrom, Series, TimeUnit};
+    use arrow::datatypes::{DataType, TimeUnit};
+    use std::sync::Arc;
 
     match lit {
-        ParameterValue::Number(n) => Series::new(name.into(), vec![*n; len]),
+        ParameterValue::Number(n) => new_constant_f64(*n, len),
         ParameterValue::String(s) => {
             // Try to parse as temporal types (DateTime > Date > Time)
             match ArrayElement::String(s.clone()).try_as_temporal() {
-                ArrayElement::DateTime(micros) => Series::new(name.into(), vec![micros; len])
-                    .cast(&DataType::Datetime(TimeUnit::Microseconds, None))
-                    .expect("DateTime cast should not fail"),
-                ArrayElement::Date(days) => Series::new(name.into(), vec![days; len])
-                    .cast(&DataType::Date)
-                    .expect("Date cast should not fail"),
-                ArrayElement::Time(nanos) => Series::new(name.into(), vec![nanos; len])
-                    .cast(&DataType::Time)
-                    .expect("Time cast should not fail"),
+                ArrayElement::DateTime(micros) => {
+                    let arr: arrow::array::ArrayRef =
+                        Arc::new(arrow::array::Int64Array::from(vec![micros; len]));
+                    cast_array(&arr, &DataType::Timestamp(TimeUnit::Microsecond, None))
+                        .expect("DateTime cast should not fail")
+                }
+                ArrayElement::Date(days) => {
+                    let arr: arrow::array::ArrayRef =
+                        Arc::new(arrow::array::Int32Array::from(vec![days; len]));
+                    cast_array(&arr, &DataType::Date32)
+                        .expect("Date cast should not fail")
+                }
+                ArrayElement::Time(nanos) => {
+                    let arr: arrow::array::ArrayRef =
+                        Arc::new(arrow::array::Int64Array::from(vec![nanos; len]));
+                    cast_array(&arr, &DataType::Time64(TimeUnit::Nanosecond))
+                        .expect("Time cast should not fail")
+                }
                 ArrayElement::String(_) => {
                     // Parsing failed, use original string
-                    Series::new(name.into(), vec![s.as_str(); len])
+                    new_constant_str(s, len)
                 }
                 _ => unreachable!("try_as_temporal only returns String or temporal types"),
             }
         }
-        ParameterValue::Boolean(b) => Series::new(name.into(), vec![*b; len]),
+        ParameterValue::Boolean(b) => new_constant_bool(*b, len),
         ParameterValue::Array(_) | ParameterValue::Null => {
             unreachable!("Arrays are never moved to mappings; NULL is filtered in process_annotation_layers()")
         }
@@ -294,7 +301,7 @@ pub fn apply_pre_stat_transform(
             .iter()
             .find(|c| c.name == aes_col_name)
             .map(|c| c.dtype.clone())
-            .unwrap_or(DataType::String); // Default to String if not found
+            .unwrap_or(DataType::Utf8); // Default to Utf8 if not found
 
         // Find scale for this aesthetic
         if let Some(scale) = scales.iter().find(|s| s.aesthetic == *aesthetic) {
@@ -1065,77 +1072,77 @@ mod tests {
     }
 
     #[test]
-    fn test_literal_to_series_date_parsing() {
-        use polars::prelude::DataType;
+    fn test_literal_to_array_date_parsing() {
+        use arrow::array::Array;
+        use arrow::datatypes::DataType;
 
-        // Date literal should parse to Date type
-        let series = literal_to_series(
-            "date_col",
+        // Date literal should parse to Date32 type
+        let array = literal_to_array(
             &ParameterValue::String("1973-06-01".to_string()),
             5,
         );
         assert_eq!(
-            series.dtype(),
-            &DataType::Date,
-            "Date string should parse to Date type"
+            array.data_type(),
+            &DataType::Date32,
+            "Date string should parse to Date32 type"
         );
-        assert_eq!(series.len(), 5);
+        assert_eq!(array.len(), 5);
     }
 
     #[test]
-    fn test_literal_to_series_datetime_parsing() {
-        use polars::prelude::{DataType, TimeUnit};
+    fn test_literal_to_array_datetime_parsing() {
+        use arrow::array::Array;
+        use arrow::datatypes::{DataType, TimeUnit};
 
-        // DateTime literal should parse to Datetime type
-        let series = literal_to_series(
-            "dt_col",
+        // DateTime literal should parse to Timestamp type
+        let array = literal_to_array(
             &ParameterValue::String("2024-03-17T14:30:00".to_string()),
             3,
         );
         assert!(
             matches!(
-                series.dtype(),
-                DataType::Datetime(TimeUnit::Microseconds, None)
+                array.data_type(),
+                DataType::Timestamp(TimeUnit::Microsecond, None)
             ),
-            "DateTime string should parse to Datetime type"
+            "DateTime string should parse to Timestamp type"
         );
-        assert_eq!(series.len(), 3);
+        assert_eq!(array.len(), 3);
     }
 
     #[test]
-    fn test_literal_to_series_time_parsing() {
-        use polars::prelude::DataType;
+    fn test_literal_to_array_time_parsing() {
+        use arrow::array::Array;
+        use arrow::datatypes::{DataType, TimeUnit};
 
-        // Time literal should parse to Time type
-        let series = literal_to_series(
-            "time_col",
+        // Time literal should parse to Time64 type
+        let array = literal_to_array(
             &ParameterValue::String("14:30:00".to_string()),
             4,
         );
         assert_eq!(
-            series.dtype(),
-            &DataType::Time,
-            "Time string should parse to Time type"
+            array.data_type(),
+            &DataType::Time64(TimeUnit::Nanosecond),
+            "Time string should parse to Time64 type"
         );
-        assert_eq!(series.len(), 4);
+        assert_eq!(array.len(), 4);
     }
 
     #[test]
-    fn test_literal_to_series_string_fallback() {
-        use polars::prelude::DataType;
+    fn test_literal_to_array_string_fallback() {
+        use arrow::array::Array;
+        use arrow::datatypes::DataType;
 
-        // Non-temporal string should remain String type
-        let series = literal_to_series(
-            "text_col",
+        // Non-temporal string should remain Utf8 type
+        let array = literal_to_array(
             &ParameterValue::String("not a date".to_string()),
             2,
         );
         assert_eq!(
-            series.dtype(),
-            &DataType::String,
-            "Non-temporal string should remain String type"
+            array.data_type(),
+            &DataType::Utf8,
+            "Non-temporal string should remain Utf8 type"
         );
-        assert_eq!(series.len(), 2);
+        assert_eq!(array.len(), 2);
     }
 
     #[test]

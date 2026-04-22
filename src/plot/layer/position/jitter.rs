@@ -18,9 +18,11 @@ use super::{
     compute_dodge_offsets, compute_group_indices, is_continuous_scale, non_facet_partition_cols,
     Layer, PositionTrait, PositionType,
 };
+use crate::array_util::{as_f64, cast_array, new_f64_array_non_null};
 use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue};
 use crate::{naming, DataFrame, GgsqlError, Plot, Result};
-use polars::prelude::*;
+use arrow::array::Array;
+use arrow::datatypes::DataType;
 use rand::Rng;
 
 /// Valid distribution types for jitter position
@@ -341,30 +343,32 @@ fn compute_density_scales(
     let discrete_col_name = naming::aesthetic_column(discrete_col);
 
     // Extract values from the continuous axis
-    let values: Vec<f64> = df
-        .column(&continuous_col_name)
-        .map_err(|_| {
-            GgsqlError::InternalError(format!(
-                "Missing {} column for density jitter",
-                continuous_col
-            ))
-        })?
-        .cast(&DataType::Float64)
-        .map_err(|_| {
-            GgsqlError::InternalError(format!(
-                "{} must be numeric for density jitter",
-                continuous_col
-            ))
-        })?
-        .f64()
-        .map_err(|_| {
-            GgsqlError::InternalError(format!(
-                "{} must be numeric for density jitter",
-                continuous_col
-            ))
-        })?
-        .into_iter()
-        .map(|v| v.unwrap_or(0.0))
+    let col = df.column(&continuous_col_name).map_err(|_| {
+        GgsqlError::InternalError(format!(
+            "Missing {} column for density jitter",
+            continuous_col
+        ))
+    })?;
+    let casted = cast_array(col, &DataType::Float64).map_err(|_| {
+        GgsqlError::InternalError(format!(
+            "{} must be numeric for density jitter",
+            continuous_col
+        ))
+    })?;
+    let f64_arr = as_f64(&casted).map_err(|_| {
+        GgsqlError::InternalError(format!(
+            "{} must be numeric for density jitter",
+            continuous_col
+        ))
+    })?;
+    let values: Vec<f64> = (0..f64_arr.len())
+        .map(|i| {
+            if f64_arr.is_null(i) {
+                0.0
+            } else {
+                f64_arr.value(i)
+            }
+        })
         .collect();
 
     // Build density grouping columns: discrete axis + relevant partition_by columns
@@ -540,7 +544,7 @@ fn apply_jitter(df: DataFrame, layer: &Layer, spec: &Plot) -> Result<DataFrame> 
     let pos1offset_col = naming::aesthetic_column("pos1offset");
     let pos2offset_col = naming::aesthetic_column("pos2offset");
 
-    let mut result = df.lazy();
+    let mut result = df;
 
     // Compute dodge centers if we have groups to dodge
     let dodge_offsets = if n_groups > 1 {
@@ -594,9 +598,7 @@ fn apply_jitter(df: DataFrame, layer: &Layer, spec: &Plot) -> Result<DataFrame> 
             jitters
         };
 
-        result = result.with_column(
-            lit(Series::new(pos1offset_col.clone().into(), offsets)).alias(&pos1offset_col),
-        );
+        result = result.with_column(&pos1offset_col, new_f64_array_non_null(offsets))?;
     }
 
     // Add pos2offset if pos2 is discrete
@@ -622,28 +624,26 @@ fn apply_jitter(df: DataFrame, layer: &Layer, spec: &Plot) -> Result<DataFrame> 
             jitters
         };
 
-        result = result.with_column(
-            lit(Series::new(pos2offset_col.clone().into(), offsets)).alias(&pos2offset_col),
-        );
+        result = result.with_column(&pos2offset_col, new_f64_array_non_null(offsets))?;
     }
 
-    result
-        .collect()
-        .map_err(|e| GgsqlError::InternalError(format!("Jitter position adjustment failed: {}", e)))
+    Ok(result)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::array_util::{as_f64, as_str, value_to_string};
+    use crate::df;
     use crate::plot::layer::Geom;
     use crate::plot::{AestheticValue, Mappings, Scale, ScaleType};
 
     fn make_test_df() -> DataFrame {
         df! {
-            "__ggsql_aes_pos1__" => ["A", "A", "B", "B"],
-            "__ggsql_aes_pos2__" => [10.0, 20.0, 15.0, 25.0],
-            "__ggsql_aes_pos2end__" => [0.0, 0.0, 0.0, 0.0],
-            "__ggsql_aes_fill__" => ["X", "Y", "X", "Y"],
+            "__ggsql_aes_pos1__" => vec!["A", "A", "B", "B"],
+            "__ggsql_aes_pos2__" => vec![10.0, 20.0, 15.0, 25.0],
+            "__ggsql_aes_pos2end__" => vec![0.0, 0.0, 0.0, 0.0],
+            "__ggsql_aes_fill__" => vec!["X", "Y", "X", "Y"],
         }
         .unwrap()
     }
@@ -712,12 +712,9 @@ mod tests {
             "pos2offset column should NOT be created when pos2 is continuous"
         );
 
-        let offset = result
-            .column("__ggsql_aes_pos1offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
+        let offset_col = result.column("__ggsql_aes_pos1offset__").unwrap();
+        let offset = as_f64(offset_col).unwrap();
+        let offsets: Vec<f64> = (0..offset.len()).map(|i| offset.value(i)).collect();
 
         // With default width 0.9 and 2 groups (dodge=true):
         // effective_width = 0.9 / 2 = 0.45
@@ -753,12 +750,9 @@ mod tests {
 
         let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
-        let offset = result
-            .column("__ggsql_aes_pos1offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
+        let offset_col = result.column("__ggsql_aes_pos1offset__").unwrap();
+        let offset = as_f64(offset_col).unwrap();
+        let offsets: Vec<f64> = (0..offset.len()).map(|i| offset.value(i)).collect();
 
         // With dodge=false and width 0.9, pure jitter in range [-0.45, 0.45]
         for &v in &offsets {
@@ -795,12 +789,9 @@ mod tests {
             "pos2offset column should be created"
         );
 
-        let offset = result
-            .column("__ggsql_aes_pos2offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
+        let offset_col = result.column("__ggsql_aes_pos2offset__").unwrap();
+        let offset = as_f64(offset_col).unwrap();
+        let offsets: Vec<f64> = (0..offset.len()).map(|i| offset.value(i)).collect();
 
         // With default width 0.9 and 2 groups (dodge=true), effective range is [-0.45, 0.45]
         for &v in &offsets {
@@ -879,12 +870,9 @@ mod tests {
 
         let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
-        let offset = result
-            .column("__ggsql_aes_pos1offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
+        let offset_col = result.column("__ggsql_aes_pos1offset__").unwrap();
+        let offset = as_f64(offset_col).unwrap();
+        let offsets: Vec<f64> = (0..offset.len()).map(|i| offset.value(i)).collect();
 
         // With custom width 0.6 and 2 groups (dodge=true):
         // effective_width = 0.6 / 2 = 0.3
@@ -913,21 +901,18 @@ mod tests {
 
         let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
-        let offset = result
-            .column("__ggsql_aes_pos1offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
-        let fill_col = result.column("__ggsql_aes_fill__").unwrap();
+        let offset_col = result.column("__ggsql_aes_pos1offset__").unwrap();
+        let offset = as_f64(offset_col).unwrap();
+        let fill_arr = result.column("__ggsql_aes_fill__").unwrap();
 
         // Collect offsets by group
         let mut group_x_offsets = vec![];
         let mut group_y_offsets = vec![];
 
         for i in 0..result.height() {
-            let fill_val = fill_col.get(i).unwrap();
-            let offset_val = offset.get(i).unwrap();
-            if fill_val.to_string().contains("X") {
+            let fill_val = value_to_string(fill_arr, i);
+            let offset_val = offset.value(i);
+            if fill_val.contains('X') {
                 group_x_offsets.push(offset_val);
             } else {
                 group_y_offsets.push(offset_val);
@@ -965,12 +950,9 @@ mod tests {
 
         let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
-        let offset = result
-            .column("__ggsql_aes_pos1offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
+        let offset_col = result.column("__ggsql_aes_pos1offset__").unwrap();
+        let offset = as_f64(offset_col).unwrap();
+        let offsets: Vec<f64> = (0..offset.len()).map(|i| offset.value(i)).collect();
 
         // Without groups, pure jitter with full width range [-0.45, 0.45]
         for &v in &offsets {
@@ -1036,12 +1018,9 @@ mod tests {
 
         let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
-        let offset = result
-            .column("__ggsql_aes_pos1offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
+        let offset_col = result.column("__ggsql_aes_pos1offset__").unwrap();
+        let offset = as_f64(offset_col).unwrap();
+        let offsets: Vec<f64> = (0..offset.len()).map(|i| offset.value(i)).collect();
 
         // Normal distribution is centered at 0
         // Values can exceed the width bounds (unlike uniform), but should be centered
@@ -1147,9 +1126,9 @@ mod tests {
         // Create data with clear density peaks
         // Values 1.0 appears 5 times, values 2.0 and 3.0 appear once each
         let df = df! {
-            "__ggsql_aes_pos1__" => ["A", "A", "A", "A", "A", "A", "A"],
-            "__ggsql_aes_pos2__" => [1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 3.0],
-            "__ggsql_aes_pos2end__" => [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "__ggsql_aes_pos1__" => vec!["A", "A", "A", "A", "A", "A", "A"],
+            "__ggsql_aes_pos2__" => vec![1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 3.0],
+            "__ggsql_aes_pos2end__" => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         }
         .unwrap();
 
@@ -1183,12 +1162,9 @@ mod tests {
 
         let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
-        let offset = result
-            .column("__ggsql_aes_pos1offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
+        let offset_col = result.column("__ggsql_aes_pos1offset__").unwrap();
+        let offset = as_f64(offset_col).unwrap();
+        let offsets: Vec<f64> = (0..offset.len()).map(|i| offset.value(i)).collect();
 
         // Due to randomness, we can't assert exact values
         // But we can verify that offsets were generated
@@ -1204,10 +1180,10 @@ mod tests {
         // Group X: dense at 1.0
         // Group Y: dense at 3.0
         let df = df! {
-            "__ggsql_aes_pos1__" => ["A", "A", "A", "A", "A", "A"],
-            "__ggsql_aes_pos2__" => [1.0, 1.0, 1.0, 3.0, 3.0, 3.0],
-            "__ggsql_aes_pos2end__" => [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            "__ggsql_aes_fill__" => ["X", "X", "X", "Y", "Y", "Y"],
+            "__ggsql_aes_pos1__" => vec!["A", "A", "A", "A", "A", "A"],
+            "__ggsql_aes_pos2__" => vec![1.0, 1.0, 1.0, 3.0, 3.0, 3.0],
+            "__ggsql_aes_pos2end__" => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "__ggsql_aes_fill__" => vec!["X", "X", "X", "Y", "Y", "Y"],
         }
         .unwrap();
 
@@ -1246,24 +1222,22 @@ mod tests {
         let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
         // Verify offsets were created and are within expected bounds
-        let offset = result
-            .column("__ggsql_aes_pos1offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
+        let offset_col = result.column("__ggsql_aes_pos1offset__").unwrap();
+        let offset = as_f64(offset_col).unwrap();
+        let offsets: Vec<f64> = (0..offset.len()).map(|i| offset.value(i)).collect();
         assert_eq!(offsets.len(), 6);
 
         // With 2 groups, we should see separated dodge positions
         // Group X centered at negative, Group Y centered at positive
-        let fill_col = result.column("__ggsql_aes_fill__").unwrap();
+        let fill_arr = result.column("__ggsql_aes_fill__").unwrap();
+        let fill_str = as_str(fill_arr).unwrap();
         let mut group_x_offsets = vec![];
         let mut group_y_offsets = vec![];
 
         for i in 0..result.height() {
-            let fill_val = fill_col.get(i).unwrap();
-            let offset_val = offset.get(i).unwrap();
-            if fill_val.to_string().contains("X") {
+            let fill_val = fill_str.value(i);
+            let offset_val = offset.value(i);
+            if fill_val.contains('X') {
                 group_x_offsets.push(offset_val);
             } else {
                 group_y_offsets.push(offset_val);
@@ -1381,9 +1355,9 @@ mod tests {
         let jitter = Jitter;
 
         let df = df! {
-            "__ggsql_aes_pos1__" => ["A", "A", "A", "A", "A", "A", "A"],
-            "__ggsql_aes_pos2__" => [1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 3.0],
-            "__ggsql_aes_pos2end__" => [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "__ggsql_aes_pos1__" => vec!["A", "A", "A", "A", "A", "A", "A"],
+            "__ggsql_aes_pos2__" => vec![1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 3.0],
+            "__ggsql_aes_pos2end__" => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         }
         .unwrap();
 
@@ -1417,12 +1391,9 @@ mod tests {
 
         let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
-        let offset = result
-            .column("__ggsql_aes_pos1offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
+        let offset_col = result.column("__ggsql_aes_pos1offset__").unwrap();
+        let offset = as_f64(offset_col).unwrap();
+        let offsets: Vec<f64> = (0..offset.len()).map(|i| offset.value(i)).collect();
 
         // Due to randomness, we can't assert exact values
         // But we can verify that offsets were generated
@@ -1437,9 +1408,9 @@ mod tests {
         let jitter = Jitter;
 
         let df = df! {
-            "__ggsql_aes_pos1__" => ["A", "A", "A", "A", "A", "B", "B"],
-            "__ggsql_aes_pos2__" => [1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 2.0],
-            "__ggsql_aes_pos2end__" => [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "__ggsql_aes_pos1__" => vec!["A", "A", "A", "A", "A", "B", "B"],
+            "__ggsql_aes_pos2__" => vec![1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 2.0],
+            "__ggsql_aes_pos2end__" => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         }
         .unwrap();
 
@@ -1477,12 +1448,9 @@ mod tests {
         let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
 
         // Verify offsets were created
-        let offset = result
-            .column("__ggsql_aes_pos1offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
+        let offset_col = result.column("__ggsql_aes_pos1offset__").unwrap();
+        let offset = as_f64(offset_col).unwrap();
+        let offsets: Vec<f64> = (0..offset.len()).map(|i| offset.value(i)).collect();
         assert_eq!(offsets.len(), 7);
     }
 
@@ -1492,9 +1460,9 @@ mod tests {
         let jitter = Jitter;
 
         let df = df! {
-            "__ggsql_aes_pos1__" => ["A", "A", "A", "A", "A"],
-            "__ggsql_aes_pos2__" => [1.0, 1.0, 1.0, 2.0, 3.0],
-            "__ggsql_aes_pos2end__" => [0.0, 0.0, 0.0, 0.0, 0.0],
+            "__ggsql_aes_pos1__" => vec!["A", "A", "A", "A", "A"],
+            "__ggsql_aes_pos2__" => vec![1.0, 1.0, 1.0, 2.0, 3.0],
+            "__ggsql_aes_pos2end__" => vec![0.0, 0.0, 0.0, 0.0, 0.0],
         }
         .unwrap();
 
@@ -1539,9 +1507,9 @@ mod tests {
         let jitter = Jitter;
 
         let df = df! {
-            "__ggsql_aes_pos1__" => ["A", "A", "A", "A", "A"],
-            "__ggsql_aes_pos2__" => [1.0, 1.0, 1.0, 2.0, 3.0],
-            "__ggsql_aes_pos2end__" => [0.0, 0.0, 0.0, 0.0, 0.0],
+            "__ggsql_aes_pos1__" => vec!["A", "A", "A", "A", "A"],
+            "__ggsql_aes_pos2__" => vec![1.0, 1.0, 1.0, 2.0, 3.0],
+            "__ggsql_aes_pos2end__" => vec![0.0, 0.0, 0.0, 0.0, 0.0],
         }
         .unwrap();
 

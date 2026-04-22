@@ -7,7 +7,7 @@ use crate::naming;
 use crate::plot::scale::coerce_dtypes;
 use crate::plot::{CastTargetType, Plot};
 use crate::reader::SqlDialect;
-use polars::prelude::{DataType, TimeUnit};
+use arrow::datatypes::{DataType, TimeUnit};
 use std::collections::HashMap;
 
 use super::schema::TypeInfo;
@@ -173,14 +173,14 @@ pub fn update_type_info_for_casting(type_info: &mut [TypeInfo], requirements: &[
             entry.1 = match req.target_type {
                 CastTargetType::Number => DataType::Float64,
                 CastTargetType::Integer => DataType::Int64,
-                CastTargetType::Date => DataType::Date,
-                CastTargetType::DateTime => DataType::Datetime(TimeUnit::Microseconds, None),
-                CastTargetType::Time => DataType::Time,
-                CastTargetType::String => DataType::String,
+                CastTargetType::Date => DataType::Date32,
+                CastTargetType::DateTime => DataType::Timestamp(TimeUnit::Microsecond, None),
+                CastTargetType::Time => DataType::Time64(TimeUnit::Nanosecond),
+                CastTargetType::String => DataType::Utf8,
                 CastTargetType::Boolean => DataType::Boolean,
             };
             // Update is_discrete flag based on new type
-            entry.2 = matches!(entry.1, DataType::String | DataType::Boolean);
+            entry.2 = matches!(entry.1, DataType::Utf8 | DataType::Boolean);
         }
     }
 }

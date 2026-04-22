@@ -85,11 +85,13 @@ impl DataExplorerState {
         let num_rows = count_df
             .column("n")
             .ok()
-            .and_then(|col| col.get(0).ok())
-            .and_then(|val| {
-                // Polars AnyValue — try common integer representations
-                let s = format!("{}", val);
-                s.parse::<usize>().ok()
+            .and_then(|col| {
+                if col.len() == 0 {
+                    None
+                } else {
+                    let s = ggsql::array_util::value_to_string(col, 0);
+                    s.parse::<usize>().ok()
+                }
             })
             .unwrap_or(0);
 
@@ -106,17 +108,19 @@ impl DataExplorerState {
 
         let mut columns = Vec::new();
         for i in 0..columns_df.height() {
-            if let (Ok(name_val), Ok(type_val)) = (name_col.get(i), type_col.get(i)) {
-                let name = name_val.to_string().trim_matches('"').to_string();
-                let raw_type = type_val.to_string().trim_matches('"').to_string();
-                let type_display = sql_type_to_display(&raw_type).to_string();
-                let type_name = clean_type_name(&raw_type);
-                columns.push(ColumnInfo {
-                    name,
-                    type_name,
-                    type_display,
-                });
-            }
+            let name = ggsql::array_util::value_to_string(name_col, i)
+                .trim_matches('"')
+                .to_string();
+            let raw_type = ggsql::array_util::value_to_string(type_col, i)
+                .trim_matches('"')
+                .to_string();
+            let type_display = sql_type_to_display(&raw_type).to_string();
+            let type_name = clean_type_name(&raw_type);
+            columns.push(ColumnInfo {
+                name,
+                type_name,
+                type_display,
+            });
         }
 
         Ok(Self {
@@ -307,20 +311,16 @@ impl DataExplorerState {
         let columns: Vec<Vec<Value>> = (0..df.width())
             .map(|col_idx| {
                 let col = df.get_columns()[col_idx].clone();
+                use arrow::array::Array;
                 (0..df.height())
                     .map(|row_idx| {
-                        match col.get(row_idx) {
-                            Ok(val) => {
-                                if val.is_null() {
-                                    json!(SPECIAL_VALUE_NULL)
-                                } else {
-                                    let s = format!("{}", val);
-                                    // Strip surrounding quotes from string values
-                                    let s = s.trim_matches('"');
-                                    Value::String(s.to_string())
-                                }
-                            }
-                            Err(_) => json!(SPECIAL_VALUE_NULL),
+                        if col.is_null(row_idx) {
+                            json!(SPECIAL_VALUE_NULL)
+                        } else {
+                            let s = ggsql::array_util::value_to_string(&col, row_idx);
+                            // Strip surrounding quotes from string values
+                            let s = s.trim_matches('"');
+                            Value::String(s.to_string())
                         }
                     })
                     .collect()
@@ -495,16 +495,18 @@ impl DataExplorerState {
         };
 
         let get_str = |name: &str| -> Option<String> {
-            df.column(name)
-                .ok()
-                .and_then(|c| c.get(0).ok())
-                .and_then(|v| {
-                    if v.is_null() {
-                        None
-                    } else {
-                        Some(format!("{}", v).trim_matches('"').to_string())
-                    }
-                })
+            use arrow::array::Array;
+            df.column(name).ok().and_then(|c| {
+                if c.len() == 0 || c.is_null(0) {
+                    None
+                } else {
+                    Some(
+                        ggsql::array_util::value_to_string(c, 0)
+                            .trim_matches('"')
+                            .to_string(),
+                    )
+                }
+            })
         };
 
         let get_i64 =
@@ -551,15 +553,19 @@ impl DataExplorerState {
                     let median_expr = dialect.sql_percentile(&col_name, 0.5, &from_query, &[]);
                     let median_sql = format!("SELECT {} AS \"median_val\"", median_expr);
                     if let Ok(median_df) = reader.execute_sql(&median_sql) {
+                        use arrow::array::Array;
                         if let Some(v) = median_df
                             .column("median_val")
                             .ok()
-                            .and_then(|c| c.get(0).ok())
-                            .and_then(|v| {
-                                if v.is_null() {
+                            .and_then(|c| {
+                                if c.len() == 0 || c.is_null(0) {
                                     None
                                 } else {
-                                    Some(format!("{}", v).trim_matches('"').to_string())
+                                    Some(
+                                        ggsql::array_util::value_to_string(c, 0)
+                                            .trim_matches('"')
+                                            .to_string(),
+                                    )
                                 }
                             })
                         {
@@ -682,17 +688,17 @@ impl DataExplorerState {
 
         let bounds_df = reader.execute_sql(&bounds_sql).ok()?;
         let get_f64 = |name: &str| -> Option<f64> {
-            bounds_df
-                .column(name)
-                .ok()
-                .and_then(|c| c.get(0).ok())
-                .and_then(|v| {
-                    if v.is_null() {
-                        None
-                    } else {
-                        format!("{}", v).trim_matches('"').parse::<f64>().ok()
-                    }
-                })
+            use arrow::array::Array;
+            bounds_df.column(name).ok().and_then(|c| {
+                if c.len() == 0 || c.is_null(0) {
+                    None
+                } else {
+                    ggsql::array_util::value_to_string(c, 0)
+                        .trim_matches('"')
+                        .parse::<f64>()
+                        .ok()
+                }
+            })
         };
 
         let min_val = get_f64("min_val")?;
@@ -760,15 +766,13 @@ impl DataExplorerState {
         let bin_col = hist_df.column("clamped_bin").ok()?;
         let cnt_col = hist_df.column("cnt").ok()?;
         for i in 0..hist_df.height() {
-            if let (Ok(bin_val), Ok(cnt_val)) = (bin_col.get(i), cnt_col.get(i)) {
-                let bin_str = format!("{}", bin_val);
-                // Parse bin index — may be float (e.g., "3.0") on some backends
-                if let Ok(bin_idx) = bin_str.parse::<f64>() {
-                    let idx = bin_idx as usize;
-                    if idx < num_bins {
-                        let count_str = format!("{}", cnt_val);
-                        bin_counts[idx] = count_str.parse::<i64>().unwrap_or(0);
-                    }
+            let bin_str = ggsql::array_util::value_to_string(bin_col, i);
+            // Parse bin index — may be float (e.g., "3.0") on some backends
+            if let Ok(bin_idx) = bin_str.parse::<f64>() {
+                let idx = bin_idx as usize;
+                if idx < num_bins {
+                    let count_str = ggsql::array_util::value_to_string(cnt_col, i);
+                    bin_counts[idx] = count_str.parse::<i64>().unwrap_or(0);
                 }
             }
         }
@@ -788,18 +792,18 @@ impl DataExplorerState {
                 let expr = dialect.sql_percentile(&col_name, q_val, &from_query, &[]);
                 let q_sql = format!("SELECT {} AS \"q_val\"", expr);
                 if let Ok(q_df) = reader.execute_sql(&q_sql) {
-                    if let Some(v) = q_df
-                        .column("q_val")
-                        .ok()
-                        .and_then(|c| c.get(0).ok())
-                        .and_then(|v| {
-                            if v.is_null() {
-                                None
-                            } else {
-                                Some(format!("{}", v).trim_matches('"').to_string())
-                            }
-                        })
-                    {
+                    use arrow::array::Array;
+                    if let Some(v) = q_df.column("q_val").ok().and_then(|c| {
+                        if c.len() == 0 || c.is_null(0) {
+                            None
+                        } else {
+                            Some(
+                                ggsql::array_util::value_to_string(c, 0)
+                                    .trim_matches('"')
+                                    .to_string(),
+                            )
+                        }
+                    }) {
                         quantile_results.push(json!({"q": q_val, "value": v}));
                     }
                 }
@@ -846,13 +850,15 @@ impl DataExplorerState {
         let mut top_total: i64 = 0;
 
         for i in 0..df.height() {
-            if let (Ok(v), Ok(c)) = (val_col.get(i), cnt_col.get(i)) {
-                let val_str = format!("{}", v).trim_matches('"').to_string();
-                let count: i64 = format!("{}", c).parse().unwrap_or(0);
-                values.push(Value::String(val_str));
-                counts.push(count);
-                top_total += count;
-            }
+            let val_str = ggsql::array_util::value_to_string(val_col, i)
+                .trim_matches('"')
+                .to_string();
+            let count: i64 = ggsql::array_util::value_to_string(cnt_col, i)
+                .parse()
+                .unwrap_or(0);
+            values.push(Value::String(val_str));
+            counts.push(count);
+            top_total += count;
         }
 
         // Compute other_count: total non-null rows minus the top-K sum
@@ -865,10 +871,14 @@ impl DataExplorerState {
             .execute_sql(&count_sql)
             .ok()
             .and_then(|df| {
-                df.column("total")
-                    .ok()
-                    .and_then(|c| c.get(0).ok())
-                    .and_then(|v| format!("{}", v).parse::<i64>().ok())
+                use arrow::array::Array;
+                df.column("total").ok().and_then(|c| {
+                    if c.len() == 0 || c.is_null(0) {
+                        None
+                    } else {
+                        ggsql::array_util::value_to_string(c, 0).parse::<i64>().ok()
+                    }
+                })
             })
             .map(|total| total - top_total)
             .unwrap_or(0);

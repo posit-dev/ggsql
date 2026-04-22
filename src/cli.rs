@@ -370,13 +370,13 @@ fn print_table_fallback<R: Reader>(query: &str, reader: &R, max_rows: usize) {
 
     let nrow = data.height().min(max_rows);
     let ncol = data.width();
-    let colnames = data.get_column_names_str();
+    let colnames = data.get_column_names();
 
     // We add an extra 'row' for the column names
     let mut rows: Vec<String> = vec![String::from(""); nrow + 1];
 
     for col_id in 0..ncol {
-        let col_name = colnames[col_id];
+        let col_name = &colnames[col_id];
         let mut width = col_name.chars().count();
 
         // End last column without comma
@@ -389,8 +389,9 @@ fn print_table_fallback<R: Reader>(query: &str, reader: &R, max_rows: usize) {
         let mut col_fmt: Vec<String> = vec![format!("{}{}", col_name, suffix)];
 
         // Format every cell in column, tracking width
-        let column_data = data[col_id].as_materialized_series();
-        for cell in column_data.iter().take(rows.len()) {
+        let column_data = data.get_columns()[col_id].clone();
+        for row_idx in 0..nrow {
+            let cell = ggsql::array_util::value_to_string(&column_data, row_idx);
             let cell_fmt = format!("{}{}", cell, suffix);
             let nchar = cell_fmt.chars().count();
             if nchar > width {
