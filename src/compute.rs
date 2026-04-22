@@ -79,21 +79,18 @@ pub fn compute_group_ids(df: &DataFrame, group_cols: &[&str]) -> Result<Vec<usiz
     // Assign group IDs by detecting where the composite key changes.
     // Since data is expected to be sorted by group columns, we just compare
     // adjacent rows.
-    let mut group_ids = vec![0usize; n_rows];
-    let mut current_group = 0;
+    let mut group_ids = Vec::with_capacity(n_rows);
+    group_ids.push(0usize);
+    let mut current_group = 0usize;
 
     for i in 1..n_rows {
-        let mut same = true;
-        for arr in &arrays {
-            if value_to_string(arr, i) != value_to_string(arr, i - 1) {
-                same = false;
-                break;
-            }
-        }
-        if !same {
+        let changed = arrays
+            .iter()
+            .any(|arr| value_to_string(arr, i) != value_to_string(arr, i - 1));
+        if changed {
             current_group += 1;
         }
-        group_ids[i] = current_group;
+        group_ids.push(current_group);
     }
 
     Ok(group_ids)
@@ -108,23 +105,17 @@ pub fn compute_group_ids(df: &DataFrame, group_cols: &[&str]) -> Result<Vec<usiz
 /// For each row, the result is the running total of `values` within its group
 /// (identified by `group_ids`). Null values are treated as 0.
 pub fn grouped_cumsum(values: &Float64Array, group_ids: &[usize]) -> Float64Array {
-    let n = values.len();
-    let mut result = Vec::with_capacity(n);
+    let mut result = Vec::with_capacity(values.len());
     let mut running_sum = 0.0;
-    let mut current_group = if n > 0 { group_ids[0] } else { 0 };
+    let mut current_group = group_ids.first().copied().unwrap_or(0);
 
-    for i in 0..n {
-        if group_ids[i] != current_group {
+    for (val_opt, &gid) in values.iter().zip(group_ids.iter()) {
+        if gid != current_group {
             // New group — reset running sum
             running_sum = 0.0;
-            current_group = group_ids[i];
+            current_group = gid;
         }
-        let val = if values.is_null(i) {
-            0.0
-        } else {
-            values.value(i)
-        };
-        running_sum += val;
+        running_sum += val_opt.unwrap_or(0.0);
         result.push(running_sum);
     }
 
@@ -136,25 +127,19 @@ pub fn grouped_cumsum(values: &Float64Array, group_ids: &[usize]) -> Float64Arra
 /// For each row, the result is the cumulative sum of all PREVIOUS rows in the
 /// same group. The first row of each group gets 0.
 pub fn grouped_cumsum_lag(values: &Float64Array, group_ids: &[usize]) -> Float64Array {
-    let n = values.len();
-    let mut result = Vec::with_capacity(n);
+    let mut result = Vec::with_capacity(values.len());
     let mut running_sum = 0.0;
-    let mut current_group = if n > 0 { group_ids[0] } else { 0 };
+    let mut current_group = group_ids.first().copied().unwrap_or(0);
 
-    for i in 0..n {
-        if group_ids[i] != current_group {
+    for (val_opt, &gid) in values.iter().zip(group_ids.iter()) {
+        if gid != current_group {
             // New group — reset running sum
             running_sum = 0.0;
-            current_group = group_ids[i];
+            current_group = gid;
         }
         // Lag: output the running sum BEFORE adding current value
         result.push(running_sum);
-        let val = if values.is_null(i) {
-            0.0
-        } else {
-            values.value(i)
-        };
-        running_sum += val;
+        running_sum += val_opt.unwrap_or(0.0);
     }
 
     Float64Array::from(result)
@@ -164,21 +149,15 @@ pub fn grouped_cumsum_lag(values: &Float64Array, group_ids: &[usize]) -> Float64
 ///
 /// Each row gets the total sum of its group.
 pub fn grouped_sum_broadcast(values: &Float64Array, group_ids: &[usize]) -> Float64Array {
-    let n = values.len();
-    if n == 0 {
+    if values.is_empty() {
         return Float64Array::from(Vec::<f64>::new());
     }
 
     let n_groups = group_ids.iter().copied().max().unwrap_or(0) + 1;
     let mut group_sums = vec![0.0; n_groups];
 
-    for i in 0..n {
-        let val = if values.is_null(i) {
-            0.0
-        } else {
-            values.value(i)
-        };
-        group_sums[group_ids[i]] += val;
+    for (val_opt, &gid) in values.iter().zip(group_ids.iter()) {
+        group_sums[gid] += val_opt.unwrap_or(0.0);
     }
 
     let result: Vec<f64> = group_ids.iter().map(|&gid| group_sums[gid]).collect();
@@ -192,27 +171,34 @@ pub fn grouped_sum_broadcast(values: &Float64Array, group_ids: &[usize]) -> Floa
 /// Compute element-wise: a / b (Float64 arrays).
 pub fn divide_arrays(a: &Float64Array, b: &Float64Array) -> Result<Float64Array> {
     // Manual division to handle divide-by-zero gracefully (return 0 instead of NaN/Inf)
-    let mut result = Vec::with_capacity(a.len());
-    for i in 0..a.len() {
-        let divisor = b.value(i);
-        if divisor == 0.0 {
-            result.push(0.0);
-        } else {
-            result.push(a.value(i) / divisor);
-        }
-    }
+    let result: Vec<f64> = a
+        .iter()
+        .zip(b.iter())
+        .map(|(av, bv)| {
+            let divisor = bv.unwrap_or(0.0);
+            if divisor == 0.0 {
+                0.0
+            } else {
+                av.unwrap_or(0.0) / divisor
+            }
+        })
+        .collect();
     Ok(Float64Array::from(result))
 }
 
 /// Compute element-wise: a * scalar.
 pub fn multiply_scalar(a: &Float64Array, scalar: f64) -> Float64Array {
-    let result: Vec<f64> = (0..a.len()).map(|i| a.value(i) * scalar).collect();
+    let result: Vec<f64> = a.iter().map(|v| v.unwrap_or(0.0) * scalar).collect();
     Float64Array::from(result)
 }
 
 /// Compute element-wise: a - b.
 pub fn subtract_arrays(a: &Float64Array, b: &Float64Array) -> Float64Array {
-    let result: Vec<f64> = (0..a.len()).map(|i| a.value(i) - b.value(i)).collect();
+    let result: Vec<f64> = a
+        .iter()
+        .zip(b.iter())
+        .map(|(av, bv)| av.unwrap_or(0.0) - bv.unwrap_or(0.0))
+        .collect();
     Float64Array::from(result)
 }
 
@@ -221,7 +207,7 @@ pub fn divide_scalar(a: &Float64Array, scalar: f64) -> Float64Array {
     if scalar == 0.0 {
         return Float64Array::from(vec![0.0; a.len()]);
     }
-    let result: Vec<f64> = (0..a.len()).map(|i| a.value(i) / scalar).collect();
+    let result: Vec<f64> = a.iter().map(|v| v.unwrap_or(0.0) / scalar).collect();
     Float64Array::from(result)
 }
 

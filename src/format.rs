@@ -256,17 +256,6 @@ pub fn format_dataframe_column(
 
     // Step 2: Apply formatting template to all string values
     let placeholders = parse_placeholders(template);
-    let formatted_values: Vec<Option<&str>> = string_values
-        .iter()
-        .map(|opt| {
-            opt.as_ref().map(|s| {
-                // We need to own the formatted strings, so we'll collect differently
-                s.as_str()
-            })
-        })
-        .collect();
-
-    // Apply formatting and collect owned strings
     let formatted_owned: Vec<Option<String>> = string_values
         .into_iter()
         .map(|opt| opt.map(|s| format_value(&s, template, &placeholders)))

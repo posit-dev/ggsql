@@ -124,12 +124,8 @@ pub fn new_constant_bool(value: bool, len: usize) -> ArrayRef {
 /// Replace null values in a Float64 array with a fill value.
 pub fn fill_null_f64(array: &Float64Array, fill: f64) -> Float64Array {
     let mut builder = arrow::array::Float64Builder::with_capacity(array.len());
-    for i in 0..array.len() {
-        if array.is_null(i) {
-            builder.append_value(fill);
-        } else {
-            builder.append_value(array.value(i));
-        }
+    for v in array.iter() {
+        builder.append_value(v.unwrap_or(fill));
     }
     builder.finish()
 }
@@ -211,7 +207,7 @@ mod tests {
         let arr: ArrayRef = Arc::new(StringArray::from(vec!["hello", "world"]));
         assert_eq!(value_to_string(&arr, 0), "hello");
 
-        let arr: ArrayRef = Arc::new(Float64Array::from(vec![3.14]));
-        assert_eq!(value_to_string(&arr, 0), "3.14");
+        let arr: ArrayRef = Arc::new(Float64Array::from(vec![3.24]));
+        assert_eq!(value_to_string(&arr, 0), "3.24");
     }
 }

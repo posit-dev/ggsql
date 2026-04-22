@@ -86,7 +86,7 @@ impl DataExplorerState {
             .column("n")
             .ok()
             .and_then(|col| {
-                if col.len() == 0 {
+                if col.is_empty() {
                     None
                 } else {
                     let s = ggsql::array_util::value_to_string(col, 0);
@@ -497,7 +497,7 @@ impl DataExplorerState {
         let get_str = |name: &str| -> Option<String> {
             use arrow::array::Array;
             df.column(name).ok().and_then(|c| {
-                if c.len() == 0 || c.is_null(0) {
+                if c.is_empty() || c.is_null(0) {
                     None
                 } else {
                     Some(
@@ -555,7 +555,7 @@ impl DataExplorerState {
                     if let Ok(median_df) = reader.execute_sql(&median_sql) {
                         use arrow::array::Array;
                         if let Some(v) = median_df.column("median_val").ok().and_then(|c| {
-                            if c.len() == 0 || c.is_null(0) {
+                            if c.is_empty() || c.is_null(0) {
                                 None
                             } else {
                                 Some(
@@ -686,7 +686,7 @@ impl DataExplorerState {
         let get_f64 = |name: &str| -> Option<f64> {
             use arrow::array::Array;
             bounds_df.column(name).ok().and_then(|c| {
-                if c.len() == 0 || c.is_null(0) {
+                if c.is_empty() || c.is_null(0) {
                     None
                 } else {
                     ggsql::array_util::value_to_string(c, 0)
@@ -790,7 +790,7 @@ impl DataExplorerState {
                 if let Ok(q_df) = reader.execute_sql(&q_sql) {
                     use arrow::array::Array;
                     if let Some(v) = q_df.column("q_val").ok().and_then(|c| {
-                        if c.len() == 0 || c.is_null(0) {
+                        if c.is_empty() || c.is_null(0) {
                             None
                         } else {
                             Some(
@@ -869,7 +869,7 @@ impl DataExplorerState {
             .and_then(|df| {
                 use arrow::array::Array;
                 df.column("total").ok().and_then(|c| {
-                    if c.len() == 0 || c.is_null(0) {
+                    if c.is_empty() || c.is_null(0) {
                         None
                     } else {
                         ggsql::array_util::value_to_string(c, 0).parse::<i64>().ok()

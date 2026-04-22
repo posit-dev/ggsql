@@ -309,14 +309,14 @@ impl DataFrame {
 #[macro_export]
 macro_rules! df {
     ($($col_name:expr => $values:expr),+ $(,)?) => {{
-        (|| -> $crate::Result<$crate::dataframe::DataFrame> {
+        {
             let columns: Vec<(&str, arrow::array::ArrayRef)> = vec![
                 $(
                     ($col_name, $crate::dataframe::into_array_ref($values)),
                 )+
             ];
             $crate::dataframe::DataFrame::new(columns)
-        })()
+        }
     }};
 }
 
@@ -398,7 +398,7 @@ impl IntoArrayRef for Vec<&str> {
 }
 
 // --- Vec<Option<&str>> ---
-impl<'a> IntoArrayRef for Vec<Option<&'a str>> {
+impl IntoArrayRef for Vec<Option<&str>> {
     fn into_array_ref(self) -> ArrayRef {
         Arc::new(arrow::array::StringArray::from(self))
     }
