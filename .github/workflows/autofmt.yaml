@@ -37,6 +37,11 @@ jobs:
               content: 'eyes',
             });
 
+      - name: Checkout base repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Check out PR branch (handles fork PRs)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
