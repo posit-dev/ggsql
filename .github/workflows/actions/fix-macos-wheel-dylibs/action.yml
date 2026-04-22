@@ -1,0 +1,90 @@
+name: "Fix macOS wheel dylib load paths"
+description: >
+  Rewrite @loader_path/../ggsql_jupyter.dylibs/* load commands on the bundled
+  ggsql-jupyter binary so they resolve from <prefix>/bin to the install-time
+  location <prefix>/lib/pythonX.Y/site-packages/ggsql_jupyter.dylibs/.
+inputs:
+  dist-dir:
+    description: "Directory containing the macOS wheel(s) to rewrite in-place."
+    required: true
+  binary-name:
+    description: "Name of the Mach-O binary inside the wheel's data/scripts dir."
+    required: false
+    default: "ggsql-jupyter"
+  dylibs-dir:
+    description: "Name of the bundled dylibs directory (as rewritten by auditwheel)."
+    required: false
+    default: "ggsql_jupyter.dylibs"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install wheel CLI
+      shell: bash
+      run: python3 -m pip install --quiet wheel
+
+    - name: Rewrite load paths on each wheel
+      shell: bash
+      env:
+        DIST_DIR: ${{ inputs.dist-dir }}
+        BINARY_NAME: ${{ inputs.binary-name }}
+        DYLIBS_DIR: ${{ inputs.dylibs-dir }}
+      run: |
+        set -euo pipefail
+        cd "$DIST_DIR"
+
+        shopt -s nullglob
+        wheels=(*.whl)
+        if [ ${#wheels[@]} -eq 0 ]; then
+          echo "::error title=No wheels found::$DIST_DIR contains no .whl files"
+          exit 1
+        fi
+
+        for whl in "${wheels[@]}"; do
+          echo "::group::$whl"
+
+          # Derive pythonX.Y from the wheel's cpXY ABI tag. Each wheel targets a
+          # specific cpXY ABI, so this matches maturin's per-ABI wheel model.
+          abi=$(echo "$whl" | sed -E 's/.*-cp([0-9])([0-9]+)-.*/python\1.\2/')
+          if [ "$abi" = "$whl" ]; then
+            echo "::error title=ABI parse failed::Could not parse Python ABI tag from $whl"
+            exit 1
+          fi
+          echo "Target interpreter dir: $abi"
+
+          workdir=$(mktemp -d)
+          python3 -m wheel unpack "$whl" -d "$workdir"
+          unpacked=$(find "$workdir" -maxdepth 1 -mindepth 1 -type d | head -n 1)
+          binary=$(find "$unpacked" -type f -path "*.data/scripts/$BINARY_NAME")
+
+          if [ -z "$binary" ]; then
+            echo "::error title=Binary not found::$BINARY_NAME not found in $whl"
+            exit 1
+          fi
+
+          old_prefix="@loader_path/../$DYLIBS_DIR/"
+          new_prefix="@loader_path/../lib/$abi/site-packages/$DYLIBS_DIR/"
+
+          oldpaths=$(otool -L "$binary" | awk -v p="$old_prefix" 'index($1, p) == 1 {print $1}')
+          if [ -z "$oldpaths" ]; then
+            echo "::warning title=Nothing to rewrite::No $old_prefix load commands in $binary"
+          else
+            for old in $oldpaths; do
+              new="$new_prefix${old##*/}"
+              echo "  $old -> $new"
+              install_name_tool -change "$old" "$new" "$binary"
+            done
+          fi
+
+          if otool -L "$binary" | awk -v p="$old_prefix" 'index($1, p) == 1 {found=1} END {exit !found}'; then
+            echo "::error title=Rewrite incomplete::$old_prefix entries remain in $binary"
+            otool -L "$binary"
+            exit 1
+          fi
+
+          rm "$whl"
+          python3 -m wheel pack "$unpacked" --dest-dir .
+          rm -rf "$workdir"
+
+          echo "::endgroup::"
+        done

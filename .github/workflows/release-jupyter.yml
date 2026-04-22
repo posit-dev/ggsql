@@ -101,6 +101,11 @@ jobs:
           args: --release --out dist --auditwheel=repair
           working-directory: ggsql-jupyter
 
+      - name: Fix wheel dylib load paths
+        uses: ./.github/workflows/actions/fix-macos-wheel-dylibs
+        with:
+          dist-dir: ggsql-jupyter/dist
+
       - uses: actions/upload-artifact@v4
         with:
           name: jupyter-wheels-macos-${{ matrix.target }}
