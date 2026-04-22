@@ -1,0 +1,87 @@
+name: Format on demand
+
+# Triggered by commenting "/format" on a pull request.
+# Works for fork PRs when the contributor leaves "Allow edits from maintainers"
+# enabled (default). Gated to repo collaborators to prevent drive-by abuse.
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  fmt:
+    if: >-
+      github.event.issue.pull_request != null
+      && startsWith(github.event.comment.body, '/format')
+      && (github.event.comment.author_association == 'OWNER'
+          || github.event.comment.author_association == 'MEMBER'
+          || github.event.comment.author_association == 'COLLABORATOR')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: React to triggering comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'eyes',
+            });
+
+      - name: Check out PR branch (handles fork PRs)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # `gh pr checkout` fetches the fork's branch and sets up a remote
+          # that we can push back to via the token.
+          gh pr checkout ${{ github.event.issue.number }} --repo "$GITHUB_REPOSITORY"
+
+      - name: Install Rust (rustfmt)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Run cargo fmt
+        run: cargo fmt --all
+
+      - name: Commit and push if changed
+        id: push
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No formatting changes needed."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m "style: cargo fmt"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Comment result on PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ job.status }}';
+            const changed = '${{ steps.push.outputs.changed }}' === 'true';
+            let body;
+            if (status !== 'success') {
+              body = ':x: `/format` failed. If this is a fork PR, make sure "Allow edits from maintainers" is enabled.';
+            } else if (changed) {
+              body = ':sparkles: Formatted and pushed.';
+            } else {
+              body = ':white_check_mark: Already formatted — nothing to do.';
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
