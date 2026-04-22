@@ -34,8 +34,15 @@ yarn-debug.log*
 yarn-error.log*
 .npm
 
+# Python virtual environments
+venv/
+.venv/
+
 # Dev environment
 /_dev/
+
+# Jupyter Notebook
+.ipynb_checkpoints
 
 # Temporary files
 *.tmp
@@ -73,7 +80,9 @@ perf.data*
 criterion/
 
 # WASM artifacts
-pkg/
+/ggsql-wasm/pkg/
+/ggsql-wasm/demo/dist/
+/ggsql-wasm/library/dist/
 
 # C/C++ build artifacts (from tree-sitter)
 *.o
