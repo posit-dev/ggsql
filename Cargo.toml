@@ -3,11 +3,8 @@ members = [
     "tree-sitter-ggsql",
     "src",
     "ggsql-jupyter",
-    "ggsql-python",
     "ggsql-wasm"
 ]
-# ggsql-python is excluded from default builds because it's a PyO3 extension
-# that requires Python dev headers. Build it separately with maturin.
 default-members = [
     "tree-sitter-ggsql",
     "src",
@@ -35,10 +32,6 @@ tree-sitter = "0.26"
 
 # Data container
 arrow = { version = "56", default-features = false, features = ["ipc"] }
-
-# Polars is kept ONLY for ggsql-python and ggsql-wasm workspace members which
-# have not yet been migrated off polars. The main ggsql crate no longer depends on it.
-polars = { version = "0.52", default-features = false }
 
 # Readers
 duckdb = { version = "~1.4", features = ["bundled", "vtab-arrow"] }

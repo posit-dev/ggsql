@@ -1,13 +1,17 @@
+use arrow::array::{
+    ArrayRef, BooleanArray, Date32Array, Float64Array, Int64Array, StringArray,
+    TimestampMillisecondArray,
+};
+use ggsql::array_util::value_to_string;
 use ggsql::naming::DATA_PREFIX;
 use ggsql::reader::sqlite::SqliteReader;
 use ggsql::reader::Reader;
 use ggsql::validate::validate;
 use ggsql::writer::{VegaLiteWriter, Writer};
 use ggsql::DataFrame;
-use polars::prelude::IntoColumn;
-use polars::prelude::*;
 use serde_json::json;
 use std::cell::RefCell;
+use std::sync::Arc;
 
 use wasm_bindgen::prelude::*;
 
@@ -46,7 +50,7 @@ fn ensure_vfs_initialized() {
 // Column descriptor → DataFrame conversion (for JS CSV/Parquet parsing)
 // ============================================================================
 
-/// Convert JS column descriptors to a Polars DataFrame.
+/// Convert JS column descriptors to an Arrow-backed DataFrame.
 fn columns_js_to_dataframe(columns_js: JsValue) -> Result<DataFrame, JsValue> {
     let columns = js_sys::Array::from(&columns_js);
     let len = columns.length();
@@ -55,7 +59,10 @@ fn columns_js_to_dataframe(columns_js: JsValue) -> Result<DataFrame, JsValue> {
         return Ok(DataFrame::empty());
     }
 
-    let mut series_vec: Vec<Column> = Vec::with_capacity(len as usize);
+    // Collect owned (name, array) pairs; DataFrame::new borrows the names so
+    // we build a parallel Vec<String> to pin them for the lifetime of the call.
+    let mut names: Vec<String> = Vec::with_capacity(len as usize);
+    let mut arrays: Vec<ArrayRef> = Vec::with_capacity(len as usize);
 
     for i in 0..len {
         let col = columns.get(i);
@@ -74,7 +81,7 @@ fn columns_js_to_dataframe(columns_js: JsValue) -> Result<DataFrame, JsValue> {
 
         let nulls = js_sys::Uint8Array::new(&nulls_js).to_vec();
 
-        let series = match col_type.as_str() {
+        let array: ArrayRef = match col_type.as_str() {
             "f64" => {
                 let raw = js_sys::Float64Array::new(&values_js).to_vec();
                 let values: Vec<Option<f64>> = raw
@@ -82,7 +89,7 @@ fn columns_js_to_dataframe(columns_js: JsValue) -> Result<DataFrame, JsValue> {
                     .zip(nulls.iter())
                     .map(|(v, &n)| if n != 0 { Some(v) } else { None })
                     .collect();
-                Series::new(col_name.as_str().into(), values)
+                Arc::new(Float64Array::from(values))
             }
             "i64" => {
                 let raw = js_sys::Float64Array::new(&values_js).to_vec();
@@ -91,7 +98,7 @@ fn columns_js_to_dataframe(columns_js: JsValue) -> Result<DataFrame, JsValue> {
                     .zip(nulls.iter())
                     .map(|(v, &n)| if n != 0 { Some(v as i64) } else { None })
                     .collect();
-                Series::new(col_name.as_str().into(), values)
+                Arc::new(Int64Array::from(values))
             }
             "bool" => {
                 let raw = js_sys::Uint8Array::new(&values_js).to_vec();
@@ -100,7 +107,7 @@ fn columns_js_to_dataframe(columns_js: JsValue) -> Result<DataFrame, JsValue> {
                     .zip(nulls.iter())
                     .map(|(v, &n)| if n != 0 { Some(v != 0) } else { None })
                     .collect();
-                Series::new(col_name.as_str().into(), values)
+                Arc::new(BooleanArray::from(values))
             }
             "string" => {
                 let arr = js_sys::Array::from(&values_js);
@@ -108,32 +115,27 @@ fn columns_js_to_dataframe(columns_js: JsValue) -> Result<DataFrame, JsValue> {
                     .zip(nulls.iter())
                     .map(|(j, &n)| if n != 0 { arr.get(j).as_string() } else { None })
                     .collect();
-                Series::new(col_name.as_str().into(), values)
+                Arc::new(StringArray::from(values))
             }
             "date" => {
+                // Date32: days since Unix epoch
                 let raw = js_sys::Float64Array::new(&values_js).to_vec();
                 let values: Vec<Option<i32>> = raw
                     .into_iter()
                     .zip(nulls.iter())
                     .map(|(v, &n)| if n != 0 { Some(v as i32) } else { None })
                     .collect();
-                let s = Series::new(col_name.as_str().into(), values);
-                s.cast(&DataType::Date).map_err(|e| {
-                    JsValue::from_str(&format!("Date cast error for '{}': {}", col_name, e))
-                })?
+                Arc::new(Date32Array::from(values))
             }
             "datetime" => {
+                // Timestamp(Millisecond): milliseconds since Unix epoch
                 let raw = js_sys::Float64Array::new(&values_js).to_vec();
                 let values: Vec<Option<i64>> = raw
                     .into_iter()
                     .zip(nulls.iter())
                     .map(|(v, &n)| if n != 0 { Some(v as i64) } else { None })
                     .collect();
-                let s = Series::new(col_name.as_str().into(), values);
-                s.cast(&DataType::Datetime(TimeUnit::Milliseconds, None))
-                    .map_err(|e| {
-                        JsValue::from_str(&format!("Datetime cast error for '{}': {}", col_name, e))
-                    })?
+                Arc::new(TimestampMillisecondArray::from(values))
             }
             other => {
                 return Err(JsValue::from_str(&format!(
@@ -143,10 +145,17 @@ fn columns_js_to_dataframe(columns_js: JsValue) -> Result<DataFrame, JsValue> {
             }
         };
 
-        series_vec.push(series.into_column());
+        names.push(col_name);
+        arrays.push(array);
     }
 
-    DataFrame::new(series_vec)
+    let named: Vec<(&str, ArrayRef)> = names
+        .iter()
+        .zip(arrays)
+        .map(|(n, a)| (n.as_str(), a))
+        .collect();
+
+    DataFrame::new(named)
         .map_err(|e| JsValue::from_str(&format!("DataFrame creation error: {}", e)))
 }
 
@@ -218,25 +227,18 @@ impl GgsqlContext {
         let total_rows = df.height();
         let truncated = total_rows > max_rows;
         let df = if truncated {
-            df.head(Some(max_rows))
+            df.slice(0, max_rows)
         } else {
             df
         };
 
-        let columns: Vec<String> = df
-            .get_column_names()
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect();
+        let columns: Vec<String> = df.get_column_names();
         let mut rows: Vec<Vec<String>> = Vec::with_capacity(df.height());
 
         for i in 0..df.height() {
             let mut row = Vec::with_capacity(columns.len());
             for col in df.get_columns() {
-                let val = col
-                    .get(i)
-                    .map_err(|e| JsValue::from_str(&format!("Error reading row {}: {}", i, e)))?;
-                row.push(format!("{}", val));
+                row.push(value_to_string(col, i));
             }
             rows.push(row);
         }
