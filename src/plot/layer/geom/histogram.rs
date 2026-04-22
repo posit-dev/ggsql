@@ -292,33 +292,71 @@ pub fn extract_histogram_min_max(df: &DataFrame) -> Result<(f64, f64)> {
         ));
     }
 
-    let min_val = df
-        .column("min_val")
-        .ok()
-        .and_then(|col| {
-            use arrow::array::Array;
-            if col.is_null(0) {
-                return None;
-            }
-            crate::array_util::as_f64(col).ok().map(|a| a.value(0))
-        })
-        .ok_or_else(|| {
-            GgsqlError::ValidationError("Could not extract min value for histogram".to_string())
-        })?;
+    let extract = |name: &str| -> Option<f64> {
+        use arrow::array::Array;
+        use arrow::datatypes::DataType;
+        let col = df.column(name).ok()?;
+        if col.is_null(0) {
+            return None;
+        }
+        let casted = crate::array_util::cast_array(col, &DataType::Float64).ok()?;
+        crate::array_util::as_f64(&casted).ok().map(|a| a.value(0))
+    };
 
-    let max_val = df
-        .column("max_val")
-        .ok()
-        .and_then(|col| {
-            use arrow::array::Array;
-            if col.is_null(0) {
-                return None;
-            }
-            crate::array_util::as_f64(col).ok().map(|a| a.value(0))
-        })
-        .ok_or_else(|| {
-            GgsqlError::ValidationError("Could not extract max value for histogram".to_string())
-        })?;
+    let min_val = extract("min_val").ok_or_else(|| {
+        GgsqlError::ValidationError("Could not extract min value for histogram".to_string())
+    })?;
+
+    let max_val = extract("max_val").ok_or_else(|| {
+        GgsqlError::ValidationError("Could not extract max value for histogram".to_string())
+    })?;
 
     Ok((min_val, max_val))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::df;
+
+    #[test]
+    fn test_extract_min_max_int64() {
+        // Regression: MIN/MAX over an integer column returns Int64. Must cast to f64.
+        let df = df! {
+            "min_val" => vec![56_i64],
+            "max_val" => vec![97_i64],
+        }
+        .unwrap();
+        assert_eq!(extract_histogram_min_max(&df).unwrap(), (56.0, 97.0));
+    }
+
+    #[test]
+    fn test_extract_min_max_int32() {
+        let df = df! {
+            "min_val" => vec![1_i32],
+            "max_val" => vec![10_i32],
+        }
+        .unwrap();
+        assert_eq!(extract_histogram_min_max(&df).unwrap(), (1.0, 10.0));
+    }
+
+    #[test]
+    fn test_extract_min_max_float64() {
+        let df = df! {
+            "min_val" => vec![0.5_f64],
+            "max_val" => vec![9.5_f64],
+        }
+        .unwrap();
+        assert_eq!(extract_histogram_min_max(&df).unwrap(), (0.5, 9.5));
+    }
+
+    #[test]
+    fn test_extract_min_max_null_errors() {
+        let df = df! {
+            "min_val" => vec![None::<f64>],
+            "max_val" => vec![None::<f64>],
+        }
+        .unwrap();
+        assert!(extract_histogram_min_max(&df).is_err());
+    }
 }
