@@ -434,6 +434,7 @@ jobs:
   build-cargo:
     name: Publish to crates.io
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       id-token: write
       contents: read
