@@ -82,6 +82,16 @@ runs:
             done
           fi
 
+          # Re-codesign all modified Mach-O files with ad-hoc signature
+          echo "Re-signing modified Mach-O files"
+          codesign --force --sign - "$binary"
+          if [ -d "$dest_dir" ]; then
+            while IFS= read -r -d '' f; do
+              codesign --force --sign - "$f"
+            done < <(find "$dest_dir" -type f \( -name '*.dylib' -o -name '*.so' \) -print0)
+          fi
+          codesign --verify --verbose "$binary"
+
           # Verify: no stale $OLD_PREFIX references in the binary
           targets=("$binary")
           if [ -d "$dest_dir" ]; then
