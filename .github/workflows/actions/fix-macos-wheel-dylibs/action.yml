@@ -89,25 +89,13 @@ runs:
           fi
           stale=0
           for f in "${targets[@]}"; do
-            if otool -L "$f" | awk -v p="$OLD_PREFIX" 'index($1, p) == 1 {exit 0} END {exit 1}'; then
+            if otool -L "$f" | awk -v p="$OLD_PREFIX" 'index($1, p) == 1 {found=1} END {exit !found}'; then
               echo "::error title=Stale load path::$f still references $OLD_PREFIX"
               otool -L "$f"
               stale=1
             fi
           done
           if [ "$stale" -ne 0 ]; then exit 1; fi
-
-          # Update RECORD: any entry under the old top-level dir must point at
-          # the new .data/data/lib/ path. Pip verifies this file on install.
-          record=$(find "$unpacked" -maxdepth 2 -type f -path '*.dist-info/RECORD' | head -n 1)
-          if [ -z "$record" ]; then
-            echo "::error title=RECORD missing::no dist-info/RECORD in $whl"
-            exit 1
-          fi
-          data_name=$(basename "$data_root")
-          escaped_src=$(printf '%s\n' "$DYLIBS_SRC/" | sed 's/[.[\*^$/]/\\&/g')
-          sed -i.bak "s|^${escaped_src}|${data_name}/data/lib/ggsql-jupyter-dylibs/|" "$record"
-          rm "$record.bak"
 
           rm "$whl"
           python3 -m wheel pack "$unpacked" --dest-dir .
