@@ -393,9 +393,7 @@ fn print_table_fallback<R: Reader>(query: &str, reader: &R, max_rows: usize) {
     let mut rows: Vec<String> = vec![String::from(""); nrow + 1];
 
     let columns = data.get_columns();
-    for (col_id, (col_name, column_data)) in
-        colnames.iter().zip(columns.iter()).enumerate()
-    {
+    for (col_id, (col_name, column_data)) in colnames.iter().zip(columns.iter()).enumerate() {
         let mut width = col_name.chars().count();
 
         // End last column without comma
