@@ -1,8 +1,10 @@
 name: "Fix macOS wheel dylib load paths"
 description: >
-  Rewrite @loader_path/../ggsql_jupyter.dylibs/* load commands on the bundled
-  ggsql-jupyter binary so they resolve from <prefix>/bin to the install-time
-  location <prefix>/lib/pythonX.Y/site-packages/ggsql_jupyter.dylibs/.
+  Relocate bundled dylibs from the py3-none wheel's top-level
+  ggsql_jupyter.dylibs/ package into the wheel's .data/data/lib/ dir, so they
+  install to <prefix>/lib/ (Python-version-independent) rather than
+  <prefix>/lib/pythonX.Y/site-packages/. Also rewrites the binary's load
+  commands to match.
 inputs:
   dist-dir:
     description: "Directory containing the macOS wheel(s) to rewrite in-place."
@@ -11,10 +13,6 @@ inputs:
     description: "Name of the Mach-O binary inside the wheel's data/scripts dir."
     required: false
     default: "ggsql-jupyter"
-  dylibs-dir:
-    description: "Name of the bundled dylibs directory (as rewritten by auditwheel)."
-    required: false
-    default: "ggsql_jupyter.dylibs"
 
 runs:
   using: "composite"
@@ -23,12 +21,11 @@ runs:
       shell: bash
       run: python3 -m pip install --quiet wheel
 
-    - name: Rewrite load paths on each wheel
+    - name: Relocate dylibs and rewrite load paths
       shell: bash
       env:
         DIST_DIR: ${{ inputs.dist-dir }}
         BINARY_NAME: ${{ inputs.binary-name }}
-        DYLIBS_DIR: ${{ inputs.dylibs-dir }}
       run: |
         set -euo pipefail
         cd "$DIST_DIR"
@@ -40,47 +37,77 @@ runs:
           exit 1
         fi
 
+        DYLIBS_SRC="ggsql_jupyter.dylibs"
+        OLD_PREFIX="@loader_path/../$DYLIBS_SRC/"
+        NEW_PREFIX="@loader_path/../lib/ggsql-jupyter-dylibs/"
+
         for whl in "${wheels[@]}"; do
           echo "::group::$whl"
-
-          # Derive pythonX.Y from the wheel's cpXY ABI tag. Each wheel targets a
-          # specific cpXY ABI, so this matches maturin's per-ABI wheel model.
-          abi=$(echo "$whl" | sed -E 's/.*-cp([0-9])([0-9]+)-.*/python\1.\2/')
-          if [ "$abi" = "$whl" ]; then
-            echo "::error title=ABI parse failed::Could not parse Python ABI tag from $whl"
-            exit 1
-          fi
-          echo "Target interpreter dir: $abi"
 
           workdir=$(mktemp -d)
           python3 -m wheel unpack "$whl" -d "$workdir"
           unpacked=$(find "$workdir" -maxdepth 1 -mindepth 1 -type d | head -n 1)
-          binary=$(find "$unpacked" -type f -path "*.data/scripts/$BINARY_NAME")
+
+          src_dir="$unpacked/$DYLIBS_SRC"
+          data_root=$(find "$unpacked" -maxdepth 1 -type d -name '*.data' | head -n 1)
+          if [ -z "$data_root" ]; then
+            echo "::error title=Wheel layout::no *.data/ directory in $whl"
+            exit 1
+          fi
+          dest_dir="$data_root/data/lib/ggsql-jupyter-dylibs"
+          binary=$(find "$data_root/scripts" -type f -name "$BINARY_NAME" | head -n 1)
 
           if [ -z "$binary" ]; then
             echo "::error title=Binary not found::$BINARY_NAME not found in $whl"
             exit 1
           fi
 
-          old_prefix="@loader_path/../$DYLIBS_DIR/"
-          new_prefix="@loader_path/../lib/$abi/site-packages/$DYLIBS_DIR/"
+          if [ ! -d "$src_dir" ]; then
+            echo "::warning title=No dylibs bundle::$DYLIBS_SRC/ not present in $whl (nothing to relocate)"
+          else
+            echo "Moving $DYLIBS_SRC/ -> $(basename "$data_root")/data/lib/ggsql-jupyter-dylibs/"
+            mkdir -p "$(dirname "$dest_dir")"
+            mv "$src_dir" "$dest_dir"
+          fi
 
-          oldpaths=$(otool -L "$binary" | awk -v p="$old_prefix" 'index($1, p) == 1 {print $1}')
+          echo "Rewriting load commands on $(basename "$binary")"
+          oldpaths=$(otool -L "$binary" | awk -v p="$OLD_PREFIX" 'index($1, p) == 1 {print $1}')
           if [ -z "$oldpaths" ]; then
-            echo "::warning title=Nothing to rewrite::No $old_prefix load commands in $binary"
+            echo "::warning title=Nothing to rewrite::No $OLD_PREFIX load commands in $binary"
           else
             for old in $oldpaths; do
-              new="$new_prefix${old##*/}"
+              new="$NEW_PREFIX${old##*/}"
               echo "  $old -> $new"
               install_name_tool -change "$old" "$new" "$binary"
             done
           fi
 
-          if otool -L "$binary" | awk -v p="$old_prefix" 'index($1, p) == 1 {found=1} END {exit !found}'; then
-            echo "::error title=Rewrite incomplete::$old_prefix entries remain in $binary"
-            otool -L "$binary"
+          # Verify: no stale $OLD_PREFIX references in the binary
+          targets=("$binary")
+          if [ -d "$dest_dir" ]; then
+            while IFS= read -r -d '' f; do targets+=("$f"); done < <(find "$dest_dir" -type f \( -name '*.dylib' -o -name '*.so' \) -print0)
+          fi
+          stale=0
+          for f in "${targets[@]}"; do
+            if otool -L "$f" | awk -v p="$OLD_PREFIX" 'index($1, p) == 1 {exit 0} END {exit 1}'; then
+              echo "::error title=Stale load path::$f still references $OLD_PREFIX"
+              otool -L "$f"
+              stale=1
+            fi
+          done
+          if [ "$stale" -ne 0 ]; then exit 1; fi
+
+          # Update RECORD: any entry under the old top-level dir must point at
+          # the new .data/data/lib/ path. Pip verifies this file on install.
+          record=$(find "$unpacked" -maxdepth 2 -type f -path '*.dist-info/RECORD' | head -n 1)
+          if [ -z "$record" ]; then
+            echo "::error title=RECORD missing::no dist-info/RECORD in $whl"
             exit 1
           fi
+          data_name=$(basename "$data_root")
+          escaped_src=$(printf '%s\n' "$DYLIBS_SRC/" | sed 's/[.[\*^$/]/\\&/g')
+          sed -i.bak "s|^${escaped_src}|${data_name}/data/lib/ggsql-jupyter-dylibs/|" "$record"
+          rm "$record.bak"
 
           rm "$whl"
           python3 -m wheel pack "$unpacked" --dest-dir .
