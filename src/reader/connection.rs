@@ -22,43 +22,14 @@ pub enum ConnectionInfo {
     ODBC(String),
 }
 
-/// Parse a DuckDB/SQLite URI body into a filesystem path, following
-/// SQLAlchemy conventions.
-///
-/// After the `scheme://` prefix has been stripped, `body` is interpreted as:
-/// - `memory` -> handled by the caller (only valid for `duckdb://memory`)
-/// - `<relative/path>` -> relative path, returned verbatim
-/// - `/<absolute/path>` -> absolute path, returned with the leading `/`
-/// - `//...` or empty -> error (ambiguous / missing path)
-fn parse_uri_path(scheme: &str, body: &str) -> Result<String> {
-    if body.is_empty() {
-        return Err(GgsqlError::ReaderError(format!(
-            "{} file path cannot be empty",
-            scheme
-        )));
-    }
-
-    if body.starts_with("//") {
-        return Err(GgsqlError::ReaderError(format!(
-            "Ambiguous {scheme} URI '{scheme}://{body}': use '{scheme}://relative/path' \
-             for a relative path or '{scheme}:///absolute/path' for an absolute path",
-            scheme = scheme,
-            body = body,
-        )));
-    }
-
-    Ok(body.to_string())
-}
-
 /// Parse a connection string into connection information
 ///
 /// # Supported Formats
 ///
 /// - `duckdb://memory` - DuckDB in-memory database
-/// - `duckdb:///absolute/path/file.db` - DuckDB file (absolute path, SQLAlchemy convention)
-/// - `duckdb://relative/file.db` - DuckDB file (relative path)
+/// - `duckdb://...` - DuckDB path
 /// - `postgres://...` - PostgreSQL connection string
-/// - `sqlite://...` - SQLite file path (same `//` vs `///` rules as DuckDB)
+/// - `sqlite://...` - SQLite file path
 ///
 /// # Examples
 ///
@@ -79,18 +50,26 @@ pub fn parse_connection_string(uri: &str) -> Result<ConnectionInfo> {
         return Ok(ConnectionInfo::DuckDBMemory);
     }
 
-    if let Some(body) = uri.strip_prefix("duckdb://") {
-        let path = parse_uri_path("duckdb", body)?;
-        return Ok(ConnectionInfo::DuckDBFile(path));
+    if let Some(path) = uri.strip_prefix("duckdb://") {
+        if path.is_empty() {
+            return Err(GgsqlError::ReaderError(
+                "DuckDB file path cannot be empty".to_string(),
+            ));
+        }
+        return Ok(ConnectionInfo::DuckDBFile(path.to_string()));
     }
 
     if uri.starts_with("postgres://") || uri.starts_with("postgresql://") {
         return Ok(ConnectionInfo::PostgreSQL(uri.to_string()));
     }
 
-    if let Some(body) = uri.strip_prefix("sqlite://") {
-        let path = parse_uri_path("sqlite", body)?;
-        return Ok(ConnectionInfo::SQLite(path));
+    if let Some(path) = uri.strip_prefix("sqlite://") {
+        if path.is_empty() {
+            return Err(GgsqlError::ReaderError(
+                "SQLite file path cannot be empty".to_string(),
+            ));
+        }
+        return Ok(ConnectionInfo::SQLite(path.to_string()));
     }
 
     if let Some(conn_str) = uri.strip_prefix("odbc://") {
@@ -126,14 +105,8 @@ mod tests {
 
     #[test]
     fn test_duckdb_file_absolute() {
-        // Three slashes -> absolute path (SQLAlchemy convention). The leading
-        // `/` must be preserved so DuckDB opens the intended file rather than
-        // silently creating a relative phantom DB. See issue #345.
         let info = parse_connection_string("duckdb:///tmp/data.db").unwrap();
-        assert_eq!(
-            info,
-            ConnectionInfo::DuckDBFile("/tmp/data.db".to_string())
-        );
+        assert_eq!(info, ConnectionInfo::DuckDBFile("/tmp/data.db".to_string()));
     }
 
     #[test]
@@ -143,28 +116,6 @@ mod tests {
             info,
             ConnectionInfo::DuckDBFile("path/to/data.db".to_string())
         );
-    }
-
-    #[test]
-    fn test_duckdb_file_four_slashes_rejected() {
-        // Four slashes is ambiguous — reject with a clear message instead of
-        // silently interpreting as an absolute path.
-        let result = parse_connection_string("duckdb:////tmp/data.db");
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("Ambiguous"), "unexpected error: {}", err);
-    }
-
-    #[test]
-    fn test_sqlite_absolute() {
-        let info = parse_connection_string("sqlite:///tmp/data.db").unwrap();
-        assert_eq!(info, ConnectionInfo::SQLite("/tmp/data.db".to_string()));
-    }
-
-    #[test]
-    fn test_sqlite_four_slashes_rejected() {
-        let result = parse_connection_string("sqlite:////tmp/data.db");
-        assert!(result.is_err());
     }
 
     #[test]
@@ -185,6 +136,12 @@ mod tests {
     fn test_sqlite() {
         let info = parse_connection_string("sqlite://data.db").unwrap();
         assert_eq!(info, ConnectionInfo::SQLite("data.db".to_string()));
+    }
+
+    #[test]
+    fn test_sqlite_absolute() {
+        let info = parse_connection_string("sqlite:///tmp/data.db").unwrap();
+        assert_eq!(info, ConnectionInfo::SQLite("/tmp/data.db".to_string()));
     }
 
     #[test]

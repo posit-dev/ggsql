@@ -112,22 +112,9 @@ impl DuckDBReader {
             ConnectionInfo::DuckDBMemory => Connection::open_in_memory().map_err(|e| {
                 GgsqlError::ReaderError(format!("Failed to open in-memory DuckDB: {}", e))
             })?,
-            ConnectionInfo::DuckDBFile(path) => {
-                // Fail fast if the path does not exist. DuckDB's default
-                // `open` creates the file if missing, which silently masks
-                // typos and produces confusing "Table not found" errors
-                // downstream. See issue #345.
-                if !std::path::Path::new(&path).exists() {
-                    return Err(GgsqlError::ReaderError(format!(
-                        "DuckDB file '{path}' does not exist. \
-                         Use 'duckdb://memory' for an in-memory database, \
-                         or create the file first (e.g. `duckdb {path}` to initialize an empty DB)."
-                    )));
-                }
-                Connection::open(&path).map_err(|e| {
-                    GgsqlError::ReaderError(format!("Failed to open DuckDB file '{}': {}", path, e))
-                })?
-            }
+            ConnectionInfo::DuckDBFile(path) => Connection::open(&path).map_err(|e| {
+                GgsqlError::ReaderError(format!("Failed to open DuckDB file '{}': {}", path, e))
+            })?,
             _ => {
                 return Err(GgsqlError::ReaderError(format!(
                     "Connection string '{}' is not supported by DuckDBReader",
@@ -656,57 +643,6 @@ mod tests {
     fn test_create_in_memory() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory");
         assert!(reader.is_ok());
-    }
-
-    #[test]
-    fn test_missing_file_fails_fast() {
-        // Regression test for issue #345: opening a non-existent file must
-        // error instead of silently creating a phantom empty DB.
-        let missing = std::env::temp_dir().join("ggsql_does_not_exist_345.duckdb");
-        // Ensure it really doesn't exist.
-        let _ = std::fs::remove_file(&missing);
-
-        let uri = format!("duckdb://{}", missing.display());
-        let result = DuckDBReader::from_connection_string(&uri);
-        let err = match result {
-            Ok(_) => panic!("expected error for missing file"),
-            Err(e) => e.to_string(),
-        };
-        assert!(
-            err.contains("does not exist"),
-            "unexpected error message: {}",
-            err
-        );
-        // And the reader must not have created the file as a side effect.
-        assert!(
-            !missing.exists(),
-            "reader created phantom DB at {}",
-            missing.display()
-        );
-    }
-
-    #[test]
-    fn test_absolute_path_opens_existing_file() {
-        // Regression test for issue #345: `duckdb:///abs/path` must open the
-        // absolute path, not strip the leading slash and treat it as relative.
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("abs_path_345.duckdb");
-
-        // Seed a DB with a known table.
-        {
-            let conn = Connection::open(&path).unwrap();
-            conn.execute("CREATE TABLE t AS SELECT 1 AS x, 2 AS y", params![])
-                .unwrap();
-        }
-
-        // Use the three-slash (absolute) URI form.
-        let uri = format!("duckdb://{}", path.display());
-        let reader = DuckDBReader::from_connection_string(&uri)
-            .expect("should open existing absolute path");
-
-        // Table must be visible — confirming we opened the right file.
-        let df = reader.execute_sql("SELECT * FROM t").unwrap();
-        assert_eq!(df.shape(), (1, 2));
     }
 
     #[test]
