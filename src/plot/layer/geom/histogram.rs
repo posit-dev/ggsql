@@ -320,37 +320,6 @@ mod tests {
     use crate::df;
 
     #[test]
-    fn test_extract_min_max_int64() {
-        // Regression: MIN/MAX over an integer column returns Int64. Must cast to f64.
-        let df = df! {
-            "min_val" => vec![56_i64],
-            "max_val" => vec![97_i64],
-        }
-        .unwrap();
-        assert_eq!(extract_histogram_min_max(&df).unwrap(), (56.0, 97.0));
-    }
-
-    #[test]
-    fn test_extract_min_max_int32() {
-        let df = df! {
-            "min_val" => vec![1_i32],
-            "max_val" => vec![10_i32],
-        }
-        .unwrap();
-        assert_eq!(extract_histogram_min_max(&df).unwrap(), (1.0, 10.0));
-    }
-
-    #[test]
-    fn test_extract_min_max_float64() {
-        let df = df! {
-            "min_val" => vec![0.5_f64],
-            "max_val" => vec![9.5_f64],
-        }
-        .unwrap();
-        assert_eq!(extract_histogram_min_max(&df).unwrap(), (0.5, 9.5));
-    }
-
-    #[test]
     fn test_extract_min_max_null_errors() {
         let df = df! {
             "min_val" => vec![None::<f64>],

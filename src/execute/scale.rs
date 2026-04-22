@@ -1698,4 +1698,34 @@ mod tests {
             _ => panic!("Expected Number elements"),
         }
     }
+
+    #[test]
+    fn test_apply_oob_censor_date32() {
+        // Regression: Arrow can't cast Date32 directly to Float64.
+        // apply_oob_to_column_numeric must route through Int32 first.
+        use arrow::array::{ArrayRef, Date32Array};
+        use std::sync::Arc;
+
+        // Days since epoch: 2024-01-01 = 19723, 2024-06-01 = 19875, 2024-12-01 = 20058
+        let dates: ArrayRef = Arc::new(Date32Array::from(vec![19723, 19875, 20058]));
+        let df = DataFrame::new(vec![("date", dates)]).unwrap();
+
+        // Censor to [2024-03-01, 2024-09-01] ≈ [19783, 19967] → keeps only row 1
+        let result = apply_oob_to_column_numeric(&df, "date", 19783.0, 19967.0, OOB_CENSOR)
+            .expect("oob censor should handle Date32");
+        assert_eq!(result.height(), 1);
+    }
+
+    #[test]
+    fn test_apply_oob_squish_date32_restores_temporal_type() {
+        use arrow::array::{ArrayRef, Date32Array};
+        use std::sync::Arc;
+
+        let dates: ArrayRef = Arc::new(Date32Array::from(vec![19000, 19875, 21000]));
+        let df = DataFrame::new(vec![("date", dates)]).unwrap();
+
+        let result = apply_oob_to_column_numeric(&df, "date", 19723.0, 20089.0, OOB_SQUISH)
+            .expect("oob squish should handle Date32");
+        assert_eq!(result.column("date").unwrap().data_type(), &DataType::Date32);
+    }
 }

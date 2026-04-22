@@ -57,9 +57,39 @@ downcast_fn!(as_time64_ns, Time64NanosecondArray, "Time64(Nanosecond)");
 // ============================================================================
 
 /// Cast an array to a different data type.
+///
+/// Arrow's `compute::cast` can't cast directly between temporal types (Date32,
+/// Timestamp, Time64) and floating-point types — it only allows going via the
+/// integer backing representation. This wrapper bridges the gap so callers can
+/// treat temporal columns as numeric without special-casing every site.
 pub fn cast_array(array: &ArrayRef, to: &DataType) -> Result<ArrayRef> {
-    compute::cast(array, to)
-        .map_err(|e| GgsqlError::InternalError(format!("Failed to cast to {:?}: {}", to, e)))
+    let from = array.data_type();
+    let do_cast = |arr: &ArrayRef, dt: &DataType| -> Result<ArrayRef> {
+        compute::cast(arr, dt)
+            .map_err(|e| GgsqlError::InternalError(format!("Failed to cast to {:?}: {}", dt, e)))
+    };
+
+    let bridge = match (from, to) {
+        // Temporal → floating: go via the integer backing type.
+        (DataType::Date32, DataType::Float32 | DataType::Float64) => Some(DataType::Int32),
+        (DataType::Timestamp(_, _) | DataType::Time64(_), DataType::Float32 | DataType::Float64) => {
+            Some(DataType::Int64)
+        }
+        // Floating → temporal: same bridge in reverse.
+        (DataType::Float32 | DataType::Float64, DataType::Date32) => Some(DataType::Int32),
+        (DataType::Float32 | DataType::Float64, DataType::Timestamp(_, _) | DataType::Time64(_)) => {
+            Some(DataType::Int64)
+        }
+        _ => None,
+    };
+
+    match bridge {
+        Some(mid) => {
+            let intermediate = do_cast(array, &mid)?;
+            do_cast(&intermediate, to)
+        }
+        None => do_cast(array, to),
+    }
 }
 
 // ============================================================================
@@ -181,6 +211,36 @@ mod tests {
         let casted = cast_array(&arr, &DataType::Float64).unwrap();
         let f64_arr = as_f64(&casted).unwrap();
         assert_eq!(f64_arr.value(0), 1.0);
+    }
+
+    #[test]
+    fn test_cast_date32_to_float64() {
+        // Arrow can't cast Date32 → Float64 directly; cast_array bridges via Int32.
+        let arr: ArrayRef = Arc::new(Date32Array::from(vec![19723, 19875]));
+        let casted = cast_array(&arr, &DataType::Float64).unwrap();
+        let f64_arr = as_f64(&casted).unwrap();
+        assert_eq!(f64_arr.value(0), 19723.0);
+        assert_eq!(f64_arr.value(1), 19875.0);
+    }
+
+    #[test]
+    fn test_cast_float64_to_date32() {
+        // Reverse: Float64 → Date32 also needs to bridge via Int32.
+        let arr: ArrayRef = Arc::new(Float64Array::from(vec![19723.0, 19875.0]));
+        let casted = cast_array(&arr, &DataType::Date32).unwrap();
+        assert_eq!(casted.data_type(), &DataType::Date32);
+    }
+
+    #[test]
+    fn test_cast_timestamp_to_float64() {
+        use arrow::datatypes::TimeUnit;
+        let arr: ArrayRef = Arc::new(TimestampMicrosecondArray::from(vec![1_000_000_i64, 2_000_000]));
+        let casted = cast_array(&arr, &DataType::Float64).unwrap();
+        let f64_arr = as_f64(&casted).unwrap();
+        assert_eq!(f64_arr.value(0), 1_000_000.0);
+        // Make sure the reverse also works with a concrete unit/tz.
+        let back = cast_array(&casted, &DataType::Timestamp(TimeUnit::Microsecond, None)).unwrap();
+        assert!(matches!(back.data_type(), DataType::Timestamp(_, _)));
     }
 
     #[test]
