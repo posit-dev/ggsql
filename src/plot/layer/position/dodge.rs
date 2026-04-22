@@ -203,8 +203,7 @@ fn apply_dodge_with_width(
     // If offset column exists (e.g., violin), scale it by the offset scale factor
     if has_offset_col {
         let col = result.column(&offset_col)?;
-        let casted =
-            crate::array_util::cast_array(col, &arrow::datatypes::DataType::Float64)?;
+        let casted = crate::array_util::cast_array(col, &arrow::datatypes::DataType::Float64)?;
         let f64_arr = crate::array_util::as_f64(&casted)?;
         let scaled = compute::divide_scalar(f64_arr, offsets.offset_scale);
         result = result.with_column(

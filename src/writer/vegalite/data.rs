@@ -83,13 +83,11 @@ pub(super) fn series_value_at(array: &ArrayRef, idx: usize) -> Result<Value> {
         }
         DataType::Timestamp(time_unit, _) => {
             // Convert timestamp to ISO datetime: "YYYY-MM-DDTHH:MM:SS.sssZ"
-            let timestamp = as_timestamp_us(array)
-                .map(|a| a.value(idx))
-                .or_else(|_| {
-                    // Try casting to microsecond timestamp first
-                    let cast = cast_array(array, &DataType::Timestamp(TimeUnit::Microsecond, None))?;
-                    Ok(as_timestamp_us(&cast)?.value(idx))
-                })?;
+            let timestamp = as_timestamp_us(array).map(|a| a.value(idx)).or_else(|_| {
+                // Try casting to microsecond timestamp first
+                let cast = cast_array(array, &DataType::Timestamp(TimeUnit::Microsecond, None))?;
+                Ok(as_timestamp_us(&cast)?.value(idx))
+            })?;
             // timestamp is in microseconds for TimestampMicrosecondArray
             let micros = match time_unit {
                 TimeUnit::Microsecond => timestamp,
@@ -100,9 +98,7 @@ pub(super) fn series_value_at(array: &ArrayRef, idx: usize) -> Result<Value> {
             let secs = micros / 1_000_000;
             let nsecs = ((micros % 1_000_000) * 1000) as u32;
             let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(secs, nsecs)
-                .unwrap_or_else(|| {
-                    chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0).unwrap()
-                });
+                .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0).unwrap());
             Ok(json!(dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()))
         }
         DataType::Time64(_) => {

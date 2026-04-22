@@ -605,10 +605,10 @@ fn compute_density(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::array::Array;
     use crate::reader::duckdb::DuckDBReader;
     use crate::reader::AnsiDialect;
     use crate::reader::Reader;
+    use arrow::array::Array;
 
     #[test]
     fn test_density_sql_no_groups() {
@@ -779,13 +779,24 @@ mod tests {
         // Cast to f64 if needed (AnsiDialect generates f32 from REAL)
         let x_col = cast_array(x_col, &DataType::Float64).expect("can cast to f64");
         let x_vals = as_f64(&x_col).expect("x is f64");
-        let x_min = (0..x_vals.len()).filter(|&i| !x_vals.is_null(i)).map(|i| x_vals.value(i)).fold(f64::INFINITY, f64::min);
-        let x_max = (0..x_vals.len()).filter(|&i| !x_vals.is_null(i)).map(|i| x_vals.value(i)).fold(f64::NEG_INFINITY, f64::max);
+        let x_min = (0..x_vals.len())
+            .filter(|&i| !x_vals.is_null(i))
+            .map(|i| x_vals.value(i))
+            .fold(f64::INFINITY, f64::min);
+        let x_max = (0..x_vals.len())
+            .filter(|&i| !x_vals.is_null(i))
+            .map(|i| x_vals.value(i))
+            .fold(f64::NEG_INFINITY, f64::max);
         let dx = (x_max - x_min) / 511.0; // (n - 1) for 512 points
 
-        let density_col = df.column("__ggsql_stat_density").expect("density column exists");
+        let density_col = df
+            .column("__ggsql_stat_density")
+            .expect("density column exists");
         let density_vals = as_f64(density_col).expect("density is f64");
-        let total: f64 = (0..density_vals.len()).filter(|&i| !density_vals.is_null(i)).map(|i| density_vals.value(i)).sum();
+        let total: f64 = (0..density_vals.len())
+            .filter(|&i| !density_vals.is_null(i))
+            .map(|i| density_vals.value(i))
+            .sum();
         let integral = total * dx;
 
         // Should integrate to ~2 (one per group)
@@ -893,13 +904,22 @@ mod tests {
         // Cast to f64 if needed (AnsiDialect generates f32 from REAL)
         let x_col = cast_array(x_col, &DataType::Float64).expect("can cast to f64");
         let x_vals = as_f64(&x_col).expect("x is f64");
-        let x_min = (0..x_vals.len()).filter(|&i| !x_vals.is_null(i)).map(|i| x_vals.value(i)).fold(f64::INFINITY, f64::min);
-        let x_max = (0..x_vals.len()).filter(|&i| !x_vals.is_null(i)).map(|i| x_vals.value(i)).fold(f64::NEG_INFINITY, f64::max);
+        let x_min = (0..x_vals.len())
+            .filter(|&i| !x_vals.is_null(i))
+            .map(|i| x_vals.value(i))
+            .fold(f64::INFINITY, f64::min);
+        let x_max = (0..x_vals.len())
+            .filter(|&i| !x_vals.is_null(i))
+            .map(|i| x_vals.value(i))
+            .fold(f64::NEG_INFINITY, f64::max);
         let dx = (x_max - x_min) / (df.height() as f64 - 1.0);
 
         let density_col = df.column("__ggsql_stat_density").expect("density exists");
         let density_vals = as_f64(density_col).expect("density is f64");
-        let total: f64 = (0..density_vals.len()).filter(|&i| !density_vals.is_null(i)).map(|i| density_vals.value(i)).sum();
+        let total: f64 = (0..density_vals.len())
+            .filter(|&i| !density_vals.is_null(i))
+            .map(|i| density_vals.value(i))
+            .sum();
         let integral = total * dx;
 
         // Verify all density values are non-negative
@@ -1098,8 +1118,7 @@ mod tests {
             .column("__ggsql_aes_pos2__")
             .expect("pos2 aesthetic exists");
         let y_arr = crate::array_util::as_f64(y_col).expect("y is f64");
-        let all_non_negative = (0..y_arr.len())
-            .all(|i| y_arr.is_null(i) || y_arr.value(i) >= 0.0);
+        let all_non_negative = (0..y_arr.len()).all(|i| y_arr.is_null(i) || y_arr.value(i) >= 0.0);
         assert!(
             all_non_negative,
             "All y values (from intensity) should be non-negative"

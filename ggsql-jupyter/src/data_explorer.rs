@@ -554,21 +554,17 @@ impl DataExplorerState {
                     let median_sql = format!("SELECT {} AS \"median_val\"", median_expr);
                     if let Ok(median_df) = reader.execute_sql(&median_sql) {
                         use arrow::array::Array;
-                        if let Some(v) = median_df
-                            .column("median_val")
-                            .ok()
-                            .and_then(|c| {
-                                if c.len() == 0 || c.is_null(0) {
-                                    None
-                                } else {
-                                    Some(
-                                        ggsql::array_util::value_to_string(c, 0)
-                                            .trim_matches('"')
-                                            .to_string(),
-                                    )
-                                }
-                            })
-                        {
+                        if let Some(v) = median_df.column("median_val").ok().and_then(|c| {
+                            if c.len() == 0 || c.is_null(0) {
+                                None
+                            } else {
+                                Some(
+                                    ggsql::array_util::value_to_string(c, 0)
+                                        .trim_matches('"')
+                                        .to_string(),
+                                )
+                            }
+                        }) {
                             number_stats["median"] = json!(v);
                         }
                     }

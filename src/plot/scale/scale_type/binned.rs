@@ -833,9 +833,9 @@ pub fn add_range_boundaries_to_breaks(breaks: &mut Vec<ArrayElement>, range: &[A
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::datatypes::TimeUnit;
     use crate::plot::scale::Scale;
     use crate::reader::AnsiDialect;
+    use arrow::datatypes::TimeUnit;
 
     #[test]
     fn test_pre_stat_transform_sql_even_breaks() {
@@ -1019,7 +1019,8 @@ mod tests {
         );
 
         // Date column - no casting needed (types match)
-        let sql = binned.pre_stat_transform_sql("date_col", &DataType::Date32, &scale, &AnsiDialect);
+        let sql =
+            binned.pre_stat_transform_sql("date_col", &DataType::Date32, &scale, &AnsiDialect);
 
         // Should successfully generate SQL (not return None due to filtered-out breaks)
         assert!(sql.is_some(), "SQL should be generated for Date breaks");
@@ -1102,7 +1103,12 @@ mod tests {
             ]),
         );
 
-        let sql = binned.pre_stat_transform_sql("time_col", &DataType::Time64(TimeUnit::Nanosecond), &scale, &AnsiDialect);
+        let sql = binned.pre_stat_transform_sql(
+            "time_col",
+            &DataType::Time64(TimeUnit::Nanosecond),
+            &scale,
+            &AnsiDialect,
+        );
 
         // Should successfully generate SQL
         assert!(sql.is_some(), "SQL should be generated for Time breaks");

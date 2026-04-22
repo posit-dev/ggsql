@@ -321,10 +321,7 @@ impl ColumnBuilder {
             Double(values) => Arc::new(Float64Array::from(values)),
             Boolean(values) => Arc::new(BooleanArray::from(values)),
             Text(values) => Arc::new(StringArray::from(
-                values
-                    .iter()
-                    .map(|s| s.as_deref())
-                    .collect::<Vec<_>>(),
+                values.iter().map(|s| s.as_deref()).collect::<Vec<_>>(),
             )),
             Date32(values) => {
                 // Arrow Date32 stores days since epoch directly
@@ -376,10 +373,7 @@ impl ColumnBuilder {
                     column_name
                 );
                 Arc::new(StringArray::from(
-                    values
-                        .iter()
-                        .map(|s| s.as_deref())
-                        .collect::<Vec<_>>(),
+                    values.iter().map(|s| s.as_deref()).collect::<Vec<_>>(),
                 ))
             }
             Fallback(values) => {
@@ -388,10 +382,7 @@ impl ColumnBuilder {
                     column_name
                 );
                 Arc::new(StringArray::from(
-                    values
-                        .iter()
-                        .map(|s| s.as_deref())
-                        .collect::<Vec<_>>(),
+                    values.iter().map(|s| s.as_deref()).collect::<Vec<_>>(),
                 ))
             }
         };

@@ -66,17 +66,37 @@ pub fn extract_series_value(
     }
 
     match col.data_type() {
-        DataType::Int8 => as_i8(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
-        DataType::Int16 => as_i16(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
-        DataType::Int32 => as_i32(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
-        DataType::Int64 => as_i64(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
-        DataType::UInt8 => as_u8(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
-        DataType::UInt16 => as_u16(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
-        DataType::UInt32 => as_u32(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
-        DataType::UInt64 => as_u64(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
-        DataType::Float32 => as_f32(col).ok().map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::Int8 => as_i8(col)
+            .ok()
+            .map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::Int16 => as_i16(col)
+            .ok()
+            .map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::Int32 => as_i32(col)
+            .ok()
+            .map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::Int64 => as_i64(col)
+            .ok()
+            .map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::UInt8 => as_u8(col)
+            .ok()
+            .map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::UInt16 => as_u16(col)
+            .ok()
+            .map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::UInt32 => as_u32(col)
+            .ok()
+            .map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::UInt64 => as_u64(col)
+            .ok()
+            .map(|a| ArrayElement::Number(a.value(row) as f64)),
+        DataType::Float32 => as_f32(col)
+            .ok()
+            .map(|a| ArrayElement::Number(a.value(row) as f64)),
         DataType::Float64 => as_f64(col).ok().map(|a| ArrayElement::Number(a.value(row))),
-        DataType::Boolean => as_bool(col).ok().map(|a| ArrayElement::Boolean(a.value(row))),
+        DataType::Boolean => as_bool(col)
+            .ok()
+            .map(|a| ArrayElement::Boolean(a.value(row))),
         DataType::Utf8 => as_str(col)
             .ok()
             .map(|a| ArrayElement::String(a.value(row).to_string())),
@@ -220,7 +240,9 @@ pub fn add_literal_columns_to_type_info(layers: &[Layer], layer_type_info: &mut 
                                 ArrayElement::DateTime(_) => {
                                     (DataType::Timestamp(TimeUnit::Microsecond, None), false)
                                 }
-                                ArrayElement::Time(_) => (DataType::Time64(TimeUnit::Nanosecond), false),
+                                ArrayElement::Time(_) => {
+                                    (DataType::Time64(TimeUnit::Nanosecond), false)
+                                }
                                 ArrayElement::Null => {
                                     // Null element: default to Float64
                                     (DataType::Float64, false)
@@ -305,7 +327,9 @@ pub fn build_aesthetic_schema(layer: &Layer, schema: &Schema) -> Schema {
                                 ArrayElement::DateTime(_) => {
                                     (DataType::Timestamp(TimeUnit::Microsecond, None), false)
                                 }
-                                ArrayElement::Time(_) => (DataType::Time64(TimeUnit::Nanosecond), false),
+                                ArrayElement::Time(_) => {
+                                    (DataType::Time64(TimeUnit::Nanosecond), false)
+                                }
                                 ArrayElement::Null => {
                                     // Null element: default to Float64
                                     (DataType::Float64, false)

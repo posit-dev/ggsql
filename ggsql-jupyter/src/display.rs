@@ -227,7 +227,11 @@ fn dataframe_to_text(df: &ggsql::DataFrame) -> String {
     s.push('\n');
     let row_limit = df.height().min(10);
     for i in 0..row_limit {
-        let row: Vec<String> = df.get_columns().iter().map(|c| value_to_string(c, i)).collect();
+        let row: Vec<String> = df
+            .get_columns()
+            .iter()
+            .map(|c| value_to_string(c, i))
+            .collect();
         s.push_str(&row.join("\t"));
         s.push('\n');
     }

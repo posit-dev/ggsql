@@ -389,7 +389,9 @@ mod tests {
         assert!(continuous
             .validate_dtype(&DataType::Timestamp(TimeUnit::Microsecond, None))
             .is_ok());
-        assert!(continuous.validate_dtype(&DataType::Time64(TimeUnit::Nanosecond)).is_ok());
+        assert!(continuous
+            .validate_dtype(&DataType::Time64(TimeUnit::Nanosecond))
+            .is_ok());
     }
 
     #[test]

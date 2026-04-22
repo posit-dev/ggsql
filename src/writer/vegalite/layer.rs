@@ -850,22 +850,30 @@ impl TextRenderer {
             .collect();
 
         // Extract rows at change indices (only font columns) using arrow take
-        let indices_array: ArrayRef = std::sync::Arc::new(
-            arrow::array::UInt32Array::from(
-                change_indices.iter().map(|&i| i as u32).collect::<Vec<u32>>(),
-            ),
-        );
+        let indices_array: ArrayRef = std::sync::Arc::new(arrow::array::UInt32Array::from(
+            change_indices
+                .iter()
+                .map(|&i| i as u32)
+                .collect::<Vec<u32>>(),
+        ));
 
         let mut result_cols: Vec<(&str, ArrayRef)> = Vec::new();
         for aesthetic in font_aesthetics {
             if let Some(col) = font_columns.get(aesthetic) {
-                let taken = compute::take(col.as_ref(), indices_array.as_any().downcast_ref::<arrow::array::UInt32Array>().unwrap(), None)
-                    .map_err(|e| {
-                        GgsqlError::InternalError(format!(
-                            "Failed to take indices from {}: {}",
-                            aesthetic, e
-                        ))
-                    })?;
+                let taken = compute::take(
+                    col.as_ref(),
+                    indices_array
+                        .as_any()
+                        .downcast_ref::<arrow::array::UInt32Array>()
+                        .unwrap(),
+                    None,
+                )
+                .map_err(|e| {
+                    GgsqlError::InternalError(format!(
+                        "Failed to take indices from {}: {}",
+                        aesthetic, e
+                    ))
+                })?;
                 let col_name = naming::aesthetic_column(aesthetic);
                 result_cols.push((Box::leak(col_name.into_boxed_str()), taken));
             }
@@ -1113,7 +1121,7 @@ impl TextRenderer {
 
         // Helper to extract numeric column values (for angle)
         let get_f64 = |aesthetic: &str| -> Option<f64> {
-            use crate::array_util::{as_str, as_f64, cast_array};
+            use crate::array_util::{as_f64, as_str, cast_array};
             use arrow::datatypes::DataType;
             let col_name = naming::aesthetic_column(aesthetic);
             let col = df.column(&col_name).ok()?;
@@ -1816,11 +1824,13 @@ impl BoxplotRenderer {
             }
 
             // Build filtered DataFrame by taking matching rows
-            let indices_arr: arrow::array::ArrayRef = std::sync::Arc::new(
-                arrow::array::UInt32Array::from(
-                    matching_indices.iter().map(|&i| i as u32).collect::<Vec<u32>>(),
-                ),
-            );
+            let indices_arr: arrow::array::ArrayRef =
+                std::sync::Arc::new(arrow::array::UInt32Array::from(
+                    matching_indices
+                        .iter()
+                        .map(|&i| i as u32)
+                        .collect::<Vec<u32>>(),
+                ));
             let indices_u32 = indices_arr
                 .as_any()
                 .downcast_ref::<arrow::array::UInt32Array>()
@@ -1834,11 +1844,14 @@ impl BoxplotRenderer {
                     continue; // Drop the type column
                 }
                 let taken = arrow::compute::take(columns[col_idx].as_ref(), indices_u32, None)
-                    .map_err(|e| GgsqlError::WriterError(format!("Failed to filter column: {}", e)))?;
+                    .map_err(|e| {
+                        GgsqlError::WriterError(format!("Failed to filter column: {}", e))
+                    })?;
                 new_cols.push((Box::leak(col_name.clone().into_boxed_str()), taken));
             }
-            let filtered = DataFrame::new(new_cols)
-                .map_err(|e| GgsqlError::WriterError(format!("Failed to create filtered DataFrame: {}", e)))?;
+            let filtered = DataFrame::new(new_cols).map_err(|e| {
+                GgsqlError::WriterError(format!("Failed to create filtered DataFrame: {}", e))
+            })?;
 
             let values = if binned_columns.is_empty() {
                 dataframe_to_values(&filtered)?
@@ -2409,8 +2422,8 @@ mod tests {
     }
     #[test]
     fn test_text_constant_font() {
-        use crate::naming;
         use crate::df;
+        use crate::naming;
 
         let renderer = TextRenderer;
         let layer = Layer::new(crate::plot::Geom::text());
@@ -2445,8 +2458,8 @@ mod tests {
 
     #[test]
     fn test_text_varying_font() {
-        use crate::naming;
         use crate::df;
+        use crate::naming;
 
         let renderer = TextRenderer;
         let layer = Layer::new(crate::plot::Geom::text());
@@ -2483,8 +2496,8 @@ mod tests {
 
     #[test]
     fn test_text_nested_layers_structure() {
-        use crate::naming;
         use crate::df;
+        use crate::naming;
 
         let renderer = TextRenderer;
         let layer = Layer::new(crate::plot::Geom::text());
@@ -2570,8 +2583,8 @@ mod tests {
 
     #[test]
     fn test_text_varying_angle() {
-        use crate::naming;
         use crate::df;
+        use crate::naming;
 
         let renderer = TextRenderer;
         let layer = Layer::new(crate::plot::Geom::text());
@@ -2642,8 +2655,8 @@ mod tests {
 
     #[test]
     fn test_text_varying_angle_numeric() {
-        use crate::naming;
         use crate::df;
+        use crate::naming;
 
         let renderer = TextRenderer;
         let layer = Layer::new(crate::plot::Geom::text());
@@ -3982,8 +3995,8 @@ mod tests {
 
     #[test]
     fn test_path_renderer_varying_aesthetics_metadata() {
-        use crate::plot::{AestheticValue, Geom, Layer};
         use crate::df;
+        use crate::plot::{AestheticValue, Geom, Layer};
 
         let renderer = PathRenderer;
         let mut layer = Layer::new(Geom::line());
@@ -4023,8 +4036,8 @@ mod tests {
 
     #[test]
     fn test_path_renderer_trail_mark_for_varying_linewidth() {
-        use crate::plot::{AestheticValue, Geom, Layer};
         use crate::df;
+        use crate::plot::{AestheticValue, Geom, Layer};
 
         let renderer = PathRenderer;
         let mut layer = Layer::new(Geom::line());
@@ -4087,8 +4100,8 @@ mod tests {
 
     #[test]
     fn test_path_renderer_trail_mark_with_stroke_legend() {
-        use crate::plot::{AestheticValue, Geom, Layer};
         use crate::df;
+        use crate::plot::{AestheticValue, Geom, Layer};
 
         let context = RenderContext::default_for_test();
         let renderer = PathRenderer;
@@ -4173,8 +4186,8 @@ mod tests {
 
     #[test]
     fn test_path_renderer_segmentation_for_varying_stroke() {
-        use crate::plot::{AestheticValue, Geom, Layer};
         use crate::df;
+        use crate::plot::{AestheticValue, Geom, Layer};
 
         let renderer = PathRenderer;
         let mut layer = Layer::new(Geom::line());

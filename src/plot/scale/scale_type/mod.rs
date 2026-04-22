@@ -245,7 +245,10 @@ fn compute_unique_values_multi(columns: &[&ArrayRef]) -> Vec<ArrayElement> {
 ///
 /// If `include_null` is true, `ArrayElement::Null` is appended at the end if any null
 /// values exist in the data.
-pub fn compute_unique_values_native(columns: &[&ArrayRef], include_null: bool) -> Vec<ArrayElement> {
+pub fn compute_unique_values_native(
+    columns: &[&ArrayRef],
+    include_null: bool,
+) -> Vec<ArrayElement> {
     if columns.is_empty() {
         return Vec::new();
     }
@@ -1119,7 +1122,9 @@ impl ScaleType {
             | DataType::Float64 => Self::continuous(),
             // Temporal types are fundamentally continuous (days/µs/ns since epoch)
             // The temporal transform is inferred from the column data type
-            DataType::Date32 | DataType::Timestamp(_, _) | DataType::Time64(_) => Self::continuous(),
+            DataType::Date32 | DataType::Timestamp(_, _) | DataType::Time64(_) => {
+                Self::continuous()
+            }
             DataType::Boolean | DataType::Utf8 => Self::discrete(),
             _ => Self::discrete(),
         }
@@ -2168,7 +2173,10 @@ mod tests {
             ScaleType::infer(&DataType::Timestamp(TimeUnit::Microsecond, None)),
             ScaleType::continuous()
         );
-        assert_eq!(ScaleType::infer(&DataType::Time64(TimeUnit::Nanosecond)), ScaleType::continuous());
+        assert_eq!(
+            ScaleType::infer(&DataType::Time64(TimeUnit::Nanosecond)),
+            ScaleType::continuous()
+        );
 
         // Discrete
         assert_eq!(ScaleType::infer(&DataType::Utf8), ScaleType::discrete());
@@ -2749,7 +2757,7 @@ mod tests {
             "fill",
             None,
             Some(&DataType::Utf8), // Column is String
-            Some(&bool_range),       // But input range is Bool
+            Some(&bool_range),     // But input range is Bool
         );
         assert!(result.is_ok());
         assert_eq!(result.unwrap().transform_kind(), TransformKind::Bool);
@@ -3238,11 +3246,11 @@ mod tests {
     #[test]
     fn test_coerce_dtypes_single_type() {
         assert_eq!(coerce_dtypes(&[DataType::Int64]).unwrap(), DataType::Int64);
+        assert_eq!(coerce_dtypes(&[DataType::Utf8]).unwrap(), DataType::Utf8);
         assert_eq!(
-            coerce_dtypes(&[DataType::Utf8]).unwrap(),
-            DataType::Utf8
+            coerce_dtypes(&[DataType::Date32]).unwrap(),
+            DataType::Date32
         );
-        assert_eq!(coerce_dtypes(&[DataType::Date32]).unwrap(), DataType::Date32);
     }
 
     #[test]
@@ -3374,7 +3382,10 @@ mod tests {
             dtype_to_cast_target(&DataType::Float64),
             CastTargetType::Number
         );
-        assert_eq!(dtype_to_cast_target(&DataType::Date32), CastTargetType::Date);
+        assert_eq!(
+            dtype_to_cast_target(&DataType::Date32),
+            CastTargetType::Date
+        );
         assert_eq!(
             dtype_to_cast_target(&DataType::Utf8),
             CastTargetType::String

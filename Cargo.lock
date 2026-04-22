@@ -1525,6 +1525,7 @@ dependencies = [
  "serde_json",
  "sqlite-wasm-rs",
  "tokio",
+ "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
 ]

@@ -213,10 +213,7 @@ fn arrow_type_to_sqlite(dtype: &DataType) -> &'static str {
 }
 
 /// Convert an Arrow array value at a given row index to a rusqlite Value for parameter binding.
-fn array_value_to_sqlite(
-    array: &ArrayRef,
-    row_idx: usize,
-) -> rusqlite::types::Value {
+fn array_value_to_sqlite(array: &ArrayRef, row_idx: usize) -> rusqlite::types::Value {
     use crate::array_util;
     use rusqlite::types::Value;
 

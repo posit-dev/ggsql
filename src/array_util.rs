@@ -4,9 +4,9 @@
 //! with arrow downcasting via `as_f64(array)`, `as_str(array)`, etc.
 
 use arrow::array::{
-    Array, ArrayRef, BooleanArray, Date32Array, Float32Array, Float64Array, Int16Array,
-    Int32Array, Int64Array, Int8Array, StringArray, Time64NanosecondArray,
-    TimestampMicrosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
+    Array, ArrayRef, BooleanArray, Date32Array, Float32Array, Float64Array, Int16Array, Int32Array,
+    Int64Array, Int8Array, StringArray, Time64NanosecondArray, TimestampMicrosecondArray,
+    UInt16Array, UInt32Array, UInt64Array, UInt8Array,
 };
 use arrow::compute;
 use arrow::datatypes::DataType;

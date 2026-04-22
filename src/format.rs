@@ -235,8 +235,7 @@ pub fn format_dataframe_column(
         // Numeric column - use shared format_number helper for clean integer formatting
         use crate::plot::format_number;
 
-        let f64_col = as_f64(&cast)
-            .map_err(|e| format!("Failed to cast column to f64: {}", e))?;
+        let f64_col = as_f64(&cast).map_err(|e| format!("Failed to cast column to f64: {}", e))?;
 
         (0..f64_col.len())
             .map(|i| {
@@ -259,10 +258,12 @@ pub fn format_dataframe_column(
     let placeholders = parse_placeholders(template);
     let formatted_values: Vec<Option<&str>> = string_values
         .iter()
-        .map(|opt| opt.as_ref().map(|s| {
-            // We need to own the formatted strings, so we'll collect differently
-            s.as_str()
-        }))
+        .map(|opt| {
+            opt.as_ref().map(|s| {
+                // We need to own the formatted strings, so we'll collect differently
+                s.as_str()
+            })
+        })
         .collect();
 
     // Apply formatting and collect owned strings
@@ -271,10 +272,8 @@ pub fn format_dataframe_column(
         .map(|opt| opt.map(|s| format_value(&s, template, &placeholders)))
         .collect();
 
-    let formatted_refs: Vec<Option<&str>> = formatted_owned
-        .iter()
-        .map(|opt| opt.as_deref())
-        .collect();
+    let formatted_refs: Vec<Option<&str>> =
+        formatted_owned.iter().map(|opt| opt.as_deref()).collect();
     let formatted_col = new_str_array(formatted_refs);
 
     // Replace column in DataFrame

@@ -226,11 +226,7 @@ impl GgsqlContext {
         let max_rows = 100usize;
         let total_rows = df.height();
         let truncated = total_rows > max_rows;
-        let df = if truncated {
-            df.slice(0, max_rows)
-        } else {
-            df
-        };
+        let df = if truncated { df.slice(0, max_rows) } else { df };
 
         let columns: Vec<String> = df.get_column_names();
         let mut rows: Vec<Vec<String>> = Vec::with_capacity(df.height());

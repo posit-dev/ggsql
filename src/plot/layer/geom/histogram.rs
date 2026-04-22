@@ -297,7 +297,9 @@ pub fn extract_histogram_min_max(df: &DataFrame) -> Result<(f64, f64)> {
         .ok()
         .and_then(|col| {
             use arrow::array::Array;
-            if col.is_null(0) { return None; }
+            if col.is_null(0) {
+                return None;
+            }
             crate::array_util::as_f64(col).ok().map(|a| a.value(0))
         })
         .ok_or_else(|| {
@@ -309,7 +311,9 @@ pub fn extract_histogram_min_max(df: &DataFrame) -> Result<(f64, f64)> {
         .ok()
         .and_then(|col| {
             use arrow::array::Array;
-            if col.is_null(0) { return None; }
+            if col.is_null(0) {
+                return None;
+            }
             crate::array_util::as_f64(col).ok().map(|a| a.value(0))
         })
         .ok_or_else(|| {

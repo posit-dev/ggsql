@@ -644,66 +644,61 @@ pub fn coerce_column_to_type(
 
     // Coerce based on target type
     let new_array: arrow::array::ArrayRef = match target_type {
-        ArrayElementType::Boolean => {
-            match dtype {
-                DataType::Utf8 => {
-                    let str_arr = as_str(column)?;
-                    let bool_vec: Vec<Option<bool>> = (0..str_arr.len())
-                        .enumerate()
-                        .map(|(idx, i)| {
-                            if str_arr.is_null(i) {
-                                Ok(None)
-                            } else {
-                                match str_arr.value(i).to_lowercase().as_str() {
-                                    "true" | "yes" | "1" => Ok(Some(true)),
-                                    "false" | "no" | "0" => Ok(Some(false)),
-                                    s => Err(GgsqlError::ValidationError(format!(
-                                        "Column '{}' row {}: Cannot coerce string '{}' to boolean",
-                                        column_name, idx, s
-                                    ))),
-                                }
+        ArrayElementType::Boolean => match dtype {
+            DataType::Utf8 => {
+                let str_arr = as_str(column)?;
+                let bool_vec: Vec<Option<bool>> = (0..str_arr.len())
+                    .enumerate()
+                    .map(|(idx, i)| {
+                        if str_arr.is_null(i) {
+                            Ok(None)
+                        } else {
+                            match str_arr.value(i).to_lowercase().as_str() {
+                                "true" | "yes" | "1" => Ok(Some(true)),
+                                "false" | "no" | "0" => Ok(Some(false)),
+                                s => Err(GgsqlError::ValidationError(format!(
+                                    "Column '{}' row {}: Cannot coerce string '{}' to boolean",
+                                    column_name, idx, s
+                                ))),
                             }
-                        })
-                        .collect::<Result<Vec<_>>>()?;
-                    new_bool_array(bool_vec)
-                }
-                DataType::Int64 | DataType::Int32 | DataType::Float64 | DataType::Float32 => {
-                    let f64_col = cast_array(column, &DataType::Float64)?;
-                    let f64_arr = as_f64(&f64_col)?;
-                    let bool_vec: Vec<Option<bool>> = (0..f64_arr.len())
-                        .map(|i| {
-                            if f64_arr.is_null(i) {
-                                None
-                            } else {
-                                Some(f64_arr.value(i) != 0.0)
-                            }
-                        })
-                        .collect();
-                    new_bool_array(bool_vec)
-                }
-                _ => {
-                    return Err(GgsqlError::ValidationError(format!(
-                        "Cannot coerce column '{}' of type {:?} to boolean",
-                        column_name, dtype
-                    )));
-                }
+                        }
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                new_bool_array(bool_vec)
             }
-        }
+            DataType::Int64 | DataType::Int32 | DataType::Float64 | DataType::Float32 => {
+                let f64_col = cast_array(column, &DataType::Float64)?;
+                let f64_arr = as_f64(&f64_col)?;
+                let bool_vec: Vec<Option<bool>> = (0..f64_arr.len())
+                    .map(|i| {
+                        if f64_arr.is_null(i) {
+                            None
+                        } else {
+                            Some(f64_arr.value(i) != 0.0)
+                        }
+                    })
+                    .collect();
+                new_bool_array(bool_vec)
+            }
+            _ => {
+                return Err(GgsqlError::ValidationError(format!(
+                    "Cannot coerce column '{}' of type {:?} to boolean",
+                    column_name, dtype
+                )));
+            }
+        },
 
-        ArrayElementType::Number => {
-            cast_array(column, &DataType::Float64).map_err(|e| {
-                GgsqlError::ValidationError(format!(
-                    "Cannot coerce column '{}' to number: {}",
-                    column_name, e
-                ))
-            })?
-        }
+        ArrayElementType::Number => cast_array(column, &DataType::Float64).map_err(|e| {
+            GgsqlError::ValidationError(format!(
+                "Cannot coerce column '{}' to number: {}",
+                column_name, e
+            ))
+        })?,
 
-        ArrayElementType::Date => {
-            match dtype {
-                DataType::Utf8 => {
-                    let str_arr = as_str(column)?;
-                    let date_vec: Vec<Option<i32>> = (0..str_arr.len())
+        ArrayElementType::Date => match dtype {
+            DataType::Utf8 => {
+                let str_arr = as_str(column)?;
+                let date_vec: Vec<Option<i32>> = (0..str_arr.len())
                         .enumerate()
                         .map(|(idx, i)| {
                             if str_arr.is_null(i) {
@@ -725,61 +720,57 @@ pub fn coerce_column_to_type(
                             }
                         })
                         .collect::<Result<Vec<_>>>()?;
-                    let i32_arr = new_i32_array(date_vec);
-                    cast_array(&i32_arr, &DataType::Date32)?
-                }
-                _ => {
-                    return Err(GgsqlError::ValidationError(format!(
-                        "Cannot coerce column '{}' of type {:?} to date",
-                        column_name, dtype
-                    )));
-                }
+                let i32_arr = new_i32_array(date_vec);
+                cast_array(&i32_arr, &DataType::Date32)?
             }
-        }
-
-        ArrayElementType::DateTime => {
-            match dtype {
-                DataType::Utf8 => {
-                    let str_arr = as_str(column)?;
-                    let dt_vec: Vec<Option<i64>> = (0..str_arr.len())
-                        .enumerate()
-                        .map(|(idx, i)| {
-                            if str_arr.is_null(i) {
-                                Ok(None)
-                            } else {
-                                let s = str_arr.value(i);
-                                ArrayElement::from_datetime_string(s)
-                                    .and_then(|e| match e {
-                                        ArrayElement::DateTime(dt) => Some(dt),
-                                        _ => None,
-                                    })
-                                    .ok_or_else(|| {
-                                        GgsqlError::ValidationError(format!(
-                                            "Column '{}' row {}: Cannot coerce string '{}' to datetime",
-                                            column_name, idx, s
-                                        ))
-                                    })
-                                    .map(Some)
-                            }
-                        })
-                        .collect::<Result<Vec<_>>>()?;
-                    let i64_arr = new_i64_array(dt_vec);
-                    cast_array(&i64_arr, &DataType::Timestamp(TimeUnit::Microsecond, None))?
-                }
-                _ => {
-                    return Err(GgsqlError::ValidationError(format!(
-                        "Cannot coerce column '{}' of type {:?} to datetime",
-                        column_name, dtype
-                    )));
-                }
+            _ => {
+                return Err(GgsqlError::ValidationError(format!(
+                    "Cannot coerce column '{}' of type {:?} to date",
+                    column_name, dtype
+                )));
             }
-        }
+        },
 
-        ArrayElementType::Time => {
-            match dtype {
-                DataType::Utf8 => {
-                    let str_arr = as_str(column)?;
-                    let time_vec: Vec<Option<i64>> = (0..str_arr.len())
+        ArrayElementType::DateTime => match dtype {
+            DataType::Utf8 => {
+                let str_arr = as_str(column)?;
+                let dt_vec: Vec<Option<i64>> = (0..str_arr.len())
+                    .enumerate()
+                    .map(|(idx, i)| {
+                        if str_arr.is_null(i) {
+                            Ok(None)
+                        } else {
+                            let s = str_arr.value(i);
+                            ArrayElement::from_datetime_string(s)
+                                .and_then(|e| match e {
+                                    ArrayElement::DateTime(dt) => Some(dt),
+                                    _ => None,
+                                })
+                                .ok_or_else(|| {
+                                    GgsqlError::ValidationError(format!(
+                                        "Column '{}' row {}: Cannot coerce string '{}' to datetime",
+                                        column_name, idx, s
+                                    ))
+                                })
+                                .map(Some)
+                        }
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                let i64_arr = new_i64_array(dt_vec);
+                cast_array(&i64_arr, &DataType::Timestamp(TimeUnit::Microsecond, None))?
+            }
+            _ => {
+                return Err(GgsqlError::ValidationError(format!(
+                    "Cannot coerce column '{}' of type {:?} to datetime",
+                    column_name, dtype
+                )));
+            }
+        },
+
+        ArrayElementType::Time => match dtype {
+            DataType::Utf8 => {
+                let str_arr = as_str(column)?;
+                let time_vec: Vec<Option<i64>> = (0..str_arr.len())
                         .enumerate()
                         .map(|(idx, i)| {
                             if str_arr.is_null(i) {
@@ -801,26 +792,23 @@ pub fn coerce_column_to_type(
                             }
                         })
                         .collect::<Result<Vec<_>>>()?;
-                    let i64_arr = new_i64_array(time_vec);
-                    cast_array(&i64_arr, &DataType::Time64(TimeUnit::Nanosecond))?
-                }
-                _ => {
-                    return Err(GgsqlError::ValidationError(format!(
-                        "Cannot coerce column '{}' of type {:?} to time",
-                        column_name, dtype
-                    )));
-                }
+                let i64_arr = new_i64_array(time_vec);
+                cast_array(&i64_arr, &DataType::Time64(TimeUnit::Nanosecond))?
             }
-        }
+            _ => {
+                return Err(GgsqlError::ValidationError(format!(
+                    "Cannot coerce column '{}' of type {:?} to time",
+                    column_name, dtype
+                )));
+            }
+        },
 
-        ArrayElementType::String => {
-            cast_array(column, &DataType::Utf8).map_err(|e| {
-                GgsqlError::ValidationError(format!(
-                    "Cannot coerce column '{}' to string: {}",
-                    column_name, e
-                ))
-            })?
-        }
+        ArrayElementType::String => cast_array(column, &DataType::Utf8).map_err(|e| {
+            GgsqlError::ValidationError(format!(
+                "Cannot coerce column '{}' to string: {}",
+                column_name, e
+            ))
+        })?,
     };
 
     // Replace the column in the DataFrame
@@ -1246,9 +1234,8 @@ pub fn apply_oob_to_column_numeric(
             let schema = df.schema();
             for (i, field) in schema.fields().iter().enumerate() {
                 let col_arr = df.get_columns()[i].clone();
-                let filtered = arrow::compute::filter(&col_arr, &mask).map_err(|e| {
-                    GgsqlError::InternalError(format!("Failed to filter: {}", e))
-                })?;
+                let filtered = arrow::compute::filter(&col_arr, &mask)
+                    .map_err(|e| GgsqlError::InternalError(format!("Failed to filter: {}", e)))?;
                 new_columns.push((field.name().as_str(), filtered));
             }
             DataFrame::new(new_columns)
@@ -1304,9 +1291,8 @@ pub fn filter_null_rows(df: &DataFrame, col_name: &str) -> Result<DataFrame> {
     let schema = df.schema();
     for (i, field) in schema.fields().iter().enumerate() {
         let col_arr = df.get_columns()[i].clone();
-        let filtered = arrow::compute::filter(&col_arr, &mask).map_err(|e| {
-            GgsqlError::InternalError(format!("Failed to filter NULL rows: {}", e))
-        })?;
+        let filtered = arrow::compute::filter(&col_arr, &mask)
+            .map_err(|e| GgsqlError::InternalError(format!("Failed to filter NULL rows: {}", e)))?;
         new_columns.push((field.name().as_str(), filtered));
     }
     DataFrame::new(new_columns)
@@ -1409,7 +1395,10 @@ mod tests {
             )),
             ScaleType::continuous()
         );
-        assert_eq!(ScaleType::infer(&DataType::Time64(arrow::datatypes::TimeUnit::Nanosecond)), ScaleType::continuous());
+        assert_eq!(
+            ScaleType::infer(&DataType::Time64(arrow::datatypes::TimeUnit::Nanosecond)),
+            ScaleType::continuous()
+        );
 
         // Test discrete types
         assert_eq!(ScaleType::infer(&DataType::Utf8), ScaleType::discrete());
@@ -1647,8 +1636,8 @@ mod tests {
 
     #[test]
     fn test_resolve_scales_polar_theta_no_expansion() {
-        use crate::plot::projection::{Coord, Projection};
         use crate::df;
+        use crate::plot::projection::{Coord, Projection};
 
         // Create a Plot with a polar projection
         let mut spec = Plot::new();

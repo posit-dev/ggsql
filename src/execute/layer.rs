@@ -177,14 +177,12 @@ pub fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataF
             AestheticValue::Literal(lit) => {
                 // Add constant column for literal values
                 let array = literal_to_array(lit, row_count);
-                df = df
-                    .with_column(&target_col_name, array)
-                    .map_err(|e| {
-                        GgsqlError::InternalError(format!(
-                            "Failed to add literal column '{}': {}",
-                            target_col_name, e
-                        ))
-                    })?;
+                df = df.with_column(&target_col_name, array).map_err(|e| {
+                    GgsqlError::InternalError(format!(
+                        "Failed to add literal column '{}': {}",
+                        target_col_name, e
+                    ))
+                })?;
             }
         }
     }
@@ -227,8 +225,7 @@ pub fn literal_to_array(lit: &ParameterValue, len: usize) -> arrow::array::Array
                 ArrayElement::Date(days) => {
                     let arr: arrow::array::ArrayRef =
                         Arc::new(arrow::array::Int32Array::from(vec![days; len]));
-                    cast_array(&arr, &DataType::Date32)
-                        .expect("Date cast should not fail")
+                    cast_array(&arr, &DataType::Date32).expect("Date cast should not fail")
                 }
                 ArrayElement::Time(nanos) => {
                     let arr: arrow::array::ArrayRef =
@@ -1077,10 +1074,7 @@ mod tests {
         use arrow::datatypes::DataType;
 
         // Date literal should parse to Date32 type
-        let array = literal_to_array(
-            &ParameterValue::String("1973-06-01".to_string()),
-            5,
-        );
+        let array = literal_to_array(&ParameterValue::String("1973-06-01".to_string()), 5);
         assert_eq!(
             array.data_type(),
             &DataType::Date32,
@@ -1115,10 +1109,7 @@ mod tests {
         use arrow::datatypes::{DataType, TimeUnit};
 
         // Time literal should parse to Time64 type
-        let array = literal_to_array(
-            &ParameterValue::String("14:30:00".to_string()),
-            4,
-        );
+        let array = literal_to_array(&ParameterValue::String("14:30:00".to_string()), 4);
         assert_eq!(
             array.data_type(),
             &DataType::Time64(TimeUnit::Nanosecond),
@@ -1133,10 +1124,7 @@ mod tests {
         use arrow::datatypes::DataType;
 
         // Non-temporal string should remain Utf8 type
-        let array = literal_to_array(
-            &ParameterValue::String("not a date".to_string()),
-            2,
-        );
+        let array = literal_to_array(&ParameterValue::String("not a date".to_string()), 2);
         assert_eq!(
             array.data_type(),
             &DataType::Utf8,

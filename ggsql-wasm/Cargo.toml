@@ -26,8 +26,10 @@ tokio = { version = "1.35", features = ["full"] }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 tokio = { version = "1.35", default-features = false }
 sqlite-wasm-rs = "0.5.2"
-# getrandom is pulled in transitively by arrow (via ahash/const-random) and needs
-# the "js" feature to support wasm32-unknown-unknown. This must be declared here
-# so cargo's feature unification activates it for the transitive dep.
+# Transitive dep feature overrides for wasm32-unknown-unknown.
+# Cargo's feature unification activates these on the transitive deps.
+# - getrandom: pulled in by arrow (via ahash/const-random), needs "js" for wasm
+# - uuid: pulled in by ggsql, needs "js" to obtain randomness on wasm
 getrandom = { version = "0.2", features = ["js"] }
+uuid = { workspace = true, features = ["js"] }
 

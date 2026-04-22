@@ -238,11 +238,11 @@ fn stat_violin(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::array::Array;
     use crate::plot::AestheticValue;
     use crate::reader::duckdb::DuckDBReader;
     use crate::reader::AnsiDialect;
     use crate::reader::Reader;
+    use arrow::array::Array;
 
     /// Count unique non-null string values in an ArrayRef.
     fn count_unique_strings(col: &arrow::array::ArrayRef) -> usize {

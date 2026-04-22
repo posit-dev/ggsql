@@ -241,8 +241,7 @@ pub fn column_min_f64(df: &DataFrame, col_name: &str) -> Result<Option<f64>> {
     if col.data_type() == &arrow::datatypes::DataType::Float64 {
         min_f64(col)
     } else {
-        let casted =
-            crate::array_util::cast_array(col, &arrow::datatypes::DataType::Float64)?;
+        let casted = crate::array_util::cast_array(col, &arrow::datatypes::DataType::Float64)?;
         min_f64(&casted)
     }
 }
@@ -260,7 +259,6 @@ pub fn fill_null_f64_ref(array: &ArrayRef, fill: f64) -> Result<ArrayRef> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     #[test]
     fn test_grouped_cumsum_single_group() {

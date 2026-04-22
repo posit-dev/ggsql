@@ -38,9 +38,8 @@ impl DataFrame {
             .collect();
         let schema = Arc::new(Schema::new(fields));
         let arrays: Vec<ArrayRef> = columns.into_iter().map(|(_, arr)| arr).collect();
-        let rb = RecordBatch::try_new(schema, arrays).map_err(|e| {
-            GgsqlError::InternalError(format!("Failed to create DataFrame: {}", e))
-        })?;
+        let rb = RecordBatch::try_new(schema, arrays)
+            .map_err(|e| GgsqlError::InternalError(format!("Failed to create DataFrame: {}", e)))?;
         Ok(Self { inner: rb })
     }
 
@@ -196,8 +195,7 @@ impl DataFrame {
 
     /// Drop multiple columns by name. Silently ignores names that don't exist.
     pub fn drop_many<S: AsRef<str>>(&self, names: &[S]) -> Self {
-        let drop_set: std::collections::HashSet<&str> =
-            names.iter().map(|s| s.as_ref()).collect();
+        let drop_set: std::collections::HashSet<&str> = names.iter().map(|s| s.as_ref()).collect();
 
         let mut fields = Vec::new();
         let mut arrays = Vec::new();
@@ -433,7 +431,10 @@ mod tests {
         assert_eq!(df.height(), 3);
         assert_eq!(df.width(), 2);
         assert_eq!(df.shape(), (3, 2));
-        assert_eq!(df.get_column_names(), vec!["x".to_string(), "y".to_string()]);
+        assert_eq!(
+            df.get_column_names(),
+            vec!["x".to_string(), "y".to_string()]
+        );
         assert!(df.column("x").is_ok());
         assert!(df.column("z").is_err());
     }
@@ -454,11 +455,17 @@ mod tests {
         .unwrap();
 
         let df2 = df
-            .with_column("y", Arc::new(Float64Array::from(vec![10.0, 20.0])) as ArrayRef)
+            .with_column(
+                "y",
+                Arc::new(Float64Array::from(vec![10.0, 20.0])) as ArrayRef,
+            )
             .unwrap();
 
         assert_eq!(df2.width(), 2);
-        assert_eq!(df2.get_column_names(), vec!["x".to_string(), "y".to_string()]);
+        assert_eq!(
+            df2.get_column_names(),
+            vec!["x".to_string(), "y".to_string()]
+        );
     }
 
     #[test]
@@ -573,7 +580,10 @@ mod tests {
 
         assert_eq!(df.height(), 2);
         assert_eq!(df.width(), 3);
-        assert_eq!(df.get_column_names(), vec!["name".to_string(), "age".to_string(), "score".to_string()]);
+        assert_eq!(
+            df.get_column_names(),
+            vec!["name".to_string(), "age".to_string(), "score".to_string()]
+        );
 
         let names = df
             .column("name")

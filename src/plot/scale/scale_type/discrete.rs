@@ -398,7 +398,7 @@ mod tests {
             "color",
             None,
             Some(&DataType::Utf8), // String column
-            Some(&bool_range),       // But bool input range
+            Some(&bool_range),     // But bool input range
         );
         assert!(result.is_ok());
         assert_eq!(result.unwrap().transform_kind(), TransformKind::Bool);

@@ -472,9 +472,8 @@ fn cross_join_with_facet_values(
         .flat_map(|_| (0..n_values).map(|j| j as u32))
         .collect();
     let facet_idx = UInt32Array::from(facet_indices);
-    let facet_col = arrow::compute::take(unique_values.as_ref(), &facet_idx, None).map_err(|e| {
-        GgsqlError::InternalError(format!("Failed to create facet column: {}", e))
-    })?;
+    let facet_col = arrow::compute::take(unique_values.as_ref(), &facet_idx, None)
+        .map_err(|e| GgsqlError::InternalError(format!("Failed to create facet column: {}", e)))?;
     new_columns.push((&aes_col, facet_col));
 
     DataFrame::new(new_columns)

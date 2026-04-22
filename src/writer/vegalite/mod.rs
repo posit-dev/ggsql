@@ -1204,9 +1204,9 @@ impl Writer for VegaLiteWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::df;
     use crate::plot::{Labels, Layer, ParameterValue};
     use crate::Geom;
-    use crate::df;
     use serde_json::Value;
     use std::collections::HashMap;
     use std::sync::LazyLock;
