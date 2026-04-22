@@ -45,6 +45,7 @@ mod segment;
 mod smooth;
 mod text;
 mod tile;
+mod spatial;
 mod violin;
 
 // Re-export types
@@ -70,6 +71,7 @@ pub use segment::Segment;
 pub use smooth::Smooth;
 pub use text::Text;
 pub use tile::Tile;
+pub use spatial::Spatial;
 pub use violin::Violin;
 
 use crate::plot::types::{ParameterValue, Schema};
@@ -97,6 +99,7 @@ pub enum GeomType {
     Arrow,
     Rule,
     ErrorBar,
+    Spatial,
 }
 
 impl std::fmt::Display for GeomType {
@@ -120,6 +123,7 @@ impl std::fmt::Display for GeomType {
             GeomType::Arrow => "arrow",
             GeomType::Rule => "rule",
             GeomType::ErrorBar => "errorbar",
+            GeomType::Spatial => "spatial",
         };
         write!(f, "{}", s)
     }
@@ -350,6 +354,11 @@ impl Geom {
         Self(Arc::new(ErrorBar))
     }
 
+    /// Create a Spatial geom
+    pub fn spatial() -> Self {
+        Self(Arc::new(Spatial))
+    }
+
     /// Create a Geom from a GeomType
     pub fn from_type(t: GeomType) -> Self {
         match t {
@@ -371,6 +380,7 @@ impl Geom {
             GeomType::Arrow => Self::arrow(),
             GeomType::Rule => Self::rule(),
             GeomType::ErrorBar => Self::errorbar(),
+            GeomType::Spatial => Self::spatial(),
         }
     }
 
@@ -583,6 +593,7 @@ mod tests {
             GeomType::Arrow,
             GeomType::Rule,
             GeomType::ErrorBar,
+            GeomType::Spatial,
         ];
 
         // This test is rigged to trigger a compiler error when new variants are added.
@@ -605,7 +616,8 @@ mod tests {
             | GeomType::Segment
             | GeomType::Arrow
             | GeomType::Rule
-            | GeomType::ErrorBar => {}
+            | GeomType::ErrorBar
+            | GeomType::Spatial => {}
         };
 
         for geom_type in all_geom_types {
