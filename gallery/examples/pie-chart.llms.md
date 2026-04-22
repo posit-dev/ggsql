@@ -88,7 +88,7 @@ VISUALISE island AS fill FROM ggsql:penguins
 
 ### Faceting pie charts
 
-When faceting, you will typically want to pies to be whole, which requires the `SETTING free => 'angle'` specification.
+When faceting, you will typically want the pies to be whole, which requires the `SETTING free => 'angle'` specification.
 
 ``` ggsql
 VISUALISE island AS fill FROM ggsql:penguins
