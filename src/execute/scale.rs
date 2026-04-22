@@ -1726,6 +1726,9 @@ mod tests {
 
         let result = apply_oob_to_column_numeric(&df, "date", 19723.0, 20089.0, OOB_SQUISH)
             .expect("oob squish should handle Date32");
-        assert_eq!(result.column("date").unwrap().data_type(), &DataType::Date32);
+        assert_eq!(
+            result.column("date").unwrap().data_type(),
+            &DataType::Date32
+        );
     }
 }
