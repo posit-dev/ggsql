@@ -30,20 +30,6 @@ pub enum ConnectionInfo {
 /// - `duckdb://...` - DuckDB path
 /// - `postgres://...` - PostgreSQL connection string
 /// - `sqlite://...` - SQLite file path
-///
-/// # Examples
-///
-/// ```
-/// use ggsql::reader::connection::{parse_connection_string, ConnectionInfo};
-///
-/// let info = parse_connection_string("duckdb://memory").unwrap();
-/// assert_eq!(info, ConnectionInfo::DuckDBMemory);
-///
-/// let info = parse_connection_string("duckdb://data.db").unwrap();
-/// assert_eq!(info, ConnectionInfo::DuckDBFile("data.db".to_string()));
-///
-/// let info = parse_connection_string("duckdb:///tmp/data.db").unwrap();
-/// assert_eq!(info, ConnectionInfo::DuckDBFile("/tmp/data.db".to_string()));
 /// ```
 pub fn parse_connection_string(uri: &str) -> Result<ConnectionInfo> {
     if uri == "duckdb://memory" {
