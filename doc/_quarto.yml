@@ -22,7 +22,7 @@ website:
   announcement:
     icon: info-circle
     dismissable: true
-    content: "ggsql is still in early development and all functionality is subject to change"
+    content: "ggsql is still in early development and all functionality is subject to change. Read the [alpha-release announcement](https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/)"
     type: primary
     position: below-navbar
   twitter-card:
@@ -57,16 +57,25 @@ website:
         href: gallery/index.qmd
       - href: faq.qmd
         text: FAQ
+      - text: News
+        menu:
+          - text: "Releases"
+          - text: "Version 0.2.7 (alpha)"
+            href: https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/
     right:
       - text: Playground
         href: wasm/index.html
+      - text: '{{< iconify fa7-brands:python title="Python bindings" label="link to Python bindings" size=xl >}}'
+        href: http://python.ggsql.org
+      - text: '{{< iconify fa7-brands:r-project title="R bindings" label="link to R bindings" size=xl >}}'
+        href: https://r.ggsql.org
     tools:
       - icon: github
         menu:
           - text: Source Code
-            href: https://github.com/ggsql-dev/ggsql
+            href: https://github.com/posit-dev/ggsql
           - text: Report a Bug
-            href: https://github.com/ggsql-dev/ggsql/issues
+            href: https://github.com/posit-dev/ggsql/issues
   sidebar:
     - id: syntax
       title: Syntax

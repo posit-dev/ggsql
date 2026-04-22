@@ -33,10 +33,14 @@ jobs:
 
   linux:
     needs: generate
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        target: [x86_64, aarch64]
+        include:
+          - target: x86_64
+            runner: ubuntu-latest
+          - target: aarch64
+            runner: ubuntu-24.04-arm
     env:
       GGSQL_SKIP_GENERATE: "1"
     steps:
@@ -55,6 +59,12 @@ jobs:
           working-directory: ggsql-jupyter
           manylinux: 2_28
           docker-options: -e GGSQL_SKIP_GENERATE=1
+          before-script-linux: |
+            if command -v yum >/dev/null 2>&1; then
+              yum install -y unixODBC-devel
+            elif command -v apt-get >/dev/null 2>&1; then
+              apt-get update && apt-get install -y unixodbc-dev
+            fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -68,9 +78,9 @@ jobs:
       matrix:
         include:
           - target: x86_64
-            runner: macos-latest
+            runner: macos-15-intel
           - target: aarch64
-            runner: macos-latest
+            runner: macos-15
     env:
       GGSQL_SKIP_GENERATE: "1"
     steps:
@@ -81,11 +91,14 @@ jobs:
           name: tree-sitter-generated
           path: tree-sitter-ggsql/src/
 
+      - name: Install ODBC
+        run: brew install unixodbc
+
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist
+          args: --release --out dist --auditwheel=repair
           working-directory: ggsql-jupyter
 
       - uses: actions/upload-artifact@v4

@@ -20,7 +20,8 @@ impl GeomTrait for Segment {
             defaults: &[
                 ("pos1", DefaultAestheticValue::Required),
                 ("pos2", DefaultAestheticValue::Required),
-                ("pos1end", DefaultAestheticValue::Null),
+                // Segment requires at least one endpoint (pos1end or pos2end via bidirectional validation)
+                ("pos1end", DefaultAestheticValue::Required),
                 ("pos2end", DefaultAestheticValue::Null),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
@@ -43,5 +44,69 @@ impl GeomTrait for Segment {
 impl std::fmt::Display for Segment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "segment")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::plot::{AestheticContext, AestheticValue, Geom, Layer};
+
+    /// Helper function to create a layer with given mappings and validate it
+    fn validate_segment(mappings: &[(&str, &str)]) -> Result<(), String> {
+        let mut layer = Layer::new(Geom::segment());
+        for (aesthetic, column) in mappings {
+            layer.mappings.insert(
+                aesthetic.to_string(),
+                AestheticValue::standard_column(column.to_string()),
+            );
+        }
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+        layer.validate_mapping(&Some(ctx), false)
+    }
+
+    #[test]
+    fn test_segment_requires_at_least_one_endpoint() {
+        // Segment requires pos1, pos2, and at least one of pos1end/pos2end
+        // Missing both endpoints should fail
+        let result = validate_segment(&[("pos1", "x"), ("pos2", "y")]);
+        assert!(result.is_err(), "Should fail when missing both endpoints");
+    }
+
+    #[test]
+    fn test_segment_validates_with_xend() {
+        // Segment with x, y, xend (identity orientation)
+        let result = validate_segment(&[("pos1", "x"), ("pos2", "y"), ("pos1end", "xend")]);
+        assert!(
+            result.is_ok(),
+            "Expected validation to pass with xend, got error: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_segment_validates_with_yend() {
+        // Segment with x, y, yend (flipped orientation)
+        let result = validate_segment(&[("pos1", "x"), ("pos2", "y"), ("pos2end", "yend")]);
+        assert!(
+            result.is_ok(),
+            "Expected validation to pass with yend, got error: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_segment_validates_with_both_endpoints() {
+        // Segment with both xend and yend
+        let result = validate_segment(&[
+            ("pos1", "x"),
+            ("pos2", "y"),
+            ("pos1end", "xend"),
+            ("pos2end", "yend"),
+        ]);
+        assert!(
+            result.is_ok(),
+            "Expected validation to pass with both endpoints, got error: {:?}",
+            result.err()
+        );
     }
 }

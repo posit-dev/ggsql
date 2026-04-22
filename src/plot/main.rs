@@ -520,11 +520,17 @@ mod tests {
             &["pos1", "pos2min", "pos2max"]
         );
 
-        // Segment/arrow require endpoints
-        assert_eq!(Geom::segment().aesthetics().required(), &["pos1", "pos2"]);
+        // Segment requires at least one endpoint (pos1end or pos2end via bidirectional validation)
+        assert_eq!(
+            Geom::segment().aesthetics().required(),
+            &["pos1", "pos2", "pos1end"]
+        );
 
-        // ErrorBar has no strict requirements
-        assert_eq!(Geom::errorbar().aesthetics().required(), &[] as &[&str]);
+        // ErrorBar requires pos1, pos2min, pos2max
+        assert_eq!(
+            Geom::errorbar().aesthetics().required(),
+            &["pos1", "pos2min", "pos2max"]
+        );
     }
 
     #[test]

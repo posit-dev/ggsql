@@ -332,7 +332,7 @@ pub struct Layer {
 
 pub enum Geom {
     // Basic geoms
-    Point, Line, Path, Bar, Col, Area, Rect, Polygon, Ribbon,
+    Point, Line, Path, Bar, Col, Area, Tile, Polygon, Ribbon,
     // Statistical geoms
     Histogram, Density, Smooth, Boxplot, Violin,
     // Annotation geoms
@@ -751,159 +751,6 @@ When running in Positron IDE, the extension provides enhanced functionality:
 
 ---
 
-### 8. Python Bindings (`ggsql-python/`)
-
-**Responsibility**: Python bindings for ggsql, enabling Python users to create visualizations using ggsql's VISUALISE syntax.
-
-**Features**:
-
-- PyO3-based Rust bindings compiled to a native Python extension
-- Two-stage API mirroring the Rust API: `reader.execute()` → `render()`
-- DuckDB reader with DataFrame registration
-- Custom Python reader support: any object with `execute_sql(sql) -> DataFrame` method
-- Works with any narwhals-compatible DataFrame (polars, pandas, etc.)
-- LazyFrames are collected automatically
-- Returns native `altair.Chart` objects via `render_altair()` convenience function
-- Query validation and introspection (SQL, layer queries, stat queries)
-
-**Installation**:
-
-```bash
-# From source (requires Rust toolchain and maturin)
-cd ggsql-python
-pip install maturin
-maturin develop
-```
-
-**API**:
-
-```python
-import ggsql
-import polars as pl
-
-# Create reader and register data
-reader = ggsql.DuckDBReader("duckdb://memory")
-df = pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
-reader.register("data", df)
-
-# Execute visualization
-spec = reader.execute(
-    "SELECT * FROM data VISUALISE x, y DRAW point"
-)
-
-# Inspect metadata
-print(f"Rows: {spec.metadata()['rows']}")
-print(f"Columns: {spec.metadata()['columns']}")
-print(f"SQL: {spec.sql()}")
-
-# Render to Vega-Lite JSON
-writer = ggsql.VegaLiteWriter()
-json_output = writer.render(spec)
-```
-
-**Convenience Function** (`render_altair`):
-
-For quick visualizations without explicit reader setup:
-
-```python
-import ggsql
-import polars as pl
-
-df = pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
-
-# Render DataFrame to Altair chart in one call
-chart = ggsql.render_altair(df, "VISUALISE x, y DRAW point")
-chart.display()  # In Jupyter
-```
-
-**Query Validation**:
-
-```python
-# Validate syntax without execution
-validated = ggsql.validate(
-    "SELECT x, y FROM data VISUALISE x, y DRAW point"
-)
-print(f"Valid: {validated.valid()}")
-print(f"Has VISUALISE: {validated.has_visual()}")
-print(f"SQL portion: {validated.sql()}")
-print(f"Errors: {validated.errors()}")
-```
-
-**Classes**:
-
-| Class                      | Description                                       |
-| -------------------------- | ------------------------------------------------- |
-| `DuckDBReader(connection)` | Database reader with DataFrame registration       |
-| `VegaLiteWriter()`         | Vega-Lite JSON output writer                      |
-| `Validated`                | Result of `validate()` with query inspection      |
-| `Spec`                     | Result of `reader.execute()`, ready for rendering |
-
-**Functions**:
-
-| Function                 | Description                                      |
-| ------------------------ | ------------------------------------------------ |
-| `validate(query)`        | Syntax/semantic validation with query inspection |
-| `reader.execute(query)`  | Execute ggsql query, return Spec                 |
-| `execute(query, reader)` | Execute with custom reader (bridge path)         |
-| `render_altair(df, viz)` | Convenience: render DataFrame to Altair chart    |
-
-**Spec Methods**:
-
-| Method           | Description                                  |
-| ---------------- | -------------------------------------------- |
-| `render(writer)` | Generate Vega-Lite JSON                      |
-| `metadata()`     | Get rows, columns, layer_count               |
-| `sql()`          | Get the SQL portion                          |
-| `visual()`       | Get the VISUALISE portion                    |
-| `layer_count()`  | Number of DRAW layers                        |
-| `data()`         | Get the main DataFrame                       |
-| `layer_data(i)`  | Get layer-specific DataFrame (if filtered)   |
-| `stat_data(i)`   | Get stat transform DataFrame (if applicable) |
-| `layer_sql(i)`   | Get layer filter SQL (if applicable)         |
-| `stat_sql(i)`    | Get stat transform SQL (if applicable)       |
-| `warnings()`     | Get validation warnings                      |
-
-**Custom Python Readers**:
-
-Any Python object with an `execute_sql(sql: str) -> polars.DataFrame` method can be used as a reader:
-
-```python
-import ggsql
-import polars as pl
-
-class MyReader:
-    """Custom reader that returns static data."""
-
-    def execute_sql(self, sql: str) -> pl.DataFrame:
-        return pl.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
-
-# Use custom reader with ggsql.execute()
-reader = MyReader()
-spec = ggsql.execute(
-    "SELECT * FROM data VISUALISE x, y DRAW point",
-    reader
-)
-```
-
-Required methods for custom readers (in addition to `execute_sql`):
-
-- `register(name: str, df: polars.DataFrame, replace: bool = False) -> None` - Register a DataFrame as a table
-
-Optional methods for custom readers:
-
-- `unregister(name: str) -> None` - Unregister a previously registered table
-
-Native readers (e.g., `DuckDBReader`) use an optimized fast path, while custom Python readers are automatically bridged via IPC serialization.
-
-**Dependencies**:
-
-- Python >= 3.10
-- altair >= 5.0
-- narwhals >= 2.15
-- polars >= 1.0
-
----
-
 ## Feature Flags and Build Configuration
 
 ggsql uses Cargo feature flags to enable optional functionality and reduce binary size.
@@ -930,10 +777,6 @@ ggsql uses Cargo feature flags to enable optional functionality and reduce binar
 - `plotters` - Enable plotters-based rendering (planned, not implemented)
 - `all-writers` - Enable all writer implementations
 
-**Python bindings**:
-
-- `ggsql-python` - Python bindings via PyO3 (separate crate, not a feature flag)
-
 ### Building with Custom Features
 
 ```bash
@@ -954,7 +797,6 @@ cargo build --all-features
 - `duckdb` → `duckdb` crate
 - `postgres` → `postgres` crate (future)
 - `sqlite` → `rusqlite` crate (future)
-- `ggsql-python` → `pyo3`, `narwhals`, `altair` (separate workspace crate)
 
 ---
 
@@ -1033,7 +875,6 @@ gh workflow run release-installers.yml
 - Scoop (Windows)
 - apt repository (Debian/Ubuntu)
 - crates.io (Rust library)
-- PyPI (Python bindings)
 
 ---
 
@@ -1079,7 +920,7 @@ All clauses (MAPPING, SETTING, PARTITION BY, FILTER) are optional.
 
 **Geom Types**:
 
-- **Basic**: `point`, `line`, `path`, `bar`, `col`, `area`, `rect`, `polygon`, `ribbon`
+- **Basic**: `point`, `line`, `path`, `bar`, `col`, `area`, `tile`, `polygon`, `ribbon`
 - **Statistical**: `histogram`, `density`, `smooth`, `boxplot`, `violin`
 - **Annotation**: `text`, `label`, `segment`, `arrow`, `rule`, `errorbar`
 

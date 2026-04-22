@@ -39,12 +39,12 @@ mod line;
 mod path;
 mod point;
 mod polygon;
-mod rect;
 mod ribbon;
 mod rule;
 mod segment;
 mod smooth;
 mod text;
+mod tile;
 mod violin;
 
 // Re-export types
@@ -64,12 +64,12 @@ pub use line::Line;
 pub use path::Path;
 pub use point::Point;
 pub use polygon::Polygon;
-pub use rect::Rect;
 pub use ribbon::Ribbon;
 pub use rule::Rule;
 pub use segment::Segment;
 pub use smooth::Smooth;
 pub use text::Text;
+pub use tile::Tile;
 pub use violin::Violin;
 
 use crate::plot::types::{ParameterValue, Schema};
@@ -84,7 +84,7 @@ pub enum GeomType {
     Path,
     Bar,
     Area,
-    Rect,
+    Tile,
     Polygon,
     Ribbon,
     Histogram,
@@ -107,7 +107,7 @@ impl std::fmt::Display for GeomType {
             GeomType::Path => "path",
             GeomType::Bar => "bar",
             GeomType::Area => "area",
-            GeomType::Rect => "rect",
+            GeomType::Tile => "tile",
             GeomType::Polygon => "polygon",
             GeomType::Ribbon => "ribbon",
             GeomType::Histogram => "histogram",
@@ -135,6 +135,16 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
     /// Returns aesthetic information (REQUIRED - each geom is different)
     fn aesthetics(&self) -> DefaultAesthetics;
+
+    /// Validate aesthetic mappings for this geom.
+    ///
+    /// Called during layer validation after basic checks (Required aesthetics, bidirectional)
+    /// to allow geoms to implement custom validation logic (e.g., XOR constraints).
+    ///
+    /// Default: no additional validation
+    fn validate_aesthetics(&self, _mappings: &crate::Mappings) -> std::result::Result<(), String> {
+        Ok(())
+    }
 
     /// Returns default remappings for stat-computed columns and literals to aesthetics.
     ///
@@ -275,9 +285,9 @@ impl Geom {
         Self(Arc::new(Area))
     }
 
-    /// Create a Rect geom
-    pub fn rect() -> Self {
-        Self(Arc::new(Rect))
+    /// Create a Tile geom
+    pub fn tile() -> Self {
+        Self(Arc::new(Tile))
     }
 
     /// Create a Polygon geom
@@ -348,7 +358,7 @@ impl Geom {
             GeomType::Path => Self::path(),
             GeomType::Bar => Self::bar(),
             GeomType::Area => Self::area(),
-            GeomType::Rect => Self::rect(),
+            GeomType::Tile => Self::tile(),
             GeomType::Polygon => Self::polygon(),
             GeomType::Ribbon => Self::ribbon(),
             GeomType::Histogram => Self::histogram(),
@@ -443,6 +453,11 @@ impl Geom {
     /// Get valid settings
     pub fn valid_settings(&self) -> Vec<&'static str> {
         self.0.valid_settings()
+    }
+
+    /// Validate aesthetic mappings
+    pub fn validate_aesthetics(&self, mappings: &Mappings) -> std::result::Result<(), String> {
+        self.0.validate_aesthetics(mappings)
     }
 }
 
@@ -555,7 +570,7 @@ mod tests {
             GeomType::Path,
             GeomType::Bar,
             GeomType::Area,
-            GeomType::Rect,
+            GeomType::Tile,
             GeomType::Polygon,
             GeomType::Ribbon,
             GeomType::Histogram,
@@ -578,7 +593,7 @@ mod tests {
             | GeomType::Path
             | GeomType::Bar
             | GeomType::Area
-            | GeomType::Rect
+            | GeomType::Tile
             | GeomType::Polygon
             | GeomType::Ribbon
             | GeomType::Histogram

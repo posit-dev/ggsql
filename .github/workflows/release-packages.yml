@@ -86,9 +86,9 @@ jobs:
           path: src/target/release/packager/*.msi
           retention-days: 30
 
-  build-macos:
-    name: Build macOS Installers
-    runs-on: macos-latest
+  build-macos-x86_64:
+    name: Build macOS Installers (x86_64)
+    runs-on: macos-15-intel
 
     steps:
       - name: Checkout code
@@ -102,10 +102,16 @@ jobs:
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
 
+      - name: Install ODBC
+        run: brew install unixodbc
+
+      - name: Install dylibbundler
+        run: brew install dylibbundler
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-apple-darwin, aarch64-apple-darwin
+          targets: x86_64-apple-darwin
 
       - name: Set up Apple notarization key
         run: |
@@ -116,51 +122,218 @@ jobs:
           APPLE_API_KEY_BASE64: ${{ secrets.GWS_APPLE_API_KEY_BASE64 }}
           APPLE_API_KEY: ${{ secrets.GWS_APPLE_API_KEY }}
 
-      - name: Configure macOS installer signing
+      - name: Import signing certificates
         env:
-          APPLE_SIGN_IDENTITY: ${{ secrets.GWS_APPLE_SIGN_IDENTITY }}
+          APPLICATION_P12: ${{ secrets.GWS_APPLE_SIGN_APPLICATION_P12 }}
+          INSTALLER_P12: ${{ secrets.GWS_APPLE_SIGN_INSTALLER_P12 }}
+          P12_PASSWORD: ${{ secrets.GWS_APPLE_SIGN_PW }}
         run: |
-          cat <<EOF >> src/Cargo.toml
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PW="$(openssl rand -hex 32)"
+          security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          security set-keychain-settings "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          echo -n "$APPLICATION_P12" | base64 --decode -o "$RUNNER_TEMP/app.p12"
+          echo -n "$INSTALLER_P12"   | base64 --decode -o "$RUNNER_TEMP/inst.p12"
+          security import "$RUNNER_TEMP/app.p12"  -P "$P12_PASSWORD" -k "$KEYCHAIN_PATH" -T /usr/bin/codesign -T /usr/bin/pkgbuild
+          security import "$RUNNER_TEMP/inst.p12" -P "$P12_PASSWORD" -k "$KEYCHAIN_PATH" -T /usr/bin/codesign -T /usr/bin/pkgbuild
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
 
-          [package.metadata.packager.macos]
-          signing-identity = "${APPLE_SIGN_IDENTITY}"
-          entitlements = "entitlements.plist"
-          EOF
-
-      - name: Install cargo-packager
-        run: cargo install cargo-packager --locked
+      - name: Compute version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Build ggsql binary (x86_64)
         run: cargo build --release --bin ggsql --bin ggsql-jupyter
 
-      - name: Build DMG installer (x86_64)
-        run: cargo packager --release --formats dmg
+      - name: Bundle dynamic library dependencies
+        run: |
+          dylibbundler -cd -of -b -x target/release/ggsql         -d ./libs/ -p "@executable_path/../lib/ggsql$VERSION/"
+          dylibbundler -cd -of -b -x target/release/ggsql-jupyter -d ./libs/ -p "@executable_path/../lib/ggsql$VERSION/"
+
+      - name: Sign binaries and dylibs (Developer ID Application)
         env:
-          APPLE_CERTIFICATE: ${{ secrets.GWS_APPLE_SIGN_P12 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.GWS_APPLE_SIGN_PW }}
+          SIGN_ID: "Developer ID Application: ${{ secrets.GWS_APPLE_SIGN_IDENTITY }}"
+        run: |
+          # Sign bundled dylibs first (inside-out), replacing dylibbundler's ad-hoc sigs
+          find ./libs -type f \( -name "*.dylib" -o -name "*.so" \) -print0 | \
+            xargs -0 -I{} codesign --force --options runtime --timestamp --sign "$SIGN_ID" "{}"
+          # Then sign the executables with hardened runtime + entitlements
+          codesign --force --options runtime --timestamp \
+            --entitlements src/entitlements.plist \
+            --sign "$SIGN_ID" target/release/ggsql
+          codesign --force --options runtime --timestamp \
+            --entitlements src/entitlements.plist \
+            --sign "$SIGN_ID" target/release/ggsql-jupyter
+
+      - name: Build and notarize PKG installer (x86_64)
+        # NOTE: --sign uses the Developer ID *Installer* cert (signs .pkg only),
+        # distinct from the Developer ID Application cert used to sign Mach-O above.
+        env:
+          SIGN_ID: "Developer ID Installer: ${{ secrets.GWS_APPLE_SIGN_IDENTITY }}"
           APPLE_API_KEY: ${{ secrets.GWS_APPLE_API_KEY }}
           APPLE_API_ISSUER: ${{ secrets.GWS_APPLE_API_ISSUER }}
+        run: |
+          PKG_NAME="ggsql_${VERSION}_x86_64.pkg"
+          mkdir -p pkg-payload/usr/local/bin "pkg-payload/usr/local/lib/ggsql$VERSION"
+          cp target/release/ggsql          pkg-payload/usr/local/bin/
+          cp target/release/ggsql-jupyter  pkg-payload/usr/local/bin/
+          cp -R ./libs/. "pkg-payload/usr/local/lib/ggsql$VERSION/"
+          mkdir -p pkg-scripts
+          cat > pkg-scripts/postinstall <<EOF
+          #!/bin/sh
+          mkdir -p /usr/local/bin /usr/local/lib/ggsql$VERSION
+          EOF
+          chmod 755 pkg-scripts/postinstall
+          pkgbuild \
+            --root ./pkg-payload \
+            --install-location / \
+            --identifier co.posit.ggsql \
+            --version "$VERSION" \
+            --scripts ./pkg-scripts \
+            --sign "$SIGN_ID" \
+            "$PKG_NAME"
+          xcrun notarytool submit "$PKG_NAME" \
+            --key ~/.private_keys/AuthKey_${APPLE_API_KEY}.p8 \
+            --key-id "$APPLE_API_KEY" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait
+          xcrun stapler staple "$PKG_NAME"
 
-      - name: Build ggsql binary (aarch64)
-        run: cargo build --release --bin ggsql --bin ggsql-jupyter --target aarch64-apple-darwin
-
-      - name: Build DMG installer (aarch64)
-        run: cargo packager --release --target aarch64-apple-darwin --formats dmg
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.GWS_APPLE_SIGN_P12 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.GWS_APPLE_SIGN_PW }}
-          APPLE_API_KEY: ${{ secrets.GWS_APPLE_API_KEY }}
-          APPLE_API_ISSUER: ${{ secrets.GWS_APPLE_API_ISSUER }}
-
-      - name: Upload DMG installers
+      - name: Upload PKG installer (x86_64)
         uses: actions/upload-artifact@v4
         with:
-          name: ggsql-macos-dmg
-          path: src/target/release/packager/*.dmg
+          name: ggsql-macos-pkg-x86_64
+          path: ggsql_*_x86_64.pkg
           retention-days: 30
 
-  build-linux:
-    name: Build Linux Installers
+  build-macos-aarch64:
+    name: Build macOS Installers (aarch64)
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
+      - name: Install ODBC
+        run: brew install unixodbc
+
+      - name: Install dylibbundler
+        run: brew install dylibbundler
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Set up Apple notarization key
+        run: |
+          mkdir -p ~/.private_keys
+          echo -n "$APPLE_API_KEY_BASE64" | base64 --decode -o ~/.private_keys/AuthKey_${APPLE_API_KEY}.p8
+          chmod 600 ~/.private_keys/AuthKey_${APPLE_API_KEY}.p8
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.GWS_APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY: ${{ secrets.GWS_APPLE_API_KEY }}
+
+      - name: Import signing certificates
+        env:
+          APPLICATION_P12: ${{ secrets.GWS_APPLE_SIGN_APPLICATION_P12 }}
+          INSTALLER_P12: ${{ secrets.GWS_APPLE_SIGN_INSTALLER_P12 }}
+          P12_PASSWORD: ${{ secrets.GWS_APPLE_SIGN_PW }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PW="$(openssl rand -hex 32)"
+          security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          security set-keychain-settings "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          echo -n "$APPLICATION_P12" | base64 --decode -o "$RUNNER_TEMP/app.p12"
+          echo -n "$INSTALLER_P12"   | base64 --decode -o "$RUNNER_TEMP/inst.p12"
+          security import "$RUNNER_TEMP/app.p12"  -P "$P12_PASSWORD" -k "$KEYCHAIN_PATH" -T /usr/bin/codesign -T /usr/bin/pkgbuild
+          security import "$RUNNER_TEMP/inst.p12" -P "$P12_PASSWORD" -k "$KEYCHAIN_PATH" -T /usr/bin/codesign -T /usr/bin/pkgbuild
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+
+      - name: Compute version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Build ggsql binary (aarch64)
+        run: cargo build --release --bin ggsql --bin ggsql-jupyter
+
+      - name: Bundle dynamic library dependencies
+        run: |
+          dylibbundler -cd -of -b -x target/release/ggsql         -d ./libs/ -p "@executable_path/../lib/ggsql$VERSION/"
+          dylibbundler -cd -of -b -x target/release/ggsql-jupyter -d ./libs/ -p "@executable_path/../lib/ggsql$VERSION/"
+
+      - name: Sign binaries and dylibs (Developer ID Application)
+        env:
+          SIGN_ID: "Developer ID Application: ${{ secrets.GWS_APPLE_SIGN_IDENTITY }}"
+        run: |
+          # Sign bundled dylibs first (inside-out), replacing dylibbundler's ad-hoc sigs
+          find ./libs -type f \( -name "*.dylib" -o -name "*.so" \) -print0 | \
+            xargs -0 -I{} codesign --force --options runtime --timestamp --sign "$SIGN_ID" "{}"
+          # Then sign the executables with hardened runtime + entitlements
+          codesign --force --options runtime --timestamp \
+            --entitlements src/entitlements.plist \
+            --sign "$SIGN_ID" target/release/ggsql
+          codesign --force --options runtime --timestamp \
+            --entitlements src/entitlements.plist \
+            --sign "$SIGN_ID" target/release/ggsql-jupyter
+
+      - name: Build and notarize PKG installer (aarch64)
+        # NOTE: --sign uses the Developer ID *Installer* cert (signs .pkg only),
+        # distinct from the Developer ID Application cert used to sign Mach-O above.
+        env:
+          SIGN_ID: "Developer ID Installer: ${{ secrets.GWS_APPLE_SIGN_IDENTITY }}"
+          APPLE_API_KEY: ${{ secrets.GWS_APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.GWS_APPLE_API_ISSUER }}
+        run: |
+          PKG_NAME="ggsql_${VERSION}_aarch64.pkg"
+          mkdir -p pkg-payload/usr/local/bin "pkg-payload/usr/local/lib/ggsql$VERSION"
+          cp target/release/ggsql          pkg-payload/usr/local/bin/
+          cp target/release/ggsql-jupyter  pkg-payload/usr/local/bin/
+          cp -R ./libs/. "pkg-payload/usr/local/lib/ggsql$VERSION/"
+          mkdir -p pkg-scripts
+          cat > pkg-scripts/postinstall <<EOF
+          #!/bin/sh
+          mkdir -p /usr/local/bin /usr/local/lib/ggsql$VERSION
+          EOF
+          chmod 755 pkg-scripts/postinstall
+          pkgbuild \
+            --root ./pkg-payload \
+            --install-location / \
+            --identifier co.posit.ggsql \
+            --version "$VERSION" \
+            --scripts ./pkg-scripts \
+            --sign "$SIGN_ID" \
+            "$PKG_NAME"
+          xcrun notarytool submit "$PKG_NAME" \
+            --key ~/.private_keys/AuthKey_${APPLE_API_KEY}.p8 \
+            --key-id "$APPLE_API_KEY" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait
+          xcrun stapler staple "$PKG_NAME"
+
+      - name: Upload PKG installer (aarch64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggsql-macos-pkg-aarch64
+          path: ggsql_*_aarch64.pkg
+          retention-days: 30
+
+  build-linux-x86_64:
+    name: Build Linux Installers (x86_64)
     runs-on: ubuntu-latest
 
     steps:
@@ -188,21 +361,73 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            unixodbc-dev
 
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
 
-      - name: Build ggsql binary
+      - name: Build ggsql binary (x86_64)
         run: cargo build --release --bin ggsql --bin ggsql-jupyter
 
-      - name: Build Debian package
+      - name: Build Debian package (x86_64)
         run: cargo packager --release --formats deb
 
-      - name: Upload Debian package
+      - name: Upload Debian package (x86_64)
         uses: actions/upload-artifact@v4
         with:
-          name: ggsql-linux-deb
+          name: ggsql-linux-deb-x86_64
+          path: src/target/release/packager/*.deb
+          retention-days: 30
+
+  build-linux-aarch64:
+    name: Build Linux Installers (aarch64)
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            unixodbc-dev
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Build ggsql binary (aarch64)
+        run: cargo build --release --bin ggsql --bin ggsql-jupyter
+
+      - name: Make empty libs dir for bundling
+        run: mkdir -p libs
+
+      - name: Build Debian package (aarch64)
+        run: cargo packager --release --formats deb
+
+      - name: Upload Debian package (aarch64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggsql-linux-deb-aarch64
           path: src/target/release/packager/*.deb
           retention-days: 30
 
@@ -224,6 +449,9 @@ jobs:
 
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
+
+      - name: Install ODBC
+        run: sudo apt-get install -y unixodbc-dev
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -258,7 +486,7 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    needs: [build-windows, build-macos, build-linux, build-cargo]
+    needs: [build-windows, build-macos-x86_64, build-macos-aarch64, build-linux-x86_64, build-linux-aarch64, build-cargo]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -279,7 +507,7 @@ jobs:
           files: |
             artifacts/**/*.exe
             artifacts/**/*.msi
-            artifacts/**/*.dmg
+            artifacts/**/*.pkg
             artifacts/**/*.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -29,7 +29,7 @@ The syntax has been designed to be easy to learn, read, and write. This also mea
 We are approaching an alpha release with the main architectural parts finished. Future development will focus on adding new readers (database support) and writers (output types) to compliment the DuckDB/SQLite + Vegalite setup we have focused on during early development.
 
 ## Installation
-Please follow the instructions on [the website](https://ggsql.org/get_started.html) for up to date information on how to install ggsql.
+Please follow the instructions on [the website](https://ggsql.org/get_started/installation.html) for up to date information on how to install ggsql.
 
 ## Try it out
 ggsql compiles to WASM and can thus be embedded in a website. You can try it out on our [playground](https://ggsql.org/wasm/) (no installation required).

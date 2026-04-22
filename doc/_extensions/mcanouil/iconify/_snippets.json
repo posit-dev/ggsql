@@ -1,0 +1,17 @@
+{
+	"Icon": {
+		"prefix": "iconify",
+		"body": "{{< iconify ${1:fluent-emoji}:${2:exploding-head} >}}",
+		"description": "Insert an Iconify icon using set:icon syntax"
+	},
+	"Icon with size": {
+		"prefix": "iconify-size",
+		"body": "{{< iconify ${1:fluent-emoji}:${2:exploding-head} size=${3:1em} >}}",
+		"description": "Insert an Iconify icon with a size"
+	},
+	"Icon with style": {
+		"prefix": "iconify-style",
+		"body": "{{< iconify ${1:simple-icons}:${2:quarto} style=\"color:${3:#74aadb};\" >}}",
+		"description": "Insert an Iconify icon with custom CSS style"
+	}
+}

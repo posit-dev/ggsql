@@ -602,7 +602,7 @@ where
                         .or_else(|| {
                             // For variant position aesthetics (e.g., pos1min, pos2max),
                             // fall back to the primary aesthetic's original name (pos1, pos2).
-                            // This ensures rect's expanded min/max aesthetics inherit the
+                            // This ensures tile's expanded min/max aesthetics inherit the
                             // original column name from the user's x/y mapping.
                             aesthetic::parse_position(aesthetic).and_then(|(slot, suffix)| {
                                 if !suffix.is_empty() {

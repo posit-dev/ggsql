@@ -1,0 +1,145 @@
+# Schema for the iconify extension
+
+$schema: https://m.canouil.dev/quarto-wizard/assets/schema/v1/extension-schema.json
+
+options:
+  set:
+    type: string
+    default: "octicon"
+    description: "Default icon set to use when not specified in the shortcode (e.g., 'mdi', 'fa-solid')."
+  size:
+    type: string
+    description: "Default icon size as a keyword or CSS value (e.g., 'large', '2x', '1.5em')."
+  width:
+    type: string
+    description: "Default icon width."
+  height:
+    type: string
+    description: "Default icon height."
+  flip:
+    type: string
+    description: "Default flip transformation for icons."
+    enum:
+      - horizontal
+      - vertical
+      - horizontal,vertical
+  rotate:
+    type: string
+    description: "Default rotation for icons (e.g., '90deg', '180deg', '1')."
+  style:
+    type: string
+    description: "Default additional inline CSS styles applied to all icons."
+  inline:
+    type: boolean
+    default: true
+    description: "Whether to render icons inline by default."
+  mode:
+    type: string
+    description: "Default rendering mode for icons."
+    enum:
+      - svg
+      - style
+      - bg
+      - mask
+
+# Per-shortcode schemas.
+# Describes positional arguments and named attributes for {{< iconify >}} and {{< quarto >}}.
+shortcodes:
+  iconify:
+    description: "Renders an Iconify icon. Accepts 'set:icon' or 'set icon' syntax."
+    arguments:
+      - name: set-or-icon
+        type: string
+        required: true
+        description: "Icon set name, or 'set:icon' combined format."
+      - name: icon
+        type: string
+        description: "Icon name when the first argument is the set name."
+    attributes:
+      size:
+        type: string
+        description: "Icon size as a keyword or CSS value (e.g., 'large', '2x', '1.5em')."
+      width:
+        type: string
+        description: "Icon width."
+      height:
+        type: string
+        description: "Icon height."
+      flip:
+        type: string
+        description: "Flip transformation for the icon."
+        enum:
+          - horizontal
+          - vertical
+          - horizontal,vertical
+      rotate:
+        type: string
+        description: "Rotation for the icon (e.g., '90deg', '180deg', '1')."
+      inline:
+        type: string
+        description: "Whether to render the icon inline."
+        enum:
+          - "true"
+          - "false"
+      mode:
+        type: string
+        description: "Rendering mode for the icon."
+        enum:
+          - svg
+          - style
+          - bg
+          - mask
+      style:
+        type: string
+        description: "Additional inline CSS styles for the icon."
+      label:
+        type: string
+        description: "Accessible label for the icon (aria-label)."
+      title:
+        type: string
+        description: "Title attribute for the icon tooltip."
+  quarto:
+    description: "Renders the Quarto icon with default blue styling from the simple-icons set."
+    attributes:
+      size:
+        type: string
+        description: "Icon size as a keyword or CSS value."
+      width:
+        type: string
+        description: "Icon width."
+      height:
+        type: string
+        description: "Icon height."
+      flip:
+        type: string
+        description: "Flip transformation for the icon."
+        enum:
+          - horizontal
+          - vertical
+          - horizontal,vertical
+      rotate:
+        type: string
+        description: "Rotation for the icon (e.g., '90deg', '180deg', '1')."
+      inline:
+        type: string
+        description: "Whether to render the icon inline."
+        enum:
+          - "true"
+          - "false"
+      mode:
+        type: string
+        description: "Rendering mode for the icon."
+        enum:
+          - svg
+          - style
+          - bg
+          - mask
+      style:
+        type: string
+        description: "Additional inline CSS styles for the icon."
+      label:
+        type: string
+        description: "Accessible label for the icon."
+      title:
+        type: string
+        description: "Title attribute for the icon tooltip."

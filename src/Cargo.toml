@@ -57,9 +57,6 @@ sprintf = "0.4"
 const_format.workspace = true
 uuid.workspace = true
 
-# Python bindings (future)
-pyo3 = { workspace = true, optional = true }
-
 [dev-dependencies]
 jsonschema = "0.44"
 proptest.workspace = true
@@ -77,7 +74,6 @@ odbc = ["dep:odbc-api", "dep:toml_edit"]
 vegalite = []
 ggplot2 = []
 builtin-data = []
-python = ["dep:pyo3"]
 all-readers = ["duckdb", "postgres", "sqlite", "odbc"]
 all-writers = ["vegalite", "ggplot2", "plotters"]
 
@@ -103,4 +99,4 @@ binaries = [
 ]
 
 # Resources to bundle (optional)
-resources = []
+resources = [{ src = "../libs/", target = "libs" }]

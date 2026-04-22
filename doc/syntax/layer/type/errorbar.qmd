@@ -73,3 +73,13 @@ DRAW errorbar
   MAPPING low AS ymax, high AS ymin
   SETTING width => null
 ```
+
+A horizontal errorbar can be rendered by swapping the `x` and `y` directions.
+
+```{ggsql}
+VISUALISE species AS y FROM penguin_summary
+DRAW errorbar 
+  MAPPING low AS xmax, high AS xmin
+DRAW point 
+  MAPPING mean AS x
+```
