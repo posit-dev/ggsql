@@ -184,8 +184,28 @@ pub fn value_to_string(array: &ArrayRef, idx: usize) -> String {
         DataType::Float32 => as_f32(array).unwrap().value(idx).to_string(),
         DataType::Float64 => as_f64(array).unwrap().value(idx).to_string(),
         DataType::Utf8 => as_str(array).unwrap().value(idx).to_string(),
+        DataType::LargeUtf8 => array
+            .as_any()
+            .downcast_ref::<LargeStringArray>()
+            .unwrap()
+            .value(idx)
+            .to_string(),
         DataType::Boolean => as_bool(array).unwrap().value(idx).to_string(),
-        _ => format!("{:?}", array.data_type()),
+        DataType::Date32 => {
+            let days = as_date32(array).unwrap().value(idx);
+            format!("{}", days)
+        }
+        DataType::Date64 => {
+            let ms = array
+                .as_any()
+                .downcast_ref::<arrow::array::Date64Array>()
+                .unwrap()
+                .value(idx);
+            format!("{}", ms)
+        }
+        _ => arrow::util::display::ArrayFormatter::try_new(array.as_ref(), &Default::default())
+            .and_then(|f| Ok(f.value(idx).to_string()))
+            .unwrap_or_else(|_| format!("{:?}", array.data_type())),
     }
 }
 

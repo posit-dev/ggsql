@@ -83,7 +83,14 @@ pub fn register_builtin_datasets_duckdb(
         let mut tmp_path = env::temp_dir();
         tmp_path.push(format!("{}.parquet", name));
         if !tmp_path.exists() {
-            fs::write(&tmp_path, parquet_bytes).expect("Failed to write dataset");
+            fs::write(&tmp_path, parquet_bytes).map_err(|e| {
+                GgsqlError::ReaderError(format!(
+                    "Failed to write builtin dataset '{}' to {}: {}",
+                    name,
+                    tmp_path.display(),
+                    e
+                ))
+            })?;
         }
 
         let create_sql = format!(
