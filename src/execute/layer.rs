@@ -194,7 +194,7 @@ pub fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataF
         .filter(|name| naming::is_stat_column(name))
         .collect();
     if !stat_cols.is_empty() {
-        df = df.drop_many(&stat_cols);
+        df = df.drop_many(&stat_cols)?;
     }
 
     Ok(df)

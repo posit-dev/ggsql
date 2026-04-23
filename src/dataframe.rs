@@ -6,7 +6,7 @@
 
 use arrow::array::ArrayRef;
 use arrow::datatypes::{DataType, Field, Schema};
-use arrow::record_batch::RecordBatch;
+use arrow::record_batch::{RecordBatch, RecordBatchOptions};
 use std::sync::Arc;
 
 use crate::{GgsqlError, Result};
@@ -194,7 +194,11 @@ impl DataFrame {
     }
 
     /// Drop multiple columns by name. Silently ignores names that don't exist.
-    pub fn drop_many<S: AsRef<str>>(&self, names: &[S]) -> Self {
+    ///
+    /// If every column is dropped, the returned DataFrame preserves the original
+    /// row count (0 columns × N rows), which annotation layers rely on to know
+    /// how many marks to draw.
+    pub fn drop_many<S: AsRef<str>>(&self, names: &[S]) -> Result<Self> {
         let drop_set: std::collections::HashSet<&str> = names.iter().map(|s| s.as_ref()).collect();
 
         let mut fields = Vec::new();
@@ -207,14 +211,9 @@ impl DataFrame {
             }
         }
 
-        if fields.is_empty() {
-            return Self::empty();
-        }
-
-        let schema = Arc::new(Schema::new(fields));
-        RecordBatch::try_new(schema, arrays)
-            .map(|rb| Self { inner: rb })
-            .unwrap_or_else(|_| Self::empty())
+        build_record_batch(fields, arrays, self.height())
+            .map(|inner| Self { inner })
+            .map_err(|e| GgsqlError::InternalError(format!("Failed to drop columns: {}", e)))
     }
 
     /// Replace a column's array (keeping the same name).
@@ -284,15 +283,30 @@ impl DataFrame {
             }
         }
 
-        if fields.is_empty() {
-            return Ok(Self::empty());
-        }
+        build_record_batch(fields, arrays, self.height())
+            .map(|inner| Self { inner })
+            .map_err(|e| {
+                GgsqlError::InternalError(format!("Failed to drop column at index {}: {}", idx, e))
+            })
+    }
+}
 
-        let schema = Arc::new(Schema::new(fields));
-        let rb = RecordBatch::try_new(schema, arrays).map_err(|e| {
-            GgsqlError::InternalError(format!("Failed to drop column at index {}: {}", idx, e))
-        })?;
-        Ok(Self { inner: rb })
+/// Build a `RecordBatch`, preserving `row_count` even when the schema has no fields.
+///
+/// Arrow's default constructor discards the row count for zero-column batches,
+/// which would silently lose "N rows × 0 columns" — a state annotation layers
+/// depend on (they draw one mark per row regardless of data columns).
+fn build_record_batch(
+    fields: Vec<Field>,
+    arrays: Vec<ArrayRef>,
+    row_count: usize,
+) -> std::result::Result<RecordBatch, arrow::error::ArrowError> {
+    let schema = Arc::new(Schema::new(fields));
+    if arrays.is_empty() {
+        let options = RecordBatchOptions::new().with_row_count(Some(row_count));
+        RecordBatch::try_new_with_options(schema, arrays, &options)
+    } else {
+        RecordBatch::try_new(schema, arrays)
     }
 }
 
@@ -524,8 +538,26 @@ mod tests {
         ])
         .unwrap();
 
-        let df2 = df.drop_many(&["a", "c"]);
+        let df2 = df.drop_many(&["a", "c"]).unwrap();
         assert_eq!(df2.get_column_names(), vec!["b".to_string()]);
+    }
+
+    #[test]
+    fn test_drop_last_column_preserves_row_count() {
+        // Annotation layers rely on "N rows × 0 columns" to know how many marks to draw.
+        let df = DataFrame::new(vec![(
+            "x",
+            Arc::new(Int32Array::from(vec![1, 2, 3])) as ArrayRef,
+        )])
+        .unwrap();
+
+        let df2 = df.drop("x").unwrap();
+        assert_eq!(df2.width(), 0);
+        assert_eq!(df2.height(), 3);
+
+        let df3 = df.drop_many(&["x"]).unwrap();
+        assert_eq!(df3.width(), 0);
+        assert_eq!(df3.height(), 3);
     }
 
     #[test]

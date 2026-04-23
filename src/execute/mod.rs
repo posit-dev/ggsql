@@ -874,7 +874,7 @@ fn prune_dataframe(df: &DataFrame, required: &HashSet<String>) -> Result<DataFra
         .into_iter()
         .filter(|name| !columns_to_keep.contains(name))
         .collect();
-    Ok(df.drop_many(&drop_cols))
+    df.drop_many(&drop_cols)
 }
 
 /// Prune all DataFrames in the data map based on layer requirements.
