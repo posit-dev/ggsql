@@ -3,6 +3,8 @@
 ### Added
 
 - ODBC is now turned on for the CLI as well (#344)
+- CLI now has built-in documentation through the `docs` command as well as a
+skill for llms through the `skill` command (#361)
 
 ### Fixed
 
