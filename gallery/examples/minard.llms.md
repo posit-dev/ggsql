@@ -24,11 +24,11 @@ SELECT * FROM 'minard_troops.csv' LIMIT 5
 
 | long | lat  | survivors | direction | group |
 |------|------|-----------|-----------|-------|
-| 37.7 | 55.7 | 100000    | "R"       | 1     |
-| 37.5 | 55.7 | 98000     | "R"       | 1     |
-| 37.0 | 55.0 | 97000     | "R"       | 1     |
-| 36.8 | 55.0 | 96000     | "R"       | 1     |
-| 35.4 | 55.3 | 87000     | "R"       | 1     |
+| 37.7 | 55.7 | 100000    | R         | 1     |
+| 37.5 | 55.7 | 98000     | R         | 1     |
+| 37   | 55   | 97000     | R         | 1     |
+| 36.8 | 55   | 96000     | R         | 1     |
+| 35.4 | 55.3 | 87000     | R         | 1     |
 
 Our first goal is commit *something* to paper. We’ll iron out mistakes and polish the graphic later.
 
