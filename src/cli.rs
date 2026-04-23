@@ -553,11 +553,18 @@ fn topics_in(category: Option<&str>) -> Vec<&'static str> {
         .collect()
 }
 
+fn strip_images(markdown: &str) -> String {
+    use std::sync::OnceLock;
+    static IMG_RE: OnceLock<regex::Regex> = OnceLock::new();
+    let re = IMG_RE.get_or_init(|| regex::Regex::new(r"!\[[^\]]*\]\(([^)]*)\)").unwrap());
+    re.replace_all(markdown, "$1").to_string()
+}
+
 fn render_doc(entry: &docs::DocEntry, fmt: DocsFormat) {
     match fmt {
         DocsFormat::Text => {
             let skin = termimad::MadSkin::default();
-            skin.print_text(entry.body);
+            skin.print_text(&strip_images(entry.body));
         }
         DocsFormat::Markdown => {
             print!("{}", entry.body);
@@ -681,7 +688,7 @@ fn cmd_skill(format: Option<DocsFormat>) {
     match fmt {
         DocsFormat::Text => {
             let skin = termimad::MadSkin::default();
-            skin.print_text(docs::SKILL.body);
+            skin.print_text(&strip_images(docs::SKILL.body));
         }
         DocsFormat::Markdown => {
             print!("{}", docs::SKILL.body);
