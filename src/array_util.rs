@@ -72,14 +72,16 @@ pub fn cast_array(array: &ArrayRef, to: &DataType) -> Result<ArrayRef> {
     let bridge = match (from, to) {
         // Temporal → floating: go via the integer backing type.
         (DataType::Date32, DataType::Float32 | DataType::Float64) => Some(DataType::Int32),
-        (DataType::Timestamp(_, _) | DataType::Time64(_), DataType::Float32 | DataType::Float64) => {
-            Some(DataType::Int64)
-        }
+        (
+            DataType::Timestamp(_, _) | DataType::Time64(_),
+            DataType::Float32 | DataType::Float64,
+        ) => Some(DataType::Int64),
         // Floating → temporal: same bridge in reverse.
         (DataType::Float32 | DataType::Float64, DataType::Date32) => Some(DataType::Int32),
-        (DataType::Float32 | DataType::Float64, DataType::Timestamp(_, _) | DataType::Time64(_)) => {
-            Some(DataType::Int64)
-        }
+        (
+            DataType::Float32 | DataType::Float64,
+            DataType::Timestamp(_, _) | DataType::Time64(_),
+        ) => Some(DataType::Int64),
         _ => None,
     };
 
@@ -182,8 +184,28 @@ pub fn value_to_string(array: &ArrayRef, idx: usize) -> String {
         DataType::Float32 => as_f32(array).unwrap().value(idx).to_string(),
         DataType::Float64 => as_f64(array).unwrap().value(idx).to_string(),
         DataType::Utf8 => as_str(array).unwrap().value(idx).to_string(),
+        DataType::LargeUtf8 => array
+            .as_any()
+            .downcast_ref::<LargeStringArray>()
+            .unwrap()
+            .value(idx)
+            .to_string(),
         DataType::Boolean => as_bool(array).unwrap().value(idx).to_string(),
-        _ => format!("{:?}", array.data_type()),
+        DataType::Date32 => {
+            let days = as_date32(array).unwrap().value(idx);
+            format!("{}", days)
+        }
+        DataType::Date64 => {
+            let ms = array
+                .as_any()
+                .downcast_ref::<arrow::array::Date64Array>()
+                .unwrap()
+                .value(idx);
+            format!("{}", ms)
+        }
+        _ => arrow::util::display::ArrayFormatter::try_new(array.as_ref(), &Default::default())
+            .and_then(|f| Ok(f.value(idx).to_string()))
+            .unwrap_or_else(|_| format!("{:?}", array.data_type())),
     }
 }
 
@@ -234,7 +256,10 @@ mod tests {
     #[test]
     fn test_cast_timestamp_to_float64() {
         use arrow::datatypes::TimeUnit;
-        let arr: ArrayRef = Arc::new(TimestampMicrosecondArray::from(vec![1_000_000_i64, 2_000_000]));
+        let arr: ArrayRef = Arc::new(TimestampMicrosecondArray::from(vec![
+            1_000_000_i64,
+            2_000_000,
+        ]));
         let casted = cast_array(&arr, &DataType::Float64).unwrap();
         let f64_arr = as_f64(&casted).unwrap();
         assert_eq!(f64_arr.value(0), 1_000_000.0);
