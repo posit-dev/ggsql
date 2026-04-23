@@ -4,7 +4,9 @@
 
 use crate::reader::{connection::ConnectionInfo, Reader};
 use crate::{naming, DataFrame, GgsqlError, Result};
-use arrow::array::ArrayRef;
+use arrow::compute::{cast, concat_batches};
+use arrow::datatypes::{DataType, Field, Schema};
+use arrow::record_batch::RecordBatch;
 use duckdb::vtab::arrow::{arrow_recordbatch_to_query_params, ArrowVTab};
 use duckdb::{params, Connection};
 use std::cell::RefCell;
@@ -160,234 +162,40 @@ fn dataframe_to_arrow_params(df: &DataFrame) -> Result<[usize; 2]> {
     Ok(arrow_recordbatch_to_query_params(df.inner().clone()))
 }
 
-/// Helper struct for building typed columns from rows
-enum ColumnBuilder {
-    TinyInt(Vec<Option<i8>>),
-    SmallInt(Vec<Option<i16>>),
-    Int(Vec<Option<i32>>),
-    BigInt(Vec<Option<i64>>),
-    UTinyInt(Vec<Option<i16>>),  // Cast to i16
-    USmallInt(Vec<Option<i32>>), // Cast to i32
-    UInt(Vec<Option<i64>>),      // Cast to i64
-    UBigInt(Vec<Option<u64>>),   // Keep as u64, check overflow
-    Float(Vec<Option<f32>>),
-    Double(Vec<Option<f64>>),
-    Boolean(Vec<Option<bool>>),
-    Text(Vec<Option<String>>),
-    Date32(Vec<Option<i32>>),
-    Timestamp(Vec<Option<i64>>),
-    Time64(Vec<Option<i64>>),
-    Decimal(Vec<Option<f64>>),     // Convert to Float64
-    HugeInt(Vec<Option<i128>>),    // Will check overflow
-    Blob(Vec<Option<String>>),     // Convert to String
-    Fallback(Vec<Option<String>>), // Fallback for unsupported types
-}
+/// Cast Decimal128 columns to Float64 so downstream code sees standard numeric types.
+fn normalize_arrow_types(batch: RecordBatch) -> Result<RecordBatch> {
+    let schema = batch.schema();
+    let needs_cast = schema
+        .fields()
+        .iter()
+        .any(|f| matches!(f.data_type(), DataType::Decimal128(_, _)));
 
-impl ColumnBuilder {
-    fn new(duckdb_type: duckdb::types::Type) -> Self {
-        use duckdb::types::Type;
-        match duckdb_type {
-            Type::TinyInt => ColumnBuilder::TinyInt(Vec::new()),
-            Type::SmallInt => ColumnBuilder::SmallInt(Vec::new()),
-            Type::Int => ColumnBuilder::Int(Vec::new()),
-            Type::BigInt => ColumnBuilder::BigInt(Vec::new()),
-            Type::UTinyInt => ColumnBuilder::UTinyInt(Vec::new()),
-            Type::USmallInt => ColumnBuilder::USmallInt(Vec::new()),
-            Type::UInt => ColumnBuilder::UInt(Vec::new()),
-            Type::UBigInt => ColumnBuilder::UBigInt(Vec::new()),
-            Type::Float => ColumnBuilder::Float(Vec::new()),
-            Type::Double => ColumnBuilder::Double(Vec::new()),
-            Type::Boolean => ColumnBuilder::Boolean(Vec::new()),
-            Type::Text => ColumnBuilder::Text(Vec::new()),
-            Type::Date32 => ColumnBuilder::Date32(Vec::new()),
-            Type::Timestamp => ColumnBuilder::Timestamp(Vec::new()),
-            Type::Time64 => ColumnBuilder::Time64(Vec::new()),
-            Type::Decimal => ColumnBuilder::Decimal(Vec::new()),
-            Type::HugeInt => ColumnBuilder::HugeInt(Vec::new()),
-            Type::Blob => ColumnBuilder::Blob(Vec::new()),
-            _ => ColumnBuilder::Fallback(Vec::new()),
+    if !needs_cast {
+        return Ok(batch);
+    }
+
+    let mut new_fields = Vec::with_capacity(schema.fields().len());
+    let mut new_columns = Vec::with_capacity(batch.num_columns());
+
+    for (i, field) in schema.fields().iter().enumerate() {
+        if matches!(field.data_type(), DataType::Decimal128(_, _)) {
+            let casted = cast(batch.column(i), &DataType::Float64).map_err(|e| {
+                GgsqlError::ReaderError(format!(
+                    "Failed to cast column '{}' from Decimal to Float64: {}",
+                    field.name(),
+                    e
+                ))
+            })?;
+            new_fields.push(Field::new(field.name(), DataType::Float64, field.is_nullable()));
+            new_columns.push(casted);
+        } else {
+            new_fields.push(field.as_ref().clone());
+            new_columns.push(batch.column(i).clone());
         }
     }
 
-    fn add_value(&mut self, row: &duckdb::Row, col_idx: usize) -> Result<()> {
-        use ColumnBuilder::*;
-        match self {
-            TinyInt(ref mut values) => values.push(row.get(col_idx).ok()),
-            SmallInt(ref mut values) => values.push(row.get(col_idx).ok()),
-            Int(ref mut values) => values.push(row.get(col_idx).ok()),
-            BigInt(ref mut values) => values.push(row.get(col_idx).ok()),
-            UTinyInt(ref mut values) => {
-                let val: Option<u8> = row.get(col_idx).ok();
-                values.push(val.map(|v| v as i16));
-            }
-            USmallInt(ref mut values) => {
-                let val: Option<u16> = row.get(col_idx).ok();
-                values.push(val.map(|v| v as i32));
-            }
-            UInt(ref mut values) => {
-                let val: Option<u32> = row.get(col_idx).ok();
-                values.push(val.map(|v| v as i64));
-            }
-            UBigInt(ref mut values) => values.push(row.get(col_idx).ok()),
-            Float(ref mut values) => values.push(row.get(col_idx).ok()),
-            Double(ref mut values) => values.push(row.get(col_idx).ok()),
-            Boolean(ref mut values) => values.push(row.get(col_idx).ok()),
-            Text(ref mut values) => values.push(row.get(col_idx).ok()),
-            Date32(ref mut values) => values.push(row.get(col_idx).ok()),
-            Timestamp(ref mut values) => values.push(row.get(col_idx).ok()),
-            Time64(ref mut values) => values.push(row.get(col_idx).ok()),
-            Decimal(ref mut values) => {
-                use duckdb::types::ValueRef;
-                let val = match row.get_ref(col_idx) {
-                    Ok(ValueRef::Decimal(d)) => {
-                        // Convert Decimal to string, then parse as f64
-                        let decimal_str = d.to_string();
-                        decimal_str.parse::<f64>().ok()
-                    }
-                    Ok(ValueRef::Null) => None,
-                    Ok(ValueRef::TinyInt(i)) => Some(i as f64),
-                    Ok(ValueRef::SmallInt(i)) => Some(i as f64),
-                    Ok(ValueRef::Int(i)) => Some(i as f64),
-                    Ok(ValueRef::BigInt(i)) => Some(i as f64),
-                    Ok(ValueRef::HugeInt(i)) => Some(i as f64),
-                    Ok(ValueRef::UTinyInt(i)) => Some(i as f64),
-                    Ok(ValueRef::USmallInt(i)) => Some(i as f64),
-                    Ok(ValueRef::UInt(i)) => Some(i as f64),
-                    Ok(ValueRef::UBigInt(i)) => Some(i as f64),
-                    Ok(ValueRef::Float(f)) => Some(f as f64),
-                    Ok(ValueRef::Double(f)) => Some(f),
-                    _ => None,
-                };
-                values.push(val);
-            }
-            HugeInt(ref mut values) => values.push(row.get(col_idx).ok()),
-            Blob(ref mut values) => {
-                // Blob: try to get as String, or use empty string
-                let val: Option<String> = row.get(col_idx).ok();
-                values.push(val.or(Some(String::new())));
-            }
-            Fallback(ref mut values) => {
-                // Fallback: try to get as String, or use empty string
-                let val: Option<String> = row.get(col_idx).ok();
-                values.push(val.or(Some(String::new())));
-            }
-        }
-        Ok(())
-    }
-
-    fn build(self, column_name: &str) -> Result<(String, ArrayRef)> {
-        use arrow::array::*;
-        use ColumnBuilder::*;
-
-        let name = column_name.to_string();
-        let array: ArrayRef = match self {
-            TinyInt(values) => Arc::new(Int8Array::from(values)),
-            SmallInt(values) => Arc::new(Int16Array::from(values)),
-            Int(values) => Arc::new(Int32Array::from(values)),
-            BigInt(values) => Arc::new(Int64Array::from(values)),
-            UTinyInt(values) => Arc::new(Int16Array::from(values)),
-            USmallInt(values) => Arc::new(Int32Array::from(values)),
-            UInt(values) => Arc::new(Int64Array::from(values)),
-            UBigInt(values) => {
-                // Check if all values fit in i64
-                let all_fit = values
-                    .iter()
-                    .all(|opt_val| opt_val.map(|val| val <= i64::MAX as u64).unwrap_or(true));
-
-                if all_fit {
-                    let i64_values: Vec<Option<i64>> = values
-                        .into_iter()
-                        .map(|opt_val| opt_val.map(|val| val as i64))
-                        .collect();
-                    Arc::new(Int64Array::from(i64_values))
-                } else {
-                    eprintln!(
-                        "Warning: UBigInt overflow in column '{}', converting to string",
-                        column_name
-                    );
-                    let string_values: Vec<Option<String>> = values
-                        .into_iter()
-                        .map(|opt_val| opt_val.map(|val| val.to_string()))
-                        .collect();
-                    Arc::new(StringArray::from(
-                        string_values
-                            .iter()
-                            .map(|s| s.as_deref())
-                            .collect::<Vec<_>>(),
-                    ))
-                }
-            }
-            Float(values) => Arc::new(Float32Array::from(values)),
-            Double(values) => Arc::new(Float64Array::from(values)),
-            Boolean(values) => Arc::new(BooleanArray::from(values)),
-            Text(values) => Arc::new(StringArray::from(
-                values.iter().map(|s| s.as_deref()).collect::<Vec<_>>(),
-            )),
-            Date32(values) => {
-                // Arrow Date32 stores days since epoch directly
-                Arc::new(Date32Array::from(values))
-            }
-            Timestamp(values) => {
-                // DuckDB timestamps are in microseconds
-                Arc::new(TimestampMicrosecondArray::from(values))
-            }
-            Time64(values) => {
-                // DuckDB time values are in nanoseconds
-                Arc::new(Time64NanosecondArray::from(values))
-            }
-            Decimal(values) => Arc::new(Float64Array::from(values)),
-            HugeInt(values) => {
-                // Check if all values fit in i64
-                let all_fit = values.iter().all(|opt_val| {
-                    opt_val
-                        .map(|val| val >= i64::MIN as i128 && val <= i64::MAX as i128)
-                        .unwrap_or(true)
-                });
-
-                if all_fit {
-                    let i64_values: Vec<Option<i64>> = values
-                        .into_iter()
-                        .map(|opt_val| opt_val.map(|val| val as i64))
-                        .collect();
-                    Arc::new(Int64Array::from(i64_values))
-                } else {
-                    eprintln!(
-                        "Warning: HugeInt overflow in column '{}', converting to string",
-                        column_name
-                    );
-                    let string_values: Vec<Option<String>> = values
-                        .into_iter()
-                        .map(|opt_val| opt_val.map(|val| val.to_string()))
-                        .collect();
-                    Arc::new(StringArray::from(
-                        string_values
-                            .iter()
-                            .map(|s| s.as_deref())
-                            .collect::<Vec<_>>(),
-                    ))
-                }
-            }
-            Blob(values) => {
-                eprintln!(
-                    "Warning: Converting Blob column '{}' to string (debug format)",
-                    column_name
-                );
-                Arc::new(StringArray::from(
-                    values.iter().map(|s| s.as_deref()).collect::<Vec<_>>(),
-                ))
-            }
-            Fallback(values) => {
-                eprintln!(
-                    "Warning: Using fallback string conversion for column '{}'",
-                    column_name
-                );
-                Arc::new(StringArray::from(
-                    values.iter().map(|s| s.as_deref()).collect::<Vec<_>>(),
-                ))
-            }
-        };
-        Ok((name, array))
-    }
+    RecordBatch::try_new(Arc::new(Schema::new(new_fields)), new_columns)
+        .map_err(|e| GgsqlError::ReaderError(format!("Failed to normalize types: {}", e)))
 }
 
 impl Reader for DuckDBReader {
@@ -418,83 +226,29 @@ impl Reader for DuckDBReader {
             return Ok(DataFrame::empty());
         }
 
-        // Prepare and execute statement to get schema
         let mut stmt = self
             .conn
             .prepare(&sql)
             .map_err(|e| GgsqlError::ReaderError(format!("Failed to prepare SQL: {}", e)))?;
 
-        // Execute to populate schema info
-        stmt.execute(params![])
+        let arrow_result = stmt
+            .query_arrow(params![])
             .map_err(|e| GgsqlError::ReaderError(format!("Failed to execute SQL: {}", e)))?;
 
-        // Get column metadata BEFORE creating iterator
-        let column_count = stmt.column_count();
-        if column_count == 0 {
-            return Err(GgsqlError::ReaderError(
-                "Query returned no columns".to_string(),
+        let schema = arrow_result.get_schema();
+        let batches: Vec<_> = arrow_result.collect();
+
+        if batches.is_empty() {
+            return Ok(DataFrame::from_record_batch(
+                arrow::record_batch::RecordBatch::new_empty(schema),
             ));
         }
 
-        let mut column_names = Vec::new();
-        let mut column_types = Vec::new();
-        for i in 0..column_count {
-            column_names.push(
-                stmt.column_name(i)
-                    .map_err(|e| {
-                        GgsqlError::ReaderError(format!("Failed to get column name: {}", e))
-                    })?
-                    .to_string(),
-            );
-            let data_type = stmt.column_type(i);
-            let duckdb_type = duckdb::types::Type::from(&data_type);
-            column_types.push(duckdb_type);
-        }
+        let combined = concat_batches(&schema, &batches)
+            .map_err(|e| GgsqlError::ReaderError(format!("Failed to combine result batches: {}", e)))?;
 
-        // Initialize storage for each column
-        let column_builders: Vec<ColumnBuilder> = column_types
-            .iter()
-            .map(|t| ColumnBuilder::new(t.clone()))
-            .collect();
-
-        // Collect all values using query_map (which borrows stmt mutably during iteration)
-        let builders_cell = std::cell::RefCell::new(column_builders);
-        let error_cell = std::cell::RefCell::new(None);
-
-        let _ = stmt
-            .query_map(params![], |row| {
-                // Handle errors by storing them in error_cell
-                if error_cell.borrow().is_some() {
-                    return Ok(());
-                }
-
-                let mut builders = builders_cell.borrow_mut();
-                for col_idx in 0..column_count {
-                    if let Err(e) = builders[col_idx].add_value(row, col_idx) {
-                        *error_cell.borrow_mut() = Some(e);
-                        return Ok(());
-                    }
-                }
-                Ok(())
-            })
-            .map_err(|e| GgsqlError::ReaderError(format!("Failed to iterate rows: {}", e)))?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| GgsqlError::ReaderError(format!("Failed to process rows: {}", e)))?;
-
-        // Check if there was an error during processing
-        if let Some(err) = error_cell.into_inner() {
-            return Err(err);
-        }
-
-        // Build named arrays from column builders
-        let column_builders = builders_cell.into_inner();
-        let named_arrays: Vec<(String, ArrayRef)> = column_builders
-            .into_iter()
-            .enumerate()
-            .map(|(col_idx, builder)| builder.build(&column_names[col_idx]))
-            .collect::<Result<Vec<_>>>()?;
-
-        DataFrame::new(named_arrays)
+        let normalized = normalize_arrow_types(combined)?;
+        Ok(DataFrame::from_record_batch(normalized))
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
