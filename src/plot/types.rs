@@ -5,8 +5,8 @@
 //! to capture what the user specified in their query.
 
 use crate::reader::SqlDialect;
+use arrow::datatypes::DataType;
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
-use polars::prelude::DataType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

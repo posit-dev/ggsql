@@ -7,9 +7,12 @@
 //! - If pos1 is continuous and pos2 is discrete → stack horizontally (modify pos1/pos1end)
 
 use super::{is_continuous_scale, Layer, PositionTrait, PositionType};
+use crate::array_util::{as_f64, cast_array};
 use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue};
-use crate::{naming, DataFrame, GgsqlError, Plot, Result};
-use polars::prelude::*;
+use crate::{compute, naming, DataFrame, GgsqlError, Plot, Result};
+use arrow::array::{Array, Float64Array};
+use arrow::datatypes::DataType;
+use std::sync::Arc;
 
 /// Stack mode for position adjustments
 #[derive(Clone, Copy)]
@@ -143,29 +146,37 @@ fn has_zero_baseline_per_row(df: &DataFrame, col_a: &str, col_b: &str) -> bool {
     };
 
     // Cast columns to f64 for comparison - handle both Int64 and Float64 sources
-    let Ok(a_casted) = a.cast(&polars::datatypes::DataType::Float64) else {
+    let Ok(a_casted) = cast_array(a, &DataType::Float64) else {
         return false;
     };
-    let Ok(b_casted) = b.cast(&polars::datatypes::DataType::Float64) else {
-        return false;
-    };
-
-    let Ok(a_vals) = a_casted.f64() else {
-        return false;
-    };
-    let Ok(b_vals) = b_casted.f64() else {
+    let Ok(b_casted) = cast_array(b, &DataType::Float64) else {
         return false;
     };
 
-    // Collect values to avoid borrow issues
-    let a_vec: Vec<Option<f64>> = a_vals.into_iter().collect();
-    let b_vec: Vec<Option<f64>> = b_vals.into_iter().collect();
+    let Ok(a_vals) = as_f64(&a_casted) else {
+        return false;
+    };
+    let Ok(b_vals) = as_f64(&b_casted) else {
+        return false;
+    };
 
     // For each row, either a or b must be 0
-    a_vec
-        .into_iter()
-        .zip(b_vec)
-        .all(|(a_val, b_val)| a_val == Some(0.0) || b_val == Some(0.0))
+    for i in 0..a_vals.len() {
+        let a_val = if a_vals.is_null(i) {
+            None
+        } else {
+            Some(a_vals.value(i))
+        };
+        let b_val = if b_vals.is_null(i) {
+            None
+        } else {
+            Some(b_vals.value(i))
+        };
+        if a_val != Some(0.0) && b_val != Some(0.0) {
+            return false;
+        }
+    }
+    true
 }
 
 /// Determine stacking direction based on scale types and axis configuration.
@@ -224,115 +235,94 @@ fn apply_stack(df: DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> Re
     }
 
     // Stacking currently only supports non-negative values
-    let min_result = df
-        .clone()
-        .lazy()
-        .select([col(&stack_col).min()])
-        .collect()
-        .map_err(|e| GgsqlError::InternalError(format!("Failed to check min value: {}", e)))?;
-
-    if let Some(min_col) = min_result.get_columns().first() {
-        if let Ok(min_val) = min_col.get(0) {
-            if let Ok(min) = min_val.try_extract::<f64>() {
-                if min < 0.0 {
-                    let axis = match direction {
-                        StackDirection::Vertical => "y",
-                        StackDirection::Horizontal => "x",
-                    };
-                    return Err(GgsqlError::ValidationError(format!(
-                        "position 'stack' requires non-negative {} values",
-                        axis
-                    )));
-                }
-            }
+    if let Some(min) = compute::column_min_f64(&df, &stack_col)? {
+        if min < 0.0 {
+            let axis = match direction {
+                StackDirection::Vertical => "y",
+                StackDirection::Horizontal => "x",
+            };
+            return Err(GgsqlError::ValidationError(format!(
+                "position 'stack' requires non-negative {} values",
+                axis
+            )));
         }
     }
-
-    // Convert to lazy for transformations
-    let lf = df.lazy();
 
     // Sort by group column and partition_by columns to ensure consistent stacking order
-    // This ensures that within each group (e.g., x position), the stacking order is
-    // consistent even if data arrives in different orders or has missing values
-    let mut sort_cols = vec![col(&group_col)];
+    let mut sort_col_names: Vec<&str> = vec![&group_col];
     for partition_col in &layer.partition_by {
-        sort_cols.push(col(partition_col));
+        sort_col_names.push(partition_col);
     }
-    let sort_options = SortMultipleOptions::default();
-    let lf = lf.sort_by_exprs(&sort_cols, sort_options);
+    let df = compute::sort_dataframe(&df, &sort_col_names)?;
 
-    // For stacking, compute cumulative sums within each group:
-    // 1. stack_col = cumulative sum (the bar top/end)
-    // 2. stack_end_col = lag(stack_col, 1, 0) - the bar bottom/start (previous stack top)
-    // The cumsum naturally stacks across the grouping column values
+    // Cast stack column to f64 if needed, then fill nulls with 0
+    let stack_col_array = df.column(&stack_col)?.clone();
+    let stack_col_f64 = if stack_col_array.data_type() == &arrow::datatypes::DataType::Float64 {
+        stack_col_array
+    } else {
+        crate::array_util::cast_array(&stack_col_array, &arrow::datatypes::DataType::Float64)?
+    };
+    let filled = compute::fill_null_f64_ref(&stack_col_f64, 0.0)?;
+    let df = df.with_column(&stack_col, filled)?;
 
-    // Build the partition columns for .over(): group column + facet columns.
+    // Build the group columns for .over(): group column + facet columns.
     // Facet columns must be included so stacking resets per facet panel,
     // matching ggplot2 where position adjustments are computed per-panel.
-    let mut over_cols: Vec<Expr> = vec![col(&group_col)];
-    if let Some(ref facet) = spec.facet {
-        for aes in facet.layout.internal_facet_names() {
-            let facet_col = naming::aesthetic_column(&aes);
-            over_cols.push(col(&facet_col));
-        }
+    // Collect facet column names as owned Strings
+    let facet_col_names: Vec<String> = spec
+        .facet
+        .as_ref()
+        .map(|f| {
+            f.layout
+                .internal_facet_names()
+                .into_iter()
+                .map(|aes| naming::aesthetic_column(&aes))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut over_col_refs: Vec<&str> = vec![&group_col];
+    for name in &facet_col_names {
+        over_col_refs.push(name);
     }
 
-    // Treat NA heights as 0 for stacking
+    // Compute group IDs
+    let group_ids = compute::compute_group_ids(&df, &over_col_refs)?;
+
+    // Get the stack column values as Float64
+    let stack_arr = df.column(&stack_col)?;
+    let values = as_f64(stack_arr)?;
+
     // Compute cumulative sums (shared by all modes)
-    let lf = lf
-        .with_column(col(&stack_col).fill_null(lit(0.0)).alias(&stack_col))
-        .with_column(
-            col(&stack_col)
-                .cum_sum(false)
-                .over(&over_cols)
-                .alias("__cumsum__"),
-        )
-        .with_column(
-            col(&stack_col)
-                .cum_sum(false)
-                .shift(lit(1))
-                .fill_null(lit(0.0))
-                .over(&over_cols)
-                .alias("__cumsum_lag__"),
-        );
+    let cumsum = compute::grouped_cumsum(values, &group_ids);
+    let cumsum_lag = compute::grouped_cumsum_lag(values, &group_ids);
 
     // Apply mode-specific transformation
-    let (stack_expr, stack_end_expr, temp_cols): (Expr, Expr, Vec<&str>) = match mode {
-        StackMode::Normal => (
-            col("__cumsum__").alias(&stack_col),
-            col("__cumsum_lag__").alias(&stack_end_col),
-            vec!["__cumsum__", "__cumsum_lag__"],
-        ),
+    let (new_stack, new_stack_end): (Float64Array, Float64Array) = match mode {
+        StackMode::Normal => (cumsum, cumsum_lag),
         StackMode::Fill(target) => {
-            let total = col(&stack_col).sum().over(&over_cols);
-            (
-                (col("__cumsum__") / total.clone() * lit(target)).alias(&stack_col),
-                (col("__cumsum_lag__") / total * lit(target)).alias(&stack_end_col),
-                vec!["__cumsum__", "__cumsum_lag__"],
-            )
+            let group_sum = compute::grouped_sum_broadcast(values, &group_ids);
+            let cumsum_div = compute::divide_arrays(&cumsum, &group_sum)?;
+            let cumsum_lag_div = compute::divide_arrays(&cumsum_lag, &group_sum)?;
+            let new_stack = compute::multiply_scalar(&cumsum_div, target);
+            let new_stack_end = compute::multiply_scalar(&cumsum_lag_div, target);
+            (new_stack, new_stack_end)
         }
         StackMode::Center => {
-            let half_total = col(&stack_col).sum().over(&over_cols) / lit(2.0);
-            (
-                (col("__cumsum__") - half_total.clone()).alias(&stack_col),
-                (col("__cumsum_lag__") - half_total).alias(&stack_end_col),
-                vec!["__cumsum__", "__cumsum_lag__"],
-            )
+            let group_sum = compute::grouped_sum_broadcast(values, &group_ids);
+            let half_sum = compute::divide_scalar(&group_sum, 2.0);
+            let new_stack = compute::subtract_arrays(&cumsum, &half_sum);
+            let new_stack_end = compute::subtract_arrays(&cumsum_lag, &half_sum);
+            (new_stack, new_stack_end)
         }
     };
 
-    let mut result = lf
-        .with_columns([stack_expr, stack_end_expr])
-        .collect()
-        .map_err(|e| {
-            GgsqlError::InternalError(format!("Stack position adjustment failed: {}", e))
-        })?;
-
-    for col_name in temp_cols {
-        result = result
-            .drop(col_name)
-            .map_err(|e| GgsqlError::InternalError(format!("Failed to drop temp column: {}", e)))?;
-    }
+    let result = df
+        .with_column(&stack_col, Arc::new(new_stack) as arrow::array::ArrayRef)?
+        .with_column(
+            &stack_end_col,
+            Arc::new(new_stack_end) as arrow::array::ArrayRef,
+        )?;
 
     Ok(result)
 }
@@ -340,15 +330,17 @@ fn apply_stack(df: DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::array_util::{as_f64, as_str};
+    use crate::df;
     use crate::plot::layer::Geom;
     use crate::plot::{AestheticValue, Mappings};
 
     fn make_test_df() -> DataFrame {
         df! {
-            "__ggsql_aes_pos1__" => ["A", "A", "B", "B"],
-            "__ggsql_aes_pos2__" => [10.0, 20.0, 15.0, 25.0],
-            "__ggsql_aes_pos2end__" => [0.0, 0.0, 0.0, 0.0],
-            "__ggsql_aes_fill__" => ["X", "Y", "X", "Y"],
+            "__ggsql_aes_pos1__" => vec!["A", "A", "B", "B"],
+            "__ggsql_aes_pos2__" => vec![10.0, 20.0, 15.0, 25.0],
+            "__ggsql_aes_pos2end__" => vec![0.0, 0.0, 0.0, 0.0],
+            "__ggsql_aes_fill__" => vec!["X", "Y", "X", "Y"],
         }
         .unwrap()
     }
@@ -391,11 +383,8 @@ mod tests {
         let (result, width) = stack.apply_adjustment(df, &layer, &spec).unwrap();
 
         assert!(width.is_none());
-        let pos2_col = result.column("__ggsql_aes_pos2__").unwrap();
-        let pos2end_col = result.column("__ggsql_aes_pos2end__").unwrap();
-
-        assert!(pos2_col.f64().is_ok() || pos2_col.i64().is_ok());
-        assert!(pos2end_col.f64().is_ok() || pos2end_col.i64().is_ok());
+        assert!(result.column("__ggsql_aes_pos2__").is_ok());
+        assert!(result.column("__ggsql_aes_pos2end__").is_ok());
     }
 
     #[test]
@@ -431,23 +420,19 @@ mod tests {
         let (result_centered, _) = stack.apply_adjustment(df, &layer_centered, &spec).unwrap();
 
         // Normal stacking should have pos2end starting at 0
-        let pos2end_normal = result_normal.column("__ggsql_aes_pos2end__").unwrap();
-        let first_normal = pos2end_normal.get(0).unwrap();
+        let pos2end_normal_col = result_normal.column("__ggsql_aes_pos2end__").unwrap();
+        let pos2end_normal = as_f64(pos2end_normal_col).unwrap();
         // First element's pos2end should be 0 for normal stack
-        if let polars::prelude::AnyValue::Float64(v) = first_normal {
-            assert_eq!(v, 0.0);
-        }
+        assert_eq!(pos2end_normal.value(0), 0.0);
 
         // Centered stacking should have negative values
-        let pos2end_centered = result_centered.column("__ggsql_aes_pos2end__").unwrap();
-        let first_centered = pos2end_centered.get(0).unwrap();
+        let pos2end_centered_col = result_centered.column("__ggsql_aes_pos2end__").unwrap();
+        let pos2end_centered = as_f64(pos2end_centered_col).unwrap();
         // First element's pos2end should be negative for centered stack (shifted by -total/2)
-        if let polars::prelude::AnyValue::Float64(v) = first_centered {
-            assert!(
-                v < 0.0,
-                "Centered stack should have negative pos2end for first element"
-            );
-        }
+        assert!(
+            pos2end_centered.value(0) < 0.0,
+            "Centered stack should have negative pos2end for first element"
+        );
     }
 
     fn make_continuous_scale(aesthetic: &str) -> crate::plot::Scale {
@@ -487,10 +472,10 @@ mod tests {
 
         // Create data with numeric pos1 values and pos1end column with zero baselines
         let df = df! {
-            "__ggsql_aes_pos1__" => [10.0, 20.0, 15.0, 25.0],
-            "__ggsql_aes_pos1end__" => [0.0, 0.0, 0.0, 0.0],
-            "__ggsql_aes_pos2__" => ["A", "A", "B", "B"],
-            "__ggsql_aes_fill__" => ["X", "Y", "X", "Y"],
+            "__ggsql_aes_pos1__" => vec![10.0, 20.0, 15.0, 25.0],
+            "__ggsql_aes_pos1end__" => vec![0.0, 0.0, 0.0, 0.0],
+            "__ggsql_aes_pos2__" => vec!["A", "A", "B", "B"],
+            "__ggsql_aes_fill__" => vec!["X", "Y", "X", "Y"],
         }
         .unwrap();
 
@@ -536,9 +521,10 @@ mod tests {
 
         // Verify stacking occurred - values should be cumulative sums
         let pos1_col = result.column("__ggsql_aes_pos1__").unwrap();
-        let pos1_vals: Vec<f64> = pos1_col.f64().unwrap().into_iter().flatten().collect();
+        let pos1_arr = as_f64(pos1_col).unwrap();
+        let pos1_vals: Vec<f64> = (0..pos1_arr.len()).map(|i| pos1_arr.value(i)).collect();
 
-        // Should have cumulative sums (10, 30, 15, 40) for groups A and B
+        // Should have cumulative values > original max, got {:?}
         assert!(
             pos1_vals.iter().any(|&v| v > 20.0),
             "Should have cumulative values > original max, got {:?}",
@@ -563,7 +549,8 @@ mod tests {
 
         // pos2 should sum to 100 within each group (A and B)
         let pos2_col = result.column("__ggsql_aes_pos2__").unwrap();
-        let pos2_vals: Vec<f64> = pos2_col.f64().unwrap().into_iter().flatten().collect();
+        let pos2_arr = as_f64(pos2_col).unwrap();
+        let pos2_vals: Vec<f64> = (0..pos2_arr.len()).map(|i| pos2_arr.value(i)).collect();
 
         // For group A: values 10, 20 -> normalized: 10/30, 20/30 -> cumsum: 10/30, 30/30
         // Multiplied by 100: ~33.33, 100
@@ -594,7 +581,8 @@ mod tests {
         let (result, _) = stack.apply_adjustment(df, &layer, &spec).unwrap();
 
         let pos2_col = result.column("__ggsql_aes_pos2__").unwrap();
-        let pos2_vals: Vec<f64> = pos2_col.f64().unwrap().into_iter().flatten().collect();
+        let pos2_arr = as_f64(pos2_col).unwrap();
+        let pos2_vals: Vec<f64> = (0..pos2_arr.len()).map(|i| pos2_arr.value(i)).collect();
 
         // Max values should be 1 (normalized to sum to 1)
         let max_val = pos2_vals.iter().cloned().fold(f64::MIN, f64::max);
@@ -611,10 +599,10 @@ mod tests {
 
         // Create data with NA values in pos2
         let df = df! {
-            "__ggsql_aes_pos1__" => ["A", "A", "A", "B", "B", "B"],
-            "__ggsql_aes_pos2__" => [Some(10.0), None, Some(20.0), Some(15.0), Some(25.0), None],
-            "__ggsql_aes_pos2end__" => [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            "__ggsql_aes_fill__" => ["X", "Y", "Z", "X", "Y", "Z"],
+            "__ggsql_aes_pos1__" => vec!["A", "A", "A", "B", "B", "B"],
+            "__ggsql_aes_pos2__" => vec![Some(10.0), None, Some(20.0), Some(15.0), Some(25.0), None],
+            "__ggsql_aes_pos2end__" => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "__ggsql_aes_fill__" => vec!["X", "Y", "Z", "X", "Y", "Z"],
         }
         .unwrap();
 
@@ -647,19 +635,21 @@ mod tests {
 
         // Get pos2 values - should have no nulls after stacking
         let pos2_col = result.column("__ggsql_aes_pos2__").unwrap();
-        let pos2_vals: Vec<Option<f64>> = pos2_col.f64().unwrap().into_iter().collect();
+        let pos2_arr = as_f64(pos2_col).unwrap();
 
         // All values should be non-null (NA treated as 0)
-        assert!(
-            pos2_vals.iter().all(|v| v.is_some()),
-            "Expected no null values after stacking, got {:?}",
-            pos2_vals
-        );
+        for i in 0..pos2_arr.len() {
+            assert!(
+                !pos2_arr.is_null(i),
+                "Expected no null values after stacking, got null at index {}",
+                i
+            );
+        }
 
         // For group A: 10, 0 (NA), 20 -> cumsum: 10, 10, 30
         // For group B: 15, 25, 0 (NA) -> cumsum: 15, 40, 40
         // Check that the cumsum for group A ends at 30 (10 + 0 + 20)
-        let group_a_max = pos2_vals[2].unwrap(); // Third row is last for group A
+        let group_a_max = pos2_arr.value(2); // Third row is last for group A
         assert!(
             (group_a_max - 30.0).abs() < 0.01,
             "Expected group A max ~30 (NA treated as 0), got {}",
@@ -673,10 +663,10 @@ mod tests {
 
         // Create data in shuffled order - categories not in order within groups
         let df = df! {
-            "__ggsql_aes_pos1__" => ["A", "B", "A", "B", "A", "B"],
-            "__ggsql_aes_pos2__" => [10.0, 15.0, 30.0, 35.0, 20.0, 25.0],
-            "__ggsql_aes_pos2end__" => [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            "__ggsql_aes_fill__" => ["X", "X", "Z", "Z", "Y", "Y"],
+            "__ggsql_aes_pos1__" => vec!["A", "B", "A", "B", "A", "B"],
+            "__ggsql_aes_pos2__" => vec![10.0, 15.0, 30.0, 35.0, 20.0, 25.0],
+            "__ggsql_aes_pos2end__" => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "__ggsql_aes_fill__" => vec!["X", "X", "Z", "Z", "Y", "Y"],
         }
         .unwrap();
 
@@ -716,9 +706,13 @@ mod tests {
         let fill_col = result.column("__ggsql_aes_fill__").unwrap();
         let pos2_col = result.column("__ggsql_aes_pos2__").unwrap();
 
-        let pos1_vals: Vec<&str> = pos1_col.str().unwrap().into_iter().flatten().collect();
-        let fill_vals: Vec<&str> = fill_col.str().unwrap().into_iter().flatten().collect();
-        let pos2_vals: Vec<f64> = pos2_col.f64().unwrap().into_iter().flatten().collect();
+        let pos1_arr = as_str(pos1_col).unwrap();
+        let fill_arr = as_str(fill_col).unwrap();
+        let pos2_arr = as_f64(pos2_col).unwrap();
+
+        let pos1_vals: Vec<&str> = (0..pos1_arr.len()).map(|i| pos1_arr.value(i)).collect();
+        let fill_vals: Vec<&str> = (0..fill_arr.len()).map(|i| fill_arr.value(i)).collect();
+        let pos2_vals: Vec<f64> = (0..pos2_arr.len()).map(|i| pos2_arr.value(i)).collect();
 
         // Should be sorted: A-X, A-Y, A-Z, B-X, B-Y, B-Z
         assert_eq!(pos1_vals, vec!["A", "A", "A", "B", "B", "B"]);

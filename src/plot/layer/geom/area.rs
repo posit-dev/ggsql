@@ -65,7 +65,7 @@ impl GeomTrait for Area {
         _aesthetics: &Mappings,
         _group_by: &[String],
         _parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
-        _execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
+        _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         _dialect: &dyn crate::reader::SqlDialect,
     ) -> crate::Result<StatResult> {
         // Area geom needs ordering by pos1 (domain axis) for proper rendering

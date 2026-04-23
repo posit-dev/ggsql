@@ -3,11 +3,13 @@
 //! This module handles building Vega-Lite encoding channels from ggsql aesthetic mappings,
 //! including type inference, scale properties, and title handling.
 
+use crate::array_util::as_str;
 use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
 use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path, ScaleTypeKind};
 use crate::plot::{CoordKind, ParameterValue};
 use crate::{AestheticValue, DataFrame, GgsqlError, Plot, Result};
-use polars::prelude::*;
+use arrow::array::Array;
+use arrow::datatypes::DataType;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 
@@ -213,12 +215,15 @@ pub(super) fn count_binned_legend_scales(spec: &Plot) -> usize {
         .count()
 }
 
-/// Check if a string column contains numeric values
-pub(super) fn is_numeric_string_column(series: &Series) -> bool {
-    if let Ok(ca) = series.str() {
+/// Check if a string (Utf8) column contains numeric values
+pub(super) fn is_numeric_string_column(array: &arrow::array::ArrayRef) -> bool {
+    if let Ok(ca) = as_str(array) {
         // Check first few non-null values to see if they're numeric
-        for val in ca.into_iter().flatten().take(5) {
-            if val.parse::<f64>().is_err() {
+        for i in 0..ca.len().min(5) {
+            if ca.is_null(i) {
+                continue;
+            }
+            if ca.value(i).parse::<f64>().is_err() {
                 return false;
             }
         }
@@ -231,18 +236,25 @@ pub(super) fn is_numeric_string_column(series: &Series) -> bool {
 /// Infer Vega-Lite field type from DataFrame column
 pub(super) fn infer_field_type(df: &DataFrame, field: &str) -> String {
     if let Ok(column) = df.column(field) {
-        use DataType::*;
-        match column.dtype() {
-            Int8 | Int16 | Int32 | Int64 | UInt8 | UInt16 | UInt32 | UInt64 | Float32 | Float64 => {
+        match column.data_type() {
+            DataType::Int8
+            | DataType::Int16
+            | DataType::Int32
+            | DataType::Int64
+            | DataType::UInt8
+            | DataType::UInt16
+            | DataType::UInt32
+            | DataType::UInt64
+            | DataType::Float32
+            | DataType::Float64 => "quantitative",
+            DataType::Boolean => "nominal",
+            DataType::Utf8
+                // Check if string column contains numeric values
+                if is_numeric_string_column(column) =>
+            {
                 "quantitative"
             }
-            Boolean => "nominal",
-            String
-                // Check if string column contains numeric values
-                if is_numeric_string_column(column.as_materialized_series()) => {
-                    "quantitative"
-                }
-            Date | Datetime(_, _) | Time => "temporal",
+            DataType::Date32 | DataType::Timestamp(_, _) | DataType::Time64(_) => "temporal",
             _ => "nominal",
         }
         .to_string()

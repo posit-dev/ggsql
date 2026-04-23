@@ -34,7 +34,7 @@ impl PositionTrait for Identity {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use polars::prelude::*;
+    use crate::df;
 
     #[test]
     fn test_identity_no_change() {
@@ -42,8 +42,8 @@ mod tests {
         assert_eq!(identity.position_type(), PositionType::Identity);
 
         let df = df! {
-            "x" => [1, 2, 3],
-            "y" => [10, 20, 30],
+            "x" => vec![1i32, 2, 3],
+            "y" => vec![10i32, 20, 30],
         }
         .unwrap();
 

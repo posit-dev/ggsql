@@ -30,13 +30,13 @@ ggsql = { path = "src", version = "0.2.7" }
 csscolorparser = "0.8.1"
 tree-sitter = "0.26"
 
-# Data processing
-polars = { version = "0.52", default-features = false }
-polars-ops = { version = "0.52", features = ["pivot"] }
+# Data container
+arrow = { version = "56", default-features = false, features = ["ipc"] }
 
 # Readers
 duckdb = { version = "~1.4", features = ["bundled", "vtab-arrow"] }
-arrow = { version = "56", default-features = false, features = ["ipc"] }
+parquet = { version = "56", default-features = false, features = ["arrow", "snap"] }
+bytes = "1"
 postgres = "0.19"
 rusqlite = { version = "0.38", features = ["bundled", "chrono", "functions", "window"] }
 

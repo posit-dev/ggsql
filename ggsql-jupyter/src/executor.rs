@@ -9,8 +9,8 @@ use ggsql::{
     reader::{connection::parse_connection_string, DuckDBReader, Reader},
     validate::validate,
     writer::{VegaLiteWriter, Writer},
+    DataFrame,
 };
-use polars::frame::DataFrame;
 
 /// Result of executing a ggsql query
 #[derive(Debug)]

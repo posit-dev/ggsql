@@ -5,7 +5,7 @@
 
 use crate::executor::ExecutionResult;
 use crate::message::MessageHeader;
-use polars::frame::DataFrame;
+use ggsql::DataFrame;
 use serde_json::{json, Value};
 
 /// Frontend-supplied hints about the output rendering slot.
@@ -295,7 +295,7 @@ console.error('Failed to load Vega libraries:', err);
 /// Format DataFrame as HTML table
 fn format_dataframe(df: DataFrame) -> Value {
     let html = dataframe_to_html(&df);
-    let text = format!("{}", df);
+    let text = dataframe_to_text(&df);
 
     json!({
         "data": {
@@ -309,11 +309,13 @@ fn format_dataframe(df: DataFrame) -> Value {
 
 /// Convert DataFrame to HTML table
 fn dataframe_to_html(df: &DataFrame) -> String {
+    use ggsql::array_util::value_to_string;
+
     let mut html = String::from("<table border=\"1\" class=\"dataframe\">\n<thead><tr>");
 
     // Header row
     for col in df.get_column_names() {
-        html.push_str(&format!("<th>{}</th>", escape_html(col)));
+        html.push_str(&format!("<th>{}</th>", escape_html(&col)));
     }
     html.push_str("</tr></thead>\n<tbody>\n");
 
@@ -322,10 +324,8 @@ fn dataframe_to_html(df: &DataFrame) -> String {
     for i in 0..row_limit {
         html.push_str("<tr>");
         for col in df.get_columns() {
-            let value = col
-                .get(i)
-                .unwrap_or_else(|_| polars::prelude::AnyValue::Null);
-            html.push_str(&format!("<td>{}</td>", escape_html(&value.to_string())));
+            let value = value_to_string(col, i);
+            html.push_str(&format!("<td>{}</td>", escape_html(&value)));
         }
         html.push_str("</tr>\n");
     }
@@ -340,6 +340,27 @@ fn dataframe_to_html(df: &DataFrame) -> String {
 
     html.push_str("</tbody>\n</table>");
     html
+}
+
+/// Convert DataFrame to plain-text summary (shape + column names + first rows).
+fn dataframe_to_text(df: &ggsql::DataFrame) -> String {
+    use ggsql::array_util::value_to_string;
+
+    let mut s = format!("shape: ({}, {})\n", df.height(), df.width());
+    let names = df.get_column_names();
+    s.push_str(&names.join("\t"));
+    s.push('\n');
+    let row_limit = df.height().min(10);
+    for i in 0..row_limit {
+        let row: Vec<String> = df
+            .get_columns()
+            .iter()
+            .map(|c| value_to_string(c, i))
+            .collect();
+        s.push_str(&row.join("\t"));
+        s.push('\n');
+    }
+    s
 }
 
 /// Escape HTML special characters
@@ -368,10 +389,8 @@ mod tests {
 
     #[test]
     fn test_empty_dataframe_returns_none() {
-        use polars::prelude::*;
-
         // DDL statements return DataFrames with 0 columns
-        let df = DataFrame::new(Vec::<Column>::new()).unwrap();
+        let df = DataFrame::empty();
         let result = ExecutionResult::DataFrame(df);
         let display = format_display_data(result, &RenderHints::default());
 
@@ -383,10 +402,12 @@ mod tests {
 
     #[test]
     fn test_empty_rows_dataframe_returns_some() {
-        use polars::prelude::*;
+        use arrow::array::{ArrayRef, Int32Array};
+        use std::sync::Arc;
 
         // SELECT with 0 rows but columns should still display
-        let df = DataFrame::new(vec![Column::new("x".into(), Vec::<i32>::new())]).unwrap();
+        let empty: ArrayRef = Arc::new(Int32Array::from(Vec::<i32>::new()));
+        let df = DataFrame::new(vec![("x", empty)]).unwrap();
         let result = ExecutionResult::DataFrame(df);
         let display = format_display_data(result, &RenderHints::default());
 

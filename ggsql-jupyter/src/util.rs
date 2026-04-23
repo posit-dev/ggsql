@@ -1,9 +1,10 @@
-use polars::prelude::{Column, DataFrame};
+use arrow::array::ArrayRef;
+use ggsql::DataFrame;
 
 /// Find a DataFrame column by name, trying multiple names and falling back to
 /// case-insensitive matching. This handles ODBC drivers that return uppercase
 /// column names (e.g. `TABLE_NAME` instead of `table_name`).
-pub fn find_column<'a>(df: &'a DataFrame, names: &[&str]) -> Result<&'a Column, String> {
+pub fn find_column<'a>(df: &'a DataFrame, names: &[&str]) -> Result<&'a ArrayRef, String> {
     // Try exact match first
     for name in names {
         if let Ok(col) = df.column(name) {

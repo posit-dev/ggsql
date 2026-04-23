@@ -98,7 +98,7 @@ impl GeomTrait for Smooth {
         aesthetics: &Mappings,
         group_by: &[String],
         parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
-        _execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
+        _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn SqlDialect,
     ) -> crate::Result<super::StatResult> {
         // Get method from parameters (validated by ParamConstraint::string_option)

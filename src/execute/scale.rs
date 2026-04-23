@@ -15,7 +15,7 @@ use crate::plot::{
     ScaleType, ScaleTypeKind, Schema,
 };
 use crate::{DataFrame, GgsqlError, Result};
-use polars::prelude::Column;
+use arrow::array::ArrayRef;
 use std::collections::{HashMap, HashSet};
 
 use super::schema::TypeInfo;
@@ -121,7 +121,7 @@ pub fn create_missing_scales_post_stat(
             );
             if !column_refs.is_empty() {
                 scale.scale_type = Some(ScaleType::infer_for_aesthetic(
-                    column_refs[0].dtype(),
+                    column_refs[0].data_type(),
                     &scale.aesthetic,
                 ));
             }
@@ -219,63 +219,59 @@ pub fn apply_binning_to_dataframe(
     break_values: &[f64],
     closed_left: bool,
 ) -> Result<DataFrame> {
-    use polars::prelude::*;
+    use crate::array_util::{as_f64, cast_array, new_f64_array};
+    use arrow::array::Array;
+    use arrow::datatypes::DataType;
 
-    let column = df.column(col_name).map_err(|e| {
-        GgsqlError::InternalError(format!("Column '{}' not found: {}", col_name, e))
-    })?;
-
-    let series = column.as_materialized_series();
+    let column = df.column(col_name)?;
 
     // Cast to f64 for binning
-    let float_series = series.cast(&DataType::Float64).map_err(|e| {
+    let float_col = cast_array(column, &DataType::Float64).map_err(|e| {
         GgsqlError::InternalError(format!("Cannot bin column '{}': {}", col_name, e))
     })?;
 
-    let ca = float_series
-        .f64()
-        .map_err(|e| GgsqlError::InternalError(e.to_string()))?;
+    let f64_arr = as_f64(&float_col)?;
 
     // Apply binning: replace values with bin centers
     let num_bins = break_values.len() - 1;
-    let binned: Float64Chunked = ca.apply_values(|val| {
-        for i in 0..num_bins {
-            let lower = break_values[i];
-            let upper = break_values[i + 1];
-            let is_last = i == num_bins - 1;
-
-            let in_bin = if closed_left {
-                // Left-closed: [lower, upper) except last bin is [lower, upper]
-                if is_last {
-                    val >= lower && val <= upper
-                } else {
-                    val >= lower && val < upper
-                }
-            } else {
-                // Right-closed: (lower, upper] except first bin is [lower, upper]
-                if i == 0 {
-                    val >= lower && val <= upper
-                } else {
-                    val > lower && val <= upper
-                }
-            };
-
-            if in_bin {
-                return (lower + upper) / 2.0;
+    let binned: Vec<Option<f64>> = (0..f64_arr.len())
+        .map(|idx| {
+            if f64_arr.is_null(idx) {
+                return None;
             }
-        }
-        f64::NAN // Outside all bins
-    });
+            let val = f64_arr.value(idx);
+            for i in 0..num_bins {
+                let lower = break_values[i];
+                let upper = break_values[i + 1];
+                let is_last = i == num_bins - 1;
 
-    let binned_series = binned.into_series().with_name(col_name.into());
+                let in_bin = if closed_left {
+                    if is_last {
+                        val >= lower && val <= upper
+                    } else {
+                        val >= lower && val < upper
+                    }
+                } else {
+                    if i == 0 {
+                        val >= lower && val <= upper
+                    } else {
+                        val > lower && val <= upper
+                    }
+                };
+
+                if in_bin {
+                    return Some((lower + upper) / 2.0);
+                }
+            }
+            Some(f64::NAN) // Outside all bins
+        })
+        .collect();
+
+    let binned_array = new_f64_array(binned);
 
     // Replace column in DataFrame
-    let mut new_df = df.clone();
-    let _ = new_df
-        .replace(col_name, binned_series)
-        .map_err(|e| GgsqlError::InternalError(format!("Failed to replace column: {}", e)))?;
-
-    Ok(new_df)
+    df.with_column(col_name, binned_array)
+        .map_err(|e| GgsqlError::InternalError(format!("Failed to replace column: {}", e)))
 }
 
 // =============================================================================
@@ -451,7 +447,7 @@ pub fn collect_dtypes_for_aesthetic(
     aesthetic: &str,
     layer_type_info: &[Vec<TypeInfo>],
     aesthetic_ctx: &AestheticContext,
-) -> Vec<polars::prelude::DataType> {
+) -> Vec<arrow::datatypes::DataType> {
     let mut dtypes = Vec::new();
     let aesthetics_to_check = aesthetic_ctx
         .internal_position_family(aesthetic)
@@ -582,7 +578,7 @@ pub fn find_schema_columns_for_aesthetic(
 ///
 /// Used to include literal mappings in scale resolution.
 pub fn column_info_from_literal(aesthetic: &str, lit: &ParameterValue) -> Option<ColumnInfo> {
-    use polars::prelude::DataType;
+    use arrow::datatypes::DataType;
 
     match lit {
         ParameterValue::Number(n) => Some(ColumnInfo {
@@ -594,7 +590,7 @@ pub fn column_info_from_literal(aesthetic: &str, lit: &ParameterValue) -> Option
         }),
         ParameterValue::String(s) => Some(ColumnInfo {
             name: naming::const_column(aesthetic),
-            dtype: DataType::String,
+            dtype: DataType::Utf8,
             is_discrete: true,
             min: Some(ArrayElement::String(s.clone())),
             max: Some(ArrayElement::String(s.clone())),
@@ -621,14 +617,12 @@ pub fn coerce_column_to_type(
     column_name: &str,
     target_type: ArrayElementType,
 ) -> Result<DataFrame> {
-    use polars::prelude::{DataType, NamedFrom, Series, TimeUnit};
+    use crate::array_util::*;
+    use arrow::array::Array;
+    use arrow::datatypes::{DataType, TimeUnit};
 
-    let column = df.column(column_name).map_err(|e| {
-        GgsqlError::ValidationError(format!("Column '{}' not found: {}", column_name, e))
-    })?;
-
-    let series = column.as_materialized_series();
-    let dtype = series.dtype();
+    let column = df.column(column_name)?;
+    let dtype = column.data_type();
 
     // Check if already the target type
     let already_target_type = matches!(
@@ -638,10 +632,10 @@ pub fn coerce_column_to_type(
                 DataType::Float64 | DataType::Int64 | DataType::Int32 | DataType::Float32,
                 ArrayElementType::Number,
             )
-            | (DataType::Date, ArrayElementType::Date)
-            | (DataType::Datetime(_, _), ArrayElementType::DateTime)
-            | (DataType::Time, ArrayElementType::Time)
-            | (DataType::String, ArrayElementType::String)
+            | (DataType::Date32, ArrayElementType::Date)
+            | (DataType::Timestamp(_, _), ArrayElementType::DateTime)
+            | (DataType::Time64(_), ArrayElementType::Time)
+            | (DataType::Utf8, ArrayElementType::String)
     );
 
     if already_target_type {
@@ -649,139 +643,105 @@ pub fn coerce_column_to_type(
     }
 
     // Coerce based on target type
-    let new_series: Series = match target_type {
-        ArrayElementType::Boolean => {
-            // Convert to boolean
-            match dtype {
-                DataType::String => {
-                    let str_series = series.str().map_err(|e| {
-                        GgsqlError::ValidationError(format!(
-                            "Cannot convert column '{}' to string for boolean coercion: {}",
-                            column_name, e
-                        ))
-                    })?;
-
-                    let bool_vec: Vec<Option<bool>> = str_series
-                        .into_iter()
-                        .enumerate()
-                        .map(|(idx, opt_s)| match opt_s {
-                            None => Ok(None),
-                            Some(s) => match s.to_lowercase().as_str() {
+    let new_array: arrow::array::ArrayRef = match target_type {
+        ArrayElementType::Boolean => match dtype {
+            DataType::Utf8 => {
+                let str_arr = as_str(column)?;
+                let bool_vec: Vec<Option<bool>> = (0..str_arr.len())
+                    .enumerate()
+                    .map(|(idx, i)| {
+                        if str_arr.is_null(i) {
+                            Ok(None)
+                        } else {
+                            match str_arr.value(i).to_lowercase().as_str() {
                                 "true" | "yes" | "1" => Ok(Some(true)),
                                 "false" | "no" | "0" => Ok(Some(false)),
-                                _ => Err(GgsqlError::ValidationError(format!(
+                                s => Err(GgsqlError::ValidationError(format!(
                                     "Column '{}' row {}: Cannot coerce string '{}' to boolean",
                                     column_name, idx, s
                                 ))),
-                            },
-                        })
-                        .collect::<Result<Vec<_>>>()?;
-
-                    Series::new(column_name.into(), bool_vec)
-                }
-                DataType::Int64 | DataType::Int32 | DataType::Float64 | DataType::Float32 => {
-                    let f64_series = series.cast(&DataType::Float64).map_err(|e| {
-                        GgsqlError::ValidationError(format!(
-                            "Cannot cast column '{}' to float64: {}",
-                            column_name, e
-                        ))
-                    })?;
-                    let ca = f64_series.f64().map_err(|e| {
-                        GgsqlError::ValidationError(format!(
-                            "Cannot get float64 chunked array: {}",
-                            e
-                        ))
-                    })?;
-                    let bool_vec: Vec<Option<bool>> =
-                        ca.into_iter().map(|opt| opt.map(|n| n != 0.0)).collect();
-                    Series::new(column_name.into(), bool_vec)
-                }
-                _ => {
-                    return Err(GgsqlError::ValidationError(format!(
-                        "Cannot coerce column '{}' of type {:?} to boolean",
-                        column_name, dtype
-                    )));
-                }
+                            }
+                        }
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                new_bool_array(bool_vec)
             }
-        }
+            DataType::Int64 | DataType::Int32 | DataType::Float64 | DataType::Float32 => {
+                let f64_col = cast_array(column, &DataType::Float64)?;
+                let f64_arr = as_f64(&f64_col)?;
+                let bool_vec: Vec<Option<bool>> = (0..f64_arr.len())
+                    .map(|i| {
+                        if f64_arr.is_null(i) {
+                            None
+                        } else {
+                            Some(f64_arr.value(i) != 0.0)
+                        }
+                    })
+                    .collect();
+                new_bool_array(bool_vec)
+            }
+            _ => {
+                return Err(GgsqlError::ValidationError(format!(
+                    "Cannot coerce column '{}' of type {:?} to boolean",
+                    column_name, dtype
+                )));
+            }
+        },
 
-        ArrayElementType::Number => {
-            // Convert to float64
-            series.cast(&DataType::Float64).map_err(|e| {
-                GgsqlError::ValidationError(format!(
-                    "Cannot coerce column '{}' to number: {}",
-                    column_name, e
-                ))
-            })?
-        }
+        ArrayElementType::Number => cast_array(column, &DataType::Float64).map_err(|e| {
+            GgsqlError::ValidationError(format!(
+                "Cannot coerce column '{}' to number: {}",
+                column_name, e
+            ))
+        })?,
 
-        ArrayElementType::Date => {
-            // Convert to date (from string)
-            match dtype {
-                DataType::String => {
-                    let str_series = series.str().map_err(|e| {
-                        GgsqlError::ValidationError(format!(
-                            "Cannot convert column '{}' to string for date coercion: {}",
-                            column_name, e
-                        ))
-                    })?;
-
-                    let date_vec: Vec<Option<i32>> = str_series
-                        .into_iter()
+        ArrayElementType::Date => match dtype {
+            DataType::Utf8 => {
+                let str_arr = as_str(column)?;
+                let date_vec: Vec<Option<i32>> = (0..str_arr.len())
                         .enumerate()
-                        .map(|(idx, opt_s)| {
-                            match opt_s {
-                                None => Ok(None),
-                                Some(s) => {
-                                    ArrayElement::from_date_string(s)
-                                        .and_then(|e| match e {
-                                            ArrayElement::Date(d) => Some(d),
-                                            _ => None,
-                                        })
-                                        .ok_or_else(|| {
-                                            GgsqlError::ValidationError(format!(
-                                                "Column '{}' row {}: Cannot coerce string '{}' to date (expected YYYY-MM-DD)",
-                                                column_name, idx, s
-                                            ))
-                                        })
-                                        .map(Some)
-                                }
+                        .map(|(idx, i)| {
+                            if str_arr.is_null(i) {
+                                Ok(None)
+                            } else {
+                                let s = str_arr.value(i);
+                                ArrayElement::from_date_string(s)
+                                    .and_then(|e| match e {
+                                        ArrayElement::Date(d) => Some(d),
+                                        _ => None,
+                                    })
+                                    .ok_or_else(|| {
+                                        GgsqlError::ValidationError(format!(
+                                            "Column '{}' row {}: Cannot coerce string '{}' to date (expected YYYY-MM-DD)",
+                                            column_name, idx, s
+                                        ))
+                                    })
+                                    .map(Some)
                             }
                         })
                         .collect::<Result<Vec<_>>>()?;
-
-                    Series::new(column_name.into(), date_vec)
-                        .cast(&DataType::Date)
-                        .map_err(|e| {
-                            GgsqlError::ValidationError(format!("Cannot create date series: {}", e))
-                        })?
-                }
-                _ => {
-                    return Err(GgsqlError::ValidationError(format!(
-                        "Cannot coerce column '{}' of type {:?} to date",
-                        column_name, dtype
-                    )));
-                }
+                let i32_arr = new_i32_array(date_vec);
+                cast_array(&i32_arr, &DataType::Date32)?
             }
-        }
+            _ => {
+                return Err(GgsqlError::ValidationError(format!(
+                    "Cannot coerce column '{}' of type {:?} to date",
+                    column_name, dtype
+                )));
+            }
+        },
 
-        ArrayElementType::DateTime => {
-            // Convert to datetime (from string)
-            match dtype {
-                DataType::String => {
-                    let str_series = series.str().map_err(|e| {
-                        GgsqlError::ValidationError(format!(
-                            "Cannot convert column '{}' to string for datetime coercion: {}",
-                            column_name, e
-                        ))
-                    })?;
-
-                    let dt_vec: Vec<Option<i64>> = str_series
-                        .into_iter()
-                        .enumerate()
-                        .map(|(idx, opt_s)| match opt_s {
-                            None => Ok(None),
-                            Some(s) => ArrayElement::from_datetime_string(s)
+        ArrayElementType::DateTime => match dtype {
+            DataType::Utf8 => {
+                let str_arr = as_str(column)?;
+                let dt_vec: Vec<Option<i64>> = (0..str_arr.len())
+                    .enumerate()
+                    .map(|(idx, i)| {
+                        if str_arr.is_null(i) {
+                            Ok(None)
+                        } else {
+                            let s = str_arr.value(i);
+                            ArrayElement::from_datetime_string(s)
                                 .and_then(|e| match e {
                                     ArrayElement::DateTime(dt) => Some(dt),
                                     _ => None,
@@ -792,95 +752,68 @@ pub fn coerce_column_to_type(
                                         column_name, idx, s
                                     ))
                                 })
-                                .map(Some),
-                        })
-                        .collect::<Result<Vec<_>>>()?;
-
-                    Series::new(column_name.into(), dt_vec)
-                        .cast(&DataType::Datetime(TimeUnit::Microseconds, None))
-                        .map_err(|e| {
-                            GgsqlError::ValidationError(format!(
-                                "Cannot create datetime series: {}",
-                                e
-                            ))
-                        })?
-                }
-                _ => {
-                    return Err(GgsqlError::ValidationError(format!(
-                        "Cannot coerce column '{}' of type {:?} to datetime",
-                        column_name, dtype
-                    )));
-                }
+                                .map(Some)
+                        }
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                let i64_arr = new_i64_array(dt_vec);
+                cast_array(&i64_arr, &DataType::Timestamp(TimeUnit::Microsecond, None))?
             }
-        }
+            _ => {
+                return Err(GgsqlError::ValidationError(format!(
+                    "Cannot coerce column '{}' of type {:?} to datetime",
+                    column_name, dtype
+                )));
+            }
+        },
 
-        ArrayElementType::Time => {
-            // Convert to time (from string)
-            match dtype {
-                DataType::String => {
-                    let str_series = series.str().map_err(|e| {
-                        GgsqlError::ValidationError(format!(
-                            "Cannot convert column '{}' to string for time coercion: {}",
-                            column_name, e
-                        ))
-                    })?;
-
-                    let time_vec: Vec<Option<i64>> = str_series
-                        .into_iter()
+        ArrayElementType::Time => match dtype {
+            DataType::Utf8 => {
+                let str_arr = as_str(column)?;
+                let time_vec: Vec<Option<i64>> = (0..str_arr.len())
                         .enumerate()
-                        .map(|(idx, opt_s)| {
-                            match opt_s {
-                                None => Ok(None),
-                                Some(s) => {
-                                    ArrayElement::from_time_string(s)
-                                        .and_then(|e| match e {
-                                            ArrayElement::Time(t) => Some(t),
-                                            _ => None,
-                                        })
-                                        .ok_or_else(|| {
-                                            GgsqlError::ValidationError(format!(
-                                                "Column '{}' row {}: Cannot coerce string '{}' to time (expected HH:MM:SS)",
-                                                column_name, idx, s
-                                            ))
-                                        })
-                                        .map(Some)
-                                }
+                        .map(|(idx, i)| {
+                            if str_arr.is_null(i) {
+                                Ok(None)
+                            } else {
+                                let s = str_arr.value(i);
+                                ArrayElement::from_time_string(s)
+                                    .and_then(|e| match e {
+                                        ArrayElement::Time(t) => Some(t),
+                                        _ => None,
+                                    })
+                                    .ok_or_else(|| {
+                                        GgsqlError::ValidationError(format!(
+                                            "Column '{}' row {}: Cannot coerce string '{}' to time (expected HH:MM:SS)",
+                                            column_name, idx, s
+                                        ))
+                                    })
+                                    .map(Some)
                             }
                         })
                         .collect::<Result<Vec<_>>>()?;
-
-                    Series::new(column_name.into(), time_vec)
-                        .cast(&DataType::Time)
-                        .map_err(|e| {
-                            GgsqlError::ValidationError(format!("Cannot create time series: {}", e))
-                        })?
-                }
-                _ => {
-                    return Err(GgsqlError::ValidationError(format!(
-                        "Cannot coerce column '{}' of type {:?} to time",
-                        column_name, dtype
-                    )));
-                }
+                let i64_arr = new_i64_array(time_vec);
+                cast_array(&i64_arr, &DataType::Time64(TimeUnit::Nanosecond))?
             }
-        }
+            _ => {
+                return Err(GgsqlError::ValidationError(format!(
+                    "Cannot coerce column '{}' of type {:?} to time",
+                    column_name, dtype
+                )));
+            }
+        },
 
-        ArrayElementType::String => {
-            // Convert to string
-            series
-                .cast(&polars::prelude::DataType::String)
-                .map_err(|e| {
-                    GgsqlError::ValidationError(format!(
-                        "Cannot coerce column '{}' to string: {}",
-                        column_name, e
-                    ))
-                })?
-        }
+        ArrayElementType::String => cast_array(column, &DataType::Utf8).map_err(|e| {
+            GgsqlError::ValidationError(format!(
+                "Cannot coerce column '{}' to string: {}",
+                column_name, e
+            ))
+        })?,
     };
 
     // Replace the column in the DataFrame
-    let mut new_df = df.clone();
-    let _ = new_df.replace(column_name, new_series);
-    Ok(new_df)
+    df.with_column(column_name, new_array)
+        .map_err(|e| GgsqlError::ValidationError(format!("Failed to replace column: {}", e)))
 }
 
 /// Coerce columns mapped to an aesthetic in all relevant DataFrames.
@@ -1015,7 +948,7 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
         // by create_missing_scales_post_stat() which runs before position adjustments)
         if spec.scales[idx].scale_type.is_none() {
             spec.scales[idx].scale_type = Some(ScaleType::infer_for_aesthetic(
-                column_refs[0].dtype(),
+                column_refs[0].data_type(),
                 &aesthetic,
             ));
         }
@@ -1055,7 +988,7 @@ pub fn find_columns_for_aesthetic<'a>(
     aesthetic: &str,
     data_map: &'a HashMap<String, DataFrame>,
     aesthetic_ctx: &AestheticContext,
-) -> Vec<&'a Column> {
+) -> Vec<&'a ArrayRef> {
     let mut column_refs = Vec::new();
     let aesthetics_to_check = aesthetic_ctx
         .internal_position_family(aesthetic)
@@ -1264,71 +1197,78 @@ pub fn apply_oob_to_column_numeric(
     range_max: f64,
     oob_mode: &str,
 ) -> Result<DataFrame> {
-    use polars::prelude::*;
+    use crate::array_util::*;
+    use arrow::array::Array;
+    use arrow::datatypes::DataType;
 
-    let col = df.column(col_name).map_err(|e| {
-        GgsqlError::ValidationError(format!("Column '{}' not found: {}", col_name, e))
-    })?;
+    let col = df.column(col_name)?;
 
     // Try to cast column to f64 for comparison
-    let series = col.as_materialized_series();
-    let f64_col = series.cast(&DataType::Float64).map_err(|_| {
+    let f64_col = cast_array(col, &DataType::Float64).map_err(|_| {
         GgsqlError::ValidationError(format!(
             "Cannot apply oob to non-numeric column '{}'",
             col_name
         ))
     })?;
 
-    let f64_ca = f64_col.f64().map_err(|_| {
-        GgsqlError::ValidationError(format!(
-            "Cannot apply oob to non-numeric column '{}'",
-            col_name
-        ))
-    })?;
+    let f64_arr = as_f64(&f64_col)?;
 
     match oob_mode {
         OOB_CENSOR => {
             // Filter out rows where values are outside [range_min, range_max]
-            let mask: BooleanChunked = f64_ca
-                .into_iter()
-                .map(|opt| opt.is_none_or(|v| v >= range_min && v <= range_max))
+            // Build a boolean mask
+            let mask_values: Vec<bool> = (0..f64_arr.len())
+                .map(|i| {
+                    if f64_arr.is_null(i) {
+                        true // Keep nulls
+                    } else {
+                        let v = f64_arr.value(i);
+                        v >= range_min && v <= range_max
+                    }
+                })
                 .collect();
 
-            let result = df.filter(&mask).map_err(|e| {
-                GgsqlError::InternalError(format!("Failed to filter DataFrame: {}", e))
-            })?;
-            Ok(result)
+            // Filter all columns using the mask
+            let mask = arrow::array::BooleanArray::from(mask_values);
+            let mut new_columns = Vec::new();
+            let schema = df.schema();
+            for (i, field) in schema.fields().iter().enumerate() {
+                let col_arr = df.get_columns()[i].clone();
+                let filtered = arrow::compute::filter(&col_arr, &mask)
+                    .map_err(|e| GgsqlError::InternalError(format!("Failed to filter: {}", e)))?;
+                new_columns.push((field.name().as_str(), filtered));
+            }
+            DataFrame::new(new_columns)
         }
         OOB_SQUISH => {
             // Clamp values to [range_min, range_max]
-            let clamped: Float64Chunked = f64_ca
-                .into_iter()
-                .map(|opt| opt.map(|v| v.clamp(range_min, range_max)))
+            let clamped: Vec<Option<f64>> = (0..f64_arr.len())
+                .map(|i| {
+                    if f64_arr.is_null(i) {
+                        None
+                    } else {
+                        Some(f64_arr.value(i).clamp(range_min, range_max))
+                    }
+                })
                 .collect();
 
-            // Restore temporal type if original column was temporal
-            // This ensures Date/DateTime/Time values serialize to ISO strings in JSON
-            let original_dtype = series.dtype().clone();
-            let clamped_series = clamped.into_series();
+            let clamped_array = new_f64_array(clamped);
 
-            let restored_series = match &original_dtype {
-                DataType::Date | DataType::Datetime(_, _) | DataType::Time => {
-                    clamped_series.cast(&original_dtype).map_err(|e| {
+            // Restore temporal type if original column was temporal
+            let original_dtype = col.data_type().clone();
+            let restored_array = match &original_dtype {
+                DataType::Date32 | DataType::Timestamp(_, _) | DataType::Time64(_) => {
+                    cast_array(&clamped_array, &original_dtype).map_err(|e| {
                         GgsqlError::InternalError(format!(
                             "Failed to restore temporal type for '{}': {}",
                             col_name, e
                         ))
                     })?
                 }
-                _ => clamped_series,
+                _ => clamped_array,
             };
 
-            // Replace column with clamped values, maintaining original name
-            let named_series = restored_series.with_name(col_name.into());
-
-            df.clone()
-                .with_column(named_series)
-                .map(|df| df.clone())
+            df.with_column(col_name, restored_array)
                 .map_err(|e| GgsqlError::InternalError(format!("Failed to replace column: {}", e)))
         }
         _ => Ok(df.clone()),
@@ -1339,13 +1279,23 @@ pub fn apply_oob_to_column_numeric(
 ///
 /// Used after OOB transformations to remove rows that were censored to NULL.
 pub fn filter_null_rows(df: &DataFrame, col_name: &str) -> Result<DataFrame> {
-    let col = df.column(col_name).map_err(|e| {
-        GgsqlError::ValidationError(format!("Column '{}' not found: {}", col_name, e))
-    })?;
+    use arrow::array::Array;
 
-    let mask = col.is_not_null();
-    df.filter(&mask)
-        .map_err(|e| GgsqlError::InternalError(format!("Failed to filter NULL rows: {}", e)))
+    let col = df.column(col_name)?;
+
+    // Build boolean mask: true where NOT null
+    let mask_values: Vec<bool> = (0..col.len()).map(|i| !col.is_null(i)).collect();
+    let mask = arrow::array::BooleanArray::from(mask_values);
+
+    let mut new_columns = Vec::new();
+    let schema = df.schema();
+    for (i, field) in schema.fields().iter().enumerate() {
+        let col_arr = df.get_columns()[i].clone();
+        let filtered = arrow::compute::filter(&col_arr, &mask)
+            .map_err(|e| GgsqlError::InternalError(format!("Failed to filter NULL rows: {}", e)))?;
+        new_columns.push((field.name().as_str(), filtered));
+    }
+    DataFrame::new(new_columns)
 }
 
 /// Apply oob transformation to a single discrete/categorical column in a DataFrame.
@@ -1358,51 +1308,37 @@ pub fn apply_oob_to_column_discrete(
     allowed_values: &HashSet<String>,
     oob_mode: &str,
 ) -> Result<DataFrame> {
-    use polars::prelude::*;
+    use crate::array_util::*;
+    use arrow::array::Array;
 
     // For discrete columns, only censor makes sense (squish is validated out earlier)
     if oob_mode != OOB_CENSOR {
         return Ok(df.clone());
     }
 
-    let col = df.column(col_name).map_err(|e| {
-        GgsqlError::ValidationError(format!("Column '{}' not found: {}", col_name, e))
-    })?;
+    let col = df.column(col_name)?;
 
-    let series = col.as_materialized_series();
-
-    // Build new series: keep allowed values, set others to null
-    // This preserves all rows (unlike filtering) so other aesthetics can still be visualized
-    let new_ca: StringChunked = (0..series.len())
+    // Build new string array: keep allowed values, set others to null
+    let new_values: Vec<Option<String>> = (0..col.len())
         .map(|i| {
-            match series.get(i) {
-                Ok(val) => {
-                    // Null values are kept as null
-                    if val.is_null() {
-                        return None;
-                    }
-                    // Convert value to string and check membership
-                    let s = val.to_string();
-                    // Remove quotes if present (polars adds quotes around strings)
-                    let clean = s.trim_matches('"').to_string();
-                    if allowed_values.contains(&clean) {
-                        Some(clean)
-                    } else {
-                        None // CENSOR to null (not filter row!)
-                    }
+            if col.is_null(i) {
+                None
+            } else {
+                let s = value_to_string(col, i);
+                if allowed_values.contains(&s) {
+                    Some(s)
+                } else {
+                    None // CENSOR to null (not filter row!)
                 }
-                Err(_) => None,
             }
         })
         .collect();
 
-    // Replace column (keep all rows)
-    let new_series = new_ca.into_series().with_name(col_name.into());
-    let mut result = df.clone();
-    result
-        .with_column(new_series)
-        .map_err(|e| GgsqlError::InternalError(format!("Failed to replace column: {}", e)))?;
-    Ok(result)
+    let refs: Vec<Option<&str>> = new_values.iter().map(|o| o.as_deref()).collect();
+    let new_array = new_str_array(refs);
+
+    df.with_column(col_name, new_array)
+        .map_err(|e| GgsqlError::InternalError(format!("Failed to replace column: {}", e)))
 }
 
 #[cfg(test)]
@@ -1410,7 +1346,7 @@ mod tests {
     use super::*;
     use crate::plot::ArrayElement;
     use crate::Geom;
-    use polars::prelude::DataType;
+    use arrow::datatypes::DataType;
 
     #[test]
     fn test_aesthetic_context_internal_family() {
@@ -1451,24 +1387,27 @@ mod tests {
         assert_eq!(ScaleType::infer(&DataType::UInt16), ScaleType::continuous());
 
         // Temporal types now use Continuous scale (with temporal transforms)
-        assert_eq!(ScaleType::infer(&DataType::Date), ScaleType::continuous());
+        assert_eq!(ScaleType::infer(&DataType::Date32), ScaleType::continuous());
         assert_eq!(
-            ScaleType::infer(&DataType::Datetime(
-                polars::prelude::TimeUnit::Microseconds,
+            ScaleType::infer(&DataType::Timestamp(
+                arrow::datatypes::TimeUnit::Microsecond,
                 None
             )),
             ScaleType::continuous()
         );
-        assert_eq!(ScaleType::infer(&DataType::Time), ScaleType::continuous());
+        assert_eq!(
+            ScaleType::infer(&DataType::Time64(arrow::datatypes::TimeUnit::Nanosecond)),
+            ScaleType::continuous()
+        );
 
         // Test discrete types
-        assert_eq!(ScaleType::infer(&DataType::String), ScaleType::discrete());
+        assert_eq!(ScaleType::infer(&DataType::Utf8), ScaleType::discrete());
         assert_eq!(ScaleType::infer(&DataType::Boolean), ScaleType::discrete());
     }
 
     #[test]
     fn test_resolve_scales_infers_input_range() {
-        use polars::prelude::*;
+        use crate::df;
 
         // Create a Plot with a scale that needs range inference
         let mut spec = Plot::new();
@@ -1487,7 +1426,7 @@ mod tests {
 
         // Create data with numeric values
         let df = df! {
-            "value" => &[1.0f64, 5.0, 10.0]
+            "value" => vec![1.0f64, 5.0, 10.0]
         }
         .unwrap();
 
@@ -1515,7 +1454,7 @@ mod tests {
 
     #[test]
     fn test_resolve_scales_preserves_explicit_input_range() {
-        use polars::prelude::*;
+        use crate::df;
 
         // Create a Plot with a scale that already has a range
         let mut spec = Plot::new();
@@ -1535,7 +1474,7 @@ mod tests {
 
         // Create data with different values
         let df = df! {
-            "value" => &[1.0f64, 5.0, 10.0]
+            "value" => vec![1.0f64, 5.0, 10.0]
         }
         .unwrap();
 
@@ -1559,7 +1498,7 @@ mod tests {
 
     #[test]
     fn test_resolve_scales_from_aesthetic_family_input_range() {
-        use polars::prelude::*;
+        use crate::df;
 
         // Create a Plot where "pos2" scale should get range from pos2min and pos2max columns
         let mut spec = Plot::new();
@@ -1580,8 +1519,8 @@ mod tests {
 
         // Create data where pos2min/pos2max columns have different ranges
         let df = df! {
-            "low" => &[5.0f64, 10.0, 15.0],
-            "high" => &[20.0f64, 25.0, 30.0]
+            "low" => vec![5.0f64, 10.0, 15.0],
+            "high" => vec![20.0f64, 25.0, 30.0]
         }
         .unwrap();
 
@@ -1609,7 +1548,7 @@ mod tests {
 
     #[test]
     fn test_resolve_scales_partial_input_range_explicit_min_null_max() {
-        use polars::prelude::*;
+        use crate::df;
 
         // Create a Plot with a scale that has [0, null] (explicit min, infer max)
         let mut spec = Plot::new();
@@ -1629,7 +1568,7 @@ mod tests {
 
         // Create data with values 1-10
         let df = df! {
-            "value" => &[1.0f64, 5.0, 10.0]
+            "value" => vec![1.0f64, 5.0, 10.0]
         }
         .unwrap();
 
@@ -1653,7 +1592,7 @@ mod tests {
 
     #[test]
     fn test_resolve_scales_partial_input_range_null_min_explicit_max() {
-        use polars::prelude::*;
+        use crate::df;
 
         // Create a Plot with a scale that has [null, 100] (infer min, explicit max)
         let mut spec = Plot::new();
@@ -1673,7 +1612,7 @@ mod tests {
 
         // Create data with values 1-10
         let df = df! {
-            "value" => &[1.0f64, 5.0, 10.0]
+            "value" => vec![1.0f64, 5.0, 10.0]
         }
         .unwrap();
 
@@ -1697,8 +1636,8 @@ mod tests {
 
     #[test]
     fn test_resolve_scales_polar_theta_no_expansion() {
+        use crate::df;
         use crate::plot::projection::{Coord, Projection};
-        use polars::prelude::*;
 
         // Create a Plot with a polar projection
         let mut spec = Plot::new();
@@ -1725,7 +1664,7 @@ mod tests {
 
         // Create data with numeric values
         let df = df! {
-            "value" => &[10.0f64, 20.0, 30.0]
+            "value" => vec![10.0f64, 20.0, 30.0]
         }
         .unwrap();
 
@@ -1758,5 +1697,38 @@ mod tests {
             }
             _ => panic!("Expected Number elements"),
         }
+    }
+
+    #[test]
+    fn test_apply_oob_censor_date32() {
+        // Regression: Arrow can't cast Date32 directly to Float64.
+        // apply_oob_to_column_numeric must route through Int32 first.
+        use arrow::array::{ArrayRef, Date32Array};
+        use std::sync::Arc;
+
+        // Days since epoch: 2024-01-01 = 19723, 2024-06-01 = 19875, 2024-12-01 = 20058
+        let dates: ArrayRef = Arc::new(Date32Array::from(vec![19723, 19875, 20058]));
+        let df = DataFrame::new(vec![("date", dates)]).unwrap();
+
+        // Censor to [2024-03-01, 2024-09-01] ≈ [19783, 19967] → keeps only row 1
+        let result = apply_oob_to_column_numeric(&df, "date", 19783.0, 19967.0, OOB_CENSOR)
+            .expect("oob censor should handle Date32");
+        assert_eq!(result.height(), 1);
+    }
+
+    #[test]
+    fn test_apply_oob_squish_date32_restores_temporal_type() {
+        use arrow::array::{ArrayRef, Date32Array};
+        use std::sync::Arc;
+
+        let dates: ArrayRef = Arc::new(Date32Array::from(vec![19000, 19875, 21000]));
+        let df = DataFrame::new(vec![("date", dates)]).unwrap();
+
+        let result = apply_oob_to_column_numeric(&df, "date", 19723.0, 20089.0, OOB_SQUISH)
+            .expect("oob squish should handle Date32");
+        assert_eq!(
+            result.column("date").unwrap().data_type(),
+            &DataType::Date32
+        );
     }
 }

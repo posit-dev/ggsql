@@ -4,7 +4,7 @@
 //! Unlike discrete scales (exact 1:1 mapping), ordinal scales interpolate output values
 //! to create smooth gradients for aesthetics like color, size, and opacity.
 
-use polars::prelude::DataType;
+use arrow::datatypes::DataType;
 
 use super::super::transform::{Transform, TransformKind};
 use super::{ScaleTypeKind, ScaleTypeTrait};
@@ -28,7 +28,7 @@ impl ScaleTypeTrait for Ordinal {
     fn validate_dtype(&self, dtype: &DataType) -> Result<(), String> {
         match dtype {
             // Accept discrete types
-            DataType::String | DataType::Boolean | DataType::Categorical(_, _) => Ok(()),
+            DataType::Utf8 | DataType::Boolean | DataType::Dictionary(_, _) => Ok(()),
             // Accept integer types (useful for ordered categories like years, rankings)
             DataType::Int8
             | DataType::Int16
@@ -45,11 +45,11 @@ impl ScaleTypeTrait for Ordinal {
                     .to_string(),
             ),
             // Reject temporal types
-            DataType::Date => Err("Ordinal scale cannot be used with Date data. \
+            DataType::Date32 => Err("Ordinal scale cannot be used with Date data. \
                  Use CONTINUOUS scale type instead (dates are treated as continuous temporal data).".to_string()),
-            DataType::Datetime(_, _) => Err("Ordinal scale cannot be used with DateTime data. \
+            DataType::Timestamp(_, _) => Err("Ordinal scale cannot be used with DateTime data. \
                  Use CONTINUOUS scale type instead (datetimes are treated as continuous temporal data).".to_string()),
-            DataType::Time => Err("Ordinal scale cannot be used with Time data. \
+            DataType::Time64(_) => Err("Ordinal scale cannot be used with Time data. \
                  Use CONTINUOUS scale type instead (times are treated as continuous temporal data).".to_string()),
             // Other types - provide generic message
             other => Err(format!(
@@ -82,7 +82,7 @@ impl ScaleTypeTrait for Ordinal {
         // Infer from column type
         match column_dtype {
             Some(DataType::Boolean) => TransformKind::Bool,
-            Some(DataType::String) | Some(DataType::Categorical(_, _)) => TransformKind::String,
+            Some(DataType::Utf8) | Some(DataType::Dictionary(_, _)) => TransformKind::String,
             // Numeric types use Identity to preserve numeric sorting
             Some(
                 DataType::Int8
@@ -506,7 +506,7 @@ mod tests {
     fn test_ordinal_default_transform_numeric() {
         use super::super::ScaleTypeTrait;
         use crate::plot::scale::TransformKind;
-        use polars::prelude::DataType;
+        use arrow::datatypes::DataType;
 
         let ordinal = Ordinal;
 
@@ -526,7 +526,7 @@ mod tests {
 
         // String/Boolean use their respective transforms
         assert_eq!(
-            ordinal.default_transform("color", Some(&DataType::String)),
+            ordinal.default_transform("color", Some(&DataType::Utf8)),
             TransformKind::String
         );
         assert_eq!(
@@ -542,16 +542,16 @@ mod tests {
     #[test]
     fn test_validate_dtype_accepts_string() {
         use super::super::ScaleTypeTrait;
-        use polars::prelude::DataType;
+        use arrow::datatypes::DataType;
 
         let ordinal = Ordinal;
-        assert!(ordinal.validate_dtype(&DataType::String).is_ok());
+        assert!(ordinal.validate_dtype(&DataType::Utf8).is_ok());
     }
 
     #[test]
     fn test_validate_dtype_accepts_boolean() {
         use super::super::ScaleTypeTrait;
-        use polars::prelude::DataType;
+        use arrow::datatypes::DataType;
 
         let ordinal = Ordinal;
         assert!(ordinal.validate_dtype(&DataType::Boolean).is_ok());
@@ -560,7 +560,7 @@ mod tests {
     #[test]
     fn test_validate_dtype_accepts_integer() {
         use super::super::ScaleTypeTrait;
-        use polars::prelude::DataType;
+        use arrow::datatypes::DataType;
 
         let ordinal = Ordinal;
         // Integers are valid for ordinal scales (years, rankings, etc.)
@@ -572,7 +572,7 @@ mod tests {
     #[test]
     fn test_validate_dtype_rejects_float() {
         use super::super::ScaleTypeTrait;
-        use polars::prelude::DataType;
+        use arrow::datatypes::DataType;
 
         let ordinal = Ordinal;
         let result = ordinal.validate_dtype(&DataType::Float64);
@@ -588,10 +588,10 @@ mod tests {
     #[test]
     fn test_validate_dtype_rejects_temporal() {
         use super::super::ScaleTypeTrait;
-        use polars::prelude::DataType;
+        use arrow::datatypes::DataType;
 
         let ordinal = Ordinal;
-        let result = ordinal.validate_dtype(&DataType::Date);
+        let result = ordinal.validate_dtype(&DataType::Date32);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("Date"));
