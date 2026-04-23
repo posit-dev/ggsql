@@ -7,6 +7,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description.workspace = true
+build = "build.rs"
 
 [lib]
 name = "ggsql"
@@ -61,6 +62,13 @@ rand.workspace = true
 sprintf = "0.4"
 const_format.workspace = true
 uuid.workspace = true
+
+# Terminal markdown rendering for `ggsql docs`
+termimad = "0.31"
+
+[build-dependencies]
+regex.workspace = true
+ureq = "3"
 
 [dev-dependencies]
 jsonschema = "0.44"
