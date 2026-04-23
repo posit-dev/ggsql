@@ -58,7 +58,9 @@ sprintf = "0.4"
 const_format.workspace = true
 uuid.workspace = true
 
-# Terminal markdown rendering for `ggsql docs`
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Terminal markdown rendering for `ggsql docs` (native targets only;
+# crossterm 0.29 doesn't compile on wasm32)
 termimad = "0.31"
 
 [build-dependencies]
