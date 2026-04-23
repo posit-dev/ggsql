@@ -42,18 +42,7 @@ pub fn sort_dataframe(df: &DataFrame, columns: &[&str]) -> Result<DataFrame> {
 
 /// Reorder all columns of a DataFrame using an index array.
 fn reorder_by_indices(df: &DataFrame, indices: &UInt32Array) -> Result<DataFrame> {
-    let names = df.get_column_names();
-    let mut new_columns: Vec<(&str, ArrayRef)> = Vec::with_capacity(df.width());
-
-    for name in &names {
-        let col = df.column(name)?;
-        let reordered = compute::take(col.as_ref(), indices, None).map_err(|e| {
-            GgsqlError::InternalError(format!("Failed to reorder column '{}': {}", name, e))
-        })?;
-        new_columns.push((name, reordered));
-    }
-
-    DataFrame::new(new_columns)
+    df.take(indices)
 }
 
 // ============================================================================

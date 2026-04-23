@@ -857,7 +857,7 @@ impl TextRenderer {
                 .collect::<Vec<u32>>(),
         ));
 
-        let mut result_cols: Vec<(&str, ArrayRef)> = Vec::new();
+        let mut result_cols: Vec<(String, ArrayRef)> = Vec::new();
         for aesthetic in font_aesthetics {
             if let Some(col) = font_columns.get(aesthetic) {
                 let taken = compute::take(
@@ -874,8 +874,7 @@ impl TextRenderer {
                         aesthetic, e
                     ))
                 })?;
-                let col_name = naming::aesthetic_column(aesthetic);
-                result_cols.push((Box::leak(col_name.into_boxed_str()), taken));
+                result_cols.push((naming::aesthetic_column(aesthetic), taken));
             }
         }
 
@@ -1823,35 +1822,19 @@ impl BoxplotRenderer {
                 continue;
             }
 
-            // Build filtered DataFrame by taking matching rows
-            let indices_arr: arrow::array::ArrayRef =
-                std::sync::Arc::new(arrow::array::UInt32Array::from(
-                    matching_indices
-                        .iter()
-                        .map(|&i| i as u32)
-                        .collect::<Vec<u32>>(),
-                ));
-            let indices_u32 = indices_arr
-                .as_any()
-                .downcast_ref::<arrow::array::UInt32Array>()
-                .unwrap();
-
-            let column_names = data.get_column_names();
-            let columns = data.get_columns();
-            let mut new_cols: Vec<(&str, arrow::array::ArrayRef)> = Vec::new();
-            for (col_idx, col_name) in column_names.iter().enumerate() {
-                if col_name == type_col {
-                    continue; // Drop the type column
-                }
-                let taken = arrow::compute::take(columns[col_idx].as_ref(), indices_u32, None)
-                    .map_err(|e| {
-                        GgsqlError::WriterError(format!("Failed to filter column: {}", e))
-                    })?;
-                new_cols.push((Box::leak(col_name.clone().into_boxed_str()), taken));
-            }
-            let filtered = DataFrame::new(new_cols).map_err(|e| {
-                GgsqlError::WriterError(format!("Failed to create filtered DataFrame: {}", e))
-            })?;
+            // Take matching rows, then drop the type column.
+            let indices = arrow::array::UInt32Array::from(
+                matching_indices
+                    .iter()
+                    .map(|&i| i as u32)
+                    .collect::<Vec<u32>>(),
+            );
+            let filtered = data
+                .take(&indices)
+                .and_then(|df| df.drop(type_col))
+                .map_err(|e| {
+                    GgsqlError::WriterError(format!("Failed to build filtered DataFrame: {}", e))
+                })?;
 
             let values = if binned_columns.is_empty() {
                 dataframe_to_values(&filtered)?

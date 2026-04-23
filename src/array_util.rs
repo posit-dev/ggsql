@@ -204,7 +204,7 @@ pub fn value_to_string(array: &ArrayRef, idx: usize) -> String {
             format!("{}", ms)
         }
         _ => arrow::util::display::ArrayFormatter::try_new(array.as_ref(), &Default::default())
-            .and_then(|f| Ok(f.value(idx).to_string()))
+            .map(|f| f.value(idx).to_string())
             .unwrap_or_else(|_| format!("{:?}", array.data_type())),
     }
 }

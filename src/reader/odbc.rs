@@ -546,15 +546,10 @@ fn cursor_to_dataframe(mut cursor: impl Cursor) -> Result<DataFrame> {
     }
 
     // Convert builders to named arrays
-    let built: Vec<(String, ArrayRef)> = col_names
+    let named_arrays: Vec<(String, ArrayRef)> = col_names
         .iter()
         .zip(builders)
         .map(|(name, builder)| builder.into_named_array(name))
-        .collect();
-
-    let named_arrays: Vec<(&str, ArrayRef)> = built
-        .iter()
-        .map(|(name, arr)| (name.as_str(), arr.clone()))
         .collect();
 
     DataFrame::new(named_arrays)

@@ -399,10 +399,7 @@ impl Reader for SqliteReader {
             }
         }
 
-        // Build named arrays from collected values
-        let mut named_arrays: Vec<(&str, ArrayRef)> = Vec::with_capacity(column_count);
-        // Hold the built arrays so we can borrow names
-        let built: Vec<(String, ArrayRef)> = col_values
+        let named_arrays: Vec<(String, ArrayRef)> = col_values
             .into_iter()
             .enumerate()
             .map(|(col_idx, values)| {
@@ -411,10 +408,6 @@ impl Reader for SqliteReader {
                 Ok((name, array))
             })
             .collect::<Result<Vec<_>>>()?;
-
-        for (name, array) in &built {
-            named_arrays.push((name.as_str(), array.clone()));
-        }
 
         DataFrame::new(named_arrays)
     }

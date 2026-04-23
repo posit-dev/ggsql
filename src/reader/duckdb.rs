@@ -488,19 +488,12 @@ impl Reader for DuckDBReader {
 
         // Build named arrays from column builders
         let column_builders = builders_cell.into_inner();
-        let mut named_arrays: Vec<(&str, ArrayRef)> = Vec::new();
-        // We need to hold the (String, ArrayRef) pairs so we can borrow the names
-        let built: Vec<(String, ArrayRef)> = column_builders
+        let named_arrays: Vec<(String, ArrayRef)> = column_builders
             .into_iter()
             .enumerate()
             .map(|(col_idx, builder)| builder.build(&column_names[col_idx]))
             .collect::<Result<Vec<_>>>()?;
 
-        for (name, array) in &built {
-            named_arrays.push((name.as_str(), array.clone()));
-        }
-
-        // Create DataFrame from typed columns
         DataFrame::new(named_arrays)
     }
 

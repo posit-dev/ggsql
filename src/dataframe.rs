@@ -27,17 +27,23 @@ impl DataFrame {
 
     /// Create a DataFrame from named columns.
     ///
-    /// All arrays must have the same length.
-    pub fn new(columns: Vec<(&str, ArrayRef)>) -> Result<Self> {
+    /// All arrays must have the same length. Names accept anything convertible
+    /// to `String` (`&str`, `String`, `&String`), so callers can pass either
+    /// borrowed or owned names without wrestling with lifetimes.
+    pub fn new<N: Into<String>>(columns: Vec<(N, ArrayRef)>) -> Result<Self> {
         if columns.is_empty() {
             return Ok(Self::empty());
         }
-        let fields: Vec<Field> = columns
-            .iter()
-            .map(|(name, arr)| Field::new(*name, arr.data_type().clone(), true))
+        let (names, arrays): (Vec<String>, Vec<ArrayRef>) = columns
+            .into_iter()
+            .map(|(name, arr)| (name.into(), arr))
+            .unzip();
+        let fields: Vec<Field> = names
+            .into_iter()
+            .zip(arrays.iter())
+            .map(|(name, arr)| Field::new(name, arr.data_type().clone(), true))
             .collect();
         let schema = Arc::new(Schema::new(fields));
-        let arrays: Vec<ArrayRef> = columns.into_iter().map(|(_, arr)| arr).collect();
         let rb = RecordBatch::try_new(schema, arrays)
             .map_err(|e| GgsqlError::InternalError(format!("Failed to create DataFrame: {}", e)))?;
         Ok(Self { inner: rb })
@@ -259,6 +265,22 @@ impl DataFrame {
         Self {
             inner: self.inner.slice(offset, length),
         }
+    }
+
+    /// Return a new DataFrame containing the rows at `indices` (in order).
+    ///
+    /// Wraps `arrow::compute::take` across every column.
+    pub fn take(&self, indices: &arrow::array::UInt32Array) -> Result<Self> {
+        let names = self.get_column_names();
+        let mut new_cols: Vec<(&str, ArrayRef)> = Vec::with_capacity(self.width());
+        for (i, name) in names.iter().enumerate() {
+            let taken =
+                arrow::compute::take(self.inner.column(i).as_ref(), indices, None).map_err(|e| {
+                    GgsqlError::InternalError(format!("Failed to take column '{}': {}", name, e))
+                })?;
+            new_cols.push((name, taken));
+        }
+        Self::new(new_cols)
     }
 
     // ========================================================================
