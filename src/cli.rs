@@ -537,9 +537,9 @@ fn is_category(name: &str) -> bool {
 }
 
 fn find_doc(category: Option<&str>, topic: &str) -> Option<&'static docs::DocEntry> {
-    docs::DOCS.iter().find(|e| {
-        e.category == category && e.topic.eq_ignore_ascii_case(topic)
-    })
+    docs::DOCS
+        .iter()
+        .find(|e| e.category == category && e.topic.eq_ignore_ascii_case(topic))
 }
 
 fn topics_in(category: Option<&str>) -> Vec<&'static str> {
@@ -611,10 +611,7 @@ fn print_docs_index_to<W: std::io::Write>(out: &mut W, fmt: DocsFormat) {
     let clauses = topics_in(None);
     let _ = writeln!(out, "ggsql syntax reference");
     let _ = writeln!(out);
-    let _ = writeln!(
-        out,
-        "Clauses         ggsql docs <name>"
-    );
+    let _ = writeln!(out, "Clauses         ggsql docs <name>");
     let _ = writeln!(out, "                {}", clauses.join(", "));
     let _ = writeln!(out);
     for (cat, label) in CATEGORY_ORDER {
@@ -622,11 +619,7 @@ fn print_docs_index_to<W: std::io::Write>(out: &mut W, fmt: DocsFormat) {
         if topics.is_empty() {
             continue;
         }
-        let _ = writeln!(
-            out,
-            "{:<15} ggsql docs {} <name>",
-            label, cat
-        );
+        let _ = writeln!(out, "{:<15} ggsql docs {} <name>", label, cat);
         let _ = writeln!(out, "                {}", topics.join(", "));
         let _ = writeln!(out);
     }
