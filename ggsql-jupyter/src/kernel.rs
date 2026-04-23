@@ -5,7 +5,7 @@
 
 use crate::connection;
 use crate::data_explorer::{DataExplorerState, RpcResponse};
-use crate::display::format_display_data;
+use crate::display::{format_display_data, RenderHints};
 use crate::executor::{self, ExecutionResult, QueryExecutor};
 use crate::message::{ConnectionInfo, JupyterMessage, MessageHeader};
 use anyhow::Result;
@@ -291,8 +291,15 @@ impl KernelServer {
         let content = &parent.content;
         let code = content["code"].as_str().unwrap_or("");
         let silent = content["silent"].as_bool().unwrap_or(false);
+        let hints = RenderHints::from_request(&parent.header, content);
 
-        tracing::info!("Executing code ({} chars, silent={})", code.len(), silent);
+        tracing::info!(
+            "Executing code ({} chars, silent={}, notebook={}, width_px={:?})",
+            code.len(),
+            silent,
+            hints.is_notebook,
+            hints.output_width_px
+        );
 
         // Increment execution counter
         if !silent {
@@ -331,7 +338,7 @@ impl KernelServer {
                 // Per Jupyter spec: execute_result includes execution_count
                 // Only send if there's something to display (DDL returns None)
                 if !silent && !is_connection_changed {
-                    if let Some(display_data) = format_display_data(exec_result) {
+                    if let Some(display_data) = format_display_data(exec_result, &hints) {
                         // Build message content, including output_location if present
                         let mut content = json!({
                             "execution_count": self.execution_count,

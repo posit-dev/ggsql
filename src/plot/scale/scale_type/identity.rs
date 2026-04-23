@@ -1,6 +1,6 @@
 //! Identity scale type implementation
 
-use polars::prelude::DataType;
+use arrow::datatypes::DataType;
 
 use super::{CastTargetType, ScaleTypeKind, ScaleTypeTrait};
 use crate::plot::ArrayElement;

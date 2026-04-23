@@ -266,9 +266,7 @@ pub fn flip_dataframe_position_columns(
     df: DataFrame,
     aesthetic_ctx: &AestheticContext,
 ) -> DataFrame {
-    use polars::prelude::*;
-
-    // Collect renames needed before consuming df
+    // Collect renames needed
     let renames: Vec<(String, String)> = df
         .get_column_names()
         .iter()
@@ -289,21 +287,21 @@ pub fn flip_dataframe_position_columns(
         return df;
     }
 
-    let mut lazy = df.lazy();
+    let mut result = df;
 
     // First pass: rename to temp names
     for (from, to) in &renames {
         let temp = format!("{}_temp", to);
-        lazy = lazy.rename([from.as_str()], [temp.as_str()], true);
+        result = result.rename(from, &temp).expect("rename should not fail");
     }
 
     // Second pass: remove temp suffix
     for (_, to) in &renames {
         let temp = format!("{}_temp", to);
-        lazy = lazy.rename([temp.as_str()], [to.as_str()], true);
+        result = result.rename(&temp, to).expect("rename should not fail");
     }
 
-    lazy.collect().expect("rename should not fail")
+    result
 }
 
 #[cfg(test)]

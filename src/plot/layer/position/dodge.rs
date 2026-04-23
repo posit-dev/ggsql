@@ -10,9 +10,9 @@ use super::{
     compute_dodge_offsets, is_continuous_scale, non_facet_partition_cols, Layer, PositionTrait,
     PositionType,
 };
+use crate::array_util::{new_f64_array_non_null, value_to_string};
 use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue};
-use crate::{naming, DataFrame, GgsqlError, Plot, Result};
-use polars::prelude::*;
+use crate::{compute, naming, DataFrame, Plot, Result};
 use std::collections::HashMap;
 
 /// Result of computing group indices for dodge/jitter operations.
@@ -51,11 +51,8 @@ pub fn compute_group_indices(
     for row_idx in 0..n_rows {
         let mut key_parts: Vec<String> = Vec::with_capacity(group_cols.len());
         for col_name in group_cols {
-            let col = df.column(col_name).unwrap();
-            let val = col.get(row_idx).map_err(|e| {
-                GgsqlError::InternalError(format!("Failed to get value at row {}: {}", row_idx, e))
-            })?;
-            key_parts.push(format!("{}", val));
+            let col = df.column(col_name)?;
+            key_parts.push(value_to_string(col, row_idx));
         }
         composite_keys.push(key_parts.join("\x00")); // Use null byte as separator
     }
@@ -193,45 +190,45 @@ fn apply_dodge_with_width(
     // Compute dodge offsets using shared logic
     let offsets = compute_dodge_offsets(&indices, n_groups, bar_width, dodge_pos1, dodge_pos2);
 
-    let mut lf = df.lazy();
+    let mut result = df;
 
     // Apply the computed offsets
     if let Some(pos1_offsets) = offsets.pos1 {
-        lf = lf.with_column(
-            lit(Series::new(pos1offset_col.clone().into(), pos1_offsets)).alias(&pos1offset_col),
-        );
+        result = result.with_column(&pos1offset_col, new_f64_array_non_null(pos1_offsets))?;
     }
     if let Some(pos2_offsets) = offsets.pos2 {
-        lf = lf.with_column(
-            lit(Series::new(pos2offset_col.clone().into(), pos2_offsets)).alias(&pos2offset_col),
-        );
+        result = result.with_column(&pos2offset_col, new_f64_array_non_null(pos2_offsets))?;
     }
 
     // If offset column exists (e.g., violin), scale it by the offset scale factor
     if has_offset_col {
-        lf = lf.with_column((col(&offset_col) / lit(offsets.offset_scale)).alias(&offset_col));
+        let col = result.column(&offset_col)?;
+        let casted = crate::array_util::cast_array(col, &arrow::datatypes::DataType::Float64)?;
+        let f64_arr = crate::array_util::as_f64(&casted)?;
+        let scaled = compute::divide_scalar(f64_arr, offsets.offset_scale);
+        result = result.with_column(
+            &offset_col,
+            std::sync::Arc::new(scaled) as arrow::array::ArrayRef,
+        )?;
     }
 
-    // Collect the result
-    let final_df = lf.collect().map_err(|e| {
-        GgsqlError::InternalError(format!("Dodge position adjustment failed: {}", e))
-    })?;
-
-    Ok((final_df, Some(offsets.adjusted_width)))
+    Ok((result, Some(offsets.adjusted_width)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::array_util::as_f64;
+    use crate::df;
     use crate::plot::layer::Geom;
     use crate::plot::{AestheticValue, Mappings, Scale, ScaleType};
 
     fn make_test_df() -> DataFrame {
         df! {
-            "__ggsql_aes_pos1__" => ["A", "A", "B", "B"],
-            "__ggsql_aes_pos2__" => [10.0, 20.0, 15.0, 25.0],
-            "__ggsql_aes_pos2end__" => [0.0, 0.0, 0.0, 0.0],
-            "__ggsql_aes_fill__" => ["X", "Y", "X", "Y"],
+            "__ggsql_aes_pos1__" => vec!["A", "A", "B", "B"],
+            "__ggsql_aes_pos2__" => vec![10.0, 20.0, 15.0, 25.0],
+            "__ggsql_aes_pos2end__" => vec![0.0, 0.0, 0.0, 0.0],
+            "__ggsql_aes_fill__" => vec!["X", "Y", "X", "Y"],
         }
         .unwrap()
     }
@@ -301,18 +298,15 @@ mod tests {
             "pos2offset column should NOT be created when pos2 is continuous"
         );
 
-        let offset = result
-            .column("__ggsql_aes_pos1offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
+        let offset_col = result.column("__ggsql_aes_pos1offset__").unwrap();
+        let offset = as_f64(offset_col).unwrap();
 
         // With 2 groups (X, Y) and default width 0.9:
         // - adjusted_width = 0.9 / 2 = 0.45
         // - center_offset = 0.5
         // - Group X: center = (0 - 0.5) * 0.45 = -0.225
         // - Group Y: center = (1 - 0.5) * 0.45 = +0.225
-        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
+        let offsets: Vec<f64> = (0..offset.len()).map(|i| offset.value(i)).collect();
         assert!(
             offsets.iter().any(|&v| (v - (-0.225)).abs() < 0.001),
             "Should have offset -0.225 for group X, got {:?}",
@@ -359,18 +353,15 @@ mod tests {
             "pos2offset column should be created"
         );
 
-        let offset = result
-            .column("__ggsql_aes_pos2offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
+        let offset_col = result.column("__ggsql_aes_pos2offset__").unwrap();
+        let offset = as_f64(offset_col).unwrap();
 
         // With 2 groups (X, Y) and default width 0.9:
         // - adjusted_width = 0.9 / 2 = 0.45
         // - center_offset = 0.5
         // - Group X: center = (0 - 0.5) * 0.45 = -0.225
         // - Group Y: center = (1 - 0.5) * 0.45 = +0.225
-        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
+        let offsets: Vec<f64> = (0..offset.len()).map(|i| offset.value(i)).collect();
         assert!(
             offsets.iter().any(|&v| (v - (-0.225)).abs() < 0.001),
             "Should have offset -0.225 for group X, got {:?}",
@@ -421,19 +412,17 @@ mod tests {
         // center_offset = (2 - 1) / 2 = 0.5
         // Group 0 (X): col=0, row=0 → pos1=(-0.5)*0.45=-0.225, pos2=(-0.5)*0.45=-0.225
         // Group 1 (Y): col=1, row=0 → pos1=(0.5)*0.45=0.225, pos2=(-0.5)*0.45=-0.225
-        let pos1_offset = result
-            .column("__ggsql_aes_pos1offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
-        let pos2_offset = result
-            .column("__ggsql_aes_pos2offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
+        let pos1_col = result.column("__ggsql_aes_pos1offset__").unwrap();
+        let pos1_offset = as_f64(pos1_col).unwrap();
+        let pos2_col = result.column("__ggsql_aes_pos2offset__").unwrap();
+        let pos2_offset = as_f64(pos2_col).unwrap();
 
-        let pos1_offsets: Vec<f64> = pos1_offset.into_iter().flatten().collect();
-        let pos2_offsets: Vec<f64> = pos2_offset.into_iter().flatten().collect();
+        let pos1_offsets: Vec<f64> = (0..pos1_offset.len())
+            .map(|i| pos1_offset.value(i))
+            .collect();
+        let pos2_offsets: Vec<f64> = (0..pos2_offset.len())
+            .map(|i| pos2_offset.value(i))
+            .collect();
 
         // Verify we have both expected pos1 offsets
         assert!(
@@ -473,9 +462,9 @@ mod tests {
         let dodge = Dodge;
 
         let df = df! {
-            "__ggsql_aes_pos1__" => ["A", "A", "A", "A"],
-            "__ggsql_aes_pos2__" => [10.0, 20.0, 15.0, 25.0],
-            "__ggsql_aes_fill__" => ["G1", "G2", "G3", "G4"],
+            "__ggsql_aes_pos1__" => vec!["A", "A", "A", "A"],
+            "__ggsql_aes_pos2__" => vec![10.0, 20.0, 15.0, 25.0],
+            "__ggsql_aes_fill__" => vec!["G1", "G2", "G3", "G4"],
         }
         .unwrap();
 
@@ -512,19 +501,17 @@ mod tests {
         // G3: col=0, row=1 → (-0.5, +0.5) * adjusted_width
         // G4: col=1, row=1 → (+0.5, +0.5) * adjusted_width
 
-        let pos1_offset = result
-            .column("__ggsql_aes_pos1offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
-        let pos2_offset = result
-            .column("__ggsql_aes_pos2offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
+        let pos1_col = result.column("__ggsql_aes_pos1offset__").unwrap();
+        let pos1_offset = as_f64(pos1_col).unwrap();
+        let pos2_col = result.column("__ggsql_aes_pos2offset__").unwrap();
+        let pos2_offset = as_f64(pos2_col).unwrap();
 
-        let pos1_offsets: Vec<f64> = pos1_offset.into_iter().flatten().collect();
-        let pos2_offsets: Vec<f64> = pos2_offset.into_iter().flatten().collect();
+        let pos1_offsets: Vec<f64> = (0..pos1_offset.len())
+            .map(|i| pos1_offset.value(i))
+            .collect();
+        let pos2_offsets: Vec<f64> = (0..pos2_offset.len())
+            .map(|i| pos2_offset.value(i))
+            .collect();
 
         // Verify we have both positive and negative offsets in both dimensions
         assert!(
@@ -599,18 +586,15 @@ mod tests {
 
         let (result, width) = dodge.apply_adjustment(df, &layer, &spec).unwrap();
 
-        let offset = result
-            .column("__ggsql_aes_pos1offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
+        let offset_col = result.column("__ggsql_aes_pos1offset__").unwrap();
+        let offset = as_f64(offset_col).unwrap();
 
         // With 2 groups and custom width 0.6:
         // - adjusted_width = 0.6 / 2 = 0.3
         // - center_offset = 0.5
         // - Group X: center = (0 - 0.5) * 0.3 = -0.15
         // - Group Y: center = (1 - 0.5) * 0.3 = +0.15
-        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
+        let offsets: Vec<f64> = (0..offset.len()).map(|i| offset.value(i)).collect();
         assert!(
             offsets.iter().any(|&v| (v - (-0.15)).abs() < 0.001),
             "Should have offset -0.15 for group X, got {:?}",

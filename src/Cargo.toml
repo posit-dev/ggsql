@@ -26,22 +26,17 @@ csscolorparser.workspace = true
 # Color interpolation
 palette.workspace = true
 
-# Data processing
-polars = { workspace = true, features = [
-    "lazy",
-    "cum_agg",
-    "dtype-full",
-    "timezones",
-] }
-polars-ops.workspace = true
+# Arrow (core data container)
+arrow = { workspace = true }
 
 # Readers
 duckdb = { workspace = true, optional = true }
-arrow = { workspace = true, optional = true }
 postgres = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }
 odbc-api = { workspace = true, optional = true }
 toml_edit = { workspace = true, optional = true }
+parquet = { workspace = true, optional = true }
+bytes = { workspace = true }
 
 # Writers
 plotters = { workspace = true, optional = true }
@@ -78,9 +73,9 @@ ureq = "3"
 
 [features]
 default = ["duckdb", "sqlite", "vegalite", "ipc", "parquet", "builtin-data", "odbc"]
-ipc = ["polars/ipc"]
-duckdb = ["dep:duckdb", "dep:arrow"]
-parquet = ["polars/parquet"]
+ipc = []
+duckdb = ["dep:duckdb"]
+parquet = ["dep:parquet"]
 postgres = ["dep:postgres"]
 sqlite = ["dep:rusqlite"]
 odbc = ["dep:odbc-api", "dep:toml_edit"]

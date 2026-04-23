@@ -442,27 +442,24 @@ fn print_table_fallback<R: Reader>(query: &str, reader: &R, max_rows: usize) {
 
     let nrow = data.height().min(max_rows);
     let ncol = data.width();
-    let colnames = data.get_column_names_str();
+    let colnames = data.get_column_names();
 
     // We add an extra 'row' for the column names
     let mut rows: Vec<String> = vec![String::from(""); nrow + 1];
 
-    for col_id in 0..ncol {
-        let col_name = colnames[col_id];
+    let columns = data.get_columns();
+    for (col_id, (col_name, column_data)) in colnames.iter().zip(columns.iter()).enumerate() {
         let mut width = col_name.chars().count();
 
         // End last column without comma
-        let mut suffix = ", ";
-        if col_id == ncol - 1 {
-            suffix = "";
-        }
+        let suffix = if col_id == ncol - 1 { "" } else { ", " };
 
         // Prepopulate formatted column with column name
         let mut col_fmt: Vec<String> = vec![format!("{}{}", col_name, suffix)];
 
         // Format every cell in column, tracking width
-        let column_data = data[col_id].as_materialized_series();
-        for cell in column_data.iter().take(rows.len()) {
+        for row_idx in 0..nrow {
+            let cell = ggsql::array_util::value_to_string(column_data, row_idx);
             let cell_fmt = format!("{}{}", cell, suffix);
             let nchar = cell_fmt.chars().count();
             if nchar > width {
@@ -477,8 +474,8 @@ fn print_table_fallback<R: Reader>(query: &str, reader: &R, max_rows: usize) {
             .collect();
 
         // Push columns to row string
-        for i in 0..rows.len() {
-            rows[i].push_str(col_fmt[i].as_str());
+        for (row, fmt) in rows.iter_mut().zip(col_fmt.iter()) {
+            row.push_str(fmt.as_str());
         }
     }
 

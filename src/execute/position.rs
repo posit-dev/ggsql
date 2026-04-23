@@ -58,10 +58,12 @@ pub fn apply_position_adjustments(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::array_util::as_f64;
+    use crate::df;
     use crate::plot::facet::{Facet, FacetLayout};
     use crate::plot::layer::{Geom, Position};
     use crate::plot::{AestheticValue, Mappings, ParameterValue, Scale, ScaleType};
-    use polars::prelude::*;
+    use arrow::array::Array;
 
     fn make_continuous_scale(aesthetic: &str) -> Scale {
         let mut scale = Scale::new(aesthetic);
@@ -77,10 +79,10 @@ mod tests {
 
     fn make_test_df() -> DataFrame {
         df! {
-            "__ggsql_aes_pos1__" => ["A", "A", "B", "B"],
-            "__ggsql_aes_pos2__" => [10.0, 20.0, 15.0, 25.0],
-            "__ggsql_aes_pos2end__" => [0.0, 0.0, 0.0, 0.0],
-            "__ggsql_aes_fill__" => ["X", "Y", "X", "Y"],
+            "__ggsql_aes_pos1__" => vec!["A", "A", "B", "B"],
+            "__ggsql_aes_pos2__" => vec![10.0, 20.0, 15.0, 25.0],
+            "__ggsql_aes_pos2end__" => vec![0.0, 0.0, 0.0, 0.0],
+            "__ggsql_aes_fill__" => vec!["X", "Y", "X", "Y"],
         }
         .unwrap()
     }
@@ -153,9 +155,25 @@ mod tests {
         let pos2_col = result_df.column("__ggsql_aes_pos2__").unwrap();
         let pos2end_col = result_df.column("__ggsql_aes_pos2end__").unwrap();
 
-        // Verify stacking was applied
-        assert!(pos2_col.f64().is_ok() || pos2_col.i64().is_ok());
-        assert!(pos2end_col.f64().is_ok() || pos2end_col.i64().is_ok());
+        // Verify stacking was applied (column should be numeric)
+        assert!(
+            matches!(
+                pos2_col.data_type(),
+                arrow::datatypes::DataType::Float64
+                    | arrow::datatypes::DataType::Int64
+                    | arrow::datatypes::DataType::Int32
+            ),
+            "pos2 should be numeric"
+        );
+        assert!(
+            matches!(
+                pos2end_col.data_type(),
+                arrow::datatypes::DataType::Float64
+                    | arrow::datatypes::DataType::Int64
+                    | arrow::datatypes::DataType::Int32
+            ),
+            "pos2end should be numeric"
+        );
     }
 
     #[test]
@@ -184,14 +202,17 @@ mod tests {
         let offset_col = result_df.column("__ggsql_aes_pos1offset__");
         assert!(offset_col.is_ok(), "pos1offset column should be created");
 
-        let offset = offset_col.unwrap().f64().unwrap();
+        let offset = as_f64(offset_col.unwrap()).unwrap();
 
         // With 2 groups (X, Y) and default width 0.9:
         // - adjusted_width = 0.9 / 2 = 0.45
         // - center_offset = 0.5
         // - Group X: center = (0 - 0.5) * 0.45 = -0.225
         // - Group Y: center = (1 - 0.5) * 0.45 = +0.225
-        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
+        let offsets: Vec<f64> = (0..offset.len())
+            .filter(|&i| !offset.is_null(i))
+            .map(|i| offset.value(i))
+            .collect();
         assert!(
             offsets.iter().any(|&v| (v - (-0.225)).abs() < 0.001),
             "Should have offset -0.225 for group X, got {:?}",
@@ -233,15 +254,15 @@ mod tests {
         apply_position_adjustments(&mut spec_with_layer, &mut data_map).unwrap();
 
         let result_df = data_map.get("__ggsql_layer_0__").unwrap();
-        let offset = result_df
-            .column("__ggsql_aes_pos1offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
+        let offset_col = result_df.column("__ggsql_aes_pos1offset__").unwrap();
+        let offset = as_f64(offset_col).unwrap();
 
         // With 2 groups and custom width 0.6:
         // - adjusted_width = 0.6 / 2 = 0.3
-        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
+        let offsets: Vec<f64> = (0..offset.len())
+            .filter(|&i| !offset.is_null(i))
+            .map(|i| offset.value(i))
+            .collect();
         assert!(offsets.iter().any(|&v| (v - (-0.15)).abs() < 0.001));
         assert!(offsets.iter().any(|&v| (v - 0.15).abs() < 0.001));
 
@@ -275,8 +296,11 @@ mod tests {
         let offset_col = result_df.column("__ggsql_aes_pos1offset__");
         assert!(offset_col.is_ok());
 
-        let offset = offset_col.unwrap().f64().unwrap();
-        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
+        let offset = as_f64(offset_col.unwrap()).unwrap();
+        let offsets: Vec<f64> = (0..offset.len())
+            .filter(|&i| !offset.is_null(i))
+            .map(|i| offset.value(i))
+            .collect();
 
         // With default width 0.9, offsets should be in range [-0.45, 0.45]
         for &v in &offsets {
@@ -311,12 +335,12 @@ mod tests {
         apply_position_adjustments(&mut spec_with_layer, &mut data_map).unwrap();
 
         let result_df = data_map.get("__ggsql_layer_0__").unwrap();
-        let offset = result_df
-            .column("__ggsql_aes_pos1offset__")
-            .unwrap()
-            .f64()
-            .unwrap();
-        let offsets: Vec<f64> = offset.into_iter().flatten().collect();
+        let offset_col = result_df.column("__ggsql_aes_pos1offset__").unwrap();
+        let offset = as_f64(offset_col).unwrap();
+        let offsets: Vec<f64> = (0..offset.len())
+            .filter(|&i| !offset.is_null(i))
+            .map(|i| offset.value(i))
+            .collect();
 
         // With custom width 0.6, offsets should be in range [-0.3, 0.3]
         for &v in &offsets {
@@ -333,11 +357,11 @@ mod tests {
         // Two facet panels (F1, F2) each with the same x="A" and two
         // fill groups (X, Y). Stacking within each panel should start from 0.
         let df = df! {
-            "__ggsql_aes_pos1__" => ["A", "A", "A", "A"],
-            "__ggsql_aes_pos2__" => [10.0, 20.0, 30.0, 40.0],
-            "__ggsql_aes_pos2end__" => [0.0, 0.0, 0.0, 0.0],
-            "__ggsql_aes_fill__" => ["X", "Y", "X", "Y"],
-            "__ggsql_aes_facet1__" => ["F1", "F1", "F2", "F2"],
+            "__ggsql_aes_pos1__" => vec!["A", "A", "A", "A"],
+            "__ggsql_aes_pos2__" => vec![10.0, 20.0, 30.0, 40.0],
+            "__ggsql_aes_pos2end__" => vec![0.0, 0.0, 0.0, 0.0],
+            "__ggsql_aes_fill__" => vec!["X", "Y", "X", "Y"],
+            "__ggsql_aes_facet1__" => vec!["F1", "F1", "F2", "F2"],
         }
         .unwrap();
 
@@ -390,29 +414,27 @@ mod tests {
         let result_df = data_map.get("__ggsql_layer_0__").unwrap();
 
         // Sort by facet then fill so we can assert in predictable order
-        let result_df = result_df
-            .clone()
-            .lazy()
-            .sort_by_exprs(
-                [col("__ggsql_aes_facet1__"), col("__ggsql_aes_fill__")],
-                SortMultipleOptions::default(),
-            )
-            .collect()
-            .unwrap();
+        // Build sort indices based on (facet, fill) lexicographic order
+        let facet_col =
+            crate::array_util::as_str(result_df.column("__ggsql_aes_facet1__").unwrap()).unwrap();
+        let fill_col =
+            crate::array_util::as_str(result_df.column("__ggsql_aes_fill__").unwrap()).unwrap();
+        let mut indices: Vec<usize> = (0..result_df.height()).collect();
+        indices.sort_by(|&a, &b| {
+            let fa = facet_col.value(a);
+            let fb = facet_col.value(b);
+            let cmp1 = fa.cmp(fb);
+            if cmp1 != std::cmp::Ordering::Equal {
+                return cmp1;
+            }
+            fill_col.value(a).cmp(fill_col.value(b))
+        });
 
-        let pos2 = result_df
-            .column("__ggsql_aes_pos2__")
-            .unwrap()
-            .f64()
-            .unwrap();
-        let pos2end = result_df
-            .column("__ggsql_aes_pos2end__")
-            .unwrap()
-            .f64()
-            .unwrap();
+        let pos2_arr = as_f64(result_df.column("__ggsql_aes_pos2__").unwrap()).unwrap();
+        let pos2end_arr = as_f64(result_df.column("__ggsql_aes_pos2end__").unwrap()).unwrap();
 
-        let pos2_vals: Vec<f64> = pos2.into_iter().flatten().collect();
-        let pos2end_vals: Vec<f64> = pos2end.into_iter().flatten().collect();
+        let pos2_vals: Vec<f64> = indices.iter().map(|&i| pos2_arr.value(i)).collect();
+        let pos2end_vals: Vec<f64> = indices.iter().map(|&i| pos2end_arr.value(i)).collect();
 
         // Expected (sorted by facet, fill):
         // F1/X: pos2end=0,  pos2=10  (first in panel, starts at 0)
@@ -440,11 +462,11 @@ mod tests {
         //   adjusted_width = 0.9 / 4 = 0.225
         //   offsets would be different (spread across 4 positions)
         let df = df! {
-            "__ggsql_aes_pos1__" => ["A", "A", "A", "A"],
-            "__ggsql_aes_pos2__" => [10.0, 20.0, 30.0, 40.0],
-            "__ggsql_aes_pos2end__" => [0.0, 0.0, 0.0, 0.0],
-            "__ggsql_aes_fill__" => ["X", "Y", "X", "Y"],
-            "__ggsql_aes_facet1__" => ["F1", "F1", "F2", "F2"],
+            "__ggsql_aes_pos1__" => vec!["A", "A", "A", "A"],
+            "__ggsql_aes_pos2__" => vec![10.0, 20.0, 30.0, 40.0],
+            "__ggsql_aes_pos2end__" => vec![0.0, 0.0, 0.0, 0.0],
+            "__ggsql_aes_fill__" => vec!["X", "Y", "X", "Y"],
+            "__ggsql_aes_facet1__" => vec!["F1", "F1", "F2", "F2"],
         }
         .unwrap();
 

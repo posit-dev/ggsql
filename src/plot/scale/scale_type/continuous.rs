@@ -1,6 +1,6 @@
 //! Continuous scale type implementation
 
-use polars::prelude::DataType;
+use arrow::datatypes::DataType;
 
 use super::{
     ScaleTypeKind, ScaleTypeTrait, TransformKind, OOB_CENSOR, OOB_SQUISH, OOB_VALUES_CONTINUOUS,
@@ -38,13 +38,13 @@ impl ScaleTypeTrait for Continuous {
             | DataType::Float32
             | DataType::Float64 => Ok(()),
             // Accept temporal types
-            DataType::Date | DataType::Datetime(_, _) | DataType::Time => Ok(()),
+            DataType::Date32 | DataType::Timestamp(_, _) | DataType::Time64(_) => Ok(()),
             // Reject discrete types
-            DataType::String => Err("Continuous scale cannot be used with String data. \
+            DataType::Utf8 => Err("Continuous scale cannot be used with String data. \
                  Use DISCRETE scale type instead, or ensure the column contains numeric or temporal data.".to_string()),
             DataType::Boolean => Err("Continuous scale cannot be used with Boolean data. \
                  Use DISCRETE scale type instead, or ensure the column contains numeric or temporal data.".to_string()),
-            DataType::Categorical(_, _) => Err("Continuous scale cannot be used with Categorical data. \
+            DataType::Dictionary(_, _) => Err("Continuous scale cannot be used with Categorical data. \
                  Use DISCRETE scale type instead, or ensure the column contains numeric or temporal data.".to_string()),
             // Other types - provide generic message
             other => Err(format!(
@@ -85,9 +85,9 @@ impl ScaleTypeTrait for Continuous {
         // First check column data type for temporal transforms
         if let Some(dtype) = column_dtype {
             match dtype {
-                DataType::Date => return TransformKind::Date,
-                DataType::Datetime(_, _) => return TransformKind::DateTime,
-                DataType::Time => return TransformKind::Time,
+                DataType::Date32 => return TransformKind::Date,
+                DataType::Timestamp(_, _) => return TransformKind::DateTime,
+                DataType::Time64(_) => return TransformKind::Time,
                 _ => {}
             }
         }
@@ -382,14 +382,16 @@ mod tests {
     #[test]
     fn test_validate_dtype_accepts_temporal() {
         use super::ScaleTypeTrait;
-        use polars::prelude::TimeUnit;
+        use arrow::datatypes::TimeUnit;
 
         let continuous = Continuous;
-        assert!(continuous.validate_dtype(&DataType::Date).is_ok());
+        assert!(continuous.validate_dtype(&DataType::Date32).is_ok());
         assert!(continuous
-            .validate_dtype(&DataType::Datetime(TimeUnit::Microseconds, None))
+            .validate_dtype(&DataType::Timestamp(TimeUnit::Microsecond, None))
             .is_ok());
-        assert!(continuous.validate_dtype(&DataType::Time).is_ok());
+        assert!(continuous
+            .validate_dtype(&DataType::Time64(TimeUnit::Nanosecond))
+            .is_ok());
     }
 
     #[test]
@@ -397,7 +399,7 @@ mod tests {
         use super::ScaleTypeTrait;
 
         let continuous = Continuous;
-        let result = continuous.validate_dtype(&DataType::String);
+        let result = continuous.validate_dtype(&DataType::Utf8);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("String"));

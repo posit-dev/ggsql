@@ -10,7 +10,6 @@ use crate::{
     },
     DataFrame, GgsqlError, Mappings, Result,
 };
-use polars::prelude::*;
 use std::collections::HashMap;
 
 /// Valid kernel types for violin density estimation
@@ -122,7 +121,7 @@ impl GeomTrait for Violin {
         aesthetics: &Mappings,
         group_by: &[String],
         parameters: &HashMap<String, ParameterValue>,
-        _execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
+        _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn crate::reader::SqlDialect,
     ) -> Result<StatResult> {
         stat_violin(query, aesthetics, group_by, parameters, dialect)
@@ -171,13 +170,11 @@ fn scale_offset_column(df: DataFrame, offset_col: &str, half_width: f64) -> Resu
     }
 
     // Get global max of offset column
-    let max_val = df
-        .column(offset_col)
-        .map_err(|e| GgsqlError::InternalError(format!("Failed to get offset column: {}", e)))?
-        .f64()
-        .map_err(|e| GgsqlError::InternalError(format!("Offset column must be f64: {}", e)))?
-        .max()
-        .unwrap_or(1.0);
+    use arrow::array::Array;
+    let offset_arr = df.column(offset_col)?;
+    let f64_arr = crate::array_util::as_f64(offset_arr)
+        .map_err(|e| GgsqlError::InternalError(format!("Offset column must be f64: {}", e)))?;
+    let max_val = arrow::compute::max(f64_arr).unwrap_or(1.0);
 
     if max_val <= 0.0 {
         return Ok(df);
@@ -185,11 +182,17 @@ fn scale_offset_column(df: DataFrame, offset_col: &str, half_width: f64) -> Resu
 
     // Scale: new_offset = offset * half_width / max_val
     let scale_factor = half_width / max_val;
-    let scaled = df
-        .lazy()
-        .with_column((col(offset_col) * lit(scale_factor)).alias(offset_col))
-        .collect()
-        .map_err(|e| GgsqlError::InternalError(format!("Failed to scale offset: {}", e)))?;
+    let scaled_values: Vec<Option<f64>> = (0..f64_arr.len())
+        .map(|i| {
+            if f64_arr.is_null(i) {
+                None
+            } else {
+                Some(f64_arr.value(i) * scale_factor)
+            }
+        })
+        .collect();
+    let scaled_array = crate::array_util::new_f64_array(scaled_values);
+    let scaled = df.with_column(offset_col, scaled_array)?;
 
     Ok(scaled)
 }
@@ -239,6 +242,19 @@ mod tests {
     use crate::reader::duckdb::DuckDBReader;
     use crate::reader::AnsiDialect;
     use crate::reader::Reader;
+    use arrow::array::Array;
+
+    /// Count unique non-null string values in an ArrayRef.
+    fn count_unique_strings(col: &arrow::array::ArrayRef) -> usize {
+        let arr = crate::array_util::as_str(col).expect("expected string array");
+        let mut seen = std::collections::HashSet::new();
+        for i in 0..arr.len() {
+            if !arr.is_null(i) {
+                seen.insert(arr.value(i).to_string());
+            }
+        }
+        seen.len()
+    }
 
     // ==================== Helper Functions ====================
 
@@ -312,18 +328,17 @@ mod tests {
                 let df = execute(&stat_query).expect("Generated SQL should execute");
 
                 // Should have columns: pos2 (y), density, and species (the x grouping)
-                let col_names: Vec<&str> =
-                    df.get_column_names().iter().map(|s| s.as_str()).collect();
-                assert!(col_names.contains(&"__ggsql_stat_pos2"));
-                assert!(col_names.contains(&"__ggsql_stat_density"));
-                assert!(col_names.contains(&"species"));
+                let col_names = df.get_column_names();
+                assert!(col_names.iter().any(|s| s == "__ggsql_stat_pos2"));
+                assert!(col_names.iter().any(|s| s == "__ggsql_stat_density"));
+                assert!(col_names.iter().any(|s| s == "species"));
 
                 // Should have multiple rows per species (512 grid points per species)
                 assert!(df.height() > 0);
 
                 // Verify we have all three species
                 let species_col = df.column("species").unwrap();
-                let unique_species = species_col.n_unique().unwrap();
+                let unique_species = count_unique_strings(species_col);
                 assert_eq!(unique_species, 3, "Should have 3 unique species");
             }
             _ => panic!("Expected Transformed result"),
@@ -377,24 +392,23 @@ mod tests {
                 let df = execute(&stat_query).expect("Generated SQL should execute");
 
                 // Should have columns: pos2 (y), density, species (x), and island (color group)
-                let col_names: Vec<&str> =
-                    df.get_column_names().iter().map(|s| s.as_str()).collect();
-                assert!(col_names.contains(&"__ggsql_stat_pos2"));
-                assert!(col_names.contains(&"__ggsql_stat_density"));
-                assert!(col_names.contains(&"species"));
-                assert!(col_names.contains(&"island"));
+                let col_names = df.get_column_names();
+                assert!(col_names.iter().any(|s| s == "__ggsql_stat_pos2"));
+                assert!(col_names.iter().any(|s| s == "__ggsql_stat_density"));
+                assert!(col_names.iter().any(|s| s == "species"));
+                assert!(col_names.iter().any(|s| s == "island"));
 
                 // Should have multiple rows per species-island combination
                 assert!(df.height() > 0);
 
                 // Verify we have multiple species
                 let species_col = df.column("species").unwrap();
-                let unique_species = species_col.n_unique().unwrap();
+                let unique_species = count_unique_strings(species_col);
                 assert!(unique_species >= 2, "Should have at least 2 unique species");
 
                 // Verify we have multiple islands
                 let island_col = df.column("island").unwrap();
-                let unique_islands = island_col.n_unique().unwrap();
+                let unique_islands = count_unique_strings(island_col);
                 assert!(unique_islands >= 2, "Should have at least 2 unique islands");
             }
             _ => panic!("Expected Transformed result"),
@@ -502,13 +516,14 @@ mod tests {
 
     #[test]
     fn test_violin_post_process_scales_offset() {
+        use crate::df;
         let violin = Violin;
         let offset_col = naming::aesthetic_column("offset");
 
         // Create a DataFrame with offset values
         let df = df! {
-            offset_col.as_str() => [0.0, 0.5, 1.0, 0.25],
-            "__ggsql_aes_pos2__" => [1.0, 2.0, 3.0, 4.0],
+            offset_col.as_str() => vec![0.0, 0.5, 1.0, 0.25],
+            "__ggsql_aes_pos2__" => vec![1.0, 2.0, 3.0, 4.0],
         }
         .unwrap();
 
@@ -517,8 +532,11 @@ mod tests {
         let parameters = HashMap::new();
         let result = violin.post_process(df, &parameters).unwrap();
 
-        let scaled_offset = result.column(&offset_col).unwrap().f64().unwrap();
-        let values: Vec<f64> = scaled_offset.into_iter().flatten().collect();
+        let scaled_arr = crate::array_util::as_f64(result.column(&offset_col).unwrap()).unwrap();
+        let values: Vec<f64> = (0..scaled_arr.len())
+            .filter(|&i| !scaled_arr.is_null(i))
+            .map(|i| scaled_arr.value(i))
+            .collect();
 
         // Max offset (1.0) should be scaled to 0.45 (half_width)
         // Other values should be proportionally scaled
@@ -533,13 +551,14 @@ mod tests {
 
     #[test]
     fn test_violin_post_process_custom_width() {
+        use crate::df;
         let violin = Violin;
         let offset_col = naming::aesthetic_column("offset");
 
         // Create a DataFrame with offset values
         let df = df! {
-            offset_col.as_str() => [0.0, 0.5, 1.0],
-            "__ggsql_aes_pos2__" => [1.0, 2.0, 3.0],
+            offset_col.as_str() => vec![0.0, 0.5, 1.0],
+            "__ggsql_aes_pos2__" => vec![1.0, 2.0, 3.0],
         }
         .unwrap();
 
@@ -549,8 +568,11 @@ mod tests {
 
         let result = violin.post_process(df, &parameters).unwrap();
 
-        let scaled_offset = result.column(&offset_col).unwrap().f64().unwrap();
-        let values: Vec<f64> = scaled_offset.into_iter().flatten().collect();
+        let scaled_arr = crate::array_util::as_f64(result.column(&offset_col).unwrap()).unwrap();
+        let values: Vec<f64> = (0..scaled_arr.len())
+            .filter(|&i| !scaled_arr.is_null(i))
+            .map(|i| scaled_arr.value(i))
+            .collect();
 
         // Max offset (1.0) should be scaled to 0.3 (half_width)
         assert!((values[0] - 0.0).abs() < 1e-6, "0.0 should stay 0.0");
@@ -560,11 +582,12 @@ mod tests {
 
     #[test]
     fn test_violin_post_process_no_offset_column() {
+        use crate::df;
         let violin = Violin;
 
         // Create a DataFrame without offset column
         let df = df! {
-            "__ggsql_aes_pos2__" => [1.0, 2.0, 3.0],
+            "__ggsql_aes_pos2__" => vec![1.0, 2.0, 3.0],
         }
         .unwrap();
 

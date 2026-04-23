@@ -22,20 +22,27 @@ impl FacetDataContext {
     ///
     /// Extracts unique values from each facet variable for label resolution.
     pub fn from_dataframe(df: &DataFrame, variables: &[String]) -> Self {
+        use crate::array_util::value_to_string;
+        use arrow::array::Array;
+        use std::collections::HashSet;
+
         let mut unique_values = HashMap::new();
         let mut num_levels = 1;
 
         for (i, var) in variables.iter().enumerate() {
             if let Ok(col) = df.column(var) {
-                let unique = col.unique().ok();
-                let values: Vec<String> = unique
-                    .as_ref()
-                    .map(|u| {
-                        (0..u.len())
-                            .filter_map(|j| u.get(j).ok().map(|v| format!("{}", v)))
-                            .collect()
-                    })
-                    .unwrap_or_default();
+                // Collect unique values manually
+                let mut seen = HashSet::new();
+                let mut values = Vec::new();
+                for j in 0..col.len() {
+                    if col.is_null(j) {
+                        continue;
+                    }
+                    let s = value_to_string(col, j);
+                    if seen.insert(s.clone()) {
+                        values.push(s);
+                    }
+                }
 
                 if i == 0 {
                     num_levels = values.len().max(1);
@@ -325,8 +332,8 @@ fn apply_defaults(facet: &mut Facet, context: &FacetDataContext) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::df;
     use crate::plot::facet::FacetLayout;
-    use polars::prelude::*;
 
     /// Default position names for cartesian coords
     const CARTESIAN: &[&str] = &["x", "y"];
@@ -547,8 +554,8 @@ mod tests {
     #[test]
     fn test_context_from_dataframe() {
         let df = df! {
-            "category" => &["A", "B", "C", "A", "B", "C"],
-            "value" => &[1, 2, 3, 4, 5, 6],
+            "category" => vec!["A", "B", "C", "A", "B", "C"],
+            "value" => vec![1i32, 2, 3, 4, 5, 6],
         }
         .unwrap();
 
@@ -559,7 +566,7 @@ mod tests {
     #[test]
     fn test_context_from_dataframe_missing_column() {
         let df = df! {
-            "other" => &[1, 2, 3],
+            "other" => vec![1i32, 2, 3],
         }
         .unwrap();
 
@@ -570,7 +577,7 @@ mod tests {
     #[test]
     fn test_context_from_dataframe_empty_variables() {
         let df = df! {
-            "x" => &[1, 2, 3],
+            "x" => vec![1i32, 2, 3],
         }
         .unwrap();
 

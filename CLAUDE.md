@@ -124,7 +124,7 @@ DRAW line
          ▼                      │
   ┌─────────────┐               │
   │  DataFrame  │               │
-  │  (Polars)   │               │
+  │   (Arrow)   │               │
   └──────┬──────┘               │
          │                      │
          └──────────┬───────────┘
@@ -534,7 +534,7 @@ pub trait Reader {
 
 - In-memory databases: `duckdb://memory`
 - File-based databases: `duckdb://path/to/file.db`
-- SQL execution → Polars DataFrame conversion
+- SQL execution → Arrow DataFrame conversion
 - Comprehensive type handling
 
 **Connection Parsing** (`connection.rs`):
@@ -1333,9 +1333,9 @@ VIZ:  "VISUALISE DRAW line MAPPING sale_date AS x, ..."
 ```rust
 // duckdb.rs
 connection.execute(sql) → ResultSet
-ResultSet → DataFrame (Polars)
+ResultSet → DataFrame (Arrow RecordBatch)
 
-// DataFrame columns: sale_date (Date32), region (String), total (Int64)
+// DataFrame columns: sale_date (Date32), region (Utf8), total (Int64)
 // Date32 values converted to ISO format: "2024-01-01"
 ```
 

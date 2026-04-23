@@ -493,6 +493,7 @@ pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<Spec> {
 #[cfg(all(feature = "duckdb", feature = "vegalite"))]
 mod tests {
     use super::*;
+    use crate::df;
     use crate::writer::{VegaLiteWriter, Writer};
 
     #[test]
@@ -832,13 +833,11 @@ mod tests {
 
     #[test]
     fn test_register_and_query() {
-        use polars::prelude::*;
-
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         let df = df! {
-            "x" => [1i32, 2, 3],
-            "y" => [10i32, 20, 30],
+            "x" => vec![1i32, 2, 3],
+            "y" => vec![10i32, 20, 30],
         }
         .unwrap();
 
@@ -858,20 +857,18 @@ mod tests {
 
     #[test]
     fn test_register_and_join() {
-        use polars::prelude::*;
-
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         let sales = df! {
-            "id" => [1i32, 2, 3],
-            "amount" => [100i32, 200, 300],
-            "product_id" => [1i32, 1, 2],
+            "id" => vec![1i32, 2, 3],
+            "amount" => vec![100i32, 200, 300],
+            "product_id" => vec![1i32, 1, 2],
         }
         .unwrap();
 
         let products = df! {
-            "id" => [1i32, 2],
-            "name" => ["Widget", "Gadget"],
+            "id" => vec![1i32, 2],
+            "name" => vec!["Widget", "Gadget"],
         }
         .unwrap();
 

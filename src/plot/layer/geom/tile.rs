@@ -344,7 +344,7 @@ fn generate_continuous_position_expressions(
 mod tests {
     use super::*;
     use crate::plot::types::{AestheticValue, ColumnInfo};
-    use polars::prelude::DataType;
+    use arrow::datatypes::DataType;
 
     // ==================== Helper Functions ====================
 
@@ -357,7 +357,7 @@ mod tests {
             ColumnInfo {
                 name: "__ggsql_aes_pos1__".to_string(),
                 dtype: if discrete_cols.contains(&"pos1") {
-                    DataType::String
+                    DataType::Utf8
                 } else {
                     DataType::Float64
                 },
@@ -389,7 +389,7 @@ mod tests {
             ColumnInfo {
                 name: "__ggsql_aes_pos2__".to_string(),
                 dtype: if discrete_cols.contains(&"pos2") {
-                    DataType::String
+                    DataType::Utf8
                 } else {
                     DataType::Float64
                 },
@@ -424,7 +424,7 @@ mod tests {
         for col_name in extra_cols {
             schema.push(ColumnInfo {
                 name: col_name.to_string(),
-                dtype: DataType::String,
+                dtype: DataType::Utf8,
                 is_discrete: true,
                 min: None,
                 max: None,

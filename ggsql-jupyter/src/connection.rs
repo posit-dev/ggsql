@@ -69,13 +69,13 @@ fn list_catalogs(reader: &dyn Reader) -> Result<Vec<ObjectSchema>, String> {
 
     let mut catalogs = Vec::new();
     for i in 0..df.height() {
-        if let Ok(val) = col.get(i) {
-            let name = val.to_string().trim_matches('"').to_string();
-            catalogs.push(ObjectSchema {
-                name,
-                kind: "catalog".to_string(),
-            });
-        }
+        let name = ggsql::array_util::value_to_string(col, i)
+            .trim_matches('"')
+            .to_string();
+        catalogs.push(ObjectSchema {
+            name,
+            kind: "catalog".to_string(),
+        });
     }
     Ok(catalogs)
 }
@@ -91,13 +91,13 @@ fn list_schemas(reader: &dyn Reader, catalog: &str) -> Result<Vec<ObjectSchema>,
 
     let mut schemas = Vec::new();
     for i in 0..df.height() {
-        if let Ok(val) = col.get(i) {
-            let name = val.to_string().trim_matches('"').to_string();
-            schemas.push(ObjectSchema {
-                name,
-                kind: "schema".to_string(),
-            });
-        }
+        let name = ggsql::array_util::value_to_string(col, i)
+            .trim_matches('"')
+            .to_string();
+        schemas.push(ObjectSchema {
+            name,
+            kind: "schema".to_string(),
+        });
     }
     Ok(schemas)
 }
@@ -119,24 +119,26 @@ fn list_tables(
 
     let mut objects = Vec::new();
     for i in 0..df.height() {
-        if let (Ok(name_val), Ok(type_val)) = (name_col.get(i), type_col.get(i)) {
-            let name = name_val.to_string().trim_matches('"').to_string();
-            let table_type = type_val.to_string().trim_matches('"').to_uppercase();
-            let kind = if table_type.contains("VIEW") {
-                "view"
-            } else if table_type == "TABLE"
-                || table_type == "BASE TABLE"
-                || table_type.contains("TABLE")
-            {
-                "table"
-            } else {
-                continue; // Skip non-table/view objects (stages, procedures, etc.)
-            };
-            objects.push(ObjectSchema {
-                name,
-                kind: kind.to_string(),
-            });
-        }
+        let name = ggsql::array_util::value_to_string(name_col, i)
+            .trim_matches('"')
+            .to_string();
+        let table_type = ggsql::array_util::value_to_string(type_col, i)
+            .trim_matches('"')
+            .to_uppercase();
+        let kind = if table_type.contains("VIEW") {
+            "view"
+        } else if table_type == "TABLE"
+            || table_type == "BASE TABLE"
+            || table_type.contains("TABLE")
+        {
+            "table"
+        } else {
+            continue; // Skip non-table/view objects (stages, procedures, etc.)
+        };
+        objects.push(ObjectSchema {
+            name,
+            kind: kind.to_string(),
+        });
     }
     Ok(objects)
 }
@@ -159,11 +161,13 @@ fn list_columns(
 
     let mut fields = Vec::new();
     for i in 0..df.height() {
-        if let (Ok(name_val), Ok(type_val)) = (name_col.get(i), type_col.get(i)) {
-            let name = name_val.to_string().trim_matches('"').to_string();
-            let dtype = type_val.to_string().trim_matches('"').to_string();
-            fields.push(FieldSchema { name, dtype });
-        }
+        let name = ggsql::array_util::value_to_string(name_col, i)
+            .trim_matches('"')
+            .to_string();
+        let dtype = ggsql::array_util::value_to_string(type_col, i)
+            .trim_matches('"')
+            .to_string();
+        fields.push(FieldSchema { name, dtype });
     }
     Ok(fields)
 }

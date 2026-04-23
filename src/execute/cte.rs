@@ -153,13 +153,9 @@ pub fn materialize_ctes(ctes: &[CteDefinition], reader: &dyn Reader) -> Result<H
 
         // Apply column aliases if present: WITH t(value, label) AS (...) renames columns
         if !cte.column_aliases.is_empty() && cte.column_aliases.len() == df.width() {
-            let current_names: Vec<String> = df
-                .get_column_names()
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
+            let current_names: Vec<String> = df.get_column_names();
             for (old, new) in current_names.iter().zip(cte.column_aliases.iter()) {
-                df.rename(old, new.into()).map_err(|e| {
+                df = df.rename(old, new).map_err(|e| {
                     GgsqlError::ReaderError(format!(
                         "Failed to apply column alias '{}' for CTE '{}': {}",
                         new, cte.name, e

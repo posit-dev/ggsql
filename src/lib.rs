@@ -35,6 +35,9 @@ ggsql splits queries at the `VISUALISE` boundary:
 // Allow complex types in test code (e.g., test case tuples with many elements)
 #![cfg_attr(test, allow(clippy::type_complexity))]
 
+pub mod array_util;
+pub mod compute;
+pub mod dataframe;
 pub mod format;
 pub mod naming;
 pub mod parser;
@@ -68,8 +71,8 @@ pub use util::{and_list, and_list_quoted, or_list, or_list_quoted};
 // #[cfg(feature = "engine")]
 // pub mod engine;
 
-// DataFrame abstraction (wraps Polars)
-pub use polars::prelude::DataFrame;
+// DataFrame abstraction (wraps Arrow RecordBatch)
+pub use dataframe::DataFrame;
 
 /// Main library error type
 #[derive(thiserror::Error, Debug)]
@@ -131,10 +134,11 @@ mod integration_tests {
         // Verify DataFrame has temporal type (DuckDB returns Datetime for DATE + INTERVAL)
         assert_eq!(df.get_column_names(), vec!["date", "revenue"]);
         let date_col = df.column("date").unwrap();
-        // DATE + INTERVAL returns Datetime in DuckDB, which is still temporal
+        use arrow::array::Array;
+        // DATE + INTERVAL returns Timestamp in DuckDB (arrow), which is still temporal
         assert!(matches!(
-            date_col.dtype(),
-            polars::prelude::DataType::Date | polars::prelude::DataType::Datetime(_, _)
+            date_col.data_type(),
+            arrow::datatypes::DataType::Date32 | arrow::datatypes::DataType::Timestamp(_, _)
         ));
 
         // Create visualization spec
@@ -190,11 +194,11 @@ mod integration_tests {
 
         let df = reader.execute_sql(sql).unwrap();
 
-        // Verify DataFrame has Datetime type
+        // Verify DataFrame has Timestamp type
         let timestamp_col = df.column("timestamp").unwrap();
         assert!(matches!(
-            timestamp_col.dtype(),
-            polars::prelude::DataType::Datetime(_, _)
+            timestamp_col.data_type(),
+            arrow::datatypes::DataType::Timestamp(_, _)
         ));
 
         // Create visualization spec
@@ -243,16 +247,16 @@ mod integration_tests {
         // Verify types are preserved
         // DuckDB treats numeric literals as DECIMAL, which we convert to Float64
         assert!(matches!(
-            df.column("int_col").unwrap().dtype(),
-            polars::prelude::DataType::Int32
+            df.column("int_col").unwrap().data_type(),
+            arrow::datatypes::DataType::Int32
         ));
         assert!(matches!(
-            df.column("float_col").unwrap().dtype(),
-            polars::prelude::DataType::Float64
+            df.column("float_col").unwrap().data_type(),
+            arrow::datatypes::DataType::Float64
         ));
         assert!(matches!(
-            df.column("bool_col").unwrap().dtype(),
-            polars::prelude::DataType::Boolean
+            df.column("bool_col").unwrap().data_type(),
+            arrow::datatypes::DataType::Boolean
         ));
 
         // Create visualization spec
@@ -299,16 +303,16 @@ mod integration_tests {
 
         // Verify types
         assert!(matches!(
-            df.column("int_col").unwrap().dtype(),
-            polars::prelude::DataType::Int32
+            df.column("int_col").unwrap().data_type(),
+            arrow::datatypes::DataType::Int32
         ));
         assert!(matches!(
-            df.column("float_col").unwrap().dtype(),
-            polars::prelude::DataType::Float64
+            df.column("float_col").unwrap().data_type(),
+            arrow::datatypes::DataType::Float64
         ));
         assert!(matches!(
-            df.column("str_col").unwrap().dtype(),
-            polars::prelude::DataType::String
+            df.column("str_col").unwrap().data_type(),
+            arrow::datatypes::DataType::Utf8
         ));
 
         // Create viz spec
@@ -403,8 +407,8 @@ mod integration_tests {
         // DATE_TRUNC returns Date type (not Datetime)
         let day_col = df.column("day").unwrap();
         assert!(matches!(
-            day_col.dtype(),
-            polars::prelude::DataType::Date | polars::prelude::DataType::Datetime(_, _)
+            day_col.data_type(),
+            arrow::datatypes::DataType::Date32 | arrow::datatypes::DataType::Timestamp(_, _)
         ));
 
         let mut spec = Plot::new();
@@ -443,16 +447,16 @@ mod integration_tests {
 
         // All should be Float64
         assert!(matches!(
-            df.column("small").unwrap().dtype(),
-            polars::prelude::DataType::Float64
+            df.column("small").unwrap().data_type(),
+            arrow::datatypes::DataType::Float64
         ));
         assert!(matches!(
-            df.column("medium").unwrap().dtype(),
-            polars::prelude::DataType::Float64
+            df.column("medium").unwrap().data_type(),
+            arrow::datatypes::DataType::Float64
         ));
         assert!(matches!(
-            df.column("large").unwrap().dtype(),
-            polars::prelude::DataType::Float64
+            df.column("large").unwrap().data_type(),
+            arrow::datatypes::DataType::Float64
         ));
 
         let mut spec = Plot::new();
@@ -497,20 +501,20 @@ mod integration_tests {
 
         // Verify types
         assert!(matches!(
-            df.column("tiny").unwrap().dtype(),
-            polars::prelude::DataType::Int8
+            df.column("tiny").unwrap().data_type(),
+            arrow::datatypes::DataType::Int8
         ));
         assert!(matches!(
-            df.column("small").unwrap().dtype(),
-            polars::prelude::DataType::Int16
+            df.column("small").unwrap().data_type(),
+            arrow::datatypes::DataType::Int16
         ));
         assert!(matches!(
-            df.column("int").unwrap().dtype(),
-            polars::prelude::DataType::Int32
+            df.column("int").unwrap().data_type(),
+            arrow::datatypes::DataType::Int32
         ));
         assert!(matches!(
-            df.column("big").unwrap().dtype(),
-            polars::prelude::DataType::Int64
+            df.column("big").unwrap().data_type(),
+            arrow::datatypes::DataType::Int64
         ));
 
         let mut spec = Plot::new();

@@ -1,8 +1,9 @@
 //! DataFrame to JSON conversion utilities for Vega-Lite writer
 //!
-//! This module handles converting Polars DataFrames to Vega-Lite JSON data values,
+//! This module handles converting Arrow DataFrames to Vega-Lite JSON data values,
 //! including temporal type handling and binned data transformations.
 
+use crate::array_util::*;
 use crate::plot::scale::ScaleTypeKind;
 
 /// Column name for row index (used to preserve data order in Vega-Lite)
@@ -12,7 +13,8 @@ pub(super) const ROW_INDEX_COLUMN: &str = "__ggsql_row_index__";
 use crate::plot::ArrayElement;
 use crate::plot::ParameterValue;
 use crate::{naming, AestheticValue, DataFrame, GgsqlError, Plot, Result};
-use polars::prelude::*;
+use arrow::array::{Array, ArrayRef};
+use arrow::datatypes::{DataType, TimeUnit};
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 
@@ -24,22 +26,23 @@ pub(super) enum TemporalType {
     Time,
 }
 
-/// Convert Polars DataFrame to Vega-Lite data values (array of objects)
+/// Convert DataFrame to Vega-Lite data values (array of objects)
 pub(super) fn dataframe_to_values(df: &DataFrame) -> Result<Vec<Value>> {
     let mut values = Vec::new();
     let height = df.height();
     let column_names = df.get_column_names();
+    let columns = df.get_columns();
 
     for row_idx in 0..height {
         let mut row_obj = Map::new();
 
         for (col_idx, col_name) in column_names.iter().enumerate() {
-            let column = df.get_columns().get(col_idx).ok_or_else(|| {
+            let column = columns.get(col_idx).ok_or_else(|| {
                 GgsqlError::WriterError(format!("Failed to get column {}", col_name))
             })?;
 
-            // Get value from series and convert to JSON Value
-            let value = series_value_at(column.as_materialized_series(), row_idx)?;
+            // Get value from array and convert to JSON Value
+            let value = series_value_at(column, row_idx)?;
             row_obj.insert(col_name.to_string(), value);
         }
 
@@ -49,120 +52,70 @@ pub(super) fn dataframe_to_values(df: &DataFrame) -> Result<Vec<Value>> {
     Ok(values)
 }
 
-/// Get a single value from a series at a given index as JSON Value
-pub(super) fn series_value_at(series: &Series, idx: usize) -> Result<Value> {
-    use DataType::*;
+/// Get a single value from an arrow array at a given index as JSON Value
+pub(super) fn series_value_at(array: &ArrayRef, idx: usize) -> Result<Value> {
+    if array.is_null(idx) {
+        return Ok(Value::Null);
+    }
 
-    match series.dtype() {
-        Int8 => {
-            let ca = series
-                .i8()
-                .map_err(|e| GgsqlError::WriterError(format!("Failed to cast to i8: {}", e)))?;
-            Ok(ca.get(idx).map(|v| json!(v)).unwrap_or(Value::Null))
-        }
-        Int16 => {
-            let ca = series
-                .i16()
-                .map_err(|e| GgsqlError::WriterError(format!("Failed to cast to i16: {}", e)))?;
-            Ok(ca.get(idx).map(|v| json!(v)).unwrap_or(Value::Null))
-        }
-        Int32 => {
-            let ca = series
-                .i32()
-                .map_err(|e| GgsqlError::WriterError(format!("Failed to cast to i32: {}", e)))?;
-            Ok(ca.get(idx).map(|v| json!(v)).unwrap_or(Value::Null))
-        }
-        Int64 => {
-            let ca = series
-                .i64()
-                .map_err(|e| GgsqlError::WriterError(format!("Failed to cast to i64: {}", e)))?;
-            Ok(ca.get(idx).map(|v| json!(v)).unwrap_or(Value::Null))
-        }
-        Float32 => {
-            let ca = series
-                .f32()
-                .map_err(|e| GgsqlError::WriterError(format!("Failed to cast to f32: {}", e)))?;
-            Ok(ca.get(idx).map(|v| json!(v)).unwrap_or(Value::Null))
-        }
-        Float64 => {
-            let ca = series
-                .f64()
-                .map_err(|e| GgsqlError::WriterError(format!("Failed to cast to f64: {}", e)))?;
-            Ok(ca.get(idx).map(|v| json!(v)).unwrap_or(Value::Null))
-        }
-        Boolean => {
-            let ca = series
-                .bool()
-                .map_err(|e| GgsqlError::WriterError(format!("Failed to cast to bool: {}", e)))?;
-            Ok(ca.get(idx).map(|v| json!(v)).unwrap_or(Value::Null))
-        }
-        String => {
-            let ca = series
-                .str()
-                .map_err(|e| GgsqlError::WriterError(format!("Failed to cast to string: {}", e)))?;
+    match array.data_type() {
+        DataType::Int8 => Ok(json!(as_i8(array)?.value(idx))),
+        DataType::Int16 => Ok(json!(as_i16(array)?.value(idx))),
+        DataType::Int32 => Ok(json!(as_i32(array)?.value(idx))),
+        DataType::Int64 => Ok(json!(as_i64(array)?.value(idx))),
+        DataType::UInt8 => Ok(json!(as_u8(array)?.value(idx))),
+        DataType::UInt16 => Ok(json!(as_u16(array)?.value(idx))),
+        DataType::UInt32 => Ok(json!(as_u32(array)?.value(idx))),
+        DataType::UInt64 => Ok(json!(as_u64(array)?.value(idx))),
+        DataType::Float32 => Ok(json!(as_f32(array)?.value(idx))),
+        DataType::Float64 => Ok(json!(as_f64(array)?.value(idx))),
+        DataType::Boolean => Ok(json!(as_bool(array)?.value(idx))),
+        DataType::Utf8 => {
             // Keep strings as strings (don't parse to numbers)
-            Ok(ca.get(idx).map(|v| json!(v)).unwrap_or(Value::Null))
+            Ok(json!(as_str(array)?.value(idx)))
         }
-        Date => {
+        DataType::Date32 => {
             // Convert days since epoch to ISO date string: "YYYY-MM-DD"
-            let ca = series
-                .date()
-                .map_err(|e| GgsqlError::WriterError(format!("Failed to cast to date: {}", e)))?;
-            if let Some(days) = ca.phys.get(idx) {
-                let unix_epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
-                let date = unix_epoch + chrono::Duration::days(days as i64);
-                Ok(json!(date.format("%Y-%m-%d").to_string()))
-            } else {
-                Ok(Value::Null)
-            }
+            let days = as_date32(array)?.value(idx);
+            let unix_epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+            let date = unix_epoch + chrono::Duration::days(days as i64);
+            Ok(json!(date.format("%Y-%m-%d").to_string()))
         }
-        Datetime(time_unit, _) => {
+        DataType::Timestamp(time_unit, _) => {
             // Convert timestamp to ISO datetime: "YYYY-MM-DDTHH:MM:SS.sssZ"
-            let ca = series.datetime().map_err(|e| {
-                GgsqlError::WriterError(format!("Failed to cast to datetime: {}", e))
+            let timestamp = as_timestamp_us(array).map(|a| a.value(idx)).or_else(|_| {
+                // Try casting to microsecond timestamp first
+                let cast = cast_array(array, &DataType::Timestamp(TimeUnit::Microsecond, None))?;
+                Ok(as_timestamp_us(&cast)?.value(idx))
             })?;
-            if let Some(timestamp) = ca.phys.get(idx) {
-                // Convert to microseconds based on time unit
-                let micros = match time_unit {
-                    TimeUnit::Microseconds => timestamp,
-                    TimeUnit::Milliseconds => timestamp * 1_000,
-                    TimeUnit::Nanoseconds => timestamp / 1_000,
-                };
-                let secs = micros / 1_000_000;
-                let nsecs = ((micros % 1_000_000) * 1000) as u32;
-                let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(secs, nsecs)
-                    .unwrap_or_else(|| {
-                        chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0).unwrap()
-                    });
-                Ok(json!(dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()))
-            } else {
-                Ok(Value::Null)
-            }
+            // timestamp is in microseconds for TimestampMicrosecondArray
+            let micros = match time_unit {
+                TimeUnit::Microsecond => timestamp,
+                TimeUnit::Millisecond => timestamp * 1_000,
+                TimeUnit::Nanosecond => timestamp / 1_000,
+                TimeUnit::Second => timestamp * 1_000_000,
+            };
+            let secs = micros / 1_000_000;
+            let nsecs = ((micros % 1_000_000) * 1000) as u32;
+            let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(secs, nsecs)
+                .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0).unwrap());
+            Ok(json!(dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()))
         }
-        Time => {
+        DataType::Time64(_) => {
             // Convert nanoseconds since midnight to ISO time: "HH:MM:SS.sss"
-            let ca = series
-                .time()
-                .map_err(|e| GgsqlError::WriterError(format!("Failed to cast to time: {}", e)))?;
-            if let Some(nanos) = ca.phys.get(idx) {
-                let hours = nanos / 3_600_000_000_000;
-                let minutes = (nanos % 3_600_000_000_000) / 60_000_000_000;
-                let seconds = (nanos % 60_000_000_000) / 1_000_000_000;
-                let millis = (nanos % 1_000_000_000) / 1_000_000;
-                Ok(json!(format!(
-                    "{:02}:{:02}:{:02}.{:03}",
-                    hours, minutes, seconds, millis
-                )))
-            } else {
-                Ok(Value::Null)
-            }
+            let nanos = as_time64_ns(array)?.value(idx);
+            let hours = nanos / 3_600_000_000_000;
+            let minutes = (nanos % 3_600_000_000_000) / 60_000_000_000;
+            let seconds = (nanos % 60_000_000_000) / 1_000_000_000;
+            let millis = (nanos % 1_000_000_000) / 1_000_000;
+            Ok(json!(format!(
+                "{:02}:{:02}:{:02}.{:03}",
+                hours, minutes, seconds, millis
+            )))
         }
         _ => {
             // Fallback: convert to string
-            Ok(json!(series
-                .get(idx)
-                .map(|v| v.to_string())
-                .unwrap_or_default()))
+            Ok(json!(value_to_string(array, idx)))
         }
     }
 }
@@ -198,7 +151,7 @@ pub(super) fn find_bin_for_value(value: f64, breaks: &[f64]) -> Option<(f64, f64
     None
 }
 
-/// Convert Polars DataFrame to Vega-Lite data values with bin columns.
+/// Convert DataFrame to Vega-Lite data values with bin columns.
 ///
 /// For columns with binned scales, this replaces the center value with bin_start
 /// and adds a corresponding bin_end column.
@@ -209,17 +162,18 @@ pub(super) fn dataframe_to_values_with_bins(
     let mut values = Vec::new();
     let height = df.height();
     let column_names = df.get_column_names();
+    let columns = df.get_columns();
 
     for row_idx in 0..height {
         let mut row_obj = Map::new();
 
         for (col_idx, col_name) in column_names.iter().enumerate() {
-            let column = df.get_columns().get(col_idx).ok_or_else(|| {
+            let column = columns.get(col_idx).ok_or_else(|| {
                 GgsqlError::WriterError(format!("Failed to get column {}", col_name))
             })?;
 
-            // Get value from series and convert to JSON Value
-            let value = series_value_at(column.as_materialized_series(), row_idx)?;
+            // Get value from array and convert to JSON Value
+            let value = series_value_at(column, row_idx)?;
 
             // Check if this column has binned data
             let col_name_str = col_name.to_string();

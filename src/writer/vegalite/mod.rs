@@ -1204,9 +1204,9 @@ impl Writer for VegaLiteWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::df;
     use crate::plot::{Labels, Layer, ParameterValue};
     use crate::Geom;
-    use polars::prelude::*;
     use serde_json::Value;
     use std::collections::HashMap;
     use std::sync::LazyLock;
@@ -1365,8 +1365,8 @@ mod tests {
     /// Helper to create a simple DataFrame with x and y columns for testing
     fn simple_df() -> DataFrame {
         df! {
-            "x" => &[1, 2, 3],
-            "y" => &[4, 5, 6],
+            "x" => vec![1, 2, 3],
+            "y" => vec![4, 5, 6],
         }
         .unwrap()
     }
@@ -1514,8 +1514,8 @@ mod tests {
 
         // Create simple DataFrame
         let df = df! {
-            "x" => &[1, 2, 3],
-            "y" => &[4, 5, 6],
+            "x" => vec![1, 2, 3],
+            "y" => vec![4, 5, 6],
         }
         .unwrap();
 
@@ -1561,8 +1561,8 @@ mod tests {
         spec.labels = Some(labels);
 
         let df = df! {
-            "date" => &["2024-01-01", "2024-01-02"],
-            "value" => &[10, 20],
+            "date" => vec!["2024-01-01", "2024-01-02"],
+            "value" => vec![10, 20],
         }
         .unwrap();
 
@@ -1702,10 +1702,10 @@ mod tests {
 
         // Create DataFrame
         let df = df! {
-            "x" => &[1, 2, 3],
-            "y" => &[1, 2, 3],
-            "label" => &["A", "B", "C"],
-            "value" => &[1.0, 2.0, 3.0],
+            "x" => vec![1, 2, 3],
+            "y" => vec![1, 2, 3],
+            "label" => vec!["A", "B", "C"],
+            "value" => vec![1.0, 2.0, 3.0],
         }
         .unwrap();
 
@@ -1752,8 +1752,8 @@ mod tests {
         spec.layers.push(layer);
 
         let df = df! {
-            "x" => &[1, 2, 3],
-            "y" => &[4, 5, 6],
+            "x" => vec![1, 2, 3],
+            "y" => vec![4, 5, 6],
         }
         .unwrap();
 
@@ -1783,8 +1783,8 @@ mod tests {
         transform_spec(&mut spec);
 
         let df = df! {
-            "x" => &[1, 2, 3],
-            "y" => &[4, 5, 6],
+            "x" => vec![1, 2, 3],
+            "y" => vec![4, 5, 6],
         }
         .unwrap();
 
@@ -1798,7 +1798,7 @@ mod tests {
     #[test]
     fn test_numeric_type_inference_integers() {
         let df = df! {
-            "x" => &[1i64, 2, 3],
+            "x" => vec![1i64, 2, 3],
         }
         .unwrap();
 
@@ -1808,7 +1808,7 @@ mod tests {
     #[test]
     fn test_nominal_type_inference_strings() {
         let df = df! {
-            "category" => &["A", "B", "C"],
+            "category" => vec!["A", "B", "C"],
         }
         .unwrap();
 
@@ -1818,7 +1818,7 @@ mod tests {
     #[test]
     fn test_numeric_string_type_inference() {
         let df = df! {
-            "numbers_as_strings" => &["1.5", "2.5", "3.5"],
+            "numbers_as_strings" => vec!["1.5", "2.5", "3.5"],
         }
         .unwrap();
 
@@ -1883,8 +1883,8 @@ mod tests {
         spec.layers.push(point_layer);
 
         let df = df! {
-            "x" => &[1, 2, 3],
-            "y" => &[4, 5, 6],
+            "x" => vec![1, 2, 3],
+            "y" => vec![4, 5, 6],
         }
         .unwrap();
 
@@ -1992,9 +1992,9 @@ mod tests {
         spec.scales.push(scale);
 
         let df = df! {
-            "x" => &[1, 2, 3],
-            "y" => &[10, 45, 80],
-            "value" => &[10.0, 45.0, 80.0],
+            "x" => vec![1, 2, 3],
+            "y" => vec![10, 45, 80],
+            "value" => vec![10.0, 45.0, 80.0],
         }
         .unwrap();
 
@@ -2160,9 +2160,9 @@ mod tests {
         spec.layers.push(layer);
 
         let df = df! {
-            "x" => &[1, 2, 3],
-            "y" => &[4, 5, 6],
-            "stroke" => &["red", "blue", "green"],
+            "x" => vec![1, 2, 3],
+            "y" => vec![4, 5, 6],
+            "stroke" => vec!["red", "blue", "green"],
         }
         .unwrap();
 
@@ -2201,8 +2201,8 @@ mod tests {
         spec.layers.push(layer);
 
         let df = df! {
-            "x" => &[1, 2, 3],
-            "y" => &[4, 5, 6],
+            "x" => vec![1, 2, 3],
+            "y" => vec![4, 5, 6],
         }
         .unwrap();
 
@@ -2555,10 +2555,10 @@ mod tests {
         spec.scales.push(x_scale);
 
         let df = df! {
-            "x" => &[1, 2, 3],
-            "y" => &[4, 5, 6],
-            "category" => &["A", "A", "B"],
-            "__ggsql_aes_facet1__" => &["A", "A", "B"],
+            "x" => vec![1, 2, 3],
+            "y" => vec![4, 5, 6],
+            "category" => vec!["A", "A", "B"],
+            "__ggsql_aes_facet1__" => vec!["A", "A", "B"],
         }
         .unwrap();
 
@@ -2639,10 +2639,10 @@ mod tests {
         spec.scales.push(y_scale);
 
         let df = df! {
-            "x" => &[1, 2, 3],
-            "y" => &[4, 5, 6],
-            "category" => &["A", "A", "B"],
-            "__ggsql_aes_facet1__" => &["A", "A", "B"],
+            "x" => vec![1, 2, 3],
+            "y" => vec![4, 5, 6],
+            "category" => vec!["A", "A", "B"],
+            "__ggsql_aes_facet1__" => vec!["A", "A", "B"],
         }
         .unwrap();
 
@@ -2720,10 +2720,10 @@ mod tests {
         spec.scales.push(x_scale);
 
         let df = df! {
-            "x" => &[1, 2, 3],
-            "y" => &[4, 5, 6],
-            "category" => &["A", "A", "B"],
-            "__ggsql_aes_facet1__" => &["A", "A", "B"],
+            "x" => vec![1, 2, 3],
+            "y" => vec![4, 5, 6],
+            "category" => vec!["A", "A", "B"],
+            "__ggsql_aes_facet1__" => vec!["A", "A", "B"],
         }
         .unwrap();
 
@@ -2814,10 +2814,10 @@ mod tests {
         spec.layers.push(layer);
 
         let df = df! {
-            "x1" => &[0, 1],
-            "y1" => &[0, 1],
-            "x2" => &[1, 2],
-            "y2" => &[1, 2],
+            "x1" => vec![0, 1],
+            "y1" => vec![0, 1],
+            "x2" => vec![1, 2],
+            "y2" => vec![1, 2],
         }
         .unwrap();
 

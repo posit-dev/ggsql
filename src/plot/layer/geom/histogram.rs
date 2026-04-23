@@ -292,23 +292,40 @@ pub fn extract_histogram_min_max(df: &DataFrame) -> Result<(f64, f64)> {
         ));
     }
 
-    let min_val = df
-        .column("min_val")
-        .ok()
-        .and_then(|s| s.get(0).ok())
-        .and_then(|s| s.try_extract::<f64>().ok())
-        .ok_or_else(|| {
-            GgsqlError::ValidationError("Could not extract min value for histogram".to_string())
-        })?;
+    let extract = |name: &str| -> Option<f64> {
+        use arrow::array::Array;
+        use arrow::datatypes::DataType;
+        let col = df.column(name).ok()?;
+        if col.is_null(0) {
+            return None;
+        }
+        let casted = crate::array_util::cast_array(col, &DataType::Float64).ok()?;
+        crate::array_util::as_f64(&casted).ok().map(|a| a.value(0))
+    };
 
-    let max_val = df
-        .column("max_val")
-        .ok()
-        .and_then(|s| s.get(0).ok())
-        .and_then(|s| s.try_extract::<f64>().ok())
-        .ok_or_else(|| {
-            GgsqlError::ValidationError("Could not extract max value for histogram".to_string())
-        })?;
+    let min_val = extract("min_val").ok_or_else(|| {
+        GgsqlError::ValidationError("Could not extract min value for histogram".to_string())
+    })?;
+
+    let max_val = extract("max_val").ok_or_else(|| {
+        GgsqlError::ValidationError("Could not extract max value for histogram".to_string())
+    })?;
 
     Ok((min_val, max_val))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::df;
+
+    #[test]
+    fn test_extract_min_max_null_errors() {
+        let df = df! {
+            "min_val" => vec![None::<f64>],
+            "max_val" => vec![None::<f64>],
+        }
+        .unwrap();
+        assert!(extract_histogram_min_max(&df).is_err());
+    }
 }

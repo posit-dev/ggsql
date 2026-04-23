@@ -109,7 +109,7 @@ impl GeomTrait for Density {
         aesthetics: &Mappings,
         group_by: &[String],
         parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
-        _execute_query: &dyn Fn(&str) -> crate::Result<polars::prelude::DataFrame>,
+        _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn SqlDialect,
     ) -> crate::Result<super::StatResult> {
         // Density geom: no tails limit (don't set tails parameter, defaults to None)
@@ -608,6 +608,7 @@ mod tests {
     use crate::reader::duckdb::DuckDBReader;
     use crate::reader::AnsiDialect;
     use crate::reader::Reader;
+    use arrow::array::Array;
 
     #[test]
     fn test_density_sql_no_groups() {
@@ -772,27 +773,29 @@ mod tests {
 
         // Verify density integrates to ~2 (one per group)
         // Compute grid spacing dynamically from actual data
+        use crate::array_util::{as_f64, cast_array};
+        use arrow::datatypes::DataType;
         let x_col = df.column("__ggsql_stat_x").expect("x exists");
         // Cast to f64 if needed (AnsiDialect generates f32 from REAL)
-        let x_col = x_col
-            .cast(&polars::prelude::DataType::Float64)
-            .expect("can cast to f64");
-        let x_vals = x_col.f64().expect("x is f64");
-        let x_min = x_vals.into_iter().flatten().fold(f64::INFINITY, f64::min);
-        let x_max = x_vals
-            .into_iter()
-            .flatten()
+        let x_col = cast_array(x_col, &DataType::Float64).expect("can cast to f64");
+        let x_vals = as_f64(&x_col).expect("x is f64");
+        let x_min = (0..x_vals.len())
+            .filter(|&i| !x_vals.is_null(i))
+            .map(|i| x_vals.value(i))
+            .fold(f64::INFINITY, f64::min);
+        let x_max = (0..x_vals.len())
+            .filter(|&i| !x_vals.is_null(i))
+            .map(|i| x_vals.value(i))
             .fold(f64::NEG_INFINITY, f64::max);
         let dx = (x_max - x_min) / 511.0; // (n - 1) for 512 points
 
         let density_col = df
             .column("__ggsql_stat_density")
             .expect("density column exists");
-        let total: f64 = density_col
-            .f64()
-            .expect("density is f64")
-            .into_iter()
-            .flatten()
+        let density_vals = as_f64(density_col).expect("density is f64");
+        let total: f64 = (0..density_vals.len())
+            .filter(|&i| !density_vals.is_null(i))
+            .map(|i| density_vals.value(i))
             .sum();
         let integral = total * dx;
 
@@ -895,34 +898,33 @@ mod tests {
 
         // Compute integral using trapezoidal rule
         // Get actual grid spacing from the data (dynamically computed range)
+        use crate::array_util::{as_f64, cast_array};
+        use arrow::datatypes::DataType;
         let x_col = df.column("__ggsql_stat_x").expect("x exists");
         // Cast to f64 if needed (AnsiDialect generates f32 from REAL)
-        let x_col = x_col
-            .cast(&polars::prelude::DataType::Float64)
-            .expect("can cast to f64");
-        let x_vals = x_col.f64().expect("x is f64");
-        let x_min = x_vals.into_iter().flatten().fold(f64::INFINITY, f64::min);
-        let x_max = x_vals
-            .into_iter()
-            .flatten()
+        let x_col = cast_array(x_col, &DataType::Float64).expect("can cast to f64");
+        let x_vals = as_f64(&x_col).expect("x is f64");
+        let x_min = (0..x_vals.len())
+            .filter(|&i| !x_vals.is_null(i))
+            .map(|i| x_vals.value(i))
+            .fold(f64::INFINITY, f64::min);
+        let x_max = (0..x_vals.len())
+            .filter(|&i| !x_vals.is_null(i))
+            .map(|i| x_vals.value(i))
             .fold(f64::NEG_INFINITY, f64::max);
         let dx = (x_max - x_min) / (df.height() as f64 - 1.0);
 
         let density_col = df.column("__ggsql_stat_density").expect("density exists");
-        let total: f64 = density_col
-            .f64()
-            .expect("density is f64")
-            .into_iter()
-            .flatten()
+        let density_vals = as_f64(density_col).expect("density is f64");
+        let total: f64 = (0..density_vals.len())
+            .filter(|&i| !density_vals.is_null(i))
+            .map(|i| density_vals.value(i))
             .sum();
         let integral = total * dx;
 
         // Verify all density values are non-negative
-        let all_non_negative = density_col
-            .f64()
-            .expect("density is f64")
-            .into_iter()
-            .all(|v| v.map(|x| x >= 0.0).unwrap_or(true));
+        let all_non_negative = (0..density_vals.len())
+            .all(|i| density_vals.is_null(i) || density_vals.value(i) >= 0.0);
         assert!(
             all_non_negative,
             "All density values should be non-negative for kernel '{}'",
@@ -1029,17 +1031,15 @@ mod tests {
             .column("__ggsql_stat_density")
             .expect("density exists");
 
-        let unweighted_values: Vec<f64> = density_unweighted
-            .f64()
-            .expect("f64")
-            .into_iter()
-            .flatten()
+        let unweighted_arr = crate::array_util::as_f64(density_unweighted).expect("f64");
+        let unweighted_values: Vec<f64> = (0..unweighted_arr.len())
+            .filter(|&i| !unweighted_arr.is_null(i))
+            .map(|i| unweighted_arr.value(i))
             .collect();
-        let weighted_values: Vec<f64> = density_weighted
-            .f64()
-            .expect("f64")
-            .into_iter()
-            .flatten()
+        let weighted_arr = crate::array_util::as_f64(density_weighted).expect("f64");
+        let weighted_values: Vec<f64> = (0..weighted_arr.len())
+            .filter(|&i| !weighted_arr.is_null(i))
+            .map(|i| weighted_arr.value(i))
             .collect();
 
         assert_eq!(unweighted_values.len(), weighted_values.len());
@@ -1096,16 +1096,16 @@ mod tests {
         // With REMAPPING intensity AS y, we get: __ggsql_aes_pos1__, __ggsql_aes_pos2__
         // (pos2 is mapped from intensity, not the default density)
 
-        let col_names: Vec<&str> = df.get_column_names().iter().map(|s| s.as_str()).collect();
+        let col_names = df.get_column_names();
 
         // Should have pos1 and pos2 aesthetics after remapping (internal names)
         assert!(
-            col_names.contains(&"__ggsql_aes_pos1__"),
+            col_names.iter().any(|s| s == "__ggsql_aes_pos1__"),
             "Should have pos1 aesthetic, got: {:?}",
             col_names
         );
         assert!(
-            col_names.contains(&"__ggsql_aes_pos2__"),
+            col_names.iter().any(|s| s == "__ggsql_aes_pos2__"),
             "Should have pos2 aesthetic, got: {:?}",
             col_names
         );
@@ -1117,11 +1117,8 @@ mod tests {
         let y_col = df
             .column("__ggsql_aes_pos2__")
             .expect("pos2 aesthetic exists");
-        let all_non_negative = y_col
-            .f64()
-            .expect("y is f64")
-            .into_iter()
-            .all(|v| v.map(|x| x >= 0.0).unwrap_or(true));
+        let y_arr = crate::array_util::as_f64(y_col).expect("y is f64");
+        let all_non_negative = (0..y_arr.len()).all(|i| y_arr.is_null(i) || y_arr.value(i) >= 0.0);
         assert!(
             all_non_negative,
             "All y values (from intensity) should be non-negative"
