@@ -274,8 +274,8 @@ impl DataFrame {
         let names = self.get_column_names();
         let mut new_cols: Vec<(&str, ArrayRef)> = Vec::with_capacity(self.width());
         for (i, name) in names.iter().enumerate() {
-            let taken =
-                arrow::compute::take(self.inner.column(i).as_ref(), indices, None).map_err(|e| {
+            let taken = arrow::compute::take(self.inner.column(i).as_ref(), indices, None)
+                .map_err(|e| {
                     GgsqlError::InternalError(format!("Failed to take column '{}': {}", name, e))
                 })?;
             new_cols.push((name, taken));
