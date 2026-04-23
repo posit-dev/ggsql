@@ -420,23 +420,17 @@ impl Reader for DuckDBReader {
         // Rewrite ggsql:name → __ggsql_data_name__ in SQL
         let sql = super::data::rewrite_namespaced_sql(sql)?;
 
-        // Check if this is a DDL statement (CREATE, DROP, INSERT, UPDATE, DELETE, ALTER)
-        // DDL statements don't return rows, so we handle them specially
-        let trimmed = sql.trim().to_uppercase();
-        let is_ddl = trimmed.starts_with("CREATE ")
-            || trimmed.starts_with("DROP ")
-            || trimmed.starts_with("INSERT ")
-            || trimmed.starts_with("UPDATE ")
-            || trimmed.starts_with("DELETE ")
-            || trimmed.starts_with("ALTER ");
+        let first_word = sql.trim().split_whitespace().next().unwrap_or("").to_uppercase();
+        let returns_rows = matches!(
+            first_word.as_str(),
+            "SELECT" | "WITH" | "DESCRIBE" | "SHOW" | "EXPLAIN" | "FROM"
+        );
 
-        if is_ddl {
-            // For DDL, just execute and return an empty DataFrame
+        if !returns_rows {
             self.conn
                 .execute(&sql, params![])
-                .map_err(|e| GgsqlError::ReaderError(format!("Failed to execute DDL: {}", e)))?;
+                .map_err(|e| GgsqlError::ReaderError(format!("Failed to execute SQL: {}", e)))?;
 
-            // Return empty DataFrame for DDL statements
             return DataFrame::new(Vec::<polars::prelude::Column>::new()).map_err(|e| {
                 GgsqlError::ReaderError(format!("Failed to create empty DataFrame: {}", e))
             });
