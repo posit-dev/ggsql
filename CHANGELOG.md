@@ -2,6 +2,7 @@
 
 ### Added
 
+- Add cell delimiters and code lens actions to the Positron extension (#366)
 - ODBC is now turned on for the CLI as well (#344)
 
 ### Fixed
