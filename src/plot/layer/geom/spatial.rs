@@ -14,10 +14,10 @@ impl GeomTrait for Spatial {
         DefaultAesthetics {
             defaults: &[
                 ("geometry", DefaultAestheticValue::Required),
-                ("fill", DefaultAestheticValue::String("steelblue")),
-                ("stroke", DefaultAestheticValue::String("white")),
+                ("fill", DefaultAestheticValue::String("#747474")),
+                ("stroke", DefaultAestheticValue::String("black")),
                 ("opacity", DefaultAestheticValue::Number(0.8)),
-                ("linewidth", DefaultAestheticValue::Number(0.5)),
+                ("linewidth", DefaultAestheticValue::Number(0.2)),
                 ("linetype", DefaultAestheticValue::String("solid")),
             ],
         }
@@ -41,6 +41,8 @@ impl GeomTrait for Spatial {
             execute_query(&stmt)?;
         }
 
+        // Geometry columns use database-native types that don't have an Arrow equivalent.
+        // Convert to standard WKB so the writer can parse them with geozero.
         let col = naming::quote_ident(&naming::aesthetic_column("geometry"));
         let wkb_expr = dialect.sql_geometry_to_wkb(&col);
         Ok(StatResult::Transformed {
