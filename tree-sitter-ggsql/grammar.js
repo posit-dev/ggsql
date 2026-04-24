@@ -177,12 +177,7 @@ module.exports = grammar({
 
     // Other SQL statements - DO NOT match if starts with keywords we handle
     // explicitly (WITH, SELECT, CREATE, INSERT, UPDATE, DELETE, VISUALISE, FROM).
-    // Uses non_from_sql_keyword instead of sql_keyword so FROM-starting
-    // statements fall through to from_statement (DuckDB-style FROM-first).
     other_sql_statement: $ => {
-      // F is excluded alongside W/S/C/I/U/D/V so the generic-word token can't
-      // absorb `FROM` — without this, tree-sitter tokenizes FROM as a plain
-      // word and other_sql_statement wins over from_statement.
       const exclude_pattern = /[^\s;(),'"WwSsCcIiUuDdVvFf]+/;
       return prec(-1, repeat1(choice(
         $.non_from_sql_keyword,
