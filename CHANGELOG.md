@@ -2,6 +2,7 @@
 
 ### Added
 
+- Add cell delimiters and code lens actions to the Positron extension (#366)
 - ODBC is now turned on for the CLI as well (#344)
 
 ### Fixed
@@ -17,6 +18,7 @@ before registering them back to the backend. We now keep the data purely on the
 backend until the layer query as was always intended (#363)
 - Relieved some grammatical constraints on the SQL-portion before the VISUALISE 
 portion (#364).
+- Simplified internal approach to DataFrame with DuckDB reader (#365)
 
 ### Removed
 
