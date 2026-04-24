@@ -47,10 +47,7 @@ static AIRQUALITY: &[u8] = include_bytes!(concat!(
 ));
 
 #[cfg(feature = "builtin-data")]
-static WORLD: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/data/world.parquet"
-));
+static WORLD: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/world.parquet"));
 
 /// Get the embedded parquet bytes for a known builtin dataset.
 #[cfg(feature = "builtin-data")]

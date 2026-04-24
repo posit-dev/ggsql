@@ -2874,12 +2874,15 @@ mod tests {
         "#;
 
         let result = prepare_data_with_reader(query, &reader);
-        assert!(result.is_ok(), "Spatial with native GEOMETRY failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Spatial with native GEOMETRY failed: {:?}",
+            result.err()
+        );
 
         let prepared = result.unwrap();
         let layer_key = prepared.specs[0].layers[0].data_key.as_ref().unwrap();
         let df = prepared.data.get(layer_key).unwrap();
         assert_eq!(df.height(), 2);
     }
-
 }

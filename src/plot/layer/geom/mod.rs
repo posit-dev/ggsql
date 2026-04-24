@@ -43,9 +43,9 @@ mod ribbon;
 mod rule;
 mod segment;
 mod smooth;
+mod spatial;
 mod text;
 mod tile;
-mod spatial;
 mod violin;
 
 // Re-export types
@@ -69,9 +69,9 @@ pub use ribbon::Ribbon;
 pub use rule::Rule;
 pub use segment::Segment;
 pub use smooth::Smooth;
+pub use spatial::Spatial;
 pub use text::Text;
 pub use tile::Tile;
-pub use spatial::Spatial;
 pub use violin::Violin;
 
 use crate::plot::types::{ParameterValue, Schema};

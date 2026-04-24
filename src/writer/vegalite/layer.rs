@@ -2124,9 +2124,8 @@ impl SpatialRenderer {
                 GgsqlError::WriterError(format!("Failed to convert WKB to GeoJSON: {}", e))
             })?;
 
-        serde_json::from_slice(&geojson_out).map_err(|e| {
-            GgsqlError::WriterError(format!("Invalid GeoJSON from WKB: {}", e))
-        })
+        serde_json::from_slice(&geojson_out)
+            .map_err(|e| GgsqlError::WriterError(format!("Invalid GeoJSON from WKB: {}", e)))
     }
 
     fn parse_geometry_from_array(array: &arrow::array::ArrayRef, idx: usize) -> Result<Value> {
@@ -2182,8 +2181,11 @@ impl GeomRenderer for SpatialRenderer {
         {
             let geometry_col = naming::aesthetic_column("geometry");
 
-            let col_names: Vec<String> =
-                df.get_column_names().iter().map(|s| s.to_string()).collect();
+            let col_names: Vec<String> = df
+                .get_column_names()
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
 
             let mut features = Vec::with_capacity(df.height());
 
@@ -2194,14 +2196,12 @@ impl GeomRenderer for SpatialRenderer {
                 let mut properties = serde_json::Map::new();
 
                 for col_name in &col_names {
-                    let col = df
-                        .column(col_name)
-                        .map_err(|e| {
-                            GgsqlError::WriterError(format!(
-                                "Failed to get column '{}': {}",
-                                col_name, e
-                            ))
-                        })?;
+                    let col = df.column(col_name).map_err(|e| {
+                        GgsqlError::WriterError(format!(
+                            "Failed to get column '{}': {}",
+                            col_name, e
+                        ))
+                    })?;
 
                     if *col_name == geometry_col {
                         let geom = Self::parse_geometry_from_array(col, row_idx)?;
