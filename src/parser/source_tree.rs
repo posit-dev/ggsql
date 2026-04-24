@@ -29,11 +29,40 @@ impl<'a> SourceTree<'a> {
             .parse(source, None)
             .ok_or_else(|| GgsqlError::ParseError("Failed to parse query".to_string()))?;
 
-        Ok(Self {
+        let source_tree = Self {
             tree,
             source,
             language,
-        })
+        };
+
+        // Reject ambiguous double-FROM: `FROM a VISUALISE FROM b …` has two
+        // data sources for one statement. Caught here (rather than at extract
+        // time) so extract_sql returns a plain Option and every consumer that
+        // already handles new()'s Result gets the check for free.
+        source_tree.check_no_double_from()?;
+
+        Ok(source_tree)
+    }
+
+    fn check_no_double_from(&self) -> Result<()> {
+        let root = self.root();
+        let has_sql_from = self
+            .find_node(&root, "(sql_statement (from_statement) @stmt)")
+            .is_some();
+        let has_viz_from = self
+            .find_node(
+                &root,
+                "(visualise_statement (from_clause (table_ref) @t))",
+            )
+            .is_some();
+        if has_sql_from && has_viz_from {
+            return Err(GgsqlError::ParseError(
+                "VISUALISE has two FROM clauses (one before VISUALISE and one after). \
+                 Use only one."
+                    .to_string(),
+            ));
+        }
+        Ok(())
     }
 
     /// Validate that the parse tree has no errors
@@ -107,10 +136,23 @@ impl<'a> SourceTree<'a> {
             .collect()
     }
 
-    /// Extract the SQL portion of the query (before VISUALISE)
+    /// Extract the SQL portion of the query (before VISUALISE).
     ///
-    /// If VISUALISE FROM is used, this injects "SELECT * FROM <source>"
-    /// Returns None if there's no SQL portion and no VISUALISE FROM injection needed
+    /// Two rewrites happen here so the returned SQL is always something a
+    /// plain SQL reader can execute:
+    ///
+    /// - DuckDB-style FROM-first: the grammar parses bare `FROM t` as a
+    ///   `from_statement`. Each such statement is rewritten by prepending
+    ///   `SELECT * ` — so `FROM sales VISUALISE …` becomes
+    ///   `SELECT * FROM sales`.
+    /// - `VISUALISE FROM <source>`: the FROM appears on the VISUALISE clause.
+    ///   We append `SELECT * FROM <source>` to the SQL so the reader sees an
+    ///   executable query.
+    ///
+    /// Returns `None` if there's no SQL portion and no VISUALISE FROM to
+    /// inject. The ambiguous double-FROM case (`FROM a VISUALISE FROM b …`)
+    /// is rejected in `SourceTree::new`, so any tree reaching here has at
+    /// most one of the two FROMs.
     pub fn extract_sql(&self) -> Option<String> {
         let root = self.root();
 
@@ -124,20 +166,45 @@ impl<'a> SourceTree<'a> {
         }
 
         // Find sql_portion node and extract its text
-        let sql_text = self
-            .find_node(&root, "(sql_portion) @sql")
+        let sql_portion_node = self.find_node(&root, "(sql_portion) @sql");
+        let mut sql_text = sql_portion_node
             .map(|node| self.get_text(&node))
             .unwrap_or_default();
 
-        // Check if any VISUALISE statement has FROM clause
-        let from_query = r#"
-            (visualise_statement
-              (from_clause
-                (table_ref) @table))
-        "#;
+        // DuckDB-style FROM-first: the grammar recognizes bare `FROM t` as an
+        // sql_statement variant. Rewrite each such occurrence by prepending
+        // `SELECT * `.
+        if let Some(sql_portion) = sql_portion_node {
+            let from_stmts = self.find_nodes(&sql_portion, "(from_statement) @from_stmt");
+            if !from_stmts.is_empty() {
+                let portion_start = sql_portion.start_byte();
+                let portion_end = sql_portion.end_byte();
+                let mut stmts: Vec<Node> = from_stmts;
+                stmts.sort_by_key(|n| n.start_byte());
+                let mut out = String::with_capacity(sql_text.len() + stmts.len() * 9);
+                let mut cursor = portion_start;
+                for stmt in stmts {
+                    let s = stmt.start_byte();
+                    out.push_str(&self.source[cursor..s]);
+                    out.push_str("SELECT * ");
+                    cursor = s;
+                }
+                out.push_str(&self.source[cursor..portion_end]);
+                sql_text = out;
+            }
+        }
 
-        if let Some(from_identifier) = self.find_text(&root, from_query) {
-            // Inject SELECT * FROM <source>
+        // VISUALISE FROM <source>: append "SELECT * FROM <source>".
+        let viz_from = self.find_text(
+            &root,
+            r#"
+                (visualise_statement
+                  (from_clause
+                    (table_ref) @table))
+            "#,
+        );
+
+        if let Some(from_identifier) = viz_from {
             let result = if sql_text.trim().is_empty() {
                 format!("SELECT * FROM {}", from_identifier)
             } else {
@@ -145,7 +212,6 @@ impl<'a> SourceTree<'a> {
             };
             Some(result)
         } else {
-            // No injection needed - return SQL if not empty
             let trimmed = sql_text.trim();
             if trimmed.is_empty() {
                 None
@@ -171,6 +237,7 @@ impl<'a> SourceTree<'a> {
         Some(viz_text.trim().to_string())
     }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -286,6 +353,119 @@ mod tests {
         // Should NOT inject anything - just extract SQL normally
         assert_eq!(sql, "SELECT * FROM x");
         assert!(!sql.contains("SELECT * FROM SELECT")); // Make sure we didn't double-inject
+    }
+
+    // ========================================================================
+    // FROM-first (DuckDB-style) tests
+    // ========================================================================
+
+    #[test]
+    fn test_extract_sql_from_first_simple() {
+        let query = "FROM mtcars VISUALISE DRAW point MAPPING mpg AS x, hp AS y";
+        let tree = SourceTree::new(query).unwrap();
+
+        let sql = tree.extract_sql().unwrap();
+        assert!(sql.contains("SELECT * FROM mtcars"));
+
+        let viz = tree.extract_visualise().unwrap();
+        assert!(viz.starts_with("VISUALISE"));
+    }
+
+    #[test]
+    fn test_extract_sql_from_first_with_where() {
+        let query = "FROM sales WHERE year = 2024 VISUALISE DRAW point MAPPING x AS x, y AS y";
+        let tree = SourceTree::new(query).unwrap();
+
+        let sql = tree.extract_sql().unwrap();
+        assert!(sql.contains("SELECT * FROM sales WHERE year = 2024"));
+    }
+
+    #[test]
+    fn test_extract_sql_from_first_with_cte() {
+        let query =
+            "WITH cte AS (SELECT * FROM x) FROM cte VISUALISE DRAW point MAPPING a AS x, b AS y";
+        let tree = SourceTree::new(query).unwrap();
+
+        let sql = tree.extract_sql().unwrap();
+        assert!(sql.contains("WITH cte AS (SELECT * FROM x)"));
+        assert!(sql.contains("SELECT * FROM cte"));
+    }
+
+    #[test]
+    fn test_extract_sql_from_first_after_create() {
+        let query = "CREATE TABLE x AS SELECT 1; FROM x VISUALISE DRAW point MAPPING a AS x, b AS y";
+        let tree = SourceTree::new(query).unwrap();
+
+        let sql = tree.extract_sql().unwrap();
+        assert!(sql.contains("CREATE TABLE x AS SELECT 1"));
+        assert!(sql.contains("SELECT * FROM x"));
+    }
+
+    #[test]
+    fn test_extract_sql_from_first_file_path() {
+        let query = "FROM 'mtcars.csv' VISUALISE DRAW point MAPPING mpg AS x, hp AS y";
+        let tree = SourceTree::new(query).unwrap();
+
+        let sql = tree.extract_sql().unwrap();
+        assert!(sql.contains("SELECT * FROM 'mtcars.csv'"));
+    }
+
+    #[test]
+    fn test_extract_sql_from_first_case_insensitive() {
+        let query = "from sales visualise DRAW point MAPPING x AS x, y AS y";
+        let tree = SourceTree::new(query).unwrap();
+
+        let sql = tree.extract_sql().unwrap();
+        assert!(sql.contains("SELECT * from sales"));
+    }
+
+    #[test]
+    fn test_extract_sql_no_rewrite_when_select_precedes_from() {
+        // Regression: `SELECT a, b FROM t VISUALISE ...` must NOT trigger
+        // SELECT * injection — the FROM belongs to the SELECT.
+        let query = "SELECT a, b FROM t VISUALISE DRAW point MAPPING a AS x, b AS y";
+        let tree = SourceTree::new(query).unwrap();
+
+        let sql = tree.extract_sql().unwrap();
+        assert_eq!(sql, "SELECT a, b FROM t");
+    }
+
+    #[test]
+    fn test_double_from_rejected_at_parse() {
+        // Leading FROM + VISUALISE FROM is ambiguous and must error at parse
+        // time (before any extract_sql call).
+        let query = "FROM a VISUALISE FROM b DRAW point MAPPING x AS x, y AS y";
+        let err = SourceTree::new(query).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(
+            msg.contains("two FROM clauses"),
+            "expected double-FROM rejection, got: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn test_extract_sql_from_first_skips_string_contents() {
+        // A FROM inside a string literal in a preceding statement should be
+        // parsed as part of the string, not mistaken for a bare FROM.
+        let query =
+            "CREATE TABLE x AS SELECT 'FROM fake' AS col; FROM x VISUALISE DRAW point MAPPING a AS x, b AS y";
+        let tree = SourceTree::new(query).unwrap();
+
+        let sql = tree.extract_sql().unwrap();
+        // Injected SELECT * precedes the real FROM, not the string one.
+        assert!(sql.contains("'FROM fake'"));
+        assert!(sql.contains("SELECT * FROM x"));
+    }
+
+    #[test]
+    fn test_extract_sql_from_first_skips_line_comment() {
+        let query = "-- FROM fake\nFROM real VISUALISE DRAW point MAPPING a AS x, b AS y";
+        let tree = SourceTree::new(query).unwrap();
+
+        let sql = tree.extract_sql().unwrap();
+        assert!(sql.contains("SELECT * FROM real"));
+        assert!(!sql.contains("SELECT * -- FROM fake"));
     }
 
     #[test]
