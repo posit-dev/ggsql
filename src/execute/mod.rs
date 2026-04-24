@@ -957,7 +957,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // Extract CTE definitions from the source tree (in declaration order)
     let ctes = cte::extract_ctes(&source_tree);
 
-    // Materialize CTEs as temp tables via DDL
+    // Materialize CTEs as registered tables via reader.register()
     let materialized_ctes = cte::materialize_ctes(&ctes, reader)?;
 
     // Build data map for multi-source support
@@ -973,9 +973,9 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     let mut has_global_table = false;
     if sql_part.is_some() {
         if let Some(transformed_sql) = cte::transform_global_sql(&source_tree, &materialized_ctes) {
-            let table = naming::quote_ident(&naming::global_table());
-            execute_query(&format!("DROP TABLE IF EXISTS {table}"))?;
-            execute_query(&format!("CREATE TEMP TABLE {table} AS {transformed_sql}"))?;
+            // Execute global result SQL and register result as a temp table
+            let df = execute_query(&transformed_sql)?;
+            reader.register(&naming::global_table(), df, true)?;
 
             // NOTE: Don't read into data_map yet - defer until after casting is determined
             // The temp table exists and can be used for schema fetching

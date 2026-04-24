@@ -144,28 +144,28 @@ pub fn materialize_ctes(ctes: &[CteDefinition], reader: &dyn Reader) -> Result<H
         // Transform the CTE body to replace references to earlier CTEs
         let transformed_body = transform_cte_references(&cte.body, &materialized);
 
-        let table = naming::quote_ident(&naming::cte_table(&cte.name));
+        let temp_table_name = naming::cte_table(&cte.name);
 
-        // Apply column aliases in SQL if present: WITH t(value, label) AS (...)
-        let select_sql = if !cte.column_aliases.is_empty() {
-            let aliases: Vec<String> = cte
-                .column_aliases
-                .iter()
-                .map(|alias| naming::quote_ident(alias))
-                .collect();
-            format!(
-                "SELECT * FROM ({transformed_body}) AS {table}({aliases})",
-                aliases = aliases.join(", ")
-            )
-        } else {
-            transformed_body
-        };
-
-        reader.execute_sql(&format!("DROP TABLE IF EXISTS {table}")).map_err(|e| {
+        // Execute the CTE body SQL to get a DataFrame, then register it
+        let mut df = reader.execute_sql(&transformed_body).map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to materialize CTE '{}': {}", cte.name, e))
         })?;
-        reader.execute_sql(&format!("CREATE TEMP TABLE {table} AS {select_sql}")).map_err(|e| {
-            GgsqlError::ReaderError(format!("Failed to materialize CTE '{}': {}", cte.name, e))
+
+        // Apply column aliases if present: WITH t(value, label) AS (...) renames columns
+        if !cte.column_aliases.is_empty() && cte.column_aliases.len() == df.width() {
+            let current_names: Vec<String> = df.get_column_names();
+            for (old, new) in current_names.iter().zip(cte.column_aliases.iter()) {
+                df = df.rename(old, new).map_err(|e| {
+                    GgsqlError::ReaderError(format!(
+                        "Failed to apply column alias '{}' for CTE '{}': {}",
+                        new, cte.name, e
+                    ))
+                })?;
+            }
+        }
+
+        reader.register(&temp_table_name, df, true).map_err(|e| {
+            GgsqlError::ReaderError(format!("Failed to register CTE '{}': {}", cte.name, e))
         })?;
 
         materialized.insert(cte.name.clone());
