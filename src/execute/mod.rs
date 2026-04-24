@@ -251,10 +251,10 @@ fn detect_geometry_column(schema: &Schema) -> Option<String> {
     use arrow::datatypes::DataType;
 
     fn looks_like_geometry(name: &str) -> bool {
-        match name.to_lowercase().as_str() {
-            "geom" | "geometry" | "wkb_geometry" | "the_geom" | "shape" => true,
-            _ => false,
-        }
+        matches!(
+            name.to_lowercase().as_str(),
+            "geom" | "geometry" | "wkb_geometry" | "the_geom" | "shape"
+        )
     }
 
     fn is_geometry_type(dtype: &DataType) -> bool {
