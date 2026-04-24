@@ -31,7 +31,7 @@ pub fn extract_ctes(source_tree: &SourceTree) -> Vec<CteDefinition> {
     source_tree
         .find_nodes(&root, "(cte_definition) @cte")
         .into_iter()
-        .filter_map(|node| parse_cte_definition(&node, &source_tree.source))
+        .filter_map(|node| parse_cte_definition(&node, source_tree.source))
         .collect()
 }
 
