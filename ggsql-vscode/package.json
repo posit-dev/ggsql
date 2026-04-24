@@ -61,6 +61,45 @@
         "category": "ggsql",
         "title": "Source Current File",
         "icon": "$(play)"
+      },
+      {
+        "command": "ggsql.runQuery",
+        "category": "ggsql",
+        "title": "Run Query"
+      },
+      {
+        "command": "ggsql.runCellsAbove",
+        "category": "ggsql",
+        "title": "Run Cells Above"
+      },
+      {
+        "command": "ggsql.runNextCell",
+        "category": "ggsql",
+        "title": "Run Next Cell"
+      },
+      {
+        "command": "ggsql.runCurrentAdvance",
+        "category": "ggsql",
+        "title": "Run Query and Advance"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "ggsql.runCurrentAdvance",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "editorTextFocus && editorLangId == ggsql && ggsql.hasCodeCells && !findInputFocussed && !replaceInputFocussed"
+      },
+      {
+        "command": "ggsql.runCurrentAdvance",
+        "key": "shift+enter",
+        "when": "editorTextFocus && editorLangId == ggsql && ggsql.hasCodeCells && !findInputFocussed && !replaceInputFocussed"
+      },
+      {
+        "command": "ggsql.runQuery",
+        "key": "ctrl+shift+enter",
+        "mac": "cmd+shift+enter",
+        "when": "editorTextFocus && editorLangId == ggsql && ggsql.hasCodeCells && !findInputFocussed && !replaceInputFocussed"
       }
     ],
     "menus": {
