@@ -35,14 +35,15 @@ impl GeomTrait for Spatial {
         _group_by: &[String],
         _parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
-        _dialect: &dyn crate::reader::SqlDialect,
+        dialect: &dyn crate::reader::SqlDialect,
     ) -> crate::Result<StatResult> {
-        // DuckDB GEOMETRY columns arrive as Binary in Arrow (no native geometry type).
-        // Convert to standard WKB via ST_AsWKB so the writer can parse them with geozero.
+        // Geometry columns use database-native types that don't have an Arrow equivalent.
+        // Convert to standard WKB so the writer can parse them with geozero.
         let col = naming::quote_ident(&naming::aesthetic_column("geometry"));
+        let wkb_expr = dialect.sql_geometry_to_wkb(&col);
         Ok(StatResult::Transformed {
             query: format!(
-                "SELECT * REPLACE (ST_AsWKB({col}) AS {col}) FROM ({query})",
+                "SELECT * REPLACE ({wkb_expr} AS {col}) FROM ({query})",
             ),
             stat_columns: vec![],
             dummy_columns: vec![],
