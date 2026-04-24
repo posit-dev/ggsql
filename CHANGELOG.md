@@ -5,7 +5,7 @@
 - ODBC is now turned on for the CLI as well (#344)
 - `FROM` can now come before `VISUALIZE`, mirroring the DuckDB style. This means
 that `FROM table VISUALIZE x, y` and `VISUALIZE x, y FROM table` are equivalent
-queries
+queries (#369)
 
 ### Fixed
 
