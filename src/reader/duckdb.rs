@@ -38,6 +38,10 @@ impl super::SqlDialect for DuckDbDialect {
         format!("ST_AsWKB({column})")
     }
 
+    fn sql_spatial_setup(&self) -> Vec<String> {
+        vec!["LOAD spatial".into()]
+    }
+
     fn sql_generate_series(&self, n: usize) -> String {
         format!(
             "\"__ggsql_seq__\"(n) AS (SELECT generate_series FROM GENERATE_SERIES(0, {}))",
@@ -190,7 +194,11 @@ fn normalize_arrow_types(batch: RecordBatch) -> Result<RecordBatch> {
                     e
                 ))
             })?;
-            new_fields.push(Field::new(field.name(), DataType::Float64, field.is_nullable()));
+            new_fields.push(Field::new(
+                field.name(),
+                DataType::Float64,
+                field.is_nullable(),
+            ));
             new_columns.push(casted);
         } else {
             new_fields.push(field.as_ref().clone());
@@ -248,8 +256,9 @@ impl Reader for DuckDBReader {
             ));
         }
 
-        let combined = concat_batches(&schema, &batches)
-            .map_err(|e| GgsqlError::ReaderError(format!("Failed to combine result batches: {}", e)))?;
+        let combined = concat_batches(&schema, &batches).map_err(|e| {
+            GgsqlError::ReaderError(format!("Failed to combine result batches: {}", e))
+        })?;
 
         let normalized = normalize_arrow_types(combined)?;
         Ok(DataFrame::from_record_batch(normalized))

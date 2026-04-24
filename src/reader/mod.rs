@@ -164,6 +164,13 @@ pub trait SqlDialect {
         format!("ST_AsBinary({column})")
     }
 
+    /// SQL statements to run before spatial operations.
+    ///
+    /// Override for backends that need an extension loaded (e.g. DuckDB spatial).
+    fn sql_spatial_setup(&self) -> Vec<String> {
+        vec![]
+    }
+
     /// Generate a series of integers 0..n-1 as a CTE fragment.
     ///
     /// Returns CTE fragment(s) producing table `__ggsql_seq__` with column `n`.
