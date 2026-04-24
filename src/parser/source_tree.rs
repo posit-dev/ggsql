@@ -50,10 +50,7 @@ impl<'a> SourceTree<'a> {
             .find_node(&root, "(sql_statement (from_statement) @stmt)")
             .is_some();
         let has_viz_from = self
-            .find_node(
-                &root,
-                "(visualise_statement (from_clause (table_ref) @t))",
-            )
+            .find_node(&root, "(visualise_statement (from_clause (table_ref) @t))")
             .is_some();
         if has_sql_from && has_viz_from {
             return Err(GgsqlError::ParseError(
@@ -238,7 +235,6 @@ impl<'a> SourceTree<'a> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -393,7 +389,8 @@ mod tests {
 
     #[test]
     fn test_extract_sql_from_first_after_create() {
-        let query = "CREATE TABLE x AS SELECT 1; FROM x VISUALISE DRAW point MAPPING a AS x, b AS y";
+        let query =
+            "CREATE TABLE x AS SELECT 1; FROM x VISUALISE DRAW point MAPPING a AS x, b AS y";
         let tree = SourceTree::new(query).unwrap();
 
         let sql = tree.extract_sql().unwrap();
