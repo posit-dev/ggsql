@@ -46,12 +46,19 @@ static AIRQUALITY: &[u8] = include_bytes!(concat!(
     "/data/airquality.parquet"
 ));
 
+#[cfg(feature = "builtin-data")]
+static WORLD: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/data/world.parquet"
+));
+
 /// Get the embedded parquet bytes for a known builtin dataset.
 #[cfg(feature = "builtin-data")]
 pub fn builtin_parquet_bytes(name: &str) -> Option<&'static [u8]> {
     match name {
         "penguins" => Some(PENGUINS),
         "airquality" => Some(AIRQUALITY),
+        "world" => Some(WORLD),
         _ => None,
     }
 }
@@ -120,6 +127,7 @@ pub fn load_builtin_dataframe(name: &str) -> Result<crate::DataFrame, GgsqlError
     let parquet_bytes = match name {
         "penguins" => PENGUINS,
         "airquality" => AIRQUALITY,
+        "world" => WORLD,
         _ => {
             return Err(GgsqlError::ReaderError(format!(
                 "Unknown builtin dataset: '{}'",
@@ -160,7 +168,7 @@ pub fn load_builtin_dataframe(name: &str) -> Result<crate::DataFrame, GgsqlError
 }
 
 /// Known builtin dataset names in the ggsql namespace
-pub const KNOWN_DATASETS: &[&str] = &["penguins", "airquality"];
+pub const KNOWN_DATASETS: &[&str] = &["penguins", "airquality", "world"];
 
 /// Check if a dataset name is a known builtin
 pub fn is_known_builtin(name: &str) -> bool {
