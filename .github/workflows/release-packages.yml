@@ -486,7 +486,7 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
 
   build-wasm:
-    name: Build and Publish WASM Package
+    name: Build Wasm Package (wasm32-unknown-unknown)
     runs-on: ubuntu-latest
     environment: npm
     permissions:
@@ -514,6 +514,9 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install LLVM
+        run: sudo apt-get install -y llvm
 
       - name: Install wasm-pack
         run: cargo install wasm-pack
