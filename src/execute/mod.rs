@@ -968,9 +968,16 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     let mut has_global_table = false;
     if sql_part.is_some() {
         if let Some(transformed_sql) = cte::transform_global_sql(&source_tree, &materialized_ctes) {
-            // Execute global result SQL and register result as a temp table
-            let df = execute_query(&transformed_sql)?;
-            reader.register(&naming::global_table(), df, true)?;
+            // Materialize global result as a temp table directly on the backend
+            // (no roundtrip through Rust).
+            let statements = reader.dialect().create_or_replace_temp_table_sql(
+                &naming::global_table(),
+                &[],
+                &transformed_sql,
+            );
+            for stmt in &statements {
+                execute_query(stmt)?;
+            }
 
             // NOTE: Don't read into data_map yet - defer until after casting is determined
             // The temp table exists and can be used for schema fetching

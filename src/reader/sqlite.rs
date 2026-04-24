@@ -92,6 +92,22 @@ impl super::SqlDialect for SqliteDialect {
             table.replace('\'', "''")
         )
     }
+
+    /// SQLite does not support `CREATE OR REPLACE`, so emit a drop-then-create
+    /// pair. Column aliases are preserved portably via the default CTE wrapper.
+    fn create_or_replace_temp_table_sql(
+        &self,
+        name: &str,
+        column_aliases: &[String],
+        body_sql: &str,
+    ) -> Vec<String> {
+        let qname = naming::quote_ident(name);
+        let body = super::wrap_with_column_aliases(body_sql, column_aliases);
+        vec![
+            format!("DROP TABLE IF EXISTS {}", qname),
+            format!("CREATE TEMP TABLE {} AS {}", qname, body),
+        ]
+    }
 }
 
 /// SQLite database reader
