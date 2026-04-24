@@ -186,7 +186,11 @@ fn normalize_arrow_types(batch: RecordBatch) -> Result<RecordBatch> {
                     e
                 ))
             })?;
-            new_fields.push(Field::new(field.name(), DataType::Float64, field.is_nullable()));
+            new_fields.push(Field::new(
+                field.name(),
+                DataType::Float64,
+                field.is_nullable(),
+            ));
             new_columns.push(casted);
         } else {
             new_fields.push(field.as_ref().clone());
@@ -244,8 +248,9 @@ impl Reader for DuckDBReader {
             ));
         }
 
-        let combined = concat_batches(&schema, &batches)
-            .map_err(|e| GgsqlError::ReaderError(format!("Failed to combine result batches: {}", e)))?;
+        let combined = concat_batches(&schema, &batches).map_err(|e| {
+            GgsqlError::ReaderError(format!("Failed to combine result batches: {}", e))
+        })?;
 
         let normalized = normalize_arrow_types(combined)?;
         Ok(DataFrame::from_record_batch(normalized))
