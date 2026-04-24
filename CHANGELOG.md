@@ -14,7 +14,7 @@ in the Jupyter kernel (#360)
 
 - Reverted an earlier decision to materialize CTEs and the global query in Rust
 before registering them back to the backend. We now keep the data purely on the
-backend until the layer query as was always intended
+backend until the layer query as was always intended (#363)
 
 ### Removed
 
