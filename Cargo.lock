@@ -1601,11 +1601,9 @@ dependencies = [
 name = "ggsql"
 version = "0.2.7"
 dependencies = [
- "anyhow",
  "arrow",
  "bytes",
  "chrono",
- "clap",
  "const_format",
  "csscolorparser",
  "duckdb",
@@ -1623,13 +1621,25 @@ dependencies = [
  "serde_json",
  "sprintf",
  "tempfile",
- "termimad",
  "thiserror 1.0.69",
  "toml_edit 0.22.27",
  "tree-sitter",
  "tree-sitter-ggsql",
  "ureq",
  "uuid",
+]
+
+[[package]]
+name = "ggsql-cli"
+version = "0.2.7"
+dependencies = [
+ "anyhow",
+ "clap",
+ "ggsql",
+ "regex",
+ "serde_json",
+ "termimad",
+ "ureq",
 ]
 
 [[package]]
