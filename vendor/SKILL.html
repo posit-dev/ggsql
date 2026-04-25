@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.3">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="George Stagg (@georgestagg)">
+<meta name="description" content="Write ggsql queries — a grammar of graphics for SQL. Use when the user wants to create, modify, or understand a ggsql visualization query.">
+
+<title>skill – ggsql</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<link href="../assets/icon.svg" rel="icon" type="image/svg+xml">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-286b0d4f737c5af6226422bdceee2d85.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-286b0d4f737c5af6226422bdceee2d85.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-286b0d4f737c5af6226422bdceee2d85.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-b068bd8fbd0943443b2767a143b5203c.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-c0e6253991c03487a1849754f0ab8899.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-b068bd8fbd0943443b2767a143b5203c.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script src="../site_libs/quarto-contrib/iconify-3.0.0/iconify-icon.min.js"></script>
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [],
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
+<!-- Privacy-friendly analytics by Plausible -->
+<script async="" src="https://plausible.io/js/pa-eH2pS73nQmBLURrhxXgML.js"></script>
+<script>
+    window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+    plausible.init()
+</script>
+
+
+<meta property="og:title" content="ggsql">
+<meta property="og:description" content="Write ggsql queries — a grammar of graphics for SQL. Use when the user wants to create, modify, or understand a ggsql visualization query.">
+<meta property="og:image" content="https://ggsql.org/vendor/assets/logo.png">
+<meta property="og:site_name" content="ggsql">
+<meta property="og:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
+handle is made up of the classic database silo icon and is coloured in a
+gradient teal.
+">
+<meta name="twitter:title" content="ggsql">
+<meta name="twitter:description" content="Write ggsql queries — a grammar of graphics for SQL. Use when the user wants to create, modify, or understand a ggsql visualization query.">
+<meta name="twitter:image" content="https://ggsql.org/vendor/assets/logo.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
+handle is made up of the classic database silo icon and is coloured in a
+gradient teal.
+">
+</head>
+
+<body class="nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a href="../index.html" class="navbar-brand navbar-brand-logo">
+    <img src="../assets/icon.svg" alt="" class="navbar-logo light-content">
+    <img src="../assets/icon.svg" alt="" class="navbar-logo dark-content">
+    </a>
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">ggsql</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../get_started/installation.html"> 
+<span class="menu-text">Get started</span></a>
+  </li>  
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-syntax" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Syntax</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-syntax">    
+        <li>
+    <a class="dropdown-item" href="../syntax/index.html">
+ <span class="dropdown-text">Overview</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/visualise.html">
+ <span class="dropdown-text"><code>VISUALISE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/draw.html">
+ <span class="dropdown-text"><code>DRAW</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/place.html">
+ <span class="dropdown-text"><code>PLACE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/scale.html">
+ <span class="dropdown-text"><code>SCALE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/facet.html">
+ <span class="dropdown-text"><code>FACET</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/project.html">
+ <span class="dropdown-text"><code>PROJECT</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/label.html">
+ <span class="dropdown-text"><code>LABEL</code></span></a>
+  </li>  
+    </ul>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="../gallery/index.html"> 
+<span class="menu-text">Gallery</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../faq.html"> 
+<span class="menu-text">FAQ</span></a>
+  </li>  
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-news" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">News</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-news">    
+        <li class="dropdown-header">Releases</li>
+        <li>
+    <a class="dropdown-item" href="https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/">
+ <span class="dropdown-text">Version 0.2.7 (alpha)</span></a>
+  </li>  
+    </ul>
+  </li>
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../wasm/index.html"> 
+<span class="menu-text">Playground</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="http://python.ggsql.org"> 
+<span class="menu-text"><iconify-icon role="img" inline="" icon="fa7-brands:python" style="font-size: 1.5em;" aria-label="link to Python bindings" title="Python bindings"></iconify-icon></span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="https://r.ggsql.org"> 
+<span class="menu-text"><iconify-icon role="img" inline="" icon="fa7-brands:r-project" style="font-size: 1.5em;" aria-label="link to R bindings" title="R bindings"></iconify-icon></span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+    <div class="dropdown">
+      <a href="" title="" id="quarto-navigation-tool-dropdown-0" class="quarto-navigation-tool dropdown-toggle px-1" data-bs-toggle="dropdown" aria-expanded="false" role="link" aria-label=""><i class="bi bi-github"></i></a>
+      <ul class="dropdown-menu" aria-labelledby="quarto-navigation-tool-dropdown-0">
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/posit-dev/ggsql">
+            Source Code
+            </a>
+          </li>
+          <li>
+            <a class="dropdown-item quarto-navbar-tools-item" href="https://github.com/posit-dev/ggsql/issues">
+            Report a Bug
+            </a>
+          </li>
+      </ul>
+    </div>
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <div id="quarto-announcement" data-announcement-id="b6882ac76ff276df5c5b9efee9fd644c" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
+<p>ggsql is still in early development and all functionality is subject to change. Read the <a href="https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/">alpha-release announcement</a></p>
+</div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#ggsql-query-writer" id="toc-ggsql-query-writer" class="nav-link active" data-scroll-target="#ggsql-query-writer">ggsql Query Writer</a>
+  <ul class="collapse">
+  <li><a href="#query-structure" id="toc-query-structure" class="nav-link" data-scroll-target="#query-structure">Query structure</a>
+  <ul class="collapse">
+  <li><a href="#pattern-a-select-visualise" id="toc-pattern-a-select-visualise" class="nav-link" data-scroll-target="#pattern-a-select-visualise">Pattern A: SELECT → VISUALISE</a></li>
+  <li><a href="#pattern-b-visualise-from" id="toc-pattern-b-visualise-from" class="nav-link" data-scroll-target="#pattern-b-visualise-from">Pattern B: VISUALISE FROM</a></li>
+  </ul></li>
+  <li><a href="#data-sources" id="toc-data-sources" class="nav-link" data-scroll-target="#data-sources">Data sources</a></li>
+  <li><a href="#visualise-clause" id="toc-visualise-clause" class="nav-link" data-scroll-target="#visualise-clause">VISUALISE clause</a>
+  <ul class="collapse">
+  <li><a href="#mapping-forms" id="toc-mapping-forms" class="nav-link" data-scroll-target="#mapping-forms">Mapping forms</a></li>
+  </ul></li>
+  <li><a href="#draw-clause" id="toc-draw-clause" class="nav-link" data-scroll-target="#draw-clause">DRAW clause</a>
+  <ul class="collapse">
+  <li><a href="#mapping" id="toc-mapping" class="nav-link" data-scroll-target="#mapping">MAPPING</a></li>
+  <li><a href="#remapping" id="toc-remapping" class="nav-link" data-scroll-target="#remapping">REMAPPING</a></li>
+  <li><a href="#setting" id="toc-setting" class="nav-link" data-scroll-target="#setting">SETTING</a></li>
+  <li><a href="#filter" id="toc-filter" class="nav-link" data-scroll-target="#filter">FILTER</a></li>
+  <li><a href="#partition-by" id="toc-partition-by" class="nav-link" data-scroll-target="#partition-by">PARTITION BY</a></li>
+  <li><a href="#order-by" id="toc-order-by" class="nav-link" data-scroll-target="#order-by">ORDER BY</a></li>
+  </ul></li>
+  <li><a href="#place-clause" id="toc-place-clause" class="nav-link" data-scroll-target="#place-clause">PLACE clause</a></li>
+  <li><a href="#scale-clause" id="toc-scale-clause" class="nav-link" data-scroll-target="#scale-clause">SCALE clause</a>
+  <ul class="collapse">
+  <li><a href="#scale-types-optional-placed-before-aesthetic" id="toc-scale-types-optional-placed-before-aesthetic" class="nav-link" data-scroll-target="#scale-types-optional-placed-before-aesthetic">Scale types (optional, placed before aesthetic)</a></li>
+  <li><a href="#aesthetic-names" id="toc-aesthetic-names" class="nav-link" data-scroll-target="#aesthetic-names">Aesthetic names</a></li>
+  <li><a href="#from-input-range" id="toc-from-input-range" class="nav-link" data-scroll-target="#from-input-range">FROM (input range)</a></li>
+  <li><a href="#to-output-range" id="toc-to-output-range" class="nav-link" data-scroll-target="#to-output-range">TO (output range)</a></li>
+  <li><a href="#via-transform" id="toc-via-transform" class="nav-link" data-scroll-target="#via-transform">VIA (transform)</a></li>
+  <li><a href="#setting-1" id="toc-setting-1" class="nav-link" data-scroll-target="#setting-1">SETTING</a></li>
+  <li><a href="#renaming" id="toc-renaming" class="nav-link" data-scroll-target="#renaming">RENAMING</a></li>
+  </ul></li>
+  <li><a href="#facet-clause" id="toc-facet-clause" class="nav-link" data-scroll-target="#facet-clause">FACET clause</a>
+  <ul class="collapse">
+  <li><a href="#settings" id="toc-settings" class="nav-link" data-scroll-target="#settings">Settings</a></li>
+  <li><a href="#customizing-strip-labels" id="toc-customizing-strip-labels" class="nav-link" data-scroll-target="#customizing-strip-labels">Customizing strip labels</a></li>
+  <li><a href="#filtering-panels" id="toc-filtering-panels" class="nav-link" data-scroll-target="#filtering-panels">Filtering panels</a></li>
+  </ul></li>
+  <li><a href="#project-clause" id="toc-project-clause" class="nav-link" data-scroll-target="#project-clause">PROJECT clause</a>
+  <ul class="collapse">
+  <li><a href="#coordinate-types" id="toc-coordinate-types" class="nav-link" data-scroll-target="#coordinate-types">Coordinate types</a></li>
+  </ul></li>
+  <li><a href="#label-clause" id="toc-label-clause" class="nav-link" data-scroll-target="#label-clause">LABEL clause</a></li>
+  <li><a href="#layer-types" id="toc-layer-types" class="nav-link" data-scroll-target="#layer-types">Layer types</a>
+  <ul class="collapse">
+  <li><a href="#point" id="toc-point" class="nav-link" data-scroll-target="#point">point</a></li>
+  <li><a href="#line" id="toc-line" class="nav-link" data-scroll-target="#line">line</a></li>
+  <li><a href="#path" id="toc-path" class="nav-link" data-scroll-target="#path">path</a></li>
+  <li><a href="#bar" id="toc-bar" class="nav-link" data-scroll-target="#bar">bar</a></li>
+  <li><a href="#histogram" id="toc-histogram" class="nav-link" data-scroll-target="#histogram">histogram</a></li>
+  <li><a href="#density" id="toc-density" class="nav-link" data-scroll-target="#density">density</a></li>
+  <li><a href="#boxplot" id="toc-boxplot" class="nav-link" data-scroll-target="#boxplot">boxplot</a></li>
+  <li><a href="#violin" id="toc-violin" class="nav-link" data-scroll-target="#violin">violin</a></li>
+  <li><a href="#smooth" id="toc-smooth" class="nav-link" data-scroll-target="#smooth">smooth</a></li>
+  <li><a href="#area" id="toc-area" class="nav-link" data-scroll-target="#area">area</a></li>
+  <li><a href="#ribbon" id="toc-ribbon" class="nav-link" data-scroll-target="#ribbon">ribbon</a></li>
+  <li><a href="#segment" id="toc-segment" class="nav-link" data-scroll-target="#segment">segment</a></li>
+  <li><a href="#rule" id="toc-rule" class="nav-link" data-scroll-target="#rule">rule</a></li>
+  <li><a href="#text" id="toc-text" class="nav-link" data-scroll-target="#text">text</a></li>
+  <li><a href="#rect" id="toc-rect" class="nav-link" data-scroll-target="#rect">rect</a></li>
+  <li><a href="#polygon" id="toc-polygon" class="nav-link" data-scroll-target="#polygon">polygon</a></li>
+  <li><a href="#errorbar" id="toc-errorbar" class="nav-link" data-scroll-target="#errorbar">errorbar</a></li>
+  </ul></li>
+  <li><a href="#named-color-palettes" id="toc-named-color-palettes" class="nav-link" data-scroll-target="#named-color-palettes">Named color palettes</a></li>
+  <li><a href="#common-patterns" id="toc-common-patterns" class="nav-link" data-scroll-target="#common-patterns">Common patterns</a></li>
+  <li><a href="#cli" id="toc-cli" class="nav-link" data-scroll-target="#cli">CLI</a></li>
+  <li><a href="#additional-references" id="toc-additional-references" class="nav-link" data-scroll-target="#additional-references">Additional References</a></li>
+  <li><a href="#instructions-for-responding" id="toc-instructions-for-responding" class="nav-link" data-scroll-target="#instructions-for-responding">Instructions for responding</a></li>
+  </ul></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+</div>
+
+<div>
+  <div class="description">
+    Write ggsql queries — a grammar of graphics for SQL. Use when the user wants to create, modify, or understand a ggsql visualization query.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>George Stagg (<span class="citation" data-cites="georgestagg">@georgestagg</span>) </p>
+          </div>
+  </div>
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="ggsql-query-writer" class="level1">
+<h1>ggsql Query Writer</h1>
+<p>ggsql is a SQL extension for declarative data visualization based on Grammar of Graphics principles. It lets users combine SQL data queries with visualization specifications in a single, composable syntax.</p>
+<p>When the user describes a visualization they want, write a valid ggsql query. Use ONLY syntax documented below. NEVER invent clauses, settings, aesthetics, or layer types.</p>
+<section id="query-structure" class="level2">
+<h2 class="anchored" data-anchor-id="query-structure">Query structure</h2>
+<p>A ggsql query has two parts:</p>
+<ol type="1">
+<li><strong>SQL part</strong> (optional): Standard SQL executed on the backend. Any tables, CTEs, or SELECT results are available to the visualization.</li>
+<li><strong>VISUALISE part</strong> (required): Begins with <code>VISUALISE</code> (or <code>VISUALIZE</code>). Everything after this is the visualization query.</li>
+</ol>
+<p>There are two patterns for combining SQL with VISUALISE:</p>
+<section id="pattern-a-select-visualise" class="level3">
+<h3 class="anchored" data-anchor-id="pattern-a-select-visualise">Pattern A: SELECT → VISUALISE</h3>
+<p>The last SQL statement is a SELECT. Data flows from its result set into VISUALISE, which has no <code>FROM</code> clause.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> name, score_a, score_b <span class="kw">FROM</span> <span class="st">'dataset.csv'</span> <span class="kw">WHERE</span> value <span class="op">&gt;</span> <span class="dv">50</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> score_a <span class="kw">AS</span> <span class="at">x</span>, score_b <span class="kw">AS</span> <span class="at">y</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>[<span class="kw">DRAW</span> <span class="op">/</span> <span class="kw">PLACE</span> <span class="op">/</span> <span class="kw">SCALE</span> <span class="op">/</span> <span class="kw">FACET</span> <span class="op">/</span> <span class="kw">PROJECT</span> <span class="op">/</span> <span class="kw">LABEL</span> clauses]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Works with any SQL that ends in a SELECT: bare SELECT, WITH…SELECT, UNION/INTERSECT/EXCEPT.</p>
+</section>
+<section id="pattern-b-visualise-from" class="level3">
+<h3 class="anchored" data-anchor-id="pattern-b-visualise-from">Pattern B: VISUALISE FROM</h3>
+<p>VISUALISE provides its own data source via <code>FROM</code>. Use when referencing a table, file, CTE, or built-in dataset directly without a trailing SELECT.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> score_a <span class="kw">AS</span> <span class="at">x</span>, score_b <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'dataset.csv'</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">WITH</span> summary <span class="kw">AS</span> (<span class="kw">SELECT</span> category, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n <span class="kw">FROM</span> <span class="st">'dataset.csv'</span> <span class="kw">GROUP</span> <span class="kw">BY</span> category)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> category <span class="kw">AS</span> <span class="at">x</span>, n <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> summary</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
+<section id="data-sources" class="level2">
+<h2 class="anchored" data-anchor-id="data-sources">Data sources</h2>
+<p>Data sources can appear in <code>VISUALISE ... FROM</code> or <code>DRAW ... MAPPING ... FROM</code>:</p>
+<ul>
+<li><strong>Table/CTE name</strong> (unquoted): <code>FROM sales</code>, <code>FROM my_cte</code></li>
+<li><strong>File path</strong> (single-quoted string): <code>FROM 'data.parquet'</code>, <code>FROM 'data.csv'</code></li>
+<li><strong>Built-in datasets</strong>: <code>FROM ggsql:penguins</code>, <code>FROM ggsql:airquality</code></li>
+</ul>
+</section>
+<section id="visualise-clause" class="level2">
+<h2 class="anchored" data-anchor-id="visualise-clause">VISUALISE clause</h2>
+<p>Marks the start of the visualization. Optionally defines global mappings inherited by all layers.</p>
+<pre><code>VISUALISE &lt;mapping&gt;, ... FROM &lt;data-source&gt;</code></pre>
+<section id="mapping-forms" class="level3">
+<h3 class="anchored" data-anchor-id="mapping-forms">Mapping forms</h3>
+<ul>
+<li><strong>Explicit</strong>: <code>column AS aesthetic</code> — e.g.&nbsp;<code>revenue AS y</code></li>
+<li><strong>Implicit</strong>: <code>column</code> — column name must match aesthetic name, e.g.&nbsp;<code>x</code> maps to <code>x</code></li>
+<li><strong>Wildcard</strong>: <code>*</code> — all columns with names matching aesthetics are mapped</li>
+<li><strong>Constants</strong>: <code>'red' AS fill</code>, <code>42 AS size</code> — literal values mapped to aesthetic</li>
+</ul>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span>, species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="op">*</span> <span class="kw">FROM</span> my_table</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:penguins</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
+<section id="draw-clause" class="level2">
+<h2 class="anchored" data-anchor-id="draw-clause">DRAW clause</h2>
+<p>Defines a layer. Multiple DRAW clauses stack layers (first = bottom, last = top).</p>
+<pre><code>DRAW &lt;layer-type&gt;
+  MAPPING &lt;mapping&gt;, ... FROM &lt;data-source&gt;
+  REMAPPING &lt;stat-property&gt; AS &lt;aesthetic&gt;, ...
+  SETTING &lt;param&gt; =&gt; &lt;value&gt;, ...
+  FILTER &lt;condition&gt;
+  PARTITION BY &lt;column&gt;, ...
+  ORDER BY &lt;column&gt;, ...</code></pre>
+<p>All subclauses are optional if VISUALISE provides global mappings and data.</p>
+<section id="mapping" class="level3">
+<h3 class="anchored" data-anchor-id="mapping">MAPPING</h3>
+<p>Same syntax as VISUALISE mappings. Layer mappings merge with global mappings (layer takes precedence). Can include <code>FROM</code> for layer-specific data.</p>
+<ul>
+<li>Use <code>null</code> to prevent inheriting a global mapping: <code>MAPPING null AS color</code></li>
+</ul>
+</section>
+<section id="remapping" class="level3">
+<h3 class="anchored" data-anchor-id="remapping">REMAPPING</h3>
+<p>For statistical layers (histogram, density, boxplot, violin, smooth, bar without y). Maps calculated statistics to aesthetics. Each layer documents its available stats and default remapping.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">histogram</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> body_mass AS <span class="at">x</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">REMAPPING</span> <span class="dt">density</span> AS <span class="at">y</span>  <span class="co">-- use density instead of default count</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="setting" class="level3">
+<h3 class="anchored" data-anchor-id="setting">SETTING</h3>
+<p>Set literal aesthetic values or layer parameters. Aesthetics set here bypass scales.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> <span class="at">size</span> <span class="op">=&gt;</span> <span class="dv">5</span>, <span class="at">opacity</span> <span class="op">=&gt;</span> <span class="dv">0.7</span>, <span class="at">stroke</span> <span class="op">=&gt;</span> <span class="st">'red'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><strong>Position adjustment</strong> is a special setting:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'identity'</span>   <span class="co">-- no adjustment (default for most)</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'stack'</span>      <span class="co">-- stack (default for bar, histogram, area)</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'dodge'</span>      <span class="co">-- side by side (default for boxplot, violin)</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'jitter'</span>     <span class="co">-- random offset</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="filter" class="level3">
+<h3 class="anchored" data-anchor-id="filter">FILTER</h3>
+<p>SQL WHERE condition applied to layer data. Content is passed to the database:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FILTER</span> sex <span class="op">=</span> <span class="st">'female'</span> AND body_mass <span class="op">&gt;</span> <span class="dv">4000</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="partition-by" class="level3">
+<h3 class="anchored" data-anchor-id="partition-by">PARTITION BY</h3>
+<p>Additional grouping columns beyond mapped discrete aesthetics:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> Day AS <span class="at">x</span>, Temp AS <span class="at">y</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PARTITION</span> BY Month</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="order-by" class="level3">
+<h3 class="anchored" data-anchor-id="order-by">ORDER BY</h3>
+<p>Controls record order (important for path layers):</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">path</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">ORDER</span> BY timestamp</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
+<section id="place-clause" class="level2">
+<h2 class="anchored" data-anchor-id="place-clause">PLACE clause</h2>
+<p>Creates annotation layers with literal values only (no data mappings). Supports tuples for multiple annotations.</p>
+<pre><code>PLACE &lt;layer-type&gt;
+  SETTING &lt;aesthetic/param&gt; =&gt; &lt;value&gt;, ...</code></pre>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">PLACE</span> <span class="dt">point</span> <span class="kw">SETTING</span> <span class="at">x</span> <span class="op">=&gt;</span> <span class="dv">5</span>, <span class="at">y</span> <span class="op">=&gt;</span> <span class="dv">10</span>, <span class="at">color</span> <span class="op">=&gt;</span> <span class="st">'red'</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="kw">PLACE</span> <span class="dt">rule</span> <span class="kw">SETTING</span> <span class="at">y</span> <span class="op">=&gt;</span> <span class="dv">70</span>, <span class="at">linetype</span> <span class="op">=&gt;</span> <span class="st">'dotted'</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="kw">PLACE</span> <span class="dt">text</span> <span class="kw">SETTING</span> <span class="at">x</span> <span class="op">=&gt;</span> (<span class="dv">34</span>, <span class="dv">44</span>), <span class="at">y</span> <span class="op">=&gt;</span> (<span class="dv">66</span>, <span class="dv">49</span>), <span class="kw">label</span> <span class="op">=&gt;</span> (<span class="st">'Mean = 34'</span>, <span class="st">'Mean = 44'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="scale-clause" class="level2">
+<h2 class="anchored" data-anchor-id="scale-clause">SCALE clause</h2>
+<p>Controls how data values are translated to aesthetic values. Sensible defaults are always provided.</p>
+<pre><code>SCALE &lt;type&gt; &lt;aesthetic&gt; FROM &lt;input-range&gt; TO &lt;output-range&gt; VIA &lt;transform&gt;
+  SETTING &lt;param&gt; =&gt; &lt;value&gt;, ...
+  RENAMING &lt;value&gt; =&gt; &lt;label&gt;, ...</code></pre>
+<p>All parts except <code>aesthetic</code> are optional.</p>
+<section id="scale-types-optional-placed-before-aesthetic" class="level3">
+<h3 class="anchored" data-anchor-id="scale-types-optional-placed-before-aesthetic">Scale types (optional, placed before aesthetic)</h3>
+<ul>
+<li><code>CONTINUOUS</code> — continuous numeric/temporal data</li>
+<li><code>DISCRETE</code> — categorical/string data</li>
+<li><code>BINNED</code> — bin continuous data into discrete groups (never auto-selected, must be explicit)</li>
+<li><code>ORDINAL</code> — ordered discrete data (never auto-selected, must be explicit)</li>
+<li><code>IDENTITY</code> — pass data through unchanged (no legend created)</li>
+</ul>
+<p>If omitted, type is inferred from data.</p>
+</section>
+<section id="aesthetic-names" class="level3">
+<h3 class="anchored" data-anchor-id="aesthetic-names">Aesthetic names</h3>
+<p>Use the base name: <code>x</code>, <code>y</code>, <code>fill</code>, <code>stroke</code>, <code>color</code> (sets both fill and stroke), <code>opacity</code>, <code>size</code>, <code>linewidth</code>, <code>linetype</code>, <code>shape</code>, <code>panel</code> (facet), <code>row</code>, <code>column</code>.</p>
+<p>For position families (xmin/xmax/xend/ymin/ymax/yend), scale with the base name: <code>SCALE x ...</code></p>
+</section>
+<section id="from-input-range" class="level3">
+<h3 class="anchored" data-anchor-id="from-input-range">FROM (input range)</h3>
+<ul>
+<li>Continuous: <code>FROM (min, max)</code> — use <code>null</code> to infer from data: <code>FROM (0, null)</code></li>
+<li>Discrete: <code>FROM ('A', 'B', 'C')</code> — controls order, omitted values are nulled</li>
+<li>Include null explicitly: <code>FROM ('Torgersen', 'Biscoe', null)</code></li>
+</ul>
+</section>
+<section id="to-output-range" class="level3">
+<h3 class="anchored" data-anchor-id="to-output-range">TO (output range)</h3>
+<ul>
+<li>Array of values: <code>TO ('red', 'blue', 'green')</code>, <code>TO (1, 6)</code></li>
+<li>Named palette: <code>TO viridis</code>, <code>TO dark2</code>, <code>TO tableau10</code></li>
+</ul>
+</section>
+<section id="via-transform" class="level3">
+<h3 class="anchored" data-anchor-id="via-transform">VIA (transform)</h3>
+<p>Continuous transforms: <code>linear</code>, <code>log</code>, <code>log2</code>, <code>ln</code>, <code>exp10</code>, <code>exp2</code>, <code>exp</code>, <code>sqrt</code>, <code>square</code>, <code>asinh</code>, <code>pseudo_log</code>, <code>pseudo_log2</code>, <code>pseudo_ln</code>, <code>integer</code></p>
+<p>Temporal transforms: <code>date</code>, <code>datetime</code>, <code>time</code> — automatically chosen for date/datetime/time columns.</p>
+<p>Discrete transforms: <code>string</code>, <code>bool</code></p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">x</span> <span class="kw">VIA</span> <span class="dt">date</span>        <span class="co">-- treat x as temporal</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">y</span> <span class="kw">VIA</span> <span class="dt">log</span>         <span class="co">-- log transform</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">size</span> <span class="kw">VIA</span> square   <span class="co">-- scale by radius not area</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="setting-1" class="level3">
+<h3 class="anchored" data-anchor-id="setting-1">SETTING</h3>
+<p>Continuous/binned scales: - <code>expand</code> — expansion factor, scalar or <code>(mult, add)</code>. Default <code>0.05</code>. Only for x/y. - <code>oob</code> — out-of-bounds: <code>'keep'</code> (default for x/y), <code>'censor'</code> (default for others), <code>'squish'</code> - <code>breaks</code> — integer count, array of values, or interval string for temporal (e.g.&nbsp;<code>'2 months'</code>, <code>'week'</code>) - <code>pretty</code> — boolean, default <code>true</code>. Use Wilkinson’s algorithm for nice breaks. - <code>reverse</code> — boolean, default <code>false</code>. Reverse scale direction.</p>
+<p>Binned scales additionally: - <code>closed</code> — <code>'left'</code> (default) or <code>'right'</code></p>
+<p>Discrete/ordinal scales: - <code>reverse</code> — boolean</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">x</span> <span class="kw">SETTING</span> <span class="at">breaks</span> <span class="op">=&gt;</span> <span class="st">'2 months'</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">y</span> <span class="kw">FROM</span> (<span class="dv">0</span>, <span class="dv">100</span>) <span class="kw">SETTING</span> oob <span class="op">=&gt;</span> <span class="st">'squish'</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span> <span class="kw">SETTING</span> <span class="at">breaks</span> <span class="op">=&gt;</span> <span class="dv">10</span>, pretty <span class="op">=&gt;</span> false</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="renaming" class="level3">
+<h3 class="anchored" data-anchor-id="renaming">RENAMING</h3>
+<p>Rename break labels. Direct renaming, wildcard formatting, or both (direct takes priority):</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">RENAMING</span> <span class="st">'Adelie'</span> <span class="op">=&gt;</span> <span class="st">'Pygoscelis adeliae'</span>, <span class="st">'adelie'</span> <span class="op">=&gt;</span> <span class="cn">null</span>  <span class="co">-- direct / suppress</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="kw">RENAMING</span> <span class="op">*</span> <span class="op">=&gt;</span> <span class="st">'{} mm'</span>                <span class="co">-- string interpolation</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="kw">RENAMING</span> <span class="op">*</span> <span class="op">=&gt;</span> <span class="st">'{:Title}'</span>             <span class="co">-- formatters: Title, UPPER, lower, time %B %Y, num %.1f</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
+<section id="facet-clause" class="level2">
+<h2 class="anchored" data-anchor-id="facet-clause">FACET clause</h2>
+<p>Split data into small multiples.</p>
+<pre><code>FACET &lt;column&gt; BY &lt;column&gt;
+  SETTING &lt;param&gt; =&gt; &lt;value&gt;, ...</code></pre>
+<ul>
+<li>1D: <code>FACET region</code> — wrap layout, aesthetic name is <code>panel</code></li>
+<li>2D: <code>FACET region BY category</code> — grid layout, aesthetics are <code>row</code> and <code>column</code></li>
+</ul>
+<section id="settings" class="level3">
+<h3 class="anchored" data-anchor-id="settings">Settings</h3>
+<ul>
+<li><code>free</code> — <code>null</code> (default/fixed), <code>'x'</code>, <code>'y'</code>, or <code>('x', 'y')</code> for independent scales</li>
+<li><code>missing</code> — <code>'repeat'</code> (default, show layer in all panels) or <code>'null'</code> (only show in null panel)</li>
+<li><code>ncol</code>/<code>nrow</code> — layout dimensions for 1D faceting (only one allowed)</li>
+</ul>
+</section>
+<section id="customizing-strip-labels" class="level3">
+<h3 class="anchored" data-anchor-id="customizing-strip-labels">Customizing strip labels</h3>
+<p>Use SCALE on the facet aesthetic:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb20"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FACET</span> region</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">panel</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">RENAMING</span> <span class="st">'N'</span> <span class="op">=&gt;</span> <span class="st">'North'</span>, <span class="st">'S'</span> <span class="op">=&gt;</span> <span class="st">'South'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="filtering-panels" class="level3">
+<h3 class="anchored" data-anchor-id="filtering-panels">Filtering panels</h3>
+<p>Use SCALE FROM to select which panels to show:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb21"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FACET</span> island</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">panel</span> <span class="kw">FROM</span> (<span class="st">'Biscoe'</span>, <span class="st">'Dream'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
+<section id="project-clause" class="level2">
+<h2 class="anchored" data-anchor-id="project-clause">PROJECT clause</h2>
+<p>Controls the coordinate system.</p>
+<pre><code>PROJECT &lt;aesthetic&gt;, ... TO &lt;coord-type&gt;
+  SETTING &lt;param&gt; =&gt; &lt;value&gt;, ...</code></pre>
+<section id="coordinate-types" class="level3">
+<h3 class="anchored" data-anchor-id="coordinate-types">Coordinate types</h3>
+<p><strong>cartesian</strong> (default) — horizontal x, vertical y - Settings: <code>clip</code> (boolean, default true), <code>ratio</code> (aspect ratio number or null) - Default aesthetics: <code>x</code>, <code>y</code></p>
+<p><strong>polar</strong> — angle + radius from center - Settings: <code>clip</code>, <code>start</code> (degrees, default 0 = 12 o’clock), <code>end</code> (degrees, default start+360), <code>inner</code> (0-1 proportion for donut hole, default 0) - Default aesthetics: <code>radius</code> (primary), <code>angle</code> (secondary)</p>
+<p>Swap aesthetic order to flip axes: <code>PROJECT y, x TO cartesian</code>. If no PROJECT clause, coordinate type is inferred from mappings (x/y = cartesian, radius/angle = polar).</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb23"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span> <span class="kw">SETTING</span> inner <span class="op">=&gt;</span> <span class="dv">0.5</span>  <span class="co">-- donut chart</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span> <span class="kw">SETTING</span> start <span class="op">=&gt;</span> <span class="dv">-90</span>, end <span class="op">=&gt;</span> <span class="dv">90</span>  <span class="co">-- half-circle gauge</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
+<section id="label-clause" class="level2">
+<h2 class="anchored" data-anchor-id="label-clause">LABEL clause</h2>
+<p>Override default axis/legend labels and add titles.</p>
+<pre><code>LABEL
+  &lt;aesthetic/title&gt; =&gt; &lt;string&gt;, ...</code></pre>
+<p>Available labels: - <code>title</code> — main title - <code>subtitle</code> — subtitle below title - <code>caption</code> — text below the plot - Any aesthetic name — axis/legend title: <code>x</code>, <code>y</code>, <code>fill</code>, <code>color</code>, etc. - Use <code>null</code> to suppress a label: <code>fill =&gt; null</code></p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb25"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="kw">LABEL</span></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">title</span> <span class="op">=&gt;</span> <span class="st">'Sales by Region'</span>,</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">subtitle</span> <span class="op">=&gt;</span> <span class="st">'Q4 2024 data'</span>,</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">x</span> <span class="op">=&gt;</span> <span class="st">'Date'</span>,</span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">y</span> <span class="op">=&gt;</span> <span class="st">'Revenue (USD)'</span>,</span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">fill</span> <span class="op">=&gt;</span> <span class="st">'Region'</span>,</span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">caption</span> <span class="op">=&gt;</span> <span class="st">'Source: internal sales database'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<hr>
+</section>
+<section id="layer-types" class="level2">
+<h2 class="anchored" data-anchor-id="layer-types">Layer types</h2>
+<section id="point" class="level3">
+<h3 class="anchored" data-anchor-id="point">point</h3>
+<p>Scatterplot. Required: x, y. Optional: size, colour, stroke, fill, opacity, shape.</p>
+</section>
+<section id="line" class="level3">
+<h3 class="anchored" data-anchor-id="line">line</h3>
+<p>Line plot sorted along primary axis. Required: x, y. Optional: colour/stroke, opacity, linewidth, linetype. Settings: <code>position</code>, <code>orientation</code> (<code>'aligned'</code>/<code>'transposed'</code>).</p>
+</section>
+<section id="path" class="level3">
+<h3 class="anchored" data-anchor-id="path">path</h3>
+<p>Like line but connects points in data order (not sorted). Same aesthetics as line.</p>
+</section>
+<section id="bar" class="level3">
+<h3 class="anchored" data-anchor-id="bar">bar</h3>
+<p>Bar chart. Auto-counts if y not provided. Optional: x (categories), y (height), fill, colour, stroke. Stats: <code>count</code>, <code>proportion</code>. Properties: <code>weight</code>. Settings: <code>position</code> (default <code>'stack'</code>), <code>width</code> (0-1). Orientation inferred from mapping (categories on x = vertical, on y = horizontal).</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb26"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span> <span class="kw">MAPPING</span> species AS <span class="at">x</span>                              <span class="co">-- auto-count</span></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span> <span class="kw">MAPPING</span> species AS <span class="at">x</span>, total AS <span class="at">y</span>                  <span class="co">-- pre-computed</span></span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span> <span class="kw">MAPPING</span> species AS <span class="at">x</span>, sex AS <span class="at">fill</span>                 <span class="co">-- stacked (default)</span></span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'dodge'</span>                              <span class="co">-- side by side</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="histogram" class="level3">
+<h3 class="anchored" data-anchor-id="histogram">histogram</h3>
+<p>Bins continuous data. Required: x. Stats: <code>count</code>, <code>density</code>. Default remapping: <code>count AS &lt;secondary&gt;</code>. Settings: <code>position</code> (default <code>'stack'</code>), <code>bins</code> (default 30), <code>binwidth</code>, <code>closed</code> (<code>'left'</code>/<code>'right'</code>).</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb27"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">histogram</span> <span class="kw">MAPPING</span> body_mass AS <span class="at">x</span> <span class="kw">SETTING</span> binwidth <span class="op">=&gt;</span> <span class="dv">100</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">histogram</span> <span class="kw">MAPPING</span> body_mass AS <span class="at">x</span> <span class="kw">REMAPPING</span> <span class="dt">density</span> AS <span class="at">y</span>  <span class="co">-- density instead of count</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="density" class="level3">
+<h3 class="anchored" data-anchor-id="density">density</h3>
+<p>Kernel density estimation. Required: x. Stats: <code>density</code>, <code>intensity</code>. Settings: <code>position</code> (default <code>'identity'</code>), <code>bandwidth</code>, <code>adjust</code> (default 1), <code>kernel</code> (<code>'gaussian'</code> default, <code>'epanechnikov'</code>, <code>'triangular'</code>, <code>'rectangular'</code>, <code>'biweight'</code>, <code>'cosine'</code>).</p>
+</section>
+<section id="boxplot" class="level3">
+<h3 class="anchored" data-anchor-id="boxplot">boxplot</h3>
+<p>Five-number summary with outliers. Required: x (categorical), y (continuous). Stats: <code>type</code>, <code>value</code>. Settings: <code>position</code> (default <code>'dodge'</code>), <code>outliers</code> (default true), <code>coef</code> (whisker IQR multiple, default 1.5), <code>width</code> (default 0.9).</p>
+</section>
+<section id="violin" class="level3">
+<h3 class="anchored" data-anchor-id="violin">violin</h3>
+<p>Mirrored kernel density for groups. Required: x (categorical), y (continuous). Stats: <code>density</code>, <code>intensity</code>. Default remapping: <code>density AS offset</code>. Settings: <code>position</code> (default <code>'dodge'</code>), <code>bandwidth</code>, <code>adjust</code>, <code>kernel</code> (same as density), <code>width</code> (default 0.9), <code>side</code> (<code>'both'</code>/<code>'left'</code>/<code>'bottom'</code>/<code>'right'</code>/<code>'top'</code>), <code>tails</code> (number or null, default 3).</p>
+</section>
+<section id="smooth" class="level3">
+<h3 class="anchored" data-anchor-id="smooth">smooth</h3>
+<p>Trendline. Required: x, y. Stats: <code>intensity</code>. Settings: <code>method</code> (<code>'nw'</code> default, <code>'ols'</code>, <code>'tls'</code>), <code>bandwidth</code>, <code>adjust</code>, <code>kernel</code> (same as density, nw only).</p>
+</section>
+<section id="area" class="level3">
+<h3 class="anchored" data-anchor-id="area">area</h3>
+<p>Area chart anchored at zero. Required: x, y. Settings: <code>position</code> (default <code>'stack'</code>), <code>orientation</code>, <code>total</code> (normalize stacks), <code>center</code> (boolean, for steamgraph).</p>
+</section>
+<section id="ribbon" class="level3">
+<h3 class="anchored" data-anchor-id="ribbon">ribbon</h3>
+<p>Like area but with explicit ymin/ymax (unanchored). Required: x, ymin, ymax.</p>
+</section>
+<section id="segment" class="level3">
+<h3 class="anchored" data-anchor-id="segment">segment</h3>
+<p>Line segments between two endpoints. Required: x, y, and at least one of xend or yend.</p>
+</section>
+<section id="rule" class="level3">
+<h3 class="anchored" data-anchor-id="rule">rule</h3>
+<p>Reference lines spanning the full panel. Required: x or y. Optional: <code>slope</code> (for diagonal: <code>y = a + slope * x</code>).</p>
+</section>
+<section id="text" class="level3">
+<h3 class="anchored" data-anchor-id="text">text</h3>
+<p>Text labels. Required: x, y, label. Settings: <code>offset</code> (number or <code>(h, v)</code>), <code>format</code> (string interpolation like RENAMING). <code>hjust</code>: <code>'left'</code>/<code>'right'</code>/<code>'centre'</code> or 0-1. <code>vjust</code>: <code>'top'</code>/<code>'bottom'</code>/<code>'middle'</code> or 0-1.</p>
+</section>
+<section id="rect" class="level3">
+<h3 class="anchored" data-anchor-id="rect">rect</h3>
+<p>Rectangles. Required: pick 2 per axis from center (x/y), min (xmin/ymin), max (xmax/ymax), width, height. Or just center (defaults width/height to 1).</p>
+</section>
+<section id="polygon" class="level3">
+<h3 class="anchored" data-anchor-id="polygon">polygon</h3>
+<p>Closed shapes from ordered coordinates. Required: x, y. Use PARTITION BY to separate distinct polygons.</p>
+</section>
+<section id="errorbar" class="level3">
+<h3 class="anchored" data-anchor-id="errorbar">errorbar</h3>
+<p>Interval display. Required: x, ymin, ymax. Settings: <code>width</code> (hinge width in points, default 10, null to hide).</p>
+<p>All layers accept common optional aesthetics (colour/stroke, fill, opacity, linewidth, linetype) and <code>position</code> setting where applicable.</p>
+<hr>
+</section>
+</section>
+<section id="named-color-palettes" class="level2">
+<h2 class="anchored" data-anchor-id="named-color-palettes">Named color palettes</h2>
+<ul>
+<li><strong>Discrete</strong>: <code>ggsql10</code> (default), <code>tableau10</code>, <code>category10</code>, <code>set1</code>, <code>set2</code>, <code>set3</code>, <code>dark2</code>, <code>paired</code>, <code>pastel1</code>, <code>pastel2</code>, <code>accent</code>, <code>kelly22</code></li>
+<li><strong>Sequential</strong>: <code>sequential</code> (default), <code>viridis</code>, <code>plasma</code>, <code>magma</code>, <code>inferno</code>, <code>cividis</code>, <code>blues</code>, <code>greens</code>, <code>oranges</code>, <code>reds</code>, <code>purples</code>, <code>greys</code>, <code>ylgnbu</code>, <code>ylorbr</code>, <code>ylorrd</code>, <code>batlow</code>, <code>hawaii</code>, <code>lajolla</code>, <code>turku</code>, and more</li>
+<li><strong>Diverging</strong>: <code>vik</code>/<code>diverging</code>, <code>rdbu</code>, <code>rdylbu</code>, <code>rdylgn</code>, <code>spectral</code>, <code>brbg</code>, <code>prgn</code>, <code>piyg</code>, <code>puor</code>, <code>berlin</code>, <code>roma</code>, and more</li>
+<li><strong>Cyclic</strong>: <code>romao</code>/<code>cyclic</code>, <code>bamo</code>, <code>broco</code>, <code>corko</code>, <code>viko</code></li>
+</ul>
+<hr>
+</section>
+<section id="common-patterns" class="level2">
+<h2 class="anchored" data-anchor-id="common-patterns">Common patterns</h2>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb28"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Pie chart</span></span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span></span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- Horizontal bar chart</span></span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span> <span class="kw">MAPPING</span> species AS <span class="at">y</span></span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a><span class="co">-- Multi-series line chart</span></span>
+<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> x</span>
+<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span> <span class="kw">MAPPING</span> Temp AS <span class="at">y</span>, <span class="st">'Temperature'</span> AS <span class="at">color</span></span>
+<span id="cb28-12"><a href="#cb28-12" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span> <span class="kw">MAPPING</span> Ozone AS <span class="at">y</span>, <span class="st">'Ozone'</span> AS <span class="at">color</span></span>
+<span id="cb28-13"><a href="#cb28-13" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">x</span> <span class="kw">VIA</span> <span class="dt">date</span></span>
+<span id="cb28-14"><a href="#cb28-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-15"><a href="#cb28-15" aria-hidden="true" tabindex="-1"></a><span class="co">-- Lollipop chart</span></span>
+<span id="cb28-16"><a href="#cb28-16" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="fu">ROUND</span>(bill_dep) <span class="kw">AS</span> bill_dep, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n <span class="kw">FROM</span> ggsql:penguins <span class="kw">GROUP</span> <span class="kw">BY</span> <span class="dv">1</span></span>
+<span id="cb28-17"><a href="#cb28-17" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span>, n <span class="kw">AS</span> <span class="at">y</span></span>
+<span id="cb28-18"><a href="#cb28-18" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">segment</span> <span class="kw">MAPPING</span> <span class="dv">0</span> AS <span class="at">yend</span></span>
+<span id="cb28-19"><a href="#cb28-19" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
+<span id="cb28-20"><a href="#cb28-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-21"><a href="#cb28-21" aria-hidden="true" tabindex="-1"></a><span class="co">-- Ridgeline / joy plot</span></span>
+<span id="cb28-22"><a href="#cb28-22" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">Temp</span> <span class="kw">AS</span> x, Month <span class="kw">AS</span> y <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb28-23"><a href="#cb28-23" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">violin</span> <span class="kw">SETTING</span> <span class="at">width</span> <span class="op">=&gt;</span> <span class="dv">4</span>, side <span class="op">=&gt;</span> <span class="st">'top'</span></span>
+<span id="cb28-24"><a href="#cb28-24" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">ORDINAL</span> <span class="at">y</span></span>
+<span id="cb28-25"><a href="#cb28-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-26"><a href="#cb28-26" aria-hidden="true" tabindex="-1"></a><span class="co">-- Bar labels</span></span>
+<span id="cb28-27"><a href="#cb28-27" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> island, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n <span class="kw">FROM</span> ggsql:penguins <span class="kw">GROUP</span> <span class="kw">BY</span> island</span>
+<span id="cb28-28"><a href="#cb28-28" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> island <span class="kw">AS</span> <span class="at">x</span>, n <span class="kw">AS</span> <span class="at">y</span></span>
+<span id="cb28-29"><a href="#cb28-29" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb28-30"><a href="#cb28-30" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">text</span> <span class="kw">MAPPING</span> n AS <span class="kw">label</span> SETTING <span class="at">vjust</span> <span class="op">=&gt;</span> <span class="st">'top'</span>, <span class="at">offset</span> <span class="op">=&gt;</span> (<span class="dv">0</span>, <span class="dv">-11</span>), <span class="at">fill</span> <span class="op">=&gt;</span> <span class="st">'white'</span></span>
+<span id="cb28-31"><a href="#cb28-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-32"><a href="#cb28-32" aria-hidden="true" tabindex="-1"></a><span class="co">-- CTEs with separate layer data</span></span>
+<span id="cb28-33"><a href="#cb28-33" aria-hidden="true" tabindex="-1"></a><span class="kw">WITH</span> temps <span class="kw">AS</span> (<span class="kw">SELECT</span> Date, <span class="kw">Temp</span> <span class="kw">as</span> value <span class="kw">FROM</span> ggsql:airquality),</span>
+<span id="cb28-34"><a href="#cb28-34" aria-hidden="true" tabindex="-1"></a>ozone <span class="kw">AS</span> (<span class="kw">SELECT</span> Date, Ozone <span class="kw">as</span> value <span class="kw">FROM</span> ggsql:airquality <span class="kw">WHERE</span> Ozone <span class="kw">IS</span> <span class="kw">NOT</span> <span class="cn">NULL</span>)</span>
+<span id="cb28-35"><a href="#cb28-35" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span></span>
+<span id="cb28-36"><a href="#cb28-36" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span> <span class="kw">MAPPING</span> Date AS <span class="at">x</span>, value AS <span class="at">y</span>, <span class="st">'Temperature'</span> AS <span class="at">color</span> <span class="kw">FROM</span> temps</span>
+<span id="cb28-37"><a href="#cb28-37" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span> <span class="kw">MAPPING</span> Date AS <span class="at">x</span>, value AS <span class="at">y</span>, <span class="st">'Ozone'</span> AS <span class="at">color</span> <span class="kw">FROM</span> ozone</span>
+<span id="cb28-38"><a href="#cb28-38" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">x</span> <span class="kw">VIA</span> <span class="dt">date</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<hr>
+</section>
+<section id="cli" class="level2">
+<h2 class="anchored" data-anchor-id="cli">CLI</h2>
+<p>The <code>ggsql</code> CLI should be on the PATH. Subcommands: <code>exec &lt;QUERY&gt;</code>, <code>run &lt;FILE&gt;</code>, <code>validate &lt;QUERY&gt;</code>, <code>parse &lt;QUERY&gt;</code>. Common options: <code>--reader &lt;URI&gt;</code> (default <code>duckdb://memory</code>), <code>--writer &lt;FORMAT&gt;</code> (default <code>vegalite</code>), <code>--output &lt;PATH&gt;</code>, <code>-v</code> (verbose).</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb29"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> validate <span class="st">"VISUALISE x, y FROM data DRAW point"</span></span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> exec <span class="st">"VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins DRAW point"</span> <span class="at">-v</span></span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> run query.sql <span class="at">--output</span> chart.vl.json</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<hr>
+</section>
+<section id="additional-references" class="level2">
+<h2 class="anchored" data-anchor-id="additional-references">Additional References</h2>
+<ul>
+<li>https://ggsql.org/syntax/index.llms.md — Online documentation with the latest syntax</li>
+</ul>
+<hr>
+</section>
+<section id="instructions-for-responding" class="level2">
+<h2 class="anchored" data-anchor-id="instructions-for-responding">Instructions for responding</h2>
+<ol type="1">
+<li>Write a complete, valid ggsql query matching the user’s request.</li>
+<li>Use SQL CTEs/queries before VISUALISE when data shaping is needed.</li>
+<li>Choose the simplest layer types and settings that achieve the goal.</li>
+<li>Include SCALE clauses when the defaults are insufficient (e.g.&nbsp;date formatting, custom palettes, range limits).</li>
+<li>Include LABEL for titles when the context warrants it.</li>
+<li>Briefly explain your choices after the query.</li>
+<li>NEVER invent syntax, settings, aesthetics, layer types, or palette names not documented above.</li>
+<li>If unsure whether a feature exists, say so rather than guessing.</li>
+<li>Use <code>ggsql:penguins</code> or <code>ggsql:airquality</code> as example data when no specific data is mentioned.</li>
+<li>When the user wants to validate a query, use <code>ggsql validate "&lt;query&gt;"</code>. When the user wants to see the output, use <code>ggsql exec "&lt;query&gt;" -v</code>.</li>
+</ol>
+
+
+</section>
+</section>
+
+<div id="quarto-appendix" class="default"><section class="quarto-appendix-contents" id="quarto-reuse"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div class="quarto-appendix-contents"><div>MIT</div></div></section></div></main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/ggsql\.org");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer><script type="module">
+  const offset = document.querySelector('meta[name="quarto:offset"]')?.content || './';
+  const base = offset + 'wasm/';
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = base + 'quarto.css';
+  document.head.appendChild(link);
+  import(base + 'quarto.js');
+</script>
+
+
+
+
+</body></html>
