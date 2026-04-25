@@ -4,6 +4,9 @@
 
 - Add cell delimiters and code lens actions to the Positron extension (#366)
 - ODBC is now turned on for the CLI as well (#344)
+- `FROM` can now come before `VISUALIZE`, mirroring the DuckDB style. This means
+that `FROM table VISUALIZE x, y` and `VISUALIZE x, y FROM table` are equivalent
+queries (#369)
 - CLI now has built-in documentation through the `docs` command as well as a
 skill for llms through the `skill` command (#361)
 
