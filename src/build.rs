@@ -20,7 +20,7 @@ fn main() {
     println!("cargo:rerun-if-changed={}", syntax_dir.display());
     println!("cargo:rerun-if-changed={}", quarto_yml.display());
     println!("cargo:rerun-if-changed={}", skill_cache.display());
-    println!("cargo:rerun-if-env-changed=GGSQL_SKIP_SKILL_FETCH");
+    println!("cargo:rerun-if-env-changed=GGSQL_UPDATE_SKILL");
 
     let site_url = read_site_url(&quarto_yml)
         .unwrap_or_else(|| "https://ggsql.org".to_string())
@@ -133,35 +133,28 @@ const SKILL_URL: &str =
     "https://raw.githubusercontent.com/posit-dev/skills/main/ggsql/ggsql/SKILL.md";
 
 fn load_skill(cache_path: &Path) -> SkillData {
-    let fetched = if env::var("GGSQL_SKIP_SKILL_FETCH").is_ok() {
-        None
-    } else {
-        fetch_skill()
-    };
-
-    let raw = match fetched {
-        Some(body) => {
+    if env::var("GGSQL_UPDATE_SKILL").is_ok() {
+        if let Some(body) = fetch_skill() {
             write_if_changed(cache_path, body.as_bytes());
-            body
+            return parse_skill(&body);
         }
-        None => match fs::read_to_string(cache_path) {
-            Ok(s) => s,
-            Err(_) => {
-                println!(
-                    "cargo:warning=SKILL.md not available (fetch failed and no cached copy at {}); `ggsql skill` will report unavailable.",
-                    cache_path.display()
-                );
-                return SkillData {
-                    name: "ggsql".to_string(),
-                    description: String::new(),
-                    body: String::new(),
-                    available: false,
-                };
-            }
-        },
-    };
+    }
 
-    parse_skill(&raw)
+    match fs::read_to_string(cache_path) {
+        Ok(raw) => parse_skill(&raw),
+        Err(_) => {
+            println!(
+                "cargo:warning=SKILL.md not available (no cached copy at {}); run with GGSQL_UPDATE_SKILL=1 to fetch. `ggsql skill` will report unavailable.",
+                cache_path.display()
+            );
+            SkillData {
+                name: "ggsql".to_string(),
+                description: String::new(),
+                body: String::new(),
+                available: false,
+            }
+        }
+    }
 }
 
 fn fetch_skill() -> Option<String> {
