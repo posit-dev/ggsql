@@ -7,6 +7,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description.workspace = true
+build = "build.rs"
 
 [lib]
 name = "ggsql"
@@ -56,6 +57,15 @@ rand.workspace = true
 sprintf = "0.4"
 const_format.workspace = true
 uuid.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Terminal markdown rendering for `ggsql docs` (native targets only;
+# crossterm 0.29 doesn't compile on wasm32)
+termimad = "0.31"
+
+[build-dependencies]
+regex.workspace = true
+ureq = "3"
 
 [dev-dependencies]
 jsonschema = "0.44"

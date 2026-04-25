@@ -9,6 +9,10 @@ import * as vscode from 'vscode';
 import { tryAcquirePositronApi } from '@posit-dev/positron';
 import { GgsqlRuntimeManager } from './manager';
 import { createConnectionDrivers } from './connections';
+import { GgsqlCodeLensProvider, registerCellCommands } from './codelens';
+import { activateDecorations } from './decorations';
+import { activateContextKeys } from './context';
+import { parseCells } from './cellParser';
 
 // Output channel for logging
 const outputChannel = vscode.window.createOutputChannel('ggsql');
@@ -60,13 +64,33 @@ export function activate(context: vscode.ExtensionContext): void {
             if (!editor || editor.document.languageId !== 'ggsql') {
                 return;
             }
-            const code = editor.document.getText();
-            if (code.trim().length === 0) {
-                return;
+            const cells = parseCells(editor.document);
+            if (cells.length > 0) {
+                for (const cell of cells) {
+                    if (cell.text.length > 0) {
+                        positronApi.runtime.executeCode('ggsql', cell.text, false, true);
+                    }
+                }
+            } else {
+                const code = editor.document.getText();
+                if (code.trim().length === 0) {
+                    return;
+                }
+                positronApi.runtime.executeCode('ggsql', code, true);
             }
-            positronApi.runtime.executeCode('ggsql', code, true);
         })
     );
+
+    // Register code lens provider and cell commands
+    context.subscriptions.push(
+        vscode.languages.registerCodeLensProvider('ggsql', new GgsqlCodeLensProvider()),
+    );
+    registerCellCommands(context, (code) => {
+        positronApi.runtime.executeCode('ggsql', code, false, true);
+    });
+
+    activateDecorations(context.subscriptions);
+    activateContextKeys(context.subscriptions);
 }
 
 /**

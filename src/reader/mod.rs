@@ -249,6 +249,46 @@ pub trait SqlDialect {
             "FALSE".to_string()
         }
     }
+
+    /// Build the DDL statement(s) needed to (re)create a temporary table
+    /// that holds the result of `body_sql`.
+    ///
+    /// Column aliases from `WITH t(a, b) AS (...)` are preserved portably by
+    /// wrapping the body in a named CTE with a column alias list, so the
+    /// backend never needs to support `CREATE TABLE t(a, b) AS ...` syntax.
+    ///
+    /// Returned statements must be executed in order via `Reader::execute_sql`.
+    fn create_or_replace_temp_table_sql(
+        &self,
+        name: &str,
+        column_aliases: &[String],
+        body_sql: &str,
+    ) -> Vec<String> {
+        let body = wrap_with_column_aliases(body_sql, column_aliases);
+        vec![format!(
+            "CREATE OR REPLACE TEMP TABLE {} AS {}",
+            naming::quote_ident(name),
+            body
+        )]
+    }
+}
+
+/// Wrap a body SQL in a CTE with a column alias list when aliases are present.
+/// This is a portable way to rename the body's output columns without relying
+/// on `CREATE TABLE t(a, b) AS ...` (which SQLite does not support).
+pub(crate) fn wrap_with_column_aliases(body_sql: &str, column_aliases: &[String]) -> String {
+    if column_aliases.is_empty() {
+        return body_sql.to_string();
+    }
+    let cols = column_aliases
+        .iter()
+        .map(|c| naming::quote_ident(c))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "WITH __ggsql_aliased__({}) AS ({}) SELECT * FROM __ggsql_aliased__",
+        cols, body_sql
+    )
 }
 
 pub struct AnsiDialect;
