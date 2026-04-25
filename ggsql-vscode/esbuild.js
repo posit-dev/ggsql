@@ -4,7 +4,7 @@ const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
 
 async function main() {
-    const ctx = await esbuild.context({
+    const extensionCtx = await esbuild.context({
         entryPoints: ['src/extension.ts'],
         bundle: true,
         format: 'cjs',
@@ -17,11 +17,26 @@ async function main() {
         logLevel: 'info',
     });
 
+    const previewCtx = await esbuild.context({
+        entryPoints: ['src/previewWebview.ts'],
+        bundle: true,
+        format: 'iife',
+        minify: production,
+        sourcemap: !production,
+        sourcesContent: false,
+        platform: 'browser',
+        outfile: 'out/previewWebview.js',
+        logLevel: 'info',
+    });
+
     if (watch) {
-        await ctx.watch();
+        await extensionCtx.watch();
+        await previewCtx.watch();
     } else {
-        await ctx.rebuild();
-        await ctx.dispose();
+        await extensionCtx.rebuild();
+        await previewCtx.rebuild();
+        await extensionCtx.dispose();
+        await previewCtx.dispose();
     }
 }
 
