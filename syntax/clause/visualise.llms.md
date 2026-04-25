@@ -25,7 +25,7 @@ The `mapping` can take one of three forms and all three can be mixed:
 - *Column name*: If you provide the name of a column in the data then the values in that column are mapped to the aesthetic or property. If the name of the column is the same as the aesthetic or property you can provide it without the following `AS <aesthetic/property>` (implicit mapping).
 - *Constant*: If you provide a constant like a string, number, or boolean then this value is repeated for every record in the data and mapped to the given aesthetic or property. When mapping a constant you must use the explicit form since the aesthetic/property cannot be derived.
 
-If an asterisk is given (wildcard mapping) it indicate that every column in the layer data with a name matching a supported aesthetic or property are implicitly mapped to said aesthetic or property. If the aesthetic or property has been mapped elsewhere then that gains precedence (i.e. if writing `VISUALISE *, revenue AS y` then y will take on the data in the revenue column even if a y column exist in the data)
+If an asterisk is given (wildcard mapping) it indicates that every column in the layer data with a name matching a supported aesthetic or property are implicitly mapped to said aesthetic or property. If the aesthetic or property has been mapped elsewhere then that gains precedence (i.e. if writing `VISUALISE *, revenue AS y` then y will take on the data in the revenue column even if a y column exist in the data)
 
 An `aesthetic` is a visual characteristic of what you are rendering. Different aesthetics are available depending on the layer type since e.g. linetype is not relevant for points and shape are not relevant for lines.
 

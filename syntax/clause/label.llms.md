@@ -1,6 +1,6 @@
 # Define different titles with `LABEL`
 
-The `LABEL` clause is one of the simpler clauses in ggsql an allow you to override the default naming of axes and legends, as well as adding titles to the plot
+The `LABEL` clause is one of the simpler clauses in ggsql and allows you to override the default naming of axes and legends, as well as adding titles to the plot.
 
 ## Clause syntax
 

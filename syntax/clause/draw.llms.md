@@ -71,7 +71,7 @@ Remappings have to be explicit since the property name never coincide with an ae
 SETTING <parameter/aesthetic> => <value>, ...
 ```
 
-The `SETTING` clause can be used for to different things:
+The `SETTING` clause can be used for two different things:
 
 - *Setting parameters*: Some layers take additional arguments that control how they behave. Often, but not always, these modify the statistical transformation in some way. An example would be the binwidth parameter in histogram which controls the width of each bin during histogram calculation. This is not a statistical property since it is not related to each record, but to the calculation as a whole.
 - *Setting aesthetics*: If you wish to set a specific aesthetic to a literal value, e.g. ‘red’ (as in the color red) then you can do so in the `SETTING` clause. Aesthetics that are set will not go through a scale but will use the provided value as-is. You cannot set an aesthetic to a column, only to a scalar literal value.

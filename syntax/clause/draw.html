@@ -729,7 +729,7 @@ gradient teal.
 <section id="setting" class="level3">
 <h3 class="anchored" data-anchor-id="setting"><code>SETTING</code></h3>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SETTING</span> <span class="op">&lt;</span>parameter<span class="op">/</span>aesthetic<span class="op">&gt;</span> <span class="op">=&gt;</span> <span class="op">&lt;</span>value<span class="op">&gt;</span>, ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>The <code>SETTING</code> clause can be used for to different things:</p>
+<p>The <code>SETTING</code> clause can be used for two different things:</p>
 <ul>
 <li><em>Setting parameters</em>: Some layers take additional arguments that control how they behave. Often, but not always, these modify the statistical transformation in some way. An example would be the binwidth parameter in histogram which controls the width of each bin during histogram calculation. This is not a statistical property since it is not related to each record, but to the calculation as a whole.</li>
 <li><em>Setting aesthetics</em>: If you wish to set a specific aesthetic to a literal value, e.g.&nbsp;‘red’ (as in the color red) then you can do so in the <code>SETTING</code> clause. Aesthetics that are set will not go through a scale but will use the provided value as-is. You cannot set an aesthetic to a column, only to a scalar literal value.</li>
