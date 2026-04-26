@@ -15,8 +15,9 @@ skill for llms through the `skill` command (#361)
 - Rendering of inline plots in Positron had a bad interaction with how we
 handled auto-resizing in the plot pane. We now have a per-output-location path
 in the Jupyter kernel (#360)
-- Passing the shape aesthetic via `SETTING` now correctly translates named 
+- Passing the shape aesthetic via `SETTING` now correctly translates named
 shapes (#368)
+- Asterisk shape now has lines 60 degrees apart, giving an even shape
 
 ### Changed
 
