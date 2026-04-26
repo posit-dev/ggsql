@@ -15,7 +15,7 @@ skill for llms through the `skill` command (#361)
 - Rendering of inline plots in Positron had a bad interaction with how we
 handled auto-resizing in the plot pane. We now have a per-output-location path
 in the Jupyter kernel (#360)
-- Passing the shape aesthetic via `SETTING` now correctly translates named 
+- Passing the shape aesthetic via `SETTING` now correctly translates named
 shapes (#368)
 
 ### Changed
@@ -24,6 +24,7 @@ shapes (#368)
 before registering them back to the backend. We now keep the data purely on the
 backend until the layer query as was always intended (#363)
 - Simplified internal approach to DataFrame with DuckDB reader (#365)
+- Moved the CLI to its own module rather than be part of the main crate (#379)
 
 ### Removed
 
