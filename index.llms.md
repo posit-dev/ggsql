@@ -62,7 +62,7 @@ uv tool install ggsql-jupyter
 ggsql-jupyter --install
 
 # CLI (crates.io)
-cargo install ggsql
+cargo install ggsql-cli
 ```
 
 ## Features
