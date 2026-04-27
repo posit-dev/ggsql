@@ -22,6 +22,10 @@ impl GeomTrait for Ribbon {
                 ("pos1", DefaultAestheticValue::Required),
                 ("pos2min", DefaultAestheticValue::Required),
                 ("pos2max", DefaultAestheticValue::Required),
+                // pos2 is the input column for the Aggregate stat in range mode
+                // (`SETTING aggregate => (lower_func, upper_func)` consumes pos2
+                // and produces pos2min/pos2max). Optional otherwise.
+                ("pos2", DefaultAestheticValue::Null),
                 ("fill", DefaultAestheticValue::String("black")),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("opacity", DefaultAestheticValue::Number(0.8)),
@@ -42,6 +46,10 @@ impl GeomTrait for Ribbon {
 
     fn supports_aggregate(&self) -> bool {
         true
+    }
+
+    fn aggregate_range_pair(&self) -> Option<(&'static str, &'static str)> {
+        Some(("pos2min", "pos2max"))
     }
 
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
@@ -67,6 +75,7 @@ impl GeomTrait for Ribbon {
                 parameters,
                 dialect,
                 self.aggregate_slots(),
+                self.aggregate_range_pair(),
             )?
         } else {
             StatResult::Identity

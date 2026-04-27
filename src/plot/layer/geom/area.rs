@@ -82,6 +82,7 @@ impl GeomTrait for Area {
                 parameters,
                 dialect,
                 self.aggregate_slots(),
+                self.aggregate_range_pair(),
             )?
         } else {
             StatResult::Identity

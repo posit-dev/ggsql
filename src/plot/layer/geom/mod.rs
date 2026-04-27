@@ -216,6 +216,19 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         &[2]
     }
 
+    /// Range pair for range-style Aggregate output.
+    ///
+    /// When `Some((lower, upper))`, this geom is a "range geom" that takes exactly
+    /// two `aggregate` functions and assigns them to the two named aesthetics
+    /// (e.g. `("pos2min", "pos2max")` for ribbon/errorbar). The user maps `pos2`
+    /// as the input column; the stat consumes pos2 and produces the range pair.
+    /// One row per group; no `aggregate` tag column.
+    ///
+    /// `None` (default) means standard per-function-rows aggregation.
+    fn aggregate_range_pair(&self) -> Option<(&'static str, &'static str)> {
+        None
+    }
+
     /// Apply statistical transformation to the layer query.
     ///
     /// The default implementation dispatches to the Aggregate stat when
@@ -241,6 +254,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                 parameters,
                 dialect,
                 self.aggregate_slots(),
+                self.aggregate_range_pair(),
             );
         }
         Ok(StatResult::Identity)
@@ -512,6 +526,11 @@ impl Geom {
     /// Which position-aesthetic slots the Aggregate stat should reduce.
     pub fn aggregate_slots(&self) -> &'static [u8] {
         self.0.aggregate_slots()
+    }
+
+    /// Range pair for range-style Aggregate output, if any.
+    pub fn aggregate_range_pair(&self) -> Option<(&'static str, &'static str)> {
+        self.0.aggregate_range_pair()
     }
 
     /// Validate aesthetic mappings

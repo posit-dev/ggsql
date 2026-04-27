@@ -107,6 +107,7 @@ impl GeomTrait for Bar {
                 parameters,
                 dialect,
                 self.aggregate_slots(),
+                self.aggregate_range_pair(),
             );
         }
         stat_bar_count(query, schema, aesthetics, group_by)

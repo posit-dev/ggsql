@@ -68,6 +68,7 @@ impl GeomTrait for Line {
                 parameters,
                 dialect,
                 self.aggregate_slots(),
+                self.aggregate_range_pair(),
             )?
         } else {
             StatResult::Identity

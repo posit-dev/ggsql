@@ -90,11 +90,16 @@ pub fn apply(
     parameters: &HashMap<String, ParameterValue>,
     dialect: &dyn SqlDialect,
     agg_slots: &[u8],
+    range_pair: Option<(&'static str, &'static str)>,
 ) -> Result<StatResult> {
     let funcs = match extract_aggregate_param(parameters) {
         None => return Ok(StatResult::Identity),
         Some(funcs) => funcs,
     };
+
+    if let Some((lo, hi)) = range_pair {
+        return apply_range_mode(query, schema, aesthetics, group_by, &funcs, dialect, lo, hi);
+    }
 
     // Walk the layer's position aesthetics and route each by (slot, type):
     //   in-axis slot && numeric  → aggregated (numeric_pos)
@@ -276,6 +281,143 @@ fn unquote(qcol: &str) -> String {
 /// SQL for a function name literal, properly escaped.
 fn func_literal(func: &str) -> String {
     format!("'{}'", func.replace('\'', "''"))
+}
+
+// =============================================================================
+// Range-mode strategy: exactly two functions filling a (lower, upper) aesthetic
+// pair on the same row. Used by ribbon/errorbar.
+// =============================================================================
+
+fn apply_range_mode(
+    query: &str,
+    schema: &Schema,
+    aesthetics: &Mappings,
+    group_by: &[String],
+    funcs: &[String],
+    dialect: &dyn SqlDialect,
+    lo: &'static str,
+    hi: &'static str,
+) -> Result<StatResult> {
+    if funcs.len() != 2 {
+        return Err(GgsqlError::ValidationError(format!(
+            "aggregate on a range geom must be an array of exactly two functions (lower, upper), got {}",
+            funcs.len()
+        )));
+    }
+
+    // Range mode requires `pos2` mapped to a numeric input column. The user
+    // writes `MAPPING value AS y` and the stat consumes it to produce both
+    // bounds.
+    let input_col = match aesthetics.get("pos2").and_then(|v| v.column_name()) {
+        Some(c) => c.to_string(),
+        None => {
+            return Err(GgsqlError::ValidationError(
+                "aggregate on a range geom requires a `y` (pos2) mapping as the input column"
+                    .to_string(),
+            ));
+        }
+    };
+    let info = schema.iter().find(|c| c.name == input_col);
+    if info.map(|c| c.is_discrete).unwrap_or(false) {
+        return Err(GgsqlError::ValidationError(
+            "aggregate on a range geom requires a numeric `y` (pos2) input, not a discrete column"
+                .to_string(),
+        ));
+    }
+    let qcol = naming::quote_ident(&input_col);
+
+    // Group columns: PARTITION BY + discrete mappings (already in group_by) +
+    // any discrete position aesthetics on the layer (e.g. pos1 if it's a string).
+    let mut group_cols: Vec<String> = Vec::new();
+    for g in group_by {
+        if !group_cols.contains(g) {
+            group_cols.push(g.clone());
+        }
+    }
+    for (aesthetic, value) in &aesthetics.aesthetics {
+        if !is_position_aesthetic(aesthetic) || aesthetic == "pos2" {
+            continue;
+        }
+        let col = match value.column_name() {
+            Some(c) => c.to_string(),
+            None => continue,
+        };
+        if !group_cols.contains(&col) {
+            group_cols.push(col);
+        }
+    }
+
+    let src_alias = "\"__ggsql_stat_src__\"";
+    let group_by_clause = if group_cols.is_empty() {
+        String::new()
+    } else {
+        let qcols: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
+        format!(" GROUP BY {}", qcols.join(", "))
+    };
+
+    // Build the two function expressions. Quantiles use the inline form when
+    // available; otherwise fall back to `sql_percentile` correlated to the
+    // outer alias used in the FROM (`__ggsql_qt__`, matching boxplot/etc.).
+    let lo_expr = build_range_function_sql(&funcs[0], &qcol, &input_col, dialect, &group_cols)?;
+    let hi_expr = build_range_function_sql(&funcs[1], &qcol, &input_col, dialect, &group_cols)?;
+
+    let stat_lo = naming::stat_column(lo);
+    let stat_hi = naming::stat_column(hi);
+
+    let group_select: Vec<String> = group_cols
+        .iter()
+        .map(|c| naming::quote_ident(c))
+        .collect();
+    let mut select_parts = group_select.clone();
+    select_parts.push(format!("{} AS {}", lo_expr, naming::quote_ident(&stat_lo)));
+    select_parts.push(format!("{} AS {}", hi_expr, naming::quote_ident(&stat_hi)));
+
+    let transformed_query = format!(
+        "WITH {src} AS ({query}) SELECT {sel} FROM {src} AS \"__ggsql_qt__\"{gb}",
+        src = src_alias,
+        query = query,
+        sel = select_parts.join(", "),
+        gb = group_by_clause,
+    );
+
+    // consumed_aesthetics: pos2 carries the original-name capture for axis
+    // labels; lo/hi flag the auto-rename in execute/layer.rs (their stat-column
+    // names match the position aesthetics they fill).
+    Ok(StatResult::Transformed {
+        query: transformed_query,
+        stat_columns: vec![lo.to_string(), hi.to_string()],
+        dummy_columns: vec![],
+        consumed_aesthetics: vec!["pos2".to_string(), lo.to_string(), hi.to_string()],
+    })
+}
+
+/// Build the SQL fragment for one function in range mode. Quantiles get the
+/// inline form when the dialect supports it; otherwise the fallback subquery.
+fn build_range_function_sql(
+    func: &str,
+    qcol: &str,
+    raw_col: &str,
+    dialect: &dyn SqlDialect,
+    group_cols: &[String],
+) -> Result<String> {
+    if func == "count" {
+        return Err(GgsqlError::ValidationError(
+            "aggregate on a range geom does not support 'count' (it has no range semantics)"
+                .to_string(),
+        ));
+    }
+    if let Some(frac) = quantile_fraction(func) {
+        if let Some(inline) = dialect.sql_quantile_inline(raw_col, frac) {
+            return Ok(inline);
+        }
+        return Ok(dialect.sql_percentile(raw_col, frac, "\"__ggsql_stat_src__\"", group_cols));
+    }
+    function_inline_sql(func, qcol, dialect).ok_or_else(|| {
+        GgsqlError::ValidationError(format!(
+            "aggregate on a range geom does not support function '{}' on this dialect",
+            func
+        ))
+    })
 }
 
 // =============================================================================
@@ -585,6 +727,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[2],
+            None,
         )
         .unwrap();
         assert_eq!(result, StatResult::Identity);
@@ -604,6 +747,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[2],
+            None,
         )
         .unwrap();
         assert_eq!(result, StatResult::Identity);
@@ -628,6 +772,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[2],
+            None,
         )
         .unwrap();
 
@@ -668,6 +813,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[2],
+            None,
         )
         .unwrap();
 
@@ -708,6 +854,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[2],
+            None,
         )
         .unwrap();
         match result {
@@ -748,6 +895,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[2],
+            None,
         )
         .unwrap();
         match result {
@@ -779,6 +927,7 @@ mod tests {
             &params,
             &NoInlineQuantileDialect,
             &[2],
+            None,
         )
         .unwrap();
         match result {
@@ -814,6 +963,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[2],
+            None,
         )
         .unwrap();
         match result {
@@ -844,6 +994,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[2],
+            None,
         )
         .unwrap();
         match result {
@@ -873,6 +1024,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[2],
+            None,
         )
         .unwrap();
         match result {
@@ -902,6 +1054,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[2],
+            None,
         )
         .unwrap();
         match result {
@@ -948,6 +1101,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[2],
+            None,
         )
         .unwrap();
         match result {
@@ -990,6 +1144,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[2],
+            None,
         )
         .unwrap();
         match result {
@@ -1021,6 +1176,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[2],
+            None,
         )
         .unwrap();
         match result {
@@ -1062,6 +1218,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[1, 2],
+            None,
         )
         .unwrap();
         match result {
@@ -1110,6 +1267,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[2],
+            None,
         )
         .unwrap();
         match result {
@@ -1152,6 +1310,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[2],
+            None,
         )
         .unwrap();
         match result {
@@ -1200,6 +1359,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[1, 2],
+            None,
         )
         .unwrap();
         match result {
@@ -1247,6 +1407,7 @@ mod tests {
             &params,
             &InlineQuantileDialect,
             &[2],
+            None,
         )
         .unwrap();
         match result {
@@ -1261,5 +1422,258 @@ mod tests {
             }
             _ => panic!("expected Transformed"),
         }
+    }
+
+    // ========================================================================
+    // Range-mode tests (ribbon / errorbar)
+    // ========================================================================
+
+    fn range_pair() -> Option<(&'static str, &'static str)> {
+        Some(("pos2min", "pos2max"))
+    }
+
+    fn range_input_aes_with_group() -> (Mappings, Schema) {
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = vec![
+            ColumnInfo {
+                name: "__ggsql_aes_pos1__".to_string(),
+                dtype: DataType::Utf8,
+                is_discrete: true,
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "__ggsql_aes_pos2__".to_string(),
+                dtype: DataType::Float64,
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+        ];
+        (aes, schema)
+    }
+
+    #[test]
+    fn range_mode_two_functions_emits_one_row_per_group() {
+        let (aes, schema) = range_input_aes_with_group();
+        let mut params = HashMap::new();
+        use crate::plot::types::ArrayElement;
+        params.insert(
+            "aggregate".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::String("mean-sdev".to_string()),
+                ArrayElement::String("mean+sdev".to_string()),
+            ]),
+        );
+
+        let result = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &params,
+            &InlineQuantileDialect,
+            &[2],
+            range_pair(),
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                consumed_aesthetics,
+                ..
+            } => {
+                assert!(
+                    query.contains("AVG(\"__ggsql_aes_pos2__\") - STDDEV_POP(\"__ggsql_aes_pos2__\")"),
+                    "lower bound expr missing: {}",
+                    query
+                );
+                assert!(
+                    query.contains("AVG(\"__ggsql_aes_pos2__\") + STDDEV_POP(\"__ggsql_aes_pos2__\")"),
+                    "upper bound expr missing: {}",
+                    query
+                );
+                assert!(query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
+                assert!(!query.contains("UNION ALL"));
+                assert!(!query.contains("CROSS JOIN"));
+                // No `aggregate` tag column in range mode.
+                assert!(!query.contains("__ggsql_stat_aggregate__"));
+                assert_eq!(
+                    stat_columns,
+                    vec!["pos2min".to_string(), "pos2max".to_string()]
+                );
+                assert!(consumed_aesthetics.contains(&"pos2".to_string()));
+                assert!(consumed_aesthetics.contains(&"pos2min".to_string()));
+                assert!(consumed_aesthetics.contains(&"pos2max".to_string()));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn range_mode_rejects_single_function() {
+        let (aes, schema) = range_input_aes_with_group();
+        let mut params = HashMap::new();
+        params.insert(
+            "aggregate".to_string(),
+            ParameterValue::String("mean".to_string()),
+        );
+
+        let result = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &params,
+            &InlineQuantileDialect,
+            &[2],
+            range_pair(),
+        );
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("exactly two"),
+            "expected 'exactly two' in error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn range_mode_rejects_three_functions() {
+        let (aes, schema) = range_input_aes_with_group();
+        let mut params = HashMap::new();
+        use crate::plot::types::ArrayElement;
+        params.insert(
+            "aggregate".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::String("min".to_string()),
+                ArrayElement::String("mean".to_string()),
+                ArrayElement::String("max".to_string()),
+            ]),
+        );
+
+        let err = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &params,
+            &InlineQuantileDialect,
+            &[2],
+            range_pair(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("exactly two"));
+    }
+
+    #[test]
+    fn range_mode_quantile_uses_inline_when_available() {
+        let (aes, schema) = range_input_aes_with_group();
+        let mut params = HashMap::new();
+        use crate::plot::types::ArrayElement;
+        params.insert(
+            "aggregate".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::String("q25".to_string()),
+                ArrayElement::String("q75".to_string()),
+            ]),
+        );
+
+        let result = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &params,
+            &InlineQuantileDialect,
+            &[2],
+            range_pair(),
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(query.contains("QUANTILE_CONT"));
+                assert!(query.contains("0.25"));
+                assert!(query.contains("0.75"));
+                assert!(!query.contains("NTILE(4)"));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn range_mode_quantile_falls_back_without_dialect_support() {
+        let (aes, schema) = range_input_aes_with_group();
+        let mut params = HashMap::new();
+        use crate::plot::types::ArrayElement;
+        params.insert(
+            "aggregate".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::String("q25".to_string()),
+                ArrayElement::String("q75".to_string()),
+            ]),
+        );
+
+        let result = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &params,
+            &NoInlineQuantileDialect,
+            &[2],
+            range_pair(),
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(query.contains("NTILE(4)"));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn range_mode_requires_pos2_input() {
+        // Range geom but pos2 not mapped → error.
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        let schema = vec![ColumnInfo {
+            name: "__ggsql_aes_pos1__".to_string(),
+            dtype: DataType::Utf8,
+            is_discrete: true,
+            min: None,
+            max: None,
+        }];
+        let mut params = HashMap::new();
+        use crate::plot::types::ArrayElement;
+        params.insert(
+            "aggregate".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::String("mean-sdev".to_string()),
+                ArrayElement::String("mean+sdev".to_string()),
+            ]),
+        );
+
+        let err = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &params,
+            &InlineQuantileDialect,
+            &[2],
+            range_pair(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("pos2") || err.contains("`y`"),
+            "expected pos2/y mention in error, got: {}",
+            err
+        );
     }
 }
