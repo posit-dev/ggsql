@@ -435,7 +435,7 @@ module.exports = grammar({
     )),
 
     from_clause: $ => prec.right(1, seq(
-      caseInsensitive('FROM'),
+      token(prec(1, caseInsensitive('FROM'))),
       $.table_ref,
       repeat(seq(',', $.table_ref))
     )),
