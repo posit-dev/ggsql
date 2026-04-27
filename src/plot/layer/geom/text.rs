@@ -63,6 +63,10 @@ impl GeomTrait for Text {
         PARAMS
     }
 
+    fn supports_aggregate(&self) -> bool {
+        true
+    }
+
     fn post_process(
         &self,
         df: DataFrame,

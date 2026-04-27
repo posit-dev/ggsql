@@ -37,6 +37,10 @@ impl GeomTrait for Polygon {
         }];
         PARAMS
     }
+
+    fn supports_aggregate(&self) -> bool {
+        true
+    }
 }
 
 impl std::fmt::Display for Polygon {

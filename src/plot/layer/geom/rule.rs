@@ -25,6 +25,10 @@ impl GeomTrait for Rule {
         }
     }
 
+    fn supports_aggregate(&self) -> bool {
+        true
+    }
+
     fn validate_aesthetics(&self, mappings: &crate::Mappings) -> std::result::Result<(), String> {
         // Rule requires exactly one of pos1 or pos2 (XOR logic)
         let has_pos1 = mappings.contains_key("pos1");

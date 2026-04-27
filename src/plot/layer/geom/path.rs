@@ -36,6 +36,10 @@ impl GeomTrait for Path {
         }];
         PARAMS
     }
+
+    fn supports_aggregate(&self) -> bool {
+        true
+    }
 }
 
 impl std::fmt::Display for Path {

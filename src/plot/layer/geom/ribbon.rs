@@ -1,7 +1,8 @@
 //! Ribbon geom implementation
 
+use super::stat_aggregate;
 use super::types::POSITION_VALUES;
-use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
+use super::{has_aggregate_param, DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::plot::types::DefaultAestheticValue;
 use crate::plot::{DefaultParamValue, ParamConstraint, ParamDefinition};
 use crate::{naming, Mappings};
@@ -39,6 +40,10 @@ impl GeomTrait for Ribbon {
         PARAMS
     }
 
+    fn supports_aggregate(&self) -> bool {
+        true
+    }
+
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
         true
     }
@@ -46,13 +51,16 @@ impl GeomTrait for Ribbon {
     fn apply_stat_transform(
         &self,
         query: &str,
-        _schema: &crate::plot::Schema,
-        _aesthetics: &Mappings,
-        _group_by: &[String],
-        _parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
+        schema: &crate::plot::Schema,
+        aesthetics: &Mappings,
+        group_by: &[String],
+        parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
-        _dialect: &dyn crate::reader::SqlDialect,
+        dialect: &dyn crate::reader::SqlDialect,
     ) -> crate::Result<StatResult> {
+        if has_aggregate_param(parameters) {
+            return stat_aggregate::apply(query, schema, aesthetics, group_by, parameters, dialect);
+        }
         // Ribbon geom needs ordering by pos1 (domain axis) for proper rendering
         let order_col = naming::aesthetic_column("pos1");
         Ok(StatResult::Transformed {

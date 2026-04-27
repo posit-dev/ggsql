@@ -44,6 +44,10 @@ impl GeomTrait for ErrorBar {
         ];
         PARAMS
     }
+
+    fn supports_aggregate(&self) -> bool {
+        true
+    }
 }
 
 impl std::fmt::Display for ErrorBar {

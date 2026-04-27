@@ -1,8 +1,9 @@
 //! Line geom implementation
 
+use super::stat_aggregate;
 use super::{
-    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
-    StatResult,
+    has_aggregate_param, DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint,
+    ParamDefinition, StatResult,
 };
 use crate::plot::layer::orientation::{ALIGNED, ORIENTATION_VALUES};
 use crate::plot::types::DefaultAestheticValue;
@@ -39,6 +40,10 @@ impl GeomTrait for Line {
         PARAMS
     }
 
+    fn supports_aggregate(&self) -> bool {
+        true
+    }
+
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
         true
     }
@@ -46,13 +51,16 @@ impl GeomTrait for Line {
     fn apply_stat_transform(
         &self,
         query: &str,
-        _schema: &crate::plot::Schema,
-        _aesthetics: &Mappings,
-        _group_by: &[String],
-        _parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
+        schema: &crate::plot::Schema,
+        aesthetics: &Mappings,
+        group_by: &[String],
+        parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
-        _dialect: &dyn crate::reader::SqlDialect,
+        dialect: &dyn crate::reader::SqlDialect,
     ) -> crate::Result<StatResult> {
+        if has_aggregate_param(parameters) {
+            return stat_aggregate::apply(query, schema, aesthetics, group_by, parameters, dialect);
+        }
         // Line geom needs ordering by pos1 (domain axis) for proper rendering
         let order_col = naming::aesthetic_column("pos1");
         Ok(StatResult::Transformed {
