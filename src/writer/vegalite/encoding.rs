@@ -6,7 +6,7 @@
 use crate::array_util::as_str;
 use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
 use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path, ScaleTypeKind};
-use crate::plot::{CoordKind, ParameterValue};
+use crate::plot::ParameterValue;
 use crate::{AestheticValue, DataFrame, GgsqlError, Plot, Result};
 use arrow::array::Array;
 use arrow::datatypes::DataType;
@@ -997,11 +997,11 @@ fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value
 pub(super) fn map_aesthetic_name(
     aesthetic: &str,
     _ctx: &crate::plot::AestheticContext,
-    coord_kind: CoordKind,
+    renderer: &dyn super::projection::ProjectionRenderer,
 ) -> String {
     // For internal position aesthetics, map directly to Vega-Lite channel names
     // based on coord type (ignoring user-facing names)
-    if let Some(vl_channel) = map_position_to_vegalite(aesthetic, coord_kind) {
+    if let Some(vl_channel) = super::projection::map_position_to_vegalite(aesthetic, renderer) {
         return vl_channel;
     }
 
@@ -1017,29 +1017,6 @@ pub(super) fn map_aesthetic_name(
         // (fill and stroke map to Vega-Lite's separate fill/stroke channels)
         // typeface/fontweight/italic/rotation are parsed explicitly
         _ => aesthetic.to_string(),
-    }
-}
-
-/// Map internal position aesthetic to Vega-Lite channel name based on coord type.
-///
-/// Returns `Some(channel_name)` for internal position aesthetics (pos1, pos2, etc.),
-/// or `None` for material aesthetics.
-pub(super) fn map_position_to_vegalite(aesthetic: &str, coord_kind: CoordKind) -> Option<String> {
-    let (primary, secondary) = match coord_kind {
-        CoordKind::Cartesian => ("x", "y"),
-        CoordKind::Polar => ("radius", "theta"),
-    };
-
-    // Match internal position aesthetic patterns
-    // Convention: min → primary channel (x/y), max → secondary channel (x2/y2)
-    match aesthetic {
-        // Primary position and min variants
-        "pos1" | "pos1min" => Some(primary.to_string()),
-        "pos2" | "pos2min" => Some(secondary.to_string()),
-        // End and max variants (Vega-Lite uses x2/y2/theta2/radius2)
-        "pos1end" | "pos1max" => Some(format!("{}2", primary)),
-        "pos2end" | "pos2max" => Some(format!("{}2", secondary)),
-        _ => None,
     }
 }
 
@@ -1064,27 +1041,39 @@ pub struct RenderContext<'a> {
 }
 
 impl<'a> RenderContext<'a> {
-    /// Create a new render context
-    pub fn new(scales: &'a [crate::Scale], coord_kind: CoordKind) -> Self {
-        let pos1 = map_position_to_vegalite("pos1", coord_kind).unwrap();
-        let pos1_end = map_position_to_vegalite("pos1end", coord_kind).unwrap();
-        let pos2 = map_position_to_vegalite("pos2", coord_kind).unwrap();
-        let pos2_end = map_position_to_vegalite("pos2end", coord_kind).unwrap();
+    /// Create a new render context from a projection renderer
+    pub fn new(
+        scales: &'a [crate::Scale],
+        renderer: &dyn super::projection::ProjectionRenderer,
+    ) -> Self {
+        let pos1 =
+            super::projection::map_position_to_vegalite("pos1", renderer).unwrap();
+        let pos1_end =
+            super::projection::map_position_to_vegalite("pos1end", renderer).unwrap();
+        let pos2 =
+            super::projection::map_position_to_vegalite("pos2", renderer).unwrap();
+        let pos2_end =
+            super::projection::map_position_to_vegalite("pos2end", renderer).unwrap();
 
-        let (pos1_offset, pos2_offset) = match coord_kind {
-            CoordKind::Cartesian => ("xOffset".to_string(), "yOffset".to_string()),
-            CoordKind::Polar => ("radiusOffset".to_string(), "thetaOffset".to_string()),
-        };
+        let (pos1_offset, pos2_offset) = renderer.offset_channels();
 
         Self {
             scales,
-            channels: (pos1, pos1_end, pos1_offset, pos2, pos2_end, pos2_offset),
+            channels: (
+                pos1,
+                pos1_end,
+                pos1_offset.to_string(),
+                pos2,
+                pos2_end,
+                pos2_offset.to_string(),
+            ),
         }
     }
 
     #[cfg(test)]
     pub fn default_for_test() -> Self {
-        Self::new(&[], CoordKind::Cartesian)
+        let renderer = super::projection::get_projection_renderer(None);
+        Self::new(&[], renderer.as_ref())
     }
 
     /// Find a scale by aesthetic name

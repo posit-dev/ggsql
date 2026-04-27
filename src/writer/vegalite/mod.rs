@@ -26,7 +26,7 @@ mod layer;
 mod projection;
 
 use crate::plot::ArrayElement;
-use crate::plot::{CoordKind, ParameterValue, Scale, ScaleTypeKind};
+use crate::plot::{ParameterValue, Scale, ScaleTypeKind};
 use crate::writer::Writer;
 use crate::{naming, AestheticValue, DataFrame, GgsqlError, Plot, Result};
 use serde_json::{json, Value};
@@ -38,7 +38,7 @@ use encoding::{
     build_detail_encoding, build_encoding_channel, infer_field_type, map_aesthetic_name,
 };
 use layer::{geom_to_mark, get_renderer, validate_layer_columns, GeomRenderer, PreparedData};
-use projection::apply_project_transforms;
+use projection::{apply_project_transforms, get_projection_renderer, ProjectionRenderer};
 
 /// Conversion factor from points to pixels (CSS standard: 96 DPI, 72 points/inch)
 /// 1 point = 96/72 pixels = 1.333
@@ -162,7 +162,7 @@ fn prepare_layer_data(
 /// The `free_scales` array indicates which position aesthetics have independent scales
 /// per facet panel. When a position is free, explicit domains should not be set.
 ///
-/// The `coord_kind` determines how internal position aesthetics are mapped to
+/// The `projection` determines how internal position aesthetics are mapped to
 /// Vega-Lite encoding channel names.
 fn build_layers(
     spec: &Plot,
@@ -171,12 +171,12 @@ fn build_layers(
     layer_renderers: &[Box<dyn GeomRenderer>],
     prepared_data: &[PreparedData],
     free_scales: Option<&[crate::plot::ArrayElement]>,
-    coord_kind: CoordKind,
+    projection: &dyn ProjectionRenderer,
 ) -> Result<Vec<Value>> {
     let mut layers = Vec::new();
 
     // Build context once for all layers
-    let context = encoding::RenderContext::new(&spec.scales, coord_kind);
+    let context = encoding::RenderContext::new(&spec.scales, projection);
 
     for (layer_idx, layer) in spec.layers.iter().enumerate() {
         let data_key = &layer_data_keys[layer_idx];
@@ -207,8 +207,8 @@ fn build_layers(
         // Set transform array on layer spec
         layer_spec["transform"] = json!(transforms);
 
-        // Build encoding for this layer (pass free scales and coord kind)
-        let mut encoding = build_layer_encoding(layer, df, spec, free_scales, coord_kind)?;
+        // Build encoding for this layer (pass free scales and projection)
+        let mut encoding = build_layer_encoding(layer, df, spec, free_scales, projection)?;
 
         // For point marks, remove fill: null from encoding — Vega-Lite point marks
         // are unfilled by default, so omitting it achieves the same visual result
@@ -249,14 +249,14 @@ fn build_layers(
 /// The `free_scales` array indicates which position aesthetics have independent scales
 /// per facet panel. When a position is free, explicit domains should not be set.
 ///
-/// The `coord_kind` determines how internal position aesthetics (pos1, pos2) are
+/// The `projection` determines how internal position aesthetics (pos1, pos2) are
 /// mapped to Vega-Lite encoding channel names (x/y for cartesian, theta/radius for polar).
 fn build_layer_encoding(
     layer: &crate::plot::Layer,
     df: &DataFrame,
     spec: &Plot,
     free_scales: Option<&[crate::plot::ArrayElement]>,
-    coord_kind: CoordKind,
+    projection: &dyn ProjectionRenderer,
 ) -> Result<serde_json::Map<String, Value>> {
     let mut encoding = serde_json::Map::new();
 
@@ -304,7 +304,7 @@ fn build_layer_encoding(
             continue;
         }
 
-        let mut channel_name = map_aesthetic_name(aesthetic, &aesthetic_ctx, coord_kind);
+        let mut channel_name = map_aesthetic_name(aesthetic, &aesthetic_ctx, projection);
         // Opacity is retargeted to the fill when fill is supported
         if channel_name == "opacity" && layer.mappings.contains_key("fill") {
             channel_name = "fillOpacity".to_string();
@@ -331,7 +331,7 @@ fn build_layer_encoding(
             if let AestheticValue::Column { name: col, .. } = value {
                 let end_col = naming::bin_end_column(col);
                 let end_aesthetic = format!("{}end", aesthetic); // "pos1end" or "pos2end"
-                let end_channel = map_aesthetic_name(&end_aesthetic, &aesthetic_ctx, coord_kind); // maps to "x2" or "y2" (or theta2/radius2 for polar)
+                let end_channel = map_aesthetic_name(&end_aesthetic, &aesthetic_ctx, projection); // maps to "x2" or "y2" (or theta2/radius2 for polar)
                 encoding.insert(end_channel, json!({"field": end_col}));
             }
         }
@@ -343,7 +343,7 @@ fn build_layer_encoding(
     }
 
     // Build context for renderer (also provides resolved position channel names)
-    let context = encoding::RenderContext::new(&spec.scales, coord_kind);
+    let context = encoding::RenderContext::new(&spec.scales, projection);
     let (_, _, pos1_offset, pos2, _, pos2_offset) = &context.channels;
 
     // Add pos1 offset encoding for dodged positions (pos1offset column)
@@ -413,7 +413,7 @@ fn apply_faceting(
     facet: &crate::plot::Facet,
     facet_df: &DataFrame,
     scales: &[Scale],
-    coord_kind: CoordKind,
+    projection: &dyn ProjectionRenderer,
 ) {
     use crate::plot::FacetLayout;
 
@@ -458,7 +458,7 @@ fn apply_faceting(
             obj.remove("width");
             obj.remove("height");
 
-            apply_facet_scale_resolution(vl_spec, &facet.properties, coord_kind);
+            apply_facet_scale_resolution(vl_spec, &facet.properties, projection);
             apply_facet_properties(vl_spec, &facet.properties, true);
         }
         FacetLayout::Grid { row: _, column: _ } => {
@@ -509,7 +509,7 @@ fn apply_faceting(
             obj.remove("width");
             obj.remove("height");
 
-            apply_facet_scale_resolution(vl_spec, &facet.properties, coord_kind);
+            apply_facet_scale_resolution(vl_spec, &facet.properties, projection);
             apply_facet_properties(vl_spec, &facet.properties, false);
         }
     }
@@ -622,24 +622,21 @@ fn get_free_scales(facet: Option<&crate::plot::Facet>) -> Option<&[crate::plot::
 /// - `[false, true]`: shared pos1 scale, independent pos2 scale (y or theta)
 /// - `[true, true]`: independent scales for both axes
 ///
-/// The channel names depend on coord_kind:
+/// The channel names depend on the projection:
 /// - Cartesian: pos1 -> "x", pos2 -> "y"
 /// - Polar: pos1 -> "radius", pos2 -> "theta"
 fn apply_facet_scale_resolution(
     vl_spec: &mut Value,
     properties: &HashMap<String, ParameterValue>,
-    coord_kind: CoordKind,
+    projection: &dyn ProjectionRenderer,
 ) {
     let Some(ParameterValue::Array(arr)) = properties.get("free") else {
         // No free property means fixed/shared scales (Vega-Lite default)
         return;
     };
 
-    // Determine channel names based on coord kind
-    let (pos1_channel, pos2_channel) = match coord_kind {
-        CoordKind::Cartesian => ("x", "y"),
-        CoordKind::Polar => ("radius", "theta"),
-    };
+    // Determine channel names from the projection renderer
+    let (pos1_channel, pos2_channel) = projection.position_channels();
 
     // Extract booleans from the array (position-indexed)
     let free_pos1 = arr
@@ -1092,13 +1089,10 @@ impl Writer for VegaLiteWriter {
             // Faceted charts need explicit numeric dimensions (moved into inner spec
             // by apply_faceting). Arc marks especially need this since their radius
             // range is [0, min(width, height) / 2] — without dimensions, arcs are invisible.
-            let is_polar = spec
-                .project
-                .as_ref()
-                .is_some_and(|p| p.coord.coord_kind() == CoordKind::Polar);
-            if is_polar {
-                vl_spec["width"] = json!(DEFAULT_POLAR_SIZE);
-                vl_spec["height"] = json!(DEFAULT_POLAR_SIZE);
+            let proj = get_projection_renderer(spec.project.as_ref());
+            if let Some((w, h)) = proj.panel_size() {
+                vl_spec["width"] = json!(w);
+                vl_spec["height"] = json!(h);
             }
         }
 
@@ -1137,14 +1131,10 @@ impl Writer for VegaLiteWriter {
         let unified_data = unify_datasets(&prep.datasets)?;
         vl_spec["data"] = json!({"values": unified_data});
 
-        // 9. Get coord kind (default to Cartesian if no project)
-        let coord_kind = spec
-            .project
-            .as_ref()
-            .map(|p| p.coord.coord_kind())
-            .unwrap_or(CoordKind::Cartesian);
+        // 9. Get projection renderer (default to Cartesian if no project)
+        let projection = get_projection_renderer(spec.project.as_ref());
 
-        // 10. Build layers (pass free scales and coord kind for domain handling)
+        // 10. Build layers (pass free scales and projection for domain handling)
         let layers = build_layers(
             spec,
             data,
@@ -1152,7 +1142,7 @@ impl Writer for VegaLiteWriter {
             &prep.renderers,
             &prep.prepared,
             free_scales,
-            coord_kind,
+            projection.as_ref(),
         )?;
         vl_spec["layer"] = json!(layers);
 
@@ -1163,7 +1153,7 @@ impl Writer for VegaLiteWriter {
         // 11. Apply faceting
         if let Some(facet) = &spec.facet {
             let facet_df = data.get(&layer_data_keys[0]).unwrap();
-            apply_faceting(&mut vl_spec, facet, facet_df, &spec.scales, coord_kind);
+            apply_faceting(&mut vl_spec, facet, facet_df, &spec.scales, projection.as_ref());
         }
 
         // 12. Add default theme config (ggplot2-like gray theme)
@@ -1396,96 +1386,54 @@ mod tests {
     fn test_aesthetic_name_mapping() {
         use crate::plot::AestheticContext;
 
-        // Test with cartesian coord kind
-        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+        use crate::plot::projection::{Coord, Projection};
 
-        // Internal position names should map to Vega-Lite channel names based on coord kind
-        assert_eq!(map_aesthetic_name("pos1", &ctx, CoordKind::Cartesian), "x");
-        assert_eq!(map_aesthetic_name("pos2", &ctx, CoordKind::Cartesian), "y");
-        assert_eq!(
-            map_aesthetic_name("pos1end", &ctx, CoordKind::Cartesian),
-            "x2"
-        );
-        assert_eq!(
-            map_aesthetic_name("pos2end", &ctx, CoordKind::Cartesian),
-            "y2"
-        );
+        // Test with cartesian projection (None = default cartesian)
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+        let cartesian = get_projection_renderer(None);
+        let cart = cartesian.as_ref();
+
+        // Internal position names should map to Vega-Lite channel names based on projection
+        assert_eq!(map_aesthetic_name("pos1", &ctx, cart), "x");
+        assert_eq!(map_aesthetic_name("pos2", &ctx, cart), "y");
+        assert_eq!(map_aesthetic_name("pos1end", &ctx, cart), "x2");
+        assert_eq!(map_aesthetic_name("pos2end", &ctx, cart), "y2");
 
         // Material aesthetics pass through directly
-        assert_eq!(
-            map_aesthetic_name("color", &ctx, CoordKind::Cartesian),
-            "color"
-        );
-        assert_eq!(
-            map_aesthetic_name("fill", &ctx, CoordKind::Cartesian),
-            "fill"
-        );
-        assert_eq!(
-            map_aesthetic_name("stroke", &ctx, CoordKind::Cartesian),
-            "stroke"
-        );
-        assert_eq!(
-            map_aesthetic_name("opacity", &ctx, CoordKind::Cartesian),
-            "opacity"
-        );
-        assert_eq!(
-            map_aesthetic_name("size", &ctx, CoordKind::Cartesian),
-            "size"
-        );
-        assert_eq!(
-            map_aesthetic_name("shape", &ctx, CoordKind::Cartesian),
-            "shape"
-        );
+        assert_eq!(map_aesthetic_name("color", &ctx, cart), "color");
+        assert_eq!(map_aesthetic_name("fill", &ctx, cart), "fill");
+        assert_eq!(map_aesthetic_name("stroke", &ctx, cart), "stroke");
+        assert_eq!(map_aesthetic_name("opacity", &ctx, cart), "opacity");
+        assert_eq!(map_aesthetic_name("size", &ctx, cart), "size");
+        assert_eq!(map_aesthetic_name("shape", &ctx, cart), "shape");
 
         // Other mapped aesthetics
-        assert_eq!(
-            map_aesthetic_name("linetype", &ctx, CoordKind::Cartesian),
-            "strokeDash"
-        );
-        assert_eq!(
-            map_aesthetic_name("linewidth", &ctx, CoordKind::Cartesian),
-            "strokeWidth"
-        );
-        assert_eq!(
-            map_aesthetic_name("label", &ctx, CoordKind::Cartesian),
-            "text"
-        );
-        assert_eq!(
-            map_aesthetic_name("fontsize", &ctx, CoordKind::Cartesian),
-            "size"
-        );
+        assert_eq!(map_aesthetic_name("linetype", &ctx, cart), "strokeDash");
+        assert_eq!(map_aesthetic_name("linewidth", &ctx, cart), "strokeWidth");
+        assert_eq!(map_aesthetic_name("label", &ctx, cart), "text");
+        assert_eq!(map_aesthetic_name("fontsize", &ctx, cart), "size");
 
-        // Test with polar coord kind - internal position maps to radius/theta
+        // Test with polar projection - internal position maps to radius/theta
         // regardless of the context's user-facing names
+        let polar_proj = Projection {
+            coord: Coord::polar(),
+            aesthetics: vec!["radius".into(), "angle".into()],
+            properties: std::collections::HashMap::new(),
+        };
+        let polar = get_projection_renderer(Some(&polar_proj));
+        let pol = polar.as_ref();
+
         let polar_ctx = AestheticContext::from_static(&["radius", "theta"], &[]);
-        assert_eq!(
-            map_aesthetic_name("pos1", &polar_ctx, CoordKind::Polar),
-            "radius"
-        );
-        assert_eq!(
-            map_aesthetic_name("pos2", &polar_ctx, CoordKind::Polar),
-            "theta"
-        );
-        assert_eq!(
-            map_aesthetic_name("pos1end", &polar_ctx, CoordKind::Polar),
-            "radius2"
-        );
-        assert_eq!(
-            map_aesthetic_name("pos2end", &polar_ctx, CoordKind::Polar),
-            "theta2"
-        );
+        assert_eq!(map_aesthetic_name("pos1", &polar_ctx, pol), "radius");
+        assert_eq!(map_aesthetic_name("pos2", &polar_ctx, pol), "theta");
+        assert_eq!(map_aesthetic_name("pos1end", &polar_ctx, pol), "radius2");
+        assert_eq!(map_aesthetic_name("pos2end", &polar_ctx, pol), "theta2");
 
         // Even with custom position names (e.g., PROJECT y, x TO polar),
         // internal pos1/pos2 should still map to radius/theta for Vega-Lite
         let custom_ctx = AestheticContext::from_static(&["y", "x"], &[]);
-        assert_eq!(
-            map_aesthetic_name("pos1", &custom_ctx, CoordKind::Polar),
-            "radius"
-        );
-        assert_eq!(
-            map_aesthetic_name("pos2", &custom_ctx, CoordKind::Polar),
-            "theta"
-        );
+        assert_eq!(map_aesthetic_name("pos1", &custom_ctx, pol), "radius");
+        assert_eq!(map_aesthetic_name("pos2", &custom_ctx, pol), "theta");
     }
 
     #[test]

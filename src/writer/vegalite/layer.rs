@@ -2128,7 +2128,7 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::projection::CoordKind;
+
 
     #[test]
     fn test_violin_detail_encoding() {
@@ -3608,6 +3608,9 @@ mod tests {
     #[test]
     fn test_render_context_get_extent() {
         use crate::plot::{ArrayElement, Scale};
+        use crate::writer::vegalite::projection::get_projection_renderer;
+
+        let cartesian = get_projection_renderer(None);
 
         // Test success case: continuous scale with numeric range
         let scales = vec![Scale {
@@ -3623,13 +3626,13 @@ mod tests {
             label_mapping: None,
             label_template: "{}".to_string(),
         }];
-        let context = RenderContext::new(&scales, CoordKind::Cartesian);
+        let context = RenderContext::new(&scales, cartesian.as_ref());
         let result = context.get_extent("x");
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), (0.0, 10.0));
 
         // Test error case: scale not found
-        let context = RenderContext::new(&scales, CoordKind::Cartesian);
+        let context = RenderContext::new(&scales, cartesian.as_ref());
         let result = context.get_extent("y");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("no scale found"));
@@ -3648,7 +3651,7 @@ mod tests {
             label_mapping: None,
             label_template: "{}".to_string(),
         }];
-        let context = RenderContext::new(&scales, CoordKind::Cartesian);
+        let context = RenderContext::new(&scales, cartesian.as_ref());
         let result = context.get_extent("x");
         assert!(result.is_err());
         assert!(result
@@ -3673,7 +3676,7 @@ mod tests {
             label_mapping: None,
             label_template: "{}".to_string(),
         }];
-        let context = RenderContext::new(&scales, CoordKind::Cartesian);
+        let context = RenderContext::new(&scales, cartesian.as_ref());
         let result = context.get_extent("x");
         assert!(result.is_err());
         assert!(result

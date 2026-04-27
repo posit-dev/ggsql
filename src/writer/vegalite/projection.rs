@@ -1,7 +1,9 @@
-//! Projection transformations for Vega-Lite writer
+//! Projection rendering for Vega-Lite writer
 //!
-//! This module handles projection transformations (cartesian, polar)
-//! that modify the Vega-Lite spec structure based on the PROJECT clause.
+//! This module provides a trait-based design for projection rendering.
+//! Each projection type (cartesian, polar, and future map projections)
+//! implements `ProjectionRenderer`, which owns both the VL channel mapping
+//! and the spec-level transformations for that projection.
 
 use crate::plot::{CoordKind, ParameterValue, Projection};
 use crate::{DataFrame, GgsqlError, Plot, Result};
@@ -9,33 +11,186 @@ use serde_json::{json, Value};
 
 use super::DEFAULT_POLAR_SIZE;
 
-/// Apply projection transformations to the spec and data
+// =============================================================================
+// ProjectionRenderer trait
+// =============================================================================
+
+/// Trait defining how a projection type maps to Vega-Lite.
+///
+/// Each implementation owns two concerns:
+/// 1. **Channel mapping** — translating internal position aesthetics (pos1, pos2, …)
+///    to Vega-Lite encoding channel names.
+/// 2. **Spec transformation** — modifying the Vega-Lite spec after layers are built
+///    (e.g., converting marks to arcs for polar).
+pub(super) trait ProjectionRenderer: Send + Sync {
+    /// Primary and secondary VL channel names for this projection.
+    ///
+    /// Returns `(pos1_channel, pos2_channel)`, e.g. `("x", "y")` for cartesian,
+    /// `("radius", "theta")` for polar.
+    fn position_channels(&self) -> (&'static str, &'static str);
+
+    /// Offset channel names for this projection.
+    ///
+    /// Returns `(pos1_offset, pos2_offset)`, e.g. `("xOffset", "yOffset")`.
+    fn offset_channels(&self) -> (&'static str, &'static str);
+
+    /// Explicit (width, height) panel dimensions for faceted specs, if needed.
+    ///
+    /// Polar projections need this because arc mark radius ranges depend on
+    /// known dimensions; cartesian uses `"container"` sizing and returns `None`.
+    fn panel_size(&self) -> Option<(f64, f64)> {
+        None
+    }
+
+    /// Apply projection-specific transformations to the VL spec.
+    ///
+    /// Called after layers are built but before faceting. May return a
+    /// transformed DataFrame (e.g., polar currently clones it unchanged).
+    fn apply(
+        &self,
+        project: &Projection,
+        spec: &Plot,
+        data: &DataFrame,
+        vl_spec: &mut Value,
+    ) -> Result<Option<DataFrame>>;
+}
+
+// =============================================================================
+// Factory
+// =============================================================================
+
+/// Get the projection renderer for a projection spec.
+///
+/// Returns the appropriate renderer based on the projection's coord kind,
+/// or a Cartesian renderer if no projection is specified.
+pub(super) fn get_projection_renderer(
+    project: Option<&Projection>,
+) -> Box<dyn ProjectionRenderer> {
+    match project.map(|p| p.coord.coord_kind()) {
+        Some(CoordKind::Polar) => Box::new(PolarProjection),
+        Some(CoordKind::Cartesian) | None => Box::new(CartesianProjection),
+    }
+}
+
+// =============================================================================
+// Public entry point
+// =============================================================================
+
+/// Apply projection transformations to the spec and data.
+///
+/// Delegates to the appropriate `ProjectionRenderer` based on coord kind,
+/// then applies cross-cutting concerns (clip) that are shared by all projections.
 /// Returns (possibly transformed DataFrame, possibly modified spec)
 pub(super) fn apply_project_transforms(
     spec: &Plot,
     data: &DataFrame,
     vl_spec: &mut Value,
 ) -> Result<Option<DataFrame>> {
-    if let Some(ref project) = spec.project {
-        // Apply coord-specific transformations
-        let result = match project.coord.coord_kind() {
-            CoordKind::Cartesian => {
-                apply_cartesian_project(project, vl_spec)?;
-                None
-            }
-            CoordKind::Polar => Some(apply_polar_project(project, spec, data, vl_spec)?),
-        };
+    let Some(ref project) = spec.project else {
+        return Ok(None);
+    };
 
-        // Apply clip setting (applies to all projection types)
-        if let Some(ParameterValue::Boolean(clip)) = project.properties.get("clip") {
-            apply_clip_to_layers(vl_spec, *clip);
-        }
+    let renderer = get_projection_renderer(Some(project));
+    let result = renderer.apply(project, spec, data, vl_spec)?;
 
-        Ok(result)
-    } else {
+    // Apply clip setting (applies to all projection types)
+    if let Some(ParameterValue::Boolean(clip)) = project.properties.get("clip") {
+        apply_clip_to_layers(vl_spec, *clip);
+    }
+
+    Ok(result)
+}
+
+// =============================================================================
+// Channel mapping helpers (used by encoding.rs via the trait)
+// =============================================================================
+
+/// Map internal position aesthetic to Vega-Lite channel name using the renderer.
+///
+/// Returns `Some(channel_name)` for internal position aesthetics (pos1, pos2, etc.),
+/// or `None` for material aesthetics.
+pub(super) fn map_position_to_vegalite(
+    aesthetic: &str,
+    renderer: &dyn ProjectionRenderer,
+) -> Option<String> {
+    let (primary, secondary) = renderer.position_channels();
+
+    // Match internal position aesthetic patterns
+    // Convention: min → primary channel (x/y), max → secondary channel (x2/y2)
+    match aesthetic {
+        // Primary position and min variants
+        "pos1" | "pos1min" => Some(primary.to_string()),
+        "pos2" | "pos2min" => Some(secondary.to_string()),
+        // End and max variants (Vega-Lite uses x2/y2/theta2/radius2)
+        "pos1end" | "pos1max" => Some(format!("{}2", primary)),
+        "pos2end" | "pos2max" => Some(format!("{}2", secondary)),
+        _ => None,
+    }
+}
+
+// =============================================================================
+// CartesianProjection
+// =============================================================================
+
+/// Cartesian projection — standard x/y coordinates.
+struct CartesianProjection;
+
+impl ProjectionRenderer for CartesianProjection {
+    fn position_channels(&self) -> (&'static str, &'static str) {
+        ("x", "y")
+    }
+
+    fn offset_channels(&self) -> (&'static str, &'static str) {
+        ("xOffset", "yOffset")
+    }
+
+    /// Apply Cartesian projection properties
+    fn apply(
+        &self,
+        _project: &Projection,
+        _spec: &Plot,
+        _data: &DataFrame,
+        _vl_spec: &mut Value,
+    ) -> Result<Option<DataFrame>> {
+        // ratio - not yet implemented
         Ok(None)
     }
 }
+
+// =============================================================================
+// PolarProjection
+// =============================================================================
+
+/// Polar projection — radius/theta coordinates for pie charts, rose plots, etc.
+struct PolarProjection;
+
+impl ProjectionRenderer for PolarProjection {
+    fn position_channels(&self) -> (&'static str, &'static str) {
+        ("radius", "theta")
+    }
+
+    fn offset_channels(&self) -> (&'static str, &'static str) {
+        ("radiusOffset", "thetaOffset")
+    }
+
+    fn panel_size(&self) -> Option<(f64, f64)> {
+        Some((DEFAULT_POLAR_SIZE, DEFAULT_POLAR_SIZE))
+    }
+
+    fn apply(
+        &self,
+        project: &Projection,
+        spec: &Plot,
+        data: &DataFrame,
+        vl_spec: &mut Value,
+    ) -> Result<Option<DataFrame>> {
+        apply_polar_project(project, spec, data, vl_spec)
+    }
+}
+
+// =============================================================================
+// Shared helpers
+// =============================================================================
 
 /// Get mutable reference to the layers array, handling both flat and faceted specs.
 ///
@@ -70,11 +225,9 @@ fn apply_clip_to_layers(vl_spec: &mut Value, clip: bool) {
     }
 }
 
-/// Apply Cartesian projection properties
-fn apply_cartesian_project(_project: &Projection, _vl_spec: &mut Value) -> Result<()> {
-    // ratio - not yet implemented
-    Ok(())
-}
+// =============================================================================
+// Polar projection implementation
+// =============================================================================
 
 /// Apply Polar projection transformation (bar->arc, point->arc with radius)
 ///
@@ -88,7 +241,7 @@ fn apply_polar_project(
     spec: &Plot,
     data: &DataFrame,
     vl_spec: &mut Value,
-) -> Result<DataFrame> {
+) -> Result<Option<DataFrame>> {
     // Get start angle in degrees (defaults to 0 = 12 o'clock)
     let start_degrees = project
         .properties
@@ -127,7 +280,7 @@ fn apply_polar_project(
     convert_geoms_to_polar(spec, vl_spec, start_radians, end_radians, inner)?;
 
     // No DataFrame transformation needed - Vega-Lite handles polar math
-    Ok(data.clone())
+    Ok(Some(data.clone()))
 }
 
 /// Convert geoms to polar equivalents (bar->arc) and apply angle range + inner radius
@@ -562,5 +715,66 @@ mod tests {
         assert_eq!(range.len(), 2);
         assert_eq!(range[0]["expr"].as_str().unwrap(), "350/2*0");
         assert_eq!(range[1]["expr"].as_str().unwrap(), "350/2");
+    }
+
+    #[test]
+    fn test_map_position_to_vegalite_cartesian() {
+        let renderer = CartesianProjection;
+        assert_eq!(
+            map_position_to_vegalite("pos1", &renderer),
+            Some("x".to_string())
+        );
+        assert_eq!(
+            map_position_to_vegalite("pos2", &renderer),
+            Some("y".to_string())
+        );
+        assert_eq!(
+            map_position_to_vegalite("pos1end", &renderer),
+            Some("x2".to_string())
+        );
+        assert_eq!(
+            map_position_to_vegalite("pos2end", &renderer),
+            Some("y2".to_string())
+        );
+        assert_eq!(map_position_to_vegalite("color", &renderer), None);
+        assert_eq!(renderer.offset_channels(), ("xOffset", "yOffset"));
+        assert_eq!(renderer.panel_size(), None);
+    }
+
+    #[test]
+    fn test_map_position_to_vegalite_polar() {
+        let renderer = PolarProjection;
+        assert_eq!(
+            map_position_to_vegalite("pos1", &renderer),
+            Some("radius".to_string())
+        );
+        assert_eq!(
+            map_position_to_vegalite("pos2", &renderer),
+            Some("theta".to_string())
+        );
+        assert_eq!(
+            map_position_to_vegalite("pos1end", &renderer),
+            Some("radius2".to_string())
+        );
+        assert_eq!(
+            map_position_to_vegalite("pos2end", &renderer),
+            Some("theta2".to_string())
+        );
+        assert_eq!(renderer.offset_channels(), ("radiusOffset", "thetaOffset"));
+        assert_eq!(renderer.panel_size(), Some((DEFAULT_POLAR_SIZE, DEFAULT_POLAR_SIZE)));
+    }
+
+    #[test]
+    fn test_get_projection_renderer() {
+        let cartesian = get_projection_renderer(None);
+        assert_eq!(cartesian.position_channels(), ("x", "y"));
+
+        let polar_proj = Projection {
+            coord: crate::plot::projection::Coord::polar(),
+            aesthetics: vec!["radius".into(), "angle".into()],
+            properties: std::collections::HashMap::new(),
+        };
+        let polar = get_projection_renderer(Some(&polar_proj));
+        assert_eq!(polar.position_channels(), ("radius", "theta"));
     }
 }
