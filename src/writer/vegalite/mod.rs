@@ -38,7 +38,7 @@ use encoding::{
     build_detail_encoding, build_encoding_channel, infer_field_type, map_aesthetic_name,
 };
 use layer::{geom_to_mark, get_renderer, validate_layer_columns, GeomRenderer, PreparedData};
-use projection::{apply_project_transforms, get_projection_renderer, ProjectionRenderer};
+use projection::{get_projection_renderer, ProjectionRenderer};
 
 /// Conversion factor from points to pixels (CSS standard: 96 DPI, 72 points/inch)
 /// 1 point = 96/72 pixels = 1.333
@@ -1148,7 +1148,7 @@ impl Writer for VegaLiteWriter {
 
         // 10. Apply projection transforms
         let first_df = data.get(&layer_data_keys[0]).unwrap();
-        apply_project_transforms(spec, first_df, &mut vl_spec)?;
+        projection.apply_transforms(spec, first_df, &mut vl_spec)?;
 
         // 11. Apply faceting
         if let Some(facet) = &spec.facet {
@@ -1156,10 +1156,12 @@ impl Writer for VegaLiteWriter {
             apply_faceting(&mut vl_spec, facet, facet_df, &spec.scales, projection.as_ref());
         }
 
-        // 12. Add default theme config (ggplot2-like gray theme)
-        vl_spec["config"] = self.default_theme_config();
+        // 12. Build theme config and apply panel decoration
+        let mut theme = self.default_theme_config();
+        projection.apply_panel_decor(spec, &mut theme, &mut vl_spec);
+        vl_spec["config"] = theme;
 
-        // 13. Serialize
+        // 14. Serialize
         serde_json::to_string_pretty(&vl_spec).map_err(|e| {
             GgsqlError::WriterError(format!("Failed to serialize Vega-Lite JSON: {}", e))
         })

@@ -5,7 +5,7 @@
 //! implements `ProjectionRenderer`, which owns both the VL channel mapping
 //! and the spec-level transformations for that projection.
 
-use crate::plot::{CoordKind, ParameterValue, Projection};
+use crate::plot::{CoordKind, ParameterValue, Projection, Scale};
 use crate::{DataFrame, GgsqlError, Plot, Result};
 use serde_json::{json, Value};
 
@@ -53,6 +53,61 @@ pub(super) trait ProjectionRenderer {
         data: &DataFrame,
         vl_spec: &mut Value,
     ) -> Result<Option<DataFrame>>;
+
+    /// Vega-Lite layers to prepend before the data layers.
+    ///
+    /// Called after faceting, before the theme config is applied. Receives
+    /// the resolved scales so implementations can derive grid lines, axis
+    /// ticks, or other decorations from scale breaks and domains.
+    fn background_layers(&self, _scales: &[Scale], _theme: &mut Value) -> Vec<Value> {
+        Vec::new()
+    }
+
+    /// Vega-Lite layers to append after the data layers.
+    ///
+    /// Same timing and access as [`background_layers`].
+    fn foreground_layers(&self, _scales: &[Scale], _theme: &mut Value) -> Vec<Value> {
+        Vec::new()
+    }
+
+    /// Apply projection-specific transformations and cross-cutting concerns (clip).
+    fn apply_transforms(
+        &self,
+        spec: &Plot,
+        data: &DataFrame,
+        vl_spec: &mut Value,
+    ) -> Result<Option<DataFrame>> {
+        let Some(ref project) = spec.project else {
+            return Ok(None);
+        };
+
+        let result = self.apply(project, spec, data, vl_spec)?;
+
+        if let Some(ParameterValue::Boolean(clip)) = project.properties.get("clip") {
+            apply_clip_to_layers(vl_spec, *clip);
+        }
+
+        Ok(result)
+    }
+
+    /// Prepend background and append foreground decoration layers.
+    ///
+    /// Called after faceting so that decoration layers appear in both faceted
+    /// and non-faceted specs.
+    fn apply_panel_decor(&self, spec: &Plot, theme: &mut Value, vl_spec: &mut Value) {
+        let bg = self.background_layers(&spec.scales, theme);
+        let fg = self.foreground_layers(&spec.scales, theme);
+        if bg.is_empty() && fg.is_empty() {
+            return;
+        }
+        if let Some(layers) = get_layers_mut(vl_spec) {
+            let data_layers = std::mem::take(layers);
+            layers.reserve(bg.len() + data_layers.len() + fg.len());
+            layers.extend(bg);
+            layers.extend(data_layers);
+            layers.extend(fg);
+        }
+    }
 }
 
 // =============================================================================
@@ -70,35 +125,6 @@ pub(super) fn get_projection_renderer(
         Some(CoordKind::Polar) => Box::new(PolarProjection),
         Some(CoordKind::Cartesian) | None => Box::new(CartesianProjection),
     }
-}
-
-// =============================================================================
-// Public entry point
-// =============================================================================
-
-/// Apply projection transformations to the spec and data.
-///
-/// Delegates to the appropriate `ProjectionRenderer` based on coord kind,
-/// then applies cross-cutting concerns (clip) that are shared by all projections.
-/// Returns (possibly transformed DataFrame, possibly modified spec)
-pub(super) fn apply_project_transforms(
-    spec: &Plot,
-    data: &DataFrame,
-    vl_spec: &mut Value,
-) -> Result<Option<DataFrame>> {
-    let Some(ref project) = spec.project else {
-        return Ok(None);
-    };
-
-    let renderer = get_projection_renderer(Some(project));
-    let result = renderer.apply(project, spec, data, vl_spec)?;
-
-    // Apply clip setting (applies to all projection types)
-    if let Some(ParameterValue::Boolean(clip)) = project.properties.get("clip") {
-        apply_clip_to_layers(vl_spec, *clip);
-    }
-
-    Ok(result)
 }
 
 // =============================================================================
