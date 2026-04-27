@@ -162,13 +162,16 @@ fn vline_coords() -> Vec<Vec<(f64, f64)>> {
     vec![vec![(0.0, -0.8), (0.0, 0.8)]]
 }
 
-/// Asterisk (*) - three lines through center.
+/// Asterisk (*) - three lines through center evenly spaced at 60° (six wedges).
 fn asterisk_coords() -> Vec<Vec<(f64, f64)>> {
-    vec![
-        vec![(-0.8, 0.0), (0.8, 0.0)],  // horizontal
-        vec![(-0.6, -0.7), (0.6, 0.7)], // diagonal /
-        vec![(-0.6, 0.7), (0.6, -0.7)], // diagonal \
-    ]
+    let r: f64 = 0.8;
+    (0..3)
+        .map(|i| {
+            let angle = (i as f64) * std::f64::consts::PI / 3.0;
+            let (sin, cos) = angle.sin_cos();
+            vec![(-r * cos, -r * sin), (r * cos, r * sin)]
+        })
+        .collect()
 }
 
 /// Bowtie - two triangles meeting at center.

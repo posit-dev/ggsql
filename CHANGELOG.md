@@ -2,13 +2,22 @@
 
 ### Added
 
+- Add cell delimiters and code lens actions to the Positron extension (#366)
 - ODBC is now turned on for the CLI as well (#344)
+- `FROM` can now come before `VISUALIZE`, mirroring the DuckDB style. This means
+that `FROM table VISUALIZE x, y` and `VISUALIZE x, y FROM table` are equivalent
+queries (#369)
+- CLI now has built-in documentation through the `docs` command as well as a
+skill for llms through the `skill` command (#361)
 
 ### Fixed
 
 - Rendering of inline plots in Positron had a bad interaction with how we
 handled auto-resizing in the plot pane. We now have a per-output-location path
 in the Jupyter kernel (#360)
+- Passing the shape aesthetic via `SETTING` now correctly translates named
+shapes (#368)
+- Asterisk shape now has lines 60 degrees apart, giving an even shape
 
 ### Changed
 
@@ -17,6 +26,9 @@ before registering them back to the backend. We now keep the data purely on the
 backend until the layer query as was always intended (#363)
 - Relieved some grammatical constraints on the SQL-portion before the VISUALISE 
 portion (#364).
+- Simplified internal approach to DataFrame with DuckDB reader (#365)
+- Moved the CLI to its own module rather than be part of the main crate (#379)
+- Restructured CLAUDE.md to better deal with the rising complexity of the project (#382)
 
 ### Removed
 
