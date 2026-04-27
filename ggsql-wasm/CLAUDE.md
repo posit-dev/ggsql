@@ -65,7 +65,7 @@ Flags:
 - `sqlite-wasm-rs` replaces `rusqlite` for SQLite support in the browser.
 - `tokio` is reduced to `default-features = false` (no I/O reactor on wasm).
 
-DuckDB and ODBC are not enabled here — they require host APIs that aren't available in the browser.
+ODBC is not enabled here — it requires host APIs that aren't available in the browser.
 
 ## Distribution
 
