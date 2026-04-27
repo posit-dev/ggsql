@@ -308,10 +308,7 @@ mod tests {
                 dummy_columns,
                 consumed_aesthetics,
             } => {
-                assert_eq!(
-                    query,
-                    "SELECT * FROM t ORDER BY \"__ggsql_aes_pos1__\""
-                );
+                assert_eq!(query, "SELECT * FROM t ORDER BY \"__ggsql_aes_pos1__\"");
                 assert!(stat_columns.is_empty());
                 assert!(dummy_columns.is_empty());
                 assert!(consumed_aesthetics.is_empty());
@@ -340,7 +337,10 @@ mod tests {
                     query,
                     "SELECT * FROM (SELECT * FROM grouped) AS \"__ggsql_ord__\" ORDER BY \"__ggsql_aes_pos1__\""
                 );
-                assert_eq!(stat_columns, vec!["pos2".to_string(), "aggregate".to_string()]);
+                assert_eq!(
+                    stat_columns,
+                    vec!["pos2".to_string(), "aggregate".to_string()]
+                );
                 assert_eq!(dummy_columns, vec!["pos1".to_string()]);
                 assert_eq!(consumed_aesthetics, vec!["pos2".to_string()]);
             }

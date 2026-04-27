@@ -436,7 +436,8 @@ impl Layer {
             }
             // Or the shared `aggregate` param for Identity-stat geoms
             else if param_name == "aggregate" && self.geom.supports_aggregate() {
-                let definition = crate::plot::layer::geom::stat_aggregate::aggregate_param_definition();
+                let definition =
+                    crate::plot::layer::geom::stat_aggregate::aggregate_param_definition();
                 validate_parameter(param_name, value, &definition.constraint)?;
             }
             // Otherwise it's a valid aesthetic setting (no constraint validation needed)

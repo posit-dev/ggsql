@@ -6,8 +6,8 @@ use std::collections::HashSet;
 use super::stat_aggregate;
 use super::types::{get_column_name, POSITION_VALUES};
 use super::{
-    has_aggregate_param, DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint,
-    ParamDefinition, StatResult,
+    has_aggregate_param, DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType,
+    ParamConstraint, ParamDefinition, StatResult,
 };
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};

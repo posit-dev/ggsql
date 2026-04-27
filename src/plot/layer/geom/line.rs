@@ -3,8 +3,8 @@
 use super::stat_aggregate;
 use super::types::wrap_with_order_by;
 use super::{
-    has_aggregate_param, DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint,
-    ParamDefinition, StatResult,
+    has_aggregate_param, DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType,
+    ParamConstraint, ParamDefinition, StatResult,
 };
 use crate::plot::layer::orientation::{ALIGNED, ORIENTATION_VALUES};
 use crate::plot::types::DefaultAestheticValue;

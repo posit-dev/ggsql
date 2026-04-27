@@ -259,14 +259,8 @@ fn function_inline_sql(func: &str, qcol: &str, dialect: &dyn SqlDialect) -> Opti
         "mean+sdev" => format!("(AVG({c}) + STDDEV_POP({c}))", c = qcol),
         "mean-2sdev" => format!("(AVG({c}) - 2.0 * STDDEV_POP({c}))", c = qcol),
         "mean+2sdev" => format!("(AVG({c}) + 2.0 * STDDEV_POP({c}))", c = qcol),
-        "mean-se" => format!(
-            "(AVG({c}) - STDDEV_POP({c}) / SQRT(COUNT({c})))",
-            c = qcol
-        ),
-        "mean+se" => format!(
-            "(AVG({c}) + STDDEV_POP({c}) / SQRT(COUNT({c})))",
-            c = qcol
-        ),
+        "mean-se" => format!("(AVG({c}) - STDDEV_POP({c}) / SQRT(COUNT({c})))", c = qcol),
+        "mean+se" => format!("(AVG({c}) + STDDEV_POP({c}) / SQRT(COUNT({c})))", c = qcol),
         // `iqr` is computed from quantiles - handled separately.
         _ => return None,
     })
@@ -364,10 +358,7 @@ fn apply_range_mode(
     let stat_lo = naming::stat_column(lo);
     let stat_hi = naming::stat_column(hi);
 
-    let group_select: Vec<String> = group_cols
-        .iter()
-        .map(|c| naming::quote_ident(c))
-        .collect();
+    let group_select: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
     let mut select_parts = group_select.clone();
     select_parts.push(format!("{} AS {}", lo_expr, naming::quote_ident(&stat_lo)));
     select_parts.push(format!("{} AS {}", hi_expr, naming::quote_ident(&stat_hi)));
@@ -444,10 +435,8 @@ fn build_single_pass_query(
     };
 
     // Build the wide aggregation SELECT: one column per (function × position).
-    let mut wide_select_exprs: Vec<String> = group_cols
-        .iter()
-        .map(|c| naming::quote_ident(c))
-        .collect();
+    let mut wide_select_exprs: Vec<String> =
+        group_cols.iter().map(|c| naming::quote_ident(c)).collect();
 
     // Track the synthetic column names for each (aesthetic, function) pair.
     let mut wide_col_for: HashMap<(String, String), String> = HashMap::new();
@@ -494,7 +483,10 @@ fn build_single_pass_query(
     let wide_select = wide_select_exprs.join(", ");
 
     // Build the CROSS JOIN VALUES table of function names.
-    let funcs_values: Vec<String> = funcs.iter().map(|f| format!("({})", func_literal(f))).collect();
+    let funcs_values: Vec<String> = funcs
+        .iter()
+        .map(|f| format!("({})", func_literal(f)))
+        .collect();
     let funcs_cte = format!(
         "{}(name) AS (VALUES {})",
         funcs_alias,
@@ -529,7 +521,11 @@ fn build_single_pass_query(
                 whens.join(" ")
             )
         };
-        outer_exprs.push(format!("{} AS {}", case_expr, naming::quote_ident(&stat_col)));
+        outer_exprs.push(format!(
+            "{} AS {}",
+            case_expr,
+            naming::quote_ident(&stat_col)
+        ));
     }
 
     if let Some(count_wide) = count_wide {
@@ -541,7 +537,11 @@ fn build_single_pass_query(
             lit = func_literal("count"),
             c = naming::quote_ident(&count_wide)
         );
-        outer_exprs.push(format!("{} AS {}", case_expr, naming::quote_ident(&stat_col)));
+        outer_exprs.push(format!(
+            "{} AS {}",
+            case_expr,
+            naming::quote_ident(&stat_col)
+        ));
     }
 
     let stat_aggregate_col = naming::stat_column("aggregate");
@@ -603,10 +603,7 @@ fn build_union_all_query(
         format!(" GROUP BY {}", qcols.join(", "))
     };
 
-    let group_select: Vec<String> = group_cols
-        .iter()
-        .map(|c| naming::quote_ident(c))
-        .collect();
+    let group_select: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
 
     let needs_count_col = funcs.iter().any(|f| f == "count");
     let stat_aggregate_col = naming::stat_column("aggregate");
@@ -631,7 +628,11 @@ fn build_union_all_query(
                     let qcol = naming::quote_ident(col);
                     function_inline_sql(func, &qcol, dialect).unwrap_or_else(|| "NULL".to_string())
                 };
-                select_parts.push(format!("{} AS {}", value_expr, naming::quote_ident(&stat_col)));
+                select_parts.push(format!(
+                    "{} AS {}",
+                    value_expr,
+                    naming::quote_ident(&stat_col)
+                ));
             }
 
             if needs_count_col {
@@ -783,7 +784,11 @@ mod tests {
                 consumed_aesthetics,
                 ..
             } => {
-                assert!(query.contains("AVG(\"__ggsql_aes_pos2__\")"), "query: {}", query);
+                assert!(
+                    query.contains("AVG(\"__ggsql_aes_pos2__\")"),
+                    "query: {}",
+                    query
+                );
                 assert!(query.contains("CROSS JOIN"));
                 assert!(stat_columns.contains(&"pos2".to_string()));
                 assert!(stat_columns.contains(&"aggregate".to_string()));
@@ -1186,7 +1191,11 @@ mod tests {
                 stat_columns,
                 ..
             } => {
-                assert!(query.contains("MAX(\"__ggsql_aes_pos2__\")"), "query: {}", query);
+                assert!(
+                    query.contains("MAX(\"__ggsql_aes_pos2__\")"),
+                    "query: {}",
+                    query
+                );
                 assert!(!query.contains("MAX(\"__ggsql_aes_pos1__\")"));
                 assert!(query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
                 assert_eq!(consumed_aesthetics, vec!["pos2".to_string()]);
@@ -1228,8 +1237,16 @@ mod tests {
                 stat_columns,
                 ..
             } => {
-                assert!(query.contains("AVG(\"__ggsql_aes_pos1__\")"), "query: {}", query);
-                assert!(query.contains("AVG(\"__ggsql_aes_pos2__\")"), "query: {}", query);
+                assert!(
+                    query.contains("AVG(\"__ggsql_aes_pos1__\")"),
+                    "query: {}",
+                    query
+                );
+                assert!(
+                    query.contains("AVG(\"__ggsql_aes_pos2__\")"),
+                    "query: {}",
+                    query
+                );
                 assert!(!query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
                 let mut consumed = consumed_aesthetics.clone();
                 consumed.sort();
@@ -1276,8 +1293,16 @@ mod tests {
                 consumed_aesthetics,
                 ..
             } => {
-                assert!(query.contains("AVG(\"__ggsql_aes_pos2min__\")"), "query: {}", query);
-                assert!(query.contains("AVG(\"__ggsql_aes_pos2max__\")"), "query: {}", query);
+                assert!(
+                    query.contains("AVG(\"__ggsql_aes_pos2min__\")"),
+                    "query: {}",
+                    query
+                );
+                assert!(
+                    query.contains("AVG(\"__ggsql_aes_pos2max__\")"),
+                    "query: {}",
+                    query
+                );
                 assert!(query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
                 let mut consumed = consumed_aesthetics.clone();
                 consumed.sort();
@@ -1487,12 +1512,16 @@ mod tests {
                 ..
             } => {
                 assert!(
-                    query.contains("AVG(\"__ggsql_aes_pos2__\") - STDDEV_POP(\"__ggsql_aes_pos2__\")"),
+                    query.contains(
+                        "AVG(\"__ggsql_aes_pos2__\") - STDDEV_POP(\"__ggsql_aes_pos2__\")"
+                    ),
                     "lower bound expr missing: {}",
                     query
                 );
                 assert!(
-                    query.contains("AVG(\"__ggsql_aes_pos2__\") + STDDEV_POP(\"__ggsql_aes_pos2__\")"),
+                    query.contains(
+                        "AVG(\"__ggsql_aes_pos2__\") + STDDEV_POP(\"__ggsql_aes_pos2__\")"
+                    ),
                     "upper bound expr missing: {}",
                     query
                 );
