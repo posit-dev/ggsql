@@ -46,12 +46,16 @@ static AIRQUALITY: &[u8] = include_bytes!(concat!(
     "/data/airquality.parquet"
 ));
 
+#[cfg(feature = "builtin-data")]
+static WORLD: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/world.parquet"));
+
 /// Get the embedded parquet bytes for a known builtin dataset.
 #[cfg(feature = "builtin-data")]
 pub fn builtin_parquet_bytes(name: &str) -> Option<&'static [u8]> {
     match name {
         "penguins" => Some(PENGUINS),
         "airquality" => Some(AIRQUALITY),
+        "world" => Some(WORLD),
         _ => None,
     }
 }
@@ -72,6 +76,13 @@ pub fn register_builtin_datasets_duckdb(
     use std::{env, fs};
 
     let dataset_names = extract_builtin_dataset_names(sql)?;
+
+    // Load spatial extension before registering datasets that contain
+    // geometry columns, so DuckDB reads them as GEOMETRY rather than BLOB.
+    if dataset_names.iter().any(|n| n == "world") {
+        let _ = conn.execute("LOAD spatial", duckdb::params![]);
+    }
+
     for name in dataset_names {
         let Some(parquet_bytes) = builtin_parquet_bytes(&name) else {
             continue;
@@ -120,6 +131,7 @@ pub fn load_builtin_dataframe(name: &str) -> Result<crate::DataFrame, GgsqlError
     let parquet_bytes = match name {
         "penguins" => PENGUINS,
         "airquality" => AIRQUALITY,
+        "world" => WORLD,
         _ => {
             return Err(GgsqlError::ReaderError(format!(
                 "Unknown builtin dataset: '{}'",
@@ -160,7 +172,7 @@ pub fn load_builtin_dataframe(name: &str) -> Result<crate::DataFrame, GgsqlError
 }
 
 /// Known builtin dataset names in the ggsql namespace
-pub const KNOWN_DATASETS: &[&str] = &["penguins", "airquality"];
+pub const KNOWN_DATASETS: &[&str] = &["penguins", "airquality", "world"];
 
 /// Check if a dataset name is a known builtin
 pub fn is_known_builtin(name: &str) -> bool {

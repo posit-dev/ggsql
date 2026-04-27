@@ -45,6 +45,7 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Smooth => "line",
         GeomType::Rule => "rule",
         GeomType::ErrorBar => "rule",
+        GeomType::Spatial => "geoshape",
         _ => "point", // Default fallback
     };
     json!({
@@ -2103,6 +2104,128 @@ impl GeomRenderer for BoxplotRenderer {
 }
 
 // =============================================================================
+// Spatial Renderer
+// =============================================================================
+
+struct SpatialRenderer;
+
+#[cfg(feature = "spatial")]
+impl SpatialRenderer {
+    fn wkb_to_geojson(wkb_bytes: &[u8]) -> Result<Value> {
+        use geozero::geojson::GeoJsonWriter;
+        use geozero::wkb::Wkb;
+        use geozero::GeozeroGeometry;
+        use std::io::Cursor;
+
+        let mut geojson_out = Vec::new();
+        let wkb = Wkb(wkb_bytes);
+        wkb.process_geom(&mut GeoJsonWriter::new(Cursor::new(&mut geojson_out)))
+            .map_err(|e| {
+                GgsqlError::WriterError(format!("Failed to convert WKB to GeoJSON: {}", e))
+            })?;
+
+        serde_json::from_slice(&geojson_out)
+            .map_err(|e| GgsqlError::WriterError(format!("Invalid GeoJSON from WKB: {}", e)))
+    }
+
+    fn parse_geometry_from_array(array: &arrow::array::ArrayRef, idx: usize) -> Result<Value> {
+        use arrow::datatypes::DataType;
+
+        if array.is_null(idx) {
+            return Ok(Value::Null);
+        }
+
+        match array.data_type() {
+            DataType::Binary => {
+                let bin = array
+                    .as_any()
+                    .downcast_ref::<arrow::array::BinaryArray>()
+                    .ok_or_else(|| {
+                        GgsqlError::WriterError("Failed to read geometry as Binary".into())
+                    })?;
+                Self::wkb_to_geojson(bin.value(idx))
+            }
+            DataType::LargeBinary => {
+                let bin = array
+                    .as_any()
+                    .downcast_ref::<arrow::array::LargeBinaryArray>()
+                    .ok_or_else(|| {
+                        GgsqlError::WriterError("Failed to read geometry as LargeBinary".into())
+                    })?;
+                Self::wkb_to_geojson(bin.value(idx))
+            }
+            other => Err(GgsqlError::WriterError(format!(
+                "Geometry column has unsupported type {:?}; expected Binary (WKB)",
+                other
+            ))),
+        }
+    }
+}
+
+impl GeomRenderer for SpatialRenderer {
+    fn prepare_data(
+        &self,
+        df: &DataFrame,
+        _layer: &Layer,
+        _data_key: &str,
+        _binned_columns: &HashMap<String, Vec<f64>>,
+    ) -> Result<PreparedData> {
+        #[cfg(not(feature = "spatial"))]
+        {
+            return Err(GgsqlError::WriterError(
+                "Spatial visualization requires the 'spatial' feature to be enabled".to_string(),
+            ));
+        }
+
+        #[cfg(feature = "spatial")]
+        {
+            let geometry_col = naming::aesthetic_column("geometry");
+
+            let col_names: Vec<String> = df
+                .get_column_names()
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+
+            let mut features = Vec::with_capacity(df.height());
+
+            for row_idx in 0..df.height() {
+                let mut feature = serde_json::Map::new();
+                feature.insert("type".to_string(), json!("Feature"));
+
+                let mut properties = serde_json::Map::new();
+
+                for col_name in &col_names {
+                    let col = df.column(col_name).map_err(|e| {
+                        GgsqlError::WriterError(format!(
+                            "Failed to get column '{}': {}",
+                            col_name, e
+                        ))
+                    })?;
+
+                    if *col_name == geometry_col {
+                        let geom = Self::parse_geometry_from_array(col, row_idx)?;
+                        feature.insert("geometry".to_string(), geom);
+                    } else {
+                        let value = super::data::series_value_at(col, row_idx)?;
+                        properties.insert(col_name.clone(), value.clone());
+                        feature.insert(col_name.clone(), value);
+                    }
+                }
+
+                feature.insert("properties".to_string(), Value::Object(properties));
+                features.push(Value::Object(feature));
+            }
+
+            Ok(PreparedData::Single {
+                values: features,
+                metadata: Box::new(()),
+            })
+        }
+    }
+}
+
+// =============================================================================
 // Dispatcher
 // =============================================================================
 
@@ -2120,6 +2243,7 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Segment => Box::new(SegmentRenderer),
         GeomType::ErrorBar => Box::new(ErrorBarRenderer),
         GeomType::Rule => Box::new(RuleRenderer),
+        GeomType::Spatial => Box::new(SpatialRenderer),
         // All other geoms (Point, Area, Ribbon, Density, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }

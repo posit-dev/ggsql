@@ -269,7 +269,7 @@
         {
           "comment": "Specialty and computed aesthetics",
           "name": "support.type.aesthetic.ggsql",
-          "match": "\\b(weight|coef|intercept|offset|density|count|intensity)\\b"
+          "match": "\\b(weight|coef|intercept|offset|density|count|intensity|geometry)\\b"
         },
         {
           "comment": "Facet aesthetics",
@@ -320,7 +320,7 @@
         {
           "comment": "Geom types from grammar.js",
           "name": "support.type.geom.ggsql",
-          "match": "\\b(point|line|path|bar|col|area|tile|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|errorbar)\\b"
+          "match": "\\b(point|line|path|bar|col|area|tile|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|errorbar|spatial)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]
@@ -334,7 +334,7 @@
       "patterns": [
         {
           "name": "support.type.geom.ggsql",
-          "match": "\\b(point|line|path|bar|col|area|tile|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|errorbar)\\b"
+          "match": "\\b(point|line|path|bar|col|area|tile|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|label|segment|arrow|rule|errorbar|spatial)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]

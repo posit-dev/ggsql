@@ -304,6 +304,12 @@ fn build_layer_encoding(
             continue;
         }
 
+        // Skip geometry aesthetic - it is structural (consumed by SpatialRenderer
+        // to build GeoJSON Features), not a visual encoding channel.
+        if aesthetic == "geometry" {
+            continue;
+        }
+
         let mut channel_name = map_aesthetic_name(aesthetic, &aesthetic_ctx, coord_kind);
         // Opacity is retargeted to the fill when fill is supported
         if channel_name == "opacity" && layer.mappings.contains_key("fill") {

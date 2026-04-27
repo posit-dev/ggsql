@@ -1,0 +1,84 @@
+---
+title: "Spatial"
+---
+
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+
+The spatial layer is used to render geographic geometries consisting of polygons, lines and points used to make maps like choropleths.
+It differs from other layers in that uses a special [simple features](https://en.wikipedia.org/wiki/Simple_Features) geometry column that defines the shapes.
+
+## Aesthetics
+The following aesthetics are recognised by the spatial layer.
+
+### Required
+* `geometry`: a column of simple features.
+
+Note that the `geometry` column is required, but an attempt is made to detect such a column automatically.
+In practise, this mapping does not often need to be declared.
+
+### Optional
+* `stroke` The colour of the lines.
+* `fill` The colour of the inner area.
+* `colour` Shorthand for setting `stroke` and `fill` simultaneously.
+* `opacity` The opacity of colours.
+* `linewidth` The width of the lines.
+* `linetype` The dash pattern of the line.
+
+## Settings
+The spatial layer has no additional settings.
+
+## Data transformation
+The spatial layer transforms the `geometry` column to [Well-Known Binary](https://libgeos.org/specifications/wkb/).
+
+## Orientation
+The spatial layer has no orientations.
+
+## Examples
+
+Note that depending on your reader, you may need to activate modules for spatial analysis.
+
+```{ggsql}
+-- For example, for DuckDB, one could use:
+INSTALL spatial;
+LOAD spatial;
+```
+
+A basic map of the world using built-in data.
+Note that the geometry column is automatically detected.
+
+```{ggsql}
+VISUALISE FROM ggsql:world
+  DRAW spatial
+```
+
+If the geometry column isn't automatically detected —for example because it has a non-standard name— you may need to declare the mapping explicitly.
+
+```{ggsql}
+SELECT geom AS foo FROM ggsql:world
+VISUALISE
+  DRAW spatial MAPPING foo AS geometry
+```
+
+Filtering on other columns.
+
+```{ggsql}
+VISUALISE FROM ggsql:world
+  DRAW spatial FILTER continent == 'Asia'
+```
+
+Filtering based on spatial operations.
+
+```{ggsql}
+VISUALISE FROM ggsql:world
+  DRAW spatial 
+  FILTER ST_Intersects(geom, ST_MAkeEnvelope(-20.0, -35.0, 55.0, 38.0))
+```
+
+Make a choropleth map by mapping a variable to a fill aesthetic.
+
+```{ggsql}
+VISUALISE FROM ggsql:world
+  DRAW spatial 
+    MAPPING population AS fill
+    SETTING opacity => 1
+```

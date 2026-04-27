@@ -33,6 +33,7 @@ There are many different layers to choose from when visualising your data. Some 
 - [`boxplot`](layer/type/boxplot.qmd) displays continuous variables as 5-number summaries.
 - [`errorbar`](layer/type/errorbar.qmd) a line segment with hinges at the endpoints.
 - [`smooth`](layer/type/smooth.qmd) a trendline that follows the data shape.
+- [`spatial`](layer/type/spatial.qmd) simple features from geometry.
 
 ### Position adjustments
 - [`stack`](layer/position/stack.qmd) places objects with a shared baseline on top of each other.

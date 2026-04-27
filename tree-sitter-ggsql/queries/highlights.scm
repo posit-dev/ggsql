@@ -26,6 +26,7 @@
   "arrow"
   "rule"
   "errorbar"
+  "spatial"
 ] @type.builtin
 
 ; Aesthetic names
@@ -74,6 +75,7 @@
   "rotation"
   ; Specialty aesthetics
   "slope"
+  "geometry"
   ; Facet aesthetics
   "panel"
   "row"

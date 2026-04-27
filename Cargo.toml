@@ -64,6 +64,10 @@ proptest = "1.4"
 # Color interpolation
 palette = "0.7"
 
+# Spatial
+geozero = { version = "0.14", default-features = false }
+hex = "0.4"
+
 # Utilities
 regex = "1.10"
 chrono = "0.4"
