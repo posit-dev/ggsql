@@ -22,7 +22,7 @@ use super::DEFAULT_POLAR_SIZE;
 ///    to Vega-Lite encoding channel names.
 /// 2. **Spec transformation** — modifying the Vega-Lite spec after layers are built
 ///    (e.g., converting marks to arcs for polar).
-pub(super) trait ProjectionRenderer: Send + Sync {
+pub(super) trait ProjectionRenderer {
     /// Primary and secondary VL channel names for this projection.
     ///
     /// Returns `(pos1_channel, pos2_channel)`, e.g. `("x", "y")` for cartesian,

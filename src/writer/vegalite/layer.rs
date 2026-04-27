@@ -134,7 +134,7 @@ pub enum PreparedData {
 ///
 /// Most geoms use the default implementations. Only geoms with special requirements
 /// (bar width, path ordering, boxplot decomposition) need to override specific methods.
-pub trait GeomRenderer: Send + Sync {
+pub trait GeomRenderer {
     // === Phase 1: Data Preparation ===
 
     /// Prepare data for this layer.
