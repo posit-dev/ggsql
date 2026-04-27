@@ -3,10 +3,10 @@
 use crate::plot::layer::orientation::{ALIGNED, ORIENTATION_VALUES};
 use crate::plot::types::DefaultAestheticValue;
 use crate::plot::{DefaultParamValue, ParamDefinition};
-use crate::{naming, Mappings};
+use crate::Mappings;
 
 use super::stat_aggregate;
-use super::types::{ParamConstraint, POSITION_VALUES};
+use super::types::{wrap_with_order_by, ParamConstraint, POSITION_VALUES};
 use super::{has_aggregate_param, DefaultAesthetics, GeomTrait, GeomType, StatResult};
 
 /// Area geom - filled area charts
@@ -73,17 +73,22 @@ impl GeomTrait for Area {
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn crate::reader::SqlDialect,
     ) -> crate::Result<StatResult> {
-        if has_aggregate_param(parameters) {
-            return stat_aggregate::apply(query, schema, aesthetics, group_by, parameters, dialect);
-        }
-        // Area geom needs ordering by pos1 (domain axis) for proper rendering
-        let order_col = naming::aesthetic_column("pos1");
-        Ok(StatResult::Transformed {
-            query: format!("{} ORDER BY {}", query, naming::quote_ident(&order_col)),
-            stat_columns: vec![],
-            dummy_columns: vec![],
-            consumed_aesthetics: vec![],
-        })
+        let result = if has_aggregate_param(parameters) {
+            stat_aggregate::apply(
+                query,
+                schema,
+                aesthetics,
+                group_by,
+                parameters,
+                dialect,
+                self.aggregate_slots(),
+            )?
+        } else {
+            StatResult::Identity
+        };
+        // Area needs ordering by pos1 (domain axis) for proper rendering, in both
+        // the Identity and Aggregate paths.
+        Ok(wrap_with_order_by(query, result, "pos1"))
     }
 }
 

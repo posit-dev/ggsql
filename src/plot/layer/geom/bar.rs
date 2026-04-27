@@ -99,7 +99,15 @@ impl GeomTrait for Bar {
         dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
         if has_aggregate_param(parameters) {
-            return stat_aggregate::apply(query, schema, aesthetics, group_by, parameters, dialect);
+            return stat_aggregate::apply(
+                query,
+                schema,
+                aesthetics,
+                group_by,
+                parameters,
+                dialect,
+                self.aggregate_slots(),
+            );
         }
         stat_bar_count(query, schema, aesthetics, group_by)
     }

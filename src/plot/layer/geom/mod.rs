@@ -203,6 +203,19 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         false
     }
 
+    /// Which numeric position-aesthetic slots the Aggregate stat should reduce.
+    ///
+    /// Slot 1 is `pos1`/`pos1min`/`pos1max`/`pos1end` (the independent / domain axis).
+    /// Slot 2 is `pos2`/`pos2min`/`pos2max`/`pos2end` (the dependent / range axis).
+    ///
+    /// Default: `&[2]` — only the dependent axis is reduced; pos1-family stays as a
+    /// grouping column, so e.g. line geoms produce a summary trace along x. Geoms
+    /// whose natural Aggregate is centroid-like (point, polygon, segment, arrow,
+    /// text, path, tile, rule) override to `&[1, 2]`.
+    fn aggregate_slots(&self) -> &'static [u8] {
+        &[2]
+    }
+
     /// Apply statistical transformation to the layer query.
     ///
     /// The default implementation dispatches to the Aggregate stat when
@@ -220,7 +233,15 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
         if self.supports_aggregate() && has_aggregate_param(parameters) {
-            return stat_aggregate::apply(query, schema, aesthetics, group_by, parameters, dialect);
+            return stat_aggregate::apply(
+                query,
+                schema,
+                aesthetics,
+                group_by,
+                parameters,
+                dialect,
+                self.aggregate_slots(),
+            );
         }
         Ok(StatResult::Identity)
     }
@@ -486,6 +507,11 @@ impl Geom {
     /// Whether this geom accepts the `aggregate` SETTING parameter.
     pub fn supports_aggregate(&self) -> bool {
         self.0.supports_aggregate()
+    }
+
+    /// Which position-aesthetic slots the Aggregate stat should reduce.
+    pub fn aggregate_slots(&self) -> &'static [u8] {
+        self.0.aggregate_slots()
     }
 
     /// Validate aesthetic mappings

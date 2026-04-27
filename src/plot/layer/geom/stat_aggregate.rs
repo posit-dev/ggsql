@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 use super::types::StatResult;
 use crate::naming;
-use crate::plot::aesthetic::is_position_aesthetic;
+use crate::plot::aesthetic::{is_position_aesthetic, parse_position};
 use crate::plot::types::{
     DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue, Schema,
 };
@@ -89,16 +89,19 @@ pub fn apply(
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
     dialect: &dyn SqlDialect,
+    agg_slots: &[u8],
 ) -> Result<StatResult> {
     let funcs = match extract_aggregate_param(parameters) {
         None => return Ok(StatResult::Identity),
         Some(funcs) => funcs,
     };
 
-    // Discover position aesthetics on the layer, splitting into numeric (to be
-    // aggregated) and discrete (to be carried through as group columns).
+    // Walk the layer's position aesthetics and route each by (slot, type):
+    //   in-axis slot && numeric  → aggregated (numeric_pos)
+    //   in-axis slot && discrete → kept as group column (kept_pos_cols)
+    //   out-of-axis (any type)   → kept as group column (kept_pos_cols)
     let mut numeric_pos: Vec<(String, String)> = Vec::new(); // (aesthetic, prefixed col)
-    let mut discrete_pos_cols: Vec<String> = Vec::new();
+    let mut kept_pos_cols: Vec<String> = Vec::new();
     for (aesthetic, value) in &aesthetics.aesthetics {
         if !is_position_aesthetic(aesthetic) {
             continue;
@@ -107,16 +110,19 @@ pub fn apply(
             Some(c) => c.to_string(),
             None => continue,
         };
+        let slot = parse_position(aesthetic).map(|(s, _)| s).unwrap_or(0);
+        let in_axis = agg_slots.contains(&slot);
         let info = schema.iter().find(|c| c.name == col);
         let is_discrete = info.map(|c| c.is_discrete).unwrap_or(false);
-        if is_discrete {
-            discrete_pos_cols.push(col);
+
+        if !in_axis || is_discrete {
+            kept_pos_cols.push(col);
         } else {
             numeric_pos.push((aesthetic.clone(), col));
         }
     }
     numeric_pos.sort_by(|a, b| a.0.cmp(&b.0));
-    discrete_pos_cols.sort();
+    kept_pos_cols.sort();
 
     if numeric_pos.is_empty() && !funcs.iter().any(|f| f == "count") {
         return Err(GgsqlError::ValidationError(
@@ -125,15 +131,16 @@ pub fn apply(
         ));
     }
 
-    // Group columns: PARTITION BY + discrete mappings (already in group_by) + discrete
-    // position aesthetic columns. Deduplicated, preserving order.
+    // Group columns: PARTITION BY + discrete mappings (already in group_by) + any
+    // position-aesthetic columns we kept (out-of-axis or in-axis-but-discrete).
+    // Deduplicated, preserving order.
     let mut group_cols: Vec<String> = Vec::new();
     for g in group_by {
         if !group_cols.contains(g) {
             group_cols.push(g.clone());
         }
     }
-    for c in &discrete_pos_cols {
+    for c in &kept_pos_cols {
         if !group_cols.contains(c) {
             group_cols.push(c.clone());
         }
@@ -577,6 +584,7 @@ mod tests {
             &[],
             &params,
             &InlineQuantileDialect,
+            &[2],
         )
         .unwrap();
         assert_eq!(result, StatResult::Identity);
@@ -595,6 +603,7 @@ mod tests {
             &[],
             &params,
             &InlineQuantileDialect,
+            &[2],
         )
         .unwrap();
         assert_eq!(result, StatResult::Identity);
@@ -618,6 +627,7 @@ mod tests {
             &[],
             &params,
             &InlineQuantileDialect,
+            &[2],
         )
         .unwrap();
 
@@ -657,6 +667,7 @@ mod tests {
             &[],
             &params,
             &InlineQuantileDialect,
+            &[2],
         )
         .unwrap();
 
@@ -696,6 +707,7 @@ mod tests {
             &[],
             &params,
             &InlineQuantileDialect,
+            &[2],
         )
         .unwrap();
         match result {
@@ -735,6 +747,7 @@ mod tests {
             &[],
             &params,
             &InlineQuantileDialect,
+            &[2],
         )
         .unwrap();
         match result {
@@ -765,6 +778,7 @@ mod tests {
             &[],
             &params,
             &NoInlineQuantileDialect,
+            &[2],
         )
         .unwrap();
         match result {
@@ -799,6 +813,7 @@ mod tests {
             &[],
             &params,
             &InlineQuantileDialect,
+            &[2],
         )
         .unwrap();
         match result {
@@ -828,6 +843,7 @@ mod tests {
             &[],
             &params,
             &InlineQuantileDialect,
+            &[2],
         )
         .unwrap();
         match result {
@@ -856,6 +872,7 @@ mod tests {
             &[],
             &params,
             &InlineQuantileDialect,
+            &[2],
         )
         .unwrap();
         match result {
@@ -884,6 +901,7 @@ mod tests {
             &[],
             &params,
             &InlineQuantileDialect,
+            &[2],
         )
         .unwrap();
         match result {
@@ -929,6 +947,7 @@ mod tests {
             &[],
             &params,
             &InlineQuantileDialect,
+            &[2],
         )
         .unwrap();
         match result {
@@ -970,11 +989,275 @@ mod tests {
             &["region".to_string()],
             &params,
             &InlineQuantileDialect,
+            &[2],
         )
         .unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
                 assert!(query.contains("GROUP BY \"region\""));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn line_style_groups_by_pos1_and_aggregates_pos2() {
+        // slots=[2]: pos1 stays as group (even though numeric), pos2 gets aggregated.
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = numeric_schema(&["__ggsql_aes_pos1__", "__ggsql_aes_pos2__"]);
+        let mut params = HashMap::new();
+        params.insert(
+            "aggregate".to_string(),
+            ParameterValue::String("max".to_string()),
+        );
+
+        let result = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &params,
+            &InlineQuantileDialect,
+            &[2],
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed {
+                query,
+                consumed_aesthetics,
+                stat_columns,
+                ..
+            } => {
+                assert!(query.contains("MAX(\"__ggsql_aes_pos2__\")"), "query: {}", query);
+                assert!(!query.contains("MAX(\"__ggsql_aes_pos1__\")"));
+                assert!(query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
+                assert_eq!(consumed_aesthetics, vec!["pos2".to_string()]);
+                assert!(stat_columns.contains(&"pos2".to_string()));
+                assert!(!stat_columns.contains(&"pos1".to_string()));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn point_style_aggregates_both_slots() {
+        // slots=[1,2]: both pos1 and pos2 (numeric) get aggregated → centroid.
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = numeric_schema(&["__ggsql_aes_pos1__", "__ggsql_aes_pos2__"]);
+        let mut params = HashMap::new();
+        params.insert(
+            "aggregate".to_string(),
+            ParameterValue::String("mean".to_string()),
+        );
+
+        let result = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &params,
+            &InlineQuantileDialect,
+            &[1, 2],
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed {
+                query,
+                consumed_aesthetics,
+                stat_columns,
+                ..
+            } => {
+                assert!(query.contains("AVG(\"__ggsql_aes_pos1__\")"), "query: {}", query);
+                assert!(query.contains("AVG(\"__ggsql_aes_pos2__\")"), "query: {}", query);
+                assert!(!query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
+                let mut consumed = consumed_aesthetics.clone();
+                consumed.sort();
+                assert_eq!(consumed, vec!["pos1".to_string(), "pos2".to_string()]);
+                assert!(stat_columns.contains(&"pos1".to_string()));
+                assert!(stat_columns.contains(&"pos2".to_string()));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn errorbar_aggregates_pos2_minmax() {
+        // slots=[2]: pos1 fixed (group), pos2min and pos2max both aggregated.
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2min", col("__ggsql_aes_pos2min__"));
+        aes.insert("pos2max", col("__ggsql_aes_pos2max__"));
+        let schema = numeric_schema(&[
+            "__ggsql_aes_pos1__",
+            "__ggsql_aes_pos2min__",
+            "__ggsql_aes_pos2max__",
+        ]);
+        let mut params = HashMap::new();
+        params.insert(
+            "aggregate".to_string(),
+            ParameterValue::String("mean".to_string()),
+        );
+
+        let result = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &params,
+            &InlineQuantileDialect,
+            &[2],
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed {
+                query,
+                consumed_aesthetics,
+                ..
+            } => {
+                assert!(query.contains("AVG(\"__ggsql_aes_pos2min__\")"), "query: {}", query);
+                assert!(query.contains("AVG(\"__ggsql_aes_pos2max__\")"), "query: {}", query);
+                assert!(query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
+                let mut consumed = consumed_aesthetics.clone();
+                consumed.sort();
+                assert_eq!(consumed, vec!["pos2max".to_string(), "pos2min".to_string()]);
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn out_of_axis_numeric_pos_stays_as_group() {
+        // slots=[2], numeric pos1 → still goes to GROUP BY (not aggregated).
+        // Same expectation as line_style_groups_by_pos1_and_aggregates_pos2 but
+        // explicit about the "numeric out-of-axis" path.
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = numeric_schema(&["__ggsql_aes_pos1__", "__ggsql_aes_pos2__"]);
+        let mut params = HashMap::new();
+        params.insert(
+            "aggregate".to_string(),
+            ParameterValue::String("mean".to_string()),
+        );
+
+        let result = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &params,
+            &InlineQuantileDialect,
+            &[2],
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn discrete_in_axis_pos_stays_as_group_on_centroid_geom() {
+        // slots=[1,2], pos1 discrete + pos2 numeric → only pos2 aggregated,
+        // pos1 stays as GROUP BY. Confirms numeric check is preserved on
+        // slot=[1,2] geoms (e.g. point with category AS x, value AS y).
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = vec![
+            ColumnInfo {
+                name: "__ggsql_aes_pos1__".to_string(),
+                dtype: DataType::Utf8,
+                is_discrete: true,
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "__ggsql_aes_pos2__".to_string(),
+                dtype: DataType::Float64,
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+        ];
+        let mut params = HashMap::new();
+        params.insert(
+            "aggregate".to_string(),
+            ParameterValue::String("mean".to_string()),
+        );
+
+        let result = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &params,
+            &InlineQuantileDialect,
+            &[1, 2],
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed {
+                query,
+                consumed_aesthetics,
+                stat_columns,
+                ..
+            } => {
+                assert!(query.contains("AVG(\"__ggsql_aes_pos2__\")"));
+                assert!(!query.contains("AVG(\"__ggsql_aes_pos1__\")"));
+                assert!(query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
+                assert_eq!(consumed_aesthetics, vec!["pos2".to_string()]);
+                assert!(stat_columns.contains(&"pos2".to_string()));
+                assert!(!stat_columns.contains(&"pos1".to_string()));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn count_works_with_no_numeric_pos() {
+        // slots=[2], only discrete pos1 mapped, aggregate=count → no
+        // "needs numeric" error; query has COUNT(*) and groups by pos1.
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        let schema = vec![ColumnInfo {
+            name: "__ggsql_aes_pos1__".to_string(),
+            dtype: DataType::Utf8,
+            is_discrete: true,
+            min: None,
+            max: None,
+        }];
+        let mut params = HashMap::new();
+        params.insert(
+            "aggregate".to_string(),
+            ParameterValue::String("count".to_string()),
+        );
+
+        let result = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &params,
+            &InlineQuantileDialect,
+            &[2],
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                ..
+            } => {
+                assert!(query.contains("COUNT(*)"));
+                assert!(query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
+                assert!(stat_columns.contains(&"count".to_string()));
             }
             _ => panic!("expected Transformed"),
         }
