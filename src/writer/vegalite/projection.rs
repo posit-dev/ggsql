@@ -100,6 +100,12 @@ pub(super) trait ProjectionRenderer {
         if bg.is_empty() && fg.is_empty() {
             return;
         }
+        for layer in &mut bg {
+            layer["description"] = json!("background");
+        }
+        for layer in &mut fg {
+            layer["description"] = json!("foreground");
+        }
         if let Some(layers) = get_layers_mut(vl_spec) {
             let data_layers = std::mem::take(layers);
             layers.reserve(bg.len() + data_layers.len() + fg.len());
