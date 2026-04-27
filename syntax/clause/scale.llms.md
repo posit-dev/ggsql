@@ -1,18 +1,14 @@
 # Specify aesthetic scaling with `SCALE`
 
-Scales are an important concept in ggsql. While DRAW clauses define what to draw and what data to base the drawing on, scales control *how* that data is interpreted, understood, and translated. Because of this a proper understanding of the `SCALE` clause is integral to releasing all the power of ggsql. Still, scales always comes with sensible defaults so unlike `DRAW` clauses you may not need them for all your visualisations.
+Scales are an important concept in ggsql. While DRAW clauses define what to draw and what data to base the drawing on, scales control *how* that data is interpreted, understood, and translated. Because of this a proper understanding of the `SCALE` clause is integral to releasing all the power of ggsql. Still, scales always come with sensible defaults so unlike `DRAW` clauses you may not need them for all your visualisations.
 
 ## Clause syntax
 
 The `SCALE` clause takes a number of subclauses, all of them optional:
 
-``` ggsql
-SCALE <type> <aesthetic> FROM <input-range> TO <output-range> VIA <transform>
-  SETTING <parameter> => <value>, ...
-  RENAMING <break-value> => <string>, ...
-```
+`ggsql SCALE <type> <aesthetic> FROM <input-range> TO <output-range> VIA <transform> SETTING <parameter> => <value>, ... RENAMING <break-value> => <string>, ...`
 
-The `type` defines the class of scale to use. It can be one of four different types:
+The `type` defines the class of scale to use. It can be one of five different types:
 
 - `CONTINUOUS` to interpret and treat data as continuous
 - `DISCRETE` to interpret and treat data as discrete or categorical
@@ -46,7 +42,7 @@ The `TO` clause defines the output range of the scale, i.e. what the data is tr
 VIA <transform>
 ```
 
-The `VIA` clause defines a transform which is applied to the data before mapping it to the output range. While transforms are often understood as mathematical transforms, in ggsql it also defines casting of input data. E.g. the `integer` transform cast all input to integer before mapping. Transforms also takes care of creating breaks that are meaningful for the specific transform, e.g. in the case of the log10 transform where breaks are created to fit the power of 10. Different transforms are available to different scale types.
+The `VIA` clause defines a transform which is applied to the data before mapping it to the output range. While transforms are often understood as mathematical transforms, in ggsql it also defines casting of input data. E.g. the `integer` transform cast all input to integer before mapping. Transforms also take care of creating breaks that are meaningful for the specific transform, e.g. in the case of the log10 transform where breaks are created to fit the power of 10. Different transforms are available to different scale types.
 
 ### `SETTING`
 
@@ -62,7 +58,7 @@ This clause behaves much like the `SETTINGS` clause in `DRAW`, in that it allows
 RENAMING <break-value> => <string>, ...
 ```
 
-This clause works much like the `LABEL` clause but works on the break names of the scale. The general syntax is that you provide the name of the break on the left and what it should appear as on the right, e.g `'adelie' => 'Pygoscelis adeliae'`. The clause is understood as a look-up table in the sense that if you provide a renaming for a break that doesn’t appear in the scale then nothing will happen and if a break exist but doesn’t have a renaming defined it will go through unaltered. To suppress the label of a specific break you can rename it to `null`, e.g. `'adelie' => null`. This will not remove the break, only the label.
+This clause works much like the `LABEL` clause but works on the break names of the scale. The general syntax is that you provide the name of the break on the left and what it should appear as on the right, e.g `'adelie' => 'Pygoscelis adeliae'`. The clause is understood as a look-up table in the sense that if you provide a renaming for a break that doesn’t appear in the scale then nothing will happen and if a break exists but doesn’t have a renaming defined it will go through unaltered. To suppress the label of a specific break you can rename it to `null`, e.g. `'adelie' => null`. This will not remove the break, only the label.
 
 #### Break formatting
 
