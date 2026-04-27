@@ -949,6 +949,11 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
         ));
     }
 
+    // Execute setup statements (INSTALL, LOAD, SET, etc.) before the main query
+    for stmt in source_tree.find_texts(&root, "(sql_statement (other_sql_statement) @stmt)") {
+        execute_query(&stmt)?;
+    }
+
     // Extract CTE definitions from the source tree (in declaration order)
     let ctes = cte::extract_ctes(&source_tree);
 

@@ -2780,3 +2780,174 @@ FACET region SETTING scales => 'free_y', ncol => 3
                 (bare_identifier)))
             value: (parameter_value
               (number))))))))
+
+================================================================================
+Bare FROM (DuckDB-style)
+================================================================================
+
+FROM mtcars
+VISUALISE DRAW point MAPPING mpg AS x, hp AS y
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (from_statement
+        (from_clause
+          (table_ref
+            (qualified_name
+              (identifier
+                (bare_identifier))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (mapping_clause
+          (mapping_list
+            (mapping_element
+              (explicit_mapping
+                (mapping_value
+                  (column_reference
+                    (identifier
+                      (bare_identifier))))
+                (aesthetic_name)))
+            (mapping_element
+              (explicit_mapping
+                (mapping_value
+                  (column_reference
+                    (identifier
+                      (bare_identifier))))
+                (aesthetic_name)))))))))
+
+================================================================================
+Bare FROM with WHERE clause
+================================================================================
+
+FROM sales WHERE year = 2024
+VISUALISE DRAW point MAPPING x AS x, y AS y
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (from_statement
+        (from_clause
+          (table_ref
+            (qualified_name
+              (identifier
+                (bare_identifier)))))
+        (non_from_sql_keyword)
+        (identifier
+          (bare_identifier))
+        (number))))
+  (visualise_statement
+    (visualise_keyword)
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (mapping_clause
+          (mapping_list
+            (mapping_element
+              (explicit_mapping
+                (mapping_value
+                  (column_reference
+                    (identifier
+                      (bare_identifier))))
+                (aesthetic_name)))
+            (mapping_element
+              (explicit_mapping
+                (mapping_value
+                  (column_reference
+                    (identifier
+                      (bare_identifier))))
+                (aesthetic_name)))))))))
+
+================================================================================
+Arbitrary SQL setup statements
+================================================================================
+
+INSTALL httpfs; LOAD httpfs;
+SELECT * FROM data VISUALISE DRAW point MAPPING x AS x, y AS y
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (other_sql_statement))
+    (sql_statement
+      (other_sql_statement))
+    (sql_statement
+      (select_statement
+        (select_body
+          (from_clause
+            (table_ref
+              (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (mapping_clause
+          (mapping_list
+            (mapping_element
+              (explicit_mapping
+                (mapping_value
+                  (column_reference
+                    (identifier
+                      (bare_identifier))))
+                (aesthetic_name)))
+            (mapping_element
+              (explicit_mapping
+                (mapping_value
+                  (column_reference
+                    (identifier
+                      (bare_identifier))))
+                (aesthetic_name)))))))))
+
+================================================================================
+Arbitrary SQL setup with bare FROM
+================================================================================
+
+INSTALL httpfs;
+FROM data VISUALISE DRAW point MAPPING x AS x, y AS y
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (other_sql_statement))
+    (sql_statement
+      (from_statement
+        (from_clause
+          (table_ref
+            (qualified_name
+              (identifier
+                (bare_identifier))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (viz_clause
+      (draw_clause
+        (geom_type)
+        (mapping_clause
+          (mapping_list
+            (mapping_element
+              (explicit_mapping
+                (mapping_value
+                  (column_reference
+                    (identifier
+                      (bare_identifier))))
+                (aesthetic_name)))
+            (mapping_element
+              (explicit_mapping
+                (mapping_value
+                  (column_reference
+                    (identifier
+                      (bare_identifier))))
+                (aesthetic_name)))))))))
