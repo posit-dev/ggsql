@@ -1,22 +1,18 @@
 # `src/` — ggsql core Rust crate
 
-The main library + CLI binary. Crate name: `ggsql`. Workspace member, declared in `/Cargo.toml`.
+The core library. Crate name: `ggsql`. Workspace member, declared in `/Cargo.toml`. The `ggsql` CLI binary lives separately in [`/ggsql-cli/`](../ggsql-cli/) and depends on this crate.
 
 For ggsql language semantics, see [`/doc/syntax/`](../doc/syntax/). For Vega-Lite renderer internals, see [`writer/vegalite/CLAUDE.md`](writer/vegalite/CLAUDE.md). For AST types, see [`plot/CLAUDE.md`](plot/CLAUDE.md).
 
 ## Entry points
 
 - **`lib.rs`** — library root. Declares modules, re-exports the headline types (`Plot`, `Layer`, `Geom`, `Scale`, `Mappings`, `AestheticValue`, `DataSource`, `Facet`, `FacetLayout`, `SqlExpression`, `DataFrame`), and defines `GgsqlError` + `Result`.
-- **`cli.rs`** — `ggsql` binary. Subcommands: `exec`, `run`, `parse`, `validate`, `docs`. Connection strings default to `duckdb://memory`; writer defaults to `vegalite`.
-- **`build.rs`** — generates `docs_data.rs` (used by `ggsql docs`) by reading `/doc/`.
-
-End-user CLI usage: [`/doc/get_started/installation.qmd`](../doc/get_started/installation.qmd) and [`/doc/get_started/tooling.qmd`](../doc/get_started/tooling.qmd).
 
 ## Module map
 
 ```
 src/
-├── lib.rs, cli.rs, build.rs    Entry points
+├── lib.rs                      Library root
 ├── array_util.rs, compute.rs    Arrow array helpers
 ├── dataframe.rs                 DataFrame wrapper around arrow RecordBatch
 ├── format.rs                    Label/number/date formatting
@@ -133,4 +129,5 @@ Unit tests live alongside the code (`#[cfg(test)] mod tests`). Integration tests
 - [`writer/vegalite/CLAUDE.md`](writer/vegalite/CLAUDE.md) — Vega-Lite renderer internals.
 - [`/doc/syntax/`](../doc/syntax/) — authoritative ggsql syntax reference.
 - [`doc/API.md`](doc/API.md) — Rust public API reference.
-- [`/INSTALLERS.md`](../INSTALLERS.md) — cross-platform installer build (uses `cargo packager` from this crate).
+- [`/ggsql-cli/CLAUDE.md`](../ggsql-cli/CLAUDE.md) — the `ggsql` CLI binary that wraps this library.
+- [`/INSTALLERS.md`](../INSTALLERS.md) — cross-platform installer build (driven from `ggsql-cli`).

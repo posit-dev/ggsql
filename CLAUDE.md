@@ -21,14 +21,15 @@ The user-facing site is at <https://ggsql.org>. The README at [`README.md`](READ
 
 | Folder | Role | Type | Per-folder CLAUDE.md |
 | --- | --- | --- | --- |
-| [`src/`](src/) | Core Rust library + `ggsql` CLI | Cargo workspace member | [`src/CLAUDE.md`](src/CLAUDE.md) |
+| [`src/`](src/) | Core Rust library (crate `ggsql`) | Cargo workspace member | [`src/CLAUDE.md`](src/CLAUDE.md) |
+| [`ggsql-cli/`](ggsql-cli/) | `ggsql` command-line binary | Cargo workspace member | [`ggsql-cli/CLAUDE.md`](ggsql-cli/CLAUDE.md) |
 | [`tree-sitter-ggsql/`](tree-sitter-ggsql/) | Tree-sitter grammar + multi-language bindings | Cargo workspace member (also npm + PyPI) | [`tree-sitter-ggsql/CLAUDE.md`](tree-sitter-ggsql/CLAUDE.md) |
 | [`ggsql-jupyter/`](ggsql-jupyter/) | Jupyter kernel | Cargo workspace member (also PyPI via maturin) | [`ggsql-jupyter/CLAUDE.md`](ggsql-jupyter/CLAUDE.md) |
 | [`ggsql-wasm/`](ggsql-wasm/) | WebAssembly bindings + browser playground | Cargo workspace member | [`ggsql-wasm/CLAUDE.md`](ggsql-wasm/CLAUDE.md) |
 | [`ggsql-vscode/`](ggsql-vscode/) | VS Code / Positron extension | Standalone TypeScript / npm | [`ggsql-vscode/CLAUDE.md`](ggsql-vscode/CLAUDE.md) |
 | [`doc/`](doc/) | Quarto documentation site (ggsql.org) | Quarto project | [`doc/CLAUDE.md`](doc/CLAUDE.md) |
 
-The Cargo workspace (`/Cargo.toml`) has four members: `tree-sitter-ggsql`, `src`, `ggsql-jupyter`, `ggsql-wasm`. Default workspace members exclude `ggsql-wasm` (it needs the wasm32 target and is built separately).
+The Cargo workspace (`/Cargo.toml`) has five members: `tree-sitter-ggsql`, `src`, `ggsql-cli`, `ggsql-jupyter`, `ggsql-wasm`. Default workspace members exclude `ggsql-wasm` (it needs the wasm32 target and is built separately).
 
 ## High-level pipeline
 
@@ -48,12 +49,15 @@ For details — module layout, traits, where extension points live — see [`src
 ## Building
 
 ```sh
-# Rust workspace (default members: tree-sitter-ggsql, src, ggsql-jupyter)
+# Rust workspace (default members: tree-sitter-ggsql, src, ggsql-cli, ggsql-jupyter)
 cargo build --workspace
 cargo build --release --workspace
 
-# Just the CLI / library
+# Just the library
 cargo build --package ggsql
+
+# Just the CLI binary
+cargo build --package ggsql-cli
 
 # Wasm build (separate, not in default workspace members)
 cd ggsql-wasm && ./build-wasm.sh
@@ -89,6 +93,7 @@ Per-folder CLAUDE.md files cover component-specific test guidance.
 ## Where to ask which question
 
 - *What does clause/layer/scale X do?* → [`doc/syntax/`](doc/syntax/).
+- *How does the `ggsql` CLI work? Where do its subcommands live?* → [`ggsql-cli/CLAUDE.md`](ggsql-cli/CLAUDE.md).
 - *How does the parser work? How is a `Plot` built?* → [`src/CLAUDE.md`](src/CLAUDE.md), then `src/parser/`.
 - *How do I add a new geom / scale type / coord?* → [`src/plot/CLAUDE.md`](src/plot/CLAUDE.md).
 - *How does Vega-Lite output get assembled?* → [`src/writer/vegalite/CLAUDE.md`](src/writer/vegalite/CLAUDE.md).
