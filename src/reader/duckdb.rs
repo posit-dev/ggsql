@@ -211,13 +211,7 @@ impl Reader for DuckDBReader {
         // Rewrite ggsql:name → __ggsql_data_name__ in SQL
         let sql = super::data::rewrite_namespaced_sql(sql)?;
 
-        let first_word = sql.split_whitespace().next().unwrap_or("").to_uppercase();
-        let returns_rows = matches!(
-            first_word.as_str(),
-            "SELECT" | "WITH" | "DESCRIBE" | "SHOW" | "EXPLAIN" | "FROM"
-        );
-
-        if !returns_rows {
+        if !super::returns_rows(&sql) {
             self.conn
                 .execute(&sql, params![])
                 .map_err(|e| GgsqlError::ReaderError(format!("Failed to execute SQL: {}", e)))?;
