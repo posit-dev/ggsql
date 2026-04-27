@@ -21,6 +21,10 @@ impl GeomTrait for ErrorBar {
                 ("pos1", DefaultAestheticValue::Required),
                 ("pos2min", DefaultAestheticValue::Required),
                 ("pos2max", DefaultAestheticValue::Required),
+                // pos2 is the input column for the Aggregate stat in range mode
+                // (`SETTING aggregate => (lower_func, upper_func)` consumes pos2
+                // and produces pos2min/pos2max). Optional otherwise.
+                ("pos2", DefaultAestheticValue::Null),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
@@ -43,6 +47,14 @@ impl GeomTrait for ErrorBar {
             },
         ];
         PARAMS
+    }
+
+    fn supports_aggregate(&self) -> bool {
+        true
+    }
+
+    fn aggregate_range_pair(&self) -> Option<(&'static str, &'static str)> {
+        Some(("pos2min", "pos2max"))
     }
 }
 

@@ -200,10 +200,25 @@ impl Layer {
         };
 
         // Check if all required aesthetics exist.
+        // When `aggregate` is set on a range geom, the (lower, upper) range pair
+        // is filled by the stat (e.g. pos2min/pos2max for ribbon) and shouldn't
+        // be required from the user.
+        let range_pair_skip: Option<(&'static str, &'static str)> =
+            if crate::plot::layer::geom::has_aggregate_param(&self.parameters) {
+                self.geom.aggregate_range_pair()
+            } else {
+                None
+            };
+
         let mut missing = Vec::new();
         let mut position_reqs: Vec<(&str, u8, &str)> = Vec::new();
 
         for aesthetic in self.geom.aesthetics().required() {
+            if let Some((lo, hi)) = range_pair_skip {
+                if aesthetic == lo || aesthetic == hi {
+                    continue;
+                }
+            }
             if let Some((slot, suffix)) = parse_position(aesthetic) {
                 position_reqs.push((aesthetic, slot, suffix))
             } else if !self.mappings.contains_key(aesthetic) {
@@ -418,6 +433,12 @@ impl Layer {
                 .find(|p| p.name == param_name)
             {
                 validate_parameter(param_name, value, &param.constraint)?;
+            }
+            // Or the shared `aggregate` param for Identity-stat geoms
+            else if param_name == "aggregate" && self.geom.supports_aggregate() {
+                let definition =
+                    crate::plot::layer::geom::stat_aggregate::aggregate_param_definition();
+                validate_parameter(param_name, value, &definition.constraint)?;
             }
             // Otherwise it's a valid aesthetic setting (no constraint validation needed)
         }

@@ -41,6 +41,14 @@ impl super::SqlDialect for DuckDbDialect {
         )
     }
 
+    fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
+        Some(format!(
+            "QUANTILE_CONT({}, {})",
+            naming::quote_ident(column),
+            fraction
+        ))
+    }
+
     fn sql_percentile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
         let group_filter = groups
             .iter()

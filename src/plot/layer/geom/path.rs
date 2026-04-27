@@ -36,6 +36,14 @@ impl GeomTrait for Path {
         }];
         PARAMS
     }
+
+    fn supports_aggregate(&self) -> bool {
+        true
+    }
+
+    fn aggregate_slots(&self) -> &'static [u8] {
+        &[1, 2]
+    }
 }
 
 impl std::fmt::Display for Path {

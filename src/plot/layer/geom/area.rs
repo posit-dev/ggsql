@@ -3,10 +3,11 @@
 use crate::plot::layer::orientation::{ALIGNED, ORIENTATION_VALUES};
 use crate::plot::types::DefaultAestheticValue;
 use crate::plot::{DefaultParamValue, ParamDefinition};
-use crate::{naming, Mappings};
+use crate::Mappings;
 
-use super::types::{ParamConstraint, POSITION_VALUES};
-use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
+use super::stat_aggregate;
+use super::types::{wrap_with_order_by, ParamConstraint, POSITION_VALUES};
+use super::{has_aggregate_param, DefaultAesthetics, GeomTrait, GeomType, StatResult};
 
 /// Area geom - filled area charts
 #[derive(Debug, Clone, Copy)]
@@ -54,6 +55,10 @@ impl GeomTrait for Area {
         PARAMS
     }
 
+    fn supports_aggregate(&self) -> bool {
+        true
+    }
+
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
         true
     }
@@ -61,21 +66,30 @@ impl GeomTrait for Area {
     fn apply_stat_transform(
         &self,
         query: &str,
-        _schema: &crate::plot::Schema,
-        _aesthetics: &Mappings,
-        _group_by: &[String],
-        _parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
+        schema: &crate::plot::Schema,
+        aesthetics: &Mappings,
+        group_by: &[String],
+        parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
-        _dialect: &dyn crate::reader::SqlDialect,
+        dialect: &dyn crate::reader::SqlDialect,
     ) -> crate::Result<StatResult> {
-        // Area geom needs ordering by pos1 (domain axis) for proper rendering
-        let order_col = naming::aesthetic_column("pos1");
-        Ok(StatResult::Transformed {
-            query: format!("{} ORDER BY {}", query, naming::quote_ident(&order_col)),
-            stat_columns: vec![],
-            dummy_columns: vec![],
-            consumed_aesthetics: vec![],
-        })
+        let result = if has_aggregate_param(parameters) {
+            stat_aggregate::apply(
+                query,
+                schema,
+                aesthetics,
+                group_by,
+                parameters,
+                dialect,
+                self.aggregate_slots(),
+                self.aggregate_range_pair(),
+            )?
+        } else {
+            StatResult::Identity
+        };
+        // Area needs ordering by pos1 (domain axis) for proper rendering, in both
+        // the Identity and Aggregate paths.
+        Ok(wrap_with_order_by(query, result, "pos1"))
     }
 }
 

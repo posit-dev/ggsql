@@ -584,6 +584,19 @@ where
                 layer.mappings.aesthetics.remove(aes);
             }
 
+            // Auto-remap stat columns whose names are position aesthetics that were
+            // consumed by the stat (e.g. Aggregate's `pos1`/`pos2` outputs). The geom
+            // can't list these in `default_remappings` because the set of position
+            // aesthetics in play is dynamic per layer.
+            for stat in &stat_columns {
+                if final_remappings.contains_key(stat) {
+                    continue;
+                }
+                if aesthetic::is_position_aesthetic(stat) && consumed_aesthetics.contains(stat) {
+                    final_remappings.insert(stat.clone(), stat.clone());
+                }
+            }
+
             // Apply stat_columns to layer aesthetics using the remappings
             for stat in &stat_columns {
                 if let Some(aesthetic) = final_remappings.get(stat) {

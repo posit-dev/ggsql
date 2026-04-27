@@ -116,24 +116,38 @@ fn validate(
             }
         }
 
-        // Validate remapping source columns are valid stat columns for this geom
+        // Validate remapping source columns are valid stat columns for this geom.
+        // Geoms that opt into the Aggregate stat (`supports_aggregate`) also accept
+        // `aggregate`, `count`, and any position aesthetic name as a stat source.
         let valid_stat_columns = layer.geom.valid_stat_columns();
+        let supports_aggregate = layer.geom.supports_aggregate();
         for stat_value in layer.remappings.aesthetics.values() {
             if let Some(stat_col) = stat_value.column_name() {
-                if !valid_stat_columns.contains(&stat_col) {
-                    if valid_stat_columns.is_empty() {
+                let is_aggregate_stat_col = supports_aggregate
+                    && (stat_col == "aggregate"
+                        || stat_col == "count"
+                        || crate::plot::aesthetic::is_position_aesthetic(stat_col));
+                if !valid_stat_columns.contains(&stat_col) && !is_aggregate_stat_col {
+                    if valid_stat_columns.is_empty() && !supports_aggregate {
                         return Err(GgsqlError::ValidationError(format!(
                             "Layer {}: REMAPPING not supported for geom '{}' (no stat transform)",
                             idx + 1,
                             layer.geom
                         )));
                     } else {
+                        let mut valid: Vec<String> =
+                            valid_stat_columns.iter().map(|s| s.to_string()).collect();
+                        if supports_aggregate {
+                            valid.push("aggregate".to_string());
+                            valid.push("count".to_string());
+                        }
+                        let valid_refs: Vec<&str> = valid.iter().map(|s| s.as_str()).collect();
                         return Err(GgsqlError::ValidationError(format!(
                             "Layer {}: REMAPPING references unknown stat column '{}'. Valid stat columns for geom '{}' are: {}",
                             idx + 1,
                             stat_col,
                             layer.geom,
-                            crate::and_list(valid_stat_columns)
+                            crate::and_list(&valid_refs)
                         )));
                     }
                 }

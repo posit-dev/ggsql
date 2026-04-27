@@ -43,6 +43,7 @@ mod ribbon;
 mod rule;
 mod segment;
 mod smooth;
+pub(crate) mod stat_aggregate;
 mod text;
 mod tile;
 mod violin;
@@ -192,20 +193,70 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         false
     }
 
+    /// Whether this geom accepts the `aggregate` SETTING parameter.
+    ///
+    /// Geoms that opt in (the Identity-stat geoms) gain a generic Aggregate stat
+    /// that groups by discrete mappings + PARTITION BY and emits one row per
+    /// (group × aggregation function). Statistical geoms (histogram, density,
+    /// smooth, boxplot, violin) leave this `false` to keep their bespoke stats.
+    fn supports_aggregate(&self) -> bool {
+        false
+    }
+
+    /// Which numeric position-aesthetic slots the Aggregate stat should reduce.
+    ///
+    /// Slot 1 is `pos1`/`pos1min`/`pos1max`/`pos1end` (the independent / domain axis).
+    /// Slot 2 is `pos2`/`pos2min`/`pos2max`/`pos2end` (the dependent / range axis).
+    ///
+    /// Default: `&[2]` — only the dependent axis is reduced; pos1-family stays as a
+    /// grouping column, so e.g. line geoms produce a summary trace along x. Geoms
+    /// whose natural Aggregate is centroid-like (point, polygon, segment, arrow,
+    /// text, path, tile, rule) override to `&[1, 2]`.
+    fn aggregate_slots(&self) -> &'static [u8] {
+        &[2]
+    }
+
+    /// Range pair for range-style Aggregate output.
+    ///
+    /// When `Some((lower, upper))`, this geom is a "range geom" that takes exactly
+    /// two `aggregate` functions and assigns them to the two named aesthetics
+    /// (e.g. `("pos2min", "pos2max")` for ribbon/errorbar). The user maps `pos2`
+    /// as the input column; the stat consumes pos2 and produces the range pair.
+    /// One row per group; no `aggregate` tag column.
+    ///
+    /// `None` (default) means standard per-function-rows aggregation.
+    fn aggregate_range_pair(&self) -> Option<(&'static str, &'static str)> {
+        None
+    }
+
     /// Apply statistical transformation to the layer query.
     ///
-    /// The default implementation returns identity (no transformation).
+    /// The default implementation dispatches to the Aggregate stat when
+    /// `supports_aggregate()` is true and the `aggregate` parameter is set;
+    /// otherwise returns identity (no transformation).
     #[allow(clippy::too_many_arguments)]
     fn apply_stat_transform(
         &self,
-        _query: &str,
-        _schema: &Schema,
-        _aesthetics: &Mappings,
-        _group_by: &[String],
-        _parameters: &HashMap<String, ParameterValue>,
+        query: &str,
+        schema: &Schema,
+        aesthetics: &Mappings,
+        group_by: &[String],
+        parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
-        _dialect: &dyn SqlDialect,
+        dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
+        if self.supports_aggregate() && has_aggregate_param(parameters) {
+            return stat_aggregate::apply(
+                query,
+                schema,
+                aesthetics,
+                group_by,
+                parameters,
+                dialect,
+                self.aggregate_slots(),
+                self.aggregate_range_pair(),
+            );
+        }
         Ok(StatResult::Identity)
     }
 
@@ -248,7 +299,19 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         for param in self.default_params() {
             valid.push(param.name);
         }
+        if self.supports_aggregate() {
+            valid.push("aggregate");
+        }
         valid
+    }
+}
+
+/// True when `parameters["aggregate"]` is set to a non-null string or array.
+pub(crate) fn has_aggregate_param(parameters: &HashMap<String, ParameterValue>) -> bool {
+    match parameters.get("aggregate") {
+        None | Some(ParameterValue::Null) => false,
+        Some(ParameterValue::String(_)) | Some(ParameterValue::Array(_)) => true,
+        _ => false,
     }
 }
 
@@ -453,6 +516,21 @@ impl Geom {
     /// Get valid settings
     pub fn valid_settings(&self) -> Vec<&'static str> {
         self.0.valid_settings()
+    }
+
+    /// Whether this geom accepts the `aggregate` SETTING parameter.
+    pub fn supports_aggregate(&self) -> bool {
+        self.0.supports_aggregate()
+    }
+
+    /// Which position-aesthetic slots the Aggregate stat should reduce.
+    pub fn aggregate_slots(&self) -> &'static [u8] {
+        self.0.aggregate_slots()
+    }
+
+    /// Range pair for range-style Aggregate output, if any.
+    pub fn aggregate_range_pair(&self) -> Option<(&'static str, &'static str)> {
+        self.0.aggregate_range_pair()
     }
 
     /// Validate aesthetic mappings

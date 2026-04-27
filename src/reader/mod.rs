@@ -215,6 +215,17 @@ pub trait SqlDialect {
         )
     }
 
+    /// Inline-form quantile aggregate, usable directly in a `SELECT` list.
+    ///
+    /// Returns `Some(sql_fragment)` when the dialect supports a native quantile
+    /// aggregate that can be combined with other aggregates in the same `GROUP BY`
+    /// query (e.g. DuckDB's `QUANTILE_CONT`). Returns `None` when no native
+    /// inline form exists; callers should then fall back to [`sql_percentile`],
+    /// which produces a correlated scalar subquery.
+    fn sql_quantile_inline(&self, _column: &str, _fraction: f64) -> Option<String> {
+        None
+    }
+
     /// SQL literal for a date value (days since Unix epoch).
     fn sql_date_literal(&self, days_since_epoch: i32) -> String {
         format!(
