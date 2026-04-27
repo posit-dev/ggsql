@@ -162,10 +162,10 @@ jobs:
             xargs -0 -I{} codesign --force --options runtime --timestamp --sign "$SIGN_ID" "{}"
           # Then sign the executables with hardened runtime + entitlements
           codesign --force --options runtime --timestamp \
-            --entitlements ggsql-cli/entitlements.plist \
+            --entitlements entitlements.plist \
             --sign "$SIGN_ID" target/release/ggsql
           codesign --force --options runtime --timestamp \
-            --entitlements ggsql-cli/entitlements.plist \
+            --entitlements entitlements.plist \
             --sign "$SIGN_ID" target/release/ggsql-jupyter
 
       - name: Build and notarize PKG installer (x86_64)
@@ -285,10 +285,10 @@ jobs:
             xargs -0 -I{} codesign --force --options runtime --timestamp --sign "$SIGN_ID" "{}"
           # Then sign the executables with hardened runtime + entitlements
           codesign --force --options runtime --timestamp \
-            --entitlements ggsql-cli/entitlements.plist \
+            --entitlements entitlements.plist \
             --sign "$SIGN_ID" target/release/ggsql
           codesign --force --options runtime --timestamp \
-            --entitlements ggsql-cli/entitlements.plist \
+            --entitlements entitlements.plist \
             --sign "$SIGN_ID" target/release/ggsql-jupyter
 
       - name: Build and notarize PKG installer (aarch64)
@@ -484,9 +484,6 @@ jobs:
         run: cargo publish --package ggsql-jupyter
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-
-      - name: Wait for crates.io index update
-        run: sleep 30
 
       - name: Publish ggsql-cli
         run: cargo publish --package ggsql-cli
