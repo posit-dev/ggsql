@@ -148,11 +148,7 @@ mod tests {
 
     #[test]
     fn test_resolve_keeps_explicit_project() {
-        let project = Projection {
-            coord: Coord::cartesian(),
-            aesthetics: vec!["x".to_string(), "y".to_string()],
-            properties: HashMap::new(),
-        };
+        let project = Projection::cartesian();
         let global = mappings_with(&["angle", "radius"]); // Would infer polar
         let layers: Vec<&Mappings> = vec![];
 

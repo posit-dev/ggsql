@@ -1415,11 +1415,7 @@ mod tests {
 
         // Test with polar projection - internal position maps to radius/theta
         // regardless of the context's user-facing names
-        let polar_proj = Projection {
-            coord: Coord::polar(),
-            aesthetics: vec!["radius".into(), "angle".into()],
-            properties: std::collections::HashMap::new(),
-        };
+        let polar_proj = Projection::polar();
         let polar = get_projection_renderer(Some(&polar_proj));
         let pol = polar.as_ref();
 

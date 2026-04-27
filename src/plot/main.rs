@@ -739,14 +739,10 @@ mod tests {
     #[test]
     fn test_label_transform_with_default_project() {
         // LABEL x/y with default cartesian should transform to pos1/pos2
-        use crate::plot::projection::{Coord, Projection};
+        use crate::plot::projection::Projection;
 
         let mut spec = Plot::new();
-        spec.project = Some(Projection {
-            coord: Coord::cartesian(),
-            aesthetics: vec!["x".to_string(), "y".to_string()],
-            properties: HashMap::new(),
-        });
+        spec.project = Some(Projection::cartesian());
         spec.labels = Some(Labels {
             labels: HashMap::from([
                 ("x".to_string(), Some("X Axis".to_string())),
@@ -827,14 +823,10 @@ mod tests {
     #[test]
     fn test_label_transform_preserves_material() {
         // LABEL title/color should be preserved unchanged
-        use crate::plot::projection::{Coord, Projection};
+        use crate::plot::projection::Projection;
 
         let mut spec = Plot::new();
-        spec.project = Some(Projection {
-            coord: Coord::cartesian(),
-            aesthetics: vec!["x".to_string(), "y".to_string()],
-            properties: HashMap::new(),
-        });
+        spec.project = Some(Projection::cartesian());
         spec.labels = Some(Labels {
             labels: HashMap::from([
                 ("title".to_string(), Some("My Chart".to_string())),

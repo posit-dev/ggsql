@@ -769,11 +769,7 @@ mod tests {
         let cartesian = get_projection_renderer(None);
         assert_eq!(cartesian.position_channels(), ("x", "y"));
 
-        let polar_proj = Projection {
-            coord: crate::plot::projection::Coord::polar(),
-            aesthetics: vec!["radius".into(), "angle".into()],
-            properties: std::collections::HashMap::new(),
-        };
+        let polar_proj = Projection::polar();
         let polar = get_projection_renderer(Some(&polar_proj));
         assert_eq!(polar.position_channels(), ("radius", "theta"));
     }
