@@ -1,12 +1,12 @@
 # Building Cross-Platform Installers
 
-ggsql uses [cargo-packager](https://github.com/crabnebula-dev/cargo-packager) to create native installers for Windows, macOS, and Linux.
+ggsql ships native installers for Windows, macOS, and Linux. Windows (NSIS / MSI) and Linux (Deb) installers are built via [cargo-packager](https://github.com/crabnebula-dev/cargo-packager); macOS installers are built directly with Apple's `pkgbuild`, then code-signed and notarized.
 
 ## Quick Start
 
 ### Prerequisites
 
-1. **Install cargo-packager**:
+1. **For Windows / Linux installers — install cargo-packager**:
 
    ```bash
    cargo install cargo-packager --locked
@@ -14,39 +14,56 @@ ggsql uses [cargo-packager](https://github.com/crabnebula-dev/cargo-packager) to
 
 2. **Platform-specific requirements**:
    - **Windows**: No additional requirements (uses built-in NSIS, optionally WiX if installed)
-   - **macOS**: Xcode Command Line Tools
+   - **macOS**: Xcode Command Line Tools, plus [`dylibbundler`](https://github.com/auriamg/macdylibbundler) (`brew install dylibbundler`) for bundling Arrow / DuckDB dynamic libraries
    - **Linux**: `sudo apt-get install libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf`
 
 ### Build Installers Locally
 
-From the `src/` directory:
-
 ```bash
 # Windows
-cd src
+cd ggsql-cli
 cargo packager --release --formats nsis    # Creates .exe installer (NSIS)
 cargo packager --release --formats wix     # Creates .msi installer (WiX)
 
-# macOS
-cd src
-cargo packager --release --formats dmg     # Creates .dmg disk image
-
 # Linux
-cd src
+cd ggsql-cli
 cargo packager --release --formats deb     # Creates .deb package (Debian/Ubuntu)
 ```
 
-Output location: `src/target/release/packager/`
+Output for cargo-packager: `ggsql-cli/target/release/packager/`.
+
+**macOS** uses a separate `pkgbuild` flow (matches what CI ships). From the workspace root:
+
+```bash
+# Build the binaries
+cargo build --release --bin ggsql --bin ggsql-jupyter
+
+# Bundle dylibs alongside the binaries
+dylibbundler -cd -of -b -x target/release/ggsql         -d ./libs/ -p "@executable_path/../lib/ggsql/"
+dylibbundler -cd -of -b -x target/release/ggsql-jupyter -d ./libs/ -p "@executable_path/../lib/ggsql/"
+
+# Stage payload and build an unsigned .pkg
+mkdir -p pkg-payload/usr/local/bin pkg-payload/usr/local/lib/ggsql
+cp target/release/ggsql target/release/ggsql-jupyter pkg-payload/usr/local/bin/
+cp -R ./libs/. pkg-payload/usr/local/lib/ggsql/
+pkgbuild \
+  --root ./pkg-payload \
+  --install-location / \
+  --identifier co.posit.ggsql \
+  --version 0.0.0-dev \
+  ggsql-dev.pkg
+```
+
+CI additionally codesigns the binaries with `entitlements.plist` (Developer ID Application), signs the `.pkg` (Developer ID Installer), and notarizes via `xcrun notarytool` — see [`.github/workflows/release-packages.yml`](.github/workflows/release-packages.yml). Local builds without those creds produce an unsigned `.pkg` that's fine for testing but will be Gatekeeper-blocked on other machines.
 
 ## Available Formats
 
-| Platform    | Format     | Command          | Output                             |
-| ----------- | ---------- | ---------------- | ---------------------------------- |
-| **Windows** | NSIS       | `--formats nsis` | `ggsql_0.1.0_x64-setup.exe` (12MB) |
-| **Windows** | MSI        | `--formats wix`  | `ggsql_0.1.0_x64_en-US.msi` (15MB) |
-| **macOS**   | DMG        | `--formats dmg`  | `ggsql_0.1.0_x64.dmg`              |
-| **macOS**   | App Bundle | `--formats app`  | `ggsql.app`                        |
-| **Linux**   | Debian     | `--formats deb`  | `ggsql_0.1.0_amd64.deb`            |
+| Platform    | Format | Tool             | Output                          |
+| ----------- | ------ | ---------------- | ------------------------------- |
+| **Windows** | NSIS   | `cargo packager --formats nsis` | `ggsql_0.1.0_x64-setup.exe`     |
+| **Windows** | MSI    | `cargo packager --formats wix`  | `ggsql_0.1.0_x64_en-US.msi`     |
+| **macOS**   | PKG    | `pkgbuild` (see above)          | `ggsql_0.1.0_x86_64.pkg`, `ggsql_0.1.0_aarch64.pkg` |
+| **Linux**   | Debian | `cargo packager --formats deb`  | `ggsql_0.1.0_amd64.deb`         |
 
 ## What Gets Packaged
 
@@ -57,7 +74,7 @@ The installers include:
 
 ## Configuration
 
-Installer configuration is in `src/Cargo.toml` under `[package.metadata.packager]`:
+Windows / Linux installer configuration is in `ggsql-cli/Cargo.toml` under `[package.metadata.packager]` (the macOS `.pkg` build is driven entirely by the `pkgbuild` invocation in the workflow, not by this metadata):
 
 ```toml
 [package.metadata.packager]
@@ -65,10 +82,11 @@ product-name = "ggsql"
 identifier = "com.ggsql.app"
 category = "DeveloperTool"
 publisher = "ggsql Team"
-icons = ["../doc/assets/icon.svg", "../doc/assets/logo.png"]
+icons = ["../doc/assets/logo.png"]
 license-file = "../LICENSE.md"
 binaries = [
   { path = "ggsql", main = true },
+  { path = "ggsql-jupyter", main = false },
 ]
 ```
 
@@ -81,9 +99,9 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The workflow (`.github/workflows/release-installers.yml`) will:
+The workflow (`.github/workflows/release-packages.yml`) will:
 
-1. **Build installers** for Windows (NSIS + MSI), macOS (DMG), and Linux (Deb)
+1. **Build installers** for Windows (NSIS + MSI), macOS (PKG, x86_64 + aarch64, signed and notarized), and Linux (Deb, x86_64 + aarch64)
 2. **Create a GitHub Release** with all installers attached
 3. **Generate release notes** automatically
 
@@ -106,11 +124,11 @@ You can also trigger builds manually from the Actions tab.
 
 ### macOS
 
-**DMG Installer**
+**PKG Installer**
 
-- Open `ggsql_0.1.0_x64.dmg`
-- Drag `ggsql.app` to Applications folder
-- Or copy binaries directly to `/usr/local/bin`
+- Double-click `ggsql_0.1.0_x86_64.pkg` (Intel) or `ggsql_0.1.0_aarch64.pkg` (Apple Silicon)
+- Installs `ggsql` and `ggsql-jupyter` into `/usr/local/bin/` and bundled dylibs into `/usr/local/lib/ggsql<version>/`
+- CLI command-line install: `sudo installer -pkg ggsql_0.1.0_aarch64.pkg -target /`
 
 ### Linux
 
@@ -141,11 +159,15 @@ ggsql --version
 
 ```bash
 # Install
-hdiutil attach ggsql_0.1.0_x64.dmg
-cp -r /Volumes/ggsql/ggsql.app /Applications/
+sudo installer -pkg ggsql_0.1.0_aarch64.pkg -target /
 
 # Verify
-/Applications/ggsql.app/Contents/MacOS/ggsql --version
+ggsql --version
+ggsql-jupyter --version
+
+# Uninstall
+sudo rm /usr/local/bin/ggsql /usr/local/bin/ggsql-jupyter
+sudo rm -rf /usr/local/lib/ggsql*
 ```
 
 ### Linux
@@ -165,13 +187,15 @@ sudo apt-get remove ggsql
 
 This happens with unsigned installers. Click "More info" → "Run anyway". For production, sign the installer with a code signing certificate.
 
-### macOS: "ggsql.app is damaged"
+### macOS: ".pkg can't be opened" / "unidentified developer"
 
-This happens with unsigned apps. Run:
+Locally-built `.pkg` files are unsigned and Gatekeeper will block double-clicking them. Either install from the command line:
 
 ```bash
-xattr -cr /Applications/ggsql.app
+sudo installer -pkg ggsql-dev.pkg -target /
 ```
+
+…or right-click → Open to bypass Gatekeeper for that file. Official releases from GitHub are signed with the Developer ID Installer certificate and notarized, so they install without warnings.
 
 ### Linux: Missing dependencies
 
@@ -191,7 +215,9 @@ Build for different architectures:
 ```bash
 # macOS: Build for Apple Silicon
 rustup target add aarch64-apple-darwin
-cargo packager --release --target aarch64-apple-darwin --formats dmg
+cargo build --release --target aarch64-apple-darwin --bin ggsql --bin ggsql-jupyter
+# Then run the dylibbundler + pkgbuild flow shown above against
+# target/aarch64-apple-darwin/release/ instead of target/release/.
 
 # Linux: Build for ARM64
 rustup target add aarch64-unknown-linux-gnu

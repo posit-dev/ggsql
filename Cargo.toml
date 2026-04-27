@@ -2,12 +2,14 @@
 members = [
     "tree-sitter-ggsql",
     "src",
+    "ggsql-cli",
     "ggsql-jupyter",
     "ggsql-wasm"
 ]
 default-members = [
     "tree-sitter-ggsql",
     "src",
+    "ggsql-cli",
     "ggsql-jupyter"
 ]
 resolver = "2"

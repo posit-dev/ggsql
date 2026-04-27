@@ -25,6 +25,8 @@ shapes (#368)
 before registering them back to the backend. We now keep the data purely on the
 backend until the layer query as was always intended (#363)
 - Simplified internal approach to DataFrame with DuckDB reader (#365)
+- Moved the CLI to its own module rather than be part of the main crate (#379)
+- Restructured CLAUDE.md to better deal with the rising complexity of the project (#382)
 
 ### Removed
 
