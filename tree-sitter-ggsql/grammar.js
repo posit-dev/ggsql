@@ -175,19 +175,14 @@ module.exports = grammar({
       ))
     )),
 
-    // Other SQL statements - DO NOT match if starts with keywords we handle
-    // explicitly (WITH, SELECT, CREATE, INSERT, UPDATE, DELETE, VISUALISE, FROM).
-    other_sql_statement: $ => {
-      const exclude_pattern = /[^\s;(),'"WwSsCcIiUuDdVvFf]+/;
-      return prec(-1, repeat1(choice(
-        $.non_from_sql_keyword,
-        token(exclude_pattern),  // Tokens not starting with excluded letters
-        $.string,
-        $.number,
-        $.subquery,
-        ',', '(', ')', '*', '.', '='
-      )));
-    },
+    other_sql_statement: $ => prec(-1, repeat1(choice(
+      $.non_from_sql_keyword,
+      token(/[^\s;(),'"]+/),
+      $.string,
+      $.number,
+      $.subquery,
+      ',', '(', ')', '*', '.', '='
+    ))),
 
     // Subquery in parentheses - fully recursive, can contain any SQL
     // Prioritizes WITH/SELECT statements, falls back to token-by-token parsing
@@ -440,7 +435,7 @@ module.exports = grammar({
     )),
 
     from_clause: $ => prec.right(1, seq(
-      caseInsensitive('FROM'),
+      token(prec(1, caseInsensitive('FROM'))),
       $.table_ref,
       repeat(seq(',', $.table_ref))
     )),
@@ -532,7 +527,7 @@ module.exports = grammar({
     geom_type: $ => choice(
       'point', 'line', 'path', 'bar', 'area', 'tile', 'polygon', 'ribbon',
       'histogram', 'density', 'smooth', 'boxplot', 'violin',
-      'text', 'label', 'segment', 'arrow', 'rule', 'errorbar'
+      'text', 'label', 'segment', 'arrow', 'rule', 'range'
     ),
 
     // MAPPING clause for aesthetic mappings: MAPPING col AS x, "blue" AS color [FROM source]

@@ -1506,7 +1506,7 @@ mod tests {
         let scale = crate::plot::Scale::new("pos2");
         spec.scales.push(scale);
         // Simulate post-transformation state: mappings use internal names
-        let layer = Layer::new(Geom::errorbar())
+        let layer = Layer::new(Geom::range())
             .with_aesthetic(
                 "pos2min".to_string(),
                 AestheticValue::standard_column("low"),

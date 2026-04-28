@@ -44,7 +44,7 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Segment => "rule",
         GeomType::Smooth => "line",
         GeomType::Rule => "rule",
-        GeomType::ErrorBar => "rule",
+        GeomType::Range => "rule",
         _ => "point", // Default fallback
     };
     json!({
@@ -114,7 +114,7 @@ pub enum PreparedData {
         values: Vec<Value>,
         metadata: Box<dyn Any + Send + Sync>,
     },
-    /// Multiple component datasets (boxplot, violin, errorbar)
+    /// Multiple component datasets (boxplot, violin, range)
     Composite {
         components: HashMap<String, Vec<Value>>,
         metadata: Box<dyn Any + Send + Sync>,
@@ -618,31 +618,6 @@ impl GeomRenderer for PathRenderer {
         }
 
         Ok(vec![layer_spec])
-    }
-}
-
-// =============================================================================
-// Segment Renderer
-// =============================================================================
-
-pub struct SegmentRenderer;
-
-impl GeomRenderer for SegmentRenderer {
-    fn modify_encoding(
-        &self,
-        encoding: &mut Map<String, Value>,
-        _layer: &Layer,
-        context: &RenderContext,
-    ) -> Result<()> {
-        let (pos1, pos1_end, _, pos2, pos2_end, _) = &context.channels;
-        // If endpoint is missing, use start point (creates vertical/horizontal line)
-        if let Some(v) = encoding.get(pos1.as_str()).cloned() {
-            encoding.entry(pos1_end.clone()).or_insert(v);
-        }
-        if let Some(v) = encoding.get(pos2.as_str()).cloned() {
-            encoding.entry(pos2_end.clone()).or_insert(v);
-        }
-        Ok(())
     }
 }
 
@@ -1702,12 +1677,12 @@ impl GeomRenderer for ViolinRenderer {
 }
 
 // =============================================================================
-// Errorbar Renderer
+// Range Renderer
 // =============================================================================
 
-struct ErrorBarRenderer;
+struct RangeRenderer;
 
-impl GeomRenderer for ErrorBarRenderer {
+impl GeomRenderer for RangeRenderer {
     fn finalize(
         &self,
         layer_spec: Value,
@@ -2117,10 +2092,9 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Boxplot => Box::new(BoxplotRenderer),
         GeomType::Violin => Box::new(ViolinRenderer),
         GeomType::Text => Box::new(TextRenderer),
-        GeomType::Segment => Box::new(SegmentRenderer),
-        GeomType::ErrorBar => Box::new(ErrorBarRenderer),
+        GeomType::Range => Box::new(RangeRenderer),
         GeomType::Rule => Box::new(RuleRenderer),
-        // All other geoms (Point, Area, Ribbon, Density, etc.) use the default renderer
+        // All other geoms (Point, Area, Ribbon, Density, Segment, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }
 }

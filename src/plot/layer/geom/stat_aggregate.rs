@@ -279,7 +279,7 @@ fn func_literal(func: &str) -> String {
 
 // =============================================================================
 // Range-mode strategy: exactly two functions filling a (lower, upper) aesthetic
-// pair on the same row. Used by ribbon/errorbar.
+// pair on the same row. Used by ribbon/range.
 // =============================================================================
 
 fn apply_range_mode(
@@ -1259,7 +1259,7 @@ mod tests {
     }
 
     #[test]
-    fn errorbar_aggregates_pos2_minmax() {
+    fn range_geom_aggregates_pos2_minmax() {
         // slots=[2]: pos1 fixed (group), pos2min and pos2max both aggregated.
         let mut aes = Mappings::new();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
@@ -1450,7 +1450,7 @@ mod tests {
     }
 
     // ========================================================================
-    // Range-mode tests (ribbon / errorbar)
+    // Range-mode tests (ribbon / range)
     // ========================================================================
 
     fn range_pair() -> Option<(&'static str, &'static str)> {

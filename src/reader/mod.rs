@@ -356,6 +356,19 @@ pub(crate) fn validate_table_name(name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Does the SQL statement return rows?
+///
+/// Looks at the first keyword to decide: `SELECT`, `WITH`, `FROM`,
+/// `DESCRIBE`, `SHOW` and `EXPLAIN` produce result sets; everything else
+/// (DDL, DML) does not.
+pub(crate) fn returns_rows(sql: &str) -> bool {
+    let first_word = sql.split_whitespace().next().unwrap_or("");
+    matches!(
+        first_word.to_ascii_uppercase().as_str(),
+        "SELECT" | "WITH" | "DESCRIBE" | "SHOW" | "EXPLAIN" | "FROM"
+    )
+}
+
 // ============================================================================
 // Spec - Result of reader.execute()
 // ============================================================================

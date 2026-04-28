@@ -20,9 +20,8 @@ impl GeomTrait for Segment {
             defaults: &[
                 ("pos1", DefaultAestheticValue::Required),
                 ("pos2", DefaultAestheticValue::Required),
-                // Segment requires at least one endpoint (pos1end or pos2end via bidirectional validation)
                 ("pos1end", DefaultAestheticValue::Required),
-                ("pos2end", DefaultAestheticValue::Null),
+                ("pos2end", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
@@ -73,38 +72,19 @@ mod tests {
     }
 
     #[test]
-    fn test_segment_requires_at_least_one_endpoint() {
-        // Segment requires pos1, pos2, and at least one of pos1end/pos2end
-        // Missing both endpoints should fail
+    fn test_segment_requires_both_endpoints() {
         let result = validate_segment(&[("pos1", "x"), ("pos2", "y")]);
         assert!(result.is_err(), "Should fail when missing both endpoints");
-    }
 
-    #[test]
-    fn test_segment_validates_with_xend() {
-        // Segment with x, y, xend (identity orientation)
         let result = validate_segment(&[("pos1", "x"), ("pos2", "y"), ("pos1end", "xend")]);
-        assert!(
-            result.is_ok(),
-            "Expected validation to pass with xend, got error: {:?}",
-            result.err()
-        );
-    }
+        assert!(result.is_err(), "Should fail when missing pos2end");
 
-    #[test]
-    fn test_segment_validates_with_yend() {
-        // Segment with x, y, yend (flipped orientation)
         let result = validate_segment(&[("pos1", "x"), ("pos2", "y"), ("pos2end", "yend")]);
-        assert!(
-            result.is_ok(),
-            "Expected validation to pass with yend, got error: {:?}",
-            result.err()
-        );
+        assert!(result.is_err(), "Should fail when missing pos1end");
     }
 
     #[test]
     fn test_segment_validates_with_both_endpoints() {
-        // Segment with both xend and yend
         let result = validate_segment(&[
             ("pos1", "x"),
             ("pos2", "y"),

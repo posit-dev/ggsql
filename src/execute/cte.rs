@@ -230,7 +230,7 @@ pub fn transform_global_sql(
 
     if let Some(select_sql) = select_sql {
         Some(transform_cte_references(&select_sql, materialized_ctes))
-    } else if has_executable_sql(source_tree) {
+    } else if does_consume_cte(source_tree) {
         // Non-SELECT executable SQL (CREATE, INSERT, UPDATE, DELETE)
         // OR VISUALISE FROM (which injects SELECT * FROM <source>)
         // Extract SQL (with injection if VISUALISE FROM) and transform CTE references
@@ -248,7 +248,7 @@ pub fn transform_global_sql(
 /// This handles cases like `WITH a AS (...), b AS (...) VISUALISE` where the WITH
 /// clause has no trailing SELECT - these CTEs are still extracted for layer use
 /// but shouldn't be executed as global data.
-pub fn has_executable_sql(source_tree: &SourceTree) -> bool {
+pub fn does_consume_cte(source_tree: &SourceTree) -> bool {
     let root = source_tree.root();
 
     // Check for direct executable statements (SELECT, CREATE, INSERT, UPDATE,

@@ -1,4 +1,4 @@
-//! ErrorBar geom implementation
+//! Range geom implementation
 
 use super::types::POSITION_VALUES;
 use super::{
@@ -6,13 +6,13 @@ use super::{
 };
 use crate::plot::types::DefaultAestheticValue;
 
-/// ErrorBar geom - error bars (confidence intervals)
+/// Range geom - intervals along the secondary axis
 #[derive(Debug, Clone, Copy)]
-pub struct ErrorBar;
+pub struct Range;
 
-impl GeomTrait for ErrorBar {
+impl GeomTrait for Range {
     fn geom_type(&self) -> GeomType {
-        GeomType::ErrorBar
+        GeomType::Range
     }
 
     fn aesthetics(&self) -> DefaultAesthetics {
@@ -58,9 +58,9 @@ impl GeomTrait for ErrorBar {
     }
 }
 
-impl std::fmt::Display for ErrorBar {
+impl std::fmt::Display for Range {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "errorbar")
+        write!(f, "range")
     }
 }
 
@@ -69,8 +69,8 @@ mod tests {
     use crate::plot::{AestheticContext, AestheticValue, Geom, Layer};
 
     /// Helper function to create a layer with given mappings and validate it
-    fn validate_errorbar(mappings: &[(&str, &str)]) -> Result<(), String> {
-        let mut layer = Layer::new(Geom::errorbar());
+    fn validate_range(mappings: &[(&str, &str)]) -> Result<(), String> {
+        let mut layer = Layer::new(Geom::range());
         for (aesthetic, column) in mappings {
             layer.mappings.insert(
                 aesthetic.to_string(),
@@ -82,16 +82,16 @@ mod tests {
     }
 
     #[test]
-    fn test_errorbar_requires_all_aesthetics() {
-        // ErrorBar requires pos1, pos2min, pos2max - test that missing any fails
-        let result = validate_errorbar(&[("pos1", "x"), ("pos2max", "ymax")]);
+    fn test_range_requires_all_aesthetics() {
+        // Range requires pos1, pos2min, pos2max - test that missing any fails
+        let result = validate_range(&[("pos1", "x"), ("pos2max", "ymax")]);
         assert!(result.is_err(), "Should fail when missing pos2min");
     }
 
     #[test]
-    fn test_errorbar_rejects_mixed_orientation() {
+    fn test_range_rejects_mixed_orientation() {
         // Mixed orientation should fail: pos1 (identity) + pos1max (flipped)
-        let result = validate_errorbar(&[("pos1", "x"), ("pos2min", "ymin"), ("pos1max", "xmax")]);
+        let result = validate_range(&[("pos1", "x"), ("pos2min", "ymin"), ("pos1max", "xmax")]);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -103,9 +103,9 @@ mod tests {
     }
 
     #[test]
-    fn test_errorbar_validates_successfully() {
-        // ErrorBar with all required aesthetics should pass validation
-        let result = validate_errorbar(&[("pos1", "x"), ("pos2min", "ymin"), ("pos2max", "ymax")]);
+    fn test_range_validates_successfully() {
+        // Range with all required aesthetics should pass validation
+        let result = validate_range(&[("pos1", "x"), ("pos2min", "ymin"), ("pos2max", "ymax")]);
 
         assert!(
             result.is_ok(),
