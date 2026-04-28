@@ -18,6 +18,9 @@ in the Jupyter kernel (#360)
 - Passing the shape aesthetic via `SETTING` now correctly translates named
 shapes (#368)
 - Asterisk shape now has lines 60 degrees apart, giving an even shape
+- `validate()` now reports an actionable error when a SQL expression (e.g.
+`CAST(...)` or a function call) appears inside a `VISUALISE` mapping, instead
+of silently treating the entire query as SQL (#389)
 
 ### Changed
 
