@@ -76,6 +76,25 @@ The `SETTING` clause can be used for two different things:
 #### Position
 A special setting is `position` which controls how overlapping objects are repositioned to avoid overlapping etc. Position adjustments have special mapping requirements so all position adjustments will not be relevant for all layer types. Different layers have different defaults as detailed in their documentation. You can read about each different position adjustment at [their own documentation sites](../index.qmd#position-adjustments).
 
+#### Aggregate
+Some layers support aggregation of its data through the `aggregate` setting. These layers will state this. `aggregate` allows a single string or an array of strings that specify the aggregation to calculate. The aggregates can be either a simple function or a parameterized band function.
+
+The simple functions can be one of:
+
+* `'count'`: Row count
+* `'sum'` and `'prod'`: The sum or product
+* `'min'`, `'max'`, and `'range'`: Extremes and max - min
+* `'mean'`, and `'median'`: Central tendency
+* `'geomean'`, `'harmean'`, and `'rms'`: Geometric, harmonic, and root-mean-square
+* `'sdev'`, `'var'`, `'iqr'`, and `'se'`: Standard deviation, variance, interquartile range, and standard error
+* `'p05'`, `'p10'`, `'p25'`, `'p50'`, `'p75'`, `'p90'`, and `'p95'`: Percentiles
+
+For band functions you combine an offset with an expansion, potentially multiplied. An example could be `'mean-1.96sdev'` which does exactly what you'd expect it to be. The general form is `<offset>±<multiplier><expansion>` with `<multiplier>` being optional (defaults to `1`).
+
+Allowed offsets are: `'mean'`, `'median'`, `'geomean'`, `'harmean'`, `'rms'`, `'sum'`, `'prod'`, `'min'`, `'max'`, and `'p05'`–`'p95'`
+
+Allowed expansions are: `'sdev'`, `'se'`, `'var'`, `'iqr'`, and `'range'`
+
 ### `FILTER`
 ```ggsql
 FILTER <condition>
