@@ -191,6 +191,9 @@ impl ProjectionRenderer for CartesianProjection {
 // PolarProjection
 // =============================================================================
 
+/// Normalized outer radius (proportion of `min(width, height) / 2`).
+const POLAR_OUTER: f64 = 1.0;
+
 /// Polar projection — radius/theta coordinates for pie charts, rose plots, etc.
 struct PolarProjection;
 
@@ -259,6 +262,71 @@ fn apply_clip_to_layers(vl_spec: &mut Value, clip: bool) {
 // Polar projection implementation
 // =============================================================================
 
+/// Extract (start_radians, end_radians, inner) from a Projection.
+///
+/// Defaults: start=0°, end=start+360°, inner=0.
+fn polar_properties(project: Option<&Projection>) -> (f64, f64, f64) {
+    let prop = |name| {
+        project
+            .and_then(|p| p.properties.get(name))
+            .and_then(|v| match v {
+                ParameterValue::Number(n) => Some(*n),
+                _ => None,
+            })
+    };
+    let start_degrees = prop("start").unwrap_or(0.0);
+    let end_degrees = prop("end").unwrap_or(start_degrees + 360.0);
+    let inner = prop("inner").unwrap_or(0.0);
+    (
+        start_degrees * std::f64::consts::PI / 180.0,
+        end_degrees * std::f64::consts::PI / 180.0,
+        inner,
+    )
+}
+
+// =============================================================================
+// Polar expression helpers
+// =============================================================================
+// Vega-Lite expression strings for polar ↔ pixel coordinate math.
+// Used by both data-layer transforms and decoration layers.
+
+/// Normalize a value from `[domain_min, domain_max]` to `[inner, POLAR_OUTER]`.
+fn expr_normalize_radius(value: &str, domain_min: f64, domain_max: f64, inner: f64) -> String {
+    let scale = (POLAR_OUTER - inner) / (domain_max - domain_min);
+    format!("{inner} + {scale} * ({value} - {domain_min})")
+}
+
+/// Normalize a value from `[domain_min, domain_max]` to `[start, end]` radians.
+fn expr_normalize_theta(
+    value: &str,
+    domain_min: f64,
+    domain_max: f64,
+    start: f64,
+    end: f64,
+) -> String {
+    let scale = (end - start) / (domain_max - domain_min);
+    format!("{start} + {scale} * ({value} - {domain_min})")
+}
+
+/// Pixel x-coordinate from a normalized radius expression and theta expression.
+fn expr_polar_x(r: &str, theta: &str) -> String {
+    format!("width / 2 + min(width, height) / 2 * {r} * sin({theta})")
+}
+
+/// Pixel y-coordinate from a normalized radius expression and theta expression.
+fn expr_polar_y(r: &str, theta: &str) -> String {
+    format!("height / 2 - min(width, height) / 2 * {r} * cos({theta})")
+}
+
+/// Pixel radius from a normalized radius expression.
+fn expr_polar_radius(r: &str) -> String {
+    format!("min(width, height) / 2 * ({r})")
+}
+
+// =============================================================================
+// Polar projection transformation
+// =============================================================================
+
 /// Apply Polar projection transformation (bar->arc, point->arc with radius)
 ///
 /// Encoding channel names (theta/radius) are already set correctly by `map_aesthetic_name()`
@@ -272,39 +340,7 @@ fn apply_polar_project(
     data: &DataFrame,
     vl_spec: &mut Value,
 ) -> Result<Option<DataFrame>> {
-    // Get start angle in degrees (defaults to 0 = 12 o'clock)
-    let start_degrees = project
-        .properties
-        .get("start")
-        .and_then(|v| match v {
-            ParameterValue::Number(n) => Some(*n),
-            _ => None,
-        })
-        .unwrap_or(0.0);
-
-    // Get end angle in degrees (defaults to start + 360 = full circle)
-    let end_degrees = project
-        .properties
-        .get("end")
-        .and_then(|v| match v {
-            ParameterValue::Number(n) => Some(*n),
-            _ => None,
-        })
-        .unwrap_or(start_degrees + 360.0);
-
-    // Get inner radius proportion (0.0 to 1.0, defaults to 0 = full pie)
-    let inner = project
-        .properties
-        .get("inner")
-        .and_then(|v| match v {
-            ParameterValue::Number(n) => Some(*n),
-            _ => None,
-        })
-        .unwrap_or(0.0);
-
-    // Convert degrees to radians for Vega-Lite
-    let start_radians = start_degrees * std::f64::consts::PI / 180.0;
-    let end_radians = end_degrees * std::f64::consts::PI / 180.0;
+    let (start_radians, end_radians, inner) = polar_properties(Some(project));
 
     // Convert geoms to polar equivalents and apply angle range + inner radius
     convert_geoms_to_polar(spec, vl_spec, start_radians, end_radians, inner)?;
@@ -407,11 +443,6 @@ fn convert_polar_to_cartesian(
         )
     };
 
-    // Phase 2: Build calculate transforms for polar→cartesian conversion
-    //
-    // theta convention: 0 = 12 o'clock (top), increases clockwise
-    // cartesian: x = r * sin(θ), y = r * cos(θ)
-    let angle_span = end_radians - start_radians;
     let (theta_min, theta_max) = theta_domain;
     let (r_min, r_max) = r_domain;
 
@@ -425,53 +456,32 @@ fn convert_polar_to_cartesian(
         )
     }));
 
-    // Normalize theta to [start_radians, end_radians]
-    if (theta_max - theta_min).abs() > f64::EPSILON {
-        polar_transforms.push(json!({
-            "calculate": format!(
-                "{start} + (datum['{field}'] - {min}) / ({max} - {min}) * {span}",
-                start = start_radians,
-                field = theta_field,
-                min = theta_min,
-                max = theta_max,
-                span = angle_span,
-            ),
-            "as": "__polar_theta__"
-        }));
+    let theta_expr = if (theta_max - theta_min).abs() > f64::EPSILON {
+        expr_normalize_theta(
+            &format!("datum['{theta_field}']"),
+            theta_min,
+            theta_max,
+            start_radians,
+            end_radians,
+        )
     } else {
-        polar_transforms.push(json!({
-            "calculate": format!("{}", start_radians),
-            "as": "__polar_theta__"
-        }));
-    }
+        format!("{start_radians}")
+    };
+    polar_transforms.push(json!({"calculate": theta_expr, "as": "__polar_theta__"}));
 
-    // Normalize radius to [inner, 1.0]
-    if (r_max - r_min).abs() > f64::EPSILON {
-        polar_transforms.push(json!({
-            "calculate": format!(
-                "{inner} + (1 - {inner}) * (datum['{field}'] - {min}) / ({max} - {min})",
-                inner = inner,
-                field = r_field,
-                min = r_min,
-                max = r_max,
-            ),
-            "as": "__polar_r__"
-        }));
+    let r_expr = if (r_max - r_min).abs() > f64::EPSILON {
+        expr_normalize_radius(&format!("datum['{r_field}']"), r_min, r_max, inner)
     } else {
-        polar_transforms.push(json!({
-            "calculate": format!("{}", (1.0 + inner) / 2.0),
-            "as": "__polar_r__"
-        }));
-    }
+        format!("{}", (POLAR_OUTER + inner) / 2.0)
+    };
+    polar_transforms.push(json!({"calculate": r_expr, "as": "__polar_r__"}));
 
-    // Convert to pixel coordinates, matching the arc mark's layout:
-    //   center = (width/2, height/2), outerRadius = min(width,height)/2
     polar_transforms.push(json!({
-        "calculate": "width/2 + min(width,height)/2 * datum.__polar_r__ * sin(datum.__polar_theta__)",
+        "calculate": expr_polar_x("datum.__polar_r__", "datum.__polar_theta__"),
         "as": "__polar_x__"
     }));
     polar_transforms.push(json!({
-        "calculate": "height/2 - min(width,height)/2 * datum.__polar_r__ * cos(datum.__polar_theta__)",
+        "calculate": expr_polar_y("datum.__polar_r__", "datum.__polar_theta__"),
         "as": "__polar_y__"
     }));
 
@@ -647,16 +657,12 @@ fn apply_polar_radius_range(encoding: &mut Value, inner: f64, size: Option<f64>)
         .as_object_mut()
         .ok_or_else(|| GgsqlError::WriterError("Encoding is not an object".to_string()))?;
 
-    // Use expressions for proportional sizing
     let (inner_expr, outer_expr) = match size {
         Some(dim) => (format!("{}/2*{}", dim, inner), format!("{}/2", dim)),
-        _ => {
-            // min(width,height)/2 is the default max radius in Vega-Lite
-            (
-                format!("min(width,height)/2*{}", inner),
-                "min(width,height)/2".to_string(),
-            )
-        }
+        None => (
+            expr_polar_radius(&format!("{inner}")),
+            expr_polar_radius(&format!("{POLAR_OUTER}")),
+        ),
     };
 
     let range_value = json!([{"expr": inner_expr}, {"expr": outer_expr}]);
@@ -711,9 +717,12 @@ mod tests {
         assert_eq!(range.len(), 2);
         assert_eq!(
             range[0]["expr"].as_str().unwrap(),
-            "min(width,height)/2*0.5"
+            "min(width, height) / 2 * (0.5)"
         );
-        assert_eq!(range[1]["expr"].as_str().unwrap(), "min(width,height)/2");
+        assert_eq!(
+            range[1]["expr"].as_str().unwrap(),
+            "min(width, height) / 2 * (1)"
+        );
     }
 
     #[test]
@@ -840,7 +849,7 @@ mod tests {
             .unwrap();
         let x_expr = x_calc["calculate"].as_str().unwrap();
         assert!(
-            x_expr.contains("width/2") && x_expr.contains("min(width,height)/2"),
+            x_expr.contains("width / 2") && x_expr.contains("min(width, height) / 2"),
             "x should use pixel coordinates, got: {x_expr}"
         );
 
@@ -850,7 +859,7 @@ mod tests {
             .unwrap();
         let y_expr = y_calc["calculate"].as_str().unwrap();
         assert!(
-            y_expr.contains("height/2") && y_expr.contains("min(width,height)/2"),
+            y_expr.contains("height / 2") && y_expr.contains("min(width, height) / 2"),
             "y should use pixel coordinates, got: {y_expr}"
         );
 
@@ -891,5 +900,33 @@ mod tests {
         let polar_proj = Projection::polar();
         let polar = get_projection_renderer(Some(&polar_proj));
         assert_eq!(polar.position_channels(), ("radius", "theta"));
+    }
+
+    #[test]
+    fn test_expr_normalize_radius() {
+        // domain [0, 10], inner 0.2 → scale = (1.0 - 0.2) / (10 - 0) = 0.08
+        let expr = expr_normalize_radius("datum.v", 0.0, 10.0, 0.2);
+        assert!(expr.contains("0.08"), "scale factor should be 0.08, got: {expr}");
+        assert!(expr.contains("datum.v"), "should reference value, got: {expr}");
+
+        // domain [5, 15], inner 0 → scale = 1.0 / 10 = 0.1
+        let expr = expr_normalize_radius("datum.x", 5.0, 15.0, 0.0);
+        assert!(expr.contains("0.1"), "scale factor should be 0.1, got: {expr}");
+    }
+
+    #[test]
+    fn test_expr_normalize_theta() {
+        use std::f64::consts::PI;
+
+        // domain [0, 100], partial circle 90°–270° (π/2 to 3π/2)
+        let start = PI / 2.0;
+        let end = 3.0 * PI / 2.0;
+        let expr = expr_normalize_theta("datum.v", 0.0, 100.0, start, end);
+        // scale = (3π/2 - π/2) / (100 - 0) = π / 100 ≈ 0.031416
+        let expected_scale = PI / 100.0;
+        assert!(
+            expr.contains(&format!("{expected_scale}")),
+            "scale factor should be π/100, got: {expr}"
+        );
     }
 }

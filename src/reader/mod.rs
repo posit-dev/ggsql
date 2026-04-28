@@ -1142,8 +1142,8 @@ mod tests {
             range[1]["expr"]
                 .as_str()
                 .unwrap()
-                .contains("min(width,height)/2"),
-            "Outer radius expression should be min(width,height)/2, got: {:?}",
+                .contains("min(width, height) / 2"),
+            "Outer radius expression should contain min(width, height) / 2, got: {:?}",
             range[1]
         );
     }
