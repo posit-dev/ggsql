@@ -15,13 +15,15 @@ use std::collections::HashMap;
 use super::types::StatResult;
 use crate::naming;
 use crate::plot::aesthetic::{is_position_aesthetic, parse_position};
-use crate::plot::types::{
-    DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue, Schema,
-};
+use crate::plot::types::{ParameterValue, Schema};
 use crate::reader::SqlDialect;
 use crate::{GgsqlError, Mappings, Result};
 
-/// All aggregation function names accepted by the `aggregate` SETTING.
+/// All simple-aggregation function names accepted by the `aggregate` SETTING.
+///
+/// Band names (e.g. `mean+sdev`, `median-0.5iqr`) are validated separately by
+/// `parse_agg_name`, which checks the offset against `OFFSET_STATS` and the
+/// expansion against `EXPANSION_STATS`.
 pub const AGG_NAMES: &[&str] = &[
     // Tallies & sums
     "count",
@@ -49,25 +51,212 @@ pub const AGG_NAMES: &[&str] = &[
     "p75",
     "p90",
     "p95",
-    // Bands (mean ± spread)
-    "mean-sdev",
-    "mean+sdev",
-    "mean-2sdev",
-    "mean+2sdev",
-    "mean-se",
-    "mean+se",
 ];
 
-/// Returns the `ParamDefinition` for the `aggregate` SETTING parameter.
+/// Stats that can appear as the *offset* (left of `±`) in a band name like
+/// `mean+sdev`. Single-value central or representative quantities only —
+/// counts/spreads are excluded.
+pub const OFFSET_STATS: &[&str] = &[
+    "mean",
+    "median",
+    "geomean",
+    "harmean",
+    "rms",
+    "sum",
+    "prod",
+    "min",
+    "max",
+    "p05",
+    "p10",
+    "p25",
+    "p50",
+    "p75",
+    "p90",
+    "p95",
+];
+
+/// Stats that can appear as the *expansion* (right of `±[mod]`) in a band name.
+/// Spread / dispersion measures only.
+pub const EXPANSION_STATS: &[&str] = &["sdev", "se", "var", "iqr", "range"];
+
+/// Parsed representation of any aggregate-function name.
 ///
-/// Used by `Layer::validate_settings` to check the value against `AGG_NAMES`,
-/// and by geoms that support aggregation.
-pub fn aggregate_param_definition() -> ParamDefinition {
-    ParamDefinition {
-        name: "aggregate",
-        default: DefaultParamValue::Null,
-        constraint: ParamConstraint::string_or_string_array(AGG_NAMES),
+/// Simple aggregates (`mean`, `count`, `p25`) have `band == None`. Band names
+/// (`mean+sdev`, `median-0.5iqr`) have `band == Some(...)` with the offset
+/// stored in `offset` and the spread/multiplier in `band`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AggSpec {
+    pub offset: &'static str,
+    pub band: Option<Band>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Band {
+    pub sign: char,
+    pub mod_value: f64,
+    pub expansion: &'static str,
+}
+
+/// Resolve a name to its canonical `&'static str` from the given vocabulary,
+/// or `None` if the input doesn't match any entry.
+fn resolve_static(name: &str, vocab: &'static [&'static str]) -> Option<&'static str> {
+    vocab.iter().copied().find(|v| *v == name)
+}
+
+/// Parse an aggregate-function name into an `AggSpec`. Returns `None` on
+/// invalid input (unknown stat, malformed band, or band with vocabulary
+/// violation).
+pub fn parse_agg_name(name: &str) -> Option<AggSpec> {
+    if let Some(spec) = parse_band(name) {
+        return Some(spec);
     }
+    resolve_static(name, AGG_NAMES).map(|offset| AggSpec { offset, band: None })
+}
+
+/// Try to parse `name` as a band: `<offset><sign><mod>?<expansion>`. Returns
+/// `None` if it doesn't match the band shape OR if either half is outside its
+/// allowed vocabulary.
+fn parse_band(name: &str) -> Option<AggSpec> {
+    // Walk offsets longest-first so `median` matches before `mean`.
+    let mut offsets: Vec<&'static str> = OFFSET_STATS.to_vec();
+    offsets.sort_by_key(|s| std::cmp::Reverse(s.len()));
+
+    for offset in offsets {
+        let rest = match name.strip_prefix(offset) {
+            Some(r) => r,
+            None => continue, // doesn't start with this offset
+        };
+        let (sign, after_sign) = match rest.chars().next() {
+            Some('+') => ('+', &rest[1..]),
+            Some('-') => ('-', &rest[1..]),
+            _ => continue, // wrong sign char — try next offset
+        };
+
+        let (mod_value, expansion_str) = parse_mod_and_remainder(after_sign);
+        let expansion = match resolve_static(expansion_str, EXPANSION_STATS) {
+            Some(e) => e,
+            None => continue, // expansion doesn't match — try next offset
+        };
+
+        return Some(AggSpec {
+            offset,
+            band: Some(Band {
+                sign,
+                mod_value,
+                expansion,
+            }),
+        });
+    }
+    None
+}
+
+/// Parse a leading `<digits>(.<digits>)?` modifier from `s`. Returns
+/// `(parsed_value, rest_of_string)`. If no leading digits, returns
+/// `(1.0, s)` — modifier defaults to 1.
+fn parse_mod_and_remainder(s: &str) -> (f64, &str) {
+    let mut idx = 0;
+    let bytes = s.as_bytes();
+    while idx < bytes.len() && bytes[idx].is_ascii_digit() {
+        idx += 1;
+    }
+    if idx < bytes.len() && bytes[idx] == b'.' {
+        let mut after_dot = idx + 1;
+        while after_dot < bytes.len() && bytes[after_dot].is_ascii_digit() {
+            after_dot += 1;
+        }
+        if after_dot > idx + 1 {
+            // need at least one digit after '.'
+            idx = after_dot;
+        }
+    }
+    if idx == 0 {
+        return (1.0, s);
+    }
+    let num_str = &s[..idx];
+    let value: f64 = num_str.parse().unwrap_or(1.0);
+    (value, &s[idx..])
+}
+
+/// Validate the `aggregate` SETTING value: null, a single function name, or
+/// an array of function names. Each name must be parseable by `parse_agg_name`.
+pub fn validate_aggregate_param(value: &ParameterValue) -> std::result::Result<(), String> {
+    use crate::plot::types::ArrayElement;
+    match value {
+        ParameterValue::Null => Ok(()),
+        ParameterValue::String(s) => validate_function_name(s),
+        ParameterValue::Array(arr) => {
+            for el in arr {
+                match el {
+                    ArrayElement::String(s) => validate_function_name(s)?,
+                    ArrayElement::Null => continue,
+                    _ => {
+                        return Err(
+                            "'aggregate' array entries must be strings or null".to_string()
+                        );
+                    }
+                }
+            }
+            Ok(())
+        }
+        _ => Err("'aggregate' must be a string, array of strings, or null".to_string()),
+    }
+}
+
+fn validate_function_name(name: &str) -> std::result::Result<(), String> {
+    match parse_agg_name(name) {
+        Some(_) => Ok(()),
+        None => Err(diagnose_invalid_function_name(name)),
+    }
+}
+
+/// Build a per-role error message for a name that didn't parse. Re-walks the
+/// input with looser rules to identify which side (offset / expansion) failed.
+fn diagnose_invalid_function_name(name: &str) -> String {
+    // Look for a sign character. If there is one, examine the offset and
+    // expansion halves separately.
+    if let Some(sign_idx) = name.find(|c| c == '+' || c == '-') {
+        let offset_str = &name[..sign_idx];
+        let after_sign = &name[sign_idx + 1..];
+        let (_mod_value, expansion_str) = parse_mod_and_remainder(after_sign);
+
+        let offset_known_simple = AGG_NAMES.contains(&offset_str);
+        let offset_known_band = OFFSET_STATS.contains(&offset_str);
+        let expansion_known_band = EXPANSION_STATS.contains(&expansion_str);
+
+        if !offset_known_band {
+            // The offset half is the problem.
+            if offset_known_simple {
+                return format!(
+                    "'{}': '{}' is not a valid offset stat. Allowed offsets: {}",
+                    name,
+                    offset_str,
+                    crate::or_list_quoted(OFFSET_STATS, '\''),
+                );
+            }
+            return format!(
+                "'{}': '{}' is not a known stat. Allowed offsets: {}",
+                name,
+                offset_str,
+                crate::or_list_quoted(OFFSET_STATS, '\''),
+            );
+        }
+        if !expansion_known_band {
+            return format!(
+                "'{}': '{}' is not a valid expansion stat. Allowed expansions: {}",
+                name,
+                expansion_str,
+                crate::or_list_quoted(EXPANSION_STATS, '\''),
+            );
+        }
+        // Both halves are individually valid but band parsing failed for some
+        // other reason (e.g. malformed modifier).
+        return format!("'{}' is not a valid aggregate function name", name);
+    }
+    format!(
+        "unknown aggregate function '{}'. Allowed: {} (or use a band like `mean+sdev`)",
+        name,
+        crate::or_list_quoted(AGG_NAMES, '\''),
+    )
 }
 
 /// Apply the Aggregate stat to a layer query.
@@ -153,19 +342,15 @@ pub fn apply(
 
     let needs_count_col = funcs.iter().any(|f| f == "count");
 
-    // Decide strategy: single-pass when every quantile can be inlined.
+    // Decide strategy: single-pass when every percentile component can be inlined.
+    let probe = numeric_pos
+        .first()
+        .map(|(_, c)| c.as_str())
+        .unwrap_or("__ggsql_probe__");
     let needs_fallback = funcs.iter().any(|f| {
-        if let Some(frac) = percentile_fraction(f) {
-            // Use the first numeric column (any will do) for the probe, since we
-            // only care whether the dialect produces Some or None.
-            let probe = numeric_pos
-                .first()
-                .map(|(_, c)| c.as_str())
-                .unwrap_or("__ggsql_probe__");
-            dialect.sql_quantile_inline(probe, frac).is_none()
-        } else {
-            false
-        }
+        parse_agg_name(f)
+            .map(|spec| needs_quantile_fallback(&spec, probe, dialect))
+            .unwrap_or(false)
     });
 
     let transformed_query = if needs_fallback {
@@ -229,21 +414,27 @@ fn percentile_fraction(func: &str) -> Option<f64> {
     }
 }
 
-/// Build the inline SQL fragment for a function applied to a quoted column.
+/// Build the inline SQL fragment for a *simple* stat (no band) applied to a
+/// quoted column.
 ///
-/// Returns None for `count` (which doesn't take a column) and for quantiles when
-/// the dialect lacks an inline form (caller should switch to UNION ALL strategy).
-fn function_inline_sql(func: &str, qcol: &str, dialect: &dyn SqlDialect) -> Option<String> {
-    if func == "count" {
+/// Returns `None` for `count` (which doesn't take a column) and for percentile-
+/// based stats (`p05..p95`, `median`, `iqr`) when the dialect lacks an inline
+/// quantile aggregate (caller should switch to UNION ALL strategy).
+fn simple_stat_sql_inline(name: &str, qcol: &str, dialect: &dyn SqlDialect) -> Option<String> {
+    if name == "count" {
         return None;
     }
-    if let Some(frac) = percentile_fraction(func) {
-        // Strip the quotes added by `naming::quote_ident` so we can re-quote inside
-        // `sql_quantile_inline` via the same helper. The dialect impl quotes itself.
+    if let Some(frac) = percentile_fraction(name) {
         let unquoted = unquote(qcol);
         return dialect.sql_quantile_inline(&unquoted, frac);
     }
-    Some(match func {
+    if name == "iqr" {
+        let unquoted = unquote(qcol);
+        let p75 = dialect.sql_quantile_inline(&unquoted, 0.75)?;
+        let p25 = dialect.sql_quantile_inline(&unquoted, 0.25)?;
+        return Some(format!("({} - {})", p75, p25));
+    }
+    Some(match name {
         "sum" => format!("SUM({})", qcol),
         "prod" => format!("EXP(SUM(LN({})))", qcol),
         "min" => format!("MIN({})", qcol),
@@ -254,16 +445,101 @@ fn function_inline_sql(func: &str, qcol: &str, dialect: &dyn SqlDialect) -> Opti
         "harmean" => format!("(COUNT({c}) * 1.0 / SUM(1.0 / {c}))", c = qcol),
         "rms" => format!("SQRT(AVG({c} * {c}))", c = qcol),
         "sdev" => format!("STDDEV_POP({})", qcol),
+        "se" => format!("(STDDEV_POP({c}) / SQRT(COUNT({c})))", c = qcol),
         "var" => format!("VAR_POP({})", qcol),
-        "mean-sdev" => format!("(AVG({c}) - STDDEV_POP({c}))", c = qcol),
-        "mean+sdev" => format!("(AVG({c}) + STDDEV_POP({c}))", c = qcol),
-        "mean-2sdev" => format!("(AVG({c}) - 2.0 * STDDEV_POP({c}))", c = qcol),
-        "mean+2sdev" => format!("(AVG({c}) + 2.0 * STDDEV_POP({c}))", c = qcol),
-        "mean-se" => format!("(AVG({c}) - STDDEV_POP({c}) / SQRT(COUNT({c})))", c = qcol),
-        "mean+se" => format!("(AVG({c}) + STDDEV_POP({c}) / SQRT(COUNT({c})))", c = qcol),
-        // `iqr` is computed from quantiles - handled separately.
         _ => return None,
     })
+}
+
+/// Inline SQL for a parsed `AggSpec`. Combines the offset and (optional)
+/// expansion halves with the appropriate sign and modifier.
+fn agg_sql_inline(spec: &AggSpec, qcol: &str, dialect: &dyn SqlDialect) -> Option<String> {
+    let offset_sql = simple_stat_sql_inline(spec.offset, qcol, dialect)?;
+    match &spec.band {
+        None => Some(offset_sql),
+        Some(band) => {
+            let exp_sql = simple_stat_sql_inline(band.expansion, qcol, dialect)?;
+            Some(format_band(&offset_sql, band.sign, band.mod_value, &exp_sql))
+        }
+    }
+}
+
+/// Build the SQL fragment `(offset ± mod * exp)`, omitting the `mod *` prefix
+/// when `mod_value == 1.0`.
+fn format_band(offset: &str, sign: char, mod_value: f64, exp: &str) -> String {
+    if mod_value == 1.0 {
+        format!("({} {} {})", offset, sign, exp)
+    } else {
+        format!("({} {} {} * {})", offset, sign, mod_value, exp)
+    }
+}
+
+/// Fallback SQL for a simple stat. Used by the UNION-ALL path for percentile
+/// components (which need correlated `sql_percentile`) and falls through to
+/// the inline form for everything else.
+fn simple_stat_sql_fallback(
+    name: &str,
+    raw_col: &str,
+    dialect: &dyn SqlDialect,
+    src_alias: &str,
+    group_cols: &[String],
+) -> String {
+    if name == "count" {
+        return "NULL".to_string();
+    }
+    if let Some(frac) = percentile_fraction(name) {
+        return dialect.sql_percentile(raw_col, frac, src_alias, group_cols);
+    }
+    if name == "iqr" {
+        let p75 = dialect.sql_percentile(raw_col, 0.75, src_alias, group_cols);
+        let p25 = dialect.sql_percentile(raw_col, 0.25, src_alias, group_cols);
+        return format!("({} - {})", p75, p25);
+    }
+    let qcol = naming::quote_ident(raw_col);
+    simple_stat_sql_inline(name, &qcol, dialect).unwrap_or_else(|| "NULL".to_string())
+}
+
+/// Fallback SQL for a parsed `AggSpec` (UNION-ALL path).
+fn agg_sql_fallback(
+    spec: &AggSpec,
+    raw_col: &str,
+    dialect: &dyn SqlDialect,
+    src_alias: &str,
+    group_cols: &[String],
+) -> String {
+    let offset_sql = simple_stat_sql_fallback(spec.offset, raw_col, dialect, src_alias, group_cols);
+    match &spec.band {
+        None => offset_sql,
+        Some(band) => {
+            let exp_sql =
+                simple_stat_sql_fallback(band.expansion, raw_col, dialect, src_alias, group_cols);
+            format_band(&offset_sql, band.sign, band.mod_value, &exp_sql)
+        }
+    }
+}
+
+/// Whether this spec has any percentile component that the dialect can't
+/// inline (in which case the caller must use the UNION-ALL fallback).
+fn needs_quantile_fallback(spec: &AggSpec, probe_col: &str, dialect: &dyn SqlDialect) -> bool {
+    if simple_needs_fallback(spec.offset, probe_col, dialect) {
+        return true;
+    }
+    if let Some(band) = &spec.band {
+        if simple_needs_fallback(band.expansion, probe_col, dialect) {
+            return true;
+        }
+    }
+    false
+}
+
+fn simple_needs_fallback(name: &str, probe_col: &str, dialect: &dyn SqlDialect) -> bool {
+    if let Some(frac) = percentile_fraction(name) {
+        return dialect.sql_quantile_inline(probe_col, frac).is_none();
+    }
+    if name == "iqr" {
+        return dialect.sql_quantile_inline(probe_col, 0.5).is_none();
+    }
+    false
 }
 
 /// Strip surrounding double quotes from an identifier, undoing `naming::quote_ident`.
@@ -349,9 +625,9 @@ fn apply_range_mode(
         format!(" GROUP BY {}", qcols.join(", "))
     };
 
-    // Build the two function expressions. Quantiles use the inline form when
-    // available; otherwise fall back to `sql_percentile` correlated to the
-    // outer alias used in the FROM (`__ggsql_qt__`, matching boxplot/etc.).
+    // Parse and emit each bound. Use the inline form when the dialect supports
+    // every percentile component; otherwise fall back to `sql_percentile`
+    // correlated to the outer alias used in the FROM (`__ggsql_qt__`).
     let lo_expr = build_range_function_sql(&funcs[0], &qcol, &input_col, dialect, &group_cols)?;
     let hi_expr = build_range_function_sql(&funcs[1], &qcol, &input_col, dialect, &group_cols)?;
 
@@ -382,8 +658,10 @@ fn apply_range_mode(
     })
 }
 
-/// Build the SQL fragment for one function in range mode. Quantiles get the
-/// inline form when the dialect supports it; otherwise the fallback subquery.
+/// Build the SQL fragment for one function in range mode. Parses the function
+/// name into an `AggSpec` (which validates the offset/expansion vocabulary)
+/// and emits inline SQL when the dialect supports every percentile component,
+/// otherwise the correlated fallback.
 fn build_range_function_sql(
     func: &str,
     qcol: &str,
@@ -397,18 +675,28 @@ fn build_range_function_sql(
                 .to_string(),
         ));
     }
-    if let Some(frac) = percentile_fraction(func) {
-        if let Some(inline) = dialect.sql_quantile_inline(raw_col, frac) {
-            return Ok(inline);
-        }
-        return Ok(dialect.sql_percentile(raw_col, frac, "\"__ggsql_stat_src__\"", group_cols));
-    }
-    function_inline_sql(func, qcol, dialect).ok_or_else(|| {
+    let spec = parse_agg_name(func).ok_or_else(|| {
         GgsqlError::ValidationError(format!(
-            "aggregate on a range geom does not support function '{}' on this dialect",
-            func
+            "aggregate on a range geom: {}",
+            diagnose_invalid_function_name(func)
         ))
-    })
+    })?;
+    if needs_quantile_fallback(&spec, raw_col, dialect) {
+        Ok(agg_sql_fallback(
+            &spec,
+            raw_col,
+            dialect,
+            "\"__ggsql_stat_src__\"",
+            group_cols,
+        ))
+    } else {
+        agg_sql_inline(&spec, qcol, dialect).ok_or_else(|| {
+            GgsqlError::ValidationError(format!(
+                "aggregate on a range geom does not support function '{}' on this dialect",
+                func
+            ))
+        })
+    }
 }
 
 // =============================================================================
@@ -452,20 +740,10 @@ fn build_single_pass_query(
                 continue;
             }
             let wide_name = synthetic_col_name(aes, func);
-            let expr = match func.as_str() {
-                "iqr" => {
-                    // p75 - p25 inline if dialect supports it
-                    let p75 = dialect
-                        .sql_quantile_inline(col, 0.75)
-                        .expect("sql_quantile_inline must be Some when single-pass is selected");
-                    let p25 = dialect
-                        .sql_quantile_inline(col, 0.25)
-                        .expect("sql_quantile_inline must be Some when single-pass is selected");
-                    format!("({} - {})", p75, p25)
-                }
-                _ => function_inline_sql(func, &qcol, dialect)
-                    .expect("function_inline_sql must be Some when single-pass is selected"),
-            };
+            let spec = parse_agg_name(func)
+                .expect("aggregate function names are validated upstream of single-pass");
+            let expr = agg_sql_inline(&spec, &qcol, dialect)
+                .expect("agg_sql_inline must be Some when single-pass is selected");
             wide_select_exprs.push(format!("{} AS {}", expr, naming::quote_ident(&wide_name)));
             wide_col_for.insert(key, wide_name);
         }
@@ -614,19 +892,18 @@ fn build_union_all_query(
         .map(|func| {
             let mut select_parts: Vec<String> = group_select.clone();
 
+            // Parse the function name once per branch. Falls through to a
+            // string-NULL value column if parsing fails (shouldn't happen
+            // because validation runs upstream, but stay defensive).
+            let parsed_spec = parse_agg_name(func);
             for (aes, col) in numeric_pos {
                 let stat_col = naming::stat_column(aes);
                 let value_expr = if func == "count" {
                     "NULL".to_string()
-                } else if func == "iqr" {
-                    let p75 = dialect.sql_percentile(col, 0.75, src_alias, group_cols);
-                    let p25 = dialect.sql_percentile(col, 0.25, src_alias, group_cols);
-                    format!("({} - {})", p75, p25)
-                } else if let Some(frac) = percentile_fraction(func) {
-                    dialect.sql_percentile(col, frac, src_alias, group_cols)
+                } else if let Some(spec) = &parsed_spec {
+                    agg_sql_fallback(spec, col, dialect, src_alias, group_cols)
                 } else {
-                    let qcol = naming::quote_ident(col);
-                    function_inline_sql(func, &qcol, dialect).unwrap_or_else(|| "NULL".to_string())
+                    "NULL".to_string()
                 };
                 select_parts.push(format!(
                     "{} AS {}",
@@ -1704,5 +1981,309 @@ mod tests {
             "expected pos2/y mention in error, got: {}",
             err
         );
+    }
+
+    // ========================================================================
+    // Parser tests (parse_agg_name)
+    // ========================================================================
+
+    #[test]
+    fn parse_simple_names() {
+        assert_eq!(
+            parse_agg_name("mean"),
+            Some(AggSpec { offset: "mean", band: None })
+        );
+        assert_eq!(
+            parse_agg_name("count"),
+            Some(AggSpec { offset: "count", band: None })
+        );
+        assert_eq!(
+            parse_agg_name("p25"),
+            Some(AggSpec { offset: "p25", band: None })
+        );
+    }
+
+    #[test]
+    fn parse_band_default_modifier() {
+        let spec = parse_agg_name("mean+sdev").unwrap();
+        assert_eq!(spec.offset, "mean");
+        let band = spec.band.unwrap();
+        assert_eq!(band.sign, '+');
+        assert_eq!(band.mod_value, 1.0);
+        assert_eq!(band.expansion, "sdev");
+    }
+
+    #[test]
+    fn parse_band_integer_modifier() {
+        let spec = parse_agg_name("mean-2sdev").unwrap();
+        let band = spec.band.unwrap();
+        assert_eq!(band.sign, '-');
+        assert_eq!(band.mod_value, 2.0);
+        assert_eq!(band.expansion, "sdev");
+    }
+
+    #[test]
+    fn parse_band_decimal_modifier() {
+        let spec = parse_agg_name("mean+1.96sdev").unwrap();
+        let band = spec.band.unwrap();
+        assert_eq!(band.mod_value, 1.96);
+    }
+
+    #[test]
+    fn parse_band_longest_offset_wins() {
+        // 'median+sdev' must match offset 'median', not 'me' (which isn't an
+        // offset anyway, but more pertinently the parser must not stop at a
+        // shorter prefix).
+        let spec = parse_agg_name("median+sdev").unwrap();
+        assert_eq!(spec.offset, "median");
+    }
+
+    #[test]
+    fn parse_band_percentile_offset() {
+        let spec = parse_agg_name("p25+0.5range").unwrap();
+        assert_eq!(spec.offset, "p25");
+        let band = spec.band.unwrap();
+        assert_eq!(band.mod_value, 0.5);
+        assert_eq!(band.expansion, "range");
+    }
+
+    #[test]
+    fn parse_band_rejects_invalid_offset() {
+        assert!(parse_agg_name("count+sdev").is_none());
+        assert!(parse_agg_name("iqr+sdev").is_none());
+    }
+
+    #[test]
+    fn parse_band_rejects_invalid_expansion() {
+        assert!(parse_agg_name("mean+count").is_none());
+        assert!(parse_agg_name("mean+median").is_none());
+    }
+
+    #[test]
+    fn parse_rejects_unknown() {
+        assert!(parse_agg_name("foo").is_none());
+        assert!(parse_agg_name("").is_none());
+    }
+
+    // ========================================================================
+    // Validation tests (validate_aggregate_param)
+    // ========================================================================
+
+    #[test]
+    fn validate_accepts_simple_names_and_bands() {
+        use crate::plot::types::ArrayElement;
+        validate_aggregate_param(&ParameterValue::String("mean".to_string())).unwrap();
+        validate_aggregate_param(&ParameterValue::String("mean+sdev".to_string())).unwrap();
+        validate_aggregate_param(&ParameterValue::String("median-0.5iqr".to_string())).unwrap();
+        validate_aggregate_param(&ParameterValue::Array(vec![
+            ArrayElement::String("mean".to_string()),
+            ArrayElement::String("mean+1.96sdev".to_string()),
+        ]))
+        .unwrap();
+    }
+
+    #[test]
+    fn validate_diagnostic_for_invalid_offset() {
+        let err = validate_aggregate_param(&ParameterValue::String("count+sdev".to_string()))
+            .unwrap_err();
+        assert!(err.contains("count"), "err: {}", err);
+        assert!(err.contains("offset"), "err: {}", err);
+    }
+
+    #[test]
+    fn validate_diagnostic_for_invalid_expansion() {
+        let err = validate_aggregate_param(&ParameterValue::String("mean+count".to_string()))
+            .unwrap_err();
+        assert!(err.contains("count"), "err: {}", err);
+        assert!(err.contains("expansion"), "err: {}", err);
+    }
+
+    #[test]
+    fn validate_diagnostic_for_unknown() {
+        let err =
+            validate_aggregate_param(&ParameterValue::String("foo".to_string())).unwrap_err();
+        assert!(err.contains("unknown"), "err: {}", err);
+        assert!(err.contains("foo"), "err: {}", err);
+    }
+
+    // ========================================================================
+    // SQL emission for parametric bands
+    // ========================================================================
+
+    #[test]
+    fn band_decimal_modifier_emits_in_sql() {
+        let mut aes = Mappings::new();
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
+        let mut params = HashMap::new();
+        params.insert(
+            "aggregate".to_string(),
+            ParameterValue::String("mean+1.96sdev".to_string()),
+        );
+
+        let result = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &params,
+            &InlineQuantileDialect,
+            &[2],
+            None,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(
+                    query.contains("AVG(\"__ggsql_aes_pos2__\") + 1.96 * STDDEV_POP(\"__ggsql_aes_pos2__\")"),
+                    "query: {}",
+                    query
+                );
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn band_with_percentile_offset_inline() {
+        // median-0.5iqr on a dialect with inline quantile support.
+        let mut aes = Mappings::new();
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
+        let mut params = HashMap::new();
+        params.insert(
+            "aggregate".to_string(),
+            ParameterValue::String("median-0.5iqr".to_string()),
+        );
+
+        let result = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &params,
+            &InlineQuantileDialect,
+            &[2],
+            None,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                // median uses QUANTILE_CONT(col, 0.5); iqr uses QUANTILE_CONT(.., 0.75) and 0.25.
+                assert!(
+                    query.contains("QUANTILE_CONT") && query.contains("0.5"),
+                    "query: {}",
+                    query
+                );
+                assert!(query.contains("0.75") && query.contains("0.25"));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn band_with_percentile_offset_falls_back() {
+        // median+2sdev on a dialect WITHOUT inline quantile support → UNION-ALL
+        // path with sql_percentile for median, inline STDDEV_POP for sdev.
+        let mut aes = Mappings::new();
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
+        let mut params = HashMap::new();
+        params.insert(
+            "aggregate".to_string(),
+            ParameterValue::String("median+2sdev".to_string()),
+        );
+
+        let result = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &params,
+            &NoInlineQuantileDialect,
+            &[2],
+            None,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(query.contains("NTILE(4)"));
+                assert!(query.contains("STDDEV_POP"));
+                assert!(query.contains("2 * "));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn band_with_default_modifier_omits_one_prefix() {
+        let mut aes = Mappings::new();
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
+        let mut params = HashMap::new();
+        params.insert(
+            "aggregate".to_string(),
+            ParameterValue::String("mean+sdev".to_string()),
+        );
+
+        let result = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &params,
+            &InlineQuantileDialect,
+            &[2],
+            None,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                // mod=1 case: (offset + exp), no `1 *` prefix.
+                assert!(
+                    query.contains(
+                        "AVG(\"__ggsql_aes_pos2__\") + STDDEV_POP(\"__ggsql_aes_pos2__\")"
+                    ),
+                    "expected `(AVG + STDDEV_POP)` form, got: {}",
+                    query
+                );
+                assert!(!query.contains("1 * STDDEV_POP"));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn range_mode_supports_decimal_band() {
+        // Ribbon range mode + 95% CI band.
+        let (aes, schema) = range_input_aes_with_group();
+        let mut params = HashMap::new();
+        use crate::plot::types::ArrayElement;
+        params.insert(
+            "aggregate".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::String("mean-1.96sdev".to_string()),
+                ArrayElement::String("mean+1.96sdev".to_string()),
+            ]),
+        );
+
+        let result = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &params,
+            &InlineQuantileDialect,
+            &[2],
+            range_pair(),
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(query.contains("- 1.96 * STDDEV_POP"));
+                assert!(query.contains("+ 1.96 * STDDEV_POP"));
+            }
+            _ => panic!("expected Transformed"),
+        }
     }
 }
