@@ -29,6 +29,8 @@ portion (#364).
 - Simplified internal approach to DataFrame with DuckDB reader (#365)
 - Moved the CLI to its own module rather than be part of the main crate (#379)
 - Restructured CLAUDE.md to better deal with the rising complexity of the project (#382)
+- Renamed the `errorbar` layer to `range`. The geom was never error-specific and is generally useful for displaying intervals (min/max ranges, candlestick wicks, percentile bands, etc.).
+- The `segment` layer now requires both `xend` and `yend` (rather than auto-filling a missing endpoint from the start position). For axis-aligned 1D intervals — lollipops, candlestick wicks, etc. — use the `range` layer instead.
 
 ### Removed
 

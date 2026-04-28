@@ -184,7 +184,7 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             // pos2 on histogram can be targeted by explicit global mappings, matching
             // the behavior of layer-level MAPPING
             // Note: Also accept flipped position counterparts so bidirectional geoms
-            // (e.g., errorbar: pos1+pos2min+pos2max or pos2+pos1min+pos1max) can
+            // (e.g., range: pos1+pos2min+pos2max or pos2+pos1min+pos1max) can
             // receive globals from either orientation.
             for (aesthetic, value) in &spec.global_mappings.aesthetics {
                 let is_facet_aesthetic = crate::plot::scale::is_facet_aesthetic(aesthetic.as_str());

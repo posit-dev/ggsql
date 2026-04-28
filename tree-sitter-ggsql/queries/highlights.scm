@@ -25,7 +25,7 @@
   "segment"
   "arrow"
   "rule"
-  "errorbar"
+  "range"
 ] @type.builtin
 
 ; Aesthetic names
