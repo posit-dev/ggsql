@@ -83,3 +83,28 @@ DRAW range
 DRAW point
   MAPPING mean AS x
 ```
+
+By overlaying a thick range over a thin one, you can build a candlestick chart. Both layers turn the hinges off so the marks read as clean vertical lines: the wick spans low-to-high and the body spans open-to-close.
+
+```{ggsql}
+SELECT
+  FIRST(Date) AS date,
+  FIRST(temp) AS open,
+  LAST(temp) AS close,
+  MAX(temp) AS high,
+  MIN(temp) AS low,
+  CASE
+    WHEN FIRST(temp) > LAST(temp) THEN 'colder'
+    ELSE 'warmer'
+  END AS trend
+FROM ggsql:airquality
+GROUP BY Week
+
+VISUALISE date AS x, trend AS colour
+DRAW range
+  MAPPING open AS ymin, close AS ymax
+  SETTING linewidth => 5, width => null
+DRAW range
+  MAPPING low AS ymin, high AS ymax
+  SETTING width => null
+```
