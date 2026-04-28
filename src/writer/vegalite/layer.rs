@@ -2129,7 +2129,6 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
 mod tests {
     use super::*;
 
-
     #[test]
     fn test_violin_detail_encoding() {
         let renderer = ViolinRenderer;

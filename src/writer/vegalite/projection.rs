@@ -59,14 +59,24 @@ pub(super) trait ProjectionRenderer {
     /// Called after faceting, before the theme config is applied. Receives
     /// the resolved scales so implementations can derive grid lines, axis
     /// ticks, or other decorations from scale breaks and domains.
-    fn background_layers(&self, _scales: &[Scale], _theme: &mut Value) -> Vec<Value> {
+    fn background_layers(
+        &self,
+        _scales: &[Scale],
+        _project: Option<&Projection>,
+        _theme: &mut Value,
+    ) -> Vec<Value> {
         Vec::new()
     }
 
     /// Vega-Lite layers to append after the data layers.
     ///
     /// Same timing and access as [`background_layers`].
-    fn foreground_layers(&self, _scales: &[Scale], _theme: &mut Value) -> Vec<Value> {
+    fn foreground_layers(
+        &self,
+        _scales: &[Scale],
+        _project: Option<&Projection>,
+        _theme: &mut Value,
+    ) -> Vec<Value> {
         Vec::new()
     }
 
@@ -95,8 +105,8 @@ pub(super) trait ProjectionRenderer {
     /// Called after faceting so that decoration layers appear in both faceted
     /// and non-faceted specs.
     fn apply_panel_decor(&self, spec: &Plot, theme: &mut Value, vl_spec: &mut Value) {
-        let mut bg = self.background_layers(&spec.scales, theme);
-        let mut fg = self.foreground_layers(&spec.scales, theme);
+        let mut bg = self.background_layers(&spec.scales, spec.project.as_ref(), theme);
+        let mut fg = self.foreground_layers(&spec.scales, spec.project.as_ref(), theme);
         if bg.is_empty() && fg.is_empty() {
             return;
         }
@@ -218,6 +228,153 @@ impl ProjectionRenderer for PolarProjection {
         vl_spec: &mut Value,
     ) -> Result<Option<DataFrame>> {
         apply_polar_project(project, spec, data, vl_spec)
+    }
+
+    fn background_layers(
+        &self,
+        scales: &[Scale],
+        project: Option<&Projection>,
+        theme: &mut Value,
+    ) -> Vec<Value> {
+        let mut layers = Vec::new();
+        layers.extend(self.panel_arc(project, theme));
+        layers.extend(self.grid_rings(scales, project, theme));
+        layers.extend(self.grid_spokes(scales, project, theme));
+        layers
+    }
+}
+
+impl PolarProjection {
+    fn grid_rings(
+        &self,
+        scales: &[Scale],
+        project: Option<&Projection>,
+        theme: &Value,
+    ) -> Vec<Value> {
+        let Some(scale) = scales.iter().find(|s| s.aesthetic == "pos1") else {
+            return Vec::new();
+        };
+        let breaks = scale.numeric_breaks();
+        let Some((domain_min, domain_max)) = scale.numeric_domain() else {
+            return Vec::new();
+        };
+        if breaks.is_empty() || (domain_max - domain_min).abs() < f64::EPSILON {
+            return Vec::new();
+        }
+
+        let color = theme
+            .pointer("/axis/gridColor")
+            .cloned()
+            .unwrap_or(json!("#FFFFFF"));
+        let width = theme
+            .pointer("/axis/gridWidth")
+            .cloned()
+            .unwrap_or(json!(1));
+        let (start, end, inner) = polar_properties(project);
+
+        let values: Vec<Value> = breaks.iter().map(|&b| json!({"v": b})).collect();
+        let r_norm = expr_normalize_radius("datum.v", domain_min, domain_max, inner);
+        let radius_expr = expr_polar_radius(&r_norm);
+
+        vec![json!({
+            "data": {"values": values},
+            "mark": {
+                "type": "arc",
+                "fill": null,
+                "stroke": color,
+                "strokeWidth": width,
+                "theta": start,
+                "theta2": end,
+            },
+            "encoding": {
+                "radius": {
+                    "value": {"expr": radius_expr}
+                }
+            }
+        })]
+    }
+
+    fn grid_spokes(
+        &self,
+        scales: &[Scale],
+        project: Option<&Projection>,
+        theme: &Value,
+    ) -> Vec<Value> {
+        let Some(scale) = scales.iter().find(|s| s.aesthetic == "pos2") else {
+            return Vec::new();
+        };
+        let breaks = scale.numeric_breaks();
+        let Some((domain_min, domain_max)) = scale.numeric_domain() else {
+            return Vec::new();
+        };
+        if breaks.is_empty() || (domain_max - domain_min).abs() < f64::EPSILON {
+            return Vec::new();
+        }
+
+        let color = theme
+            .pointer("/axis/gridColor")
+            .cloned()
+            .unwrap_or(json!("#FFFFFF"));
+        let width = theme
+            .pointer("/axis/gridWidth")
+            .cloned()
+            .unwrap_or(json!(1));
+        let (start, end, inner) = polar_properties(project);
+
+        let values: Vec<Value> = breaks.iter().map(|&b| json!({"v": b})).collect();
+        let theta = expr_normalize_theta("datum.v", domain_min, domain_max, start, end);
+        let inner_s = format!("{inner}");
+
+        vec![json!({
+            "data": {"values": values},
+            "mark": {
+                "type": "rule",
+                "stroke": color,
+                "strokeWidth": width,
+            },
+            "transform": [
+                {"calculate": expr_polar_x(&inner_s, &theta), "as": "x"},
+                {"calculate": expr_polar_y(&inner_s, &theta), "as": "y"},
+                {"calculate": expr_polar_x(&format!("{POLAR_OUTER}"), &theta), "as": "x2"},
+                {"calculate": expr_polar_y(&format!("{POLAR_OUTER}"), &theta), "as": "y2"},
+            ],
+            "encoding": {
+                "x": {"field": "x", "type": "quantitative", "scale": null, "axis": null},
+                "y": {"field": "y", "type": "quantitative", "scale": null, "axis": null},
+                "x2": {"field": "x2"},
+                "y2": {"field": "y2"},
+            }
+        })]
+    }
+
+    fn panel_arc(&self, project: Option<&Projection>, theme: &mut Value) -> Vec<Value> {
+        let Some(view) = theme.get_mut("view").and_then(|v| v.as_object_mut()) else {
+            return Vec::new();
+        };
+        let fill = view.remove("fill").unwrap_or(Value::Null);
+        let stroke = view.remove("stroke").unwrap_or(Value::Null);
+
+        // We need a null-stroke otherwise it'll show up as a gray line
+        view.insert("stroke".to_string(), Value::Null);
+
+        let (start, end, inner) = polar_properties(project);
+
+        let mut mark = json!({
+            "type": "arc",
+            "fill": fill,
+            "stroke": stroke,
+            "theta":  start,
+            "theta2": end,
+        });
+        if inner > 0.0 {
+            mark["innerRadius"] = json!({"expr": expr_polar_radius(&format!("{inner}"))});
+        }
+        mark["outerRadius"] = json!({"expr": expr_polar_radius(&format!("{POLAR_OUTER}"))});
+
+        vec![json!({
+            "data": {"values": [{}]},
+            "mark": mark
+        })]
     }
 }
 
@@ -928,5 +1085,86 @@ mod tests {
             expr.contains(&format!("{expected_scale}")),
             "scale factor should be π/100, got: {expr}"
         );
+    }
+
+    fn scale_with_breaks(aesthetic: &str, domain: (f64, f64), breaks: Vec<f64>) -> Scale {
+        use crate::plot::types::ArrayElement;
+        let mut scale = Scale::new(aesthetic);
+        scale.input_range = Some(vec![
+            ArrayElement::Number(domain.0),
+            ArrayElement::Number(domain.1),
+        ]);
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(breaks.into_iter().map(ArrayElement::Number).collect()),
+        );
+        scale
+    }
+
+    #[test]
+    fn test_grid_rings() {
+        let scales = vec![scale_with_breaks("pos1", (0.0, 100.0), vec![25.0, 50.0, 75.0])];
+        let proj = PolarProjection;
+        let mut theme = json!({"axis": {"gridColor": "#FFF", "gridWidth": 2}});
+
+        let layers = proj.grid_rings(&scales, None, &theme);
+        assert_eq!(layers.len(), 1, "should produce one layer");
+
+        let layer = &layers[0];
+
+        // Data should contain the break values
+        let values = layer["data"]["values"].as_array().unwrap();
+        assert_eq!(values.len(), 3);
+        assert_eq!(values[0]["v"], json!(25.0));
+        assert_eq!(values[1]["v"], json!(50.0));
+        assert_eq!(values[2]["v"], json!(75.0));
+
+        // Mark should be a stroke-only arc
+        assert_eq!(layer["mark"]["type"], "arc");
+        assert_eq!(layer["mark"]["fill"], json!(null));
+        assert_eq!(layer["mark"]["stroke"], "#FFF");
+        assert_eq!(layer["mark"]["strokeWidth"], 2.0);
+
+        // Radius encoding should use an expression
+        let radius_expr = layer["encoding"]["radius"]["value"]["expr"]
+            .as_str()
+            .unwrap();
+        assert!(
+            radius_expr.contains("min(width, height) / 2"),
+            "radius should use expr_polar_radius, got: {radius_expr}"
+        );
+    }
+
+    #[test]
+    fn test_grid_spokes() {
+        let scales = vec![scale_with_breaks("pos2", (0.0, 60.0), vec![20.0, 40.0])];
+        let proj = PolarProjection;
+        let mut theme = json!({"axis": {"gridColor": "#CCC", "gridWidth": 1}});
+
+        let layers = proj.grid_spokes(&scales, None, &theme);
+        assert_eq!(layers.len(), 1, "should produce one layer");
+
+        let layer = &layers[0];
+
+        // Data should contain the break values
+        let values = layer["data"]["values"].as_array().unwrap();
+        assert_eq!(values.len(), 2);
+
+        // Mark should be a rule
+        assert_eq!(layer["mark"]["type"], "rule");
+        assert_eq!(layer["mark"]["stroke"], "#CCC");
+
+        // Should have calculate transforms for x, y, x2, y2
+        let transforms = layer["transform"].as_array().unwrap();
+        assert_eq!(transforms.len(), 4);
+        let field_names: Vec<&str> = transforms
+            .iter()
+            .filter_map(|t| t["as"].as_str())
+            .collect();
+        assert_eq!(field_names, vec!["x", "y", "x2", "y2"]);
+
+        // Encoding should use scale:null for pixel positions
+        assert_eq!(layer["encoding"]["x"]["scale"], json!(null));
+        assert_eq!(layer["encoding"]["y"]["scale"], json!(null));
     }
 }

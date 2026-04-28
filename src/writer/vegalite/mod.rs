@@ -1153,7 +1153,13 @@ impl Writer for VegaLiteWriter {
         // 11. Apply faceting
         if let Some(facet) = &spec.facet {
             let facet_df = data.get(&layer_data_keys[0]).unwrap();
-            apply_faceting(&mut vl_spec, facet, facet_df, &spec.scales, projection.as_ref());
+            apply_faceting(
+                &mut vl_spec,
+                facet,
+                facet_df,
+                &spec.scales,
+                projection.as_ref(),
+            );
         }
 
         // 12. Build theme config and apply panel decoration

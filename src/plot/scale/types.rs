@@ -89,6 +89,28 @@ impl Scale {
             label_template: "{}".to_string(),
         }
     }
+
+    // TODO: generalise for discrete/binned scales (see memory: project_discrete_polar_grid)
+
+    /// Numeric break positions (after resolution). Currently only meaningful
+    /// for continuous scales.
+    pub fn numeric_breaks(&self) -> Vec<f64> {
+        match self.properties.get("breaks") {
+            Some(ParameterValue::Array(breaks)) => {
+                breaks.iter().filter_map(|b| b.to_f64()).collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// Numeric domain as `(min, max)` from the resolved input range. Currently
+    /// only meaningful for continuous scales.
+    pub fn numeric_domain(&self) -> Option<(f64, f64)> {
+        let range = self.input_range.as_ref()?;
+        let min = range.first()?.to_f64()?;
+        let max = range.last()?.to_f64()?;
+        Some((min, max))
+    }
 }
 
 /// Output range specification (TO clause)

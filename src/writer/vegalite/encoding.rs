@@ -1046,14 +1046,10 @@ impl<'a> RenderContext<'a> {
         scales: &'a [crate::Scale],
         renderer: &dyn super::projection::ProjectionRenderer,
     ) -> Self {
-        let pos1 =
-            super::projection::map_position_to_vegalite("pos1", renderer).unwrap();
-        let pos1_end =
-            super::projection::map_position_to_vegalite("pos1end", renderer).unwrap();
-        let pos2 =
-            super::projection::map_position_to_vegalite("pos2", renderer).unwrap();
-        let pos2_end =
-            super::projection::map_position_to_vegalite("pos2end", renderer).unwrap();
+        let pos1 = super::projection::map_position_to_vegalite("pos1", renderer).unwrap();
+        let pos1_end = super::projection::map_position_to_vegalite("pos1end", renderer).unwrap();
+        let pos2 = super::projection::map_position_to_vegalite("pos2", renderer).unwrap();
+        let pos2_end = super::projection::map_position_to_vegalite("pos2end", renderer).unwrap();
 
         let (pos1_offset, pos2_offset) = renderer.offset_channels();
 
