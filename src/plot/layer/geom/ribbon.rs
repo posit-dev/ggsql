@@ -3,6 +3,7 @@
 use super::stat_aggregate;
 use super::types::{wrap_with_order_by, POSITION_VALUES};
 use super::{has_aggregate_param, DefaultAesthetics, GeomTrait, GeomType, StatResult};
+use crate::plot::layer::orientation::ORIENTATION_VALUES;
 use crate::plot::types::DefaultAestheticValue;
 use crate::plot::{DefaultParamValue, ParamConstraint, ParamDefinition};
 use crate::Mappings;
@@ -36,11 +37,20 @@ impl GeomTrait for Ribbon {
     }
 
     fn default_params(&self) -> &'static [ParamDefinition] {
-        const PARAMS: &[ParamDefinition] = &[ParamDefinition {
-            name: "position",
-            default: DefaultParamValue::String("identity"),
-            constraint: ParamConstraint::string_option(POSITION_VALUES),
-        }];
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
+                name: "position",
+                default: DefaultParamValue::String("identity"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
+            },
+            // Default Null → resolve_orientation auto-detects from mappings/scales.
+            // User can override with `SETTING orientation => 'transposed'`.
+            ParamDefinition {
+                name: "orientation",
+                default: DefaultParamValue::Null,
+                constraint: ParamConstraint::string_option(ORIENTATION_VALUES),
+            },
+        ];
         PARAMS
     }
 

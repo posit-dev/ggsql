@@ -4,6 +4,7 @@ use super::types::POSITION_VALUES;
 use super::{
     DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
 };
+use crate::plot::layer::orientation::ORIENTATION_VALUES;
 use crate::plot::types::DefaultAestheticValue;
 
 /// Range geom - intervals along the secondary axis
@@ -44,6 +45,13 @@ impl GeomTrait for Range {
                 name: "width",
                 default: DefaultParamValue::Number(10.0),
                 constraint: ParamConstraint::number_min(0.0),
+            },
+            // Default Null → resolve_orientation auto-detects from mappings/scales.
+            // User can override with `SETTING orientation => 'transposed'`.
+            ParamDefinition {
+                name: "orientation",
+                default: DefaultParamValue::Null,
+                constraint: ParamConstraint::string_option(ORIENTATION_VALUES),
             },
         ];
         PARAMS
