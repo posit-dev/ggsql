@@ -201,8 +201,8 @@ impl Layer {
 
         // Check if all required aesthetics exist.
         // When `aggregate` is set on a range geom, the (lower, upper) range pair
-        // is filled by the stat (e.g. pos2min/pos2max for ribbon) and shouldn't
-        // be required from the user.
+        // is filled by the stat (e.g. pos2min/pos2max for ribbon, pos2/pos2end
+        // for segment) and shouldn't be required from the user.
         let range_pair_skip: Option<(&'static str, &'static str)> =
             if crate::plot::layer::geom::has_aggregate_param(&self.parameters) {
                 self.geom.aggregate_range_pair()

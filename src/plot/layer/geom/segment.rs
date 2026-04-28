@@ -44,6 +44,11 @@ impl GeomTrait for Segment {
     }
 
     fn aggregate_slots(&self) -> &'static [u8] {
+        // Segment is two endpoints connected by a line. Aggregate runs
+        // independently on each of the four position aesthetics: pos1 and
+        // pos1end (slot 1), pos2 and pos2end (slot 2). With `aggregate => 'mean'`,
+        // the segment goes from `(mean(pos1), mean(pos2))` to
+        // `(mean(pos1end), mean(pos2end))`.
         &[1, 2]
     }
 }
