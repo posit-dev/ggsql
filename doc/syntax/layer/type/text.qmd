@@ -35,6 +35,7 @@ The following aesthetics are recognised by the text layer.
     * a 2-element numeric array `[h, v]` where the first number is the horizontal offset and the second number is the vertical offset.
 * `format` Formatting specifier, see explanation below.
 * `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
+* `aggregate`: Aggregation functions to apply per group. Either a single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../clause/draw.qmd#aggregate) and more information in the *Data transformation* section below.
 
 ### Format
 The `format` setting can take a string that will be used in formatting the `label` aesthetic. 
@@ -66,7 +67,7 @@ Known formatters are:
     * `x`/`X`: Unsigned hexadecimal
 
 ## Data transformation
-The text layer does not transform its data but passed it through unchanged.
+This layer supports aggregation through the `aggregate` setting. Within each group, defined by `PARTITION BY` and all discrete mappings, aggregates will be calculated and used as the values to plot. Multiple aggregates will give rise to multiple separate groups in the end. These can be distinguished through the added `aggregate` column you can remap to, e.g. `REMAPPING aggregate AS color`
 
 ## Orientation
 The text layer has no orientation. The axes are treated symmetrically.
@@ -145,4 +146,15 @@ PLACE text
     label => ('Adelie', 'Chinstrap', 'Gentoo'),
     x => (40, 50, 50),
     y => (19, 19, 15)
+```
+
+Use aggregation to place labels at their centroid
+
+```{ggsql}
+VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
+DRAW point
+  MAPPING species AS fill
+DRAW text
+  MAPPING species AS label
+  SETTING aggregate => 'mean', stroke => 'white', fontweight => 'bold', fontsize => 20
 ```

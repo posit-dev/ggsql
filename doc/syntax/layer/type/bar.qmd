@@ -123,7 +123,7 @@ PROJECT TO polar
 Use a different type of aggregation for the bars through the `aggregate` setting:
 
 ```{ggsql}
-VISUALISE species AS y, body_mass AS y FROM ggsql:penguins
+VISUALISE species AS x, body_mass AS y FROM ggsql:penguins
 DRAW bar
   SETTING aggregate => 'mean', fill => 'steelblue'
 DRAW range

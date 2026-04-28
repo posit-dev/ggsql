@@ -25,8 +25,10 @@ The following aesthetics are recognised by the rule layer.
 
 ## Settings
 * `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
+* `aggregate`: Aggregation functions to apply per group. Either a single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../clause/draw.qmd#aggregate) and more information in the *Data transformation* section below.
 
 ## Data transformation
+This layer supports aggregation through the `aggregate` setting. Within each group, defined by `PARTITION BY` and all discrete mappings, aggregates will be calculated and used as the values to plot. Multiple aggregates will give rise to multiple separate groups in the end. These can be distinguished through the added `aggregate` column you can remap to, e.g. `REMAPPING aggregate AS color`
 
 For diagonal lines, the position aesthetic determines the intercept:
 
@@ -110,4 +112,14 @@ VISUALISE FROM ggsql:penguins
       intercept AS y, 
       label AS colour
     FROM lines
+```
+
+Show a max rule for a timeseries
+
+```{ggsql}
+VISUALISE Temp AS y FROM ggsql:airquality
+DRAW line
+  MAPPING Date AS x
+DRAW rule
+  SETTING aggregate => 'max'
 ```

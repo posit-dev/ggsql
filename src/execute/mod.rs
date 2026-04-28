@@ -714,9 +714,14 @@ fn add_discrete_columns_to_partition_by(
         // Build set of excluded aesthetics that should not trigger auto-grouping:
         // - Stat-consumed aesthetics (transformed, not grouped)
         // - 'label' aesthetic (text content to display, not grouping categories)
+        //   — except when `aggregate` is set on the layer, in which case label
+        //   becomes a legitimate grouping key (e.g. "mean per species, place
+        //   species name at the centroid").
         let consumed_aesthetics = layer.geom.stat_consumed_aesthetics();
         let mut excluded_aesthetics: HashSet<&str> = consumed_aesthetics.iter().copied().collect();
-        excluded_aesthetics.insert("label");
+        if !crate::plot::layer::geom::has_aggregate_param(&layer.parameters) {
+            excluded_aesthetics.insert("label");
+        }
 
         for (aesthetic, value) in &layer.mappings.aesthetics {
             // Skip position aesthetics - these should not trigger auto-grouping.
