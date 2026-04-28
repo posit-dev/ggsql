@@ -535,7 +535,7 @@ impl PolarProjection {
             .cloned()
             .unwrap_or(Value::Null);
 
-        let (start, end, inner) = polar_properties(project);
+        let (start, end, _inner) = polar_properties(project);
         let mut layers = Vec::new();
 
         // Axis arc along the outer edge
@@ -603,20 +603,59 @@ impl PolarProjection {
             }
         }));
 
-        // Labels: text positioned beyond the outer end of the tick.
-        // Alignment depends on the angle: top/bottom/left/right around the circle.
+        // Labels: one sub-layer per (align, baseline) combination.
+        // This is cope for text layers not allowing multiple properties per layer.
+        // All break values live in the parent data with an `_ab` tag; each
+        // child filters on its tag and sets the corresponding mark alignment.
         let label_pad = 2.0;
         let label_offset = format!("{}", (1.0 - tick_just) * tick_size + label_pad);
+        let theta_scale = (end - start) / (domain_max - domain_min);
+
+        let mut label_values = Vec::new();
+        let mut alignment_keys = std::collections::BTreeSet::new();
+        for &b in &breaks {
+            let angle = start + theta_scale * (b - domain_min);
+            let (sin_a, cos_a) = angle.sin_cos();
+            let align = if sin_a > 0.1 {
+                "left"
+            } else if sin_a < -0.1 {
+                "right"
+            } else {
+                "center"
+            };
+            let baseline = if cos_a > 0.1 {
+                "bottom"
+            } else if cos_a < -0.1 {
+                "top"
+            } else {
+                "middle"
+            };
+            let ab = format!("{align}/{baseline}");
+            alignment_keys.insert(ab.clone());
+            label_values.push(json!({"v": b, "_ab": ab}));
+        }
+
+        let sub_layers: Vec<Value> = alignment_keys
+            .into_iter()
+            .map(|ab| {
+                let (align, baseline) = ab.split_once('/').unwrap();
+                json!({
+                    "transform": [
+                        {"filter": {"field": "_ab", "equal": ab}},
+                    ],
+                    "mark": {
+                        "type": "text",
+                        "color": label_color,
+                        "fontSize": label_font_size,
+                        "align": align,
+                        "baseline": baseline,
+                    },
+                })
+            })
+            .collect();
 
         layers.push(json!({
-            "data": {"values": values},
-            "mark": {
-                "type": "text",
-                "color": label_color,
-                "fontSize": label_font_size,
-                "align": "center",
-                "baseline": "middle",
-            },
+            "data": {"values": label_values},
             "transform": [
                 {"calculate": &theta, "as": "theta"},
                 {"calculate": outer_cx, "as": "cx"},
@@ -628,7 +667,8 @@ impl PolarProjection {
                 "x": {"field": "x", "type": "quantitative", "scale": null, "axis": null},
                 "y": {"field": "y", "type": "quantitative", "scale": null, "axis": null},
                 "text": {"field": "v", "type": "quantitative"},
-            }
+            },
+            "layer": sub_layers,
         }));
 
         layers
@@ -1405,7 +1445,7 @@ mod tests {
             vec![25.0, 50.0, 75.0],
         )];
         let proj = PolarProjection;
-        let mut theme = json!({"axis": {"gridColor": "#FFF", "gridWidth": 2}});
+        let theme = json!({"axis": {"gridColor": "#FFF", "gridWidth": 2}});
 
         let layers = proj.grid_rings(&scales, None, &theme);
         assert_eq!(layers.len(), 1, "should produce one layer");
@@ -1439,7 +1479,7 @@ mod tests {
     fn test_grid_spokes() {
         let scales = vec![scale_with_breaks("pos2", (0.0, 60.0), vec![20.0, 40.0])];
         let proj = PolarProjection;
-        let mut theme = json!({"axis": {"gridColor": "#CCC", "gridWidth": 1}});
+        let theme = json!({"axis": {"gridColor": "#CCC", "gridWidth": 1}});
 
         let layers = proj.grid_spokes(&scales, None, &theme);
         assert_eq!(layers.len(), 1, "should produce one layer");
@@ -1569,18 +1609,28 @@ mod tests {
             .iter()
             .filter_map(|t| t["as"].as_str())
             .collect();
-        assert_eq!(
-            tick_fields,
-            vec!["theta", "cx", "cy", "x", "y", "x2", "y2"]
-        );
+        assert_eq!(tick_fields, vec!["theta", "cx", "cy", "x", "y", "x2", "y2"]);
 
-        // Layer 2: labels
+        // Layer 2: nested label layer with shared data/transforms/encoding
         let labels = &layers[2];
-        assert_eq!(labels["mark"]["type"], "text");
-        assert_eq!(labels["mark"]["align"], "center");
-        assert_eq!(labels["mark"]["baseline"], "middle");
-        assert_eq!(labels["data"]["values"].as_array().unwrap().len(), 3);
         assert_eq!(labels["encoding"]["text"]["field"], "v");
+        assert_eq!(labels["data"]["values"].as_array().unwrap().len(), 3);
+        let sub_layers = labels["layer"].as_array().unwrap();
+        assert!(
+            !sub_layers.is_empty(),
+            "should have at least one label sub-layer"
+        );
+        for sub in sub_layers {
+            assert_eq!(sub["mark"]["type"], "text");
+            assert!(sub["mark"]["align"].is_string());
+            assert!(sub["mark"]["baseline"].is_string());
+            // Each sub-layer filters by alignment tag
+            assert!(sub["transform"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|t| t.get("filter").is_some()));
+        }
     }
 
     #[test]

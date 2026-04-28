@@ -1394,7 +1394,7 @@ mod tests {
     fn test_aesthetic_name_mapping() {
         use crate::plot::AestheticContext;
 
-        use crate::plot::projection::{Coord, Projection};
+        use crate::plot::projection::Projection;
 
         // Test with cartesian projection (None = default cartesian)
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
