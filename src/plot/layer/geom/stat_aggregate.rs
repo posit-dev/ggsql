@@ -41,14 +41,14 @@ pub const AGG_NAMES: &[&str] = &[
     "sdev",
     "var",
     "iqr",
-    // Quantiles
-    "q05",
-    "q10",
-    "q25",
-    "q50",
-    "q75",
-    "q90",
-    "q95",
+    // Percentiles
+    "p05",
+    "p10",
+    "p25",
+    "p50",
+    "p75",
+    "p90",
+    "p95",
     // Bands (mean ± spread)
     "mean-sdev",
     "mean+sdev",
@@ -155,7 +155,7 @@ pub fn apply(
 
     // Decide strategy: single-pass when every quantile can be inlined.
     let needs_fallback = funcs.iter().any(|f| {
-        if let Some(frac) = quantile_fraction(f) {
+        if let Some(frac) = percentile_fraction(f) {
             // Use the first numeric column (any will do) for the probe, since we
             // only care whether the dialect produces Some or None.
             let probe = numeric_pos
@@ -215,16 +215,16 @@ fn extract_aggregate_param(parameters: &HashMap<String, ParameterValue>) -> Opti
     }
 }
 
-/// Map a quantile function name (`q05`..`q95`, `median`) to its fraction.
-fn quantile_fraction(func: &str) -> Option<f64> {
+/// Map a percentile function name (`p05`..`p95`, `median`) to its fraction.
+fn percentile_fraction(func: &str) -> Option<f64> {
     match func {
-        "median" | "q50" => Some(0.50),
-        "q05" => Some(0.05),
-        "q10" => Some(0.10),
-        "q25" => Some(0.25),
-        "q75" => Some(0.75),
-        "q90" => Some(0.90),
-        "q95" => Some(0.95),
+        "median" | "p50" => Some(0.50),
+        "p05" => Some(0.05),
+        "p10" => Some(0.10),
+        "p25" => Some(0.25),
+        "p75" => Some(0.75),
+        "p90" => Some(0.90),
+        "p95" => Some(0.95),
         _ => None,
     }
 }
@@ -237,7 +237,7 @@ fn function_inline_sql(func: &str, qcol: &str, dialect: &dyn SqlDialect) -> Opti
     if func == "count" {
         return None;
     }
-    if let Some(frac) = quantile_fraction(func) {
+    if let Some(frac) = percentile_fraction(func) {
         // Strip the quotes added by `naming::quote_ident` so we can re-quote inside
         // `sql_quantile_inline` via the same helper. The dialect impl quotes itself.
         let unquoted = unquote(qcol);
@@ -397,7 +397,7 @@ fn build_range_function_sql(
                 .to_string(),
         ));
     }
-    if let Some(frac) = quantile_fraction(func) {
+    if let Some(frac) = percentile_fraction(func) {
         if let Some(inline) = dialect.sql_quantile_inline(raw_col, frac) {
             return Ok(inline);
         }
@@ -454,14 +454,14 @@ fn build_single_pass_query(
             let wide_name = synthetic_col_name(aes, func);
             let expr = match func.as_str() {
                 "iqr" => {
-                    // q75 - q25 inline if dialect supports it
-                    let q75 = dialect
+                    // p75 - p25 inline if dialect supports it
+                    let p75 = dialect
                         .sql_quantile_inline(col, 0.75)
                         .expect("sql_quantile_inline must be Some when single-pass is selected");
-                    let q25 = dialect
+                    let p25 = dialect
                         .sql_quantile_inline(col, 0.25)
                         .expect("sql_quantile_inline must be Some when single-pass is selected");
-                    format!("({} - {})", q75, q25)
+                    format!("({} - {})", p75, p25)
                 }
                 _ => function_inline_sql(func, &qcol, dialect)
                     .expect("function_inline_sql must be Some when single-pass is selected"),
@@ -619,10 +619,10 @@ fn build_union_all_query(
                 let value_expr = if func == "count" {
                     "NULL".to_string()
                 } else if func == "iqr" {
-                    let q75 = dialect.sql_percentile(col, 0.75, src_alias, group_cols);
-                    let q25 = dialect.sql_percentile(col, 0.25, src_alias, group_cols);
-                    format!("({} - {})", q75, q25)
-                } else if let Some(frac) = quantile_fraction(func) {
+                    let p75 = dialect.sql_percentile(col, 0.75, src_alias, group_cols);
+                    let p25 = dialect.sql_percentile(col, 0.25, src_alias, group_cols);
+                    format!("({} - {})", p75, p25)
+                } else if let Some(frac) = percentile_fraction(func) {
                     dialect.sql_percentile(col, frac, src_alias, group_cols)
                 } else {
                     let qcol = naming::quote_ident(col);
@@ -889,7 +889,7 @@ mod tests {
         let mut params = HashMap::new();
         params.insert(
             "aggregate".to_string(),
-            ParameterValue::String("q25".to_string()),
+            ParameterValue::String("p25".to_string()),
         );
 
         let result = apply(
@@ -921,7 +921,7 @@ mod tests {
         let mut params = HashMap::new();
         params.insert(
             "aggregate".to_string(),
-            ParameterValue::String("q25".to_string()),
+            ParameterValue::String("p25".to_string()),
         );
 
         let result = apply(
@@ -1041,7 +1041,7 @@ mod tests {
     }
 
     #[test]
-    fn iqr_emits_q75_minus_q25() {
+    fn iqr_emits_p75_minus_p25() {
         let mut aes = Mappings::new();
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
@@ -1606,8 +1606,8 @@ mod tests {
         params.insert(
             "aggregate".to_string(),
             ParameterValue::Array(vec![
-                ArrayElement::String("q25".to_string()),
-                ArrayElement::String("q75".to_string()),
+                ArrayElement::String("p25".to_string()),
+                ArrayElement::String("p75".to_string()),
             ]),
         );
 
@@ -1641,8 +1641,8 @@ mod tests {
         params.insert(
             "aggregate".to_string(),
             ParameterValue::Array(vec![
-                ArrayElement::String("q25".to_string()),
-                ArrayElement::String("q75".to_string()),
+                ArrayElement::String("p25".to_string()),
+                ArrayElement::String("p75".to_string()),
             ]),
         );
 
