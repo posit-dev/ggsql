@@ -187,17 +187,34 @@ pub fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataF
         }
     }
 
-    // Drop any remaining __ggsql_stat_* columns that weren't consumed by remappings.
+    // Drop any remaining __ggsql_stat_* columns that weren't consumed by
+    // remappings — except those promoted to `partition_by` post-stat (e.g. the
+    // Aggregate stat's `__ggsql_stat_aggregate` column when the user didn't
+    // remap it; downstream renderers need it as a grouping key).
     let stat_cols: Vec<String> = df
         .get_column_names()
         .into_iter()
-        .filter(|name| naming::is_stat_column(name))
+        .filter(|name| {
+            naming::is_stat_column(name) && !layer.partition_by.contains(&name.to_string())
+        })
         .collect();
     if !stat_cols.is_empty() {
         df = df.drop_many(&stat_cols)?;
     }
 
     Ok(df)
+}
+
+/// Count the number of aggregate functions requested in the `aggregate` SETTING.
+/// Used to gate auto-promotion of the `aggregate` stat column to `partition_by`:
+/// a single function produces a constant column, and partitioning by it adds a
+/// useless detail channel.
+fn aggregate_param_function_count(parameters: &HashMap<String, ParameterValue>) -> usize {
+    match parameters.get("aggregate") {
+        Some(ParameterValue::String(_)) => 1,
+        Some(ParameterValue::Array(arr)) => arr.len(),
+        _ => 0,
+    }
 }
 
 /// Convert a literal value to an Arrow ArrayRef with constant values.
@@ -631,6 +648,30 @@ where
                         is_dummy,
                     };
                     layer.mappings.insert(aesthetic.clone(), value);
+                }
+            }
+
+            // The `aggregate` stat column (produced by stat_aggregate when the
+            // user requests multiple functions) tags each row with its function
+            // name. For mark types that connect rows within a group (line, area,
+            // path, polygon), we need to add this column to `layer.partition_by`
+            // so that e.g. `aggregate => ('min', 'max')` renders as two separate
+            // lines rather than one zigzag through both. Resolves to the
+            // post-rename data-column name: if the user remapped `aggregate AS
+            // <aes>`, the prefixed aesthetic column; otherwise the stat column.
+            //
+            // Only fires when more than one function is requested — a single
+            // function produces a constant aggregate column, partitioning by
+            // which would just add a no-op detail channel.
+            if stat_columns.iter().any(|s| s == "aggregate")
+                && aggregate_param_function_count(&layer.parameters) > 1
+            {
+                let partition_col = match final_remappings.get("aggregate") {
+                    Some(aes) => naming::aesthetic_column(aes),
+                    None => naming::stat_column("aggregate"),
+                };
+                if !layer.partition_by.contains(&partition_col) {
+                    layer.partition_by.push(partition_col);
                 }
             }
 
