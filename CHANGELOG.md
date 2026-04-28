@@ -22,13 +22,14 @@ shapes (#368)
 and writer errors now report user-facing aesthetic names (`x`, `y`, `panel`,
 `row`, …) instead of internal forms (`pos1`, `pos2`, `facet1`, …), translated
 based on the active coordinate system and facet layout (#388).
+- Fixed opacity calculation in point layers with Vega-Lite (#393)
 
 ### Changed
 
 - Reverted an earlier decision to materialize CTEs and the global query in Rust
 before registering them back to the backend. We now keep the data purely on the
 backend until the layer query as was always intended (#363)
-- Relieved some grammatical constraints on the SQL-portion before the VISUALISE 
+- Relieved some grammatical constraints on the SQL-portion before the VISUALISE
 portion (#364).
 - Simplified internal approach to DataFrame with DuckDB reader (#365)
 - Moved the CLI to its own module rather than be part of the main crate (#379)
