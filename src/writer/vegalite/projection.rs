@@ -95,8 +95,8 @@ pub(super) trait ProjectionRenderer {
     /// Called after faceting so that decoration layers appear in both faceted
     /// and non-faceted specs.
     fn apply_panel_decor(&self, spec: &Plot, theme: &mut Value, vl_spec: &mut Value) {
-        let bg = self.background_layers(&spec.scales, theme);
-        let fg = self.foreground_layers(&spec.scales, theme);
+        let mut bg = self.background_layers(&spec.scales, theme);
+        let mut fg = self.foreground_layers(&spec.scales, theme);
         if bg.is_empty() && fg.is_empty() {
             return;
         }
@@ -124,9 +124,7 @@ pub(super) trait ProjectionRenderer {
 ///
 /// Returns the appropriate renderer based on the projection's coord kind,
 /// or a Cartesian renderer if no projection is specified.
-pub(super) fn get_projection_renderer(
-    project: Option<&Projection>,
-) -> Box<dyn ProjectionRenderer> {
+pub(super) fn get_projection_renderer(project: Option<&Projection>) -> Box<dyn ProjectionRenderer> {
     match project.map(|p| p.coord.coord_kind()) {
         Some(CoordKind::Polar) => Box::new(PolarProjection),
         Some(CoordKind::Cartesian) | None => Box::new(CartesianProjection),
@@ -419,6 +417,14 @@ fn convert_polar_to_cartesian(
 
     let mut polar_transforms: Vec<Value> = Vec::new();
 
+    // Drop rows with null positions — Vega-Lite does this implicitly for
+    // scaled channels, but with scale:null we handle it ourselves.
+    polar_transforms.push(json!({
+        "filter": format!(
+            "isValid(datum['{r_field}']) && isValid(datum['{theta_field}'])"
+        )
+    }));
+
     // Normalize theta to [start_radians, end_radians]
     if (theta_max - theta_min).abs() > f64::EPSILON {
         polar_transforms.push(json!({
@@ -458,13 +464,14 @@ fn convert_polar_to_cartesian(
         }));
     }
 
-    // Convert to cartesian: x = r * sin(θ), y = r * cos(θ)
+    // Convert to pixel coordinates, matching the arc mark's layout:
+    //   center = (width/2, height/2), outerRadius = min(width,height)/2
     polar_transforms.push(json!({
-        "calculate": "datum.__polar_r__ * sin(datum.__polar_theta__)",
+        "calculate": "width/2 + min(width,height)/2 * datum.__polar_r__ * sin(datum.__polar_theta__)",
         "as": "__polar_x__"
     }));
     polar_transforms.push(json!({
-        "calculate": "datum.__polar_r__ * cos(datum.__polar_theta__)",
+        "calculate": "height/2 - min(width,height)/2 * datum.__polar_r__ * cos(datum.__polar_theta__)",
         "as": "__polar_y__"
     }));
 
@@ -486,17 +493,16 @@ fn convert_polar_to_cartesian(
     encoding.remove("radius");
     encoding.remove("theta");
 
-    let padding = 1.08;
     let mut x_enc = json!({
         "field": "__polar_x__",
         "type": "quantitative",
-        "scale": {"domain": [-padding, padding]},
+        "scale": null,
         "axis": null
     });
     let mut y_enc = json!({
         "field": "__polar_y__",
         "type": "quantitative",
-        "scale": {"domain": [-padding, padding]},
+        "scale": null,
         "axis": null
     });
 
@@ -793,7 +799,88 @@ mod tests {
             Some("theta2".to_string())
         );
         assert_eq!(renderer.offset_channels(), ("radiusOffset", "thetaOffset"));
-        assert_eq!(renderer.panel_size(), Some((DEFAULT_POLAR_SIZE, DEFAULT_POLAR_SIZE)));
+        assert_eq!(
+            renderer.panel_size(),
+            Some((DEFAULT_POLAR_SIZE, DEFAULT_POLAR_SIZE))
+        );
+    }
+
+    fn polar_point_layer() -> Value {
+        json!({
+            "mark": "point",
+            "encoding": {
+                "radius": {
+                    "field": "r_col",
+                    "type": "quantitative",
+                    "scale": {"domain": [0.0, 10.0]}
+                },
+                "theta": {
+                    "field": "t_col",
+                    "type": "quantitative",
+                    "scale": {"domain": [0.0, 100.0]}
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn test_polar_to_cartesian_pixel_coordinates() {
+        let mut layer = polar_point_layer();
+        let start = 0.0;
+        let end = 2.0 * std::f64::consts::PI;
+
+        convert_polar_to_cartesian(&mut layer, start, end, 0.0).unwrap();
+
+        let transforms = layer["transform"].as_array().unwrap();
+
+        // Should contain pixel-coordinate expressions using width/height signals
+        let x_calc = transforms
+            .iter()
+            .find(|t| t["as"] == "__polar_x__")
+            .unwrap();
+        let x_expr = x_calc["calculate"].as_str().unwrap();
+        assert!(
+            x_expr.contains("width/2") && x_expr.contains("min(width,height)/2"),
+            "x should use pixel coordinates, got: {x_expr}"
+        );
+
+        let y_calc = transforms
+            .iter()
+            .find(|t| t["as"] == "__polar_y__")
+            .unwrap();
+        let y_expr = y_calc["calculate"].as_str().unwrap();
+        assert!(
+            y_expr.contains("height/2") && y_expr.contains("min(width,height)/2"),
+            "y should use pixel coordinates, got: {y_expr}"
+        );
+
+        // Encoding should use scale:null (raw pixel positions)
+        assert_eq!(layer["encoding"]["x"]["scale"], json!(null));
+        assert_eq!(layer["encoding"]["y"]["scale"], json!(null));
+
+        // Original polar channels should be removed
+        assert!(layer["encoding"].get("radius").is_none());
+        assert!(layer["encoding"].get("theta").is_none());
+    }
+
+    #[test]
+    fn test_polar_to_cartesian_filters_nulls() {
+        let mut layer = polar_point_layer();
+        let full_circle = 2.0 * std::f64::consts::PI;
+
+        convert_polar_to_cartesian(&mut layer, 0.0, full_circle, 0.0).unwrap();
+
+        let transforms = layer["transform"].as_array().unwrap();
+        let filter = transforms
+            .iter()
+            .find(|t| t.get("filter").is_some())
+            .expect("should have a filter transform");
+
+        let expr = filter["filter"].as_str().unwrap();
+        assert!(
+            expr.contains("isValid") && expr.contains("r_col") && expr.contains("t_col"),
+            "filter should check both position fields, got: {expr}"
+        );
     }
 
     #[test]
