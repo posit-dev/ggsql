@@ -622,31 +622,6 @@ impl GeomRenderer for PathRenderer {
 }
 
 // =============================================================================
-// Segment Renderer
-// =============================================================================
-
-pub struct SegmentRenderer;
-
-impl GeomRenderer for SegmentRenderer {
-    fn modify_encoding(
-        &self,
-        encoding: &mut Map<String, Value>,
-        _layer: &Layer,
-        context: &RenderContext,
-    ) -> Result<()> {
-        let (pos1, pos1_end, _, pos2, pos2_end, _) = &context.channels;
-        // If endpoint is missing, use start point (creates vertical/horizontal line)
-        if let Some(v) = encoding.get(pos1.as_str()).cloned() {
-            encoding.entry(pos1_end.clone()).or_insert(v);
-        }
-        if let Some(v) = encoding.get(pos2.as_str()).cloned() {
-            encoding.entry(pos2_end.clone()).or_insert(v);
-        }
-        Ok(())
-    }
-}
-
-// =============================================================================
 // Rule Renderer
 // =============================================================================
 
@@ -2117,10 +2092,9 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Boxplot => Box::new(BoxplotRenderer),
         GeomType::Violin => Box::new(ViolinRenderer),
         GeomType::Text => Box::new(TextRenderer),
-        GeomType::Segment => Box::new(SegmentRenderer),
         GeomType::Range => Box::new(RangeRenderer),
         GeomType::Rule => Box::new(RuleRenderer),
-        // All other geoms (Point, Area, Ribbon, Density, etc.) use the default renderer
+        // All other geoms (Point, Area, Ribbon, Density, Segment, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }
 }

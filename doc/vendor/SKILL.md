@@ -390,7 +390,7 @@ Area chart anchored at zero. Required: x, y. Settings: `position` (default `'sta
 Like area but with explicit ymin/ymax (unanchored). Required: x, ymin, ymax.
 
 ### segment
-Line segments between two endpoints. Required: x, y, and at least one of xend or yend.
+Line segments between two endpoints. Required: x, y, xend, yend. For axis-aligned intervals where one coordinate is shared between start and end, use `range` instead.
 
 ### rule
 Reference lines spanning the full panel. Required: x or y. Optional: `slope` (for diagonal: `y = a + slope * x`).
@@ -439,9 +439,9 @@ SCALE x VIA date
 
 -- Lollipop chart
 SELECT ROUND(bill_dep) AS bill_dep, COUNT(*) AS n FROM ggsql:penguins GROUP BY 1
-VISUALISE bill_dep AS x, n AS y
-DRAW segment MAPPING 0 AS yend
-DRAW point
+VISUALISE bill_dep AS x
+DRAW range MAPPING 0 AS ymin, n AS ymax SETTING width => null
+DRAW point MAPPING n AS y
 
 -- Ridgeline / joy plot
 VISUALISE Temp AS x, Month AS y FROM ggsql:airquality

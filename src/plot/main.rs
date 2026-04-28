@@ -520,10 +520,10 @@ mod tests {
             &["pos1", "pos2min", "pos2max"]
         );
 
-        // Segment requires at least one endpoint (pos1end or pos2end via bidirectional validation)
+        // Segment requires both endpoints
         assert_eq!(
             Geom::segment().aesthetics().required(),
-            &["pos1", "pos2", "pos1end"]
+            &["pos1", "pos2", "pos1end", "pos2end"]
         );
 
         // Range requires pos1, pos2min, pos2max
