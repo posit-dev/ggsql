@@ -1,0 +1,191 @@
+name: "Fix wheel library load paths"
+description: >
+  Relocate bundled shared libraries from the py3-none wheel's top-level
+  package directory into the wheel's .data/data/lib/ dir, so they install to
+  <prefix>/lib/ (Python-version-independent) rather than
+  <prefix>/lib/pythonX.Y/site-packages/. Also rewrites the binary's load
+  commands (macOS) or RPATH (Linux) to match.
+inputs:
+  dist-dir:
+    description: "Directory containing the wheel(s) to rewrite in-place."
+    required: true
+  binary-name:
+    description: "Name of the binary inside the wheel's data/scripts dir."
+    required: false
+    default: "ggsql-jupyter"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Fix wheel libraries (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      env:
+        DIST_DIR: ${{ inputs.dist-dir }}
+        BINARY_NAME: ${{ inputs.binary-name }}
+      run: |
+        set -euo pipefail
+        python3 -m pip install --quiet wheel
+        cd "$DIST_DIR"
+
+        shopt -s nullglob
+        wheels=(*.whl)
+        if [ ${#wheels[@]} -eq 0 ]; then
+          echo "::error title=No wheels found::$DIST_DIR contains no .whl files"
+          exit 1
+        fi
+
+        LIBS_SRC="ggsql_jupyter.dylibs"
+        DEST_RELATIVE="lib/ggsql-jupyter-dylibs"
+        OLD_PREFIX="@loader_path/../$LIBS_SRC/"
+        NEW_PREFIX="@loader_path/../$DEST_RELATIVE/"
+
+        for whl in "${wheels[@]}"; do
+          echo "::group::$whl"
+
+          workdir=$(mktemp -d)
+          python3 -m wheel unpack "$whl" -d "$workdir"
+          unpacked=$(find "$workdir" -maxdepth 1 -mindepth 1 -type d | head -n 1)
+
+          src_dir="$unpacked/$LIBS_SRC"
+          data_root=$(find "$unpacked" -maxdepth 1 -type d -name '*.data' | head -n 1)
+          if [ -z "$data_root" ]; then
+            echo "::error title=Wheel layout::no *.data/ directory in $whl"
+            exit 1
+          fi
+          dest_dir="$data_root/data/$DEST_RELATIVE"
+          binary=$(find "$data_root/scripts" -type f -name "$BINARY_NAME" | head -n 1)
+
+          if [ -z "$binary" ]; then
+            echo "::error title=Binary not found::$BINARY_NAME not found in $whl"
+            exit 1
+          fi
+
+          if [ ! -d "$src_dir" ]; then
+            echo "::warning title=No library bundle::$LIBS_SRC/ not present in $whl (nothing to relocate)"
+          else
+            echo "Moving $LIBS_SRC/ -> $(basename "$data_root")/data/$DEST_RELATIVE/"
+            mkdir -p "$(dirname "$dest_dir")"
+            mv "$src_dir" "$dest_dir"
+          fi
+
+          echo "Rewriting load commands on $(basename "$binary")"
+          oldpaths=$(otool -L "$binary" | awk -v p="$OLD_PREFIX" 'index($1, p) == 1 {print $1}')
+          if [ -z "$oldpaths" ]; then
+            echo "::warning title=Nothing to rewrite::No $OLD_PREFIX load commands in $binary"
+          else
+            for old in $oldpaths; do
+              new="$NEW_PREFIX${old##*/}"
+              echo "  $old -> $new"
+              install_name_tool -change "$old" "$new" "$binary"
+            done
+          fi
+
+          echo "Re-signing modified Mach-O files"
+          codesign --force --sign - "$binary"
+          if [ -d "$dest_dir" ]; then
+            while IFS= read -r -d '' f; do
+              codesign --force --sign - "$f"
+            done < <(find "$dest_dir" -type f \( -name '*.dylib' -o -name '*.so' \) -print0)
+          fi
+          codesign --verify --verbose "$binary"
+
+          targets=("$binary")
+          if [ -d "$dest_dir" ]; then
+            while IFS= read -r -d '' f; do targets+=("$f"); done < <(find "$dest_dir" -type f \( -name '*.dylib' -o -name '*.so' \) -print0)
+          fi
+          stale=0
+          for f in "${targets[@]}"; do
+            if otool -L "$f" | awk -v p="$OLD_PREFIX" 'index($1, p) == 1 {found=1} END {exit !found}'; then
+              echo "::error title=Stale load path::$f still references $OLD_PREFIX"
+              otool -L "$f"
+              stale=1
+            fi
+          done
+          if [ "$stale" -ne 0 ]; then exit 1; fi
+
+          rm -f "$whl"
+          python3 -m wheel pack "$unpacked" --dest-dir .
+          rm -rf "$workdir"
+
+          echo "::endgroup::"
+        done
+
+    - name: Fix wheel libraries (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      env:
+        DIST_DIR: ${{ inputs.dist-dir }}
+        BINARY_NAME: ${{ inputs.binary-name }}
+      run: |
+        set -euo pipefail
+        python3 -m pip install --quiet wheel
+        sudo apt-get update -qq && sudo apt-get install -y -qq patchelf
+        # Wheels built inside a manylinux Docker container are owned by root
+        sudo chown -R "$(id -u):$(id -g)" "$DIST_DIR"
+        cd "$DIST_DIR"
+
+        shopt -s nullglob
+        wheels=(*.whl)
+        if [ ${#wheels[@]} -eq 0 ]; then
+          echo "::error title=No wheels found::$DIST_DIR contains no .whl files"
+          exit 1
+        fi
+
+        LIBS_SRC="ggsql_jupyter.libs"
+        DEST_RELATIVE="lib/ggsql-jupyter-dylibs"
+
+        for whl in "${wheels[@]}"; do
+          echo "::group::$whl"
+
+          workdir=$(mktemp -d)
+          python3 -m wheel unpack "$whl" -d "$workdir"
+          unpacked=$(find "$workdir" -maxdepth 1 -mindepth 1 -type d | head -n 1)
+
+          src_dir="$unpacked/$LIBS_SRC"
+          data_root=$(find "$unpacked" -maxdepth 1 -type d -name '*.data' | head -n 1)
+          if [ -z "$data_root" ]; then
+            echo "::error title=Wheel layout::no *.data/ directory in $whl"
+            exit 1
+          fi
+          dest_dir="$data_root/data/$DEST_RELATIVE"
+          binary=$(find "$data_root/scripts" -type f -name "$BINARY_NAME" | head -n 1)
+
+          if [ -z "$binary" ]; then
+            echo "::error title=Binary not found::$BINARY_NAME not found in $whl"
+            exit 1
+          fi
+
+          if [ ! -d "$src_dir" ]; then
+            echo "::warning title=No library bundle::$LIBS_SRC/ not present in $whl (nothing to relocate)"
+          else
+            echo "Moving $LIBS_SRC/ -> $(basename "$data_root")/data/$DEST_RELATIVE/"
+            mkdir -p "$(dirname "$dest_dir")"
+            mv "$src_dir" "$dest_dir"
+          fi
+
+          new_rpath="\$ORIGIN/../$DEST_RELATIVE"
+          echo "Setting RPATH on $(basename "$binary") to $new_rpath"
+          patchelf --set-rpath "$new_rpath" "$binary"
+
+          if [ -d "$dest_dir" ]; then
+            while IFS= read -r -d '' sofile; do
+              echo "Setting RPATH on $(basename "$sofile") to \$ORIGIN"
+              patchelf --set-rpath '$ORIGIN' "$sofile"
+            done < <(find "$dest_dir" -type f -name '*.so*' -print0)
+          fi
+
+          echo "Verifying RPATH on $(basename "$binary")"
+          rpath_out=$(patchelf --print-rpath "$binary")
+          echo "  RPATH = $rpath_out"
+          if [[ "$rpath_out" != *"$DEST_RELATIVE"* ]]; then
+            echo "::error title=RPATH verification failed::Expected RPATH containing $DEST_RELATIVE, got: $rpath_out"
+            exit 1
+          fi
+
+          rm -f "$whl"
+          python3 -m wheel pack "$unpacked" --dest-dir .
+          rm -rf "$workdir"
+
+          echo "::endgroup::"
+        done
