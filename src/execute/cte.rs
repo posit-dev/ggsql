@@ -177,7 +177,7 @@ pub fn split_with_query(source_tree: &SourceTree) -> Option<(String, String)> {
 
     let mut cursor = with_node.walk();
     let mut last_cte_end: Option<usize> = None;
-    let mut select_node = None;
+    let mut tail_node = None;
     let mut seen_cte = false;
 
     for child in with_node.children(&mut cursor) {
@@ -186,8 +186,14 @@ pub fn split_with_query(source_tree: &SourceTree) -> Option<(String, String)> {
                 seen_cte = true;
                 last_cte_end = Some(child.end_byte());
             }
+            // WITH's tail may be a SELECT or a bare FROM (DuckDB-style).
+            // For from_statement, we rewrite the tail to `SELECT * <from_stmt>`.
             "select_statement" if seen_cte => {
-                select_node = Some(child);
+                tail_node = Some((child, false));
+                break;
+            }
+            "from_statement" if seen_cte => {
+                tail_node = Some((child, true));
                 break;
             }
             _ => {}
@@ -195,8 +201,13 @@ pub fn split_with_query(source_tree: &SourceTree) -> Option<(String, String)> {
     }
 
     let cte_prefix = source_tree.source[with_node.start_byte()..last_cte_end?].to_string();
-    let trailing_select = source_tree.get_text(&select_node?);
-    Some((cte_prefix, trailing_select))
+    let (node, is_from) = tail_node?;
+    let trailing = if is_from {
+        format!("SELECT * {}", source_tree.get_text(&node))
+    } else {
+        source_tree.get_text(&node)
+    };
+    Some((cte_prefix, trailing))
 }
 
 /// Transform global SQL for execution with temp tables
@@ -219,7 +230,7 @@ pub fn transform_global_sql(
 
     if let Some(select_sql) = select_sql {
         Some(transform_cte_references(&select_sql, materialized_ctes))
-    } else if has_executable_sql(source_tree) {
+    } else if does_consume_cte(source_tree) {
         // Non-SELECT executable SQL (CREATE, INSERT, UPDATE, DELETE)
         // OR VISUALISE FROM (which injects SELECT * FROM <source>)
         // Extract SQL (with injection if VISUALISE FROM) and transform CTE references
@@ -237,17 +248,19 @@ pub fn transform_global_sql(
 /// This handles cases like `WITH a AS (...), b AS (...) VISUALISE` where the WITH
 /// clause has no trailing SELECT - these CTEs are still extracted for layer use
 /// but shouldn't be executed as global data.
-pub fn has_executable_sql(source_tree: &SourceTree) -> bool {
+pub fn does_consume_cte(source_tree: &SourceTree) -> bool {
     let root = source_tree.root();
 
-    // Check for direct executable statements (SELECT, CREATE, INSERT, UPDATE, DELETE)
+    // Check for direct executable statements (SELECT, CREATE, INSERT, UPDATE,
+    // DELETE, or bare FROM (DuckDB-style FROM-first — rewritten to SELECT *))
     let direct_statements = r#"
         (sql_statement
           [(select_statement)
            (create_statement)
            (insert_statement)
            (update_statement)
-           (delete_statement)] @stmt)
+           (delete_statement)
+           (from_statement)] @stmt)
     "#;
 
     if source_tree.find_node(&root, direct_statements).is_some() {

@@ -48,7 +48,7 @@ const GEOM_LINKS: Record<string, DocLink> = {
   segment: { url: "syntax/layer/type/segment", label: "segment layer" },
   rule: { url: "syntax/layer/type/rule", label: "rule layer" },
   linear: { url: "syntax/layer/type/linear", label: "linear layer" },
-  errorbar: { url: "syntax/layer/type/errorbar", label: "errorbar layer" },
+  range: { url: "syntax/layer/type/range", label: "range layer" },
 };
 
 const COORD_LINKS: Record<string, DocLink> = {
@@ -144,7 +144,7 @@ const CLAUSE_RE =
   /\b(VISUALISE|VISUALIZE|DRAW|PLACE|SCALE|FACET|PROJECT|LABEL)\b/gi;
 
 const GEOM_RE =
-  /\b(?:DRAW|PLACE)\s+(point|line|path|bar|area|tile|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|segment|rule|linear|errorbar)\b/gi;
+  /\b(?:DRAW|PLACE)\s+(point|line|path|bar|area|tile|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|segment|rule|linear|range)\b/gi;
 
 const COORD_RE = /\bTO\s+(cartesian|polar)\b/gi;
 

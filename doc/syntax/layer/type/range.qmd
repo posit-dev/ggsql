@@ -1,0 +1,110 @@
+---
+title: "Range"
+---
+
+> Layers are declared with the [`DRAW` clause](../../clause/draw.qmd). Read the documentation for this clause for a thorough description of how to use it.
+
+The range layer displays an interval between two values along the secondary axis as a line segment, optionally with hinges at the endpoints. It is a general-purpose primitive for any kind of paired min/max data — confidence intervals, observed minima and maxima, candlestick highs and lows, percentile ranges, and so on.
+
+## Aesthetics
+The following aesthetics are recognised by the range layer.
+
+### Required
+* Primary axis (e.g. `x`): Position along the primary axis.
+* Secondary axis minimum (e.g. `ymin`): Lower position along the secondary axis.
+* Secondary axis maximum (e.g. `ymax`): Upper position along the secondary axis.
+
+### Optional
+* `stroke`/`colour`: The colour of the lines in the range.
+* `opacity`: The opacity of the colour.
+* `linewidth`: The width of the lines in the range.
+* `linetype`: The dash pattern of the lines in the range.
+
+## Settings
+* `width`: The width of the hinges in points (must be >= 0). Defaults to 10. Can be set to `null` to not display hinges.
+
+## Data transformation
+The range layer does not transform its data but passes it through unchanged.
+
+## Orientation
+The orientation of range layers is deduced directly from the mapping, because the interval is mapped to the secondary axis. To create a horizontal range layer, you map the independent variable to `y` instead of `x` and the interval to `xmin` and `xmax` (assuming a default Cartesian coordinate system).
+
+## Examples
+
+```{ggsql}
+#| code-fold: true
+#| code-summary: "Create example data"
+CREATE TABLE penguin_summary AS
+WITH stats AS (
+  SELECT species, AVG(bill_dep) AS mean
+  FROM ggsql:penguins
+  GROUP BY species
+)
+SELECT species, mean - 1.5 AS low, mean, mean + 1.5 AS high
+FROM stats
+```
+
+A classic interval-with-point display.
+
+```{ggsql}
+VISUALISE species AS x FROM penguin_summary
+DRAW range
+  MAPPING low AS ymax, high AS ymin
+DRAW point
+  MAPPING mean AS y
+```
+
+Dynamite plot using bars instead of points, with extra wide hinges.
+
+```{ggsql}
+VISUALISE species AS x FROM penguin_summary
+DRAW range
+  MAPPING low AS ymax, high AS ymin
+  SETTING width => 40
+DRAW bar
+  MAPPING mean AS y
+```
+
+The hinges can be omitted by setting `null` as width, leaving just the line segment between the endpoints.
+
+```{ggsql}
+VISUALISE species AS x FROM penguin_summary
+DRAW range
+  MAPPING low AS ymax, high AS ymin
+  SETTING width => null
+```
+
+A horizontal range can be rendered by swapping the `x` and `y` directions.
+
+```{ggsql}
+VISUALISE species AS y FROM penguin_summary
+DRAW range
+  MAPPING low AS xmax, high AS xmin
+DRAW point
+  MAPPING mean AS x
+```
+
+By overlaying a thick range over a thin one, you can build a candlestick chart. Both layers turn the hinges off so the marks read as clean vertical lines: the wick spans low-to-high and the body spans open-to-close.
+
+```{ggsql}
+SELECT
+  FIRST(Date) AS date,
+  FIRST(temp) AS open,
+  LAST(temp) AS close,
+  MAX(temp) AS high,
+  MIN(temp) AS low,
+  CASE
+    WHEN FIRST(temp) > LAST(temp) THEN 'colder'
+    ELSE 'warmer'
+  END AS trend
+FROM ggsql:airquality
+GROUP BY Week
+
+VISUALISE date AS x, trend AS colour
+DRAW range
+  MAPPING open AS ymin, close AS ymax
+  SETTING linewidth => 5, width => null
+DRAW range
+  MAPPING low AS ymin, high AS ymax
+  SETTING width => null
+```

@@ -12,10 +12,6 @@ description.workspace = true
 name = "ggsql"
 path = "lib.rs"
 
-[[bin]]
-name = "ggsql"
-path = "cli.rs"
-
 [dependencies]
 # Parsing
 tree-sitter.workspace = true
@@ -44,9 +40,7 @@ plotters = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 
-# CLI and error handling
-clap.workspace = true
-anyhow.workspace = true
+# Error handling
 thiserror.workspace = true
 
 # Utilities
@@ -76,27 +70,3 @@ ggplot2 = []
 builtin-data = []
 all-readers = ["duckdb", "postgres", "sqlite", "odbc"]
 all-writers = ["vegalite", "ggplot2", "plotters"]
-
-# cargo-packager configuration for cross-platform installers
-[package.metadata.packager]
-product-name = "ggsql"
-identifier = "com.ggsql.app"
-category = "DeveloperTool"
-publisher = "ggsql Team"
-authors = ["ggsql Team"]
-icons = ["../doc/assets/logo.png"]
-license-file = "../LICENSE.md"
-out-dir = "target/release/packager"
-homepage = "https://ggsql.org/"
-description = "SQL extension for declarative data visualization"
-long-description = "ggsql extends SQL with a VISUALISE clause for declarative data visualization based on Grammar of Graphics principles. Combine SQL queries with visualization specifications to create charts directly from your data."
-copyright = "Copyright (c) 2026 ggsql Team"
-
-# Binaries to include in the package
-binaries = [
-  { path = "ggsql", main = true },
-  { path = "ggsql-jupyter", main = false },
-]
-
-# Resources to bundle (optional)
-resources = [{ src = "../libs/", target = "libs" }]

@@ -298,6 +298,7 @@ pub fn resolve_scale_types_and_transforms(
     for scale in &mut spec.scales {
         // Skip scales that already have explicit types (user specified)
         if let Some(scale_type) = &scale.scale_type {
+            let display_aes = aesthetic_ctx.map_internal_to_user(&scale.aesthetic);
             // Validate facet aesthetics cannot use Continuous scales
             if is_facet_aesthetic(&scale.aesthetic)
                 && scale_type.scale_type_kind() == ScaleTypeKind::Continuous
@@ -305,7 +306,7 @@ pub fn resolve_scale_types_and_transforms(
                 return Err(GgsqlError::ValidationError(format!(
                     "SCALE {}: facet variables require Discrete or Binned scales, got Continuous. \
                      Use SCALE BINNED {} to bin continuous data.",
-                    scale.aesthetic, scale.aesthetic
+                    display_aes, display_aes
                 )));
             }
 
@@ -322,7 +323,7 @@ pub fn resolve_scale_types_and_transforms(
                 if let Ok(common_dtype) = coerce_dtypes(&all_dtypes) {
                     // Validate dtype compatibility
                     scale_type.validate_dtype(&common_dtype).map_err(|e| {
-                        GgsqlError::ValidationError(format!("Scale '{}': {}", scale.aesthetic, e))
+                        GgsqlError::ValidationError(format!("Scale '{}': {}", display_aes, e))
                     })?;
 
                     // Resolve transform if not set
@@ -513,11 +514,10 @@ pub fn apply_pre_stat_resolve(spec: &mut Plot, layer_schemas: &[Schema]) -> Resu
         let context = ScaleDataContext::from_schemas(&column_infos);
 
         // Use unified resolve method
+        let display_aes = aesthetic_ctx.map_internal_to_user(&scale.aesthetic);
         scale_type
             .resolve(scale, &context, &scale.aesthetic.clone())
-            .map_err(|e| {
-                GgsqlError::ValidationError(format!("Scale '{}': {}", scale.aesthetic, e))
-            })?;
+            .map_err(|e| GgsqlError::ValidationError(format!("Scale '{}': {}", display_aes, e)))?;
     }
 
     Ok(())
@@ -968,9 +968,10 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
             }
 
             // Use unified resolve method (includes resolve_output_range)
+            let display_aes = aesthetic_ctx.map_internal_to_user(&aesthetic);
             st.resolve(&mut spec.scales[idx], &context, &aesthetic)
                 .map_err(|e| {
-                    GgsqlError::ValidationError(format!("Scale '{}': {}", aesthetic, e))
+                    GgsqlError::ValidationError(format!("Scale '{}': {}", display_aes, e))
                 })?;
         }
     }
@@ -1506,7 +1507,7 @@ mod tests {
         let scale = crate::plot::Scale::new("pos2");
         spec.scales.push(scale);
         // Simulate post-transformation state: mappings use internal names
-        let layer = Layer::new(Geom::errorbar())
+        let layer = Layer::new(Geom::range())
             .with_aesthetic(
                 "pos2min".to_string(),
                 AestheticValue::standard_column("low"),
@@ -1730,5 +1731,140 @@ mod tests {
             result.column("date").unwrap().data_type(),
             &DataType::Date32
         );
+    }
+
+    // =========================================================================
+    // Internal aesthetic names must not leak into scale error messages
+    // =========================================================================
+
+    mod scale_error_translation_tests {
+        #[cfg(feature = "duckdb")]
+        use crate::reader::DuckDBReader;
+        #[cfg(feature = "duckdb")]
+        use crate::reader::Reader;
+        #[cfg(feature = "duckdb")]
+        use crate::GgsqlError;
+
+        /// Site 4: facet variable + Continuous scale → user-facing facet name in message.
+        #[cfg(feature = "duckdb")]
+        #[test]
+        fn facet_continuous_scale_uses_panel_name_not_facet1() {
+            let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+            let query = r#"
+                SELECT 1 AS x, 2 AS y, 'a' AS region
+                VISUALISE x, y
+                DRAW point
+                FACET region
+                SCALE CONTINUOUS panel
+            "#;
+
+            let msg = match reader.execute(query) {
+                Err(GgsqlError::ValidationError(s)) => s,
+                Err(other) => panic!("expected ValidationError, got: {}", other),
+                Ok(_) => panic!("expected error, got success"),
+            };
+            assert_eq!(
+                msg,
+                "SCALE panel: facet variables require Discrete or Binned scales, got Continuous. \
+                 Use SCALE BINNED panel to bin continuous data."
+            );
+        }
+
+        /// Site 4 + grid layout: row aesthetic translates from facet1 in grid layout.
+        #[cfg(feature = "duckdb")]
+        #[test]
+        fn facet_continuous_scale_uses_row_name_not_facet1_in_grid() {
+            let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+            let query = r#"
+                SELECT 1 AS x, 2 AS y, 'a' AS region, 'b' AS category
+                VISUALISE x, y
+                DRAW point
+                FACET region BY category
+                SCALE CONTINUOUS row
+            "#;
+
+            let msg = match reader.execute(query) {
+                Err(GgsqlError::ValidationError(s)) => s,
+                Err(other) => panic!("expected ValidationError, got: {}", other),
+                Ok(_) => panic!("expected error, got success"),
+            };
+            assert_eq!(
+                msg,
+                "SCALE row: facet variables require Discrete or Binned scales, got Continuous. \
+                 Use SCALE BINNED row to bin continuous data."
+            );
+        }
+
+        /// Site 5: explicit scale type rejecting dtype shows user-facing aesthetic name.
+        /// Continuous scale on string column → dtype validation fails with a user-facing name.
+        #[cfg(feature = "duckdb")]
+        #[test]
+        fn explicit_scale_type_dtype_error_uses_x_name_not_pos1() {
+            let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+            // pos1 is mapped to a String column, but the user explicitly asks
+            // for SCALE CONTINUOUS x, which should fail dtype validation.
+            let query = r#"
+                SELECT 'a' AS x, 1 AS y
+                VISUALISE x, y
+                DRAW point
+                SCALE CONTINUOUS x
+            "#;
+
+            let msg = match reader.execute(query) {
+                Err(GgsqlError::ValidationError(s)) => s,
+                Err(other) => panic!("expected ValidationError, got: {}", other),
+                Ok(_) => panic!("expected error, got success"),
+            };
+            // Message must reference 'x' (user-facing), not 'pos1' (internal).
+            assert!(
+                msg.starts_with("Scale 'x':"),
+                "expected message to start with \"Scale 'x':\", got: {}",
+                msg
+            );
+            assert!(
+                !msg.contains("pos1"),
+                "message must not mention internal name 'pos1', got: {}",
+                msg
+            );
+            assert!(
+                !msg.contains("__ggsql_aes_"),
+                "message must not mention raw column name, got: {}",
+                msg
+            );
+        }
+
+        /// Site 5 under polar: pos1 → angle in scale dtype error.
+        #[cfg(feature = "duckdb")]
+        #[test]
+        fn explicit_scale_type_dtype_error_uses_angle_name_under_polar() {
+            let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+            let query = r#"
+                SELECT 'a' AS angle, 1 AS radius
+                VISUALISE angle, radius
+                DRAW point
+                PROJECT TO polar
+                SCALE CONTINUOUS angle
+            "#;
+
+            let msg = match reader.execute(query) {
+                Err(GgsqlError::ValidationError(s)) => s,
+                Err(other) => panic!("expected ValidationError, got: {}", other),
+                Ok(_) => panic!("expected error, got success"),
+            };
+            assert!(
+                msg.starts_with("Scale 'angle':"),
+                "expected message to start with \"Scale 'angle':\", got: {}",
+                msg
+            );
+            assert!(
+                !msg.contains("pos1"),
+                "message must not mention internal name 'pos1', got: {}",
+                msg
+            );
+        }
     }
 }

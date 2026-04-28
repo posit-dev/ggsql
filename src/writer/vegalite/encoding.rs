@@ -955,12 +955,14 @@ fn build_column_encoding(
 /// Build encoding for a literal aesthetic value
 fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value> {
     let val = match lit {
-        ParameterValue::String(s) => match aesthetic {
-            "linetype" => linetype_to_stroke_dash(s)
-                .map(|arr| json!(arr))
-                .unwrap_or_else(|| json!(s)),
-            _ => json!(s),
-        },
+        ParameterValue::String(s) => {
+            let converted = match aesthetic {
+                "linetype" => linetype_to_stroke_dash(s).map(|arr| json!(arr)),
+                "shape" => shape_to_svg_path(s).map(|arr| json!(arr)),
+                _ => None,
+            };
+            converted.unwrap_or_else(|| json!(s))
+        }
         ParameterValue::Number(n) => {
             match aesthetic {
                 // Size: radius (points) → area (pixels²)
@@ -1059,11 +1061,18 @@ pub struct RenderContext<'a> {
     pub scales: &'a [crate::Scale],
     /// Resolved position channel names for the active coordinate system
     pub channels: PositionChannels,
+    /// Aesthetic context — used to translate internal aesthetic names back to
+    /// user-facing names when reporting errors.
+    pub aesthetic_context: crate::plot::aesthetic::AestheticContext,
 }
 
 impl<'a> RenderContext<'a> {
     /// Create a new render context
-    pub fn new(scales: &'a [crate::Scale], coord_kind: CoordKind) -> Self {
+    pub fn new(
+        scales: &'a [crate::Scale],
+        coord_kind: CoordKind,
+        aesthetic_context: crate::plot::aesthetic::AestheticContext,
+    ) -> Self {
         let pos1 = map_position_to_vegalite("pos1", coord_kind).unwrap();
         let pos1_end = map_position_to_vegalite("pos1end", coord_kind).unwrap();
         let pos2 = map_position_to_vegalite("pos2", coord_kind).unwrap();
@@ -1077,12 +1086,17 @@ impl<'a> RenderContext<'a> {
         Self {
             scales,
             channels: (pos1, pos1_end, pos1_offset, pos2, pos2_end, pos2_offset),
+            aesthetic_context,
         }
     }
 
     #[cfg(test)]
     pub fn default_for_test() -> Self {
-        Self::new(&[], CoordKind::Cartesian)
+        Self::new(
+            &[],
+            CoordKind::Cartesian,
+            crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]),
+        )
     }
 
     /// Find a scale by aesthetic name
@@ -1094,11 +1108,13 @@ impl<'a> RenderContext<'a> {
     pub fn get_extent(&self, aesthetic: &str) -> Result<(f64, f64)> {
         use crate::plot::ArrayElement;
 
+        let display_aes = self.aesthetic_context.map_internal_to_user(aesthetic);
+
         // Find the scale for this aesthetic
         let scale = self.find_scale(aesthetic).ok_or_else(|| {
             GgsqlError::ValidationError(format!(
                 "Cannot determine extent for aesthetic '{}': no scale found",
-                aesthetic
+                display_aes
             ))
         })?;
 
@@ -1115,7 +1131,7 @@ impl<'a> RenderContext<'a> {
 
         Err(GgsqlError::ValidationError(format!(
             "Cannot determine extent for aesthetic '{}': scale has no valid numeric range",
-            aesthetic
+            display_aes
         )))
     }
 }
@@ -1215,5 +1231,100 @@ mod tests {
             expr.contains("? ''"),
             "None mapping should suppress label (empty string), got: {expr}"
         );
+    }
+
+    #[test]
+    fn test_literal_shape_converts_to_svg_path() {
+        let lit = ParameterValue::String("square".to_string());
+        let result = build_literal_encoding("shape", &lit).unwrap();
+        let val = &result["value"];
+        assert!(val.is_string(), "expected SVG path string, got: {val}");
+        let path = val.as_str().unwrap();
+        assert!(
+            path.starts_with('M') && path.contains('Z'),
+            "expected SVG path with M and Z commands, got: {path}"
+        );
+    }
+
+    #[test]
+    fn test_literal_shape_unknown_passes_through() {
+        let lit = ParameterValue::String("nonexistent".to_string());
+        let result = build_literal_encoding("shape", &lit).unwrap();
+        assert_eq!(result, json!({"value": "nonexistent"}));
+    }
+
+    // =========================================================================
+    // RenderContext::get_extent — internal aesthetic names must be translated
+    // back to user-facing names in error messages.
+    // =========================================================================
+
+    mod get_extent_translation_tests {
+        use super::*;
+        use crate::plot::aesthetic::AestheticContext;
+        use crate::plot::projection::CoordKind;
+        use crate::plot::{ArrayElement, Scale};
+
+        fn discrete_scale(aesthetic: &str) -> Scale {
+            Scale {
+                aesthetic: aesthetic.to_string(),
+                scale_type: None,
+                input_range: Some(vec![ArrayElement::String("A".to_string())]),
+                explicit_input_range: false,
+                output_range: None,
+                transform: None,
+                explicit_transform: false,
+                properties: std::collections::HashMap::new(),
+                resolved: false,
+                label_mapping: None,
+                label_template: "{}".to_string(),
+            }
+        }
+
+        #[test]
+        fn no_scale_found_translates_pos1_to_x_under_cartesian() {
+            let scales: Vec<Scale> = vec![];
+            let ctx = RenderContext::new(
+                &scales,
+                CoordKind::Cartesian,
+                AestheticContext::from_static(&["x", "y"], &[]),
+            );
+            let err = ctx.get_extent("pos1").unwrap_err().to_string();
+            assert_eq!(
+                err,
+                "Validation error: Cannot determine extent for aesthetic 'x': no scale found"
+            );
+        }
+
+        #[test]
+        fn no_scale_found_translates_pos1_to_angle_under_polar() {
+            let scales: Vec<Scale> = vec![];
+            let ctx = RenderContext::new(
+                &scales,
+                CoordKind::Polar,
+                AestheticContext::from_static(&["angle", "radius"], &[]),
+            );
+            let err = ctx.get_extent("pos1").unwrap_err().to_string();
+            assert_eq!(
+                err,
+                "Validation error: Cannot determine extent for aesthetic 'angle': no scale found"
+            );
+        }
+
+        #[test]
+        fn no_numeric_range_translates_pos2_to_y_under_cartesian() {
+            // Scale exists, but input_range is non-numeric (discrete) so
+            // get_extent returns the second error.
+            let scales = vec![discrete_scale("pos2")];
+            let ctx = RenderContext::new(
+                &scales,
+                CoordKind::Cartesian,
+                AestheticContext::from_static(&["x", "y"], &[]),
+            );
+            let err = ctx.get_extent("pos2").unwrap_err().to_string();
+            assert_eq!(
+                err,
+                "Validation error: Cannot determine extent for aesthetic 'y': scale has no valid numeric range"
+            );
+        }
     }
 }

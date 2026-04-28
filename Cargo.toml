@@ -2,12 +2,14 @@
 members = [
     "tree-sitter-ggsql",
     "src",
+    "ggsql-cli",
     "ggsql-jupyter",
     "ggsql-wasm"
 ]
 default-members = [
     "tree-sitter-ggsql",
     "src",
+    "ggsql-cli",
     "ggsql-jupyter"
 ]
 resolver = "2"
@@ -72,10 +74,13 @@ tokio = { version = "1.35", default-features = false }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-[profile.wasm]
-inherits = "release"
-opt-level = "z"
+[profile.release]
+opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
+
+[profile.wasm]
+inherits = "release"
+opt-level = "z"
 panic = "abort"

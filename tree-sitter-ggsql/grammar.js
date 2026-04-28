@@ -48,8 +48,28 @@ module.exports = grammar({
       $.insert_statement,
       $.update_statement,
       $.delete_statement,
+      $.from_statement,  // DuckDB-style FROM-first: `FROM t` ≡ `SELECT * FROM t`
       $.other_sql_statement  // Fallback for other SQL
     ),
+
+    // Bare FROM as a terminal SQL statement (DuckDB-style). Starts with a
+    // from_clause and optionally consumes trailing tokens (WHERE, GROUP BY,
+    // ORDER BY, LIMIT, etc.) up to VISUALISE — mirrors select_body's permissive
+    // token bag so the same trailing-SQL constructs work after a bare FROM.
+    from_statement: $ => prec.right(seq(
+      $.from_clause,
+      repeat(choice(
+        $.window_function,
+        $.cast_expression,
+        $.function_call,
+        $.non_from_sql_keyword,
+        $.string,
+        $.number,
+        ',', '*', '.', '=', '<', '>', '!', '+', '-', '/', '%', '|', '&', '^', '~', '::',
+        $.subquery,
+        $.identifier
+      ))
+    )),
 
     // SELECT statement
     select_statement: $ => prec(2, seq(
@@ -70,13 +90,14 @@ module.exports = grammar({
       $.identifier
     ))),
 
-    // WITH statement (CTEs) - WITH must be followed by SELECT
+    // WITH statement (CTEs) - tail is an optional SELECT or bare FROM
+    // (`WITH cte AS (...) FROM cte` is DuckDB-style FROM-first after WITH).
     with_statement: $ => prec.right(2, seq(
       caseInsensitive('WITH'),
       optional(caseInsensitive('RECURSIVE')),
       $.cte_definition,
       repeat(seq(',', $.cte_definition)),
-      optional($.select_statement)  // WITH can optionally be followed by SELECT
+      optional(choice($.select_statement, $.from_statement))
     )),
 
     cte_definition: $ => seq(
@@ -154,19 +175,14 @@ module.exports = grammar({
       ))
     )),
 
-    // Other SQL statements - DO NOT match if starts with keywords we handle
-    // explicitly (WITH, SELECT, CREATE, INSERT, UPDATE, DELETE, VISUALISE)
-    other_sql_statement: $ => {
-      const exclude_pattern = /[^\s;(),'"WwSsCcIiUuDdVv]+/;
-      return prec(-1, repeat1(choice(
-        $.sql_keyword,
-        token(exclude_pattern),  // Tokens not starting with excluded letters
-        $.string,
-        $.number,
-        $.subquery,
-        ',', '(', ')', '*', '.', '='
-      )));
-    },
+    other_sql_statement: $ => prec(-1, repeat1(choice(
+      $.non_from_sql_keyword,
+      token(/[^\s;(),'"]+/),
+      $.string,
+      $.number,
+      $.subquery,
+      ',', '(', ')', '*', '.', '='
+    ))),
 
     // Subquery in parentheses - fully recursive, can contain any SQL
     // Prioritizes WITH/SELECT statements, falls back to token-by-token parsing
@@ -227,13 +243,21 @@ module.exports = grammar({
     function_call: $ => prec(2, seq(
       $.identifier,
       '(',
+      optional($.set_quantifier),
       optional($.function_args),
       ')'
     )),
 
-    // Common SQL keywords (to help parser recognize structure)
+    // Common SQL keywords (to help parser recognize structure).
+    // Split into FROM + non_from_sql_keyword so other_sql_statement can use
+    // just the non-FROM variant for its first token (preventing it from
+    // eating `FROM t VISUALISE ...` which should parse as from_statement).
     sql_keyword: $ => choice(
       caseInsensitive('FROM'),
+      $.non_from_sql_keyword
+    ),
+
+    non_from_sql_keyword: $ => choice(
       caseInsensitive('WHERE'),
       caseInsensitive('JOIN'),
       caseInsensitive('LEFT'),
@@ -294,11 +318,17 @@ module.exports = grammar({
     window_function: $ => prec(4, seq(
       field('function', $.identifier),
       '(',
+      optional($.set_quantifier),
       optional($.function_args),
       ')',
       caseInsensitive('OVER'),
       $.window_specification
     )),
+
+    set_quantifier: $ => choice(
+      caseInsensitive('DISTINCT'),
+      caseInsensitive('ALL')
+    ),
 
     function_args: $ => seq(
       $.function_arg,
@@ -412,7 +442,7 @@ module.exports = grammar({
     )),
 
     from_clause: $ => prec.right(1, seq(
-      caseInsensitive('FROM'),
+      token(prec(1, caseInsensitive('FROM'))),
       $.table_ref,
       repeat(seq(',', $.table_ref))
     )),
@@ -504,7 +534,7 @@ module.exports = grammar({
     geom_type: $ => choice(
       'point', 'line', 'path', 'bar', 'area', 'tile', 'polygon', 'ribbon',
       'histogram', 'density', 'smooth', 'boxplot', 'violin',
-      'text', 'label', 'segment', 'arrow', 'rule', 'errorbar'
+      'text', 'label', 'segment', 'arrow', 'rule', 'range'
     ),
 
     // MAPPING clause for aesthetic mappings: MAPPING col AS x, "blue" AS color [FROM source]
