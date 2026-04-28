@@ -23,6 +23,7 @@ and writer errors now report user-facing aesthetic names (`x`, `y`, `panel`,
 `row`, …) instead of internal forms (`pos1`, `pos2`, `facet1`, …), translated
 based on the active coordinate system and facet layout (#388).
 - Fixed opacity calculation in point layers with Vega-Lite (#393)
+- Fixed an issue with case-sensitive column references in mappings (#374)
 
 ### Changed
 
