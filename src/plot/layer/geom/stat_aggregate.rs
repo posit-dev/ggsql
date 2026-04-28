@@ -26,53 +26,19 @@ use crate::{GgsqlError, Mappings, Result};
 /// expansion against `EXPANSION_STATS`.
 pub const AGG_NAMES: &[&str] = &[
     // Tallies & sums
-    "count",
-    "sum",
-    "prod",
-    // Extremes
-    "min",
-    "max",
-    "range",
-    // Central tendency
-    "mean",
-    "geomean",
-    "harmean",
-    "rms",
-    "median",
-    // Spread (standalone)
-    "sdev",
-    "var",
-    "iqr",
-    // Percentiles
-    "p05",
-    "p10",
-    "p25",
-    "p50",
-    "p75",
-    "p90",
-    "p95",
+    "count", "sum", "prod", // Extremes
+    "min", "max", "range", // Central tendency
+    "mean", "geomean", "harmean", "rms", "median", // Spread (standalone)
+    "sdev", "var", "iqr", // Percentiles
+    "p05", "p10", "p25", "p50", "p75", "p90", "p95",
 ];
 
 /// Stats that can appear as the *offset* (left of `±`) in a band name like
 /// `mean+sdev`. Single-value central or representative quantities only —
 /// counts/spreads are excluded.
 pub const OFFSET_STATS: &[&str] = &[
-    "mean",
-    "median",
-    "geomean",
-    "harmean",
-    "rms",
-    "sum",
-    "prod",
-    "min",
-    "max",
-    "p05",
-    "p10",
-    "p25",
-    "p50",
-    "p75",
-    "p90",
-    "p95",
+    "mean", "median", "geomean", "harmean", "rms", "sum", "prod", "min", "max", "p05", "p10",
+    "p25", "p50", "p75", "p90", "p95",
 ];
 
 /// Stats that can appear as the *expansion* (right of `±[mod]`) in a band name.
@@ -190,9 +156,7 @@ pub fn validate_aggregate_param(value: &ParameterValue) -> std::result::Result<(
                     ArrayElement::String(s) => validate_function_name(s)?,
                     ArrayElement::Null => continue,
                     _ => {
-                        return Err(
-                            "'aggregate' array entries must be strings or null".to_string()
-                        );
+                        return Err("'aggregate' array entries must be strings or null".to_string());
                     }
                 }
             }
@@ -459,7 +423,12 @@ fn agg_sql_inline(spec: &AggSpec, qcol: &str, dialect: &dyn SqlDialect) -> Optio
         None => Some(offset_sql),
         Some(band) => {
             let exp_sql = simple_stat_sql_inline(band.expansion, qcol, dialect)?;
-            Some(format_band(&offset_sql, band.sign, band.mod_value, &exp_sql))
+            Some(format_band(
+                &offset_sql,
+                band.sign,
+                band.mod_value,
+                &exp_sql,
+            ))
         }
     }
 }
@@ -1991,15 +1960,24 @@ mod tests {
     fn parse_simple_names() {
         assert_eq!(
             parse_agg_name("mean"),
-            Some(AggSpec { offset: "mean", band: None })
+            Some(AggSpec {
+                offset: "mean",
+                band: None
+            })
         );
         assert_eq!(
             parse_agg_name("count"),
-            Some(AggSpec { offset: "count", band: None })
+            Some(AggSpec {
+                offset: "count",
+                band: None
+            })
         );
         assert_eq!(
             parse_agg_name("p25"),
-            Some(AggSpec { offset: "p25", band: None })
+            Some(AggSpec {
+                offset: "p25",
+                band: None
+            })
         );
     }
 
@@ -2100,8 +2078,7 @@ mod tests {
 
     #[test]
     fn validate_diagnostic_for_unknown() {
-        let err =
-            validate_aggregate_param(&ParameterValue::String("foo".to_string())).unwrap_err();
+        let err = validate_aggregate_param(&ParameterValue::String("foo".to_string())).unwrap_err();
         assert!(err.contains("unknown"), "err: {}", err);
         assert!(err.contains("foo"), "err: {}", err);
     }
@@ -2135,7 +2112,9 @@ mod tests {
         match result {
             StatResult::Transformed { query, .. } => {
                 assert!(
-                    query.contains("AVG(\"__ggsql_aes_pos2__\") + 1.96 * STDDEV_POP(\"__ggsql_aes_pos2__\")"),
+                    query.contains(
+                        "AVG(\"__ggsql_aes_pos2__\") + 1.96 * STDDEV_POP(\"__ggsql_aes_pos2__\")"
+                    ),
                     "query: {}",
                     query
                 );
