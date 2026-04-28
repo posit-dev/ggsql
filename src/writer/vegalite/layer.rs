@@ -225,6 +225,47 @@ pub struct DefaultRenderer;
 impl GeomRenderer for DefaultRenderer {}
 
 // =============================================================================
+// Point Renderer
+// =============================================================================
+
+/// Renderer for the `point` geom.
+///
+/// Works around a Vega-Lite quirk: when `mark.filled` is omitted/`true` and the
+/// top-level `opacity` channel is unset, the renderer applies its own implicit
+/// opacity multiplier on top of `fillOpacity`/`strokeOpacity` — so even with
+/// `fillOpacity: 1.0`, the points appear semitransparent.
+///
+/// The fix:
+/// - Force `mark.filled = false`. Custom SVG shape paths (which ggsql always
+///   emits) are still rendered as filled regardless of this setting, so this
+///   only suppresses the implicit opacity behavior.
+/// - Force `encoding.opacity = {value: 1.0}`. With the global opacity pinned
+///   to 1.0, `fillOpacity` and `strokeOpacity` (set from the user's `opacity =>`
+///   setting upstream) become the actual opacity controls.
+pub struct PointRenderer;
+
+impl GeomRenderer for PointRenderer {
+    fn modify_spec(
+        &self,
+        layer_spec: &mut Value,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
+        if let Some(mark) = layer_spec.get_mut("mark") {
+            if let Some(obj) = mark.as_object_mut() {
+                obj.insert("filled".to_string(), json!(false));
+            }
+        }
+        if let Some(encoding) = layer_spec.get_mut("encoding") {
+            if let Some(obj) = encoding.as_object_mut() {
+                obj.insert("opacity".to_string(), json!({"value": 1.0}));
+            }
+        }
+        Ok(())
+    }
+}
+
+// =============================================================================
 // Bar Renderer
 // =============================================================================
 
@@ -2095,6 +2136,7 @@ impl GeomRenderer for BoxplotRenderer {
 /// Get the appropriate renderer for a geom type
 pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
     match geom.geom_type() {
+        GeomType::Point => Box::new(PointRenderer),
         GeomType::Path => Box::new(PathRenderer),
         GeomType::Line => Box::new(PathRenderer),
         GeomType::Bar => Box::new(BarRenderer),
