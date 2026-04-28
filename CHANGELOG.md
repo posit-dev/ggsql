@@ -21,7 +21,7 @@ shapes (#368)
 - Error messages no longer leak internal aesthetic names. Validation, scale,
 and writer errors now report user-facing aesthetic names (`x`, `y`, `panel`,
 `row`, …) instead of internal forms (`pos1`, `pos2`, `facet1`, …), translated
-based on the active coordinate system and facet layout
+based on the active coordinate system and facet layout (#388).
 
 ### Changed
 
