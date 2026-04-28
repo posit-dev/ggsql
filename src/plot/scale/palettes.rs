@@ -2128,10 +2128,10 @@ pub fn lookup_palette(aesthetic: &str, name: &str) -> Result<Vec<ArrayElement>, 
         "linetype" => get_linetype_palette(name),
         "color" | "fill" | "stroke" => get_color_palette(name),
         _ => {
-            return Err(format!(
-                "Palette '{}' is only valid for color, fill, stroke, shape, and linetype aesthetics",
-                name
-            ));
+            return Err(
+                "Palettes are only valid for color, fill, stroke, shape, and linetype aesthetics"
+                    .to_string(),
+            );
         }
     }
     .ok_or_else(|| format!("Unknown {} palette: '{}'", aesthetic, name))?;
@@ -2417,15 +2417,18 @@ mod tests {
     fn test_lookup_palette_invalid_aesthetic() {
         // Palettes don't apply to position aesthetics. The error must NOT
         // mention the internal aesthetic name (e.g. `pos1`); it should be
-        // coord-agnostic and self-explanatory.
+        // coord-agnostic and self-explanatory. It must also not name the
+        // requested palette, since palette names belong to a specific
+        // aesthetic family (e.g. 'viridis' is not valid for shape or linetype).
         let result = lookup_palette("pos1", "viridis");
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(
             err,
-            "Palette 'viridis' is only valid for color, fill, stroke, shape, and linetype aesthetics"
+            "Palettes are only valid for color, fill, stroke, shape, and linetype aesthetics"
         );
-        // Must not leak the internal name `pos1`.
+        // Must not leak the internal aesthetic name or the palette name.
         assert!(!err.contains("pos1"));
+        assert!(!err.contains("viridis"));
     }
 }
