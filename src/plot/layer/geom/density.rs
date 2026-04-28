@@ -153,9 +153,7 @@ pub(crate) fn stat_density(
     dialect: &dyn SqlDialect,
 ) -> Result<StatResult> {
     let value = get_column_name(aesthetics, value_aesthetic).ok_or_else(|| {
-        GgsqlError::ValidationError(
-            "Density requires a position aesthetic mapping".to_string(),
-        )
+        GgsqlError::ValidationError("Density requires a position aesthetic mapping".to_string())
     })?;
     let smooth = smooth_aesthetic.and_then(|smth| get_column_name(aesthetics, smth));
     let weight = get_column_name(aesthetics, "weight");
@@ -1195,9 +1193,17 @@ mod tests {
         let parameters = std::collections::HashMap::new();
         let dialect = AnsiDialect;
 
-        let err = stat_density("SELECT 1", &mappings, "pos1", None, &[], &parameters, &dialect)
-            .unwrap_err()
-            .to_string();
+        let err = stat_density(
+            "SELECT 1",
+            &mappings,
+            "pos1",
+            None,
+            &[],
+            &parameters,
+            &dialect,
+        )
+        .unwrap_err()
+        .to_string();
         assert_eq!(
             err,
             "Validation error: Density requires a position aesthetic mapping"

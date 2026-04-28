@@ -1064,7 +1064,9 @@ mod integration_tests {
             for tok in s.split(|c: char| !c.is_ascii_alphanumeric()) {
                 if (tok.starts_with("pos") || tok.starts_with("facet"))
                     && tok.len() > 3
-                    && tok.chars().nth(if tok.starts_with("pos") { 3 } else { 5 })
+                    && tok
+                        .chars()
+                        .nth(if tok.starts_with("pos") { 3 } else { 5 })
                         .is_some_and(|c| c.is_ascii_digit())
                 {
                     return Some(tok.to_string());

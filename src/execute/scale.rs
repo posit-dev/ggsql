@@ -517,9 +517,7 @@ pub fn apply_pre_stat_resolve(spec: &mut Plot, layer_schemas: &[Schema]) -> Resu
         let display_aes = aesthetic_ctx.map_internal_to_user(&scale.aesthetic);
         scale_type
             .resolve(scale, &context, &scale.aesthetic.clone())
-            .map_err(|e| {
-                GgsqlError::ValidationError(format!("Scale '{}': {}", display_aes, e))
-            })?;
+            .map_err(|e| GgsqlError::ValidationError(format!("Scale '{}': {}", display_aes, e)))?;
     }
 
     Ok(())
