@@ -1001,4 +1001,101 @@ mod integration_tests {
             result3.err()
         );
     }
+
+    /// Belt-and-braces regression test: a representative basket of error-
+    /// triggering queries must never produce a user-visible message that
+    /// contains an internal aesthetic name (`__ggsql_aes_*`, `pos1`, `pos2`,
+    /// `facet1`, ...).  If this test fails, a code path is interpolating an
+    /// internal aesthetic name into an error string and needs to translate it
+    /// via `AestheticContext::map_internal_to_user`.
+    #[test]
+    fn internal_aesthetic_names_do_not_leak_into_error_messages() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let writer = VegaLiteWriter::new();
+
+        // Each entry: (a short label, a query that should produce an error
+        // somewhere along the pipeline). The label is only used for diagnostic
+        // output; what we assert is that the resulting message contains no
+        // internal aesthetic name.
+        let cases: Vec<(&str, &str)> = vec![
+            // Layer-mapping references a column missing from the layer's
+            // schema (writer-side validation).
+            (
+                "missing column in layer mapping",
+                r#"SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point PLACE text SETTING x => 5, label => 'p'"#,
+            ),
+            // Continuous scale on a facet variable (executor-side).
+            (
+                "continuous scale on facet",
+                r#"SELECT 1 AS x, 2 AS y, 'a' AS region VISUALISE x, y DRAW point FACET region SCALE CONTINUOUS panel"#,
+            ),
+            // Continuous scale on a string column (executor-side dtype check).
+            (
+                "continuous scale on string",
+                r#"SELECT 'a' AS x, 1 AS y VISUALISE x, y DRAW point SCALE CONTINUOUS x"#,
+            ),
+            // Polar variant of the same — exercises pos1 → angle translation.
+            (
+                "continuous scale on string under polar",
+                r#"SELECT 'a' AS angle, 1 AS radius VISUALISE angle, radius DRAW point PROJECT TO polar SCALE CONTINUOUS angle"#,
+            ),
+            // Grid-faceted continuous scale — exercises facet1 → row translation.
+            (
+                "continuous scale on grid row",
+                r#"SELECT 1 AS x, 2 AS y, 'a' AS region, 'b' AS category VISUALISE x, y DRAW point FACET region BY category SCALE CONTINUOUS row"#,
+            ),
+            // Unsupported aesthetic via REMAPPING — exercises pos1max → xmax.
+            (
+                "unsupported remapping target",
+                r#"SELECT 1 AS x, 2 AS y, 3 AS c FROM (VALUES (1,2,3)) AS t(x,y,c)
+                   VISUALISE
+                   DRAW point MAPPING x AS x, y AS y, c AS xmin"#,
+            ),
+        ];
+
+        // Pattern: any of the leaky markers we want to catch.
+        // Whole-word `pos<digit>` and `facet<digit>` so we don't false-positive
+        // on benign words containing those letters.
+        let leaky = |s: &str| -> Option<String> {
+            if s.contains("__ggsql_aes_") {
+                return Some("__ggsql_aes_".to_string());
+            }
+            // Look for whole-word position/facet tokens like pos1, pos1min, facet1.
+            for tok in s.split(|c: char| !c.is_ascii_alphanumeric()) {
+                if (tok.starts_with("pos") || tok.starts_with("facet"))
+                    && tok.len() > 3
+                    && tok.chars().nth(if tok.starts_with("pos") { 3 } else { 5 })
+                        .is_some_and(|c| c.is_ascii_digit())
+                {
+                    return Some(tok.to_string());
+                }
+            }
+            None
+        };
+
+        for (label, query) in &cases {
+            // Run through the full pipeline (Reader::execute) which covers
+            // both executor and writer error paths.
+            let outcome = reader.execute(query);
+
+            // Some queries above will succeed at execute() but fail at write();
+            // run write() too to cover writer-side validation.
+            let messages: Vec<String> = match outcome {
+                Err(e) => vec![e.to_string()],
+                Ok(spec) => match writer.render(&spec) {
+                    Err(e) => vec![e.to_string()],
+                    Ok(_) => vec![],
+                },
+            };
+
+            for msg in messages {
+                if let Some(token) = leaky(&msg) {
+                    panic!(
+                        "case {:?} produced an error message containing internal token {:?}:\n{}",
+                        label, token, msg
+                    );
+                }
+            }
+        }
+    }
 }

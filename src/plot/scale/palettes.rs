@@ -2129,8 +2129,8 @@ pub fn lookup_palette(aesthetic: &str, name: &str) -> Result<Vec<ArrayElement>, 
         "color" | "fill" | "stroke" => get_color_palette(name),
         _ => {
             return Err(format!(
-                "Palette '{}' not applicable to aesthetic '{}'",
-                name, aesthetic
+                "Palette '{}' is only valid for color, fill, stroke, shape, and linetype aesthetics",
+                name
             ));
         }
     }
@@ -2415,11 +2415,17 @@ mod tests {
 
     #[test]
     fn test_lookup_palette_invalid_aesthetic() {
-        // Palettes don't apply to x/y aesthetics
-        let result = lookup_palette("x", "viridis");
+        // Palettes don't apply to position aesthetics. The error must NOT
+        // mention the internal aesthetic name (e.g. `pos1`); it should be
+        // coord-agnostic and self-explanatory.
+        let result = lookup_palette("pos1", "viridis");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("not applicable"));
-        assert!(err.contains("x"));
+        assert_eq!(
+            err,
+            "Palette 'viridis' is only valid for color, fill, stroke, shape, and linetype aesthetics"
+        );
+        // Must not leak the internal name `pos1`.
+        assert!(!err.contains("pos1"));
     }
 }

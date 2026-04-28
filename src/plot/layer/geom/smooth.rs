@@ -137,10 +137,14 @@ impl std::fmt::Display for Smooth {
 
 fn stat_ols(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<StatResult> {
     let x_col = get_quoted_column_name(aesthetics, "pos1").ok_or_else(|| {
-        GgsqlError::ValidationError("Smooth requires 'pos1' aesthetic".to_string())
+        GgsqlError::ValidationError(
+            "Smooth requires both position aesthetics to be mapped".to_string(),
+        )
     })?;
     let y_col = get_quoted_column_name(aesthetics, "pos2").ok_or_else(|| {
-        GgsqlError::ValidationError("Smooth requires 'pos2' aesthetic".to_string())
+        GgsqlError::ValidationError(
+            "Smooth requires both position aesthetics to be mapped".to_string(),
+        )
     })?;
 
     // Build group-related SQL fragments
@@ -199,10 +203,14 @@ fn stat_ols(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<S
 
 fn stat_tls(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<StatResult> {
     let x_col = get_quoted_column_name(aesthetics, "pos1").ok_or_else(|| {
-        GgsqlError::ValidationError("Smooth requires 'pos1' aesthetic".to_string())
+        GgsqlError::ValidationError(
+            "Smooth requires both position aesthetics to be mapped".to_string(),
+        )
     })?;
     let y_col = get_quoted_column_name(aesthetics, "pos2").ok_or_else(|| {
-        GgsqlError::ValidationError("Smooth requires 'pos2' aesthetic".to_string())
+        GgsqlError::ValidationError(
+            "Smooth requires both position aesthetics to be mapped".to_string(),
+        )
     })?;
 
     // Build group-related SQL fragments
@@ -473,5 +481,29 @@ mod tests {
         } else {
             panic!("Expected Transformed result");
         }
+    }
+
+    // =========================================================================
+    // Internal aesthetic names must not appear in stat error messages
+    // =========================================================================
+
+    #[test]
+    fn stat_ols_missing_pos_aesthetics_emits_coord_agnostic_message() {
+        let mapping = crate::Mappings::new();
+        let err = stat_ols("SELECT 1", &mapping, &[]).unwrap_err().to_string();
+        assert_eq!(
+            err,
+            "Validation error: Smooth requires both position aesthetics to be mapped"
+        );
+    }
+
+    #[test]
+    fn stat_tls_missing_pos_aesthetics_emits_coord_agnostic_message() {
+        let mapping = crate::Mappings::new();
+        let err = stat_tls("SELECT 1", &mapping, &[]).unwrap_err().to_string();
+        assert_eq!(
+            err,
+            "Validation error: Smooth requires both position aesthetics to be mapped"
+        );
     }
 }

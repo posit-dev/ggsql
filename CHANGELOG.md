@@ -18,6 +18,10 @@ in the Jupyter kernel (#360)
 - Passing the shape aesthetic via `SETTING` now correctly translates named
 shapes (#368)
 - Asterisk shape now has lines 60 degrees apart, giving an even shape
+- Error messages no longer leak internal aesthetic names. Validation, scale,
+and writer errors now report user-facing aesthetic names (`x`, `y`, `panel`,
+`row`, …) instead of internal forms (`pos1`, `pos2`, `facet1`, …), translated
+based on the active coordinate system and facet layout
 
 ### Changed
 

@@ -7,6 +7,7 @@
 //! Each geom type can override specific phases of the rendering pipeline while using
 //! sensible defaults for standard behavior.
 
+use crate::plot::aesthetic::AestheticContext;
 use crate::plot::layer::geom::GeomType;
 use crate::plot::layer::is_transposed;
 use crate::plot::{ArrayElement, ParameterValue};
@@ -54,7 +55,12 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
 }
 
 /// Validate column references for a single layer against its specific DataFrame
-pub fn validate_layer_columns(layer: &Layer, data: &DataFrame, layer_idx: usize) -> Result<()> {
+pub fn validate_layer_columns(
+    layer: &Layer,
+    data: &DataFrame,
+    layer_idx: usize,
+    ctx: &AestheticContext,
+) -> Result<()> {
     let available_columns: Vec<String> = data
         .get_column_names()
         .iter()
@@ -69,11 +75,16 @@ pub fn validate_layer_columns(layer: &Layer, data: &DataFrame, layer_idx: usize)
                 } else {
                     " (global data)".to_string()
                 };
-                let display_col = naming::extract_aesthetic_name(col).unwrap_or(col.as_str());
+                // Translate both the column name (which may be wrapped, e.g.
+                // `__ggsql_aes_pos1__`) and the aesthetic key (which is in
+                // internal form, e.g. `pos1`) to the user-facing form.
+                let stripped = naming::extract_aesthetic_name(col).unwrap_or(col.as_str());
+                let display_col = ctx.map_internal_to_user(stripped);
+                let display_aes = ctx.map_internal_to_user(aesthetic);
                 return Err(GgsqlError::ValidationError(format!(
                     "Column '{}' referenced in aesthetic '{}' (layer {}{}) does not exist.\nAvailable columns: {}",
                     display_col,
-                    aesthetic,
+                    display_aes,
                     layer_idx + 1,
                     source_desc,
                     crate::and_list(&available_columns)
@@ -3623,13 +3634,21 @@ mod tests {
             label_mapping: None,
             label_template: "{}".to_string(),
         }];
-        let context = RenderContext::new(&scales, CoordKind::Cartesian);
+        let context = RenderContext::new(
+            &scales,
+            CoordKind::Cartesian,
+            AestheticContext::from_static(&["x", "y"], &[]),
+        );
         let result = context.get_extent("x");
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), (0.0, 10.0));
 
         // Test error case: scale not found
-        let context = RenderContext::new(&scales, CoordKind::Cartesian);
+        let context = RenderContext::new(
+            &scales,
+            CoordKind::Cartesian,
+            AestheticContext::from_static(&["x", "y"], &[]),
+        );
         let result = context.get_extent("y");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("no scale found"));
@@ -3648,7 +3667,11 @@ mod tests {
             label_mapping: None,
             label_template: "{}".to_string(),
         }];
-        let context = RenderContext::new(&scales, CoordKind::Cartesian);
+        let context = RenderContext::new(
+            &scales,
+            CoordKind::Cartesian,
+            AestheticContext::from_static(&["x", "y"], &[]),
+        );
         let result = context.get_extent("x");
         assert!(result.is_err());
         assert!(result
@@ -3673,7 +3696,11 @@ mod tests {
             label_mapping: None,
             label_template: "{}".to_string(),
         }];
-        let context = RenderContext::new(&scales, CoordKind::Cartesian);
+        let context = RenderContext::new(
+            &scales,
+            CoordKind::Cartesian,
+            AestheticContext::from_static(&["x", "y"], &[]),
+        );
         let result = context.get_extent("x");
         assert!(result.is_err());
         assert!(result
