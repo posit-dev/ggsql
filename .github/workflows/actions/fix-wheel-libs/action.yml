@@ -121,6 +121,8 @@ runs:
         set -euo pipefail
         python3 -m pip install --quiet wheel
         sudo apt-get update -qq && sudo apt-get install -y -qq patchelf
+        # Wheels built inside a manylinux Docker container are owned by root
+        sudo chown -R "$(id -u):$(id -g)" "$DIST_DIR"
         cd "$DIST_DIR"
 
         shopt -s nullglob
