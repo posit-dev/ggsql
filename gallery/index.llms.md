@@ -8,17 +8,17 @@ Browse examples of ggsql visualizations. Click any example to see the full code 
 
 Basic scatter plot mapping two numeric variables to position
 
-![](../gallery/examples/thumbnails/minard.svg)
-
-##### Napoleon’s march to Moscow
-
-Re-creating the famous visualisation from Minard.
-
 ![](../gallery/examples/thumbnails/line-chart.svg)
 
 ##### Line chart
 
 Time series visualization with proper date scaling
+
+![](../gallery/examples/thumbnails/minard.svg)
+
+##### Napoleon’s march to Moscow
+
+Re-creating the famous visualisation from Minard.
 
 ![](../gallery/examples/thumbnails/pie-chart.svg)
 
@@ -26,11 +26,11 @@ Time series visualization with proper date scaling
 
 Visualisation of proportions
 
-![](../gallery/examples/thumbnails/density-plot.svg)
+![](../gallery/examples/thumbnails/heatmap.svg)
 
-##### Density plots
+##### Heatmap
 
-Showing smooth distributions of single numeric variables
+Arranging tiles on a grid
 
 ![](../gallery/examples/thumbnails/boxplot.svg)
 
@@ -38,11 +38,11 @@ Showing smooth distributions of single numeric variables
 
 Showing groups of distributions of single numeric variables
 
-![](../gallery/examples/thumbnails/heatmap.svg)
+![](../gallery/examples/thumbnails/density-plot.svg)
 
-##### Heatmap
+##### Density plots
 
-Arranging tiles on a grid
+Showing smooth distributions of single numeric variables
 
 ![](../gallery/examples/thumbnails/violin-plot.svg)
 
