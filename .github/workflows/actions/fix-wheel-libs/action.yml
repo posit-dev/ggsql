@@ -104,7 +104,7 @@ runs:
           done
           if [ "$stale" -ne 0 ]; then exit 1; fi
 
-          rm "$whl"
+          rm -f "$whl"
           python3 -m wheel pack "$unpacked" --dest-dir .
           rm -rf "$workdir"
 
@@ -181,7 +181,7 @@ runs:
             exit 1
           fi
 
-          rm "$whl"
+          rm -f "$whl"
           python3 -m wheel pack "$unpacked" --dest-dir .
           rm -rf "$workdir"
 
