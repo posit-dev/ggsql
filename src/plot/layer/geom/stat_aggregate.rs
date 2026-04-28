@@ -178,7 +178,7 @@ fn validate_function_name(name: &str) -> std::result::Result<(), String> {
 fn diagnose_invalid_function_name(name: &str) -> String {
     // Look for a sign character. If there is one, examine the offset and
     // expansion halves separately.
-    if let Some(sign_idx) = name.find(|c| c == '+' || c == '-') {
+    if let Some(sign_idx) = name.find(['+', '-']) {
         let offset_str = &name[..sign_idx];
         let after_sign = &name[sign_idx + 1..];
         let (_mod_value, expansion_str) = parse_mod_and_remainder(after_sign);
@@ -235,6 +235,7 @@ fn diagnose_invalid_function_name(name: &str) -> String {
 /// - **UNION ALL fallback**: when a quantile is requested but the dialect doesn't
 ///   provide `sql_quantile_inline`, fall back to per-function subqueries using
 ///   `dialect.sql_percentile`.
+#[allow(clippy::too_many_arguments)]
 pub fn apply(
     query: &str,
     schema: &Schema,
@@ -527,6 +528,7 @@ fn func_literal(func: &str) -> String {
 // pair on the same row. Used by ribbon/range.
 // =============================================================================
 
+#[allow(clippy::too_many_arguments)]
 fn apply_range_mode(
     query: &str,
     schema: &Schema,
