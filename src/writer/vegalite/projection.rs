@@ -251,6 +251,7 @@ impl ProjectionRenderer for PolarProjection {
     ) -> Vec<Value> {
         let mut layers = Vec::new();
         layers.extend(self.radial_axis(scales, project, theme));
+        layers.extend(self.angular_axis(scales, project, theme));
         layers
     }
 }
@@ -485,6 +486,143 @@ impl PolarProjection {
             "transform": [
                 {"calculate": format!("{cx} + {lx}"), "as": "x"},
                 {"calculate": format!("{cy} + {ly}"), "as": "y"},
+            ],
+            "encoding": {
+                "x": {"field": "x", "type": "quantitative", "scale": null, "axis": null},
+                "y": {"field": "y", "type": "quantitative", "scale": null, "axis": null},
+                "text": {"field": "v", "type": "quantitative"},
+            }
+        }));
+
+        layers
+    }
+
+    fn angular_axis(
+        &self,
+        scales: &[Scale],
+        project: Option<&Projection>,
+        theme: &Value,
+    ) -> Vec<Value> {
+        let Some(scale) = scales.iter().find(|s| s.aesthetic == "pos2") else {
+            return Vec::new();
+        };
+        let breaks = scale.numeric_breaks();
+        let Some((domain_min, domain_max)) = scale.numeric_domain() else {
+            return Vec::new();
+        };
+        if (domain_max - domain_min).abs() < f64::EPSILON {
+            return Vec::new();
+        }
+
+        let tick_color = theme
+            .pointer("/axis/tickColor")
+            .cloned()
+            .unwrap_or(json!("#333333"));
+        let tick_size = theme
+            .pointer("/axis/tickSize")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(4.0);
+        let label_color = theme
+            .pointer("/axis/labelColor")
+            .cloned()
+            .unwrap_or(json!("#4D4D4D"));
+        let label_font_size = theme
+            .pointer("/axis/labelFontSize")
+            .cloned()
+            .unwrap_or(json!(12));
+        let line_color = theme
+            .pointer("/axis/domainColor")
+            .cloned()
+            .unwrap_or(Value::Null);
+
+        let (start, end, inner) = polar_properties(project);
+        let mut layers = Vec::new();
+
+        // Axis arc along the outer edge
+        let radius_expr = expr_polar_radius(&format!("{POLAR_OUTER}"));
+        layers.push(json!({
+            "data": {"values": [{}]},
+            "mark": {
+                "type": "arc",
+                "fill": null,
+                "stroke": line_color,
+                "theta": start,
+                "theta2": end,
+            },
+            "encoding": {
+                "radius": {
+                    "value": {"expr": radius_expr}
+                }
+            }
+        }));
+
+        if breaks.is_empty() {
+            return layers;
+        }
+
+        // Ticks: short radial segments at each theta break, pointing inward.
+        // The tick direction at angle θ is along the radius vector:
+        // unit = (sin(θ), -cos(θ)) in pixel space.
+        let values: Vec<Value> = breaks.iter().map(|&b| json!({"v": b})).collect();
+        let theta = expr_normalize_theta("datum.v", domain_min, domain_max, start, end);
+        let outer_s = format!("{POLAR_OUTER}");
+
+        let is_full_circle = (end - start - 2.0 * std::f64::consts::PI).abs() < f64::EPSILON;
+        let tick_just: f64 = if is_full_circle { 0.5 } else { 0.0 };
+
+        let outer_cx = expr_polar_x(&outer_s, &theta);
+        let outer_cy = expr_polar_y(&outer_s, &theta);
+
+        // Radial unit vector at angle θ is (sin(θ), -cos(θ)) in pixel space,
+        // scaled by min(width,height)/2. Since the tick is small, we use the
+        // precomputed center and offset by fixed pixel amounts via the
+        // normalized radius direction.
+        let inward = format!("{}", tick_just * tick_size);
+        let outward = format!("{}", (1.0 - tick_just) * tick_size);
+
+        layers.push(json!({
+            "data": {"values": values.clone()},
+            "mark": {
+                "type": "rule",
+                "stroke": tick_color,
+            },
+            "transform": [
+                {"calculate": &theta, "as": "theta"},
+                {"calculate": outer_cx, "as": "cx"},
+                {"calculate": outer_cy, "as": "cy"},
+                {"calculate": format!("datum.cx + {outward} * sin(datum.theta)"), "as": "x"},
+                {"calculate": format!("datum.cy - {outward} * cos(datum.theta)"), "as": "y"},
+                {"calculate": format!("datum.cx - {inward} * sin(datum.theta)"), "as": "x2"},
+                {"calculate": format!("datum.cy + {inward} * cos(datum.theta)"), "as": "y2"},
+            ],
+            "encoding": {
+                "x": {"field": "x", "type": "quantitative", "scale": null, "axis": null},
+                "y": {"field": "y", "type": "quantitative", "scale": null, "axis": null},
+                "x2": {"field": "x2"},
+                "y2": {"field": "y2"},
+            }
+        }));
+
+        // Labels: text positioned beyond the outer end of the tick.
+        // Alignment depends on the angle: top/bottom/left/right around the circle.
+        let label_pad = 2.0;
+        let label_offset = format!("{}", (1.0 - tick_just) * tick_size + label_pad);
+
+        layers.push(json!({
+            "data": {"values": values},
+            "mark": {
+                "type": "text",
+                "color": label_color,
+                "fontSize": label_font_size,
+                "align": "center",
+                "baseline": "middle",
+            },
+            "transform": [
+                {"calculate": &theta, "as": "theta"},
+                {"calculate": outer_cx, "as": "cx"},
+                {"calculate": outer_cy, "as": "cy"},
+                {"calculate": format!("datum.cx + {label_offset} * sin(datum.theta)"), "as": "x"},
+                {"calculate": format!("datum.cy - {label_offset} * cos(datum.theta)"), "as": "y"},
             ],
             "encoding": {
                 "x": {"field": "x", "type": "quantitative", "scale": null, "axis": null},
@@ -1391,5 +1529,72 @@ mod tests {
             "should produce only the axis line when no breaks"
         );
         assert_eq!(layers[0]["mark"]["type"], "rule");
+    }
+
+    #[test]
+    fn test_angular_axis() {
+        let scales = vec![scale_with_breaks(
+            "pos2",
+            (0.0, 60.0),
+            vec![15.0, 30.0, 45.0],
+        )];
+        let proj = PolarProjection;
+        let theme = json!({
+            "axis": {
+                "tickColor": "#333",
+                "tickSize": 6,
+                "labelColor": "#4D4D4D",
+                "labelFontSize": 12,
+            }
+        });
+
+        let layers = proj.angular_axis(&scales, None, &theme);
+        assert_eq!(
+            layers.len(),
+            3,
+            "should produce axis arc, ticks, and labels"
+        );
+
+        // Layer 0: axis arc along outer edge
+        let arc = &layers[0];
+        assert_eq!(arc["mark"]["type"], "arc");
+        assert_eq!(arc["mark"]["fill"], json!(null));
+
+        // Layer 1: ticks (one per break)
+        let ticks = &layers[1];
+        assert_eq!(ticks["mark"]["type"], "rule");
+        assert_eq!(ticks["data"]["values"].as_array().unwrap().len(), 3);
+        let tick_transforms = ticks["transform"].as_array().unwrap();
+        let tick_fields: Vec<&str> = tick_transforms
+            .iter()
+            .filter_map(|t| t["as"].as_str())
+            .collect();
+        assert_eq!(
+            tick_fields,
+            vec!["theta", "cx", "cy", "x", "y", "x2", "y2"]
+        );
+
+        // Layer 2: labels
+        let labels = &layers[2];
+        assert_eq!(labels["mark"]["type"], "text");
+        assert_eq!(labels["mark"]["align"], "center");
+        assert_eq!(labels["mark"]["baseline"], "middle");
+        assert_eq!(labels["data"]["values"].as_array().unwrap().len(), 3);
+        assert_eq!(labels["encoding"]["text"]["field"], "v");
+    }
+
+    #[test]
+    fn test_angular_axis_no_breaks() {
+        let scales = vec![scale_with_breaks("pos2", (0.0, 60.0), vec![])];
+        let proj = PolarProjection;
+        let theme = json!({"axis": {}});
+
+        let layers = proj.angular_axis(&scales, None, &theme);
+        assert_eq!(
+            layers.len(),
+            1,
+            "should produce only the axis arc when no breaks"
+        );
+        assert_eq!(layers[0]["mark"]["type"], "arc");
     }
 }
