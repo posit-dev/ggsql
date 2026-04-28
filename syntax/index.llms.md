@@ -32,7 +32,7 @@ There are many different layers to choose from when visualising your data. Some 
 - [`violin`](../syntax/layer/type/violin.llms.md) displays a rotated kernel density estimate.
 - [`histogram`](../syntax/layer/type/histogram.llms.md) bins the data along the x axis and produces a bar for each bin showing the number of records in it.
 - [`boxplot`](../syntax/layer/type/boxplot.llms.md) displays continuous variables as 5-number summaries.
-- [`errorbar`](../syntax/layer/type/errorbar.llms.md) a line segment with hinges at the endpoints.
+- [`range`](../syntax/layer/type/range.llms.md) a line segment between two values along an axis, with optional hinges at the endpoints.
 - [`smooth`](../syntax/layer/type/smooth.llms.md) a trendline that follows the data shape.
 
 ### Position adjustments

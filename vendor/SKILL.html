@@ -82,9 +82,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-286b0d4f737c5af6226422bdceee2d85.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-b068bd8fbd0943443b2767a143b5203c.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-c0e6253991c03487a1849754f0ab8899.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-b068bd8fbd0943443b2767a143b5203c.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-b1bfb4a05eee97e0eed7704eb658e614.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-7269b18c81355fa05f84d19aa08aee53.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-b1bfb4a05eee97e0eed7704eb658e614.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script src="../site_libs/quarto-contrib/iconify-3.0.0/iconify-icon.min.js"></script>
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
@@ -329,7 +329,7 @@ gradient teal.
   <li><a href="#text" id="toc-text" class="nav-link" data-scroll-target="#text">text</a></li>
   <li><a href="#rect" id="toc-rect" class="nav-link" data-scroll-target="#rect">rect</a></li>
   <li><a href="#polygon" id="toc-polygon" class="nav-link" data-scroll-target="#polygon">polygon</a></li>
-  <li><a href="#errorbar" id="toc-errorbar" class="nav-link" data-scroll-target="#errorbar">errorbar</a></li>
+  <li><a href="#range" id="toc-range" class="nav-link" data-scroll-target="#range">range</a></li>
   </ul></li>
   <li><a href="#named-color-palettes" id="toc-named-color-palettes" class="nav-link" data-scroll-target="#named-color-palettes">Named color palettes</a></li>
   <li><a href="#common-patterns" id="toc-common-patterns" class="nav-link" data-scroll-target="#common-patterns">Common patterns</a></li>
@@ -671,7 +671,7 @@ gradient teal.
 </section>
 <section id="segment" class="level3">
 <h3 class="anchored" data-anchor-id="segment">segment</h3>
-<p>Line segments between two endpoints. Required: x, y, and at least one of xend or yend.</p>
+<p>Line segments between two endpoints. Required: x, y, xend, yend. For axis-aligned intervals where one coordinate is shared between start and end, use <code>range</code> instead.</p>
 </section>
 <section id="rule" class="level3">
 <h3 class="anchored" data-anchor-id="rule">rule</h3>
@@ -689,9 +689,9 @@ gradient teal.
 <h3 class="anchored" data-anchor-id="polygon">polygon</h3>
 <p>Closed shapes from ordered coordinates. Required: x, y. Use PARTITION BY to separate distinct polygons.</p>
 </section>
-<section id="errorbar" class="level3">
-<h3 class="anchored" data-anchor-id="errorbar">errorbar</h3>
-<p>Interval display. Required: x, ymin, ymax. Settings: <code>width</code> (hinge width in points, default 10, null to hide).</p>
+<section id="range" class="level3">
+<h3 class="anchored" data-anchor-id="range">range</h3>
+<p>Range/interval display between two values along the secondary axis. Required: x, ymin, ymax. Settings: <code>width</code> (hinge width in points, default 10, null to hide).</p>
 <p>All layers accept common optional aesthetics (colour/stroke, fill, opacity, linewidth, linetype) and <code>position</code> setting where applicable.</p>
 <hr>
 </section>
@@ -724,9 +724,9 @@ gradient teal.
 <span id="cb28-14"><a href="#cb28-14" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb28-15"><a href="#cb28-15" aria-hidden="true" tabindex="-1"></a><span class="co">-- Lollipop chart</span></span>
 <span id="cb28-16"><a href="#cb28-16" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="fu">ROUND</span>(bill_dep) <span class="kw">AS</span> bill_dep, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n <span class="kw">FROM</span> ggsql:penguins <span class="kw">GROUP</span> <span class="kw">BY</span> <span class="dv">1</span></span>
-<span id="cb28-17"><a href="#cb28-17" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span>, n <span class="kw">AS</span> <span class="at">y</span></span>
-<span id="cb28-18"><a href="#cb28-18" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">segment</span> <span class="kw">MAPPING</span> <span class="dv">0</span> AS <span class="at">yend</span></span>
-<span id="cb28-19"><a href="#cb28-19" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
+<span id="cb28-17"><a href="#cb28-17" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span></span>
+<span id="cb28-18"><a href="#cb28-18" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span> <span class="kw">MAPPING</span> <span class="dv">0</span> AS <span class="at">ymin</span>, n AS <span class="at">ymax</span> <span class="kw">SETTING</span> <span class="at">width</span> <span class="op">=&gt;</span> null</span>
+<span id="cb28-19"><a href="#cb28-19" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span> <span class="kw">MAPPING</span> n AS <span class="at">y</span></span>
 <span id="cb28-20"><a href="#cb28-20" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb28-21"><a href="#cb28-21" aria-hidden="true" tabindex="-1"></a><span class="co">-- Ridgeline / joy plot</span></span>
 <span id="cb28-22"><a href="#cb28-22" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">Temp</span> <span class="kw">AS</span> x, Month <span class="kw">AS</span> y <span class="kw">FROM</span> ggsql:airquality</span>
