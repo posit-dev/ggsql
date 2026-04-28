@@ -404,8 +404,8 @@ Rectangles. Required: pick 2 per axis from center (x/y), min (xmin/ymin), max (x
 ### polygon
 Closed shapes from ordered coordinates. Required: x, y. Use PARTITION BY to separate distinct polygons.
 
-### errorbar
-Interval display. Required: x, ymin, ymax. Settings: `width` (hinge width in points, default 10, null to hide).
+### range
+Range/interval display between two values along the secondary axis. Required: x, ymin, ymax. Settings: `width` (hinge width in points, default 10, null to hide).
 
 All layers accept common optional aesthetics (colour/stroke, fill, opacity, linewidth, linetype) and `position` setting where applicable.
 

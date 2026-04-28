@@ -46,7 +46,7 @@ plot/
 
 `Layer` itself lives in `layer/mod.rs`. The two big substructures:
 
-- **`layer/geom/`** — one `.rs` per geom plus `mod.rs` (registry) and `types.rs`. The current set: `area`, `arrow`, `bar`, `boxplot`, `density`, `errorbar`, `histogram`, `line`, `path`, `point`, `polygon`, `ribbon`, `rule`, `segment`, `smooth`, `text`, `tile`, `violin`. Each implements `GeomTrait` (declares supported aesthetics, parameters, defaults, and any stat behaviour). User-facing semantics live in [`/doc/syntax/layer/type/`](../../doc/syntax/layer/type/).
+- **`layer/geom/`** — one `.rs` per geom plus `mod.rs` (registry) and `types.rs`. The current set: `area`, `arrow`, `bar`, `boxplot`, `density`, `histogram`, `line`, `path`, `point`, `polygon`, `range`, `ribbon`, `rule`, `segment`, `smooth`, `text`, `tile`, `violin`. Each implements `GeomTrait` (declares supported aesthetics, parameters, defaults, and any stat behaviour). User-facing semantics live in [`/doc/syntax/layer/type/`](../../doc/syntax/layer/type/).
 - **`layer/position/`** — `identity`, `stack`, `dodge`, `jitter`. Each implements `PositionTrait`. Semantics: [`/doc/syntax/layer/position/`](../../doc/syntax/layer/position/).
 
 `layer/orientation.rs` decides whether a layer is "transposed" (horizontal bar vs vertical bar etc.) based on the mappings + geom type.
