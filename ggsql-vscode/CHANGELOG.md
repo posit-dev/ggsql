@@ -1,46 +1,14 @@
 # Changelog
 
-## 0.2.7
+## [Unreleased]
 
-Alpha release.
+## 0.3.0
+
+- Add cell delimiters and code lens actions when running in Positron (#366)
+
+## 0.2.1 - 0.2.7
 
 - Switch macOS installer from .dmg to .pkg
-
-## 0.2.6
-
-Alpha release.
-
-- Set auditwheel=repair for Jupyter macOS builds
-- Use dylibbundler to bundle libs on macOS
-
-## 0.2.5
-
-Alpha release.
-
-- Install ODBC in manylinux container in GHA release workflows
-
-## 0.2.4
-
-Alpha release.
-
-- Further tweaks in GHA release workflows
-
-## 0.2.3
-
-Alpha release.
-
-- Build natively for targets in GHA release workflows
-
-## 0.2.2
-
-Alpha release.
-
-- Install ODBC in Jupyter release GHA workflows (#319)
-
-## 0.2.1
-
-Alpha release.
-
 - Install ODBC in release GHA workflows (#317)
 
 ## 0.2.0

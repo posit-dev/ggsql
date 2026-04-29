@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## 0.3.0
+
 ### Added
 
 - Add cell delimiters and code lens actions to the Positron extension (#366)
@@ -9,6 +11,7 @@ that `FROM table VISUALIZE x, y` and `VISUALIZE x, y FROM table` are equivalent
 queries (#369)
 - CLI now has built-in documentation through the `docs` command as well as a
 skill for llms through the `skill` command (#361)
+- The ggsql wasm package is now published on GitHub Releases and NPM (#367)
 
 ### Fixed
 
@@ -24,6 +27,8 @@ and writer errors now report user-facing aesthetic names (`x`, `y`, `panel`,
 based on the active coordinate system and facet layout (#388).
 - Fixed opacity calculation in point layers with Vega-Lite (#393)
 - Fixed an issue with case-sensitive column references in mappings (#374)
+- Fixed SQL function set quantifiers in the ggsql grammar (#395)
+- Fixed loading of dynamic libraries in PyPI build of `ggsql-jupyter` (#355, #392)
 
 ### Changed
 
