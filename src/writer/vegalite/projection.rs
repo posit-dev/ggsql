@@ -1118,8 +1118,18 @@ fn extract_polar_channel(
         let strings: Vec<&str> = arr.iter().filter_map(|v| v.as_str()).collect();
         if !strings.is_empty() {
             let n = strings.len();
-            let literal: String = strings.iter().map(|s| format!("'{}'", s)).collect::<Vec<_>>().join(",");
-            let expr = format!("indexof([{}], datum['{}']) + 1", literal, field);
+            let literal: String = strings
+                .iter()
+                .map(|s| format!("'{}'", s.replace('\'', "\\'")))
+                .collect::<Vec<_>>()
+                .join(",");
+            // indexof returns -1 for values not in the domain; map those to null
+            let arr_expr = format!("[{}]", literal);
+            let expr = format!(
+                "indexof({arr}, datum['{field}']) < 0 ? null : indexof({arr}, datum['{field}']) + 1",
+                arr = arr_expr,
+                field = field,
+            );
             return Ok((expr, field, (0.5, n as f64 + 0.5), title, true));
         }
     }
@@ -1795,6 +1805,43 @@ mod tests {
         assert!(
             expr.contains("indexof") && expr.contains("'A'") && expr.contains("datum['cat']"),
             "theta should use indexof for discrete domain, got: {expr}"
+        );
+        assert!(
+            expr.contains("null"),
+            "OOB values should map to null, got: {expr}"
+        );
+    }
+
+    #[test]
+    fn test_discrete_indexof_escapes_quotes() {
+        let mut layer = json!({
+            "mark": "point",
+            "encoding": {
+                "radius": {
+                    "field": "r_col",
+                    "type": "quantitative",
+                    "scale": {"domain": [0.0, 10.0]}
+                },
+                "theta": {
+                    "field": "cat",
+                    "type": "nominal",
+                    "scale": {"domain": ["it's", "fine"]}
+                }
+            }
+        });
+        let panel = PolarPanel::new(None, false);
+
+        convert_polar_to_cartesian(&mut layer, &panel).unwrap();
+
+        let transforms = layer["transform"].as_array().unwrap();
+        let theta_calc = transforms
+            .iter()
+            .find(|t| t["as"] == "__polar_theta__")
+            .unwrap();
+        let expr = theta_calc["calculate"].as_str().unwrap();
+        assert!(
+            expr.contains("it\\'s"),
+            "single quotes in category names should be escaped, got: {expr}"
         );
     }
 
