@@ -35,3 +35,5 @@ Then you tweak the `SCALE`s, the mappings between the data and the visual proper
 Then you `FACET` the plot to show how the relationships differ across subsets of the data.
 Finally you finish up by adding `LABEL`s to explain your plot to others.
 This allows you to produce graphics using the same structured thinking that you already use to design a SQL query.
+
+In the end of this tutorial we will revisit the duality of the syntax and the grammar and also provide a [handy table](wrap_up.qmd#from-grammar-to-syntax) that shows how they relate to each other.

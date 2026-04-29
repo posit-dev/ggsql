@@ -141,6 +141,8 @@ website:
           href: get_started/tooling.qmd
         - text: The rest of the owl
           href: get_started/the_rest.qmd
+        - text: Wrap up
+          href: get_started/wrap_up.qmd
 
 format:
   html:

@@ -763,6 +763,35 @@ body:has(.quarto-title) .quarto-categories {
   }
 }
 
+// Grammar of graphics → ggsql syntax mapping table — same rhombus markers as
+// .gog-list, applied to the first cell of each body row.
+.gog-table tbody tr td:first-child {
+  position: relative;
+  padding-left: 1.7rem;
+
+  &::before {
+    content: "";
+    position: absolute;
+    left: 0.4rem;
+    top: calc(var(--bs-table-cell-padding-y, 0.5rem) + 0.7em);
+    transform: translateY(-50%);
+    width: 1.1rem;
+    height: 0.55rem;
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  }
+}
+
+.gog-table tbody tr {
+  &:nth-child(1) td:first-child::before { background: rgb(0, 18, 25); }
+  &:nth-child(2) td:first-child::before { background: rgb(233, 216, 166); }
+  &:nth-child(3) td:first-child::before { background: rgb(222, 241, 235); }
+  &:nth-child(4) td:first-child::before { background: rgb(148, 210, 189); }
+  &:nth-child(5) td:first-child::before { background: rgb(10, 147, 150); }
+  &:nth-child(6) td:first-child::before { background: rgb(0, 95, 115); }
+  &:nth-child(7) td:first-child::before { background: rgb(178, 137, 177); }
+  &:nth-child(8) td:first-child::before { background: rgb(219, 100, 100); }
+}
+
 // FAQ callouts with brand teal colors
 .callout.callout-style-default.callout-note {
   border-color: var(--brand-paleteal, #DEF1EB);
