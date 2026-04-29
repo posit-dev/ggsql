@@ -289,8 +289,12 @@ impl ProjectionRenderer for PolarProjection {
     }
 
     fn panel_size(&self) -> Option<(Value, Value)> {
-        let size = self.panel.size;
-        Some((json!(size), json!(size)))
+        if self.panel.is_faceted {
+            let size = self.panel.size;
+            Some((json!(size), json!(size)))
+        } else {
+            Some((json!("container"), json!("container")))
+        }
     }
 
     fn transform_layers(
@@ -1381,7 +1385,7 @@ mod tests {
         assert_eq!(renderer.offset_channels(), ("radiusOffset", "thetaOffset"));
         assert_eq!(
             renderer.panel_size(),
-            Some((json!(DEFAULT_POLAR_SIZE), json!(DEFAULT_POLAR_SIZE)))
+            Some((json!("container"), json!("container")))
         );
     }
 
