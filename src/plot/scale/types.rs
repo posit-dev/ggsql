@@ -90,26 +90,37 @@ impl Scale {
         }
     }
 
-    // TODO: generalise for discrete/binned scales (see memory: project_discrete_polar_grid)
-
-    /// Numeric break positions (after resolution). Currently only meaningful
-    /// for continuous scales.
+    /// Numeric break positions (after resolution).
+    ///
+    /// Delegates to the scale type for type-specific logic (e.g. discrete
+    /// scales synthesize `[1, 2, …, n]` from the input range length).
     pub fn numeric_breaks(&self) -> Vec<f64> {
-        match self.properties.get("breaks") {
-            Some(ParameterValue::Array(breaks)) => {
-                breaks.iter().filter_map(|b| b.to_f64()).collect()
-            }
-            _ => Vec::new(),
+        match &self.scale_type {
+            Some(st) => st.numeric_breaks(self),
+            None => match self.properties.get("breaks") {
+                Some(ParameterValue::Array(breaks)) => {
+                    breaks.iter().filter_map(|b| b.to_f64()).collect()
+                }
+                _ => Vec::new(),
+            },
         }
     }
 
-    /// Numeric domain as `(min, max)` from the resolved input range. Currently
-    /// only meaningful for continuous scales.
+    /// Numeric domain as `(min, max)` from the resolved input range.
+    ///
+    /// Delegates to the scale type for type-specific logic (e.g. discrete
+    /// scales synthesize `(0.5, n + 0.5)` so integer positions sit at
+    /// category centres).
     pub fn numeric_domain(&self) -> Option<(f64, f64)> {
-        let range = self.input_range.as_ref()?;
-        let min = range.first()?.to_f64()?;
-        let max = range.last()?.to_f64()?;
-        Some((min, max))
+        match &self.scale_type {
+            Some(st) => st.numeric_domain(self),
+            None => {
+                let range = self.input_range.as_ref()?;
+                let min = range.first()?.to_f64()?;
+                let max = range.last()?.to_f64()?;
+                Some((min, max))
+            }
+        }
     }
 }
 
@@ -121,4 +132,136 @@ pub enum OutputRange {
     Array(Vec<ArrayElement>),
     /// Named palette identifier: TO viridis
     Palette(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn continuous_scale(domain: (f64, f64), breaks: Vec<f64>) -> Scale {
+        let mut s = Scale::new("pos1");
+        s.scale_type = Some(ScaleType::continuous());
+        s.input_range = Some(vec![
+            ArrayElement::Number(domain.0),
+            ArrayElement::Number(domain.1),
+        ]);
+        s.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(breaks.into_iter().map(ArrayElement::Number).collect()),
+        );
+        s
+    }
+
+    fn discrete_scale(values: &[&str]) -> Scale {
+        let mut s = Scale::new("pos2");
+        s.scale_type = Some(ScaleType::discrete());
+        s.input_range = Some(values.iter().map(|v| ArrayElement::String(v.to_string())).collect());
+        s
+    }
+
+    fn ordinal_scale(values: &[&str]) -> Scale {
+        let mut s = Scale::new("pos1");
+        s.scale_type = Some(ScaleType::ordinal());
+        s.input_range = Some(values.iter().map(|v| ArrayElement::String(v.to_string())).collect());
+        s
+    }
+
+    // =========================================================================
+    // Continuous
+    // =========================================================================
+
+    #[test]
+    fn test_continuous_numeric_breaks() {
+        let s = continuous_scale((0.0, 100.0), vec![25.0, 50.0, 75.0]);
+        assert_eq!(s.numeric_breaks(), vec![25.0, 50.0, 75.0]);
+    }
+
+    #[test]
+    fn test_continuous_numeric_domain() {
+        let s = continuous_scale((0.0, 100.0), vec![]);
+        assert_eq!(s.numeric_domain(), Some((0.0, 100.0)));
+    }
+
+    #[test]
+    fn test_continuous_no_breaks() {
+        let s = continuous_scale((0.0, 100.0), vec![]);
+        assert_eq!(s.numeric_breaks(), Vec::<f64>::new());
+    }
+
+    // =========================================================================
+    // Discrete
+    // =========================================================================
+
+    #[test]
+    fn test_discrete_numeric_breaks() {
+        let s = discrete_scale(&["A", "B", "C"]);
+        assert_eq!(s.numeric_breaks(), vec![1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn test_discrete_numeric_domain() {
+        let s = discrete_scale(&["A", "B", "C"]);
+        assert_eq!(s.numeric_domain(), Some((0.5, 3.5)));
+    }
+
+    #[test]
+    fn test_discrete_single_category() {
+        let s = discrete_scale(&["only"]);
+        assert_eq!(s.numeric_breaks(), vec![1.0]);
+        assert_eq!(s.numeric_domain(), Some((0.5, 1.5)));
+    }
+
+    #[test]
+    fn test_discrete_empty() {
+        let s = discrete_scale(&[]);
+        assert_eq!(s.numeric_breaks(), Vec::<f64>::new());
+        assert_eq!(s.numeric_domain(), None);
+    }
+
+    // =========================================================================
+    // Ordinal
+    // =========================================================================
+
+    #[test]
+    fn test_ordinal_numeric_breaks() {
+        let s = ordinal_scale(&["low", "mid", "high"]);
+        assert_eq!(s.numeric_breaks(), vec![1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn test_ordinal_numeric_domain() {
+        let s = ordinal_scale(&["low", "mid", "high"]);
+        assert_eq!(s.numeric_domain(), Some((0.5, 3.5)));
+    }
+
+    // =========================================================================
+    // Identity / no scale type
+    // =========================================================================
+
+    #[test]
+    fn test_identity_string_returns_empty() {
+        let mut s = Scale::new("color");
+        s.scale_type = Some(ScaleType::identity());
+        s.input_range = Some(vec![
+            ArrayElement::String("red".to_string()),
+            ArrayElement::String("blue".to_string()),
+        ]);
+        assert_eq!(s.numeric_breaks(), Vec::<f64>::new());
+        assert_eq!(s.numeric_domain(), None);
+    }
+
+    #[test]
+    fn test_no_scale_type_falls_back() {
+        let mut s = Scale::new("pos1");
+        s.input_range = Some(vec![
+            ArrayElement::Number(10.0),
+            ArrayElement::Number(50.0),
+        ]);
+        s.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![ArrayElement::Number(20.0), ArrayElement::Number(40.0)]),
+        );
+        assert_eq!(s.numeric_breaks(), vec![20.0, 40.0]);
+        assert_eq!(s.numeric_domain(), Some((10.0, 50.0)));
+    }
 }

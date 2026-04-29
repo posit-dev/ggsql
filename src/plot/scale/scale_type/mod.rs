@@ -796,6 +796,30 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         )
     }
 
+    /// Numeric break positions from a resolved scale.
+    ///
+    /// Default: reads the `breaks` property and converts to f64.
+    /// Discrete overrides to synthesize `[1, 2, …, n]` from input range length.
+    fn numeric_breaks(&self, scale: &super::Scale) -> Vec<f64> {
+        match scale.properties.get("breaks") {
+            Some(ParameterValue::Array(breaks)) => {
+                breaks.iter().filter_map(|b| b.to_f64()).collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// Numeric domain `(min, max)` from a resolved scale.
+    ///
+    /// Default: reads the input range endpoints as f64.
+    /// Discrete overrides to synthesize `(0.5, n + 0.5)`.
+    fn numeric_domain(&self, scale: &super::Scale) -> Option<(f64, f64)> {
+        let range = scale.input_range.as_ref()?;
+        let min = range.first()?.to_f64()?;
+        let max = range.last()?.to_f64()?;
+        Some((min, max))
+    }
+
     /// Resolve scale properties from data context.
     ///
     /// Called ONCE per scale, either:
@@ -1246,6 +1270,16 @@ impl ScaleType {
     /// Returns whether this scale type supports the `breaks` property.
     pub fn supports_breaks(&self) -> bool {
         self.0.supports_breaks()
+    }
+
+    /// Numeric break positions from a resolved scale.
+    pub fn numeric_breaks(&self, scale: &super::Scale) -> Vec<f64> {
+        self.0.numeric_breaks(scale)
+    }
+
+    /// Numeric domain `(min, max)` from a resolved scale.
+    pub fn numeric_domain(&self, scale: &super::Scale) -> Option<(f64, f64)> {
+        self.0.numeric_domain(scale)
     }
 
     /// Resolve scale properties from data context.

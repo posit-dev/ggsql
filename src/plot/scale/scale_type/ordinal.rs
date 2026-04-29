@@ -64,6 +64,16 @@ impl ScaleTypeTrait for Ordinal {
         true // Collects unique values like Discrete
     }
 
+    fn numeric_breaks(&self, scale: &super::super::Scale) -> Vec<f64> {
+        let n = scale.input_range.as_ref().map_or(0, |r| r.len());
+        (1..=n).map(|i| i as f64).collect()
+    }
+
+    fn numeric_domain(&self, scale: &super::super::Scale) -> Option<(f64, f64)> {
+        let n = scale.input_range.as_ref()?.len();
+        if n > 0 { Some((0.5, n as f64 + 0.5)) } else { None }
+    }
+
     fn allowed_transforms(&self) -> &'static [TransformKind] {
         // Categorical transforms plus Integer for ordered numeric categories
         &[
