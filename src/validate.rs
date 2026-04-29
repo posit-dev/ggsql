@@ -83,6 +83,17 @@ pub struct Location {
 // Validation Function
 // ============================================================================
 
+fn has_error_ancestor(node: &tree_sitter::Node) -> bool {
+    let mut cur = node.parent();
+    while let Some(p) = cur {
+        if p.is_error() {
+            return true;
+        }
+        cur = p.parent();
+    }
+    false
+}
+
 /// Validate query syntax and semantics without executing SQL.
 pub fn validate(query: &str) -> Result<Validated> {
     let mut errors = Vec::new();
@@ -114,32 +125,37 @@ pub fn validate(query: &str) -> Result<Validated> {
     let viz_part = source_tree.extract_visualise().unwrap_or_default();
 
     let root = source_tree.root();
-    let has_visual = source_tree
-        .find_node(&root, "(visualise_statement) @viz")
-        .is_some();
-
-    // The lexer always tokenises VISUALISE / VISUALIZE as `visualise_keyword`
-    // (token prec 10 in grammar.js). When parsing fails, that keyword still
-    // shows up in the CST — either as a stray child of an ERROR node (when
-    // no visualise_statement was recovered) or inside a partially-recovered
-    // visualise_statement that doesn't cover everything the user wrote. In
-    // both situations we want an actionable, ggsql-aware error rather than
-    // the generic "Parse tree contains errors".
-    let visualise_kw_pos = source_tree
-        .find_node(&root, "(visualise_keyword) @kw")
-        .map(|n| n.start_position());
+    let visualise_stmt = source_tree.find_node(&root, "(visualise_statement) @viz");
+    let has_visual = visualise_stmt.is_some();
 
     if let Err(e) = source_tree.validate() {
-        let (message, location) = if let Some(pos) = visualise_kw_pos {
+        // The lexer always tokenises VISUALISE / VISUALIZE as
+        // `visualise_keyword` (token prec 10 in grammar.js), so the keyword
+        // survives even when parsing fails. We give a ggsql-aware message
+        // only when the parse error lies on the VISUALISE side: either no
+        // visualise_statement was recovered (keyword stranded in an ERROR
+        // node) or one was recovered as a fragment under an ERROR ancestor
+        // (partial recovery — common when a mapping holds a SQL expression
+        // and the parser rolls forward into the SQL portion). When the
+        // visualise_statement is a clean top-level child of `query`, the
+        // error is in the SQL portion and the generic message is more honest.
+        let kw_pos = source_tree
+            .find_node(&root, "(visualise_keyword) @kw")
+            .map(|n| n.start_position());
+        let visualise_side_failed = match &visualise_stmt {
+            Some(node) => node.has_error() || has_error_ancestor(node),
+            None => kw_pos.is_some(),
+        };
+        let (message, location) = if visualise_side_failed {
             (
                 "VISUALISE clause was not recognized. Mappings accept column \
                  names only — not SQL expressions like CAST() or function \
                  calls. Move data transformations to the SELECT clause and \
                  reference the resulting column by name in VISUALISE."
                     .to_string(),
-                Some(Location {
-                    line: pos.row,
-                    column: pos.column,
+                kw_pos.map(|p| Location {
+                    line: p.row,
+                    column: p.column,
                 }),
             )
         } else {
@@ -423,6 +439,22 @@ mod tests {
         let validated = validate(query).unwrap();
         assert!(!validated.valid());
         assert!(!validated.errors().is_empty());
+    }
+
+    #[test]
+    fn test_validate_sql_side_error_does_not_blame_visualise() {
+        // When the parse error is in the SQL portion but the VISUALISE clause
+        // is fully recovered, we must not emit the "VISUALISE clause was not
+        // recognized" message — the VISUALISE clause is fine.
+        let query = "SELECT @@@ FROM t VISUALISE a AS x, b AS y DRAW point";
+        let validated = validate(query).unwrap();
+        assert!(!validated.valid());
+        assert!(!validated.errors().is_empty());
+        let msg = &validated.errors()[0].message;
+        assert!(
+            !msg.contains("VISUALISE clause was not recognized"),
+            "SQL-side error should not be reported as a VISUALISE error, got: {msg}"
+        );
     }
 
     #[test]
