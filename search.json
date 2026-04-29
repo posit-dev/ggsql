@@ -1548,14 +1548,14 @@
     "href": "gallery/examples/line-chart.html#explanation",
     "title": "Line chart",
     "section": "Explanation",
-    "text": "Explanation\n\nSELECT ... FROM ggsql:airquality queries the built-in air quality dataset\nVISUALISE Date AS x, Temp AS y maps the date column to x and temperature to y\nDRAW line connects data points with lines\nSCALE x VIA date ensures the x-axis is formatted as dates with appropriate tick marks\nLABEL provides descriptive titles for the chart and axes"
+    "text": "Explanation\n\nSELECT ... FROM ggsql:airquality queries the built-in air quality dataset\nVISUALISE Date AS x, Temp AS y maps the date column to x and temperature to y\nDRAW line connects data points with lines\nSCALE x VIA date ensures the x-axis is formatted as dates with appropriate tick marks (happens automatically if your database has a dedicated date type)\nLABEL provides descriptive titles for the chart and axes"
   },
   {
     "objectID": "gallery/examples/line-chart.html#variations",
     "href": "gallery/examples/line-chart.html#variations",
     "title": "Line chart",
     "section": "Variations",
-    "text": "Variations\n\nMultiple lines by category\n\nSELECT Date, Temp, Month FROM ggsql:airquality\nVISUALISE Date AS x, Temp AS y, Month AS color\nDRAW line\nSCALE x VIA date\nLABEL\n  title =&gt; 'Daily Temperature by Month',\n  x =&gt; 'Date',\n  y =&gt; 'Temperature (F)'"
+    "text": "Variations\n\nMultiple lines by category\nHere we show the temperature by day instead, and split the lines by month. Since month is encoded as an integer it doesn’t automatically split the lines, and we have to use an explicit ordinal scale for it (see what happens if you remove that).\n\nSELECT Day, Temp, Month FROM ggsql:airquality\nVISUALISE Day AS x, Temp AS y, Month AS color\nDRAW line\nSCALE ORDINAL color\nLABEL\n  title =&gt; 'Daily Temperature by Month',\n  x =&gt; 'Date',\n  y =&gt; 'Temperature (F)'"
   },
   {
     "objectID": "gallery/examples/faceted.html",
@@ -1904,7 +1904,7 @@
     "href": "syntax/clause/label.html#clause-syntax",
     "title": "Define different titles with LABEL",
     "section": "Clause syntax",
-    "text": "Clause syntax\nThe LABEL clause takes one or more labeling settings.\nLABEL &lt;aesthetic/title&gt; =&gt; &lt;string&gt;, ...\nIf an aesthetic is given, then the title will be used for the relevant axis or legend, e.g. x =&gt; 'my x-axis' will label the x axis, whereas fill =&gt; 'Species' will label the legend for fill (if any).\nThere are a few additional labels beside the aesthetics that govern the different titles of the plot and can be given instead of an aesthetic name:\n\ntitle: The main title of the plot\nsubtitle: An additional, often longer and more descriptive, title beneath the main title\ncaption: A string placed below the plot, often used to add additional information about the data source etc.",
+    "text": "Clause syntax\nThe LABEL clause takes one or more labeling settings.\nLABEL &lt;aesthetic/title&gt; =&gt; &lt;string&gt;, ...\nIf an aesthetic is given, then the title will be used for the relevant axis or legend, e.g. x =&gt; 'my x-axis' will label the x axis, whereas fill =&gt; 'Species' will label the legend for fill (if any).\nThere are a few additional labels beside the aesthetics that govern the different titles of the plot and can be given instead of an aesthetic name:\n\ntitle: The main title of the plot\nsubtitle: An additional, often longer and more descriptive, title beneath the main title\ncaption: A string placed below the plot, often used to add additional information about the data source etc. Currently not possible as our only writer (Vega-Lite) doesn’t support it. Will be available as new writers appear.",
     "crumbs": [
       "Get started",
       "Main clauses",
