@@ -2109,4 +2109,166 @@ mod tests {
             "continuous offset should use full scale ({full_scale}), not banded ({with_band}), got: {expr}"
         );
     }
+
+    // =========================================================================
+    // Discrete scale helpers for axis/grid tests
+    // =========================================================================
+
+    fn discrete_scale_for_axis(aesthetic: &str, values: &[&str]) -> Scale {
+        use crate::plot::scale::ScaleType;
+        use crate::plot::types::ArrayElement;
+        let mut scale = Scale::new(aesthetic);
+        scale.scale_type = Some(ScaleType::discrete());
+        scale.input_range = Some(
+            values
+                .iter()
+                .map(|v| ArrayElement::String(v.to_string()))
+                .collect(),
+        );
+        scale
+    }
+
+    // =========================================================================
+    // Discrete radial axis labels
+    // =========================================================================
+
+    #[test]
+    fn test_radial_axis_discrete_labels() {
+        let scales = vec![discrete_scale_for_axis("pos1", &["low", "mid", "high"])];
+        let proj = PolarProjection {
+            panel: PolarPanel::new(None, false),
+        };
+        let theme = json!({"axis": {}});
+
+        let layers = proj.radial_axis(&scales, &theme);
+        assert_eq!(layers.len(), 3, "should produce axis line, ticks, and labels");
+
+        // Label data should carry category names, not numeric positions
+        let labels = &layers[2];
+        let values = labels["data"]["values"].as_array().unwrap();
+        assert_eq!(values.len(), 3);
+        assert_eq!(values[0]["label"], "low");
+        assert_eq!(values[1]["label"], "mid");
+        assert_eq!(values[2]["label"], "high");
+
+        // Numeric positions should be 1, 2, 3
+        assert_eq!(values[0]["v"], 1.0);
+        assert_eq!(values[1]["v"], 2.0);
+        assert_eq!(values[2]["v"], 3.0);
+    }
+
+    // =========================================================================
+    // Discrete angular axis labels
+    // =========================================================================
+
+    #[test]
+    fn test_angular_axis_discrete_labels() {
+        let scales = vec![discrete_scale_for_axis("pos2", &["Mon", "Tue", "Wed"])];
+        let proj = PolarProjection {
+            panel: PolarPanel::new(None, false),
+        };
+        let theme = json!({"axis": {}});
+
+        let layers = proj.angular_axis(&scales, &theme);
+        assert_eq!(layers.len(), 3, "should produce axis arc, ticks, and labels");
+
+        // Label data should carry category names
+        let labels = &layers[2];
+        let values = labels["data"]["values"].as_array().unwrap();
+        assert_eq!(values.len(), 3);
+        assert_eq!(values[0]["label"], "Mon");
+        assert_eq!(values[1]["label"], "Tue");
+        assert_eq!(values[2]["label"], "Wed");
+    }
+
+    // =========================================================================
+    // Single-category discrete scale in polar
+    // =========================================================================
+
+    #[test]
+    fn test_single_category_discrete_grid_spokes() {
+        let scales = vec![discrete_scale_for_axis("pos2", &["only"])];
+        let proj = PolarProjection {
+            panel: PolarPanel::new(None, false),
+        };
+        let theme = json!({"axis": {}});
+
+        let layers = proj.grid_spokes(&scales, &theme);
+        assert_eq!(layers.len(), 1, "should produce one spoke");
+
+        let values = layers[0]["data"]["values"].as_array().unwrap();
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0]["v"], 1.0);
+    }
+
+    #[test]
+    fn test_single_category_discrete_angular_axis() {
+        let scales = vec![discrete_scale_for_axis("pos2", &["only"])];
+        let proj = PolarProjection {
+            panel: PolarPanel::new(None, false),
+        };
+        let theme = json!({"axis": {}});
+
+        let layers = proj.angular_axis(&scales, &theme);
+        assert_eq!(layers.len(), 3, "should produce arc, tick, and label");
+
+        let labels = &layers[2];
+        let values = labels["data"]["values"].as_array().unwrap();
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0]["label"], "only");
+    }
+
+    // =========================================================================
+    // Faceted polar with discrete scales
+    // =========================================================================
+
+    #[test]
+    fn test_faceted_polar_discrete_uses_pixel_size() {
+        let mut proj = Projection::polar();
+        proj.properties
+            .insert("size".to_string(), ParameterValue::Number(300.0));
+        let panel = PolarPanel::new(Some(&proj), true);
+
+        // Faceted panel should use literal pixel values, not width/height signals
+        assert_eq!(panel.cx, "150");
+        assert_eq!(panel.cy, "150");
+        assert_eq!(panel.radius, "150");
+    }
+
+    #[test]
+    fn test_faceted_polar_discrete_grid_rings() {
+        let scales = vec![discrete_scale_for_axis("pos1", &["A", "B", "C"])];
+        let mut proj_spec = Projection::polar();
+        proj_spec
+            .properties
+            .insert("size".to_string(), ParameterValue::Number(300.0));
+        let proj = PolarProjection {
+            panel: PolarPanel::new(Some(&proj_spec), true),
+        };
+        let theme = json!({"axis": {}});
+
+        let layers = proj.grid_rings(&scales, &theme);
+        assert_eq!(layers.len(), 1);
+
+        // Radius expression should use literal pixels (150), not signals
+        let radius_expr = layers[0]["encoding"]["radius"]["value"]["expr"]
+            .as_str()
+            .unwrap();
+        assert!(
+            radius_expr.contains("150") && !radius_expr.contains("width"),
+            "faceted grid rings should use pixel values, got: {radius_expr}"
+        );
+    }
+
+    #[test]
+    fn test_faceted_polar_panel_size() {
+        let proj = Projection::polar();
+        let renderer = PolarProjection {
+            panel: PolarPanel::new(Some(&proj), true),
+        };
+        assert_eq!(
+            renderer.panel_size(),
+            Some((json!(DEFAULT_POLAR_SIZE), json!(DEFAULT_POLAR_SIZE)))
+        );
+    }
 }
