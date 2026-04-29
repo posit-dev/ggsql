@@ -186,6 +186,10 @@ impl ProjectionRenderer for CartesianProjection {
 /// Normalized outer radius (proportion of `min(width, height) / 2`).
 const POLAR_OUTER: f64 = 1.0;
 
+/// Bandwidth fraction for discrete polar offsets (mirrors VL's default
+/// `1 - paddingInner` for band scales, which is ~0.9).
+const POLAR_BAND_FRACTION: f64 = 0.9;
+
 /// Pre-computed panel geometry for polar specs.
 ///
 /// Holds angular range, radius bounds, and VL expression strings for the
@@ -854,21 +858,29 @@ fn convert_geoms_to_polar(panel: &PolarPanel, spec: &Plot, vl_spec: &mut Value) 
 /// 3. Replace radius/theta with x/y encoding channels
 fn convert_polar_to_cartesian(layer: &mut Value, panel: &PolarPanel) -> Result<()> {
     // Phase 1: Extract info from encoding (immutable read)
-    let (r_field, r_domain, r_title, theta_field, theta_domain, theta_title) = {
+    let (r_val, r_field, r_domain, r_title, r_discrete,
+         theta_val, theta_field, theta_domain, theta_title, theta_discrete,
+         r2_field, theta2_field, r_offset_field, theta_offset_field) = {
         let encoding = layer
             .get("encoding")
             .and_then(|e| e.as_object())
             .ok_or_else(|| GgsqlError::WriterError("Layer has no encoding object".to_string()))?;
 
-        let (r_field, r_domain, r_title) = extract_polar_channel(encoding, "radius")?;
-        let (theta_field, theta_domain, theta_title) = extract_polar_channel(encoding, "theta")?;
+        let (r_val, r_field, r_domain, r_title, r_disc) =
+            extract_polar_channel(encoding, "radius")?;
+        let (theta_val, theta_field, theta_domain, theta_title, theta_disc) =
+            extract_polar_channel(encoding, "theta")?;
+        let field_of = |channel: &str| {
+            encoding.get(channel)
+                .and_then(|e| e.get("field"))
+                .and_then(|f| f.as_str())
+                .map(|s| s.to_string())
+        };
         (
-            r_field,
-            r_domain,
-            r_title,
-            theta_field,
-            theta_domain,
-            theta_title,
+            r_val, r_field, r_domain, r_title, r_disc,
+            theta_val, theta_field, theta_domain, theta_title, theta_disc,
+            field_of("radius2"), field_of("theta2"),
+            field_of("radiusOffset"), field_of("thetaOffset"),
         )
     };
 
@@ -886,27 +898,120 @@ fn convert_polar_to_cartesian(layer: &mut Value, panel: &PolarPanel) -> Result<(
     }));
 
     let theta_expr = if (theta_max - theta_min).abs() > f64::EPSILON {
-        panel.expr_normalize_theta(&format!("datum['{theta_field}']"), theta_min, theta_max)
+        panel.expr_normalize_theta(&theta_val, theta_min, theta_max)
     } else {
         format!("{}", panel.start)
     };
     polar_transforms.push(json!({"calculate": theta_expr, "as": "__polar_theta__"}));
 
     let r_expr = if (r_max - r_min).abs() > f64::EPSILON {
-        panel.expr_normalize_radius(&format!("datum['{r_field}']"), r_min, r_max)
+        panel.expr_normalize_radius(&r_val, r_min, r_max)
     } else {
         format!("{}", (panel.outer + panel.inner) / 2.0)
     };
     polar_transforms.push(json!({"calculate": r_expr, "as": "__polar_r__"}));
 
-    polar_transforms.push(json!({
-        "calculate": panel.expr_x("datum.__polar_r__", "datum.__polar_theta__"),
-        "as": "__polar_x__"
-    }));
-    polar_transforms.push(json!({
-        "calculate": panel.expr_y("datum.__polar_r__", "datum.__polar_theta__"),
-        "as": "__polar_y__"
-    }));
+    // Offsets: fold into the normalized r/theta before computing pixel x/y.
+    // If the offset has a scale domain, normalize it into the primary channel's
+    // space. If no domain, treat as raw pixel displacement after conversion.
+    let encoding_obj = layer.get("encoding").and_then(|e| e.as_object());
+    let mut r_final = "datum.__polar_r__".to_string();
+    let mut theta_final = "datum.__polar_theta__".to_string();
+    let mut pixel_offsets: Vec<(String, bool)> = Vec::new(); // (field, is_radial)
+
+    let offset_domain = |channel: &str| -> Option<(f64, f64)> {
+        let arr = encoding_obj?
+            .get(channel)?
+            .get("scale")?
+            .get("domain")?
+            .as_array()?;
+        Some((arr.first()?.as_f64()?, arr.get(1)?.as_f64()?))
+    };
+
+    if let Some(ref f) = r_offset_field {
+        if let Some((off_min, off_max)) = offset_domain("radiusOffset") {
+            let r_scale = if (r_max - r_min).abs() > f64::EPSILON {
+                (panel.outer - panel.inner) / (r_max - r_min)
+            } else {
+                0.0
+            };
+            let bw = if r_discrete { POLAR_BAND_FRACTION } else { 1.0 };
+            r_final = format!(
+                "datum.__polar_r__ + {} * ((datum['{}'] - {}) / {} - 0.5)",
+                r_scale * bw, f, off_min, off_max - off_min
+            );
+        } else {
+            pixel_offsets.push((f.clone(), true));
+        }
+    }
+    if let Some(ref f) = theta_offset_field {
+        if let Some((off_min, off_max)) = offset_domain("thetaOffset") {
+            let t_scale = if (theta_max - theta_min).abs() > f64::EPSILON {
+                (panel.end - panel.start) / (theta_max - theta_min)
+            } else {
+                0.0
+            };
+            let bw = if theta_discrete { POLAR_BAND_FRACTION } else { 1.0 };
+            theta_final = format!(
+                "datum.__polar_theta__ + {} * ((datum['{}'] - {}) / {} - 0.5)",
+                t_scale * bw, f, off_min, off_max - off_min
+            );
+        } else {
+            pixel_offsets.push((f.clone(), false));
+        }
+    }
+
+    let mut x_expr = panel.expr_x(&r_final, &theta_final);
+    let mut y_expr = panel.expr_y(&r_final, &theta_final);
+
+    // Raw pixel offsets applied after polar→cartesian conversion
+    for (f, is_radial) in &pixel_offsets {
+        if *is_radial {
+            x_expr = format!("({x_expr}) + datum['{f}'] * sin(datum.__polar_theta__)");
+            y_expr = format!("({y_expr}) - datum['{f}'] * cos(datum.__polar_theta__)");
+        } else {
+            x_expr = format!("({x_expr}) + datum['{f}'] * cos(datum.__polar_theta__)");
+            y_expr = format!("({y_expr}) + datum['{f}'] * sin(datum.__polar_theta__)");
+        }
+    }
+
+    polar_transforms.push(json!({"calculate": x_expr, "as": "__polar_x__"}));
+    polar_transforms.push(json!({"calculate": y_expr, "as": "__polar_y__"}));
+
+    // Secondary channels (radius2 → x2/y2, theta2 → x2/y2) share the
+    // primary channel's domain, so we reuse the same normalization parameters.
+    let has_r2 = r2_field.is_some();
+    let has_theta2 = theta2_field.is_some();
+    if has_r2 || has_theta2 {
+        let r2_expr = if let Some(ref f) = r2_field {
+            if (r_max - r_min).abs() > f64::EPSILON {
+                panel.expr_normalize_radius(&format!("datum['{}']", f), r_min, r_max)
+            } else {
+                format!("{}", (panel.outer + panel.inner) / 2.0)
+            }
+        } else {
+            "datum.__polar_r__".to_string()
+        };
+        let theta2_expr = if let Some(ref f) = theta2_field {
+            if (theta_max - theta_min).abs() > f64::EPSILON {
+                panel.expr_normalize_theta(&format!("datum['{}']", f), theta_min, theta_max)
+            } else {
+                format!("{}", panel.start)
+            }
+        } else {
+            "datum.__polar_theta__".to_string()
+        };
+        polar_transforms.push(json!({"calculate": r2_expr, "as": "__polar_r2__"}));
+        polar_transforms.push(json!({"calculate": theta2_expr, "as": "__polar_theta2__"}));
+        polar_transforms.push(json!({
+            "calculate": panel.expr_x("datum.__polar_r2__", "datum.__polar_theta2__"),
+            "as": "__polar_x2__"
+        }));
+        polar_transforms.push(json!({
+            "calculate": panel.expr_y("datum.__polar_r2__", "datum.__polar_theta2__"),
+            "as": "__polar_y2__"
+        }));
+    }
 
     // Phase 3: Mutate the layer — append transforms
     if let Some(existing) = layer.get_mut("transform") {
@@ -925,6 +1030,10 @@ fn convert_polar_to_cartesian(layer: &mut Value, panel: &PolarPanel) -> Result<(
 
     encoding.remove("radius");
     encoding.remove("theta");
+    encoding.remove("radius2");
+    encoding.remove("theta2");
+    encoding.remove("radiusOffset");
+    encoding.remove("thetaOffset");
 
     let mut x_enc = json!({
         "field": "__polar_x__",
@@ -949,15 +1058,25 @@ fn convert_polar_to_cartesian(layer: &mut Value, panel: &PolarPanel) -> Result<(
     encoding.insert("x".to_string(), x_enc);
     encoding.insert("y".to_string(), y_enc);
 
+    if has_r2 || has_theta2 {
+        encoding.insert("x2".to_string(), json!({"field": "__polar_x2__"}));
+        encoding.insert("y2".to_string(), json!({"field": "__polar_y2__"}));
+    }
+
     Ok(())
 }
 
-/// Extract field name, scale domain, and title from a polar encoding channel.
-/// Returns (field_name, (domain_min, domain_max), optional_title).
+/// Extract field name, numeric value expression, scale domain, and title from
+/// a polar encoding channel.
+///
+/// Returns `(value_expr, field, (domain_min, domain_max), optional_title, is_discrete)`.
+/// For continuous scales `value_expr` is `datum['field']`.
+/// For discrete scales it is `indexof([...], datum['field']) + 1` with a
+/// synthesized numeric domain `(0.5, n + 0.5)`.
 fn extract_polar_channel(
     encoding: &serde_json::Map<String, Value>,
     channel: &str,
-) -> Result<(String, (f64, f64), Option<Value>)> {
+) -> Result<(String, String, (f64, f64), Option<Value>, bool)> {
     let channel_enc = encoding.get(channel).ok_or_else(|| {
         GgsqlError::WriterError(format!(
             "Polar projection requires '{}' encoding channel",
@@ -971,21 +1090,33 @@ fn extract_polar_channel(
         .ok_or_else(|| GgsqlError::WriterError(format!("'{}' encoding missing 'field'", channel)))?
         .to_string();
 
-    // Extract domain from scale, with fallback to [0, 1]
-    let domain = channel_enc
-        .get("scale")
-        .and_then(|s| s.get("domain"))
-        .and_then(|d| d.as_array())
-        .and_then(|arr| {
-            let min = arr.first()?.as_f64()?;
-            let max = arr.get(1)?.as_f64()?;
-            Some((min, max))
-        })
-        .unwrap_or((0.0, 1.0));
-
     let title = channel_enc.get("title").cloned();
 
-    Ok((field, domain, title))
+    let domain_arr = channel_enc
+        .get("scale")
+        .and_then(|s| s.get("domain"))
+        .and_then(|d| d.as_array());
+
+    // Try numeric domain first
+    if let Some((min, max)) = domain_arr.and_then(|arr| {
+        Some((arr.first()?.as_f64()?, arr.get(1)?.as_f64()?))
+    }) {
+        return Ok((format!("datum['{}']", field), field, (min, max), title, false));
+    }
+
+    // Discrete domain: string array → indexof + synthesized numeric domain
+    if let Some(arr) = domain_arr {
+        let strings: Vec<&str> = arr.iter().filter_map(|v| v.as_str()).collect();
+        if !strings.is_empty() {
+            let n = strings.len();
+            let literal: String = strings.iter().map(|s| format!("'{}'", s)).collect::<Vec<_>>().join(",");
+            let expr = format!("indexof([{}], datum['{}']) + 1", literal, field);
+            return Ok((expr, field, (0.5, n as f64 + 0.5), title, true));
+        }
+    }
+
+    // Fallback
+    Ok((format!("datum['{}']", field), field, (0.0, 1.0), title, false))
 }
 
 /// Convert a mark type to its polar equivalent
@@ -1615,5 +1746,311 @@ mod tests {
             "should produce only the axis arc when no breaks"
         );
         assert_eq!(layers[0]["mark"]["type"], "arc");
+    }
+
+    // =========================================================================
+    // Discrete channel: indexof expression
+    // =========================================================================
+
+    fn discrete_theta_layer() -> Value {
+        json!({
+            "mark": "point",
+            "encoding": {
+                "radius": {
+                    "field": "r_col",
+                    "type": "quantitative",
+                    "scale": {"domain": [0.0, 10.0]}
+                },
+                "theta": {
+                    "field": "cat",
+                    "type": "nominal",
+                    "scale": {"domain": ["A", "B", "C"]}
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn test_discrete_theta_uses_indexof() {
+        let mut layer = discrete_theta_layer();
+        let panel = PolarPanel::new(None, false);
+
+        convert_polar_to_cartesian(&mut layer, &panel).unwrap();
+
+        let transforms = layer["transform"].as_array().unwrap();
+        let theta_calc = transforms
+            .iter()
+            .find(|t| t["as"] == "__polar_theta__")
+            .unwrap();
+        let expr = theta_calc["calculate"].as_str().unwrap();
+        assert!(
+            expr.contains("indexof") && expr.contains("'A'") && expr.contains("datum['cat']"),
+            "theta should use indexof for discrete domain, got: {expr}"
+        );
+    }
+
+    #[test]
+    fn test_discrete_theta_synthesizes_domain() {
+        let mut layer = discrete_theta_layer();
+        let panel = PolarPanel::new(None, false);
+
+        convert_polar_to_cartesian(&mut layer, &panel).unwrap();
+
+        // 3 categories → domain (0.5, 3.5), full circle → scale = 2π / 3.0
+        let transforms = layer["transform"].as_array().unwrap();
+        let theta_calc = transforms
+            .iter()
+            .find(|t| t["as"] == "__polar_theta__")
+            .unwrap();
+        let expr = theta_calc["calculate"].as_str().unwrap();
+        let expected_scale = 2.0 * std::f64::consts::PI / 3.0;
+        assert!(
+            expr.contains(&format!("{expected_scale}")),
+            "theta scale should be 2π/3 ≈ {expected_scale}, got: {expr}"
+        );
+    }
+
+    // =========================================================================
+    // Secondary channels: radius2 / theta2
+    // =========================================================================
+
+    #[test]
+    fn test_radius2_generates_x2_y2() {
+        let mut layer = json!({
+            "mark": "rule",
+            "encoding": {
+                "radius": {
+                    "field": "r_start",
+                    "type": "quantitative",
+                    "scale": {"domain": [0.0, 10.0]}
+                },
+                "radius2": {
+                    "field": "r_end"
+                },
+                "theta": {
+                    "field": "angle",
+                    "type": "quantitative",
+                    "scale": {"domain": [0.0, 100.0]}
+                }
+            }
+        });
+        let panel = PolarPanel::new(None, false);
+
+        convert_polar_to_cartesian(&mut layer, &panel).unwrap();
+
+        let transforms = layer["transform"].as_array().unwrap();
+        let has_r2 = transforms.iter().any(|t| t["as"] == "__polar_r2__");
+        let has_x2 = transforms.iter().any(|t| t["as"] == "__polar_x2__");
+        let has_y2 = transforms.iter().any(|t| t["as"] == "__polar_y2__");
+        assert!(has_r2, "should compute __polar_r2__");
+        assert!(has_x2, "should compute __polar_x2__");
+        assert!(has_y2, "should compute __polar_y2__");
+
+        assert!(layer["encoding"].get("x2").is_some());
+        assert!(layer["encoding"].get("y2").is_some());
+        assert!(layer["encoding"].get("radius2").is_none());
+    }
+
+    #[test]
+    fn test_theta2_generates_x2_y2() {
+        let mut layer = json!({
+            "mark": "rule",
+            "encoding": {
+                "radius": {
+                    "field": "r_col",
+                    "type": "quantitative",
+                    "scale": {"domain": [0.0, 10.0]}
+                },
+                "theta": {
+                    "field": "t_start",
+                    "type": "quantitative",
+                    "scale": {"domain": [0.0, 100.0]}
+                },
+                "theta2": {
+                    "field": "t_end"
+                }
+            }
+        });
+        let panel = PolarPanel::new(None, false);
+
+        convert_polar_to_cartesian(&mut layer, &panel).unwrap();
+
+        let transforms = layer["transform"].as_array().unwrap();
+        let theta2_calc = transforms
+            .iter()
+            .find(|t| t["as"] == "__polar_theta2__")
+            .unwrap();
+        let expr = theta2_calc["calculate"].as_str().unwrap();
+        assert!(
+            expr.contains("datum['t_end']"),
+            "theta2 should use its own field, got: {expr}"
+        );
+
+        assert!(layer["encoding"].get("x2").is_some());
+        assert!(layer["encoding"].get("theta2").is_none());
+    }
+
+    // =========================================================================
+    // Offset channels: scaled domain
+    // =========================================================================
+
+    #[test]
+    fn test_theta_offset_with_domain() {
+        let mut layer = json!({
+            "mark": "point",
+            "encoding": {
+                "radius": {
+                    "field": "r_col",
+                    "type": "quantitative",
+                    "scale": {"domain": [0.0, 10.0]}
+                },
+                "theta": {
+                    "field": "t_col",
+                    "type": "quantitative",
+                    "scale": {"domain": [0.0, 100.0]}
+                },
+                "thetaOffset": {
+                    "field": "grp",
+                    "scale": {"domain": [0.0, 4.0]}
+                }
+            }
+        });
+        let panel = PolarPanel::new(None, false);
+
+        convert_polar_to_cartesian(&mut layer, &panel).unwrap();
+
+        let transforms = layer["transform"].as_array().unwrap();
+        let x_calc = transforms
+            .iter()
+            .find(|t| t["as"] == "__polar_x__")
+            .unwrap();
+        let expr = x_calc["calculate"].as_str().unwrap();
+        assert!(
+            expr.contains("datum['grp']"),
+            "x should incorporate thetaOffset field, got: {expr}"
+        );
+
+        assert!(layer["encoding"].get("thetaOffset").is_none());
+    }
+
+    #[test]
+    fn test_radius_offset_without_domain_is_pixel() {
+        let mut layer = json!({
+            "mark": "point",
+            "encoding": {
+                "radius": {
+                    "field": "r_col",
+                    "type": "quantitative",
+                    "scale": {"domain": [0.0, 10.0]}
+                },
+                "theta": {
+                    "field": "t_col",
+                    "type": "quantitative",
+                    "scale": {"domain": [0.0, 100.0]}
+                },
+                "radiusOffset": {
+                    "field": "jitter"
+                }
+            }
+        });
+        let panel = PolarPanel::new(None, false);
+
+        convert_polar_to_cartesian(&mut layer, &panel).unwrap();
+
+        let transforms = layer["transform"].as_array().unwrap();
+        let x_calc = transforms
+            .iter()
+            .find(|t| t["as"] == "__polar_x__")
+            .unwrap();
+        let expr = x_calc["calculate"].as_str().unwrap();
+        assert!(
+            expr.contains("datum['jitter']") && expr.contains("sin"),
+            "pixel offset should apply along radial direction, got: {expr}"
+        );
+    }
+
+    // =========================================================================
+    // Discrete offset band fraction
+    // =========================================================================
+
+    #[test]
+    fn test_discrete_theta_offset_applies_band_fraction() {
+        let mut layer = json!({
+            "mark": "point",
+            "encoding": {
+                "radius": {
+                    "field": "r_col",
+                    "type": "quantitative",
+                    "scale": {"domain": [0.0, 10.0]}
+                },
+                "theta": {
+                    "field": "cat",
+                    "type": "nominal",
+                    "scale": {"domain": ["A", "B", "C"]}
+                },
+                "thetaOffset": {
+                    "field": "grp",
+                    "scale": {"domain": [0.0, 2.0]}
+                }
+            }
+        });
+        let panel = PolarPanel::new(None, false);
+
+        convert_polar_to_cartesian(&mut layer, &panel).unwrap();
+
+        // 3 categories → domain (0.5, 3.5), scale = 2π/3
+        // With band fraction 0.9: effective scale = 2π/3 * 0.9
+        let expected = 2.0 * std::f64::consts::PI / 3.0 * POLAR_BAND_FRACTION;
+        let transforms = layer["transform"].as_array().unwrap();
+        let x_calc = transforms
+            .iter()
+            .find(|t| t["as"] == "__polar_x__")
+            .unwrap();
+        let expr = x_calc["calculate"].as_str().unwrap();
+        assert!(
+            expr.contains(&format!("{expected}")),
+            "offset scale should include band fraction ({expected}), got: {expr}"
+        );
+    }
+
+    #[test]
+    fn test_continuous_theta_offset_no_band_fraction() {
+        let mut layer = json!({
+            "mark": "point",
+            "encoding": {
+                "radius": {
+                    "field": "r_col",
+                    "type": "quantitative",
+                    "scale": {"domain": [0.0, 10.0]}
+                },
+                "theta": {
+                    "field": "t_col",
+                    "type": "quantitative",
+                    "scale": {"domain": [0.0, 100.0]}
+                },
+                "thetaOffset": {
+                    "field": "grp",
+                    "scale": {"domain": [0.0, 2.0]}
+                }
+            }
+        });
+        let panel = PolarPanel::new(None, false);
+
+        convert_polar_to_cartesian(&mut layer, &panel).unwrap();
+
+        // Continuous → full scale = 2π/100, no band fraction
+        let full_scale = 2.0 * std::f64::consts::PI / 100.0;
+        let with_band = full_scale * POLAR_BAND_FRACTION;
+        let transforms = layer["transform"].as_array().unwrap();
+        let x_calc = transforms
+            .iter()
+            .find(|t| t["as"] == "__polar_x__")
+            .unwrap();
+        let expr = x_calc["calculate"].as_str().unwrap();
+        assert!(
+            expr.contains(&format!("{full_scale}"))
+                && !expr.contains(&format!("{with_band}")),
+            "continuous offset should use full scale ({full_scale}), not banded ({with_band}), got: {expr}"
+        );
     }
 }
