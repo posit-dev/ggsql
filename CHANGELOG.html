@@ -275,6 +275,7 @@ gradient teal.
 <li>Error messages no longer leak internal aesthetic names. Validation, scale, and writer errors now report user-facing aesthetic names (<code>x</code>, <code>y</code>, <code>panel</code>, <code>row</code>, …) instead of internal forms (<code>pos1</code>, <code>pos2</code>, <code>facet1</code>, …), translated based on the active coordinate system and facet layout (#388).</li>
 <li>Fixed opacity calculation in point layers with Vega-Lite (#393)</li>
 <li>Fixed an issue with case-sensitive column references in mappings (#374)</li>
+<li>Fixed an issue with OOB null-filtering, leading to missing median lines in boxplots (#394)</li>
 </ul>
 </section>
 <section id="changed" class="level3">
