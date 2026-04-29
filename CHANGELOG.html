@@ -272,6 +272,7 @@ gradient teal.
 <li>Rendering of inline plots in Positron had a bad interaction with how we handled auto-resizing in the plot pane. We now have a per-output-location path in the Jupyter kernel (#360)</li>
 <li>Passing the shape aesthetic via <code>SETTING</code> now correctly translates named shapes (#368)</li>
 <li>Asterisk shape now has lines 60 degrees apart, giving an even shape</li>
+<li><code>validate()</code> now reports an actionable error when a SQL expression (e.g. <code>CAST(...)</code> or a function call) appears inside a <code>VISUALISE</code> mapping, instead of silently treating the entire query as SQL (#389)</li>
 <li>Error messages no longer leak internal aesthetic names. Validation, scale, and writer errors now report user-facing aesthetic names (<code>x</code>, <code>y</code>, <code>panel</code>, <code>row</code>, …) instead of internal forms (<code>pos1</code>, <code>pos2</code>, <code>facet1</code>, …), translated based on the active coordinate system and facet layout (#388).</li>
 <li>Fixed opacity calculation in point layers with Vega-Lite (#393)</li>
 <li>Fixed an issue with case-sensitive column references in mappings (#374)</li>

@@ -12,6 +12,7 @@
 - Rendering of inline plots in Positron had a bad interaction with how we handled auto-resizing in the plot pane. We now have a per-output-location path in the Jupyter kernel (#360)
 - Passing the shape aesthetic via `SETTING` now correctly translates named shapes (#368)
 - Asterisk shape now has lines 60 degrees apart, giving an even shape
+- `validate()` now reports an actionable error when a SQL expression (e.g. `CAST(...)` or a function call) appears inside a `VISUALISE` mapping, instead of silently treating the entire query as SQL (#389)
 - Error messages no longer leak internal aesthetic names. Validation, scale, and writer errors now report user-facing aesthetic names (`x`, `y`, `panel`, `row`, …) instead of internal forms (`pos1`, `pos2`, `facet1`, …), translated based on the active coordinate system and facet layout (#388).
 - Fixed opacity calculation in point layers with Vega-Lite (#393)
 - Fixed an issue with case-sensitive column references in mappings (#374)
