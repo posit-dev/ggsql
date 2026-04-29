@@ -1068,7 +1068,7 @@ impl<'a> RenderContext<'a> {
 
     #[cfg(test)]
     pub fn default_for_test() -> Self {
-        let renderer = super::projection::get_projection_renderer(None);
+        let renderer = super::projection::get_projection_renderer(None, false);
         Self::new(&[], renderer.as_ref())
     }
 

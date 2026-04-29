@@ -1080,20 +1080,13 @@ impl Writer for VegaLiteWriter {
         let mut vl_spec = json!({
             "$schema": self.schema
         });
-        // Container sizing doesn't work with faceting in Vega-Lite, so only apply it
-        // for non-faceted charts
-        if spec.facet.is_none() {
-            vl_spec["width"] = json!("container");
-            vl_spec["height"] = json!("container");
-        } else {
-            // Faceted charts need explicit numeric dimensions (moved into inner spec
-            // by apply_faceting). Arc marks especially need this since their radius
-            // range is [0, min(width, height) / 2] — without dimensions, arcs are invisible.
-            let proj = get_projection_renderer(spec.project.as_ref());
-            if let Some((w, h)) = proj.panel_size() {
-                vl_spec["width"] = json!(w);
-                vl_spec["height"] = json!(h);
-            }
+        // Get projection renderer (single instance used throughout)
+        let is_faceted = spec.facet.as_ref().is_some_and(|f| !f.get_variables().is_empty());
+        let projection = get_projection_renderer(spec.project.as_ref(), is_faceted);
+
+        if let Some((w, h)) = projection.panel_size() {
+            vl_spec["width"] = w;
+            vl_spec["height"] = h;
         }
 
         if let Some(labels) = &spec.labels {
@@ -1131,10 +1124,7 @@ impl Writer for VegaLiteWriter {
         let unified_data = unify_datasets(&prep.datasets)?;
         vl_spec["data"] = json!({"values": unified_data});
 
-        // 9. Get projection renderer (default to Cartesian if no project)
-        let projection = get_projection_renderer(spec.project.as_ref());
-
-        // 10. Build layers (pass free scales and projection for domain handling)
+        // 9. Build layers (pass free scales and projection for domain handling)
         let layers = build_layers(
             spec,
             data,
@@ -1395,7 +1385,7 @@ mod tests {
 
         // Test with cartesian projection (None = default cartesian)
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
-        let cartesian = get_projection_renderer(None);
+        let cartesian = get_projection_renderer(None, false);
         let cart = cartesian.as_ref();
 
         // Internal position names should map to Vega-Lite channel names based on projection
@@ -1421,7 +1411,7 @@ mod tests {
         // Test with polar projection - internal position maps to radius/theta
         // regardless of the context's user-facing names
         let polar_proj = Projection::polar();
-        let polar = get_projection_renderer(Some(&polar_proj));
+        let polar = get_projection_renderer(Some(&polar_proj), false);
         let pol = polar.as_ref();
 
         let polar_ctx = AestheticContext::from_static(&["radius", "theta"], &[]);

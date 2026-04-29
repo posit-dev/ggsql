@@ -23,6 +23,9 @@ use super::DEFAULT_POLAR_SIZE;
 /// 2. **Spec transformation** — modifying the Vega-Lite spec after layers are built
 ///    (e.g., converting marks to arcs for polar).
 pub(super) trait ProjectionRenderer {
+    /// Whether the spec uses faceting.
+    fn is_faceted(&self) -> bool;
+
     /// Primary and secondary VL channel names for this projection.
     ///
     /// Returns `(pos1_channel, pos2_channel)`, e.g. `("x", "y")` for cartesian,
@@ -34,12 +37,15 @@ pub(super) trait ProjectionRenderer {
     /// Returns `(pos1_offset, pos2_offset)`, e.g. `("xOffset", "yOffset")`.
     fn offset_channels(&self) -> (&'static str, &'static str);
 
-    /// Explicit (width, height) panel dimensions for faceted specs, if needed.
+    /// Panel dimensions as VL values (`"container"` or explicit pixels).
     ///
-    /// Polar projections need this because arc mark radius ranges depend on
-    /// known dimensions; cartesian uses `"container"` sizing and returns `None`.
-    fn panel_size(&self) -> Option<(f64, f64)> {
-        None
+    /// Returns `None` for faceted cartesian (VL handles sizing).
+    fn panel_size(&self) -> Option<(Value, Value)> {
+        if self.is_faceted() {
+            None
+        } else {
+            Some((json!("container"), json!("container")))
+        }
     }
 
     /// Apply projection-specific transformations to the VL spec.
@@ -48,35 +54,20 @@ pub(super) trait ProjectionRenderer {
     /// transformed DataFrame (e.g., polar currently clones it unchanged).
     fn transform_layers(
         &self,
-        project: &Projection,
-        spec: &Plot,
-        data: &DataFrame,
-        vl_spec: &mut Value,
-    ) -> Result<Option<DataFrame>>;
+        _spec: &Plot,
+        _data: &DataFrame,
+        _vl_spec: &mut Value,
+    ) -> Result<Option<DataFrame>> {
+        Ok(None)
+    }
 
     /// Vega-Lite layers to prepend before the data layers.
-    ///
-    /// Called after faceting, before the theme config is applied. Receives
-    /// the resolved scales so implementations can derive grid lines, axis
-    /// ticks, or other decorations from scale breaks and domains.
-    fn background_layers(
-        &self,
-        _scales: &[Scale],
-        _project: Option<&Projection>,
-        _theme: &mut Value,
-    ) -> Vec<Value> {
+    fn background_layers(&self, _scales: &[Scale], _theme: &mut Value) -> Vec<Value> {
         Vec::new()
     }
 
     /// Vega-Lite layers to append after the data layers.
-    ///
-    /// Same timing and access as [`background_layers`].
-    fn foreground_layers(
-        &self,
-        _scales: &[Scale],
-        _project: Option<&Projection>,
-        _theme: &mut Value,
-    ) -> Vec<Value> {
+    fn foreground_layers(&self, _scales: &[Scale], _theme: &mut Value) -> Vec<Value> {
         Vec::new()
     }
 
@@ -88,18 +79,16 @@ pub(super) trait ProjectionRenderer {
         theme: &mut Value,
         vl_spec: &mut Value,
     ) -> Result<Option<DataFrame>> {
-        let result = if let Some(ref project) = spec.project {
-            let r = self.transform_layers(project, spec, data, vl_spec)?;
+        let result = self.transform_layers(spec, data, vl_spec)?;
+
+        if let Some(ref project) = spec.project {
             if let Some(ParameterValue::Boolean(clip)) = project.properties.get("clip") {
                 apply_clip_to_layers(vl_spec, *clip);
             }
-            r
-        } else {
-            None
-        };
+        }
 
-        let mut bg = self.background_layers(&spec.scales, spec.project.as_ref(), theme);
-        let mut fg = self.foreground_layers(&spec.scales, spec.project.as_ref(), theme);
+        let mut bg = self.background_layers(&spec.scales, theme);
+        let mut fg = self.foreground_layers(&spec.scales, theme);
         if !(bg.is_empty() && fg.is_empty()) {
             for layer in &mut bg {
                 layer["description"] = json!("background");
@@ -128,10 +117,15 @@ pub(super) trait ProjectionRenderer {
 ///
 /// Returns the appropriate renderer based on the projection's coord kind,
 /// or a Cartesian renderer if no projection is specified.
-pub(super) fn get_projection_renderer(project: Option<&Projection>) -> Box<dyn ProjectionRenderer> {
+pub(super) fn get_projection_renderer(
+    project: Option<&Projection>,
+    is_faceted: bool,
+) -> Box<dyn ProjectionRenderer> {
     match project.map(|p| p.coord.coord_kind()) {
-        Some(CoordKind::Polar) => Box::new(PolarProjection),
-        Some(CoordKind::Cartesian) | None => Box::new(CartesianProjection),
+        Some(CoordKind::Polar) => Box::new(PolarProjection {
+            panel: PolarPanel::new(project, is_faceted),
+        }),
+        Some(CoordKind::Cartesian) | None => Box::new(CartesianProjection { is_faceted }),
     }
 }
 
@@ -167,27 +161,21 @@ pub(super) fn map_position_to_vegalite(
 // =============================================================================
 
 /// Cartesian projection — standard x/y coordinates.
-struct CartesianProjection;
+struct CartesianProjection {
+    is_faceted: bool,
+}
 
 impl ProjectionRenderer for CartesianProjection {
+    fn is_faceted(&self) -> bool {
+        self.is_faceted
+    }
+
     fn position_channels(&self) -> (&'static str, &'static str) {
         ("x", "y")
     }
 
     fn offset_channels(&self) -> (&'static str, &'static str) {
         ("xOffset", "yOffset")
-    }
-
-    /// Apply Cartesian projection properties
-    fn transform_layers(
-        &self,
-        _project: &Projection,
-        _spec: &Plot,
-        _data: &DataFrame,
-        _vl_spec: &mut Value,
-    ) -> Result<Option<DataFrame>> {
-        // ratio - not yet implemented
-        Ok(None)
     }
 }
 
@@ -198,10 +186,96 @@ impl ProjectionRenderer for CartesianProjection {
 /// Normalized outer radius (proportion of `min(width, height) / 2`).
 const POLAR_OUTER: f64 = 1.0;
 
+/// Pre-computed panel geometry for polar specs.
+///
+/// Holds angular range, radius bounds, and VL expression strings for the
+/// panel centre and radius. In non-faceted specs these reference the
+/// `width`/`height` signals; in faceted specs they are literal pixel values
+/// (VL signals don't resolve inside faceted inner specs).
+struct PolarPanel {
+    is_faceted: bool,
+    start: f64,
+    end: f64,
+    inner: f64,
+    outer: f64,
+    size: f64,
+    cx: String,
+    cy: String,
+    radius: String,
+}
+
+impl PolarPanel {
+    fn new(project: Option<&Projection>, is_faceted: bool) -> Self {
+        let prop = |name| {
+            project
+                .and_then(|p| p.properties.get(name))
+                .and_then(|v| match v {
+                    ParameterValue::Number(n) => Some(*n),
+                    _ => None,
+                })
+        };
+        let start_degrees = prop("start").unwrap_or(0.0);
+        let end_degrees = prop("end").unwrap_or(start_degrees + 360.0);
+        let start = start_degrees * std::f64::consts::PI / 180.0;
+        let end = end_degrees * std::f64::consts::PI / 180.0;
+        let inner = prop("inner").unwrap_or(0.0);
+        let size = prop("size").unwrap_or(DEFAULT_POLAR_SIZE);
+        let (cx, cy, radius) = if is_faceted {
+            let half = size / 2.0;
+            (format!("{half}"), format!("{half}"), format!("{half}"))
+        } else {
+            (
+                "width / 2".to_string(),
+                "height / 2".to_string(),
+                "min(width, height) / 2".to_string(),
+            )
+        };
+        Self {
+            is_faceted,
+            start,
+            end,
+            inner,
+            outer: POLAR_OUTER,
+            size,
+            cx,
+            cy,
+            radius,
+        }
+    }
+
+    fn expr_x(&self, r: &str, theta: &str) -> String {
+        format!("{} + {} * ({}) * sin({})", self.cx, self.radius, r, theta)
+    }
+
+    fn expr_y(&self, r: &str, theta: &str) -> String {
+        format!("{} - {} * ({}) * cos({})", self.cy, self.radius, r, theta)
+    }
+
+    fn expr_radius(&self, r: &str) -> String {
+        format!("{} * ({})", self.radius, r)
+    }
+
+    fn expr_normalize_radius(&self, value: &str, domain_min: f64, domain_max: f64) -> String {
+        let scale = (self.outer - self.inner) / (domain_max - domain_min);
+        format!("{} + {} * ({} - {})", self.inner, scale, value, domain_min)
+    }
+
+    fn expr_normalize_theta(&self, value: &str, domain_min: f64, domain_max: f64) -> String {
+        let scale = (self.end - self.start) / (domain_max - domain_min);
+        format!("{} + {} * ({} - {})", self.start, scale, value, domain_min)
+    }
+}
+
 /// Polar projection — radius/theta coordinates for pie charts, rose plots, etc.
-struct PolarProjection;
+struct PolarProjection {
+    panel: PolarPanel,
+}
 
 impl ProjectionRenderer for PolarProjection {
+    fn is_faceted(&self) -> bool {
+        self.panel.is_faceted
+    }
+
     fn position_channels(&self) -> (&'static str, &'static str) {
         ("radius", "theta")
     }
@@ -210,53 +284,38 @@ impl ProjectionRenderer for PolarProjection {
         ("radiusOffset", "thetaOffset")
     }
 
-    fn panel_size(&self) -> Option<(f64, f64)> {
-        Some((DEFAULT_POLAR_SIZE, DEFAULT_POLAR_SIZE))
+    fn panel_size(&self) -> Option<(Value, Value)> {
+        let size = self.panel.size;
+        Some((json!(size), json!(size)))
     }
 
     fn transform_layers(
         &self,
-        project: &Projection,
         spec: &Plot,
         data: &DataFrame,
         vl_spec: &mut Value,
     ) -> Result<Option<DataFrame>> {
-        apply_polar_project(project, spec, data, vl_spec)
+        apply_polar_project(&self.panel, spec, data, vl_spec)
     }
 
-    fn background_layers(
-        &self,
-        scales: &[Scale],
-        project: Option<&Projection>,
-        theme: &mut Value,
-    ) -> Vec<Value> {
+    fn background_layers(&self, scales: &[Scale], theme: &mut Value) -> Vec<Value> {
         let mut layers = Vec::new();
-        layers.extend(self.panel_arc(project, theme));
-        layers.extend(self.grid_rings(scales, project, theme));
-        layers.extend(self.grid_spokes(scales, project, theme));
+        layers.extend(self.panel_arc(theme));
+        layers.extend(self.grid_rings(scales, theme));
+        layers.extend(self.grid_spokes(scales, theme));
         layers
     }
 
-    fn foreground_layers(
-        &self,
-        scales: &[Scale],
-        project: Option<&Projection>,
-        theme: &mut Value,
-    ) -> Vec<Value> {
+    fn foreground_layers(&self, scales: &[Scale], theme: &mut Value) -> Vec<Value> {
         let mut layers = Vec::new();
-        layers.extend(self.radial_axis(scales, project, theme));
-        layers.extend(self.angular_axis(scales, project, theme));
+        layers.extend(self.radial_axis(scales, theme));
+        layers.extend(self.angular_axis(scales, theme));
         layers
     }
 }
 
 impl PolarProjection {
-    fn grid_rings(
-        &self,
-        scales: &[Scale],
-        project: Option<&Projection>,
-        theme: &Value,
-    ) -> Vec<Value> {
+    fn grid_rings(&self, scales: &[Scale], theme: &Value) -> Vec<Value> {
         let Some(scale) = scales.iter().find(|s| s.aesthetic == "pos1") else {
             return Vec::new();
         };
@@ -276,11 +335,11 @@ impl PolarProjection {
             .pointer("/axis/gridWidth")
             .cloned()
             .unwrap_or(json!(1));
-        let (start, end, inner) = polar_properties(project);
+        let p = &self.panel;
 
         let values: Vec<Value> = breaks.iter().map(|&b| json!({"v": b})).collect();
-        let r_norm = expr_normalize_radius("datum.v", domain_min, domain_max, inner);
-        let radius_expr = expr_polar_radius(&r_norm);
+        let r_norm = p.expr_normalize_radius("datum.v", domain_min, domain_max);
+        let radius_expr = p.expr_radius(&r_norm);
 
         vec![json!({
             "data": {"values": values},
@@ -289,8 +348,8 @@ impl PolarProjection {
                 "fill": null,
                 "stroke": color,
                 "strokeWidth": width,
-                "theta": start,
-                "theta2": end,
+                "theta": p.start,
+                "theta2": p.end,
             },
             "encoding": {
                 "radius": {
@@ -300,12 +359,7 @@ impl PolarProjection {
         })]
     }
 
-    fn grid_spokes(
-        &self,
-        scales: &[Scale],
-        project: Option<&Projection>,
-        theme: &Value,
-    ) -> Vec<Value> {
+    fn grid_spokes(&self, scales: &[Scale], theme: &Value) -> Vec<Value> {
         let Some(scale) = scales.iter().find(|s| s.aesthetic == "pos2") else {
             return Vec::new();
         };
@@ -325,11 +379,12 @@ impl PolarProjection {
             .pointer("/axis/gridWidth")
             .cloned()
             .unwrap_or(json!(1));
-        let (start, end, inner) = polar_properties(project);
+        let p = &self.panel;
 
         let values: Vec<Value> = breaks.iter().map(|&b| json!({"v": b})).collect();
-        let theta = expr_normalize_theta("datum.v", domain_min, domain_max, start, end);
-        let inner_s = format!("{inner}");
+        let theta = p.expr_normalize_theta("datum.v", domain_min, domain_max);
+        let inner_s = format!("{}", p.inner);
+        let outer_s = format!("{}", p.outer);
 
         vec![json!({
             "data": {"values": values},
@@ -339,10 +394,10 @@ impl PolarProjection {
                 "strokeWidth": width,
             },
             "transform": [
-                {"calculate": expr_polar_x(&inner_s, &theta), "as": "x"},
-                {"calculate": expr_polar_y(&inner_s, &theta), "as": "y"},
-                {"calculate": expr_polar_x(&format!("{POLAR_OUTER}"), &theta), "as": "x2"},
-                {"calculate": expr_polar_y(&format!("{POLAR_OUTER}"), &theta), "as": "y2"},
+                {"calculate": p.expr_x(&inner_s, &theta), "as": "x"},
+                {"calculate": p.expr_y(&inner_s, &theta), "as": "y"},
+                {"calculate": p.expr_x(&outer_s, &theta), "as": "x2"},
+                {"calculate": p.expr_y(&outer_s, &theta), "as": "y2"},
             ],
             "encoding": {
                 "x": {"field": "x", "type": "quantitative", "scale": null, "axis": null},
@@ -353,12 +408,7 @@ impl PolarProjection {
         })]
     }
 
-    fn radial_axis(
-        &self,
-        scales: &[Scale],
-        project: Option<&Projection>,
-        theme: &Value,
-    ) -> Vec<Value> {
+    fn radial_axis(&self, scales: &[Scale], theme: &Value) -> Vec<Value> {
         let Some(scale) = scales.iter().find(|s| s.aesthetic == "pos1") else {
             return Vec::new();
         };
@@ -391,12 +441,13 @@ impl PolarProjection {
             .cloned()
             .unwrap_or(Value::Null);
 
-        let (start, end, inner) = polar_properties(project);
+        let p = &self.panel;
         let mut layers = Vec::new();
 
         // Axis line: rule from inner to outer at start angle
-        let inner_s = format!("{inner}");
-        let start_s = format!("{start}");
+        let inner_s = format!("{}", p.inner);
+        let start_s = format!("{}", p.start);
+        let outer_s = format!("{}", p.outer);
         layers.push(json!({
             "data": {"values": [{}]},
             "mark": {
@@ -404,10 +455,10 @@ impl PolarProjection {
                 "stroke": line_color,
             },
             "transform": [
-                {"calculate": expr_polar_x(&inner_s, &start_s), "as": "x"},
-                {"calculate": expr_polar_y(&inner_s, &start_s), "as": "y"},
-                {"calculate": expr_polar_x(&format!("{POLAR_OUTER}"), &start_s), "as": "x2"},
-                {"calculate": expr_polar_y(&format!("{POLAR_OUTER}"), &start_s), "as": "y2"},
+                {"calculate": p.expr_x(&inner_s, &start_s), "as": "x"},
+                {"calculate": p.expr_y(&inner_s, &start_s), "as": "y"},
+                {"calculate": p.expr_x(&outer_s, &start_s), "as": "x2"},
+                {"calculate": p.expr_y(&outer_s, &start_s), "as": "y2"},
             ],
             "encoding": {
                 "x": {"field": "x", "type": "quantitative", "scale": null, "axis": null},
@@ -427,18 +478,18 @@ impl PolarProjection {
         // In pixel space, the tangential unit vector at angle θ is
         // (cos(θ), sin(θ)), so we shift by that times half the tick size.
         let values: Vec<Value> = breaks.iter().map(|&b| json!({"v": b})).collect();
-        let r_norm = expr_normalize_radius("datum.v", domain_min, domain_max, inner);
+        let r_norm = p.expr_normalize_radius("datum.v", domain_min, domain_max);
 
-        let is_full_circle = (end - start - 2.0 * std::f64::consts::PI).abs() < f64::EPSILON;
+        let is_full_circle = (p.end - p.start - 2.0 * std::f64::consts::PI).abs() < f64::EPSILON;
         let tick_just: f64 = if is_full_circle { 0.5 } else { 0.0 };
-        let (sin_start, cos_start) = start.sin_cos();
+        let (sin_start, cos_start) = p.start.sin_cos();
         let dx_out = format!("{}", (1.0 - tick_just) * tick_size * cos_start);
         let dy_out = format!("{}", (1.0 - tick_just) * tick_size * sin_start);
         let dx_in = format!("{}", tick_just * tick_size * cos_start);
         let dy_in = format!("{}", tick_just * tick_size * sin_start);
 
-        let cx = expr_polar_x(&r_norm, &start_s);
-        let cy = expr_polar_y(&r_norm, &start_s);
+        let cx = p.expr_x(&r_norm, &start_s);
+        let cy = p.expr_y(&r_norm, &start_s);
 
         layers.push(json!({
             "data": {"values": values.clone()},
@@ -491,12 +542,7 @@ impl PolarProjection {
         layers
     }
 
-    fn angular_axis(
-        &self,
-        scales: &[Scale],
-        project: Option<&Projection>,
-        theme: &Value,
-    ) -> Vec<Value> {
+    fn angular_axis(&self, scales: &[Scale], theme: &Value) -> Vec<Value> {
         let Some(scale) = scales.iter().find(|s| s.aesthetic == "pos2") else {
             return Vec::new();
         };
@@ -529,19 +575,20 @@ impl PolarProjection {
             .cloned()
             .unwrap_or(Value::Null);
 
-        let (start, end, _inner) = polar_properties(project);
+        let p = &self.panel;
         let mut layers = Vec::new();
 
         // Axis arc along the outer edge
-        let radius_expr = expr_polar_radius(&format!("{POLAR_OUTER}"));
+        let outer_s = format!("{}", p.outer);
+        let radius_expr = p.expr_radius(&outer_s);
         layers.push(json!({
             "data": {"values": [{}]},
             "mark": {
                 "type": "arc",
                 "fill": null,
                 "stroke": line_color,
-                "theta": start,
-                "theta2": end,
+                "theta": p.start,
+                "theta2": p.end,
             },
             "encoding": {
                 "radius": {
@@ -558,14 +605,13 @@ impl PolarProjection {
         // The tick direction at angle θ is along the radius vector:
         // unit = (sin(θ), -cos(θ)) in pixel space.
         let values: Vec<Value> = breaks.iter().map(|&b| json!({"v": b})).collect();
-        let theta = expr_normalize_theta("datum.v", domain_min, domain_max, start, end);
-        let outer_s = format!("{POLAR_OUTER}");
+        let theta = p.expr_normalize_theta("datum.v", domain_min, domain_max);
 
-        let is_full_circle = (end - start - 2.0 * std::f64::consts::PI).abs() < f64::EPSILON;
+        let is_full_circle = (p.end - p.start - 2.0 * std::f64::consts::PI).abs() < f64::EPSILON;
         let tick_just: f64 = if is_full_circle { 0.5 } else { 0.0 };
 
-        let outer_cx = expr_polar_x(&outer_s, &theta);
-        let outer_cy = expr_polar_y(&outer_s, &theta);
+        let outer_cx = p.expr_x(&outer_s, &theta);
+        let outer_cy = p.expr_y(&outer_s, &theta);
 
         // Radial unit vector at angle θ is (sin(θ), -cos(θ)) in pixel space,
         // scaled by min(width,height)/2. Since the tick is small, we use the
@@ -603,12 +649,12 @@ impl PolarProjection {
         // child filters on its tag and sets the corresponding mark alignment.
         let label_pad = 2.0;
         let label_offset = format!("{}", (1.0 - tick_just) * tick_size + label_pad);
-        let theta_scale = (end - start) / (domain_max - domain_min);
+        let theta_scale = (p.end - p.start) / (domain_max - domain_min);
 
         let mut label_values = Vec::new();
         let mut alignment_keys = std::collections::BTreeSet::new();
         for &b in &breaks {
-            let angle = start + theta_scale * (b - domain_min);
+            let angle = p.start + theta_scale * (b - domain_min);
             let (sin_a, cos_a) = angle.sin_cos();
             let align = if sin_a > 0.1 {
                 "left"
@@ -668,7 +714,7 @@ impl PolarProjection {
         layers
     }
 
-    fn panel_arc(&self, project: Option<&Projection>, theme: &mut Value) -> Vec<Value> {
+    fn panel_arc(&self, theme: &mut Value) -> Vec<Value> {
         let Some(view) = theme.get_mut("view").and_then(|v| v.as_object_mut()) else {
             return Vec::new();
         };
@@ -678,19 +724,22 @@ impl PolarProjection {
         // We need a null-stroke otherwise it'll show up as a gray line
         view.insert("stroke".to_string(), Value::Null);
 
-        let (start, end, inner) = polar_properties(project);
+        let p = &self.panel;
+
+        let inner_s = format!("{}", p.inner);
+        let outer_s = format!("{}", p.outer);
 
         let mut mark = json!({
             "type": "arc",
             "fill": fill,
             "stroke": stroke,
-            "theta":  start,
-            "theta2": end,
+            "theta":  p.start,
+            "theta2": p.end,
         });
-        if inner > 0.0 {
-            mark["innerRadius"] = json!({"expr": expr_polar_radius(&format!("{inner}"))});
+        if p.inner > 0.0 {
+            mark["innerRadius"] = json!({"expr": p.expr_radius(&inner_s)});
         }
-        mark["outerRadius"] = json!({"expr": expr_polar_radius(&format!("{POLAR_OUTER}"))});
+        mark["outerRadius"] = json!({"expr": p.expr_radius(&outer_s)});
 
         vec![json!({
             "data": {"values": [{}]},
@@ -737,71 +786,6 @@ fn apply_clip_to_layers(vl_spec: &mut Value, clip: bool) {
 }
 
 // =============================================================================
-// Polar projection implementation
-// =============================================================================
-
-/// Extract (start_radians, end_radians, inner) from a Projection.
-///
-/// Defaults: start=0°, end=start+360°, inner=0.
-fn polar_properties(project: Option<&Projection>) -> (f64, f64, f64) {
-    let prop = |name| {
-        project
-            .and_then(|p| p.properties.get(name))
-            .and_then(|v| match v {
-                ParameterValue::Number(n) => Some(*n),
-                _ => None,
-            })
-    };
-    let start_degrees = prop("start").unwrap_or(0.0);
-    let end_degrees = prop("end").unwrap_or(start_degrees + 360.0);
-    let inner = prop("inner").unwrap_or(0.0);
-    (
-        start_degrees * std::f64::consts::PI / 180.0,
-        end_degrees * std::f64::consts::PI / 180.0,
-        inner,
-    )
-}
-
-// =============================================================================
-// Polar expression helpers
-// =============================================================================
-// Vega-Lite expression strings for polar ↔ pixel coordinate math.
-// Used by both data-layer transforms and decoration layers.
-
-/// Normalize a value from `[domain_min, domain_max]` to `[inner, POLAR_OUTER]`.
-fn expr_normalize_radius(value: &str, domain_min: f64, domain_max: f64, inner: f64) -> String {
-    let scale = (POLAR_OUTER - inner) / (domain_max - domain_min);
-    format!("{inner} + {scale} * ({value} - {domain_min})")
-}
-
-/// Normalize a value from `[domain_min, domain_max]` to `[start, end]` radians.
-fn expr_normalize_theta(
-    value: &str,
-    domain_min: f64,
-    domain_max: f64,
-    start: f64,
-    end: f64,
-) -> String {
-    let scale = (end - start) / (domain_max - domain_min);
-    format!("{start} + {scale} * ({value} - {domain_min})")
-}
-
-/// Pixel x-coordinate from a normalized radius expression and theta expression.
-fn expr_polar_x(r: &str, theta: &str) -> String {
-    format!("width / 2 + min(width, height) / 2 * ({r}) * sin({theta})")
-}
-
-/// Pixel y-coordinate from a normalized radius expression and theta expression.
-fn expr_polar_y(r: &str, theta: &str) -> String {
-    format!("height / 2 - min(width, height) / 2 * ({r}) * cos({theta})")
-}
-
-/// Pixel radius from a normalized radius expression.
-fn expr_polar_radius(r: &str) -> String {
-    format!("min(width, height) / 2 * ({r})")
-}
-
-// =============================================================================
 // Polar projection transformation
 // =============================================================================
 
@@ -813,15 +797,13 @@ fn expr_polar_radius(r: &str) -> String {
 /// 2. Applies start/end angle range from PROJECT clause
 /// 3. Applies inner radius for donut charts
 fn apply_polar_project(
-    project: &Projection,
+    panel: &PolarPanel,
     spec: &Plot,
     data: &DataFrame,
     vl_spec: &mut Value,
 ) -> Result<Option<DataFrame>> {
-    let (start_radians, end_radians, inner) = polar_properties(Some(project));
-
     // Convert geoms to polar equivalents and apply angle range + inner radius
-    convert_geoms_to_polar(spec, vl_spec, start_radians, end_radians, inner)?;
+    convert_geoms_to_polar(panel, spec, vl_spec)?;
 
     // No DataFrame transformation needed - Vega-Lite handles polar math
     Ok(Some(data.clone()))
@@ -838,33 +820,7 @@ fn apply_polar_project(
 /// 2. **Non-arc marks** (point, line): Vega-Lite only supports radius/theta channels
 ///    for arc and text marks. For other marks, we convert polar→cartesian using
 ///    calculate transforms and x/y encoding channels.
-fn convert_geoms_to_polar(
-    spec: &Plot,
-    vl_spec: &mut Value,
-    start_radians: f64,
-    end_radians: f64,
-    inner: f64,
-) -> Result<()> {
-    let is_faceted = match &spec.facet {
-        Some(facet) => !facet.get_variables().is_empty(),
-        _ => false,
-    };
-
-    let size = if is_faceted {
-        // Try to grab size from spec if available
-        let height = vl_spec.get("height").and_then(|h| h.as_f64());
-        let width = vl_spec.get("width").and_then(|w| w.as_f64());
-
-        Some(match (height, width) {
-            (Some(h), Some(w)) => h.min(w),
-            (Some(h), None) => h,
-            (None, Some(w)) => w,
-            _ => DEFAULT_POLAR_SIZE, // Fallback
-        })
-    } else {
-        None
-    };
-
+fn convert_geoms_to_polar(panel: &PolarPanel, spec: &Plot, vl_spec: &mut Value) -> Result<()> {
     if let Some(layers_arr) = get_layers_mut(vl_spec) {
         for layer in layers_arr {
             if let Some(mark) = layer.get_mut("mark") {
@@ -875,12 +831,12 @@ fn convert_geoms_to_polar(
                 if is_arc {
                     // Arc marks natively support radius/theta channels
                     if let Some(encoding) = layer.get_mut("encoding") {
-                        apply_polar_angle_range(encoding, start_radians, end_radians)?;
-                        apply_polar_radius_range(encoding, inner, size)?;
+                        apply_polar_angle_range(encoding, panel)?;
+                        apply_polar_radius_range(encoding, panel)?;
                     }
                 } else {
                     // Non-arc marks (point, line): convert polar to cartesian
-                    convert_polar_to_cartesian(layer, start_radians, end_radians, inner)?;
+                    convert_polar_to_cartesian(layer, panel)?;
                 }
             }
         }
@@ -896,12 +852,7 @@ fn convert_geoms_to_polar(
 /// 1. Extract field names and scale domains from the radius/theta encoding
 /// 2. Add calculate transforms to normalize and convert polar→cartesian
 /// 3. Replace radius/theta with x/y encoding channels
-fn convert_polar_to_cartesian(
-    layer: &mut Value,
-    start_radians: f64,
-    end_radians: f64,
-    inner: f64,
-) -> Result<()> {
+fn convert_polar_to_cartesian(layer: &mut Value, panel: &PolarPanel) -> Result<()> {
     // Phase 1: Extract info from encoding (immutable read)
     let (r_field, r_domain, r_title, theta_field, theta_domain, theta_title) = {
         let encoding = layer
@@ -935,31 +886,25 @@ fn convert_polar_to_cartesian(
     }));
 
     let theta_expr = if (theta_max - theta_min).abs() > f64::EPSILON {
-        expr_normalize_theta(
-            &format!("datum['{theta_field}']"),
-            theta_min,
-            theta_max,
-            start_radians,
-            end_radians,
-        )
+        panel.expr_normalize_theta(&format!("datum['{theta_field}']"), theta_min, theta_max)
     } else {
-        format!("{start_radians}")
+        format!("{}", panel.start)
     };
     polar_transforms.push(json!({"calculate": theta_expr, "as": "__polar_theta__"}));
 
     let r_expr = if (r_max - r_min).abs() > f64::EPSILON {
-        expr_normalize_radius(&format!("datum['{r_field}']"), r_min, r_max, inner)
+        panel.expr_normalize_radius(&format!("datum['{r_field}']"), r_min, r_max)
     } else {
-        format!("{}", (POLAR_OUTER + inner) / 2.0)
+        format!("{}", (panel.outer + panel.inner) / 2.0)
     };
     polar_transforms.push(json!({"calculate": r_expr, "as": "__polar_r__"}));
 
     polar_transforms.push(json!({
-        "calculate": expr_polar_x("datum.__polar_r__", "datum.__polar_theta__"),
+        "calculate": panel.expr_x("datum.__polar_r__", "datum.__polar_theta__"),
         "as": "__polar_x__"
     }));
     polar_transforms.push(json!({
-        "calculate": expr_polar_y("datum.__polar_r__", "datum.__polar_theta__"),
+        "calculate": panel.expr_y("datum.__polar_r__", "datum.__polar_theta__"),
         "as": "__polar_y__"
     }));
 
@@ -1086,14 +1031,10 @@ fn convert_mark_to_polar(mark: &Value, _spec: &Plot) -> Result<Value> {
 /// The encoding channels are already correctly named (theta/radius) by
 /// `map_aesthetic_name()` based on coord kind. This function only applies
 /// the optional start/end angle range from the PROJECT clause.
-fn apply_polar_angle_range(
-    encoding: &mut Value,
-    start_radians: f64,
-    end_radians: f64,
-) -> Result<()> {
+fn apply_polar_angle_range(encoding: &mut Value, panel: &PolarPanel) -> Result<()> {
     // Skip if default range (0 to 2π)
-    let is_default = start_radians.abs() <= f64::EPSILON
-        && (end_radians - 2.0 * std::f64::consts::PI).abs() <= f64::EPSILON;
+    let is_default = panel.start.abs() <= f64::EPSILON
+        && (panel.end - 2.0 * std::f64::consts::PI).abs() <= f64::EPSILON;
     if is_default {
         return Ok(());
     }
@@ -1108,14 +1049,14 @@ fn apply_polar_angle_range(
             // Merge range into existing scale object (preserving domain from expansion)
             if let Some(scale_val) = theta_obj.get_mut("scale") {
                 if let Some(scale_obj) = scale_val.as_object_mut() {
-                    scale_obj.insert("range".to_string(), json!([start_radians, end_radians]));
+                    scale_obj.insert("range".to_string(), json!([panel.start, panel.end]));
                 }
             } else {
                 // No existing scale, create new one with just range
                 theta_obj.insert(
                     "scale".to_string(),
                     json!({
-                        "range": [start_radians, end_radians]
+                        "range": [panel.start, panel.end]
                     }),
                 );
             }
@@ -1130,18 +1071,15 @@ fn apply_polar_angle_range(
 /// Sets the radius scale range using Vega-Lite expressions for proportional sizing.
 /// The inner parameter (0.0 to 1.0) specifies the inner radius as a proportion
 /// of the outer radius, creating a donut hole.
-fn apply_polar_radius_range(encoding: &mut Value, inner: f64, size: Option<f64>) -> Result<()> {
+fn apply_polar_radius_range(encoding: &mut Value, panel: &PolarPanel) -> Result<()> {
     let enc_obj = encoding
         .as_object_mut()
         .ok_or_else(|| GgsqlError::WriterError("Encoding is not an object".to_string()))?;
 
-    let (inner_expr, outer_expr) = match size {
-        Some(dim) => (format!("{}/2*{}", dim, inner), format!("{}/2", dim)),
-        None => (
-            expr_polar_radius(&format!("{inner}")),
-            expr_polar_radius(&format!("{POLAR_OUTER}")),
-        ),
-    };
+    let inner_s = format!("{}", panel.inner);
+    let outer_s = format!("{}", panel.outer);
+    let inner_expr = panel.expr_radius(&inner_s);
+    let outer_expr = panel.expr_radius(&outer_s);
 
     let range_value = json!([{"expr": inner_expr}, {"expr": outer_expr}]);
 
@@ -1189,7 +1127,11 @@ mod tests {
             }
         });
 
-        apply_polar_radius_range(&mut encoding, 0.5, None).unwrap();
+        let mut proj = Projection::polar();
+        proj.properties
+            .insert("inner".to_string(), ParameterValue::Number(0.5));
+        let panel = PolarPanel::new(Some(&proj), false);
+        apply_polar_radius_range(&mut encoding, &panel).unwrap();
 
         let range = encoding["radius"]["scale"]["range"].as_array().unwrap();
         assert_eq!(range.len(), 2);
@@ -1214,12 +1156,18 @@ mod tests {
             }
         });
 
-        apply_polar_radius_range(&mut encoding, 0.5, Some(350.0)).unwrap();
+        let mut proj = Projection::polar();
+        proj.properties
+            .insert("inner".to_string(), ParameterValue::Number(0.5));
+        proj.properties
+            .insert("size".to_string(), ParameterValue::Number(350.0));
+        let panel = PolarPanel::new(Some(&proj), true);
+        apply_polar_radius_range(&mut encoding, &panel).unwrap();
 
         let range = encoding["radius"]["scale"]["range"].as_array().unwrap();
         assert_eq!(range.len(), 2);
-        assert_eq!(range[0]["expr"].as_str().unwrap(), "350/2*0.5");
-        assert_eq!(range[1]["expr"].as_str().unwrap(), "350/2");
+        assert_eq!(range[0]["expr"].as_str().unwrap(), "175 * (0.5)");
+        assert_eq!(range[1]["expr"].as_str().unwrap(), "175 * (1)");
     }
 
     #[test]
@@ -1233,18 +1181,22 @@ mod tests {
             }
         });
 
-        apply_polar_radius_range(&mut encoding, 0.0, Some(350.0)).unwrap();
+        let mut proj = Projection::polar();
+        proj.properties
+            .insert("size".to_string(), ParameterValue::Number(350.0));
+        let panel = PolarPanel::new(Some(&proj), true);
+        apply_polar_radius_range(&mut encoding, &panel).unwrap();
 
         // Range should be [0, 350/2] for full pie
         let range = encoding["radius"]["scale"]["range"].as_array().unwrap();
         assert_eq!(range.len(), 2);
-        assert_eq!(range[0]["expr"].as_str().unwrap(), "350/2*0");
-        assert_eq!(range[1]["expr"].as_str().unwrap(), "350/2");
+        assert_eq!(range[0]["expr"].as_str().unwrap(), "175 * (0)");
+        assert_eq!(range[1]["expr"].as_str().unwrap(), "175 * (1)");
     }
 
     #[test]
     fn test_map_position_to_vegalite_cartesian() {
-        let renderer = CartesianProjection;
+        let renderer = CartesianProjection { is_faceted: false };
         assert_eq!(
             map_position_to_vegalite("pos1", &renderer),
             Some("x".to_string())
@@ -1263,12 +1215,17 @@ mod tests {
         );
         assert_eq!(map_position_to_vegalite("color", &renderer), None);
         assert_eq!(renderer.offset_channels(), ("xOffset", "yOffset"));
-        assert_eq!(renderer.panel_size(), None);
+        assert_eq!(
+            renderer.panel_size(),
+            Some((json!("container"), json!("container")))
+        );
     }
 
     #[test]
     fn test_map_position_to_vegalite_polar() {
-        let renderer = PolarProjection;
+        let renderer = PolarProjection {
+            panel: PolarPanel::new(None, false),
+        };
         assert_eq!(
             map_position_to_vegalite("pos1", &renderer),
             Some("radius".to_string())
@@ -1288,7 +1245,7 @@ mod tests {
         assert_eq!(renderer.offset_channels(), ("radiusOffset", "thetaOffset"));
         assert_eq!(
             renderer.panel_size(),
-            Some((DEFAULT_POLAR_SIZE, DEFAULT_POLAR_SIZE))
+            Some((json!(DEFAULT_POLAR_SIZE), json!(DEFAULT_POLAR_SIZE)))
         );
     }
 
@@ -1313,10 +1270,9 @@ mod tests {
     #[test]
     fn test_polar_to_cartesian_pixel_coordinates() {
         let mut layer = polar_point_layer();
-        let start = 0.0;
-        let end = 2.0 * std::f64::consts::PI;
+        let panel = PolarPanel::new(None, false);
 
-        convert_polar_to_cartesian(&mut layer, start, end, 0.0).unwrap();
+        convert_polar_to_cartesian(&mut layer, &panel).unwrap();
 
         let transforms = layer["transform"].as_array().unwrap();
 
@@ -1353,9 +1309,9 @@ mod tests {
     #[test]
     fn test_polar_to_cartesian_filters_nulls() {
         let mut layer = polar_point_layer();
-        let full_circle = 2.0 * std::f64::consts::PI;
+        let panel = PolarPanel::new(None, false);
 
-        convert_polar_to_cartesian(&mut layer, 0.0, full_circle, 0.0).unwrap();
+        convert_polar_to_cartesian(&mut layer, &panel).unwrap();
 
         let transforms = layer["transform"].as_array().unwrap();
         let filter = transforms
@@ -1372,18 +1328,23 @@ mod tests {
 
     #[test]
     fn test_get_projection_renderer() {
-        let cartesian = get_projection_renderer(None);
+        let cartesian = get_projection_renderer(None, false);
         assert_eq!(cartesian.position_channels(), ("x", "y"));
 
         let polar_proj = Projection::polar();
-        let polar = get_projection_renderer(Some(&polar_proj));
+        let polar = get_projection_renderer(Some(&polar_proj), false);
         assert_eq!(polar.position_channels(), ("radius", "theta"));
     }
 
     #[test]
     fn test_expr_normalize_radius() {
-        // domain [0, 10], inner 0.2 → scale = (1.0 - 0.2) / (10 - 0) = 0.08
-        let expr = expr_normalize_radius("datum.v", 0.0, 10.0, 0.2);
+        let panel = PolarPanel::new(None, false);
+
+        // domain [0, 10], inner 0.2 — build a panel with inner=0.2
+        let mut p = panel;
+        p.inner = 0.2;
+        // scale = (1.0 - 0.2) / (10 - 0) = 0.08
+        let expr = p.expr_normalize_radius("datum.v", 0.0, 10.0);
         assert!(
             expr.contains("0.08"),
             "scale factor should be 0.08, got: {expr}"
@@ -1394,7 +1355,8 @@ mod tests {
         );
 
         // domain [5, 15], inner 0 → scale = 1.0 / 10 = 0.1
-        let expr = expr_normalize_radius("datum.x", 5.0, 15.0, 0.0);
+        p.inner = 0.0;
+        let expr = p.expr_normalize_radius("datum.x", 5.0, 15.0);
         assert!(
             expr.contains("0.1"),
             "scale factor should be 0.1, got: {expr}"
@@ -1406,9 +1368,10 @@ mod tests {
         use std::f64::consts::PI;
 
         // domain [0, 100], partial circle 90°–270° (π/2 to 3π/2)
-        let start = PI / 2.0;
-        let end = 3.0 * PI / 2.0;
-        let expr = expr_normalize_theta("datum.v", 0.0, 100.0, start, end);
+        let mut panel = PolarPanel::new(None, false);
+        panel.start = PI / 2.0;
+        panel.end = 3.0 * PI / 2.0;
+        let expr = panel.expr_normalize_theta("datum.v", 0.0, 100.0);
         // scale = (3π/2 - π/2) / (100 - 0) = π / 100 ≈ 0.031416
         let expected_scale = PI / 100.0;
         assert!(
@@ -1438,10 +1401,12 @@ mod tests {
             (0.0, 100.0),
             vec![25.0, 50.0, 75.0],
         )];
-        let proj = PolarProjection;
+        let proj = PolarProjection {
+            panel: PolarPanel::new(None, false),
+        };
         let theme = json!({"axis": {"gridColor": "#FFF", "gridWidth": 2}});
 
-        let layers = proj.grid_rings(&scales, None, &theme);
+        let layers = proj.grid_rings(&scales, &theme);
         assert_eq!(layers.len(), 1, "should produce one layer");
 
         let layer = &layers[0];
@@ -1472,10 +1437,12 @@ mod tests {
     #[test]
     fn test_grid_spokes() {
         let scales = vec![scale_with_breaks("pos2", (0.0, 60.0), vec![20.0, 40.0])];
-        let proj = PolarProjection;
+        let proj = PolarProjection {
+            panel: PolarPanel::new(None, false),
+        };
         let theme = json!({"axis": {"gridColor": "#CCC", "gridWidth": 1}});
 
-        let layers = proj.grid_spokes(&scales, None, &theme);
+        let layers = proj.grid_spokes(&scales, &theme);
         assert_eq!(layers.len(), 1, "should produce one layer");
 
         let layer = &layers[0];
@@ -1506,7 +1473,9 @@ mod tests {
             (0.0, 100.0),
             vec![25.0, 50.0, 75.0],
         )];
-        let proj = PolarProjection;
+        let proj = PolarProjection {
+            panel: PolarPanel::new(None, false),
+        };
         let theme = json!({
             "axis": {
                 "tickColor": "#333",
@@ -1516,7 +1485,7 @@ mod tests {
             }
         });
 
-        let layers = proj.radial_axis(&scales, None, &theme);
+        let layers = proj.radial_axis(&scales, &theme);
         assert_eq!(
             layers.len(),
             3,
@@ -1553,10 +1522,12 @@ mod tests {
     #[test]
     fn test_radial_axis_no_breaks() {
         let scales = vec![scale_with_breaks("pos1", (0.0, 100.0), vec![])];
-        let proj = PolarProjection;
+        let proj = PolarProjection {
+            panel: PolarPanel::new(None, false),
+        };
         let theme = json!({"axis": {}});
 
-        let layers = proj.radial_axis(&scales, None, &theme);
+        let layers = proj.radial_axis(&scales, &theme);
         assert_eq!(
             layers.len(),
             1,
@@ -1572,7 +1543,9 @@ mod tests {
             (0.0, 60.0),
             vec![15.0, 30.0, 45.0],
         )];
-        let proj = PolarProjection;
+        let proj = PolarProjection {
+            panel: PolarPanel::new(None, false),
+        };
         let theme = json!({
             "axis": {
                 "tickColor": "#333",
@@ -1582,7 +1555,7 @@ mod tests {
             }
         });
 
-        let layers = proj.angular_axis(&scales, None, &theme);
+        let layers = proj.angular_axis(&scales, &theme);
         assert_eq!(
             layers.len(),
             3,
@@ -1630,10 +1603,12 @@ mod tests {
     #[test]
     fn test_angular_axis_no_breaks() {
         let scales = vec![scale_with_breaks("pos2", (0.0, 60.0), vec![])];
-        let proj = PolarProjection;
+        let proj = PolarProjection {
+            panel: PolarPanel::new(None, false),
+        };
         let theme = json!({"axis": {}});
 
-        let layers = proj.angular_axis(&scales, None, &theme);
+        let layers = proj.angular_axis(&scales, &theme);
         assert_eq!(
             layers.len(),
             1,
