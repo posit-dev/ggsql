@@ -809,6 +809,18 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         }
     }
 
+    /// Labelled breaks: `(numeric_position, display_label)` pairs.
+    ///
+    /// Default: pairs each `numeric_breaks()` value with its string form.
+    /// Discrete/ordinal override to pair position indices with input-range
+    /// category names.  `label_mapping` overrides are applied by the caller.
+    fn break_labels(&self, scale: &super::Scale) -> Vec<(f64, String)> {
+        self.numeric_breaks(scale)
+            .into_iter()
+            .map(|v| (v, format!("{v}")))
+            .collect()
+    }
+
     /// Numeric domain `(min, max)` from a resolved scale.
     ///
     /// Default: reads the input range endpoints as f64.
@@ -1280,6 +1292,11 @@ impl ScaleType {
     /// Numeric domain `(min, max)` from a resolved scale.
     pub fn numeric_domain(&self, scale: &super::Scale) -> Option<(f64, f64)> {
         self.0.numeric_domain(scale)
+    }
+
+    /// Labelled breaks: `(numeric_position, display_label)` pairs.
+    pub fn break_labels(&self, scale: &super::Scale) -> Vec<(f64, String)> {
+        self.0.break_labels(scale)
     }
 
     /// Resolve scale properties from data context.

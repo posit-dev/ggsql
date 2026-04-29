@@ -106,6 +106,31 @@ impl Scale {
         }
     }
 
+    /// Labelled breaks: `(numeric_position, display_label)` pairs.
+    ///
+    /// Delegates to the scale type, then applies `label_mapping` overrides.
+    /// Suppressed labels (`None` in the mapping) become empty strings.
+    pub fn break_labels(&self) -> Vec<(f64, String)> {
+        let raw = match &self.scale_type {
+            Some(st) => st.break_labels(self),
+            None => self
+                .numeric_breaks()
+                .into_iter()
+                .map(|v| (v, format!("{v}")))
+                .collect(),
+        };
+        let mappings = self.label_mapping.as_ref();
+        let mut out = Vec::with_capacity(raw.len());
+        for (pos, label) in raw {
+            match mappings.and_then(|m| m.get(&label)) {
+                Some(Some(renamed)) => out.push((pos, renamed.clone())),
+                Some(None) => out.push((pos, String::new())),
+                None => out.push((pos, label)),
+            }
+        }
+        out
+    }
+
     /// Numeric domain as `(min, max)` from the resolved input range.
     ///
     /// Delegates to the scale type for type-specific logic (e.g. discrete
@@ -263,5 +288,49 @@ mod tests {
         );
         assert_eq!(s.numeric_breaks(), vec![20.0, 40.0]);
         assert_eq!(s.numeric_domain(), Some((10.0, 50.0)));
+    }
+
+    // =========================================================================
+    // break_labels
+    // =========================================================================
+
+    #[test]
+    fn test_continuous_break_labels() {
+        let s = continuous_scale((0.0, 100.0), vec![25.0, 50.0, 75.0]);
+        assert_eq!(
+            s.break_labels(),
+            vec![(25.0, "25".to_string()), (50.0, "50".to_string()), (75.0, "75".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_discrete_break_labels() {
+        let s = discrete_scale(&["A", "B", "C"]);
+        assert_eq!(
+            s.break_labels(),
+            vec![(1.0, "A".to_string()), (2.0, "B".to_string()), (3.0, "C".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_ordinal_break_labels() {
+        let s = ordinal_scale(&["low", "mid", "high"]);
+        assert_eq!(
+            s.break_labels(),
+            vec![(1.0, "low".to_string()), (2.0, "mid".to_string()), (3.0, "high".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_break_labels_with_mapping() {
+        let mut s = discrete_scale(&["A", "B", "C"]);
+        let mut mapping = HashMap::new();
+        mapping.insert("A".to_string(), Some("Alpha".to_string()));
+        mapping.insert("C".to_string(), None);
+        s.label_mapping = Some(mapping);
+        assert_eq!(
+            s.break_labels(),
+            vec![(1.0, "Alpha".to_string()), (2.0, "B".to_string()), (3.0, String::new())]
+        );
     }
 }

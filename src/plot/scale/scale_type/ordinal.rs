@@ -74,6 +74,21 @@ impl ScaleTypeTrait for Ordinal {
         if n > 0 { Some((0.5, n as f64 + 0.5)) } else { None }
     }
 
+    fn break_labels(&self, scale: &super::super::Scale) -> Vec<(f64, String)> {
+        let Some(range) = scale.input_range.as_ref() else {
+            return Vec::new();
+        };
+        let mut out = Vec::with_capacity(range.len());
+        for (i, elem) in range.iter().enumerate() {
+            let label = match elem {
+                ArrayElement::String(s) => s.clone(),
+                other => format!("{}", other.to_json()),
+            };
+            out.push(((i + 1) as f64, label));
+        }
+        out
+    }
+
     fn allowed_transforms(&self) -> &'static [TransformKind] {
         // Categorical transforms plus Integer for ordered numeric categories
         &[

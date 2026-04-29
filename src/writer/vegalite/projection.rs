@@ -416,7 +416,7 @@ impl PolarProjection {
         let Some(scale) = scales.iter().find(|s| s.aesthetic == "pos1") else {
             return Vec::new();
         };
-        let breaks = scale.numeric_breaks();
+        let break_labels = scale.break_labels();
         let Some((domain_min, domain_max)) = scale.numeric_domain() else {
             return Vec::new();
         };
@@ -472,7 +472,7 @@ impl PolarProjection {
             }
         }));
 
-        if breaks.is_empty() {
+        if break_labels.is_empty() {
             return layers;
         }
 
@@ -481,7 +481,10 @@ impl PolarProjection {
         // direction. We offset by ±tick_size pixels from the axis line.
         // In pixel space, the tangential unit vector at angle θ is
         // (cos(θ), sin(θ)), so we shift by that times half the tick size.
-        let values: Vec<Value> = breaks.iter().map(|&b| json!({"v": b})).collect();
+        let values: Vec<Value> = break_labels
+            .iter()
+            .map(|(v, label)| json!({"v": v, "label": label}))
+            .collect();
         let r_norm = p.expr_normalize_radius("datum.v", domain_min, domain_max);
 
         let is_full_circle = (p.end - p.start - 2.0 * std::f64::consts::PI).abs() < f64::EPSILON;
@@ -539,7 +542,7 @@ impl PolarProjection {
             "encoding": {
                 "x": {"field": "x", "type": "quantitative", "scale": null, "axis": null},
                 "y": {"field": "y", "type": "quantitative", "scale": null, "axis": null},
-                "text": {"field": "v", "type": "quantitative"},
+                "text": {"field": "label", "type": "nominal"},
             }
         }));
 
@@ -550,7 +553,7 @@ impl PolarProjection {
         let Some(scale) = scales.iter().find(|s| s.aesthetic == "pos2") else {
             return Vec::new();
         };
-        let breaks = scale.numeric_breaks();
+        let break_labels = scale.break_labels();
         let Some((domain_min, domain_max)) = scale.numeric_domain() else {
             return Vec::new();
         };
@@ -601,14 +604,17 @@ impl PolarProjection {
             }
         }));
 
-        if breaks.is_empty() {
+        if break_labels.is_empty() {
             return layers;
         }
 
         // Ticks: short radial segments at each theta break, pointing inward.
         // The tick direction at angle θ is along the radius vector:
         // unit = (sin(θ), -cos(θ)) in pixel space.
-        let values: Vec<Value> = breaks.iter().map(|&b| json!({"v": b})).collect();
+        let values: Vec<Value> = break_labels
+            .iter()
+            .map(|(v, label)| json!({"v": v, "label": label}))
+            .collect();
         let theta = p.expr_normalize_theta("datum.v", domain_min, domain_max);
 
         let is_full_circle = (p.end - p.start - 2.0 * std::f64::consts::PI).abs() < f64::EPSILON;
@@ -648,7 +654,6 @@ impl PolarProjection {
         }));
 
         // Labels: one sub-layer per (align, baseline) combination.
-        // This is cope for text layers not allowing multiple properties per layer.
         // All break values live in the parent data with an `_ab` tag; each
         // child filters on its tag and sets the corresponding mark alignment.
         let label_pad = 2.0;
@@ -657,8 +662,8 @@ impl PolarProjection {
 
         let mut label_values = Vec::new();
         let mut alignment_keys = std::collections::BTreeSet::new();
-        for &b in &breaks {
-            let angle = p.start + theta_scale * (b - domain_min);
+        for &(v, ref label) in &break_labels {
+            let angle = p.start + theta_scale * (v - domain_min);
             let (sin_a, cos_a) = angle.sin_cos();
             let align = if sin_a > 0.1 {
                 "left"
@@ -676,7 +681,7 @@ impl PolarProjection {
             };
             let ab = format!("{align}/{baseline}");
             alignment_keys.insert(ab.clone());
-            label_values.push(json!({"v": b, "_ab": ab}));
+            label_values.push(json!({"v": v, "label": label, "_ab": ab}));
         }
 
         let sub_layers: Vec<Value> = alignment_keys
@@ -710,7 +715,7 @@ impl PolarProjection {
             "encoding": {
                 "x": {"field": "x", "type": "quantitative", "scale": null, "axis": null},
                 "y": {"field": "y", "type": "quantitative", "scale": null, "axis": null},
-                "text": {"field": "v", "type": "quantitative"},
+                "text": {"field": "label", "type": "nominal"},
             },
             "layer": sub_layers,
         }));
@@ -1646,7 +1651,7 @@ mod tests {
         let labels = &layers[2];
         assert_eq!(labels["mark"]["type"], "text");
         assert_eq!(labels["data"]["values"].as_array().unwrap().len(), 3);
-        assert_eq!(labels["encoding"]["text"]["field"], "v");
+        assert_eq!(labels["encoding"]["text"]["field"], "label");
         assert_eq!(labels["encoding"]["x"]["scale"], json!(null));
     }
 
@@ -1711,7 +1716,7 @@ mod tests {
 
         // Layer 2: nested label layer with shared data/transforms/encoding
         let labels = &layers[2];
-        assert_eq!(labels["encoding"]["text"]["field"], "v");
+        assert_eq!(labels["encoding"]["text"]["field"], "label");
         assert_eq!(labels["data"]["values"].as_array().unwrap().len(), 3);
         let sub_layers = labels["layer"].as_array().unwrap();
         assert!(
