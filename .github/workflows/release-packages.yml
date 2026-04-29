@@ -574,7 +574,10 @@ jobs:
           path: npm-tarball
 
       - name: Update npm for OIDC support
-        run: npm install -g npm@latest
+        # Install v10.9.8 first as workaround for nodejs/node#62425
+        run: |
+          npm install -g npm@10.9.8
+          npm install -g npm@latest
 
       - name: Determine npm dist-tag
         id: dist-tag
