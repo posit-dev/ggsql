@@ -62,6 +62,9 @@ website:
           - text: "Releases"
           - text: "Version 0.2.7 (alpha)"
             href: https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/
+          - text: "---"
+          - text: CHANGELOG
+            href: CHANGELOG.md
     right:
       - text: Playground
         href: wasm/index.html
