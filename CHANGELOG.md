@@ -24,6 +24,7 @@ and writer errors now report user-facing aesthetic names (`x`, `y`, `panel`,
 based on the active coordinate system and facet layout (#388).
 - Fixed opacity calculation in point layers with Vega-Lite (#393)
 - Fixed an issue with case-sensitive column references in mappings (#374)
+- Fixed an issue with OOB null-filtering, leading to missing median lines in boxplots (#394)
 
 ### Changed
 
