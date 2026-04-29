@@ -176,7 +176,8 @@ fn build_layers(
     let mut layers = Vec::new();
 
     // Build context once for all layers
-    let context = encoding::RenderContext::new(&spec.scales, coord_kind);
+    let context =
+        encoding::RenderContext::new(&spec.scales, coord_kind, spec.get_aesthetic_context());
 
     for (layer_idx, layer) in spec.layers.iter().enumerate() {
         let data_key = &layer_data_keys[layer_idx];
@@ -343,7 +344,8 @@ fn build_layer_encoding(
     }
 
     // Build context for renderer (also provides resolved position channel names)
-    let context = encoding::RenderContext::new(&spec.scales, coord_kind);
+    let context =
+        encoding::RenderContext::new(&spec.scales, coord_kind, spec.get_aesthetic_context());
     let (_, _, pos1_offset, pos2, _, pos2_offset) = &context.channels;
 
     // Add pos1 offset encoding for dodged positions (pos1offset column)
@@ -1067,6 +1069,7 @@ impl Writer for VegaLiteWriter {
             .collect();
 
         // 4. Validate columns for each layer
+        let aesthetic_ctx = spec.get_aesthetic_context();
         for (layer_idx, (layer, key)) in spec.layers.iter().zip(layer_data_keys.iter()).enumerate()
         {
             let df = data.get(key).ok_or_else(|| {
@@ -1076,7 +1079,7 @@ impl Writer for VegaLiteWriter {
                     layer_idx + 1
                 ))
             })?;
-            validate_layer_columns(layer, df, layer_idx)?;
+            validate_layer_columns(layer, df, layer_idx, &aesthetic_ctx)?;
         }
 
         // 5. Build base Vega-Lite spec
@@ -2854,5 +2857,144 @@ mod tests {
 
         // The spec must also pass Vega-Lite schema validation
         assert_valid_vegalite(&json_str);
+    }
+
+    // =========================================================================
+    // Internal aesthetic names must not leak into vegalite writer error messages
+    // =========================================================================
+
+    mod writer_error_translation_tests {
+        use super::*;
+
+        #[test]
+        fn validate_layer_columns_translates_pos1_to_x_under_cartesian() {
+            let writer = VegaLiteWriter::new();
+            let mut spec = Plot::new();
+            let layer = Layer::new(Geom::point())
+                .with_aesthetic(
+                    "x".to_string(),
+                    AestheticValue::standard_column("missing_col".to_string()),
+                )
+                .with_aesthetic(
+                    "y".to_string(),
+                    AestheticValue::standard_column("y".to_string()),
+                );
+            spec.layers.push(layer);
+
+            let df = df! {
+                "y" => vec![1, 2, 3],
+            }
+            .unwrap();
+
+            transform_spec(&mut spec);
+
+            let msg = match writer.write(&spec, &wrap_data(df)) {
+                Err(GgsqlError::ValidationError(s)) => s,
+                Err(other) => panic!("expected ValidationError, got: {}", other),
+                Ok(_) => panic!("expected error, got success"),
+            };
+
+            assert_eq!(
+                msg,
+                "Column 'missing_col' referenced in aesthetic 'x' (layer 1 (global data)) does not exist.\nAvailable columns: y"
+            );
+        }
+
+        #[test]
+        fn validate_layer_columns_translates_pos1_to_angle_under_polar() {
+            use crate::plot::projection::{Coord, Projection};
+
+            let writer = VegaLiteWriter::new();
+            let mut spec = Plot::new();
+            spec.project = Some(Projection {
+                aesthetics: vec!["angle".to_string(), "radius".to_string()],
+                coord: Coord::polar(),
+                properties: HashMap::new(),
+            });
+            let layer = Layer::new(Geom::point())
+                .with_aesthetic(
+                    "angle".to_string(),
+                    AestheticValue::standard_column("missing_col".to_string()),
+                )
+                .with_aesthetic(
+                    "radius".to_string(),
+                    AestheticValue::standard_column("radius".to_string()),
+                );
+            spec.layers.push(layer);
+
+            let df = df! {
+                "radius" => vec![1, 2, 3],
+            }
+            .unwrap();
+
+            transform_spec(&mut spec);
+
+            let msg = match writer.write(&spec, &wrap_data(df)) {
+                Err(GgsqlError::ValidationError(s)) => s,
+                Err(other) => panic!("expected ValidationError, got: {}", other),
+                Ok(_) => panic!("expected error, got success"),
+            };
+
+            assert_eq!(
+                msg,
+                "Column 'missing_col' referenced in aesthetic 'angle' (layer 1 (global data)) does not exist.\nAvailable columns: radius"
+            );
+        }
+
+        #[test]
+        fn validate_layer_columns_translates_internal_aesthetic_column() {
+            // When a mapping value is itself a wrapped internal column name
+            // (e.g. `__ggsql_aes_pos1__`, used when an aesthetic refers to
+            // another aesthetic's stat-produced column) and that column does
+            // not exist, the error must show the user-facing aesthetic name,
+            // not pos1.
+            let writer = VegaLiteWriter::new();
+            let mut spec = Plot::new();
+            let layer = Layer::new(Geom::point())
+                .with_aesthetic(
+                    "x".to_string(),
+                    AestheticValue::standard_column(naming::aesthetic_column("pos1")),
+                )
+                .with_aesthetic(
+                    "y".to_string(),
+                    AestheticValue::standard_column("y".to_string()),
+                );
+            spec.layers.push(layer);
+
+            let df = df! {
+                "y" => vec![1, 2, 3],
+            }
+            .unwrap();
+
+            transform_spec(&mut spec);
+
+            let msg = match writer.write(&spec, &wrap_data(df)) {
+                Err(GgsqlError::ValidationError(s)) => s,
+                Err(other) => panic!("expected ValidationError, got: {}", other),
+                Ok(_) => panic!("expected error, got success"),
+            };
+
+            // Both the column reference and the aesthetic name must be in user form.
+            assert!(
+                !msg.contains("__ggsql_aes_"),
+                "message must not mention raw column name: {}",
+                msg
+            );
+            assert!(
+                !msg.contains("'pos1'"),
+                "message must not mention internal name 'pos1': {}",
+                msg
+            );
+            assert!(
+                msg.contains("Column 'x'"),
+                "stripped column name should be displayed as 'x': {}",
+                msg
+            );
+            assert!(
+                msg.contains("aesthetic 'x'"),
+                "aesthetic key should be displayed as 'x': {}",
+                msg
+            );
+        }
     }
 }

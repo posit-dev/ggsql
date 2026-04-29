@@ -243,6 +243,7 @@ module.exports = grammar({
     function_call: $ => prec(2, seq(
       $.identifier,
       '(',
+      optional($.set_quantifier),
       optional($.function_args),
       ')'
     )),
@@ -317,11 +318,17 @@ module.exports = grammar({
     window_function: $ => prec(4, seq(
       field('function', $.identifier),
       '(',
+      optional($.set_quantifier),
       optional($.function_args),
       ')',
       caseInsensitive('OVER'),
       $.window_specification
     )),
+
+    set_quantifier: $ => choice(
+      caseInsensitive('DISTINCT'),
+      caseInsensitive('ALL')
+    ),
 
     function_args: $ => seq(
       $.function_arg,
@@ -527,7 +534,7 @@ module.exports = grammar({
     geom_type: $ => choice(
       'point', 'line', 'path', 'bar', 'area', 'tile', 'polygon', 'ribbon',
       'histogram', 'density', 'smooth', 'boxplot', 'violin',
-      'text', 'label', 'segment', 'arrow', 'rule', 'errorbar'
+      'text', 'label', 'segment', 'arrow', 'rule', 'range'
     ),
 
     // MAPPING clause for aesthetic mappings: MAPPING col AS x, "blue" AS color [FROM source]

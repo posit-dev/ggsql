@@ -21,17 +21,26 @@ shapes (#368)
 - `validate()` now reports an actionable error when a SQL expression (e.g.
 `CAST(...)` or a function call) appears inside a `VISUALISE` mapping, instead
 of silently treating the entire query as SQL (#389)
+- Error messages no longer leak internal aesthetic names. Validation, scale,
+and writer errors now report user-facing aesthetic names (`x`, `y`, `panel`,
+`row`, …) instead of internal forms (`pos1`, `pos2`, `facet1`, …), translated
+based on the active coordinate system and facet layout (#388).
+- Fixed opacity calculation in point layers with Vega-Lite (#393)
+- Fixed an issue with case-sensitive column references in mappings (#374)
+- Fixed an issue with OOB null-filtering, leading to missing median lines in boxplots (#394)
 
 ### Changed
 
 - Reverted an earlier decision to materialize CTEs and the global query in Rust
 before registering them back to the backend. We now keep the data purely on the
 backend until the layer query as was always intended (#363)
-- Relieved some grammatical constraints on the SQL-portion before the VISUALISE 
+- Relieved some grammatical constraints on the SQL-portion before the VISUALISE
 portion (#364).
 - Simplified internal approach to DataFrame with DuckDB reader (#365)
 - Moved the CLI to its own module rather than be part of the main crate (#379)
 - Restructured CLAUDE.md to better deal with the rising complexity of the project (#382)
+- Renamed the `errorbar` layer to `range`. The geom was never error-specific and is generally useful for displaying intervals (min/max ranges, candlestick wicks, percentile bands, etc.).
+- The `segment` layer now requires both `xend` and `yend` (rather than auto-filling a missing endpoint from the start position). For axis-aligned 1D intervals — lollipops, candlestick wicks, etc. — use the `range` layer instead.
 
 ### Removed
 

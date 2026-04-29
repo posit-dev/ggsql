@@ -493,9 +493,7 @@ jobs:
   build-wasm:
     name: Build Wasm Package (wasm32)
     runs-on: ubuntu-latest
-    environment: npm
     permissions:
-      id-token: write
       contents: read
 
     steps:
@@ -552,12 +550,33 @@ jobs:
           path: ggsql-wasm/pkg/*.tgz
           retention-days: 30
 
+  publish-npm:
+    name: Publish to npm
+    needs: [build-wasm]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment: npm
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Download npm tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: ggsql-wasm-npm
+          path: npm-tarball
+
       - name: Update npm for OIDC support
-        if: startsWith(github.ref, 'refs/tags/v')
         run: npm install -g npm@latest
 
       - name: Determine npm dist-tag
-        if: startsWith(github.ref, 'refs/tags/v')
         id: dist-tag
         run: |
           if [[ "$GITHUB_REF_NAME" == *"-dev"* || "$GITHUB_REF_NAME" == *"-rc"* ]]; then
@@ -567,9 +586,7 @@ jobs:
           fi
 
       - name: Publish to npm
-        if: startsWith(github.ref, 'refs/tags/v')
-        working-directory: ggsql-wasm/pkg
-        run: npm publish --access=public --provenance --tag ${{ steps.dist-tag.outputs.tag }}
+        run: npm publish npm-tarball/*.tgz --access=public --provenance --tag ${{ steps.dist-tag.outputs.tag }}
 
   create-release:
     name: Create GitHub Release

@@ -17,7 +17,7 @@ There are a few additional labels beside the aesthetics that govern the differen
 
 * `title`: The main title of the plot
 * `subtitle`: An additional, often longer and more descriptive, title beneath the main title
-* `caption`: A string placed below the plot, often used to add additional information about the data source etc.
+* `caption`: A string placed below the plot, often used to add additional information about the data source etc. Currently not possible as our only writer (Vega-Lite) doesn't support it. Will be available as new writers appear.
 
 ## Automatic labelling logic
 Axes and legends get an automatic label from the mapping. The logic is as follows:

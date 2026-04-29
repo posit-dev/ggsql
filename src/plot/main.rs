@@ -418,7 +418,7 @@ mod tests {
     fn test_geom_display() {
         assert_eq!(format!("{}", Geom::point()), "point");
         assert_eq!(format!("{}", Geom::histogram()), "histogram");
-        assert_eq!(format!("{}", Geom::errorbar()), "errorbar");
+        assert_eq!(format!("{}", Geom::range()), "range");
     }
 
     // ========================================
@@ -520,15 +520,15 @@ mod tests {
             &["pos1", "pos2min", "pos2max"]
         );
 
-        // Segment requires at least one endpoint (pos1end or pos2end via bidirectional validation)
+        // Segment requires both endpoints
         assert_eq!(
             Geom::segment().aesthetics().required(),
-            &["pos1", "pos2", "pos1end"]
+            &["pos1", "pos2", "pos1end", "pos2end"]
         );
 
-        // ErrorBar requires pos1, pos2min, pos2max
+        // Range requires pos1, pos2min, pos2max
         assert_eq!(
-            Geom::errorbar().aesthetics().required(),
+            Geom::range().aesthetics().required(),
             &["pos1", "pos2min", "pos2max"]
         );
     }
