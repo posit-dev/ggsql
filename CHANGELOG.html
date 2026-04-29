@@ -238,14 +238,15 @@ gradient teal.
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#unreleased" id="toc-unreleased" class="nav-link active" data-scroll-target="#unreleased">[Unreleased]</a>
+  <li><a href="#unreleased" id="toc-unreleased" class="nav-link active" data-scroll-target="#unreleased">[Unreleased]</a></li>
+  <li><a href="#section" id="toc-section" class="nav-link" data-scroll-target="#section">0.3.0 - 2026-04-29</a>
   <ul class="collapse">
   <li><a href="#added" id="toc-added" class="nav-link" data-scroll-target="#added">Added</a></li>
   <li><a href="#fixed" id="toc-fixed" class="nav-link" data-scroll-target="#fixed">Fixed</a></li>
   <li><a href="#changed" id="toc-changed" class="nav-link" data-scroll-target="#changed">Changed</a></li>
   <li><a href="#removed" id="toc-removed" class="nav-link" data-scroll-target="#removed">Removed</a></li>
   </ul></li>
-  <li><a href="#section" id="toc-section" class="nav-link" data-scroll-target="#section">[2.7.0] - 2026-04-20</a></li>
+  <li><a href="#section-1" id="toc-section-1" class="nav-link" data-scroll-target="#section-1">[2.7.0] - 2026-04-20</a></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
     </div>
@@ -257,6 +258,9 @@ gradient teal.
 
 <section id="unreleased" class="level2">
 <h2 class="anchored" data-anchor-id="unreleased">[Unreleased]</h2>
+</section>
+<section id="section" class="level2">
+<h2 class="anchored" data-anchor-id="section">0.3.0 - 2026-04-29</h2>
 <section id="added" class="level3">
 <h3 class="anchored" data-anchor-id="added">Added</h3>
 <ul>
@@ -264,6 +268,7 @@ gradient teal.
 <li>ODBC is now turned on for the CLI as well (#344)</li>
 <li><code>FROM</code> can now come before <code>VISUALIZE</code>, mirroring the DuckDB style. This means that <code>FROM table VISUALIZE x, y</code> and <code>VISUALIZE x, y FROM table</code> are equivalent queries (#369)</li>
 <li>CLI now has built-in documentation through the <code>docs</code> command as well as a skill for llms through the <code>skill</code> command (#361)</li>
+<li>The ggsql wasm package is now published on GitHub Releases and NPM (#367)</li>
 </ul>
 </section>
 <section id="fixed" class="level3">
@@ -276,6 +281,8 @@ gradient teal.
 <li>Error messages no longer leak internal aesthetic names. Validation, scale, and writer errors now report user-facing aesthetic names (<code>x</code>, <code>y</code>, <code>panel</code>, <code>row</code>, …) instead of internal forms (<code>pos1</code>, <code>pos2</code>, <code>facet1</code>, …), translated based on the active coordinate system and facet layout (#388).</li>
 <li>Fixed opacity calculation in point layers with Vega-Lite (#393)</li>
 <li>Fixed an issue with case-sensitive column references in mappings (#374)</li>
+<li>Fixed SQL function set quantifiers in the ggsql grammar (#395)</li>
+<li>Fixed loading of dynamic libraries in PyPI build of <code>ggsql-jupyter</code> (#355, #392)</li>
 <li>Fixed an issue with OOB null-filtering, leading to missing median lines in boxplots (#394)</li>
 </ul>
 </section>
@@ -300,8 +307,8 @@ gradient teal.
 </ul>
 </section>
 </section>
-<section id="section" class="level2">
-<h2 class="anchored" data-anchor-id="section">[2.7.0] - 2026-04-20</h2>
+<section id="section-1" class="level2">
+<h2 class="anchored" data-anchor-id="section-1">[2.7.0] - 2026-04-20</h2>
 <ul>
 <li>First alpha release. No changes tracked before this</li>
 </ul>
