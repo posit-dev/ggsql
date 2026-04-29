@@ -31,6 +31,10 @@ code {
   margin-bottom: 1.5rem;
 }
 
+figcaption {
+  text-align: right;
+}
+
 // Front page paleteal background with subtle grid
 body:has(.hero-banner) {
   background-color: var(--brand-paleteal, #DEF1EB);
