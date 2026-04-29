@@ -1,6 +1,6 @@
 [
   {
-    "listing": "/index.html",
+    "listing": "/gallery/index.html",
     "items": [
       "/gallery/examples/scatterplot.html",
       "/gallery/examples/minard.html",
@@ -17,7 +17,7 @@
     ]
   },
   {
-    "listing": "/gallery/index.html",
+    "listing": "/index.html",
     "items": [
       "/gallery/examples/scatterplot.html",
       "/gallery/examples/minard.html",

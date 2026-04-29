@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Example gallery – ggsql</title>
+<title>Wrap up – ggsql</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -33,9 +33,8 @@ ul.task-list li input[type="checkbox"] {
 <script src="../site_libs/quarto-search/fuse.min.js"></script>
 <script src="../site_libs/quarto-search/quarto-search.js"></script>
 <meta name="quarto:offset" content="../">
+<link href="../get_started/the_rest.html" rel="prev">
 <link href="../assets/icon.svg" rel="icon" type="image/svg+xml">
-<script src="../site_libs/quarto-listing/list.min.js"></script>
-<script src="../site_libs/quarto-listing/quarto-listing.js"></script>
 <script src="../site_libs/quarto-html/quarto.js" type="module"></script>
 <script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
 <script src="../site_libs/quarto-html/popper.min.js"></script>
@@ -51,6 +50,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="../site_libs/bootstrap/bootstrap-dark-e2f6f9421179af143e1cac5a5d2f3211.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
 <link href="../site_libs/bootstrap/bootstrap-44f4de344a60312d5293f682bd5af1a1.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script src="../site_libs/quarto-contrib/iconify-3.0.0/iconify-icon.min.js"></script>
+<script src="../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -73,35 +75,6 @@ ul.task-list li input[type="checkbox"] {
     "search-label": "Search"
   }
 }</script>
-<script>
-
-  window.document.addEventListener("DOMContentLoaded", function (_event) {
-    const listingTargetEl = window.document.querySelector('#listing-listing .list');
-    if (!listingTargetEl) {
-      // No listing discovered, do not attach.
-      return; 
-    }
-
-    const options = {
-      valueNames: ['listing-image','listing-title','listing-description',{ data: ['index'] },{ data: ['categories'] },{ data: ['listing-date-sort'] },{ data: ['listing-file-modified-sort'] }],
-      
-      searchColumns: ["listing-title","listing-author","listing-image","listing-description","listing-categories"],
-    };
-
-    window['quarto-listings'] = window['quarto-listings'] || {};
-    window['quarto-listings']['listing-listing'] = new List('listing-listing', options);
-
-    if (window['quarto-listing-loaded']) {
-      window['quarto-listing-loaded']();
-    }
-  });
-
-  window.addEventListener('hashchange',() => {
-    if (window['quarto-listing-loaded']) {
-      window['quarto-listing-loaded']();
-    }
-  })
-  </script>
 <script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
 <!-- Privacy-friendly analytics by Plausible -->
 <script async="" src="https://plausible.io/js/pa-eH2pS73nQmBLURrhxXgML.js"></script>
@@ -110,47 +83,20 @@ ul.task-list li input[type="checkbox"] {
     plausible.init()
 </script>
 
-  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
-  <script defer="" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
 
-<script type="text/javascript">
-const typesetMath = (el) => {
-  if (window.MathJax) {
-    // MathJax Typeset
-    window.MathJax.typeset([el]);
-  } else if (window.katex) {
-    // KaTeX Render
-    var mathElements = el.getElementsByClassName("math");
-    var macros = [];
-    for (var i = 0; i < mathElements.length; i++) {
-      var texText = mathElements[i].firstChild;
-      if (mathElements[i].tagName == "SPAN" && texText && texText.data) {
-        window.katex.render(texText.data, mathElements[i], {
-          displayMode: mathElements[i].classList.contains('display'),
-          throwOnError: false,
-          macros: macros,
-          fleqn: false
-        });
-      }
-    }
-  }
-}
-window.Quarto = {
-  typesetMath
-};
-</script>
-
-<meta property="og:title" content="Example gallery – ggsql">
+<meta property="og:title" content="Wrap up – ggsql">
 <meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta property="og:image" content="https://ggsql.org/gallery/examples/thumbnails/scatterplot.svg">
+<meta property="og:image" content="https://ggsql.org/assets/gog.svg">
 <meta property="og:site_name" content="ggsql">
-<meta name="twitter:title" content="Example gallery – ggsql">
+<meta property="og:image:alt" content="A schematic showing the components of the grammar of graphics as stacked squares, with their name to the side. The components are: Data, Mappings, Statistics, Scales, Geometries, Facets, Coordinates, and Theme">
+<meta name="twitter:title" content="Wrap up – ggsql">
 <meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta name="twitter:image" content="https://ggsql.org/gallery/examples/thumbnails/scatterplot.svg">
+<meta name="twitter:image" content="https://ggsql.org/assets/gog.svg">
 <meta name="twitter:card" content="summary">
+<meta name="twitter:image:alt" content="A schematic showing the components of the grammar of graphics as stacked squares, with their name to the side. The components are: Data, Mappings, Statistics, Scales, Geometries, Facets, Coordinates, and Theme">
 </head>
 
-<body class="nav-fixed quarto-light">
+<body class="nav-sidebar floating nav-fixed fullcontent quarto-light">
 
 <div id="quarto-search-results"></div>
   <header id="quarto-header" class="headroom fixed-top">
@@ -172,7 +118,7 @@ window.Quarto = {
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll me-auto">
   <li class="nav-item">
-    <a class="nav-link" href="../get_started/installation.html"> 
+    <a class="nav-link active" href="../get_started/installation.html" aria-current="page"> 
 <span class="menu-text">Get started</span></a>
   </li>  
   <li class="nav-item dropdown ">
@@ -216,7 +162,7 @@ window.Quarto = {
     </ul>
   </li>
   <li class="nav-item">
-    <a class="nav-link active" href="../gallery/index.html" aria-current="page"> 
+    <a class="nav-link" href="../gallery/index.html"> 
 <span class="menu-text">Gallery</span></a>
   </li>  
   <li class="nav-item">
@@ -279,6 +225,16 @@ window.Quarto = {
 </div>
       </div> <!-- /container-fluid -->
     </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../get_started/wrap_up.html">Wrap up</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
   <div id="quarto-announcement" data-announcement-id="b6882ac76ff276df5c5b9efee9fd644c" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
 <p>ggsql is still in early development and all functionality is subject to change. Read the <a href="https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/">alpha-release announcement</a></p>
 </div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
@@ -286,16 +242,63 @@ window.Quarto = {
 <!-- content -->
 <div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
 <!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../get_started/installation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Installation</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../get_started/first_plot.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">The first plot</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../get_started/grammar.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Grammar of graphics</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../get_started/anatomy.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Anatomy of ggsql</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../get_started/tooling.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Tooling</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../get_started/the_rest.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">The rest of the owl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../get_started/wrap_up.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Wrap up</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
-    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
-        
-    <h5 class="quarto-listing-category-title">Categories</h5><div class="quarto-listing-category category-default"><div class="category" data-category="">All <span class="quarto-category-count">(12)</span></div><div class="category" data-category="YWR2YW5jZWQ=">advanced <span class="quarto-category-count">(3)</span></div><div class="category" data-category="YmFy">bar <span class="quarto-category-count">(1)</span></div><div class="category" data-category="YmFzaWM=">basic <span class="quarto-category-count">(8)</span></div><div class="category" data-category="Ym94cGxvdA==">boxplot <span class="quarto-category-count">(1)</span></div><div class="category" data-category="ZGVuc2l0eQ==">density <span class="quarto-category-count">(2)</span></div><div class="category" data-category="ZGlzdHJpYnV0aW9u">distribution <span class="quarto-category-count">(4)</span></div><div class="category" data-category="ZmFjZXRlZA==">faceted <span class="quarto-category-count">(1)</span></div><div class="category" data-category="aGVhdG1hcA==">heatmap <span class="quarto-category-count">(1)</span></div><div class="category" data-category="bGF5ZXJz">layers <span class="quarto-category-count">(1)</span></div><div class="category" data-category="bGluZQ==">line <span class="quarto-category-count">(2)</span></div><div class="category" data-category="cG9pbnQ=">point <span class="quarto-category-count">(1)</span></div><div class="category" data-category="cG9sYXI=">polar <span class="quarto-category-count">(1)</span></div><div class="category" data-category="c3RhdGlzdGljYWw=">statistical <span class="quarto-category-count">(1)</span></div><div class="category" data-category="dGltZS1zZXJpZXM=">time-series <span class="quarto-category-count">(1)</span></div><div class="category" data-category="dmlvbGlu">violin <span class="quarto-category-count">(1)</span></div></div></div>
+    
 <!-- main -->
 <main class="content" id="quarto-document-content">
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">Example gallery</h1>
+<h1 class="title">Wrap up</h1>
 </div>
 
 
@@ -312,208 +315,71 @@ window.Quarto = {
 </header>
 
 
-<p>Browse examples of ggsql visualizations. Click any example to see the full code and explanation.</p>
+<p>Now that we have gotten a first taste of the ggsql syntax, let’s return to the grammar of graphics overview from before and see how it all relates together.</p>
+<p><a href="../assets/gog.svg" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="../assets/gog.svg" class="img-fluid" alt="A schematic showing the components of the grammar of graphics as stacked squares, with their name to the side. The components are: Data, Mappings, Statistics, Scales, Geometries, Facets, Coordinates, and Theme"></a></p>
+<p>You may see that there is not a 1-to-1 mapping between the grammar components and the clauses we have introduced. This is because some of the core concepts belong to the same (or multiple) parts of the syntax. Good syntax design is not to just blindly take a theoretical foundation and translate it into code, but figure out how it relates best to ergonomic coding units. This was the reason for the success of <a href="https://ggplot2.tidyverse.org/">ggplot2</a> and we proudly follow in that footstep.</p>
+<section id="from-grammar-to-syntax" class="level2">
+<h2 class="anchored" data-anchor-id="from-grammar-to-syntax">From grammar to syntax</h2>
+<p>To help you in your further learning, we provide an overview of where the different grammar components fit into the ggsql syntax. Use this as a reference when you explore the full documentation.</p>
+<div class="gog-table">
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Grammar</th>
+<th>Syntax</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Data</td>
+<td>Data can be specified in several places:
+<ul>
+<li><code>SELECT … FROM …</code> (the SQL portion before <code>VISUALISE</code>) gets injected as the global data)</li>
+<li><code>VISUALIZE ... FROM ...</code> (the global data source can be specified as part of the <a href="../syntax/clause/visualise.html"><code>VISUALIZE</code> clause</a>)</li>
+<li><code>MAPPING ... FROM ...</code> (the layer data source can be specified as part of the mapping in the <a href="../syntax/clause/draw.html"><code>DRAW</code> clause</a>)</li>
+</ul></td>
+</tr>
+<tr class="even">
+<td>Mappings</td>
+<td>Mappings also exist in multiple places in the syntax
+<ul>
+<li><code>... AS ...</code> following <a href="../syntax/clause/visualise.html"><code>VISUALIZE</code></a> sets global mapping that layers inherit.</li>
+<li><code>... AS ...</code> following <code>MAPPING</code> in the <a href="../syntax/clause/draw.html"><code>DRAW</code></a> clause sets layer specific mapping, potentially overriding the inherited global mapping.</li>
+<li><code>... AS ...</code> following <code>REMAPPING</code> in the <a href="../syntax/clause/draw.html"><code>DRAW</code></a> clause defines how data created by the statistics gets mapped in the layer.</li>
+</ul></td>
+</tr>
+<tr class="odd">
+<td>Statistics</td>
+<td>Statistics are implicitly part of the layer created with <a href="../syntax/clause/draw.html"><code>DRAW</code></a>. Each layer has their own statistics transformation hard-wired.</td>
+</tr>
+<tr class="even">
+<td>Scales</td>
+<td>ggsql provides default scales as needed, but these can be overridden with the <a href="../syntax/clause/scale.html"><code>SCALE</code></a> clause.</td>
+</tr>
+<tr class="odd">
+<td>Geometries</td>
+<td>Geometries are inherent to the layers created with <a href="../syntax/clause/draw.html"><code>DRAW</code></a> and <a href="../syntax/clause/place.html"><code>PLACE</code></a>. Each layer has a specific geometry and some layers may share the same geometry (e.g.&nbsp;<a href="../syntax/layer/type/histogram.html">histogram</a> and <a href="../syntax/layer/type/bar.html">bar</a>).</td>
+</tr>
+<tr class="even">
+<td>Facets</td>
+<td>Facets are created with the <a href="../syntax/clause/facet.html"><code>FACET</code></a> clause. The default facet creates a single view showing all the data.</td>
+</tr>
+<tr class="odd">
+<td>Coordinates</td>
+<td>Coordinate systems are defined using <a href="../syntax/clause/project.html"><code>PROJECT</code></a> but can also be derived from the mapping. If you map to <code>x</code> and <code>y</code>, ggsql knows you are using a Cartesian coordinate system and if you map to <code>angle</code> and <code>radius</code> it knows you want a polar coordinate system.</td>
+</tr>
+<tr class="even">
+<td>Theme</td>
+<td>Currently not supported.</td>
+</tr>
+</tbody>
+</table>
+</div>
 
 
+</section>
 
-
-<div class="quarto-listing quarto-listing-container-grid" id="listing-listing">
-<div class="list grid quarto-listing-cols-3">
-<div class="g-col-1" data-index="0" data-categories="YmFzaWMlMkNwb2ludA==" data-listing-file-modified-sort="1777462658126" data-listing-reading-time-sort="2" data-listing-word-count-sort="349">
-<a href="../gallery/examples/scatterplot.html" class="quarto-grid-link">
-<div class="quarto-grid-item card h-100 card-left">
-<p class="card-img-top">
-<img loading="lazy" src="../gallery/examples/thumbnails/scatterplot.svg" class="thumbnail-image card-img" style="height: 200px;">
-</p>
-<div class="card-body post-contents">
-<h5 class="no-anchor card-title listing-title">
-Scatter plot
-</h5>
-<div class="card-text listing-description delink">
-<p>Basic scatter plot mapping two numeric variables to position</p>
-</div>
-</div>
-</div></a>
-</div>
-<div class="g-col-1" data-index="1" data-categories="bGluZSUyQ2FkdmFuY2Vk" data-listing-file-modified-sort="1777462658126" data-listing-reading-time-sort="6" data-listing-word-count-sort="1169">
-<a href="../gallery/examples/minard.html" class="quarto-grid-link">
-<div class="quarto-grid-item card h-100 card-left">
-<p class="card-img-top">
-<img loading="lazy" src="../gallery/examples/thumbnails/minard.svg" class="thumbnail-image card-img" style="height: 200px;">
-</p>
-<div class="card-body post-contents">
-<h5 class="no-anchor card-title listing-title">
-Napoleon’s march to Moscow
-</h5>
-<div class="card-text listing-description delink">
-<p>Re-creating the famous visualisation from Minard.</p>
-</div>
-</div>
-</div></a>
-</div>
-<div class="g-col-1" data-index="2" data-categories="YmFzaWMlMkNsaW5lJTJDdGltZS1zZXJpZXM=" data-listing-file-modified-sort="1777462658126" data-listing-reading-time-sort="2" data-listing-word-count-sort="201">
-<a href="../gallery/examples/line-chart.html" class="quarto-grid-link">
-<div class="quarto-grid-item card h-100 card-left">
-<p class="card-img-top">
-<img loading="lazy" src="../gallery/examples/thumbnails/line-chart.svg" class="thumbnail-image card-img" style="height: 200px;">
-</p>
-<div class="card-body post-contents">
-<h5 class="no-anchor card-title listing-title">
-Line chart
-</h5>
-<div class="card-text listing-description delink">
-<p>Time series visualization with proper date scaling</p>
-</div>
-</div>
-</div></a>
-</div>
-<div class="g-col-1" data-index="3" data-categories="YmFzaWMlMkNwb2xhcg==" data-listing-file-modified-sort="1777462658126" data-listing-reading-time-sort="4" data-listing-word-count-sort="645">
-<a href="../gallery/examples/pie-chart.html" class="quarto-grid-link">
-<div class="quarto-grid-item card h-100 card-left">
-<p class="card-img-top">
-<img loading="lazy" src="../gallery/examples/thumbnails/pie-chart.svg" class="thumbnail-image card-img" style="height: 200px;">
-</p>
-<div class="card-body post-contents">
-<h5 class="no-anchor card-title listing-title">
-Pie chart
-</h5>
-<div class="card-text listing-description delink">
-<p>Visualisation of proportions</p>
-</div>
-</div>
-</div></a>
-</div>
-<div class="g-col-1" data-index="4" data-categories="YmFzaWMlMkNkZW5zaXR5JTJDZGlzdHJpYnV0aW9u" data-listing-file-modified-sort="1777462658126" data-listing-reading-time-sort="3" data-listing-word-count-sort="401">
-<a href="../gallery/examples/density.html" class="quarto-grid-link">
-<div class="quarto-grid-item card h-100 card-left">
-<p class="card-img-top">
-<img loading="lazy" src="../gallery/examples/thumbnails/density-plot.svg" class="thumbnail-image card-img" style="height: 200px;">
-</p>
-<div class="card-body post-contents">
-<h5 class="no-anchor card-title listing-title">
-Density plots
-</h5>
-<div class="card-text listing-description delink">
-<p>Showing smooth distributions of single numeric variables</p>
-</div>
-</div>
-</div></a>
-</div>
-<div class="g-col-1" data-index="5" data-categories="YmFzaWMlMkNib3hwbG90JTJDZGlzdHJpYnV0aW9u" data-listing-file-modified-sort="1777462658126" data-listing-reading-time-sort="3" data-listing-word-count-sort="440">
-<a href="../gallery/examples/boxplot.html" class="quarto-grid-link">
-<div class="quarto-grid-item card h-100 card-left">
-<p class="card-img-top">
-<img loading="lazy" src="../gallery/examples/thumbnails/boxplot.svg" class="thumbnail-image card-img" style="height: 200px;">
-</p>
-<div class="card-body post-contents">
-<h5 class="no-anchor card-title listing-title">
-Box plots
-</h5>
-<div class="card-text listing-description delink">
-<p>Showing groups of distributions of single numeric variables</p>
-</div>
-</div>
-</div></a>
-</div>
-<div class="g-col-1" data-index="6" data-categories="YmFzaWMlMkNoZWF0bWFw" data-listing-file-modified-sort="1777462658126" data-listing-reading-time-sort="2" data-listing-word-count-sort="244">
-<a href="../gallery/examples/heatmap.html" class="quarto-grid-link">
-<div class="quarto-grid-item card h-100 card-left">
-<p class="card-img-top">
-<img loading="lazy" src="../gallery/examples/thumbnails/heatmap.svg" class="thumbnail-image card-img" style="height: 200px;">
-</p>
-<div class="card-body post-contents">
-<h5 class="no-anchor card-title listing-title">
-Heatmap
-</h5>
-<div class="card-text listing-description delink">
-<p>Arranging tiles on a grid</p>
-</div>
-</div>
-</div></a>
-</div>
-<div class="g-col-1" data-index="7" data-categories="YmFzaWMlMkN2aW9saW4lMkNkZW5zaXR5JTJDZGlzdHJpYnV0aW9u" data-listing-file-modified-sort="1777462658126" data-listing-reading-time-sort="3" data-listing-word-count-sort="417">
-<a href="../gallery/examples/violin.html" class="quarto-grid-link">
-<div class="quarto-grid-item card h-100 card-left">
-<p class="card-img-top">
-<img loading="lazy" src="../gallery/examples/thumbnails/violin-plot.svg" class="thumbnail-image card-img" style="height: 200px;">
-</p>
-<div class="card-body post-contents">
-<h5 class="no-anchor card-title listing-title">
-Violin plots
-</h5>
-<div class="card-text listing-description delink">
-<p>Showing groups of distributions of single numeric variables</p>
-</div>
-</div>
-</div></a>
-</div>
-<div class="g-col-1" data-index="8" data-categories="YmFzaWMlMkNiYXI=" data-listing-file-modified-sort="1777462658126" data-listing-reading-time-sort="1" data-listing-word-count-sort="179">
-<a href="../gallery/examples/bar-chart.html" class="quarto-grid-link">
-<div class="quarto-grid-item card h-100 card-left">
-<p class="card-img-top">
-<img loading="lazy" src="../gallery/examples/thumbnails/bar-chart.svg" class="thumbnail-image card-img" style="height: 200px;">
-</p>
-<div class="card-body post-contents">
-<h5 class="no-anchor card-title listing-title">
-Bar chart
-</h5>
-<div class="card-text listing-description delink">
-<p>Categorical comparisons using bars</p>
-</div>
-</div>
-</div></a>
-</div>
-<div class="g-col-1" data-index="9" data-categories="c3RhdGlzdGljYWwlMkNkaXN0cmlidXRpb24=" data-listing-file-modified-sort="1777462658126" data-listing-reading-time-sort="1" data-listing-word-count-sort="183">
-<a href="../gallery/examples/histogram.html" class="quarto-grid-link">
-<div class="quarto-grid-item card h-100 card-left">
-<p class="card-img-top">
-<img loading="lazy" src="../gallery/examples/thumbnails/histogram.svg" class="thumbnail-image card-img" style="height: 200px;">
-</p>
-<div class="card-body post-contents">
-<h5 class="no-anchor card-title listing-title">
-Histogram
-</h5>
-<div class="card-text listing-description delink">
-<p>Distribution of a single numeric variable</p>
-</div>
-</div>
-</div></a>
-</div>
-<div class="g-col-1" data-index="10" data-categories="bGF5ZXJzJTJDYWR2YW5jZWQ=" data-listing-file-modified-sort="1777462658126" data-listing-reading-time-sort="2" data-listing-word-count-sort="255">
-<a href="../gallery/examples/multi-layer.html" class="quarto-grid-link">
-<div class="quarto-grid-item card h-100 card-left">
-<p class="card-img-top">
-<img loading="lazy" src="../gallery/examples/thumbnails/multi-layer.svg" class="thumbnail-image card-img" style="height: 200px;">
-</p>
-<div class="card-body post-contents">
-<h5 class="no-anchor card-title listing-title">
-Multi-layer plot
-</h5>
-<div class="card-text listing-description delink">
-<p>Combining multiple geometric layers in one visualization</p>
-</div>
-</div>
-</div></a>
-</div>
-<div class="g-col-1" data-index="11" data-categories="ZmFjZXRlZCUyQ2FkdmFuY2Vk" data-listing-file-modified-sort="1777462658126" data-listing-reading-time-sort="1" data-listing-word-count-sort="191">
-<a href="../gallery/examples/faceted.html" class="quarto-grid-link">
-<div class="quarto-grid-item card h-100 card-left">
-<p class="card-img-top">
-<img loading="lazy" src="../gallery/examples/thumbnails/faceted.svg" class="thumbnail-image card-img" style="height: 200px;">
-</p>
-<div class="card-body post-contents">
-<h5 class="no-anchor card-title listing-title">
-Faceted plot
-</h5>
-<div class="card-text listing-description delink">
-<p>Small multiples showing data split by category</p>
-</div>
-</div>
-</div></a>
-</div>
-</div>
-<div class="listing-no-matching d-none">No matching items</div>
-</div></main> <!-- /main -->
+</main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
   window.document.addEventListener("DOMContentLoaded", function (event) {
     const icon = "";
@@ -914,6 +780,15 @@ Faceted plot
     }
   });
   </script>
+<nav class="page-navigation">
+  <div class="nav-page nav-page-previous">
+      <a href="../get_started/the_rest.html" class="pagination-link" aria-label="The rest of the owl">
+        <i class="bi bi-arrow-left-short"></i> <span class="nav-page-text">The rest of the owl</span>
+      </a>          
+  </div>
+  <div class="nav-page nav-page-next">
+  </div>
+</nav>
 </div> <!-- /content -->
 <footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer><script type="module">
   const offset = document.querySelector('meta[name="quarto:offset"]')?.content || './';
@@ -924,6 +799,38 @@ Faceted plot
   document.head.appendChild(link);
   import(base + 'quarto.js');
 </script>
+<script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","descPosition":"bottom","loop":false,"openEffect":"zoom","selector":".lightbox"});
+(function() {
+  let previousOnload = window.onload;
+  window.onload = () => {
+    if (previousOnload) {
+      previousOnload();
+    }
+    lightboxQuarto.on('slide_before_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      const href = trigger.getAttribute('href');
+      if (href !== null) {
+        const imgEl = window.document.querySelector(`a[href="${href}"] img`);
+        if (imgEl !== null) {
+          const srcAttr = imgEl.getAttribute("src");
+          if (srcAttr && srcAttr.startsWith("data:")) {
+            slideConfig.href = srcAttr;
+          }
+        }
+      } 
+    });
+  
+    lightboxQuarto.on('slide_after_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(slideNode);
+      }
+    });
+  
+  };
+  
+})();
+          </script>
 
 
 

@@ -6,8 +6,11 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
+<meta name="author" content="Thomas Lin Pedersen">
+<meta name="dcterms.date" content="2028-05-04">
+<meta name="description" content="We are happy to announce the next alpha release of ggsql. While slim on user-facing features, it contains a range of important infrastructural updates for the future.">
 
-<title>Opacity – ggsql</title>
+<title>ggsql 0.3.0 – ggsql</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -84,6 +87,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../../../site_libs/bootstrap/bootstrap-dark-e2f6f9421179af143e1cac5a5d2f3211.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
 <link href="../../../site_libs/bootstrap/bootstrap-44f4de344a60312d5293f682bd5af1a1.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script src="../../../site_libs/quarto-contrib/iconify-3.0.0/iconify-icon.min.js"></script>
+<script src="../../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -113,27 +119,22 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
     plausible.init()
 </script>
+<style>.quarto-title-block .description { display: none; }</style>
 
 
-<meta property="og:title" content="Opacity – ggsql">
-<meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta property="og:image" content="https://ggsql.org/syntax/scale/aesthetic/assets/logo.png">
+<meta property="og:title" content="ggsql 0.3.0 – ggsql">
+<meta property="og:description" content="We are happy to announce the next alpha release of ggsql. While slim on user-facing features, it contains a range of important infrastructural updates for the future.">
+<meta property="og:image" content="https://ggsql.org/blog/posts/2026_04_29_ggsql_0_3_0/waterflow225.jpg">
 <meta property="og:site_name" content="ggsql">
-<meta property="og:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
-handle is made up of the classic database silo icon and is coloured in a
-gradient teal.
-">
-<meta name="twitter:title" content="Opacity – ggsql">
-<meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta name="twitter:image" content="https://ggsql.org/syntax/scale/aesthetic/assets/logo.png">
+<meta property="og:image:alt" content="Waterflow 225 by Thomas Lin Pedersen">
+<meta name="twitter:title" content="ggsql 0.3.0 – ggsql">
+<meta name="twitter:description" content="We are happy to announce the next alpha release of ggsql. While slim on user-facing features, it contains a range of important infrastructural updates for the future.">
+<meta name="twitter:image" content="https://ggsql.org/blog/posts/2026_04_29_ggsql_0_3_0/waterflow225.jpg">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
-handle is made up of the classic database silo icon and is coloured in a
-gradient teal.
-">
+<meta name="twitter:image:alt" content="Waterflow 225 by Thomas Lin Pedersen">
 </head>
 
-<body class="nav-sidebar floating nav-fixed quarto-light">
+<body class="nav-fixed quarto-light">
 
 <div id="quarto-search-results"></div>
   <header id="quarto-header" class="headroom fixed-top">
@@ -262,19 +263,6 @@ gradient teal.
 </div>
       </div> <!-- /container-fluid -->
     </nav>
-  <nav class="quarto-secondary-nav">
-    <div class="container-fluid d-flex">
-      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
-        <i class="bi bi-layout-text-sidebar-reverse"></i>
-      </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item">Scales</li><li class="breadcrumb-item"><a href="../../../syntax/scale/aesthetic/0_position.html">Aesthetics</a></li><li class="breadcrumb-item"><a href="../../../syntax/scale/aesthetic/2_opacity.html">Opacity</a></li></ol></nav>
-        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
-        </a>
-      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
-        <i class="bi bi-search"></i>
-      </button>
-    </div>
-  </nav>
   <div id="quarto-announcement" data-announcement-id="b6882ac76ff276df5c5b9efee9fd644c" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
 <p>ggsql is still in early development and all functionality is subject to change. Read the <a href="https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/">alpha-release announcement</a></p>
 </div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
@@ -282,394 +270,50 @@ gradient teal.
 <!-- content -->
 <div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
 <!-- sidebar -->
-  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
-        <div class="mt-2 flex-shrink-0 align-items-center">
-        <div class="sidebar-search">
-        <div id="quarto-search" class="" title="Search"></div>
-        </div>
-        </div>
-    <div class="sidebar-menu-container"> 
-    <ul class="list-unstyled mt-1">
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/index.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Overview</span></a>
-  </div>
-</li>
-        <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
- <span class="menu-text">Main clauses</span></a>
-          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/clause/visualise.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text"><code>VISUALISE</code></span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/clause/draw.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text"><code>DRAW</code></span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/clause/place.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text"><code>PLACE</code></span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/clause/scale.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text"><code>SCALE</code></span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/clause/facet.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text"><code>FACET</code></span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/clause/project.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text"><code>PROJECT</code></span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/clause/label.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text"><code>LABEL</code></span></a>
-  </div>
-</li>
-      </ul>
-  </li>
-        <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
- <span class="menu-text">Layers</span></a>
-          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
-          <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="false">
- <span class="menu-text">Types</span></a>
-          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="false" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth2 ">  
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/type/area.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Area</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/type/bar.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Bar</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/type/boxplot.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Boxplot</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/type/density.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Density</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/type/histogram.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Histogram</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/type/line.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Line</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/type/path.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Path</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/type/point.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Point</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/type/polygon.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Polygon</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/type/range.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Range</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/type/ribbon.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Ribbon</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/type/rule.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Rule</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/type/segment.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Segment</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/type/smooth.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Smooth</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/type/text.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Text</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/type/tile.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Tile</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/type/violin.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Violin</span></a>
-  </div>
-</li>
-      </ul>
-  </li>
-          <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="false">
- <span class="menu-text">Position adjustment</span></a>
-          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="false" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth2 ">  
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/position/dodge.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Dodge</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/position/identity.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Identity</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/position/jitter.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Jitter</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/layer/position/stack.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Stack</span></a>
-  </div>
-</li>
-      </ul>
-  </li>
-      </ul>
-  </li>
-        <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" role="navigation" aria-expanded="true">
- <span class="menu-text">Scales</span></a>
-          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" role="navigation" aria-expanded="true" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-5" class="collapse list-unstyled sidebar-section depth1 show">  
-          <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="false">
- <span class="menu-text">Types</span></a>
-          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" role="navigation" aria-expanded="false" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-6" class="collapse list-unstyled sidebar-section depth2 ">  
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/scale/type/binned.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Binned</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/scale/type/continuous.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Continuous</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/scale/type/discrete.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Discrete</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/scale/type/identity.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Identity</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/scale/type/ordinal.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Ordinal</span></a>
-  </div>
-</li>
-      </ul>
-  </li>
-          <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-7" role="navigation" aria-expanded="true">
- <span class="menu-text">Aesthetics</span></a>
-          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-7" role="navigation" aria-expanded="true" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-7" class="collapse list-unstyled sidebar-section depth2 show">  
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/scale/aesthetic/0_position.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Position</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/scale/aesthetic/1_color.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Fill and stroke</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/scale/aesthetic/2_opacity.html" class="sidebar-item-text sidebar-link active">
- <span class="menu-text">Opacity</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/scale/aesthetic/linetype.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Linetype</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/scale/aesthetic/linewidth.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Linewidth</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/scale/aesthetic/shape.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Shape</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/scale/aesthetic/size.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Size</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/scale/aesthetic/Z_faceting.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Faceting</span></a>
-  </div>
-</li>
-      </ul>
-  </li>
-      </ul>
-  </li>
-        <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-8" role="navigation" aria-expanded="true">
- <span class="menu-text">Coordinate systems</span></a>
-          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-8" role="navigation" aria-expanded="true" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-8" class="collapse list-unstyled sidebar-section depth1 show">  
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/coord/cartesian.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Cartesian</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../../../syntax/coord/polar.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Polar</span></a>
-  </div>
-</li>
-      </ul>
-  </li>
-    </ul>
-    </div>
-</nav>
-<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
     <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
         <nav id="TOC" role="doc-toc" class="toc-active">
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#literal-values" id="toc-literal-values" class="nav-link active" data-scroll-target="#literal-values">Literal values</a></li>
-  <li><a href="#palettes" id="toc-palettes" class="nav-link" data-scroll-target="#palettes">Palettes</a></li>
+  <li><a href="#syntax-ergonomics" id="toc-syntax-ergonomics" class="nav-link active" data-scroll-target="#syntax-ergonomics">Syntax ergonomics</a></li>
+  <li><a href="#goodbye-polars" id="toc-goodbye-polars" class="nav-link" data-scroll-target="#goodbye-polars">Goodbye polars</a></li>
+  <li><a href="#goodbye-errorbar-hello-range" id="toc-goodbye-errorbar-hello-range" class="nav-link" data-scroll-target="#goodbye-errorbar-hello-range">Goodbye errorbar, hello range</a></li>
+  <li><a href="#more-docs" id="toc-more-docs" class="nav-link" data-scroll-target="#more-docs">More docs</a></li>
+  <li><a href="#and-all-the-rest" id="toc-and-all-the-rest" class="nav-link" data-scroll-target="#and-all-the-rest">And all the rest</a></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/posit-dev/ggsql/issues" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></nav>
     </div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item">Scales</li><li class="breadcrumb-item"><a href="../../../syntax/scale/aesthetic/0_position.html">Aesthetics</a></li><li class="breadcrumb-item"><a href="../../../syntax/scale/aesthetic/2_opacity.html">Opacity</a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">Opacity</h1>
+<h1 class="title">ggsql 0.3.0</h1>
 </div>
 
+<div>
+  <div class="description">
+    <p>We are happy to announce the next alpha release of ggsql. While slim on user-facing features, it contains a range of important infrastructural updates for the future.</p>
+  </div>
+</div>
 
 
 <div class="quarto-title-meta">
 
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Thomas Lin Pedersen </p>
+          </div>
+  </div>
     
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">May 4, 2028</p>
+    </div>
+  </div>
   
     
   </div>
@@ -679,17 +323,39 @@ gradient teal.
 </header>
 
 
-<p>The <code>opacity</code> aesthetic governs how opaque objects are (or, conversely, how transparent they are). Depending on the layer it controls the opacity of the fill <em>or</em> stroke (if a layer has a natural fill then that is what receives the opacity). Opacity goes from 0 (fully transparent) to 1 (fully opaque).</p>
-<p>Color values (fill or stroke aesthetics) may contain opacity information embedded, e.g.&nbsp;by using hex values with an alpha channel. How such colors are merged with the opacity aesthetic is writer-dependent and can’t be relied on. Even if the behavior was consistent, mixing the two is never a good idea because it leads to hard-to-decode graphics.</p>
-<section id="literal-values" class="level2">
-<h2 class="anchored" data-anchor-id="literal-values">Literal values</h2>
-<p>Opacity has no unit and goes from 0 (fully transparent) to 1 (fully opaque). You can set the opacity of points to a low value to combat overplotting like so:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> <span class="at">opacity</span> <span class="op">=&gt;</span> <span class="dv">0.2</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="waterflow225.jpg" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="Waterflow 225 by Thomas Lin Pedersen"><img src="waterflow225.jpg" class="img-fluid figure-img" alt="Waterflow 225 by Thomas Lin Pedersen"></a></p>
+<figcaption>Waterflow 225 <em>by Thomas Lin Pedersen</em></figcaption>
+</figure>
+</div>
+<p>We are happy to announce the release of ggsql 0.3.0 (alpha). This release comes in quick succession to the initial <a href="https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/">0.2.7 (alpha) release</a> and fixes a number of behind-the-scenes issues that we are eager to get out before we begin adding more features and integrations. You can read the full list of changes in the <a href="../../CHANGELOG.md">CHANGELOG</a>.</p>
+<section id="syntax-ergonomics" class="level2">
+<h2 class="anchored" data-anchor-id="syntax-ergonomics">Syntax ergonomics</h2>
+<p>DuckDB showed us the way in terms of making SQL a bit more readable. One of their small but significant insights was that moving the <code>FROM</code> in front of <code>SELECT</code> made it much easier to visually parse the query since you didn’t have to wait until the very end to figure out what the data source is. As a bonus, any language server that wants to suggest column names now has the info from the beginning of the query and can provide aid as you write.</p>
+<p>In 0.3.0 we have adopted this for the <code>VISUALIZE</code> clause, so that you can now write:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> sales</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALIZE</span> date <span class="kw">AS</span> <span class="at">x</span>, revenue <span class="kw">AS</span> <span class="at">y</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
-<section id="palettes" class="level2">
-<h2 class="anchored" data-anchor-id="palettes">Palettes</h2>
-<p>Opacity can only be used for sequential data and has no named palettes. The default for continuous, binned, and ordinal scales is to use the range from 0.1 to 1 and interpolate between them. This can be overwritten by providing a manual output range specification like below where we use the complete range opacity</p>
+<section id="goodbye-polars" class="level2">
+<h2 class="anchored" data-anchor-id="goodbye-polars">Goodbye polars</h2>
+<p>The initial development relied on polars for the internal data frame storage as well as for position computations. In the beginning we were unsure how much we could rely on the database backend for computations but we learned that we could push practically everything (except position adjustment) there. This meant that polars ended up being an extremely heavy dependency that we only used for its DataFrame storage. Removing it took a lot of un-wiring but let us shed more than half of our transitive dependencies (236) and reduce the size of our binary considerably (the wasm binary is now half the size).</p>
+<p>This is all great for our main distribution, but even better for the various bindings and integrations we are working on (R, Python, DuckDB) that don’t have to bring in heavy dependencies for no gain.</p>
+</section>
+<section id="goodbye-errorbar-hello-range" class="level2">
+<h2 class="anchored" data-anchor-id="goodbye-errorbar-hello-range">Goodbye errorbar, hello range</h2>
+<p>We have decided to rename the <code>errorbar</code> layer to <code>range</code>. The name was brought over from ggplot2, but we feel that using errorbar is a disservice to what the layer is actually providing, which is a 1D range representation of <em>any</em> type of range, in the same way that <code>ribbon</code> is a 2D range representation of <em>any</em> range. Since we are so early in the life of ggsql, we decided to make a clean cut without a lengthy deprecation process for <code>errorbar</code>. Using the old name will result in an error going forward.</p>
+</section>
+<section id="more-docs" class="level2">
+<h2 class="anchored" data-anchor-id="more-docs">More docs</h2>
+<p>Leading up to the first release we had spent a lot of time on the documentation on the website. However, all that work hadn’t spilled over into the CLI tool. With 0.3.0, the CLI tool now has a <code>docs</code> command that you (or your coding agent) can use to get information about the syntax and functionality of ggsql. It is built from the same source as the website so it will mimic that content.</p>
+<p>Speaking of coding agents, the CLI now also ships with a skill, accessible through the <code>skill</code> command. The same skill can also be installed directly with <code>npx skills add posit-dev/skills --skill ggsql</code></p>
+</section>
+<section id="and-all-the-rest" class="level2">
+<h2 class="anchored" data-anchor-id="and-all-the-rest">And all the rest</h2>
+<p>The release also contains a range of various fixes and infrastructural reorganizations that are less interesting to talk about but can be seen in the <a href="../../CHANGELOG.md">CHANGELOG</a>.</p>
+<p>We are excited about the development and what comes next for ggsql. The next release will most likely come with some amazing new user-facing features.</p>
 
 
 </section>
@@ -1105,6 +771,38 @@ gradient teal.
   document.head.appendChild(link);
   import(base + 'quarto.js');
 </script>
+<script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","descPosition":"bottom","loop":false,"openEffect":"zoom","selector":".lightbox"});
+(function() {
+  let previousOnload = window.onload;
+  window.onload = () => {
+    if (previousOnload) {
+      previousOnload();
+    }
+    lightboxQuarto.on('slide_before_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      const href = trigger.getAttribute('href');
+      if (href !== null) {
+        const imgEl = window.document.querySelector(`a[href="${href}"] img`);
+        if (imgEl !== null) {
+          const srcAttr = imgEl.getAttribute("src");
+          if (srcAttr && srcAttr.startsWith("data:")) {
+            slideConfig.href = srcAttr;
+          }
+        }
+      } 
+    });
+  
+    lightboxQuarto.on('slide_after_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(slideNode);
+      }
+    });
+  
+  };
+  
+})();
+          </script>
 
 
 
