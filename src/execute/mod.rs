@@ -151,6 +151,93 @@ fn validate(
 }
 
 // =============================================================================
+// Column Name Normalization
+// =============================================================================
+
+/// Rewrite `name` to match the schema's casing (case-insensitive resolution).
+///
+/// SQL treats unquoted identifiers as case-insensitive, so users may write
+/// `VISUALISE CATEGORY AS x` even when DuckDB returns the column as `category`.
+/// ggsql's own validator and generated SQL treat column names case-sensitively,
+/// so we reconcile by rewriting the user-written name to the schema's casing
+/// before either runs.
+///
+/// Exact match wins. Otherwise, if exactly one case-insensitive match exists,
+/// `name` is rewritten to that match. Ambiguous matches (e.g. schema has both
+/// `"Foo"` and `"foo"` and user wrote `FOO`) and missing references are left
+/// untouched so the existing validator can report them with its normal error.
+fn normalize_column_ref(name: &mut String, schema_names: &[&str]) {
+    if schema_names.contains(&name.as_str()) {
+        return;
+    }
+    let name_lower = name.to_lowercase();
+    let mut match_iter = schema_names
+        .iter()
+        .filter(|s| s.to_lowercase() == name_lower);
+    if let Some(first) = match_iter.next() {
+        if match_iter.next().is_none() {
+            *name = (*first).to_string();
+        }
+    }
+}
+
+/// Normalize all user-written column references in `specs` against their layer
+/// schemas.
+///
+/// Runs after `merge_global_mappings_into_layers` so every aesthetic that a
+/// layer will consult is already attached to that layer's `mappings`; each
+/// layer can then be normalized against its own schema. This matters for
+/// multi-source layers (e.g. `MAPPING ... FROM temps` vs `... FROM ozone`),
+/// where the schemas — and the column casings — can legitimately differ.
+///
+/// Covers aesthetic `Column` values and `partition_by` per layer, plus
+/// user-written facet variables on the plot-level `FACET` clause.
+fn normalize_column_references(specs: &mut [Plot], layer_schemas: &[Schema]) {
+    for spec in specs {
+        for (layer, schema) in spec.layers.iter_mut().zip(layer_schemas.iter()) {
+            if matches!(layer.source, Some(DataSource::Annotation)) {
+                continue;
+            }
+            let names: Vec<&str> = schema.iter().map(|c| c.name.as_str()).collect();
+            for value in layer.mappings.aesthetics.values_mut() {
+                if let AestheticValue::Column { name, .. } = value {
+                    normalize_column_ref(name, &names);
+                }
+            }
+            for col in &mut layer.partition_by {
+                normalize_column_ref(col, &names);
+            }
+        }
+
+        // Facet variables are plot-level. Normalize against the first layer
+        // whose schema contains the variable (case-insensitively). If no
+        // layer matches, leave it — `add_facet_mappings_to_layers` simply
+        // won't inject a mapping for layers that don't have the column.
+        if let Some(facet) = spec.facet.as_mut() {
+            let normalize_var = |var: &mut String| {
+                for schema in layer_schemas {
+                    let names: Vec<&str> = schema.iter().map(|c| c.name.as_str()).collect();
+                    let before = var.clone();
+                    normalize_column_ref(var, &names);
+                    if *var != before || names.contains(&var.as_str()) {
+                        break;
+                    }
+                }
+            };
+            match &mut facet.layout {
+                crate::plot::FacetLayout::Wrap { variables } => {
+                    variables.iter_mut().for_each(normalize_var);
+                }
+                crate::plot::FacetLayout::Grid { row, column } => {
+                    row.iter_mut().for_each(normalize_var);
+                    column.iter_mut().for_each(normalize_var);
+                }
+            }
+        }
+    }
+}
+
+// =============================================================================
 // Global Mapping & Color Splitting
 // =============================================================================
 
@@ -1034,6 +1121,11 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // NOTE: Both global and layer aesthetics are already in internal format (pos1, pos2)
     // because transformation happens in builder.rs right after parsing
     merge_global_mappings_into_layers(&mut specs, &layer_schemas);
+
+    // Reconcile user-written column casing with schema casing (DuckDB lowercases
+    // unquoted identifiers). Must run after the global→layer merge so each layer
+    // is normalized against its own schema, which matters for multi-source layers.
+    normalize_column_references(&mut specs, &layer_schemas);
 
     // Resolve aesthetic aliases (e.g., 'color' → 'fill'/'stroke') early in the pipeline
     // This must happen before validation so concrete aesthetics are validated
@@ -2857,6 +2949,192 @@ mod tests {
             "Error should not mention internal name 'pos1min', got: {}",
             err_msg
         );
+    }
+
+    // =========================================================================
+    // Case-insensitive column reference normalization
+    // =========================================================================
+
+    /// Original reproducer: DuckDB lowercases unquoted identifiers, so
+    /// `SELECT category` returns `category`. `VISUALISE CATEGORY AS x` must
+    /// resolve to `category` before validation.
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_case_insensitive_visualise_refs() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE case_test AS SELECT 'A' AS category, 10 AS value \
+                 UNION ALL SELECT 'B', 20",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT category, value FROM case_test
+            VISUALISE CATEGORY AS x, VALUE AS y
+            DRAW bar
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Uppercase VISUALISE refs should resolve to lowercase schema: {:?}",
+            result.err()
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_mixed_case_visualise_refs() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE mixed AS SELECT 'A' AS category, 10 AS value \
+                 UNION ALL SELECT 'B', 20",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT category, value FROM mixed
+            VISUALISE CaTeGoRy AS x, VaLuE AS y
+            DRAW bar
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Mixed-case VISUALISE refs should normalize: {:?}",
+            result.err()
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_case_insensitive_partition_by() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE pb AS SELECT 1 AS x, 10 AS y, 'A' AS category \
+                 UNION ALL SELECT 2, 20, 'B'",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT x, y, category FROM pb
+            VISUALISE x AS x, y AS y
+            DRAW line PARTITION BY CATEGORY
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Uppercase PARTITION BY should resolve to lowercase schema: {:?}",
+            result.err()
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_case_insensitive_facet() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE facet_case AS SELECT 1 AS x, 10 AS y, 'N' AS region \
+                 UNION ALL SELECT 2, 20, 'S'",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT x, y, region FROM facet_case
+            VISUALISE x AS x, y AS y
+            DRAW point
+            FACET REGION
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Uppercase FACET variable should resolve to lowercase schema: {:?}",
+            result.err()
+        );
+    }
+
+    /// Multi-source layers with different schemas — the case the old PR #143
+    /// got wrong. Each layer's mapping must be normalized against that layer's
+    /// own schema, not the first layer's.
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_multi_source_layers_case_insensitive() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE temps AS SELECT 1 AS date, 20.0 AS value \
+                 UNION ALL SELECT 2, 21.0",
+                duckdb::params![],
+            )
+            .unwrap();
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE ozone AS SELECT 1 AS date, 0.05 AS value \
+                 UNION ALL SELECT 2, 0.06",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            VISUALISE Date AS x, Value AS y
+            DRAW line MAPPING Date AS x, Value AS y FROM temps
+            DRAW line MAPPING DATE AS x, VALUE AS y FROM ozone
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Per-layer normalization should work across multi-source layers: {:?}",
+            result.err()
+        );
+    }
+
+    // Direct tests for the normalizer's match-resolution contract.
+    // (DuckDB itself rejects case-colliding column names even when quoted,
+    // so the ambiguous/exact-match scenarios can't be exercised end-to-end.)
+
+    #[test]
+    fn test_normalize_column_ref_exact_match_wins() {
+        let mut name = "foo".to_string();
+        normalize_column_ref(&mut name, &["Foo", "foo"]);
+        assert_eq!(name, "foo");
+    }
+
+    #[test]
+    fn test_normalize_column_ref_unique_case_match_rewrites() {
+        let mut name = "CATEGORY".to_string();
+        normalize_column_ref(&mut name, &["category", "value"]);
+        assert_eq!(name, "category");
+    }
+
+    #[test]
+    fn test_normalize_column_ref_ambiguous_left_alone() {
+        let mut name = "FOO".to_string();
+        normalize_column_ref(&mut name, &["Foo", "foo"]);
+        assert_eq!(name, "FOO", "ambiguous match must not be silently resolved");
+    }
+
+    #[test]
+    fn test_normalize_column_ref_no_match_left_alone() {
+        let mut name = "missing".to_string();
+        normalize_column_ref(&mut name, &["a", "b"]);
+        assert_eq!(name, "missing");
     }
 
     // =========================================================================
