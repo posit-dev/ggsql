@@ -1121,8 +1121,10 @@ pub fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -
         }
     }
 
-    // Second pass: filter out NULL rows for scales with explicit input ranges
-    // This handles NULLs created by both pre-stat SQL censoring and post-stat OOB censor
+    // Second pass: filter out NULL rows for scales with explicit input ranges.
+    // This handles NULLs created by both pre-stat SQL censoring and post-stat OOB censor.
+    // Only filter on aesthetics that are required by the layer's geom — optional/delayed
+    // aesthetics (e.g. boxplot's pos2end) can be legitimately NULL.
     for scale in &spec.scales {
         // Only filter if explicit input range AND NULL is not in the range
         let should_filter_nulls = scale.explicit_input_range
@@ -1135,18 +1137,31 @@ pub fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -
             continue;
         }
 
-        let column_sources = find_columns_for_aesthetic_with_sources(
-            &spec.layers,
-            &scale.aesthetic,
-            data_map,
-            &aesthetic_ctx,
-        );
+        let family = aesthetic_ctx
+            .internal_position_family(&scale.aesthetic)
+            .map(|f| f.to_vec())
+            .unwrap_or_else(|| vec![scale.aesthetic.clone()]);
 
-        for (data_key, col_name) in column_sources {
-            if let Some(df) = data_map.get(&data_key) {
-                if df.column(&col_name).is_ok() {
-                    let filtered = filter_null_rows(df, &col_name)?;
-                    data_map.insert(data_key, filtered);
+        for (i, layer) in spec.layers.iter().enumerate() {
+            let layer_key = naming::layer_key(i);
+            if !data_map.contains_key(&layer_key) {
+                continue;
+            }
+            let geom_aesthetics = layer.geom.aesthetics();
+            for aes_name in &family {
+                if !geom_aesthetics.is_required(aes_name) {
+                    continue;
+                }
+                if let Some(AestheticValue::Column { name, .. }) =
+                    layer.mappings.get(aes_name.as_str())
+                {
+                    let col_name = name.clone();
+                    if let Some(df) = data_map.get(&layer_key) {
+                        if df.column(&col_name).is_ok() {
+                            let filtered = filter_null_rows(df, &col_name)?;
+                            data_map.insert(layer_key.clone(), filtered);
+                        }
+                    }
                 }
             }
         }
