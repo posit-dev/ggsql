@@ -1146,11 +1146,7 @@ impl Writer for VegaLiteWriter {
         )?;
         vl_spec["layer"] = json!(layers);
 
-        // 10. Apply projection transforms
-        let first_df = data.get(&layer_data_keys[0]).unwrap();
-        projection.apply_transforms(spec, first_df, &mut vl_spec)?;
-
-        // 11. Apply faceting
+        // 10. Apply faceting
         if let Some(facet) = &spec.facet {
             let facet_df = data.get(&layer_data_keys[0]).unwrap();
             apply_faceting(
@@ -1162,9 +1158,10 @@ impl Writer for VegaLiteWriter {
             );
         }
 
-        // 12. Build theme config and apply panel decoration
+        // 11. Apply projection (transforms + panel decoration)
+        let first_df = data.get(&layer_data_keys[0]).unwrap();
         let mut theme = self.default_theme_config();
-        projection.apply_panel_decor(spec, &mut theme, &mut vl_spec);
+        projection.apply_projection(spec, first_df, &mut theme, &mut vl_spec)?;
         vl_spec["config"] = theme;
 
         // 14. Serialize

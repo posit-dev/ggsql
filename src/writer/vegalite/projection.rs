@@ -46,7 +46,7 @@ pub(super) trait ProjectionRenderer {
     ///
     /// Called after layers are built but before faceting. May return a
     /// transformed DataFrame (e.g., polar currently clones it unchanged).
-    fn apply(
+    fn transform_layers(
         &self,
         project: &Projection,
         spec: &Plot,
@@ -80,49 +80,43 @@ pub(super) trait ProjectionRenderer {
         Vec::new()
     }
 
-    /// Apply projection-specific transformations and cross-cutting concerns (clip).
-    fn apply_transforms(
+    /// Apply all projection-specific work: transforms, clip, and panel decoration.
+    fn apply_projection(
         &self,
         spec: &Plot,
         data: &DataFrame,
+        theme: &mut Value,
         vl_spec: &mut Value,
     ) -> Result<Option<DataFrame>> {
-        let Some(ref project) = spec.project else {
-            return Ok(None);
+        let result = if let Some(ref project) = spec.project {
+            let r = self.transform_layers(project, spec, data, vl_spec)?;
+            if let Some(ParameterValue::Boolean(clip)) = project.properties.get("clip") {
+                apply_clip_to_layers(vl_spec, *clip);
+            }
+            r
+        } else {
+            None
         };
 
-        let result = self.apply(project, spec, data, vl_spec)?;
-
-        if let Some(ParameterValue::Boolean(clip)) = project.properties.get("clip") {
-            apply_clip_to_layers(vl_spec, *clip);
+        let mut bg = self.background_layers(&spec.scales, spec.project.as_ref(), theme);
+        let mut fg = self.foreground_layers(&spec.scales, spec.project.as_ref(), theme);
+        if !(bg.is_empty() && fg.is_empty()) {
+            for layer in &mut bg {
+                layer["description"] = json!("background");
+            }
+            for layer in &mut fg {
+                layer["description"] = json!("foreground");
+            }
+            if let Some(layers) = get_layers_mut(vl_spec) {
+                let data_layers = std::mem::take(layers);
+                layers.reserve(bg.len() + data_layers.len() + fg.len());
+                layers.extend(bg);
+                layers.extend(data_layers);
+                layers.extend(fg);
+            }
         }
 
         Ok(result)
-    }
-
-    /// Prepend background and append foreground decoration layers.
-    ///
-    /// Called after faceting so that decoration layers appear in both faceted
-    /// and non-faceted specs.
-    fn apply_panel_decor(&self, spec: &Plot, theme: &mut Value, vl_spec: &mut Value) {
-        let mut bg = self.background_layers(&spec.scales, spec.project.as_ref(), theme);
-        let mut fg = self.foreground_layers(&spec.scales, spec.project.as_ref(), theme);
-        if bg.is_empty() && fg.is_empty() {
-            return;
-        }
-        for layer in &mut bg {
-            layer["description"] = json!("background");
-        }
-        for layer in &mut fg {
-            layer["description"] = json!("foreground");
-        }
-        if let Some(layers) = get_layers_mut(vl_spec) {
-            let data_layers = std::mem::take(layers);
-            layers.reserve(bg.len() + data_layers.len() + fg.len());
-            layers.extend(bg);
-            layers.extend(data_layers);
-            layers.extend(fg);
-        }
     }
 }
 
@@ -185,7 +179,7 @@ impl ProjectionRenderer for CartesianProjection {
     }
 
     /// Apply Cartesian projection properties
-    fn apply(
+    fn transform_layers(
         &self,
         _project: &Projection,
         _spec: &Plot,
@@ -220,7 +214,7 @@ impl ProjectionRenderer for PolarProjection {
         Some((DEFAULT_POLAR_SIZE, DEFAULT_POLAR_SIZE))
     }
 
-    fn apply(
+    fn transform_layers(
         &self,
         project: &Projection,
         spec: &Plot,
