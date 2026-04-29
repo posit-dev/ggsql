@@ -81,9 +81,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-286b0d4f737c5af6226422bdceee2d85.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-b1bfb4a05eee97e0eed7704eb658e614.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-7269b18c81355fa05f84d19aa08aee53.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-b1bfb4a05eee97e0eed7704eb658e614.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-0a6ff9e974a964ea0021b5add90cfdb4.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-d8d8bd318e4ae1f3899de9540db28faf.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-0a6ff9e974a964ea0021b5add90cfdb4.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script src="../site_libs/quarto-contrib/iconify-3.0.0/iconify-icon.min.js"></script>
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
@@ -208,6 +208,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
         <li>
     <a class="dropdown-item" href="https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/">
  <span class="dropdown-text">Version 0.2.7 (alpha)</span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="../CHANGELOG.html">
+ <span class="dropdown-text">CHANGELOG</span></a>
   </li>  
     </ul>
   </li>
@@ -573,6 +578,19 @@ Download from <a href="https://github.com/posit-dev/ggsql/releases">GitHub Relea
   margin-top: 5rem
 }
 
+/* Quarto's anchor scroll uses a section:target::before pseudo-element
+   with negative margin-top to push the section below the fixed navbar.
+   That shifts section.top (and thus .icon-section's top) up by the
+   navbar height, while <h2> stays in flow — so .section-icons, anchored
+   to .icon-section, appears above the heading at anchor view. Override
+   the pseudo and use native scroll-margin-top instead. */
+.icon-section > section:target::before {
+  display: none;
+}
+.icon-section > section {
+  scroll-margin-top: 7rem;
+}
+
 .section-icons {
   position: absolute;
   left: 0;
@@ -605,17 +623,7 @@ Download from <a href="https://github.com/posit-dev/ggsql/releases">GitHub Relea
 <p><span class="section-icons"><img src="../assets/logos/vscode.svg" height="60"> <img src="../assets/logos/positron.svg" height="60"></span></p>
 <section id="vs-code-positron-extension" class="level2">
 <h2 class="anchored" data-anchor-id="vs-code-positron-extension">VS Code / Positron extension</h2>
-<p>For syntax highlighting and language support in VS Code or Positron, install the ggsql extension. You can either install it directly from the <a href="https://open-vsx.org/extension/ggsql/ggsql">extension marketplace</a> from within the IDE or download and install it manually:</p>
-<ol type="1">
-<li>Download <a href="https://github.com/posit-dev/ggsql/releases/latest/download/ggsql.vsix"><code>ggsql.vsix</code></a></li>
-<li>Install via the command line:</li>
-</ol>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># VS Code</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">code</span> <span class="at">--install-extension</span> ggsql.vsix</span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Positron</span></span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="ex">positron</span> <span class="at">--install-extension</span> ggsql.vsix</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Or install from within the editor: open the Extensions view, click the <code>...</code> menu, select “Install from VSIX…”, and choose the downloaded file.</p>
+<p>For syntax highlighting and language support in VS Code or Positron, install the ggsql extension. You can either install it directly from the <a href="https://open-vsx.org/extension/ggsql/ggsql">extension marketplace</a> from within the IDE or download and install it manually (in the <em>Extensions</em> view, click the <code>...</code> menu, select “Install from VSIX…”, and choose the downloaded file.)</p>
 </section>
 </div>
 

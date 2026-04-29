@@ -34,17 +34,4 @@ ggsql-jupyter --install
 
 ## VS Code / Positron extension
 
-For syntax highlighting and language support in VS Code or Positron, install the ggsql extension. You can either install it directly from the [extension marketplace](https://open-vsx.org/extension/ggsql/ggsql) from within the IDE or download and install it manually:
-
-1.  Download [`ggsql.vsix`](https://github.com/posit-dev/ggsql/releases/latest/download/ggsql.vsix)
-2.  Install via the command line:
-
-``` bash
-# VS Code
-code --install-extension ggsql.vsix
-
-# Positron
-positron --install-extension ggsql.vsix
-```
-
-Or install from within the editor: open the Extensions view, click the `...` menu, select “Install from VSIX…”, and choose the downloaded file.
+For syntax highlighting and language support in VS Code or Positron, install the ggsql extension. You can either install it directly from the [extension marketplace](https://open-vsx.org/extension/ggsql/ggsql) from within the IDE or download and install it manually (in the *Extensions* view, click the `...` menu, select “Install from VSIX…”, and choose the downloaded file.)
