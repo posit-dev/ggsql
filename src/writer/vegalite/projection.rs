@@ -1222,13 +1222,47 @@ fn convert_polar_to_cartesian(layer: &mut Value, panel: &PolarPanel) -> Result<(
             } else {
                 1.0
             };
-            theta_final = format!(
-                "datum.__polar_theta__ + {} * ((datum['{}'] - {}) / {} - 0.5)",
-                t_scale * bw,
-                f,
-                off_min,
-                off_max - off_min
-            );
+            if panel.is_radar() {
+                // In radar mode, interpolate linearly toward the adjacent
+                // spoke instead of displacing along a circular arc.
+                // The offset is normalised to [-0.5, 0.5] within the band.
+                let off_norm = format!(
+                    "(datum['{}'] - {}) / {} - 0.5",
+                    f, off_min, off_max - off_min
+                );
+                polar_transforms.push(
+                    json!({"calculate": off_norm, "as": "__polar_theta_off_t__"}),
+                );
+                // Target: the adjacent spoke (one full step away).
+                // Lerping between two spoke positions traces the straight
+                // polygon edge — both endpoints are vertices.
+                let step = t_scale;
+                let target_theta = format!(
+                    "datum.__polar_theta__ + (datum.__polar_theta_off_t__ >= 0 ? {} : -{})",
+                    step, step
+                );
+                polar_transforms.push(
+                    json!({"calculate": target_theta, "as": "__polar_theta_target__"}),
+                );
+                // At max offset (±0.5) we reach bw/2 of the way to the
+                // adjacent spoke — half because the spoke is a full step
+                // away but the band edge is only half a step.
+                let lerp = format!(
+                    "abs(datum.__polar_theta_off_t__) * {}",
+                    bw
+                );
+                polar_transforms.push(
+                    json!({"calculate": lerp, "as": "__polar_theta_lerp__"}),
+                );
+            } else {
+                theta_final = format!(
+                    "datum.__polar_theta__ + {} * ((datum['{}'] - {}) / {} - 0.5)",
+                    t_scale * bw,
+                    f,
+                    off_min,
+                    off_max - off_min
+                );
+            }
         } else {
             pixel_offsets.push((f.clone(), false));
         }
@@ -1237,7 +1271,21 @@ fn convert_polar_to_cartesian(layer: &mut Value, panel: &PolarPanel) -> Result<(
     let mut x_expr = panel.expr_x(&r_final, &theta_final);
     let mut y_expr = panel.expr_y(&r_final, &theta_final);
 
-    // Raw pixel offsets applied after polar→cartesian conversion
+    // In radar mode, lerp between the base spoke and the adjacent spoke
+    // so the offset follows the straight polygon edge.
+    if panel.is_radar() && theta_offset_field.is_some() {
+        let x_target = panel.expr_x(&r_final, "datum.__polar_theta_target__");
+        let y_target = panel.expr_y(&r_final, "datum.__polar_theta_target__");
+        x_expr = format!(
+            "(1 - datum.__polar_theta_lerp__) * ({x_expr}) + datum.__polar_theta_lerp__ * ({x_target})"
+        );
+        y_expr = format!(
+            "(1 - datum.__polar_theta_lerp__) * ({y_expr}) + datum.__polar_theta_lerp__ * ({y_target})"
+        );
+    }
+
+    // Raw pixel offsets applied after polar→cartesian conversion.
+    // Tangential: along (cos θ, sin θ). Radial: along (sin θ, -cos θ).
     for (f, is_radial) in &pixel_offsets {
         if *is_radial {
             x_expr = format!("({x_expr}) + datum['{f}'] * sin(datum.__polar_theta__)");
