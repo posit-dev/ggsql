@@ -327,6 +327,9 @@ impl PolarProjection {
         let Some(scale) = scales.iter().find(|s| s.aesthetic == "pos1") else {
             return Vec::new();
         };
+        if scale.is_dummy() {
+            return Vec::new();
+        }
         let breaks = scale.numeric_breaks();
         let Some((domain_min, domain_max)) = scale.numeric_domain() else {
             return Vec::new();
@@ -371,6 +374,9 @@ impl PolarProjection {
         let Some(scale) = scales.iter().find(|s| s.aesthetic == "pos2") else {
             return Vec::new();
         };
+        if scale.is_dummy() {
+            return Vec::new();
+        }
         let breaks = scale.numeric_breaks();
         let Some((domain_min, domain_max)) = scale.numeric_domain() else {
             return Vec::new();
@@ -420,6 +426,9 @@ impl PolarProjection {
         let Some(scale) = scales.iter().find(|s| s.aesthetic == "pos1") else {
             return Vec::new();
         };
+        if scale.is_dummy() {
+            return Vec::new();
+        }
         let break_labels = scale.break_labels();
         let Some((domain_min, domain_max)) = scale.numeric_domain() else {
             return Vec::new();
@@ -557,6 +566,9 @@ impl PolarProjection {
         let Some(scale) = scales.iter().find(|s| s.aesthetic == "pos2") else {
             return Vec::new();
         };
+        if scale.is_dummy() {
+            return Vec::new();
+        }
         let break_labels = scale.break_labels();
         let Some((domain_min, domain_max)) = scale.numeric_domain() else {
             return Vec::new();

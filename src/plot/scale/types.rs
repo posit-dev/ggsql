@@ -90,6 +90,18 @@ impl Scale {
         }
     }
 
+    /// Whether the scale's domain consists solely of the stat-dummy sentinel.
+    ///
+    /// Dummy scales are injected when a stat requires a position channel that
+    /// the user didn't map (e.g., a bar chart's categorical axis for a
+    /// pie chart). Axes for dummy scales should be suppressed.
+    pub fn is_dummy(&self) -> bool {
+        matches!(
+            self.input_range.as_deref(),
+            Some([ArrayElement::String(s)]) if s == &crate::naming::stat_column("dummy")
+        )
+    }
+
     /// Numeric break positions (after resolution).
     ///
     /// Delegates to the scale type for type-specific logic (e.g. discrete
