@@ -512,11 +512,22 @@ impl PolarProjection {
 
         let p = &self.panel;
         let mut layers = Vec::new();
+        let is_full_circle = (p.end - p.start - 2.0 * std::f64::consts::PI).abs() < f64::EPSILON;
+
+        // In a full-circle radar, the start angle bisects a polygon face
+        // that is closer to the centre than the circumscribed radius.
+        // Scale radii by cos(half_span) so the axis lands on the edge.
+        let r_correction = if p.is_radar() && is_full_circle {
+            let thetas = theta_breaks(p, scales);
+            thetas.first().map(|&t| (t - p.start).cos()).unwrap_or(1.0)
+        } else {
+            1.0
+        };
 
         // Axis line: rule from inner to outer at start angle
-        let inner_s = format!("{}", p.inner);
+        let inner_s = format!("{}", p.inner * r_correction);
         let start_s = format!("{}", p.start);
-        let outer_s = format!("{}", p.outer);
+        let outer_s = format!("{}", p.outer * r_correction);
         layers.push(json!({
             "data": {"values": [{}]},
             "mark": {
@@ -550,9 +561,13 @@ impl PolarProjection {
             .iter()
             .map(|(v, label)| json!({"v": v, "label": label}))
             .collect();
-        let r_norm = p.expr_normalize_radius("datum.v", domain_min, domain_max);
+        let r_norm_raw = p.expr_normalize_radius("datum.v", domain_min, domain_max);
+        let r_norm = if r_correction < 1.0 {
+            format!("({r_norm_raw}) * {r_correction}")
+        } else {
+            r_norm_raw
+        };
 
-        let is_full_circle = (p.end - p.start - 2.0 * std::f64::consts::PI).abs() < f64::EPSILON;
         let tick_just: f64 = if is_full_circle { 0.5 } else { 0.0 };
         let (sin_start, cos_start) = p.start.sin_cos();
         let dx_out = format!("{}", (1.0 - tick_just) * tick_size * cos_start);
