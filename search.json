@@ -3277,7 +3277,7 @@
     "href": "get_started/the_rest.html#the-rest-of-the-rest-of-the-owl",
     "title": "The rest of the owl",
     "section": "The rest of the rest of the owl",
-    "text": "The rest of the rest of the owl\nWhile we have now taken a quick tour through the main features of ggsql along with the theoretical backbone that underpins it there is still a lot to learn. The next step is to browse the syntax documentation, begin to build some visualizations on your own, and get some experience with ggsql.",
+    "text": "The rest of the rest of the owl\nWhile we have now taken a quick tour through the main features of ggsql along with the theoretical backbone that underpins it there is still a lot to learn. Continue to the last section of the tutorial for a brief wrap up and pointers to where to go next.",
     "crumbs": [
       "Get started",
       "The rest of the owl"
