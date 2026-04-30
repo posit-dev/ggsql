@@ -589,7 +589,7 @@ jobs:
           fi
 
       - name: Publish to npm
-        run: npm publish npm-tarball/*.tgz --access=public --provenance --tag ${{ steps.dist-tag.outputs.tag }}
+        run: npm publish ./npm-tarball/*.tgz --access=public --provenance --tag ${{ steps.dist-tag.outputs.tag }}
 
   create-release:
     name: Create GitHub Release
