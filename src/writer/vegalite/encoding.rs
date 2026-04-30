@@ -16,36 +16,8 @@ use std::collections::{HashMap, HashSet};
 use super::{POINTS_TO_AREA, POINTS_TO_PIXELS};
 
 /// Check if a position aesthetic has free scales enabled.
-///
-/// Maps aesthetic names to position indices:
-/// - pos1, pos1min, pos1max, pos1end -> index 0
-/// - pos2, pos2min, pos2max, pos2end -> index 1
-/// - etc.
-///
-/// Returns false for material aesthetics or if no free_scales array is provided.
-fn is_position_free_for_aesthetic(
-    aesthetic: &str,
-    free_scales: Option<&[crate::plot::ArrayElement]>,
-) -> bool {
-    let Some(free_arr) = free_scales else {
-        return false;
-    };
-
-    // Extract position index from aesthetic name (pos1 -> 0, pos2 -> 1, etc.)
-    let pos_index = if aesthetic.starts_with("pos1") {
-        Some(0)
-    } else if aesthetic.starts_with("pos2") {
-        Some(1)
-    } else if aesthetic.starts_with("pos3") {
-        Some(2)
-    } else {
-        None
-    };
-
-    pos_index
-        .and_then(|idx| free_arr.get(idx))
-        .map(|e| matches!(e, crate::plot::ArrayElement::Boolean(true)))
-        .unwrap_or(false)
+fn is_free(aesthetic: &str, facet: Option<&crate::plot::Facet>) -> bool {
+    facet.is_some_and(|f| f.is_free(aesthetic))
 }
 
 /// Build a Vega-Lite labelExpr from label mappings
@@ -465,8 +437,6 @@ struct ScaleContext<'a> {
     is_binned_legend: bool,
     #[allow(dead_code)]
     spec: &'a Plot, // Reserved for future use (e.g., multi-scale legend decisions)
-    /// Free scales array from facet (position-indexed booleans)
-    free_scales: Option<&'a [crate::plot::ArrayElement]>,
 }
 
 /// Build scale properties from SCALE clause
@@ -485,7 +455,7 @@ fn build_scale_properties(
     // When using free scales, Vega-Lite computes independent domains per facet panel.
     // Setting an explicit domain would override this behavior.
     // Note: aesthetics are in internal format (pos1, pos2) at this stage
-    let skip_domain = is_position_free_for_aesthetic(ctx.aesthetic, ctx.free_scales);
+    let skip_domain = is_free(ctx.aesthetic, ctx.spec.facet.as_ref());
 
     // Apply domain from input_range (FROM clause)
     // Skip for threshold scales - they use internal breaks as domain instead
@@ -804,8 +774,6 @@ pub(super) struct EncodingContext<'a> {
     pub spec: &'a Plot,
     pub titled_families: &'a mut HashSet<String>,
     pub primary_aesthetics: &'a HashSet<String>,
-    /// Free scales array from facet (position-indexed booleans)
-    pub free_scales: Option<&'a [crate::plot::ArrayElement]>,
 }
 
 /// Build encoding channel from aesthetic mapping
@@ -898,7 +866,6 @@ fn build_column_encoding(
             aesthetic,
             spec: ctx.spec,
             is_binned_legend,
-            free_scales: ctx.free_scales,
         };
         let (scale_obj, needs_gradient) = build_scale_properties(scale, &scale_ctx);
 
@@ -927,7 +894,7 @@ fn build_column_encoding(
     // the domain from data values. Setting zero:false in that case can exclude
     // 0 from the domain, breaking charts with pre-computed stacking (y2/theta2
     // starts at 0). Let VL's defaults handle it instead.
-    let is_free = is_position_free_for_aesthetic(aesthetic, ctx.free_scales);
+    let is_free = is_free(aesthetic, ctx.spec.facet.as_ref());
     if aesthetic_ctx.is_primary_internal(aesthetic) && !is_free {
         scale_obj.insert("zero".to_string(), json!(false));
     }
@@ -1073,7 +1040,7 @@ impl<'a> RenderContext<'a> {
 
     #[cfg(test)]
     pub fn default_for_test() -> Self {
-        let renderer = super::projection::get_projection_renderer(None, false);
+        let renderer = super::projection::get_projection_renderer(None, None);
         Self::new(
             &[],
             renderer.as_ref(),
@@ -1267,7 +1234,7 @@ mod tests {
             let scales: Vec<Scale> = vec![];
             let ctx = RenderContext::new(
                 &scales,
-                get_projection_renderer(None, false).as_ref(),
+                get_projection_renderer(None, None).as_ref(),
                 AestheticContext::from_static(&["x", "y"], &[]),
             );
             let err = ctx.get_extent("pos1").unwrap_err().to_string();
@@ -1282,7 +1249,7 @@ mod tests {
             let scales: Vec<Scale> = vec![];
             let ctx = RenderContext::new(
                 &scales,
-                get_projection_renderer(None, false).as_ref(),
+                get_projection_renderer(None, None).as_ref(),
                 AestheticContext::from_static(&["angle", "radius"], &[]),
             );
             let err = ctx.get_extent("pos1").unwrap_err().to_string();
@@ -1299,7 +1266,7 @@ mod tests {
             let scales = vec![discrete_scale("pos2")];
             let ctx = RenderContext::new(
                 &scales,
-                get_projection_renderer(None, false).as_ref(),
+                get_projection_renderer(None, None).as_ref(),
                 AestheticContext::from_static(&["x", "y"], &[]),
             );
             let err = ctx.get_extent("pos2").unwrap_err().to_string();

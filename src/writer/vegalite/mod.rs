@@ -159,9 +159,6 @@ fn prepare_layer_data(
 /// - Applies geom-specific modifications via renderer
 /// - Finalizes layers (may expand composite geoms into multiple layers)
 ///
-/// The `free_scales` array indicates which position aesthetics have independent scales
-/// per facet panel. When a position is free, explicit domains should not be set.
-///
 /// The `projection` determines how internal position aesthetics are mapped to
 /// Vega-Lite encoding channel names.
 fn build_layers(
@@ -170,7 +167,6 @@ fn build_layers(
     layer_data_keys: &[String],
     layer_renderers: &[Box<dyn GeomRenderer>],
     prepared_data: &[PreparedData],
-    free_scales: Option<&[crate::plot::ArrayElement]>,
     projection: &dyn ProjectionRenderer,
 ) -> Result<Vec<Value>> {
     let mut layers = Vec::new();
@@ -208,8 +204,8 @@ fn build_layers(
         // Set transform array on layer spec
         layer_spec["transform"] = json!(transforms);
 
-        // Build encoding for this layer (pass free scales and projection)
-        let mut encoding = build_layer_encoding(layer, df, spec, free_scales, projection)?;
+        // Build encoding for this layer
+        let mut encoding = build_layer_encoding(layer, df, spec, projection)?;
 
         // For point marks, remove fill: null from encoding — Vega-Lite point marks
         // are unfilled by default, so omitting it achieves the same visual result
@@ -247,16 +243,12 @@ fn build_layers(
 /// - Detail encoding for partition_by columns
 /// - Geom-specific encoding modifications via renderer
 ///
-/// The `free_scales` array indicates which position aesthetics have independent scales
-/// per facet panel. When a position is free, explicit domains should not be set.
-///
 /// The `projection` determines how internal position aesthetics (pos1, pos2) are
 /// mapped to Vega-Lite encoding channel names (x/y for cartesian, theta/radius for polar).
 fn build_layer_encoding(
     layer: &crate::plot::Layer,
     df: &DataFrame,
     spec: &Plot,
-    free_scales: Option<&[crate::plot::ArrayElement]>,
     projection: &dyn ProjectionRenderer,
 ) -> Result<serde_json::Map<String, Value>> {
     let mut encoding = serde_json::Map::new();
@@ -288,7 +280,6 @@ fn build_layer_encoding(
         spec,
         titled_families: &mut titled_families,
         primary_aesthetics: &primary_aesthetics,
-        free_scales,
     };
 
     // Build encoding channels for each aesthetic mapping
@@ -596,23 +587,6 @@ fn apply_facet_ordering(facet_def: &mut Value, scale: Option<&Scale>) {
         }
 
         facet_def["sort"] = json!(sort_values);
-    }
-}
-
-/// Extract free scales from facet properties as a boolean vector
-///
-/// After facet resolution, the `free` property is normalized to a boolean array:
-/// - `[true, false]` = free pos1, fixed pos2
-/// - `[false, true]` = fixed pos1, free pos2
-/// - `[true, true]` = both free
-/// - `[false, false]` = both fixed (default)
-///
-/// Returns reference to the free scales array from facet properties.
-fn get_free_scales(facet: Option<&crate::plot::Facet>) -> Option<&[crate::plot::ArrayElement]> {
-    let facet = facet?;
-    match facet.properties.get("free") {
-        Some(ParameterValue::Array(arr)) => Some(arr.as_slice()),
-        _ => None,
     }
 }
 
@@ -1046,13 +1020,7 @@ impl Writer for VegaLiteWriter {
         // 1. Validate spec
         self.validate(spec)?;
 
-        // 2. Get free scales array (if any)
-        // When using free scales, Vega-Lite computes independent domains per facet panel.
-        // We must not set explicit domains (from SCALE or COORD) as they would override this.
-        // The free property is a boolean array [pos1_free, pos2_free, ...].
-        let free_scales = get_free_scales(spec.facet.as_ref());
-
-        // 3. Determine layer data keys
+        // 2. Determine layer data keys
         let layer_data_keys: Vec<String> = spec
             .layers
             .iter()
@@ -1084,11 +1052,7 @@ impl Writer for VegaLiteWriter {
             "$schema": self.schema
         });
         // Get projection renderer (single instance used throughout)
-        let is_faceted = spec
-            .facet
-            .as_ref()
-            .is_some_and(|f| !f.get_variables().is_empty());
-        let projection = get_projection_renderer(spec.project.as_ref(), is_faceted);
+        let projection = get_projection_renderer(spec.project.as_ref(), spec.facet.as_ref());
 
         if let Some((w, h)) = projection.panel_size() {
             vl_spec["width"] = w;
@@ -1130,14 +1094,13 @@ impl Writer for VegaLiteWriter {
         let unified_data = unify_datasets(&prep.datasets)?;
         vl_spec["data"] = json!({"values": unified_data});
 
-        // 9. Build layers (pass free scales and projection for domain handling)
+        // 9. Build layers
         let layers = build_layers(
             spec,
             data,
             &layer_data_keys,
             &prep.renderers,
             &prep.prepared,
-            free_scales,
             projection.as_ref(),
         )?;
         vl_spec["layer"] = json!(layers);
@@ -1391,7 +1354,7 @@ mod tests {
 
         // Test with cartesian projection (None = default cartesian)
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
-        let cartesian = get_projection_renderer(None, false);
+        let cartesian = get_projection_renderer(None, None);
         let cart = cartesian.as_ref();
 
         // Internal position names should map to Vega-Lite channel names based on projection
@@ -1417,7 +1380,7 @@ mod tests {
         // Test with polar projection - internal position maps to radius/theta
         // regardless of the context's user-facing names
         let polar_proj = Projection::polar();
-        let polar = get_projection_renderer(Some(&polar_proj), false);
+        let polar = get_projection_renderer(Some(&polar_proj), None);
         let pol = polar.as_ref();
 
         let polar_ctx = AestheticContext::from_static(&["radius", "theta"], &[]);
