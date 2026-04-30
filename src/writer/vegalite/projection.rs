@@ -203,6 +203,8 @@ struct PolarPanel {
     end: f64,
     inner: f64,
     outer: f64,
+    /// Explicit radar setting from PROJECT: true, false, or null (auto-detect)
+    radar: Option<bool>,
     // Placement details
     size: f64,
     cx: String,
@@ -231,6 +233,13 @@ impl PolarPanel {
         let end_degrees = prop("end").unwrap_or(start_degrees + 360.0);
         let start = start_degrees * std::f64::consts::PI / 180.0;
         let end = end_degrees * std::f64::consts::PI / 180.0;
+        let radar = if let Some(ParameterValue::Boolean(b)) =
+            project.and_then(|p| p.properties.get("radar"))
+        {
+            Some(*b)
+        } else {
+            None
+        };
         let inner = prop("inner").unwrap_or(0.0);
         let size = prop("size").unwrap_or(DEFAULT_POLAR_SIZE);
         let (cx, cy, radius) = if is_faceted {
@@ -251,6 +260,7 @@ impl PolarPanel {
             end,
             inner,
             outer: POLAR_OUTER,
+            radar,
             size,
             cx,
             cy,
@@ -258,6 +268,10 @@ impl PolarPanel {
             free_pos1,
             free_pos2,
         }
+    }
+
+    fn is_radar(&self) -> bool {
+        matches!(self.radar, Some(true))
     }
 
     fn expr_x(&self, r: &str, theta: &str) -> String {
