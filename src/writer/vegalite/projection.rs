@@ -907,28 +907,48 @@ fn polygon_ring(
     let is_full_circle =
         (panel.end - panel.start - 2.0 * std::f64::consts::PI).abs() < f64::EPSILON;
 
+    let inner = inner_radius.unwrap_or(0.0);
     let mut vertices: Vec<(f64, f64)> = Vec::new();
 
-    // Outer ring — forward
-    for &theta in thetas {
-        vertices.push((outer_radius, theta));
-    }
     if is_full_circle {
+        // Outer ring at theta breaks, then repeat first to close
+        for &theta in thetas {
+            vertices.push((outer_radius, theta));
+        }
         if let Some(&first) = thetas.first() {
             vertices.push((outer_radius, first));
         }
-    }
-
-    // Inner ring — reversed (donut mode)
-    if let Some(inner) = inner_radius {
-        for &theta in thetas.iter().rev() {
-            vertices.push((inner, theta));
-        }
-        if is_full_circle {
+        // Donut: trace inner ring reversed, closing back to start
+        if inner_radius.is_some() {
+            for &theta in thetas.iter().rev() {
+                vertices.push((inner, theta));
+            }
             if let Some(&last) = thetas.last() {
                 vertices.push((inner, last));
             }
         }
+    } else {
+        // Partial arc: outer ring from start angle through breaks to
+        // end angle, then return via inner radius (or centre).
+        vertices.push((outer_radius, panel.start));
+        for &theta in thetas {
+            vertices.push((outer_radius, theta));
+        }
+        vertices.push((outer_radius, panel.end));
+
+        // Return path along inner radius (or single centre point)
+        if inner_radius.is_some() {
+            vertices.push((inner, panel.end));
+            for &theta in thetas.iter().rev() {
+                vertices.push((inner, theta));
+            }
+            vertices.push((inner, panel.start));
+        } else {
+            vertices.push((inner, panel.end));
+            vertices.push((inner, panel.start));
+        }
+        // Close back to first vertex
+        vertices.push((outer_radius, panel.start));
     }
 
     let values: Vec<Value> = vertices
@@ -2652,7 +2672,7 @@ mod tests {
     }
 
     #[test]
-    fn test_polygon_ring_open_for_partial_arc() {
+    fn test_polygon_ring_closed_for_partial_arc() {
         use std::f64::consts::PI;
         let mut proj = Projection::polar();
         proj.properties
@@ -2660,11 +2680,14 @@ mod tests {
         proj.properties
             .insert("end".to_string(), ParameterValue::Number(180.0));
         let panel = PolarPanel::new(Some(&proj), None);
-        let thetas = vec![0.0, PI / 4.0, PI / 2.0];
+        let thetas = vec![0.5, 1.0, 1.5];
         let layer = polygon_ring(&panel, POLAR_OUTER, None, &thetas, Value::Null, json!("red"));
         let values = layer["data"]["values"].as_array().unwrap();
-        // No closing vertex for partial arc
-        assert_eq!(values.len(), 3);
+        // start + 3 breaks + end + centre(end) + centre(start) + close = 8
+        assert_eq!(values.len(), 8);
+        // First and last vertex should be at the same position (closed path)
+        assert_eq!(values[0]["theta"], values[7]["theta"]);
+        assert_eq!(values[0]["r"], values[7]["r"]);
     }
 
     #[test]
