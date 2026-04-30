@@ -55,7 +55,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist
+          args: --release --out dist --auditwheel=repair
           working-directory: ggsql-jupyter
           manylinux: 2_28
           docker-options: -e GGSQL_SKIP_GENERATE=1
@@ -65,6 +65,11 @@ jobs:
             elif command -v apt-get >/dev/null 2>&1; then
               apt-get update && apt-get install -y unixodbc-dev
             fi
+
+      - name: Fix wheel library load paths
+        uses: ./.github/workflows/actions/fix-wheel-libs
+        with:
+          dist-dir: ggsql-jupyter/dist
 
       - uses: actions/upload-artifact@v4
         with:
@@ -101,8 +106,8 @@ jobs:
           args: --release --out dist --auditwheel=repair
           working-directory: ggsql-jupyter
 
-      - name: Fix wheel dylib load paths
-        uses: ./.github/workflows/actions/fix-macos-wheel-dylibs
+      - name: Fix wheel library load paths
+        uses: ./.github/workflows/actions/fix-wheel-libs
         with:
           dist-dir: ggsql-jupyter/dist
 

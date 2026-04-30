@@ -1,0 +1,3 @@
+include-in-header:
+  - text: |
+      <style>.quarto-title-block .description { display: none; }</style>

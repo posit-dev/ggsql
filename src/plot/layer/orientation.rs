@@ -83,7 +83,7 @@ pub fn is_transposed(layer: &Layer) -> bool {
 /// Check if a geom type supports orientation auto-detection.
 ///
 /// Returns true for geoms with inherent orientation assumptions:
-/// - Bar, Histogram, Boxplot, Violin, Density, Ribbon, Rule, ErrorBar
+/// - Bar, Histogram, Boxplot, Violin, Density, Ribbon, Rule, Range
 ///
 /// Returns false for geoms without inherent orientation:
 /// - Point, Line, Path, Area, etc.
@@ -97,7 +97,7 @@ pub fn geom_has_implicit_orientation(geom: &GeomType) -> bool {
             | GeomType::Density
             | GeomType::Ribbon
             | GeomType::Rule
-            | GeomType::ErrorBar
+            | GeomType::Range
     )
 }
 

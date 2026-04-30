@@ -83,6 +83,17 @@ pub struct Location {
 // Validation Function
 // ============================================================================
 
+fn has_error_ancestor(node: &tree_sitter::Node) -> bool {
+    let mut cur = node.parent();
+    while let Some(p) = cur {
+        if p.is_error() {
+            return true;
+        }
+        cur = p.parent();
+    }
+    false
+}
+
 /// Validate query syntax and semantics without executing SQL.
 pub fn validate(query: &str) -> Result<Validated> {
     let mut errors = Vec::new();
@@ -114,11 +125,55 @@ pub fn validate(query: &str) -> Result<Validated> {
     let viz_part = source_tree.extract_visualise().unwrap_or_default();
 
     let root = source_tree.root();
-    let has_visual = source_tree
-        .find_node(&root, "(visualise_statement) @viz")
-        .is_some();
+    let visualise_stmt = source_tree.find_node(&root, "(visualise_statement) @viz");
+    let has_visual = visualise_stmt.is_some();
 
-    // If no visualization, return without tree
+    if let Err(e) = source_tree.validate() {
+        // The lexer always tokenises VISUALISE / VISUALIZE as
+        // `visualise_keyword` (token prec 10 in grammar.js), so the keyword
+        // survives even when parsing fails. We give a ggsql-aware message
+        // only when the parse error lies on the VISUALISE side: either no
+        // visualise_statement was recovered (keyword stranded in an ERROR
+        // node) or one was recovered as a fragment under an ERROR ancestor
+        // (partial recovery — common when a mapping holds a SQL expression
+        // and the parser rolls forward into the SQL portion). When the
+        // visualise_statement is a clean top-level child of `query`, the
+        // error is in the SQL portion and the generic message is more honest.
+        let kw_pos = source_tree
+            .find_node(&root, "(visualise_keyword) @kw")
+            .map(|n| n.start_position());
+        let visualise_side_failed = match &visualise_stmt {
+            Some(node) => node.has_error() || has_error_ancestor(node),
+            None => kw_pos.is_some(),
+        };
+        let (message, location) = if visualise_side_failed {
+            (
+                "VISUALISE clause was not recognized. Mappings accept column \
+                 names only — not SQL expressions like CAST() or function \
+                 calls. Move data transformations to the SELECT clause and \
+                 reference the resulting column by name in VISUALISE."
+                    .to_string(),
+                kw_pos.map(|p| Location {
+                    line: p.row,
+                    column: p.column,
+                }),
+            )
+        } else {
+            (e.to_string(), None)
+        };
+        errors.push(ValidationError { message, location });
+        return Ok(Validated {
+            sql: sql_part,
+            visual: viz_part,
+            has_visual,
+            tree: Some(source_tree.tree),
+            valid: false,
+            errors,
+            warnings,
+        });
+    }
+
+    // Genuine SQL-only query (no parse errors, no VISUALISE clause).
     if !has_visual {
         return Ok(Validated {
             sql: sql_part,
@@ -126,23 +181,6 @@ pub fn validate(query: &str) -> Result<Validated> {
             has_visual: false,
             tree: None,
             valid: true,
-            errors,
-            warnings,
-        });
-    }
-
-    // Validate the parse tree for errors
-    if let Err(e) = source_tree.validate() {
-        errors.push(ValidationError {
-            message: e.to_string(),
-            location: None,
-        });
-        return Ok(Validated {
-            sql: sql_part,
-            visual: viz_part,
-            has_visual: true,
-            tree: Some(source_tree.tree),
-            valid: false,
             errors,
             warnings,
         });
@@ -355,5 +393,92 @@ mod tests {
             "global color mapping should be accepted: {:?}",
             validated.errors()
         );
+    }
+
+    // Issue #256: SQL expressions in VISUALISE mappings used to be silently
+    // consumed as SQL, with validate() reporting valid=true and has_visual=false.
+    // The fix detects a stray visualise_keyword node (one that didn't make it
+    // into a visualise_statement) and emits an actionable error.
+
+    #[test]
+    fn test_validate_cast_in_visualise_mapping() {
+        let query = "SELECT sex, survived, COUNT(*) AS n FROM titanic GROUP BY sex, survived\n\
+                     VISUALISE sex AS x, n AS y, CAST(survived AS VARCHAR) AS fill\n\
+                     DRAW bar";
+        let validated = validate(query).unwrap();
+        assert!(!validated.valid());
+        assert!(!validated.errors().is_empty());
+        let msg = &validated.errors()[0].message;
+        assert!(
+            msg.contains("VISUALISE") && msg.contains("column"),
+            "expected helpful message, got: {msg}"
+        );
+        assert!(validated.errors()[0].location.is_some());
+    }
+
+    #[test]
+    fn test_validate_function_call_in_visualise_mapping() {
+        let query = "SELECT t, v FROM data VISUALISE date_trunc('day', t) AS x, v AS y DRAW line";
+        let validated = validate(query).unwrap();
+        assert!(!validated.valid());
+        assert!(!validated.errors().is_empty());
+        assert!(validated.errors()[0].message.contains("VISUALISE"));
+    }
+
+    #[test]
+    fn test_validate_lowercase_visualise_keyword_with_expression() {
+        let query = "SELECT a, b FROM t visualise cast(a as varchar) as x, b as y draw point";
+        let validated = validate(query).unwrap();
+        assert!(!validated.valid());
+        assert!(!validated.errors().is_empty());
+    }
+
+    #[test]
+    fn test_validate_us_visualize_spelling_with_expression() {
+        let query = "SELECT a, b FROM t VISUALIZE CAST(a AS VARCHAR) AS x, b AS y DRAW point";
+        let validated = validate(query).unwrap();
+        assert!(!validated.valid());
+        assert!(!validated.errors().is_empty());
+    }
+
+    #[test]
+    fn test_validate_sql_side_error_does_not_blame_visualise() {
+        // When the parse error is in the SQL portion but the VISUALISE clause
+        // is fully recovered, we must not emit the "VISUALISE clause was not
+        // recognized" message — the VISUALISE clause is fine.
+        let query = "SELECT @@@ FROM t VISUALISE a AS x, b AS y DRAW point";
+        let validated = validate(query).unwrap();
+        assert!(!validated.valid());
+        assert!(!validated.errors().is_empty());
+        let msg = &validated.errors()[0].message;
+        assert!(
+            !msg.contains("VISUALISE clause was not recognized"),
+            "SQL-side error should not be reported as a VISUALISE error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_validate_visualise_in_string_literal_is_valid() {
+        // VISUALISE inside a string literal must NOT trigger the new error —
+        // tree-sitter classifies it as part of a string node.
+        let validated = validate("SELECT 'VISUALISE' AS s").unwrap();
+        assert!(
+            validated.valid(),
+            "string literal containing VISUALISE should be valid: {:?}",
+            validated.errors()
+        );
+        assert!(!validated.has_visual());
+    }
+
+    #[test]
+    fn test_validate_visualise_in_comment_is_valid() {
+        // VISUALISE inside a comment must NOT trigger the new error.
+        let validated = validate("SELECT 1 AS x -- VISUALISE here\n").unwrap();
+        assert!(
+            validated.valid(),
+            "comment containing VISUALISE should be valid: {:?}",
+            validated.errors()
+        );
+        assert!(!validated.has_visual());
     }
 }

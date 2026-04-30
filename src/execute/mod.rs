@@ -54,6 +54,13 @@ fn validate(
     layer_schemas: &[Schema],
     aesthetic_context: &Option<AestheticContext>,
 ) -> Result<()> {
+    let translate = |aes: &str| -> String {
+        match aesthetic_context {
+            Some(ctx) => ctx.map_internal_to_user(aes),
+            None => aes.to_string(),
+        }
+    };
+
     for (idx, (layer, schema)) in layers.iter().zip(layer_schemas.iter()).enumerate() {
         let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
         let supported = layer.geom.aesthetics().supported();
@@ -84,7 +91,7 @@ fn validate(
                     return Err(GgsqlError::ValidationError(format!(
                         "Layer {}: aesthetic '{}' references non-existent column '{}'",
                         idx + 1,
-                        aesthetic,
+                        translate(aesthetic),
                         col_name
                     )));
                 }
@@ -110,7 +117,7 @@ fn validate(
                 return Err(GgsqlError::ValidationError(format!(
                     "Layer {}: REMAPPING targets unsupported aesthetic '{}' for geom '{}'",
                     idx + 1,
-                    target_aesthetic,
+                    translate(target_aesthetic),
                     layer.geom
                 )));
             }
@@ -141,6 +148,93 @@ fn validate(
         }
     }
     Ok(())
+}
+
+// =============================================================================
+// Column Name Normalization
+// =============================================================================
+
+/// Rewrite `name` to match the schema's casing (case-insensitive resolution).
+///
+/// SQL treats unquoted identifiers as case-insensitive, so users may write
+/// `VISUALISE CATEGORY AS x` even when DuckDB returns the column as `category`.
+/// ggsql's own validator and generated SQL treat column names case-sensitively,
+/// so we reconcile by rewriting the user-written name to the schema's casing
+/// before either runs.
+///
+/// Exact match wins. Otherwise, if exactly one case-insensitive match exists,
+/// `name` is rewritten to that match. Ambiguous matches (e.g. schema has both
+/// `"Foo"` and `"foo"` and user wrote `FOO`) and missing references are left
+/// untouched so the existing validator can report them with its normal error.
+fn normalize_column_ref(name: &mut String, schema_names: &[&str]) {
+    if schema_names.contains(&name.as_str()) {
+        return;
+    }
+    let name_lower = name.to_lowercase();
+    let mut match_iter = schema_names
+        .iter()
+        .filter(|s| s.to_lowercase() == name_lower);
+    if let Some(first) = match_iter.next() {
+        if match_iter.next().is_none() {
+            *name = (*first).to_string();
+        }
+    }
+}
+
+/// Normalize all user-written column references in `specs` against their layer
+/// schemas.
+///
+/// Runs after `merge_global_mappings_into_layers` so every aesthetic that a
+/// layer will consult is already attached to that layer's `mappings`; each
+/// layer can then be normalized against its own schema. This matters for
+/// multi-source layers (e.g. `MAPPING ... FROM temps` vs `... FROM ozone`),
+/// where the schemas — and the column casings — can legitimately differ.
+///
+/// Covers aesthetic `Column` values and `partition_by` per layer, plus
+/// user-written facet variables on the plot-level `FACET` clause.
+fn normalize_column_references(specs: &mut [Plot], layer_schemas: &[Schema]) {
+    for spec in specs {
+        for (layer, schema) in spec.layers.iter_mut().zip(layer_schemas.iter()) {
+            if matches!(layer.source, Some(DataSource::Annotation)) {
+                continue;
+            }
+            let names: Vec<&str> = schema.iter().map(|c| c.name.as_str()).collect();
+            for value in layer.mappings.aesthetics.values_mut() {
+                if let AestheticValue::Column { name, .. } = value {
+                    normalize_column_ref(name, &names);
+                }
+            }
+            for col in &mut layer.partition_by {
+                normalize_column_ref(col, &names);
+            }
+        }
+
+        // Facet variables are plot-level. Normalize against the first layer
+        // whose schema contains the variable (case-insensitively). If no
+        // layer matches, leave it — `add_facet_mappings_to_layers` simply
+        // won't inject a mapping for layers that don't have the column.
+        if let Some(facet) = spec.facet.as_mut() {
+            let normalize_var = |var: &mut String| {
+                for schema in layer_schemas {
+                    let names: Vec<&str> = schema.iter().map(|c| c.name.as_str()).collect();
+                    let before = var.clone();
+                    normalize_column_ref(var, &names);
+                    if *var != before || names.contains(&var.as_str()) {
+                        break;
+                    }
+                }
+            };
+            match &mut facet.layout {
+                crate::plot::FacetLayout::Wrap { variables } => {
+                    variables.iter_mut().for_each(normalize_var);
+                }
+                crate::plot::FacetLayout::Grid { row, column } => {
+                    row.iter_mut().for_each(normalize_var);
+                    column.iter_mut().for_each(normalize_var);
+                }
+            }
+        }
+    }
 }
 
 // =============================================================================
@@ -184,7 +278,7 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             // pos2 on histogram can be targeted by explicit global mappings, matching
             // the behavior of layer-level MAPPING
             // Note: Also accept flipped position counterparts so bidirectional geoms
-            // (e.g., errorbar: pos1+pos2min+pos2max or pos2+pos1min+pos1max) can
+            // (e.g., range: pos1+pos2min+pos2max or pos2+pos1min+pos1max) can
             // receive globals from either orientation.
             for (aesthetic, value) in &spec.global_mappings.aesthetics {
                 let is_facet_aesthetic = crate::plot::scale::is_facet_aesthetic(aesthetic.as_str());
@@ -1027,6 +1121,11 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // NOTE: Both global and layer aesthetics are already in internal format (pos1, pos2)
     // because transformation happens in builder.rs right after parsing
     merge_global_mappings_into_layers(&mut specs, &layer_schemas);
+
+    // Reconcile user-written column casing with schema casing (DuckDB lowercases
+    // unquoted identifiers). Must run after the global→layer merge so each layer
+    // is normalized against its own schema, which matters for multi-source layers.
+    normalize_column_references(&mut specs, &layer_schemas);
 
     // Resolve aesthetic aliases (e.g., 'color' → 'fill'/'stroke') early in the pipeline
     // This must happen before validation so concrete aesthetics are validated
@@ -2850,5 +2949,357 @@ mod tests {
             "Error should not mention internal name 'pos1min', got: {}",
             err_msg
         );
+    }
+
+    // =========================================================================
+    // Case-insensitive column reference normalization
+    // =========================================================================
+
+    /// Original reproducer: DuckDB lowercases unquoted identifiers, so
+    /// `SELECT category` returns `category`. `VISUALISE CATEGORY AS x` must
+    /// resolve to `category` before validation.
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_case_insensitive_visualise_refs() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE case_test AS SELECT 'A' AS category, 10 AS value \
+                 UNION ALL SELECT 'B', 20",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT category, value FROM case_test
+            VISUALISE CATEGORY AS x, VALUE AS y
+            DRAW bar
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Uppercase VISUALISE refs should resolve to lowercase schema: {:?}",
+            result.err()
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_mixed_case_visualise_refs() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE mixed AS SELECT 'A' AS category, 10 AS value \
+                 UNION ALL SELECT 'B', 20",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT category, value FROM mixed
+            VISUALISE CaTeGoRy AS x, VaLuE AS y
+            DRAW bar
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Mixed-case VISUALISE refs should normalize: {:?}",
+            result.err()
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_case_insensitive_partition_by() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE pb AS SELECT 1 AS x, 10 AS y, 'A' AS category \
+                 UNION ALL SELECT 2, 20, 'B'",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT x, y, category FROM pb
+            VISUALISE x AS x, y AS y
+            DRAW line PARTITION BY CATEGORY
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Uppercase PARTITION BY should resolve to lowercase schema: {:?}",
+            result.err()
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_case_insensitive_facet() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE facet_case AS SELECT 1 AS x, 10 AS y, 'N' AS region \
+                 UNION ALL SELECT 2, 20, 'S'",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            SELECT x, y, region FROM facet_case
+            VISUALISE x AS x, y AS y
+            DRAW point
+            FACET REGION
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Uppercase FACET variable should resolve to lowercase schema: {:?}",
+            result.err()
+        );
+    }
+
+    /// Multi-source layers with different schemas — the case the old PR #143
+    /// got wrong. Each layer's mapping must be normalized against that layer's
+    /// own schema, not the first layer's.
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_multi_source_layers_case_insensitive() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE temps AS SELECT 1 AS date, 20.0 AS value \
+                 UNION ALL SELECT 2, 21.0",
+                duckdb::params![],
+            )
+            .unwrap();
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE ozone AS SELECT 1 AS date, 0.05 AS value \
+                 UNION ALL SELECT 2, 0.06",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = r#"
+            VISUALISE Date AS x, Value AS y
+            DRAW line MAPPING Date AS x, Value AS y FROM temps
+            DRAW line MAPPING DATE AS x, VALUE AS y FROM ozone
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Per-layer normalization should work across multi-source layers: {:?}",
+            result.err()
+        );
+    }
+
+    // Direct tests for the normalizer's match-resolution contract.
+    // (DuckDB itself rejects case-colliding column names even when quoted,
+    // so the ambiguous/exact-match scenarios can't be exercised end-to-end.)
+
+    #[test]
+    fn test_normalize_column_ref_exact_match_wins() {
+        let mut name = "foo".to_string();
+        normalize_column_ref(&mut name, &["Foo", "foo"]);
+        assert_eq!(name, "foo");
+    }
+
+    #[test]
+    fn test_normalize_column_ref_unique_case_match_rewrites() {
+        let mut name = "CATEGORY".to_string();
+        normalize_column_ref(&mut name, &["category", "value"]);
+        assert_eq!(name, "category");
+    }
+
+    #[test]
+    fn test_normalize_column_ref_ambiguous_left_alone() {
+        let mut name = "FOO".to_string();
+        normalize_column_ref(&mut name, &["Foo", "foo"]);
+        assert_eq!(name, "FOO", "ambiguous match must not be silently resolved");
+    }
+
+    #[test]
+    fn test_normalize_column_ref_no_match_left_alone() {
+        let mut name = "missing".to_string();
+        normalize_column_ref(&mut name, &["a", "b"]);
+        assert_eq!(name, "missing");
+    }
+
+    // =========================================================================
+    // validate() — internal aesthetic names must not leak into error messages
+    // =========================================================================
+
+    mod validate_translation_tests {
+        use super::*;
+        use crate::plot::layer::geom::Geom;
+        use crate::plot::layer::Layer;
+        use crate::plot::types::{AestheticValue, ColumnInfo};
+        use arrow::datatypes::DataType;
+
+        fn col(name: &str) -> ColumnInfo {
+            ColumnInfo {
+                name: name.to_string(),
+                dtype: DataType::Float64,
+                is_discrete: false,
+                min: None,
+                max: None,
+            }
+        }
+
+        fn point_layer_with_mapping(aesthetic: &str, column: &str) -> Layer {
+            let mut layer = Layer::new(Geom::point());
+            // Point geom requires both pos1 and pos2; map both, but only the
+            // one we're testing points at a missing column.
+            layer.mappings.aesthetics.insert(
+                "pos1".to_string(),
+                AestheticValue::standard_column("present_x"),
+            );
+            layer.mappings.aesthetics.insert(
+                "pos2".to_string(),
+                AestheticValue::standard_column("present_y"),
+            );
+            layer.mappings.aesthetics.insert(
+                aesthetic.to_string(),
+                AestheticValue::standard_column(column),
+            );
+            layer
+        }
+
+        #[test]
+        fn aesthetic_column_missing_translates_pos1_to_x_under_cartesian() {
+            let mut layer = Layer::new(Geom::point());
+            layer.mappings.aesthetics.insert(
+                "pos1".to_string(),
+                AestheticValue::standard_column("missing"),
+            );
+            layer.mappings.aesthetics.insert(
+                "pos2".to_string(),
+                AestheticValue::standard_column("present_y"),
+            );
+            let schema: Schema = vec![col("present_y")];
+            let ctx = Some(AestheticContext::from_static(&["x", "y"], &[]));
+
+            let err = validate(&[layer], &[schema], &ctx).unwrap_err().to_string();
+            assert_eq!(
+                err,
+                "Validation error: Layer 1: aesthetic 'x' references non-existent column 'missing'"
+            );
+        }
+
+        #[test]
+        fn aesthetic_column_missing_translates_pos1_to_angle_under_polar() {
+            let mut layer = Layer::new(Geom::point());
+            layer.mappings.aesthetics.insert(
+                "pos1".to_string(),
+                AestheticValue::standard_column("missing"),
+            );
+            layer.mappings.aesthetics.insert(
+                "pos2".to_string(),
+                AestheticValue::standard_column("present_radius"),
+            );
+            let schema: Schema = vec![col("present_radius")];
+            let ctx = Some(AestheticContext::from_static(&["angle", "radius"], &[]));
+
+            let err = validate(&[layer], &[schema], &ctx).unwrap_err().to_string();
+            assert_eq!(
+                err,
+                "Validation error: Layer 1: aesthetic 'angle' references non-existent column 'missing'"
+            );
+        }
+
+        #[test]
+        fn aesthetic_column_missing_translates_pos2_to_y_under_cartesian() {
+            let layer = point_layer_with_mapping("pos2", "missing");
+            let schema: Schema = vec![col("present_x"), col("present_y")];
+            let ctx = Some(AestheticContext::from_static(&["x", "y"], &[]));
+
+            // pos2 is overridden to point at "missing" by point_layer_with_mapping
+            let err = validate(&[layer], &[schema], &ctx).unwrap_err().to_string();
+            assert_eq!(
+                err,
+                "Validation error: Layer 1: aesthetic 'y' references non-existent column 'missing'"
+            );
+        }
+
+        #[test]
+        fn material_aesthetic_column_missing_keeps_color_name() {
+            // Material aesthetics (color, size, etc.) should round-trip unchanged.
+            let layer = point_layer_with_mapping("color", "missing");
+            let schema: Schema = vec![col("present_x"), col("present_y")];
+            let ctx = Some(AestheticContext::from_static(&["x", "y"], &[]));
+
+            let err = validate(&[layer], &[schema], &ctx).unwrap_err().to_string();
+            assert_eq!(
+                err,
+                "Validation error: Layer 1: aesthetic 'color' references non-existent column 'missing'"
+            );
+        }
+
+        #[test]
+        fn remapping_unsupported_target_translates_pos2_to_y_under_cartesian() {
+            // Histogram has a stat transform and supports REMAPPING, but does
+            // not support `shape`. Aim a remapping at an aesthetic histogram
+            // does support but aliased so we can verify pos→user translation:
+            // route via `pos2` mapped target (the histogram stat output is
+            // `count`).  We need a target the geom actually rejects.  Simpler:
+            // build a Layer manually with a remapping at "pos9" (truly unsupported)
+            // and verify pos translation runs even on an unrecognized name.
+            //
+            // For an end-to-end position translation case, we use a layer with
+            // a histogram geom and a remapping target that becomes "pos1max"
+            // after parser transformation — histogram does not support pos1max
+            // (only pos1 and the delayed pos2). The test here builds the
+            // post-transform state directly.
+            let mut layer = Layer::new(Geom::histogram());
+            layer.mappings.aesthetics.insert(
+                "pos1".to_string(),
+                AestheticValue::standard_column("present_x"),
+            );
+            layer.remappings.aesthetics.insert(
+                "pos1max".to_string(),
+                AestheticValue::standard_column("count"),
+            );
+            let schema: Schema = vec![col("present_x")];
+            let ctx = Some(AestheticContext::from_static(&["x", "y"], &[]));
+
+            let err = validate(&[layer], &[schema], &ctx).unwrap_err().to_string();
+            assert_eq!(
+                err,
+                "Validation error: Layer 1: REMAPPING targets unsupported aesthetic 'xmax' for geom 'histogram'"
+            );
+        }
+
+        #[test]
+        fn remapping_unsupported_target_translates_pos1max_to_anglemax_under_polar() {
+            let mut layer = Layer::new(Geom::histogram());
+            layer.mappings.aesthetics.insert(
+                "pos1".to_string(),
+                AestheticValue::standard_column("present_x"),
+            );
+            layer.remappings.aesthetics.insert(
+                "pos1max".to_string(),
+                AestheticValue::standard_column("count"),
+            );
+            let schema: Schema = vec![col("present_x")];
+            let ctx = Some(AestheticContext::from_static(&["angle", "radius"], &[]));
+
+            let err = validate(&[layer], &[schema], &ctx).unwrap_err().to_string();
+            assert_eq!(
+                err,
+                "Validation error: Layer 1: REMAPPING targets unsupported aesthetic 'anglemax' for geom 'histogram'"
+            );
+        }
     }
 }
