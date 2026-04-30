@@ -14,7 +14,7 @@ May 4, 2028
 
 Waterflow 225 *by Thomas Lin Pedersen*
 
-We are happy to announce the release of ggsql 0.3.0 (alpha). This release comes in quick succession to the initial [0.2.7 (alpha) release](https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/) and fixes a number of behind-the-scenes issues that we are eager to get out before we begin adding more features and integrations. You can read the full list of changes in the [CHANGELOG](../../CHANGELOG.md).
+We are happy to announce the release of ggsql 0.3.0 (alpha). This release comes in quick succession to the initial [0.2.7 (alpha) release](https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/) and fixes a number of behind-the-scenes issues that we are eager to get out before we begin adding more features and integrations. You can read the full list of changes in the [CHANGELOG](../../../CHANGELOG.llms.md).
 
 ## Syntax ergonomics
 
@@ -46,6 +46,6 @@ Speaking of coding agents, the CLI now also ships with a skill, accessible throu
 
 ## And all the rest
 
-The release also contains a range of various fixes and infrastructural reorganizations that are less interesting to talk about but can be seen in the [CHANGELOG](../../CHANGELOG.md).
+The release also contains a range of various fixes and infrastructural reorganizations that are less interesting to talk about but can be seen in the [CHANGELOG](../../../CHANGELOG.llms.md).
 
 We are excited about the development and what comes next for ggsql. The next release will most likely come with some amazing new user-facing features.
