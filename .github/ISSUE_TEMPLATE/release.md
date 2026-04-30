@@ -7,6 +7,7 @@ assignees: ''
 ---
 
 - [ ] Create new branch `release-version-X-Y-Z`.
+- [ ] Check examples on ggsql.org for visual regressions
 - [ ] Bump version numbers, all to match:
     - ggsql
       - Main package `version` in `[workspace.package]` section in `Cargo.toml`.
