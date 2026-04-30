@@ -274,6 +274,11 @@ impl PolarPanel {
         matches!(self.radar, Some(true))
     }
 
+    fn numeric_normalize_theta(&self, value: f64, domain_min: f64, domain_max: f64) -> f64 {
+        let scale = (self.end - self.start) / (domain_max - domain_min);
+        self.start + scale * (value - domain_min)
+    }
+
     fn expr_x(&self, r: &str, theta: &str) -> String {
         format!("{} + {} * ({}) * sin({})", self.cx, self.radius, r, theta)
     }
@@ -335,7 +340,7 @@ impl ProjectionRenderer for PolarProjection {
 
     fn background_layers(&self, scales: &[Scale], theme: &mut Value) -> Vec<Value> {
         let mut layers = Vec::new();
-        layers.extend(self.panel_arc(theme));
+        layers.extend(self.panel_arc(scales, theme));
         layers.extend(self.grid_rings(scales, theme));
         layers.extend(self.grid_spokes(scales, theme));
         layers
@@ -378,6 +383,22 @@ impl PolarProjection {
             .cloned()
             .unwrap_or(json!(1));
         let p = &self.panel;
+
+        if p.is_radar() {
+            let thetas = theta_breaks(p, scales);
+            if thetas.is_empty() {
+                return Vec::new();
+            }
+            return breaks
+                .iter()
+                .map(|&b| {
+                    let r = p.inner + (p.outer - p.inner) * (b - domain_min) / (domain_max - domain_min);
+                    let mut layer = polygon_ring(p, r, None, &thetas, Value::Null, color.clone());
+                    layer["mark"]["strokeWidth"] = width.clone();
+                    layer
+                })
+                .collect();
+        }
 
         let values: Vec<Value> = breaks.iter().map(|&b| json!({"v": b})).collect();
         let r_norm = p.expr_normalize_radius("datum.v", domain_min, domain_max);
@@ -632,24 +653,23 @@ impl PolarProjection {
         let p = &self.panel;
         let mut layers = Vec::new();
 
-        // Axis arc along the outer edge
+        // Axis line along the outer edge
         let outer_s = format!("{}", p.outer);
-        let radius_expr = p.expr_radius(&outer_s);
-        layers.push(json!({
-            "data": {"values": [{}]},
-            "mark": {
-                "type": "arc",
-                "fill": null,
-                "stroke": line_color,
-                "theta": p.start,
-                "theta2": p.end,
-            },
-            "encoding": {
-                "radius": {
-                    "value": {"expr": radius_expr}
-                }
+        if p.is_radar() {
+            let thetas = theta_breaks(p, scales);
+            if !thetas.is_empty() {
+                layers.push(polygon_ring(
+                    p,
+                    p.outer,
+                    None,
+                    &thetas,
+                    Value::Null,
+                    line_color.clone(),
+                ));
             }
-        }));
+        } else {
+            layers.push(arc_ring(p, &outer_s, None, Value::Null, line_color.clone()));
+        }
 
         if break_labels.is_empty() {
             return layers;
@@ -770,7 +790,7 @@ impl PolarProjection {
         layers
     }
 
-    fn panel_arc(&self, theme: &mut Value) -> Vec<Value> {
+    fn panel_arc(&self, scales: &[Scale], theme: &mut Value) -> Vec<Value> {
         let Some(view) = theme.get_mut("view").and_then(|v| v.as_object_mut()) else {
             return Vec::new();
         };
@@ -784,24 +804,156 @@ impl PolarProjection {
 
         let inner_s = format!("{}", p.inner);
         let outer_s = format!("{}", p.outer);
+        let inner = if p.inner > 0.0 {
+            Some(inner_s.as_str())
+        } else {
+            None
+        };
 
-        let mut mark = json!({
-            "type": "arc",
+        if p.is_radar() {
+            let thetas = theta_breaks(p, scales);
+            if thetas.is_empty() {
+                return Vec::new();
+            }
+            return vec![polygon_ring(
+                p,
+                p.outer,
+                inner.map(|_| p.inner),
+                &thetas,
+                fill,
+                stroke,
+            )];
+        }
+
+        vec![arc_ring(p, &outer_s, inner, fill, stroke)]
+    }
+}
+
+// =============================================================================
+// Shared helpers
+// =============================================================================
+
+// =============================================================================
+// Polar decoration helpers
+// =============================================================================
+
+/// Convert pos2 scale breaks to radian angles.
+fn theta_breaks(panel: &PolarPanel, scales: &[Scale]) -> Vec<f64> {
+    let Some(scale) = scales.iter().find(|s| s.aesthetic == "pos2") else {
+        return Vec::new();
+    };
+    let breaks = scale.numeric_breaks();
+    let Some((domain_min, domain_max)) = scale.numeric_domain() else {
+        return Vec::new();
+    };
+    if breaks.is_empty() || (domain_max - domain_min).abs() < f64::EPSILON {
+        return Vec::new();
+    }
+    breaks
+        .iter()
+        .map(|&b| panel.numeric_normalize_theta(b, domain_min, domain_max))
+        .collect()
+}
+
+/// Circular arc layer at a given radius.
+///
+/// When `inner_radius` is provided, produces a donut arc with both inner
+/// and outer radius set on the mark.
+fn arc_ring(
+    panel: &PolarPanel,
+    outer_radius: &str,
+    inner_radius: Option<&str>,
+    fill: Value,
+    stroke: Value,
+) -> Value {
+    let outer_expr = panel.expr_radius(outer_radius);
+    let mut mark = json!({
+        "type": "arc",
+        "fill": fill,
+        "stroke": stroke,
+        "theta": panel.start,
+        "theta2": panel.end,
+    });
+    mark["outerRadius"] = json!({"expr": outer_expr});
+    if let Some(inner) = inner_radius {
+        mark["innerRadius"] = json!({"expr": panel.expr_radius(inner)});
+    }
+    json!({
+        "data": {"values": [{}]},
+        "mark": mark,
+    })
+}
+
+/// Straight-segment polygon layer through theta breaks at a given radius.
+///
+/// When `inner_radius` is provided, traces the outer ring forward and inner
+/// ring reversed to create a donut shape. The seam at the start angle
+/// causes the fill rule to leave the centre hole empty.
+///
+/// For a full circle the first vertex is repeated to close each ring.
+/// A partial arc leaves the endpoints unconnected.
+fn polygon_ring(
+    panel: &PolarPanel,
+    outer_radius: f64,
+    inner_radius: Option<f64>,
+    thetas: &[f64],
+    fill: Value,
+    stroke: Value,
+) -> Value {
+    // A full circle needs to repeat the first vertex to close the polygon.
+    // A partial arc leaves the endpoints unconnected — the start/end edges
+    // are straight radial lines, not segments between the first and last
+    // theta break.
+    let is_full_circle =
+        (panel.end - panel.start - 2.0 * std::f64::consts::PI).abs() < f64::EPSILON;
+
+    let mut vertices: Vec<(f64, f64)> = Vec::new();
+
+    // Outer ring — forward
+    for &theta in thetas {
+        vertices.push((outer_radius, theta));
+    }
+    if is_full_circle {
+        if let Some(&first) = thetas.first() {
+            vertices.push((outer_radius, first));
+        }
+    }
+
+    // Inner ring — reversed (donut mode)
+    if let Some(inner) = inner_radius {
+        for &theta in thetas.iter().rev() {
+            vertices.push((inner, theta));
+        }
+        if is_full_circle {
+            if let Some(&last) = thetas.last() {
+                vertices.push((inner, last));
+            }
+        }
+    }
+
+    let values: Vec<Value> = vertices
+        .iter()
+        .enumerate()
+        .map(|(i, &(r, theta))| json!({"theta": theta, "r": r, "order": i}))
+        .collect();
+
+    json!({
+        "data": {"values": values},
+        "mark": {
+            "type": "line",
             "fill": fill,
             "stroke": stroke,
-            "theta":  p.start,
-            "theta2": p.end,
-        });
-        if p.inner > 0.0 {
-            mark["innerRadius"] = json!({"expr": p.expr_radius(&inner_s)});
+        },
+        "transform": [
+            {"calculate": panel.expr_x("datum.r", "datum.theta"), "as": "x"},
+            {"calculate": panel.expr_y("datum.r", "datum.theta"), "as": "y"},
+        ],
+        "encoding": {
+            "x": {"field": "x", "type": "quantitative", "scale": null, "axis": null},
+            "y": {"field": "y", "type": "quantitative", "scale": null, "axis": null},
+            "order": {"field": "order", "type": "quantitative"},
         }
-        mark["outerRadius"] = json!({"expr": p.expr_radius(&outer_s)});
-
-        vec![json!({
-            "data": {"values": [{}]},
-            "mark": mark
-        })]
-    }
+    })
 }
 
 // =============================================================================
@@ -2453,5 +2605,148 @@ mod tests {
             renderer.panel_size(),
             Some((json!(DEFAULT_POLAR_SIZE), json!(DEFAULT_POLAR_SIZE)))
         );
+    }
+
+    // =========================================================================
+    // Radar decoration helpers
+    // =========================================================================
+
+    fn radar_panel() -> PolarPanel {
+        let mut proj = Projection::polar();
+        proj.properties
+            .insert("radar".to_string(), ParameterValue::Boolean(true));
+        PolarPanel::new(Some(&proj), None)
+    }
+
+    #[test]
+    fn test_theta_breaks_from_discrete_scale() {
+        use std::f64::consts::PI;
+        let panel = PolarPanel::new(None, None);
+        let scales = vec![discrete_scale_for_axis("pos2", &["A", "B", "C"])];
+        let thetas = theta_breaks(&panel, &scales);
+        assert_eq!(thetas.len(), 3);
+        // 3 categories → domain (0.5, 3.5), breaks at 1, 2, 3
+        // theta = 0 + 2π/3 * (break - 0.5)
+        let scale = 2.0 * PI / 3.0;
+        assert!((thetas[0] - scale * 0.5).abs() < 1e-10);
+        assert!((thetas[1] - scale * 1.5).abs() < 1e-10);
+        assert!((thetas[2] - scale * 2.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_theta_breaks_empty_without_pos2() {
+        let panel = PolarPanel::new(None, None);
+        let scales = vec![scale_with_breaks("pos1", (0.0, 10.0), vec![5.0])];
+        assert!(theta_breaks(&panel, &scales).is_empty());
+    }
+
+    #[test]
+    fn test_polygon_ring_closes_for_full_circle() {
+        let panel = PolarPanel::new(None, None);
+        let thetas = vec![1.0, 2.0, 3.0];
+        let layer = polygon_ring(&panel, POLAR_OUTER, None, &thetas, Value::Null, json!("red"));
+        let values = layer["data"]["values"].as_array().unwrap();
+        // 3 thetas + 1 closing vertex = 4
+        assert_eq!(values.len(), 4);
+        assert_eq!(values[0]["theta"], values[3]["theta"]);
+    }
+
+    #[test]
+    fn test_polygon_ring_open_for_partial_arc() {
+        use std::f64::consts::PI;
+        let mut proj = Projection::polar();
+        proj.properties
+            .insert("start".to_string(), ParameterValue::Number(0.0));
+        proj.properties
+            .insert("end".to_string(), ParameterValue::Number(180.0));
+        let panel = PolarPanel::new(Some(&proj), None);
+        let thetas = vec![0.0, PI / 4.0, PI / 2.0];
+        let layer = polygon_ring(&panel, POLAR_OUTER, None, &thetas, Value::Null, json!("red"));
+        let values = layer["data"]["values"].as_array().unwrap();
+        // No closing vertex for partial arc
+        assert_eq!(values.len(), 3);
+    }
+
+    #[test]
+    fn test_polygon_ring_donut_has_both_rings() {
+        let panel = PolarPanel::new(None, None);
+        let thetas = vec![1.0, 2.0, 3.0];
+        let layer = polygon_ring(&panel, POLAR_OUTER, Some(0.3), &thetas, json!("white"), Value::Null);
+        let values = layer["data"]["values"].as_array().unwrap();
+        // Outer: 3 + 1 closing, Inner: 3 + 1 closing = 8
+        assert_eq!(values.len(), 8);
+        assert_eq!(layer["mark"]["type"], "line");
+        assert_eq!(layer["mark"]["fill"], "white");
+    }
+
+    #[test]
+    fn test_arc_ring_basic() {
+        let panel = PolarPanel::new(None, None);
+        let layer = arc_ring(&panel, "1", None, Value::Null, json!("red"));
+        assert_eq!(layer["mark"]["type"], "arc");
+        assert_eq!(layer["mark"]["stroke"], "red");
+        assert!(layer["mark"].get("innerRadius").is_none());
+    }
+
+    #[test]
+    fn test_arc_ring_with_inner_radius() {
+        let panel = PolarPanel::new(None, None);
+        let layer = arc_ring(&panel, "1", Some("0.5"), json!("white"), json!("gray"));
+        assert_eq!(layer["mark"]["type"], "arc");
+        assert!(layer["mark"]["innerRadius"].is_object());
+        assert!(layer["mark"]["outerRadius"].is_object());
+    }
+
+    #[test]
+    fn test_radar_grid_rings_produce_line_marks() {
+        let panel = radar_panel();
+        let scales = vec![
+            scale_with_breaks("pos1", (0.0, 100.0), vec![50.0]),
+            discrete_scale_for_axis("pos2", &["A", "B", "C"]),
+        ];
+        let proj = PolarProjection { panel };
+        let theme = json!({"axis": {}});
+        let layers = proj.grid_rings(&scales, &theme);
+        assert_eq!(layers.len(), 1);
+        assert_eq!(layers[0]["mark"]["type"], "line");
+    }
+
+    #[test]
+    fn test_radar_panel_arc_produces_line_mark() {
+        let panel = radar_panel();
+        let scales = vec![discrete_scale_for_axis("pos2", &["A", "B", "C"])];
+        let proj = PolarProjection { panel };
+        let mut theme = json!({"view": {"fill": "#EEE", "stroke": null}});
+        let layers = proj.panel_arc(&scales, &mut theme);
+        assert_eq!(layers.len(), 1);
+        assert_eq!(layers[0]["mark"]["type"], "line");
+        assert_eq!(layers[0]["mark"]["fill"], "#EEE");
+    }
+
+    #[test]
+    fn test_radar_angular_axis_produces_polygon_outline() {
+        let panel = radar_panel();
+        let scales = vec![discrete_scale_for_axis("pos2", &["A", "B", "C"])];
+        let proj = PolarProjection { panel };
+        let theme = json!({"axis": {"domainColor": "#333"}});
+        let layers = proj.angular_axis(&scales, &theme);
+        assert!(!layers.is_empty());
+        // First layer should be the polygon outline, not an arc
+        assert_eq!(layers[0]["mark"]["type"], "line");
+    }
+
+    #[test]
+    fn test_non_radar_grid_rings_still_use_arc() {
+        let panel = PolarPanel::new(None, None);
+        let scales = vec![scale_with_breaks(
+            "pos1",
+            (0.0, 100.0),
+            vec![50.0],
+        )];
+        let proj = PolarProjection { panel };
+        let theme = json!({"axis": {}});
+        let layers = proj.grid_rings(&scales, &theme);
+        assert_eq!(layers.len(), 1);
+        assert_eq!(layers[0]["mark"]["type"], "arc");
     }
 }
