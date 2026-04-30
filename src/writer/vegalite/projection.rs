@@ -514,10 +514,11 @@ impl PolarProjection {
         let mut layers = Vec::new();
         let is_full_circle = (p.end - p.start - 2.0 * std::f64::consts::PI).abs() < f64::EPSILON;
 
-        // In a full-circle radar, the start angle bisects a polygon face
-        // that is closer to the centre than the circumscribed radius.
-        // Scale radii by cos(half_span) so the axis lands on the edge.
-        let r_correction = if p.is_radar() && is_full_circle {
+        // In radar mode, the start angle doesn't coincide with a spoke,
+        // so the polygon edge is closer to the centre than the circumscribed
+        // radius. Scale radii by cos(angle to nearest break) so the axis
+        // lands on the edge.
+        let r_correction = if p.is_radar() {
             let thetas = theta_breaks(p, scales);
             thetas.first().map(|&t| (t - p.start).cos()).unwrap_or(1.0)
         } else {
@@ -945,25 +946,36 @@ fn polygon_ring(
     } else {
         // Partial arc: outer ring from start angle through breaks to
         // end angle, then return via inner radius (or centre).
-        vertices.push((outer_radius, panel.start));
+        // The start/end vertices are corrected inward so they sit on
+        // the plane of the adjacent polygon edge.
+        let start_correction = thetas
+            .first()
+            .map(|&t| (t - panel.start).cos())
+            .unwrap_or(1.0);
+        let end_correction = thetas
+            .last()
+            .map(|&t| (panel.end - t).cos())
+            .unwrap_or(1.0);
+
+        vertices.push((outer_radius * start_correction, panel.start));
         for &theta in thetas {
             vertices.push((outer_radius, theta));
         }
-        vertices.push((outer_radius, panel.end));
+        vertices.push((outer_radius * end_correction, panel.end));
 
         // Return path along inner radius (or single centre point)
         if inner_radius.is_some() {
-            vertices.push((inner, panel.end));
+            vertices.push((inner * end_correction, panel.end));
             for &theta in thetas.iter().rev() {
                 vertices.push((inner, theta));
             }
-            vertices.push((inner, panel.start));
+            vertices.push((inner * start_correction, panel.start));
         } else {
-            vertices.push((inner, panel.end));
-            vertices.push((inner, panel.start));
+            vertices.push((inner * end_correction, panel.end));
+            vertices.push((inner * start_correction, panel.start));
         }
         // Close back to first vertex
-        vertices.push((outer_radius, panel.start));
+        vertices.push((outer_radius * start_correction, panel.start));
     }
 
     let values: Vec<Value> = vertices
@@ -1238,8 +1250,8 @@ fn convert_polar_to_cartesian(layer: &mut Value, panel: &PolarPanel) -> Result<(
                 // polygon edge — both endpoints are vertices.
                 let step = t_scale;
                 let target_theta = format!(
-                    "datum.__polar_theta__ + (datum.__polar_theta_off_t__ >= 0 ? {} : -{})",
-                    step, step
+                    "clamp(datum.__polar_theta__ + (datum.__polar_theta_off_t__ >= 0 ? {} : -{}), {}, {})",
+                    step, step, panel.start, panel.end
                 );
                 polar_transforms.push(
                     json!({"calculate": target_theta, "as": "__polar_theta_target__"}),
@@ -2736,7 +2748,6 @@ mod tests {
 
     #[test]
     fn test_polygon_ring_closed_for_partial_arc() {
-        use std::f64::consts::PI;
         let mut proj = Projection::polar();
         proj.properties
             .insert("start".to_string(), ParameterValue::Number(0.0));
@@ -2751,6 +2762,30 @@ mod tests {
         // First and last vertex should be at the same position (closed path)
         assert_eq!(values[0]["theta"], values[7]["theta"]);
         assert_eq!(values[0]["r"], values[7]["r"]);
+    }
+
+    #[test]
+    fn test_polygon_ring_partial_arc_corrects_boundary_radii() {
+        use std::f64::consts::PI;
+        let mut proj = Projection::polar();
+        proj.properties
+            .insert("start".to_string(), ParameterValue::Number(0.0));
+        proj.properties
+            .insert("end".to_string(), ParameterValue::Number(180.0));
+        let panel = PolarPanel::new(Some(&proj), None);
+        // One break at π/2 — half-step from both start (0) and end (π)
+        let thetas = vec![PI / 2.0];
+        let layer = polygon_ring(&panel, POLAR_OUTER, None, &thetas, Value::Null, json!("red"));
+        let values = layer["data"]["values"].as_array().unwrap();
+        let r_start = values[0]["r"].as_f64().unwrap();
+        let r_break = values[1]["r"].as_f64().unwrap();
+        let r_end = values[2]["r"].as_f64().unwrap();
+        // Break vertex at full radius
+        assert!((r_break - POLAR_OUTER).abs() < 1e-10);
+        // Start/end vertices corrected inward by cos(π/2)
+        let expected = POLAR_OUTER * (PI / 2.0).cos();
+        assert!((r_start - expected).abs() < 1e-10);
+        assert!((r_end - expected).abs() < 1e-10);
     }
 
     #[test]
