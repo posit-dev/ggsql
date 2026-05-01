@@ -516,6 +516,10 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "ggsql's execute pipeline issues `CREATE OR REPLACE TEMP TABLE` for layer/stat \
+                materialization, which adbc_datafusion 0.23 rejects with `NotImplemented(\"Temporary \
+                tables not supported\")`. The full pipeline works against any driver that supports \
+                TEMP TABLE (DuckDB, Trino, etc.) — see the equivalence tests for that path."]
     fn reader_executes_full_ggsql_visualise_query() {
         use crate::df;
 
