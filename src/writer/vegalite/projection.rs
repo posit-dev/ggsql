@@ -6,7 +6,7 @@
 //! and the spec-level transformations for that projection.
 
 use crate::plot::{CoordKind, ParameterValue, Projection, Scale};
-use crate::{DataFrame, GgsqlError, Plot, Result};
+use crate::{GgsqlError, Plot, Result};
 use serde_json::{json, Value};
 
 use super::DEFAULT_POLAR_SIZE;
@@ -50,15 +50,9 @@ pub(super) trait ProjectionRenderer {
 
     /// Apply projection-specific transformations to the VL spec.
     ///
-    /// Called after layers are built but before faceting. May return a
-    /// transformed DataFrame (e.g., polar currently clones it unchanged).
-    fn transform_layers(
-        &self,
-        _spec: &Plot,
-        _data: &DataFrame,
-        _vl_spec: &mut Value,
-    ) -> Result<Option<DataFrame>> {
-        Ok(None)
+    /// Called after layers are built but before faceting.
+    fn transform_layers(&self, _spec: &Plot, _vl_spec: &mut Value) -> Result<()> {
+        Ok(())
     }
 
     /// Vega-Lite layers to prepend before the data layers.
@@ -75,11 +69,10 @@ pub(super) trait ProjectionRenderer {
     fn apply_projection(
         &self,
         spec: &Plot,
-        data: &DataFrame,
         theme: &mut Value,
         vl_spec: &mut Value,
-    ) -> Result<Option<DataFrame>> {
-        let result = self.transform_layers(spec, data, vl_spec)?;
+    ) -> Result<()> {
+        self.transform_layers(spec, vl_spec)?;
 
         if let Some(ref project) = spec.project {
             if let Some(ParameterValue::Boolean(clip)) = project.properties.get("clip") {
@@ -105,7 +98,7 @@ pub(super) trait ProjectionRenderer {
             }
         }
 
-        Ok(result)
+        Ok(())
     }
 }
 
@@ -381,13 +374,8 @@ impl ProjectionRenderer for PolarProjection {
         }
     }
 
-    fn transform_layers(
-        &self,
-        spec: &Plot,
-        data: &DataFrame,
-        vl_spec: &mut Value,
-    ) -> Result<Option<DataFrame>> {
-        apply_polar_project(&self.panel, spec, data, vl_spec)
+    fn transform_layers(&self, spec: &Plot, vl_spec: &mut Value) -> Result<()> {
+        apply_polar_project(&self.panel, spec, vl_spec)
     }
 
     fn background_layers(&self, _scales: &[Scale], theme: &mut Value) -> Vec<Value> {
@@ -1055,17 +1043,8 @@ fn apply_clip_to_layers(vl_spec: &mut Value, clip: bool) {
 /// 1. Converts mark types to polar equivalents (bar → arc)
 /// 2. Applies start/end angle range from PROJECT clause
 /// 3. Applies inner radius for donut charts
-fn apply_polar_project(
-    panel: &PolarContext,
-    spec: &Plot,
-    data: &DataFrame,
-    vl_spec: &mut Value,
-) -> Result<Option<DataFrame>> {
-    // Convert geoms to polar equivalents and apply angle range + inner radius
-    convert_geoms_to_polar(panel, spec, vl_spec)?;
-
-    // No DataFrame transformation needed - Vega-Lite handles polar math
-    Ok(Some(data.clone()))
+fn apply_polar_project(panel: &PolarContext, spec: &Plot, vl_spec: &mut Value) -> Result<()> {
+    convert_geoms_to_polar(panel, spec, vl_spec)
 }
 
 /// Convert geoms to polar equivalents (bar->arc) and apply angle range + inner radius
@@ -1737,7 +1716,7 @@ mod tests {
     #[test]
     fn test_polar_to_cartesian_pixel_coordinates() {
         let mut layer = polar_point_layer();
-        let mut panel = continuous_panel();
+        let panel = continuous_panel();
 
         convert_polar_to_cartesian(&mut layer, &panel).unwrap();
 
@@ -1776,7 +1755,7 @@ mod tests {
     #[test]
     fn test_polar_to_cartesian_filters_nulls() {
         let mut layer = polar_point_layer();
-        let mut panel = continuous_panel();
+        let panel = continuous_panel();
 
         convert_polar_to_cartesian(&mut layer, &panel).unwrap();
 
@@ -2285,7 +2264,7 @@ mod tests {
                 }
             }
         });
-        let mut panel = continuous_panel();
+        let panel = continuous_panel();
 
         convert_polar_to_cartesian(&mut layer, &panel).unwrap();
 
@@ -2322,7 +2301,7 @@ mod tests {
                 }
             }
         });
-        let mut panel = continuous_panel();
+        let panel = continuous_panel();
 
         convert_polar_to_cartesian(&mut layer, &panel).unwrap();
 
@@ -2366,7 +2345,7 @@ mod tests {
                 }
             }
         });
-        let mut panel = continuous_panel();
+        let panel = continuous_panel();
 
         convert_polar_to_cartesian(&mut layer, &panel).unwrap();
 
@@ -2404,7 +2383,7 @@ mod tests {
                 }
             }
         });
-        let mut panel = continuous_panel();
+        let panel = continuous_panel();
 
         convert_polar_to_cartesian(&mut layer, &panel).unwrap();
 
@@ -2487,7 +2466,7 @@ mod tests {
                 }
             }
         });
-        let mut panel = continuous_panel();
+        let panel = continuous_panel();
 
         convert_polar_to_cartesian(&mut layer, &panel).unwrap();
 

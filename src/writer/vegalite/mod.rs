@@ -1118,9 +1118,8 @@ impl Writer for VegaLiteWriter {
         }
 
         // 11. Apply projection (transforms + panel decoration)
-        let first_df = data.get(&layer_data_keys[0]).unwrap();
         let mut theme = self.default_theme_config();
-        projection.apply_projection(spec, first_df, &mut theme, &mut vl_spec)?;
+        projection.apply_projection(spec, &mut theme, &mut vl_spec)?;
         vl_spec["config"] = theme;
 
         // 12. Serialize
