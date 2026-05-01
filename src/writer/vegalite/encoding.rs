@@ -61,7 +61,7 @@ pub(super) fn build_label_expr(
     let mut parts: Vec<String> = mappings
         .iter()
         .map(|(from, to)| {
-            let from_escaped = from.replace('\'', "\\'");
+            let from_escaped = super::escape_vega_string(from);
 
             // For threshold scales, the first terminal uses null instead of string comparison
             let condition = if null_key == Some(from.as_str()) {
@@ -72,7 +72,7 @@ pub(super) fn build_label_expr(
 
             match to {
                 Some(label) => {
-                    let to_escaped = label.replace('\'', "\\'");
+                    let to_escaped = super::escape_vega_string(label);
                     format!("{} ? '{}'", condition, to_escaped)
                 }
                 None => {

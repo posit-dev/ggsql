@@ -1395,7 +1395,7 @@ fn extract_polar_channel(
         if !strings.is_empty() {
             let literal: String = strings
                 .iter()
-                .map(|s| format!("'{}'", s.replace('\'', "\\'")))
+                .map(|s| format!("'{}'", super::escape_vega_string(s)))
                 .collect::<Vec<_>>()
                 .join(",");
             let arr_expr = format!("[{}]", literal);

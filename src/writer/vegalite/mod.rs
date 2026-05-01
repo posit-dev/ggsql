@@ -896,7 +896,7 @@ fn build_discrete_facet_label_expr(
 }
 
 /// Escape a string for use in Vega expressions
-fn escape_vega_string(s: &str) -> String {
+pub(super) fn escape_vega_string(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\'', "\\'")
 }
 
