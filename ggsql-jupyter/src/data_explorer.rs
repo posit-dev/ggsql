@@ -3,7 +3,6 @@
 //! Implements the `positron.dataExplorer` comm protocol, providing SQL-backed
 //! paginated data access.
 
-use crate::util::find_column;
 use ggsql::reader::Reader;
 use serde_json::{json, Value};
 
@@ -95,29 +94,16 @@ impl DataExplorerState {
             })
             .unwrap_or(0);
 
-        // Get column metadata from information_schema
-        let columns_sql = reader.dialect().sql_list_columns(catalog, schema, table);
-        let columns_df = reader
-            .execute_sql(&columns_sql)
+        let column_infos = reader
+            .list_columns(catalog, schema, table)
             .map_err(|e| format!("Failed to list columns: {}", e))?;
 
-        let name_col = find_column(&columns_df, &["column_name"])
-            .map_err(|e| format!("Missing column_name: {}", e))?;
-        let type_col = find_column(&columns_df, &["data_type"])
-            .map_err(|e| format!("Missing data_type: {}", e))?;
-
         let mut columns = Vec::new();
-        for i in 0..columns_df.height() {
-            let name = ggsql::array_util::value_to_string(name_col, i)
-                .trim_matches('"')
-                .to_string();
-            let raw_type = ggsql::array_util::value_to_string(type_col, i)
-                .trim_matches('"')
-                .to_string();
-            let type_display = sql_type_to_display(&raw_type).to_string();
-            let type_name = clean_type_name(&raw_type);
+        for col in &column_infos {
+            let type_display = sql_type_to_display(&col.data_type).to_string();
+            let type_name = clean_type_name(&col.data_type);
             columns.push(ColumnInfo {
-                name,
+                name: col.name.clone(),
                 type_name,
                 type_display,
             });

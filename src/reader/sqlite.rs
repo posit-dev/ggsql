@@ -70,29 +70,6 @@ impl super::SqlDialect for SqliteDialect {
         }
     }
 
-    fn sql_list_catalogs(&self) -> String {
-        "SELECT name AS catalog_name FROM pragma_database_list ORDER BY name".into()
-    }
-
-    fn sql_list_schemas(&self, _catalog: &str) -> String {
-        "SELECT 'main' AS schema_name".into()
-    }
-
-    fn sql_list_tables(&self, catalog: &str, _schema: &str) -> String {
-        format!(
-            "SELECT name AS table_name, type AS table_type FROM {}.sqlite_master \
-             WHERE type IN ('table', 'view') ORDER BY name",
-            naming::quote_ident(catalog)
-        )
-    }
-
-    fn sql_list_columns(&self, _catalog: &str, _schema: &str, table: &str) -> String {
-        format!(
-            "SELECT name AS column_name, type AS data_type FROM pragma_table_info('{}') ORDER BY cid",
-            table.replace('\'', "''")
-        )
-    }
-
     /// SQLite does not support `CREATE OR REPLACE`, so emit a drop-then-create
     /// pair. Column aliases are preserved portably via the default CTE wrapper.
     fn create_or_replace_temp_table_sql(
@@ -536,6 +513,66 @@ impl Reader for SqliteReader {
 
     fn dialect(&self) -> &dyn super::SqlDialect {
         &SqliteDialect
+    }
+
+    fn list_catalogs(&self) -> Result<Vec<String>> {
+        let df = self.execute_sql("SELECT name FROM pragma_database_list ORDER BY name")?;
+        let col = df.column("name")?;
+        let mut results = Vec::with_capacity(df.height());
+        for i in 0..df.height() {
+            if !col.is_null(i) {
+                results.push(crate::array_util::value_to_string(col, i));
+            }
+        }
+        Ok(results)
+    }
+
+    fn list_schemas(&self, _catalog: &str) -> Result<Vec<String>> {
+        Ok(vec![])
+    }
+
+    fn list_tables(&self, catalog: &str, _schema: &str) -> Result<Vec<super::TableInfo>> {
+        let df = self.execute_sql(&format!(
+            "SELECT name, type FROM {}.sqlite_master \
+             WHERE type IN ('table', 'view') ORDER BY name",
+            naming::quote_ident(catalog)
+        ))?;
+        let name_col = df.column("name")?;
+        let type_col = df.column("type")?;
+        let mut results = Vec::with_capacity(df.height());
+        for i in 0..df.height() {
+            if !name_col.is_null(i) {
+                results.push(super::TableInfo {
+                    name: crate::array_util::value_to_string(name_col, i),
+                    table_type: crate::array_util::value_to_string(type_col, i),
+                });
+            }
+        }
+        Ok(results)
+    }
+
+    fn list_columns(
+        &self,
+        _catalog: &str,
+        _schema: &str,
+        table: &str,
+    ) -> Result<Vec<super::ColumnInfo>> {
+        let df = self.execute_sql(&format!(
+            "SELECT name, type FROM pragma_table_info('{}') ORDER BY cid",
+            table.replace('\'', "''")
+        ))?;
+        let name_col = df.column("name")?;
+        let type_col = df.column("type")?;
+        let mut results = Vec::with_capacity(df.height());
+        for i in 0..df.height() {
+            if !name_col.is_null(i) {
+                results.push(super::ColumnInfo {
+                    name: crate::array_util::value_to_string(name_col, i),
+                    data_type: crate::array_util::value_to_string(type_col, i),
+                });
+            }
+        }
+        Ok(results)
     }
 }
 
