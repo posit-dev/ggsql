@@ -651,9 +651,7 @@ pub fn sql_columns(
     })
 }
 
-fn str_to_odbc_cstring(
-    s: Option<&str>,
-) -> Result<(Option<std::ffi::CString>, SqlSmallInt)> {
+fn str_to_odbc_cstring(s: Option<&str>) -> Result<(Option<std::ffi::CString>, SqlSmallInt)> {
     match s {
         Some(s) => {
             let cs = std::ffi::CString::new(s).map_err(|_| {

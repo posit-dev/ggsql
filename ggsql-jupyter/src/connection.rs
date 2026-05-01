@@ -49,7 +49,11 @@ pub fn list_objects(reader: &dyn Reader, path: &[String]) -> Result<Vec<ObjectSc
     match effective {
         0 => list_catalogs(reader),
         1 => {
-            let catalog = if offset >= 1 { &default_catalog } else { &path[0] };
+            let catalog = if offset >= 1 {
+                &default_catalog
+            } else {
+                &path[0]
+            };
             list_schemas(reader, catalog)
         }
         2 => {
@@ -74,7 +78,11 @@ pub fn list_fields(reader: &dyn Reader, path: &[String]) -> Result<Vec<FieldSche
     }
 
     let (catalog, schema, table) = match offset {
-        2 => (default_catalog.as_str(), default_schema.as_str(), path[0].as_str()),
+        2 => (
+            default_catalog.as_str(),
+            default_schema.as_str(),
+            path[0].as_str(),
+        ),
         1 => (default_catalog.as_str(), path[0].as_str(), path[1].as_str()),
         _ => (path[0].as_str(), path[1].as_str(), path[2].as_str()),
     };

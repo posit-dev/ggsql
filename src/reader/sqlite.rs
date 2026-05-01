@@ -516,27 +516,18 @@ impl Reader for SqliteReader {
     }
 
     fn list_catalogs(&self) -> Result<Vec<String>> {
-        let df = self.execute_sql("SELECT name FROM pragma_database_list ORDER BY name")?;
-        let col = df.column("name")?;
-        let mut results = Vec::with_capacity(df.height());
-        for i in 0..df.height() {
-            if !col.is_null(i) {
-                results.push(crate::array_util::value_to_string(col, i));
-            }
-        }
-        Ok(results)
+        Ok(vec![])
     }
 
     fn list_schemas(&self, _catalog: &str) -> Result<Vec<String>> {
         Ok(vec![])
     }
 
-    fn list_tables(&self, catalog: &str, _schema: &str) -> Result<Vec<super::TableInfo>> {
-        let df = self.execute_sql(&format!(
-            "SELECT name, type FROM {}.sqlite_master \
+    fn list_tables(&self, _catalog: &str, _schema: &str) -> Result<Vec<super::TableInfo>> {
+        let df = self.execute_sql(
+            "SELECT name, type FROM sqlite_master \
              WHERE type IN ('table', 'view') ORDER BY name",
-            naming::quote_ident(catalog)
-        ))?;
+        )?;
         let name_col = df.column("name")?;
         let type_col = df.column("type")?;
         let mut results = Vec::with_capacity(df.height());

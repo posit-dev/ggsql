@@ -69,25 +69,35 @@ pub fn display_name_for_uri(uri: &str) -> String {
         return format!("DuckDB ({})", path);
     }
     if let Some(path) = uri.strip_prefix("sqlite://") {
-        if path.is_empty() {
+        if path == ":memory:" || path.is_empty() {
             return "SQLite (memory)".to_string();
         }
         return format!("SQLite ({})", path);
     }
     if let Some(odbc) = uri.strip_prefix("odbc://") {
-        // Try to extract driver name from ODBC string
-        if let Some(driver_start) = odbc.to_lowercase().find("driver=") {
-            let rest = &odbc[driver_start + 7..];
-            let driver = rest
-                .split(';')
-                .next()
-                .unwrap_or("ODBC")
-                .trim_matches(|c| c == '{' || c == '}');
+        if let Some(dsn) = extract_odbc_value(odbc, "dsn") {
+            return format!("{} (ODBC)", dsn);
+        }
+        if let Some(driver) = extract_odbc_value(odbc, "driver") {
             return format!("{} (ODBC)", driver);
         }
         return "ODBC".to_string();
     }
     uri.to_string()
+}
+
+fn extract_odbc_value(conn_str: &str, key: &str) -> Option<String> {
+    let lower = conn_str.to_lowercase();
+    let prefix = format!("{}=", key);
+    let start = lower.find(&prefix)?;
+    let rest = &conn_str[start + prefix.len()..];
+    let value = rest.split(';').next().unwrap_or("");
+    let value = value.trim().trim_matches(|c| c == '{' || c == '}');
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
 }
 
 /// Detect the database type name from a connection URI (e.g. "DuckDB", "Snowflake").
@@ -302,5 +312,20 @@ mod tests {
     fn test_display_name_for_uri() {
         assert_eq!(display_name_for_uri("duckdb://memory"), "DuckDB (memory)");
         assert_eq!(display_name_for_uri("duckdb://my.db"), "DuckDB (my.db)");
+        assert_eq!(display_name_for_uri("sqlite://:memory:"), "SQLite (memory)");
+        assert_eq!(display_name_for_uri("sqlite://data.db"), "SQLite (data.db)");
+        assert_eq!(
+            display_name_for_uri("odbc://DSN=my-postgres"),
+            "my-postgres (ODBC)"
+        );
+        assert_eq!(
+            display_name_for_uri("odbc://Driver=Snowflake;Server=foo"),
+            "Snowflake (ODBC)"
+        );
+        assert_eq!(
+            display_name_for_uri("odbc://Driver={PostgreSQL};DSN=pg-test"),
+            "pg-test (ODBC)"
+        );
+        assert_eq!(display_name_for_uri("odbc://"), "ODBC");
     }
 }

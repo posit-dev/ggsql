@@ -23,6 +23,7 @@ export function createConnectionDrivers(
 ): positron.ConnectionsDriver[] {
     return [
         createDuckDBDriver(positronApi),
+        createSQLiteDriver(positronApi),
         createSnowflakeDefaultDriver(positronApi),
         createSnowflakePasswordDriver(positronApi),
         createSnowflakeSSODriver(positronApi),
@@ -63,6 +64,45 @@ function createDuckDBDriver(
                 return '-- @connect: duckdb://memory';
             }
             return `-- @connect: duckdb://${db}`;
+        },
+        connect: async (code: string) => {
+            await positronApi.runtime.executeCode('ggsql', code, false);
+        },
+    };
+}
+
+// ============================================================================
+// SQLite
+// ============================================================================
+
+/**
+ * SQLite connection driver.
+ *
+ * Inputs: database file path (required).
+ */
+function createSQLiteDriver(
+    positronApi: PositronApi
+): positron.ConnectionsDriver {
+    return {
+        driverId: 'ggsql-sqlite',
+        metadata: {
+            languageId: 'ggsql',
+            name: 'SQLite',
+            inputs: [
+                {
+                    id: 'database',
+                    label: 'Database',
+                    type: 'string',
+                    value: '',
+                },
+            ],
+        },
+        generateCode: (inputs) => {
+            const db = inputs.find((i) => i.id === 'database')?.value?.trim();
+            if (!db) {
+                return '-- @connect: sqlite://:memory:';
+            }
+            return `-- @connect: sqlite://${db}`;
         },
         connect: async (code: string) => {
             await positronApi.runtime.executeCode('ggsql', code, false);

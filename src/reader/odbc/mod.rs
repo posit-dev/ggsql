@@ -722,8 +722,9 @@ fn extract_batch(
                 } else {
                     let size = std::mem::size_of::<SqlDateStruct>();
                     let offset = row * size;
-                    let d: SqlDateStruct =
-                        unsafe { std::ptr::read_unaligned(buf.data[offset..].as_ptr() as *const _) };
+                    let d: SqlDateStruct = unsafe {
+                        std::ptr::read_unaligned(buf.data[offset..].as_ptr() as *const _)
+                    };
                     v.push(odbc_date_to_days(&d));
                 }
             }
@@ -733,8 +734,9 @@ fn extract_batch(
                 } else {
                     let size = std::mem::size_of::<SqlTimeStruct>();
                     let offset = row * size;
-                    let t: SqlTimeStruct =
-                        unsafe { std::ptr::read_unaligned(buf.data[offset..].as_ptr() as *const _) };
+                    let t: SqlTimeStruct = unsafe {
+                        std::ptr::read_unaligned(buf.data[offset..].as_ptr() as *const _)
+                    };
                     v.push(Some(odbc_time_to_nanos(&t)));
                 }
             }
@@ -744,8 +746,9 @@ fn extract_batch(
                 } else {
                     let size = std::mem::size_of::<SqlTimestampStruct>();
                     let offset = row * size;
-                    let ts: SqlTimestampStruct =
-                        unsafe { std::ptr::read_unaligned(buf.data[offset..].as_ptr() as *const _) };
+                    let ts: SqlTimestampStruct = unsafe {
+                        std::ptr::read_unaligned(buf.data[offset..].as_ptr() as *const _)
+                    };
                     v.push(odbc_timestamp_to_micros(&ts));
                 }
             }
