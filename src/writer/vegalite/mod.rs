@@ -1123,7 +1123,7 @@ impl Writer for VegaLiteWriter {
         projection.apply_projection(spec, first_df, &mut theme, &mut vl_spec)?;
         vl_spec["config"] = theme;
 
-        // 14. Serialize
+        // 12. Serialize
         serde_json::to_string_pretty(&vl_spec).map_err(|e| {
             GgsqlError::WriterError(format!("Failed to serialize Vega-Lite JSON: {}", e))
         })

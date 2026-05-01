@@ -339,17 +339,19 @@ impl ProjectionRenderer for PolarProjection {
     }
 
     fn background_layers(&self, scales: &[Scale], theme: &mut Value) -> Vec<Value> {
+        let thetas = theta_breaks(&self.panel, scales);
         let mut layers = Vec::new();
-        layers.extend(self.panel_arc(scales, theme));
-        layers.extend(self.grid_rings(scales, theme));
+        layers.extend(self.panel_arc(&thetas, theme));
+        layers.extend(self.grid_rings(scales, &thetas, theme));
         layers.extend(self.grid_spokes(scales, theme));
         layers
     }
 
     fn foreground_layers(&self, scales: &[Scale], theme: &mut Value) -> Vec<Value> {
+        let thetas = theta_breaks(&self.panel, scales);
         let mut layers = Vec::new();
-        layers.extend(self.radial_axis(scales, theme));
-        layers.extend(self.angular_axis(scales, theme));
+        layers.extend(self.radial_axis(scales, &thetas, theme));
+        layers.extend(self.angular_axis(scales, &thetas, theme));
         layers
     }
 }
@@ -359,7 +361,7 @@ impl ProjectionRenderer for PolarProjection {
 // rather than rendering misleading grid lines / axes. Per-panel decorations
 // would require computing per-group domains — not yet implemented.
 impl PolarProjection {
-    fn grid_rings(&self, scales: &[Scale], theme: &Value) -> Vec<Value> {
+    fn grid_rings(&self, scales: &[Scale], thetas: &[f64], theme: &Value) -> Vec<Value> {
         let Some(scale) = scales.iter().find(|s| s.aesthetic == "pos1") else {
             return Vec::new();
         };
@@ -385,14 +387,14 @@ impl PolarProjection {
         let p = &self.panel;
 
         if p.is_radar() {
-            let thetas = theta_breaks(p, scales);
             if thetas.is_empty() {
                 return Vec::new();
             }
             return breaks
                 .iter()
                 .map(|&b| {
-                    let r = p.inner + (p.outer - p.inner) * (b - domain_min) / (domain_max - domain_min);
+                    let r = p.inner
+                        + (p.outer - p.inner) * (b - domain_min) / (domain_max - domain_min);
                     let mut layer = polygon_ring(p, r, None, &thetas, Value::Null, color.clone());
                     layer["mark"]["strokeWidth"] = width.clone();
                     layer
@@ -474,7 +476,7 @@ impl PolarProjection {
         })]
     }
 
-    fn radial_axis(&self, scales: &[Scale], theme: &Value) -> Vec<Value> {
+    fn radial_axis(&self, scales: &[Scale], thetas: &[f64], theme: &Value) -> Vec<Value> {
         let Some(scale) = scales.iter().find(|s| s.aesthetic == "pos1") else {
             return Vec::new();
         };
@@ -519,7 +521,6 @@ impl PolarProjection {
         // radius. Scale radii by cos(angle to nearest break) so the axis
         // lands on the edge.
         let r_correction = if p.is_radar() {
-            let thetas = theta_breaks(p, scales);
             thetas.first().map(|&t| (t - p.start).cos()).unwrap_or(1.0)
         } else {
             1.0
@@ -630,7 +631,7 @@ impl PolarProjection {
         layers
     }
 
-    fn angular_axis(&self, scales: &[Scale], theme: &Value) -> Vec<Value> {
+    fn angular_axis(&self, scales: &[Scale], thetas: &[f64], theme: &Value) -> Vec<Value> {
         let Some(scale) = scales.iter().find(|s| s.aesthetic == "pos2") else {
             return Vec::new();
         };
@@ -672,13 +673,12 @@ impl PolarProjection {
         // Axis line along the outer edge
         let outer_s = format!("{}", p.outer);
         if p.is_radar() {
-            let thetas = theta_breaks(p, scales);
             if !thetas.is_empty() {
                 layers.push(polygon_ring(
                     p,
                     p.outer,
                     None,
-                    &thetas,
+                    thetas,
                     Value::Null,
                     line_color.clone(),
                 ));
@@ -806,7 +806,7 @@ impl PolarProjection {
         layers
     }
 
-    fn panel_arc(&self, scales: &[Scale], theme: &mut Value) -> Vec<Value> {
+    fn panel_arc(&self, thetas: &[f64], theme: &mut Value) -> Vec<Value> {
         let Some(view) = theme.get_mut("view").and_then(|v| v.as_object_mut()) else {
             return Vec::new();
         };
@@ -827,7 +827,6 @@ impl PolarProjection {
         };
 
         if p.is_radar() {
-            let thetas = theta_breaks(p, scales);
             if thetas.is_empty() {
                 return Vec::new();
             }
@@ -835,7 +834,7 @@ impl PolarProjection {
                 p,
                 p.outer,
                 inner.map(|_| p.inner),
-                &thetas,
+                thetas,
                 fill,
                 stroke,
             )];
@@ -844,10 +843,6 @@ impl PolarProjection {
         vec![arc_ring(p, &outer_s, inner, fill, stroke)]
     }
 }
-
-// =============================================================================
-// Shared helpers
-// =============================================================================
 
 // =============================================================================
 // Polar decoration helpers
@@ -952,10 +947,7 @@ fn polygon_ring(
             .first()
             .map(|&t| (t - panel.start).cos())
             .unwrap_or(1.0);
-        let end_correction = thetas
-            .last()
-            .map(|&t| (panel.end - t).cos())
-            .unwrap_or(1.0);
+        let end_correction = thetas.last().map(|&t| (panel.end - t).cos()).unwrap_or(1.0);
 
         vertices.push((outer_radius * start_correction, panel.start));
         for &theta in thetas {
@@ -1240,11 +1232,12 @@ fn convert_polar_to_cartesian(layer: &mut Value, panel: &PolarPanel) -> Result<(
                 // The offset is normalised to [-0.5, 0.5] within the band.
                 let off_norm = format!(
                     "(datum['{}'] - {}) / {} - 0.5",
-                    f, off_min, off_max - off_min
+                    f,
+                    off_min,
+                    off_max - off_min
                 );
-                polar_transforms.push(
-                    json!({"calculate": off_norm, "as": "__polar_theta_off_t__"}),
-                );
+                polar_transforms
+                    .push(json!({"calculate": off_norm, "as": "__polar_theta_off_t__"}));
                 // Target: the adjacent spoke (one full step away).
                 // Lerping between two spoke positions traces the straight
                 // polygon edge — both endpoints are vertices.
@@ -1253,19 +1246,13 @@ fn convert_polar_to_cartesian(layer: &mut Value, panel: &PolarPanel) -> Result<(
                     "clamp(datum.__polar_theta__ + (datum.__polar_theta_off_t__ >= 0 ? {} : -{}), {}, {})",
                     step, step, panel.start, panel.end
                 );
-                polar_transforms.push(
-                    json!({"calculate": target_theta, "as": "__polar_theta_target__"}),
-                );
+                polar_transforms
+                    .push(json!({"calculate": target_theta, "as": "__polar_theta_target__"}));
                 // At max offset (±0.5) we reach bw/2 of the way to the
                 // adjacent spoke — half because the spoke is a full step
                 // away but the band edge is only half a step.
-                let lerp = format!(
-                    "abs(datum.__polar_theta_off_t__) * {}",
-                    bw
-                );
-                polar_transforms.push(
-                    json!({"calculate": lerp, "as": "__polar_theta_lerp__"}),
-                );
+                let lerp = format!("abs(datum.__polar_theta_off_t__) * {}", bw);
+                polar_transforms.push(json!({"calculate": lerp, "as": "__polar_theta_lerp__"}));
             } else {
                 theta_final = format!(
                     "datum.__polar_theta__ + {} * ((datum['{}'] - {}) / {} - 0.5)",
@@ -1901,7 +1888,8 @@ mod tests {
         };
         let theme = json!({"axis": {"gridColor": "#FFF", "gridWidth": 2}});
 
-        let layers = proj.grid_rings(&scales, &theme);
+        let thetas = theta_breaks(&proj.panel, &scales);
+        let layers = proj.grid_rings(&scales, &thetas, &theme);
         assert_eq!(layers.len(), 1, "should produce one layer");
 
         let layer = &layers[0];
@@ -1980,7 +1968,8 @@ mod tests {
             }
         });
 
-        let layers = proj.radial_axis(&scales, &theme);
+        let thetas = theta_breaks(&proj.panel, &scales);
+        let layers = proj.radial_axis(&scales, &thetas, &theme);
         assert_eq!(
             layers.len(),
             3,
@@ -2022,7 +2011,8 @@ mod tests {
         };
         let theme = json!({"axis": {}});
 
-        let layers = proj.radial_axis(&scales, &theme);
+        let thetas = theta_breaks(&proj.panel, &scales);
+        let layers = proj.radial_axis(&scales, &thetas, &theme);
         assert_eq!(
             layers.len(),
             1,
@@ -2050,7 +2040,8 @@ mod tests {
             }
         });
 
-        let layers = proj.angular_axis(&scales, &theme);
+        let thetas = theta_breaks(&proj.panel, &scales);
+        let layers = proj.angular_axis(&scales, &thetas, &theme);
         assert_eq!(
             layers.len(),
             3,
@@ -2103,7 +2094,8 @@ mod tests {
         };
         let theme = json!({"axis": {}});
 
-        let layers = proj.angular_axis(&scales, &theme);
+        let thetas = theta_breaks(&proj.panel, &scales);
+        let layers = proj.angular_axis(&scales, &thetas, &theme);
         assert_eq!(
             layers.len(),
             1,
@@ -2147,8 +2139,9 @@ mod tests {
         };
         let theme = json!({"axis": {}});
 
-        assert!(proj.grid_rings(&scales, &theme).is_empty());
-        assert!(proj.radial_axis(&scales, &theme).is_empty());
+        let thetas = theta_breaks(&proj.panel, &scales);
+        assert!(proj.grid_rings(&scales, &thetas, &theme).is_empty());
+        assert!(proj.radial_axis(&scales, &thetas, &theme).is_empty());
     }
 
     #[test]
@@ -2164,8 +2157,9 @@ mod tests {
         };
         let theme = json!({"axis": {}});
 
+        let thetas = theta_breaks(&proj.panel, &scales);
         assert!(proj.grid_spokes(&scales, &theme).is_empty());
-        assert!(proj.angular_axis(&scales, &theme).is_empty());
+        assert!(proj.angular_axis(&scales, &thetas, &theme).is_empty());
     }
 
     #[test]
@@ -2180,10 +2174,11 @@ mod tests {
         };
         let theme = json!({"axis": {}});
 
-        assert!(!proj.grid_rings(&scales, &theme).is_empty());
+        let thetas = theta_breaks(&proj.panel, &scales);
+        assert!(!proj.grid_rings(&scales, &thetas, &theme).is_empty());
         assert!(!proj.grid_spokes(&scales, &theme).is_empty());
-        assert!(!proj.radial_axis(&scales, &theme).is_empty());
-        assert!(!proj.angular_axis(&scales, &theme).is_empty());
+        assert!(!proj.radial_axis(&scales, &thetas, &theme).is_empty());
+        assert!(!proj.angular_axis(&scales, &thetas, &theme).is_empty());
     }
 
     // =========================================================================
@@ -2559,7 +2554,8 @@ mod tests {
         };
         let theme = json!({"axis": {}});
 
-        let layers = proj.radial_axis(&scales, &theme);
+        let thetas = theta_breaks(&proj.panel, &scales);
+        let layers = proj.radial_axis(&scales, &thetas, &theme);
         assert_eq!(
             layers.len(),
             3,
@@ -2592,7 +2588,8 @@ mod tests {
         };
         let theme = json!({"axis": {}});
 
-        let layers = proj.angular_axis(&scales, &theme);
+        let thetas = theta_breaks(&proj.panel, &scales);
+        let layers = proj.angular_axis(&scales, &thetas, &theme);
         assert_eq!(
             layers.len(),
             3,
@@ -2636,7 +2633,8 @@ mod tests {
         };
         let theme = json!({"axis": {}});
 
-        let layers = proj.angular_axis(&scales, &theme);
+        let thetas = theta_breaks(&proj.panel, &scales);
+        let layers = proj.angular_axis(&scales, &thetas, &theme);
         assert_eq!(layers.len(), 3, "should produce arc, tick, and label");
 
         let labels = &layers[2];
@@ -2676,7 +2674,8 @@ mod tests {
         };
         let theme = json!({"axis": {}});
 
-        let layers = proj.grid_rings(&scales, &theme);
+        let thetas = theta_breaks(&proj.panel, &scales);
+        let layers = proj.grid_rings(&scales, &thetas, &theme);
         assert_eq!(layers.len(), 1);
 
         // Radius expression should use literal pixels (150), not signals
@@ -2739,7 +2738,14 @@ mod tests {
     fn test_polygon_ring_closes_for_full_circle() {
         let panel = PolarPanel::new(None, None);
         let thetas = vec![1.0, 2.0, 3.0];
-        let layer = polygon_ring(&panel, POLAR_OUTER, None, &thetas, Value::Null, json!("red"));
+        let layer = polygon_ring(
+            &panel,
+            POLAR_OUTER,
+            None,
+            &thetas,
+            Value::Null,
+            json!("red"),
+        );
         let values = layer["data"]["values"].as_array().unwrap();
         // 3 thetas + 1 closing vertex = 4
         assert_eq!(values.len(), 4);
@@ -2755,7 +2761,14 @@ mod tests {
             .insert("end".to_string(), ParameterValue::Number(180.0));
         let panel = PolarPanel::new(Some(&proj), None);
         let thetas = vec![0.5, 1.0, 1.5];
-        let layer = polygon_ring(&panel, POLAR_OUTER, None, &thetas, Value::Null, json!("red"));
+        let layer = polygon_ring(
+            &panel,
+            POLAR_OUTER,
+            None,
+            &thetas,
+            Value::Null,
+            json!("red"),
+        );
         let values = layer["data"]["values"].as_array().unwrap();
         // start + 3 breaks + end + centre(end) + centre(start) + close = 8
         assert_eq!(values.len(), 8);
@@ -2775,7 +2788,14 @@ mod tests {
         let panel = PolarPanel::new(Some(&proj), None);
         // One break at π/2 — half-step from both start (0) and end (π)
         let thetas = vec![PI / 2.0];
-        let layer = polygon_ring(&panel, POLAR_OUTER, None, &thetas, Value::Null, json!("red"));
+        let layer = polygon_ring(
+            &panel,
+            POLAR_OUTER,
+            None,
+            &thetas,
+            Value::Null,
+            json!("red"),
+        );
         let values = layer["data"]["values"].as_array().unwrap();
         let r_start = values[0]["r"].as_f64().unwrap();
         let r_break = values[1]["r"].as_f64().unwrap();
@@ -2792,7 +2812,14 @@ mod tests {
     fn test_polygon_ring_donut_has_both_rings() {
         let panel = PolarPanel::new(None, None);
         let thetas = vec![1.0, 2.0, 3.0];
-        let layer = polygon_ring(&panel, POLAR_OUTER, Some(0.3), &thetas, json!("white"), Value::Null);
+        let layer = polygon_ring(
+            &panel,
+            POLAR_OUTER,
+            Some(0.3),
+            &thetas,
+            json!("white"),
+            Value::Null,
+        );
         let values = layer["data"]["values"].as_array().unwrap();
         // Outer: 3 + 1 closing, Inner: 3 + 1 closing = 8
         assert_eq!(values.len(), 8);
@@ -2827,7 +2854,8 @@ mod tests {
         ];
         let proj = PolarProjection { panel };
         let theme = json!({"axis": {}});
-        let layers = proj.grid_rings(&scales, &theme);
+        let thetas = theta_breaks(&proj.panel, &scales);
+        let layers = proj.grid_rings(&scales, &thetas, &theme);
         assert_eq!(layers.len(), 1);
         assert_eq!(layers[0]["mark"]["type"], "line");
     }
@@ -2838,7 +2866,8 @@ mod tests {
         let scales = vec![discrete_scale_for_axis("pos2", &["A", "B", "C"])];
         let proj = PolarProjection { panel };
         let mut theme = json!({"view": {"fill": "#EEE", "stroke": null}});
-        let layers = proj.panel_arc(&scales, &mut theme);
+        let thetas = theta_breaks(&proj.panel, &scales);
+        let layers = proj.panel_arc(&thetas, &mut theme);
         assert_eq!(layers.len(), 1);
         assert_eq!(layers[0]["mark"]["type"], "line");
         assert_eq!(layers[0]["mark"]["fill"], "#EEE");
@@ -2850,7 +2879,8 @@ mod tests {
         let scales = vec![discrete_scale_for_axis("pos2", &["A", "B", "C"])];
         let proj = PolarProjection { panel };
         let theme = json!({"axis": {"domainColor": "#333"}});
-        let layers = proj.angular_axis(&scales, &theme);
+        let thetas = theta_breaks(&proj.panel, &scales);
+        let layers = proj.angular_axis(&scales, &thetas, &theme);
         assert!(!layers.is_empty());
         // First layer should be the polygon outline, not an arc
         assert_eq!(layers[0]["mark"]["type"], "line");
@@ -2859,14 +2889,11 @@ mod tests {
     #[test]
     fn test_non_radar_grid_rings_still_use_arc() {
         let panel = PolarPanel::new(None, None);
-        let scales = vec![scale_with_breaks(
-            "pos1",
-            (0.0, 100.0),
-            vec![50.0],
-        )];
+        let scales = vec![scale_with_breaks("pos1", (0.0, 100.0), vec![50.0])];
         let proj = PolarProjection { panel };
         let theme = json!({"axis": {}});
-        let layers = proj.grid_rings(&scales, &theme);
+        let thetas = theta_breaks(&proj.panel, &scales);
+        let layers = proj.grid_rings(&scales, &thetas, &theme);
         assert_eq!(layers.len(), 1);
         assert_eq!(layers[0]["mark"]["type"], "arc");
     }

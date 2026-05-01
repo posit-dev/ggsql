@@ -121,5 +121,5 @@ WITH data(angle, radius) AS (VALUES
 VISUALISE angle, radius FROM data
 DRAW polygon
 ```
-The key to drawing a rader chart is having discrete data for the `angle` aesthetic. 
+The key to drawing a radar chart is having discrete data for the `angle` aesthetic. 
 You can turn off the radar chart by using `PROJECT TO polar SETTING radar => false`.
