@@ -35,6 +35,11 @@ jobs:
       - name: Install ODBC
         run: sudo apt-get install -y unixodbc-dev
 
+      - name: Install protobuf compiler
+        # adbc_datafusion (dev-dep) → datafusion → substrait → prost-build,
+        # which invokes `protoc` at build time. Required for the ADBC test path.
+        run: sudo apt-get install -y protobuf-compiler
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
