@@ -207,10 +207,7 @@ mod tests {
         // The name is `col`; query uses `col_id`. Must not route.
         let mut set = HashSet::new();
         set.insert("col".to_string());
-        assert!(!references_staged_name(
-            "SELECT col_id FROM users",
-            &set
-        ));
+        assert!(!references_staged_name("SELECT col_id FROM users", &set));
     }
 
     #[test]
@@ -230,10 +227,7 @@ mod tests {
         // because `"` is not an identifier char.
         let mut set = HashSet::new();
         set.insert("orders".to_string());
-        assert!(references_staged_name(
-            r#"SELECT * FROM "orders""#,
-            &set
-        ));
+        assert!(references_staged_name(r#"SELECT * FROM "orders""#, &set));
     }
 
     #[test]
@@ -389,11 +383,7 @@ mod tests {
         let reader = HybridReader::new(data, staging);
 
         reader
-            .register(
-                "staged_only",
-                df! { "x" => vec![1_i64, 2] }.unwrap(),
-                true,
-            )
+            .register("staged_only", df! { "x" => vec![1_i64, 2] }.unwrap(), true)
             .unwrap();
 
         // Query references BOTH names. Routing matches on `staged_only`, so the
@@ -401,8 +391,7 @@ mod tests {
         // wrong-route case (data side) would silently succeed because the
         // primary has both tables. So `is_err()` plus a staging-side error
         // message mentioning `remote_only` confirms correct routing.
-        let result = reader
-            .execute_sql("SELECT s.x, r.y FROM staged_only s, remote_only r");
+        let result = reader.execute_sql("SELECT s.x, r.y FROM staged_only s, remote_only r");
         assert!(
             result.is_err(),
             "cross-side query must error when staging lacks the remote table"
