@@ -1063,16 +1063,22 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // Execute global SQL if present
     // If there's a WITH clause, extract just the trailing SELECT and transform CTE references.
     // The global result is stored as a temp table so filtered layers can query it efficiently.
-    // Track whether we actually create the temp table (depends on transform_global_sql succeeding)
     let mut has_global_table = false;
     if sql_part.is_some() {
-        if let Some(transformed_sql) = cte::transform_global_sql(&source_tree, &materialized_ctes) {
+        let (side_effects, query) =
+            cte::transform_global_sql(&source_tree, &materialized_ctes);
+
+        for stmt in &side_effects {
+            execute_query(stmt)?;
+        }
+
+        if let Some(query) = query {
             // Materialize global result as a temp table directly on the backend
             // (no roundtrip through Rust).
             let statements = reader.dialect().create_or_replace_temp_table_sql(
                 &naming::global_table(),
                 &[],
-                &transformed_sql,
+                &query,
             );
             for stmt in &statements {
                 execute_query(stmt)?;
@@ -1893,6 +1899,31 @@ mod tests {
         // Both should have 3 rows
         assert_eq!(result.data.get(layer0_key).unwrap().height(), 3);
         assert_eq!(result.data.get(layer1_key).unwrap().height(), 3);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_visualise_from_after_create() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            CREATE TEMP TABLE data(x, y) AS (VALUES
+              ('A', 5),
+              ('B', 2),
+              ('C', 4),
+              ('D', 7),
+              ('E', 6)
+            )
+            VISUALISE x, y FROM data
+            DRAW area
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+        let key = result.specs[0].layers[0]
+            .data_key
+            .as_ref()
+            .expect("Layer should have data_key");
+        assert_eq!(result.data.get(key).unwrap().height(), 5);
     }
 
     /// Test that literal mappings survive stat transforms (e.g., histogram grouping).

@@ -210,15 +210,15 @@ pub fn split_with_query(source_tree: &SourceTree) -> Option<(String, String)> {
     Some((cte_prefix, trailing))
 }
 
-/// Transform global SQL for execution with temp tables
+/// Transform global SQL for execution with temp tables.
 ///
-/// If the SQL has a WITH clause followed by SELECT, extracts just the SELECT
-/// portion and transforms CTE references to temp table names.
-/// For SQL without WITH clause, just transforms any CTE references.
+/// Returns statements to execute directly as side effects (CREATE, INSERT, …)
+/// and an optional query whose result should be wrapped as the global temp
+/// table.
 pub fn transform_global_sql(
     source_tree: &SourceTree,
     materialized_ctes: &HashSet<String>,
-) -> Option<String> {
+) -> (Vec<String>, Option<String>) {
     // Try to extract trailing SELECT (WITH...SELECT or direct SELECT)
     let select_sql = split_with_query(source_tree)
         .map(|(_, select)| select)
@@ -229,16 +229,58 @@ pub fn transform_global_sql(
         });
 
     if let Some(select_sql) = select_sql {
-        Some(transform_cte_references(&select_sql, materialized_ctes))
-    } else if does_consume_cte(source_tree) {
-        // Non-SELECT executable SQL (CREATE, INSERT, UPDATE, DELETE)
-        // OR VISUALISE FROM (which injects SELECT * FROM <source>)
-        // Extract SQL (with injection if VISUALISE FROM) and transform CTE references
-        let sql = source_tree.extract_sql()?;
-        Some(transform_cte_references(&sql, materialized_ctes))
+        return (
+            vec![],
+            Some(transform_cte_references(&select_sql, materialized_ctes)),
+        );
+    }
+
+    if !does_consume_cte(source_tree) {
+        return (vec![], None);
+    }
+
+    // We have non-SELECT executable SQL (CREATE, INSERT, …) and/or
+    // VISUALISE FROM. Split them: side-effect statements run directly,
+    // VISUALISE FROM becomes the queryable part.
+    //
+    // Only actual statements (CREATE, INSERT, …) are side effects — a bare
+    // WITH clause without a trailing statement is not executable on its own
+    // (its CTEs are already materialized separately).
+    let root = source_tree.root();
+
+    let side_effect_stmts = r#"
+        (sql_statement
+          [(create_statement)
+           (insert_statement)
+           (update_statement)
+           (delete_statement)] @stmt)
+    "#;
+    let side_effects: Vec<String> = source_tree
+        .find_texts(&root, side_effect_stmts)
+        .into_iter()
+        .map(|s| transform_cte_references(s.trim(), materialized_ctes))
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let viz_from_query = source_tree
+        .find_text(
+            &root,
+            r#"(visualise_statement (from_clause (table_ref) @table))"#,
+        )
+        .map(|table| {
+            let q = format!("SELECT * FROM {}", table);
+            transform_cte_references(&q, materialized_ctes)
+        });
+
+    if !side_effects.is_empty() || viz_from_query.is_some() {
+        (side_effects, viz_from_query)
     } else {
-        // No executable SQL (just CTEs)
-        None
+        // does_consume_cte was true but we found no specific statements or
+        // VISUALISE FROM — fall back to extract_sql as the query.
+        let query = source_tree
+            .extract_sql()
+            .map(|s| transform_cte_references(&s, materialized_ctes));
+        (vec![], query)
     }
 }
 
