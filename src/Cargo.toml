@@ -61,6 +61,7 @@ jsonschema = { version = "0.44", default-features = false, features = ["resolve-
 tempfile = "3.8"
 ureq = "3"
 adbc_datafusion = "0.23"
+adbc_driver_manager = "0.23"
 
 [features]
 default = ["duckdb", "sqlite", "vegalite", "parquet", "builtin-data", "odbc"]
