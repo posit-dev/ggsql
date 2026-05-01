@@ -104,12 +104,13 @@ impl Reader for HybridReader {
 /// (`'orders of magnitude'`).
 ///
 /// This is deliberately a lightweight scanner — it doesn't fully parse SQL.
-/// False-negative cases we accept:
+/// False-positive cases we accept:
 /// - Backslash-escaped quotes inside string literals (SQL standard escapes
 ///   a single quote as `''`, which we do handle).
-/// - Comments containing what looks like an identifier (usually harmless
-///   since misrouting to staging just means the query fails against a
-///   backend that wouldn't have found the table anyway).
+/// - Comments containing what looks like an identifier: a primary-data
+///   query whose only mention of a staged name is inside a SQL comment
+///   will be misrouted to staging and fail with a clear error rather than
+///   succeeding against the primary backend.
 fn references_staged_name(sql: &str, staged_names: &HashSet<String>) -> bool {
     staged_names
         .iter()
@@ -333,27 +334,53 @@ mod tests {
         assert!(!reader.staged_names.borrow().contains("tmp"));
     }
 
+    #[cfg(feature = "sqlite")]
     #[test]
-    fn test_dialect_returns_staging_dialect() {
-        let data = Box::new(DuckDBReader::from_connection_string("duckdb://memory").unwrap())
-            as Box<dyn Reader + Send>;
+    fn test_dialect_returns_staging_not_data() {
+        use crate::reader::SqliteReader;
+        // Use a SqliteReader on the data side so the data dialect (SQLite,
+        // CASE-WHEN fallback for sql_greatest) differs from the staging
+        // dialect (DuckDB, native GREATEST). This way the test would fail if
+        // the impl returned the data dialect by mistake.
+        let data = Box::new(SqliteReader::new().unwrap()) as Box<dyn Reader + Send>;
         let staging = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let reader = HybridReader::new(data, staging);
 
-        // DuckDB dialect uses GREATEST natively (no CASE fallback).
+        // dialect() returns the staging (DuckDB) dialect.
         let greatest = reader.dialect().sql_greatest(&["a", "b"]);
         assert_eq!(greatest, "GREATEST(a, b)");
+
+        // data_dialect() returns the data-side (SQLite) dialect, whose
+        // sql_greatest falls back to a portable CASE form.
+        let data_greatest = reader.data_dialect().sql_greatest(&["a", "b"]);
+        assert_ne!(data_greatest, "GREATEST(a, b)");
+        assert!(
+            data_greatest.contains("CASE"),
+            "expected SQLite's CASE fallback, got: {data_greatest}"
+        );
     }
 
     #[test]
     fn test_query_referencing_both_staged_and_remote_routes_to_staging() {
         use crate::df;
-        // Primary has `remote_only`; staging gets `staged_only` via register.
+        // Primary has `remote_only` and ALSO `staged_only` (with different
+        // values from the staging copy). Staging only has `staged_only`. If
+        // the router incorrectly sent the query to the data side, the join
+        // would succeed against the primary's two tables. Since routing must
+        // pick staging on `staged_only`, the query fails because staging
+        // lacks `remote_only`.
         let data_reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         data_reader
             .register(
                 "remote_only",
                 df! { "y" => vec![10_i64, 20] }.unwrap(),
+                true,
+            )
+            .unwrap();
+        data_reader
+            .register(
+                "staged_only",
+                df! { "x" => vec![999_i64, 999] }.unwrap(),
                 true,
             )
             .unwrap();
@@ -370,14 +397,20 @@ mod tests {
             .unwrap();
 
         // Query references BOTH names. Routing matches on `staged_only`, so the
-        // whole query goes to staging — which doesn't have `remote_only`. We
-        // expect a staging-side error rather than a successful join. This is
-        // the documented "single-side-of-the-fence" rule.
+        // whole query goes to staging — which doesn't have `remote_only`. The
+        // wrong-route case (data side) would silently succeed because the
+        // primary has both tables. So `is_err()` plus a staging-side error
+        // message mentioning `remote_only` confirms correct routing.
         let result = reader
             .execute_sql("SELECT s.x, r.y FROM staged_only s, remote_only r");
         assert!(
             result.is_err(),
             "cross-side query must error when staging lacks the remote table"
+        );
+        let err_msg = result.unwrap_err().to_string().to_lowercase();
+        assert!(
+            err_msg.contains("remote_only"),
+            "expected staging-side error mentioning the missing `remote_only` table; got: {err_msg}"
         );
     }
 }
