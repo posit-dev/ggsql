@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Changed
+
+- Restructured how ggsql integrates with ODBC drivers to use system ODBC,
+rather than bundling unixodbc as part of binary releases. This fixes several
+issues on Linux and macOS caused by using relative paths to dynamic libraries.
+
 ## 0.3.1 - 2026-04-30
 
 ### Fixed
