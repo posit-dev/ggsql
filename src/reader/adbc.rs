@@ -157,7 +157,7 @@ where
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
         super::validate_table_name(name)?;
 
-        use adbc_core::options::{OptionStatement, OptionValue};
+        use adbc_core::options::{IngestMode, OptionStatement, OptionValue};
         use adbc_core::Optionable;
 
         if df.height() == 0 {
@@ -182,16 +182,15 @@ where
             )
         })?;
 
-        // POC finding: DataFusion 0.23's ADBC driver does NOT support the
-        // standard ADBC ingest options `IngestMode::{Create,Replace}` (set_option
-        // returns NotFound) and its `bind_stream` is `todo!()`. The only
-        // supported bulk-insert path is: CREATE TABLE via SQL DDL, then for
-        // each batch set `TargetTable` + `bind(batch)` + `execute_update()`,
-        // which appends the batch to the existing table. We emulate
-        // IngestMode::Create (default) and IngestMode::Replace here using SQL
-        // DDL. Other ADBC drivers (e.g. a future Trino/Snowflake one) will
-        // typically honor the proper ingest options — this workaround stays
-        // local to DataFusion's limits and does not bleed into the API.
+        // Bulk-insert path: CREATE TABLE via SQL DDL, then for each batch set
+        // `TargetTable` + `IngestMode::Append` + `bind(batch)` +
+        // `execute_update()`. We do the CREATE ourselves (rather than relying
+        // on `IngestMode::Create`) so we control the column types via the
+        // `SqlDialect` and so registers behave identically across drivers
+        // with varying ingest-option support — in particular,
+        // `adbc_datafusion` 0.23 has `bind_stream` as `todo!()` and rejects
+        // the `IngestMode` option key (`set_option` returns `NotFound`),
+        // which is silently tolerated below.
         let schema = batches[0].schema();
         if replace {
             let drop_sql = format!(
@@ -246,6 +245,25 @@ where
                     batch_idx, e
                 ))
             })?;
+            // Tell the driver this is an append into the table we just
+            // CREATEd above. Compliant ADBC drivers (e.g. the Apache SQLite
+            // driver) default `IngestMode` to `Create` when only `TargetTable`
+            // is set, which would then fail because the table already exists.
+            // DataFusion 0.23 doesn't expose this option key and returns
+            // `Status::NotFound` from `set_option`; that's expected for
+            // DataFusion's bind path (it appends by default), so swallow it
+            // and continue rather than failing register().
+            if let Err(e) = stmt.set_option(
+                OptionStatement::IngestMode,
+                OptionValue::from(IngestMode::Append),
+            ) {
+                if e.status != adbc_core::error::Status::NotFound {
+                    return Err(GgsqlError::ReaderError(format!(
+                        "ADBC set IngestMode=Append (batch {}): {}",
+                        batch_idx, e
+                    )));
+                }
+            }
             stmt.bind(batch).map_err(|e| {
                 GgsqlError::ReaderError(format!("ADBC bind (batch {}): {}", batch_idx, e))
             })?;
@@ -343,9 +361,8 @@ fn record_batches_to_dataframe(
 /// Build a `CREATE TABLE <name> (col1 TYPE, col2 TYPE, ...)` statement from
 /// an Arrow schema, using the reader's `SqlDialect` for type names.
 ///
-/// This is a POC workaround for DataFusion 0.23's ADBC driver, which doesn't
-/// support the standard `IngestMode::Create` option; see the `register` impl
-/// for context. Real ADBC drivers let the server create the table itself.
+/// Used by `register()` to create the destination table before binding
+/// batches with `IngestMode::Append`; see the `register` impl for context.
 fn create_table_sql(
     name: &str,
     schema: &arrow_schema::Schema,
@@ -710,5 +727,197 @@ mod tests {
             .collect();
         assert!(names.contains(&"a".to_string()));
         assert!(names.contains(&"b".to_string()));
+    }
+}
+
+#[cfg(all(test, feature = "sqlite"))]
+mod equivalence_tests {
+    //! Equivalence tests: `AdbcReader<sqlite via ManagedDriver>` vs ggsql's
+    //! `SqliteReader` on the same query against the same SQLite DB. Validates
+    //! correctness of the ADBC abstraction's routing, type bridging, and
+    //! ingest paths against a real, fully-functional ADBC driver.
+    //!
+    //! Skipped by default (gated `#[ignore]`). To run them:
+    //!
+    //! 1. Install dbc: `curl -LsSf https://dbc.columnar.tech/install.sh | sh`
+    //! 2. Install the SQLite driver: `dbc install sqlite`
+    //! 3. Run: `cargo test --features "adbc sqlite" -- --ignored equivalence`
+    //!
+    //! `dbc install` writes the driver to a manifest location that
+    //! `ManagedDriver::load_from_name("sqlite", ...)` discovers automatically
+    //! (on macOS: `~/Library/Application Support/ADBC/Drivers/sqlite.toml`).
+    //!
+    //! Why SQLite (and not DuckDB) as the equivalence oracle: `libduckdb` is
+    //! distributed as a bundled-static archive, so it can't be loaded as the
+    //! shared library that `ManagedDriver` requires. The Apache-published
+    //! SQLite ADBC driver ships as `libadbc_driver_sqlite.dylib` and is the
+    //! reference C-driver path for round-tripping through `adbc_driver_manager`.
+
+    use crate::reader::sqlite::SqliteDialect;
+    use crate::reader::{AdbcReader, Reader, SqliteReader};
+    use adbc_core::options::{AdbcVersion, OptionDatabase, OptionValue};
+    use adbc_core::LOAD_FLAG_DEFAULT;
+    use adbc_driver_manager::ManagedDriver;
+    use tempfile::NamedTempFile;
+
+    /// Construct an `AdbcReader` pointed at a specific SQLite file.
+    /// Both readers in each test point at the SAME file so equivalence is
+    /// over the same physical database.
+    fn make_adbc_reader(db_path: &str) -> AdbcReader<ManagedDriver> {
+        let driver = ManagedDriver::load_from_name(
+            "sqlite",
+            None,
+            AdbcVersion::V110,
+            LOAD_FLAG_DEFAULT,
+            None,
+        )
+        .expect("`dbc install sqlite` first; see module docs");
+        let dialect: Box<dyn crate::reader::SqlDialect + Send> = Box::new(SqliteDialect);
+        AdbcReader::new_with_database_opts(
+            driver,
+            dialect,
+            std::iter::once((
+                OptionDatabase::Uri,
+                OptionValue::String(format!("file:{}", db_path)),
+            )),
+        )
+        .expect("construct AdbcReader<sqlite>")
+    }
+
+    fn make_sqlite_reader(db_path: &str) -> SqliteReader {
+        SqliteReader::from_connection_string(&format!("sqlite://{}", db_path))
+            .expect("SqliteReader at the same path")
+    }
+
+    /// Compare two DataFrames by schema (field names + types) and by
+    /// per-column Arrow array contents. We don't use a blanket
+    /// `assert_eq!(df, df)` because `DataFrame` doesn't implement `PartialEq`;
+    /// going through schema + per-column equality is also more diagnostic
+    /// when one of them diverges.
+    fn assert_dataframes_equal(
+        adbc_df: &crate::DataFrame,
+        sqlite_df: &crate::DataFrame,
+        ctx: &str,
+    ) {
+        let adbc_schema = adbc_df.schema();
+        let sqlite_schema = sqlite_df.schema();
+        assert_eq!(
+            adbc_schema.fields().len(),
+            sqlite_schema.fields().len(),
+            "{}: column count mismatch (adbc={}, sqlite={})",
+            ctx,
+            adbc_schema.fields().len(),
+            sqlite_schema.fields().len(),
+        );
+        for (i, (a, s)) in adbc_schema
+            .fields()
+            .iter()
+            .zip(sqlite_schema.fields().iter())
+            .enumerate()
+        {
+            assert_eq!(
+                a.name(),
+                s.name(),
+                "{}: column {} name mismatch (adbc='{}', sqlite='{}')",
+                ctx,
+                i,
+                a.name(),
+                s.name(),
+            );
+            assert_eq!(
+                a.data_type(),
+                s.data_type(),
+                "{}: column '{}' type mismatch (adbc={:?}, sqlite={:?})",
+                ctx,
+                a.name(),
+                a.data_type(),
+                s.data_type(),
+            );
+        }
+        assert_eq!(
+            adbc_df.height(),
+            sqlite_df.height(),
+            "{}: row count mismatch (adbc={}, sqlite={})",
+            ctx,
+            adbc_df.height(),
+            sqlite_df.height(),
+        );
+        for field in adbc_schema.fields() {
+            let a = adbc_df.column(field.name()).unwrap();
+            let s = sqlite_df.column(field.name()).unwrap();
+            assert_eq!(
+                a.as_ref(),
+                s.as_ref(),
+                "{}: column '{}' data mismatch",
+                ctx,
+                field.name(),
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "requires `dbc install sqlite`; see module docs"]
+    fn equiv_simple_select() {
+        let db = NamedTempFile::new().unwrap();
+        let db_path = db.path().to_str().unwrap();
+        let adbc = make_adbc_reader(db_path);
+        let direct = make_sqlite_reader(db_path);
+        let sql = "SELECT 1 AS x, 'hello' AS y, 3.14 AS z";
+        let a = adbc.execute_sql(sql).unwrap();
+        let d = direct.execute_sql(sql).unwrap();
+        assert_dataframes_equal(&a, &d, "simple select");
+    }
+
+    #[test]
+    #[ignore = "requires `dbc install sqlite`; see module docs"]
+    fn equiv_register_and_query() {
+        // Register through the ADBC reader (exercises the standard ADBC
+        // bulk-ingest path), then read back through SqliteReader (talks to
+        // rusqlite directly against the same file) AND through the ADBC
+        // reader. Both should agree.
+        let db = NamedTempFile::new().unwrap();
+        let db_path = db.path().to_str().unwrap();
+        let adbc = make_adbc_reader(db_path);
+        let df = crate::df! {
+            "x" => vec![1i64, 2, 3, 4, 5],
+            "y" => vec![10i64, 20, 30, 40, 50],
+        }
+        .unwrap();
+        adbc.register("t", df, false).unwrap();
+
+        // Open the SqliteReader AFTER the ADBC reader has CREATEd + ingested,
+        // so its `Connection::open` sees the on-disk schema written by ADBC.
+        let direct = make_sqlite_reader(db_path);
+
+        let sql = "SELECT x, y, x*y AS xy FROM t WHERE y > 15 ORDER BY x";
+        let a = adbc.execute_sql(sql).unwrap();
+        let d = direct.execute_sql(sql).unwrap();
+        assert_dataframes_equal(&a, &d, "register + filter + projection");
+    }
+
+    #[test]
+    #[ignore = "requires `dbc install sqlite`; see module docs"]
+    fn equiv_nulls() {
+        // Mix nulls with typed values so both readers infer the same type.
+        // (SqliteReader's per-row type inference falls back to Utf8 when a
+        // column is *exclusively* NULL, while ADBC carries through the
+        // declared INTEGER from the projection metadata. That's a
+        // SqliteReader limitation, not an AdbcReader bug, so we steer
+        // around it here — see the divergence note in the PR description.)
+        let db = NamedTempFile::new().unwrap();
+        let db_path = db.path().to_str().unwrap();
+        let adbc = make_adbc_reader(db_path);
+        let direct = make_sqlite_reader(db_path);
+        // SQLite doesn't accept `VALUES (..) AS t(col, ...)` column-list
+        // aliases, so build the source rows with UNION ALL — both readers
+        // handle this identically.
+        let sql = "SELECT i, s FROM ( \
+                SELECT CAST(1 AS INTEGER) AS i, CAST('a' AS TEXT) AS s \
+                UNION ALL SELECT NULL, 'b' \
+                UNION ALL SELECT 3, NULL \
+            ) ORDER BY i";
+        let a = adbc.execute_sql(sql).unwrap();
+        let d = direct.execute_sql(sql).unwrap();
+        assert_dataframes_equal(&a, &d, "mixed null + typed values");
     }
 }
