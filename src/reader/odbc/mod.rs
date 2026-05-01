@@ -758,8 +758,18 @@ fn extract_batch(
                 } else {
                     let elem_size = buf.text_buf_size + 1;
                     let offset = row * elem_size;
-                    let len = indicator as usize;
-                    let actual_len = len.min(buf.text_buf_size);
+                    // indicator is the actual byte length, but may be
+                    // SQL_NO_TOTAL (-4) if the driver can't determine length.
+                    // In that case, scan for null terminator in the buffer.
+                    let actual_len = if indicator >= 0 {
+                        (indicator as usize).min(buf.text_buf_size)
+                    } else {
+                        let slice = &buf.data[offset..offset + buf.text_buf_size];
+                        slice
+                            .iter()
+                            .position(|&b| b == 0)
+                            .unwrap_or(buf.text_buf_size)
+                    };
                     let bytes = &buf.data[offset..offset + actual_len];
                     let s = String::from_utf8_lossy(bytes).into_owned();
                     v.push(Some(s));
