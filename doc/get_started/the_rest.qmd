@@ -120,4 +120,4 @@ LABEL
 ```
 
 ## The rest of the rest of the owl
-While we have now taken a quick tour through the main features of ggsql along with the theoretical backbone that underpins it there is still a lot to learn. The next step is to browse the [syntax documentation](../syntax/index.qmd), begin to build some visualizations on your own, and get some experience with ggsql.
+While we have now taken a quick tour through the main features of ggsql along with the theoretical backbone that underpins it there is still a lot to learn. Continue to the last section of the tutorial for a brief wrap up and pointers to where to go next.
