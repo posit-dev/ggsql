@@ -539,7 +539,10 @@ mod tests {
         let result = resolve_projection_properties(&mut proj, &scales);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("discrete"), "error should mention discrete: {err}");
+        assert!(
+            err.contains("discrete"),
+            "error should mention discrete: {err}"
+        );
     }
 
     #[test]
@@ -560,7 +563,7 @@ mod tests {
         let mut proj = Projection::cartesian();
         let scales = vec![scale_with_type("pos2", true)];
         resolve_projection_properties(&mut proj, &scales).unwrap();
-        assert!(proj.properties.get("radar").is_none());
+        assert!(!proj.properties.contains_key("radar"));
     }
 
     #[test]

@@ -192,14 +192,24 @@ mod tests {
     fn discrete_scale(values: &[&str]) -> Scale {
         let mut s = Scale::new("pos2");
         s.scale_type = Some(ScaleType::discrete());
-        s.input_range = Some(values.iter().map(|v| ArrayElement::String(v.to_string())).collect());
+        s.input_range = Some(
+            values
+                .iter()
+                .map(|v| ArrayElement::String(v.to_string()))
+                .collect(),
+        );
         s
     }
 
     fn ordinal_scale(values: &[&str]) -> Scale {
         let mut s = Scale::new("pos1");
         s.scale_type = Some(ScaleType::ordinal());
-        s.input_range = Some(values.iter().map(|v| ArrayElement::String(v.to_string())).collect());
+        s.input_range = Some(
+            values
+                .iter()
+                .map(|v| ArrayElement::String(v.to_string()))
+                .collect(),
+        );
         s
     }
 
@@ -290,10 +300,7 @@ mod tests {
     #[test]
     fn test_no_scale_type_falls_back() {
         let mut s = Scale::new("pos1");
-        s.input_range = Some(vec![
-            ArrayElement::Number(10.0),
-            ArrayElement::Number(50.0),
-        ]);
+        s.input_range = Some(vec![ArrayElement::Number(10.0), ArrayElement::Number(50.0)]);
         s.properties.insert(
             "breaks".to_string(),
             ParameterValue::Array(vec![ArrayElement::Number(20.0), ArrayElement::Number(40.0)]),
@@ -311,7 +318,11 @@ mod tests {
         let s = continuous_scale((0.0, 100.0), vec![25.0, 50.0, 75.0]);
         assert_eq!(
             s.break_labels(),
-            vec![(25.0, "25".to_string()), (50.0, "50".to_string()), (75.0, "75".to_string())]
+            vec![
+                (25.0, "25".to_string()),
+                (50.0, "50".to_string()),
+                (75.0, "75".to_string())
+            ]
         );
     }
 
@@ -320,7 +331,11 @@ mod tests {
         let s = discrete_scale(&["A", "B", "C"]);
         assert_eq!(
             s.break_labels(),
-            vec![(1.0, "A".to_string()), (2.0, "B".to_string()), (3.0, "C".to_string())]
+            vec![
+                (1.0, "A".to_string()),
+                (2.0, "B".to_string()),
+                (3.0, "C".to_string())
+            ]
         );
     }
 
@@ -329,7 +344,11 @@ mod tests {
         let s = ordinal_scale(&["low", "mid", "high"]);
         assert_eq!(
             s.break_labels(),
-            vec![(1.0, "low".to_string()), (2.0, "mid".to_string()), (3.0, "high".to_string())]
+            vec![
+                (1.0, "low".to_string()),
+                (2.0, "mid".to_string()),
+                (3.0, "high".to_string())
+            ]
         );
     }
 
@@ -342,7 +361,11 @@ mod tests {
         s.label_mapping = Some(mapping);
         assert_eq!(
             s.break_labels(),
-            vec![(1.0, "Alpha".to_string()), (2.0, "B".to_string()), (3.0, String::new())]
+            vec![
+                (1.0, "Alpha".to_string()),
+                (2.0, "B".to_string()),
+                (3.0, String::new())
+            ]
         );
     }
 }

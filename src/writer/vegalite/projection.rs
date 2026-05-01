@@ -66,12 +66,7 @@ pub(super) trait ProjectionRenderer {
     }
 
     /// Apply all projection-specific work: transforms, clip, and panel decoration.
-    fn apply_projection(
-        &self,
-        spec: &Plot,
-        theme: &mut Value,
-        vl_spec: &mut Value,
-    ) -> Result<()> {
+    fn apply_projection(&self, spec: &Plot, theme: &mut Value, vl_spec: &mut Value) -> Result<()> {
         self.transform_layers(spec, vl_spec)?;
 
         if let Some(ref project) = spec.project {
@@ -202,7 +197,12 @@ impl AxisInfo {
         let domain = domain.filter(|(min, max)| (max - min).abs() > f64::EPSILON);
         let breaks = labels.iter().map(|(v, _)| *v).collect();
         let is_free = facet.is_some_and(|f| f.is_free(aesthetic));
-        Self { domain, breaks, labels, is_free }
+        Self {
+            domain,
+            breaks,
+            labels,
+            is_free,
+        }
     }
 }
 
@@ -431,13 +431,7 @@ impl PolarProjection {
                 .map(|&b| {
                     let r = p.inner
                         + (p.outer - p.inner) * (b - domain_min) / (domain_max - domain_min);
-                    let mut layer = polygon_ring(
-                        p,
-                        r,
-                        None,
-                        Value::Null,
-                        color.clone(),
-                    );
+                    let mut layer = polygon_ring(p, r, None, Value::Null, color.clone());
                     layer["mark"]["strokeWidth"] = width.clone();
                     layer
                 })
@@ -2681,13 +2675,7 @@ mod tests {
     fn test_polygon_ring_closes_for_full_circle() {
         let mut panel = PolarContext::new(None, None, &[]);
         panel.angle_breaks_radians = vec![1.0, 2.0, 3.0];
-        let layer = polygon_ring(
-            &panel,
-            POLAR_OUTER,
-            None,
-            Value::Null,
-            json!("red"),
-        );
+        let layer = polygon_ring(&panel, POLAR_OUTER, None, Value::Null, json!("red"));
         let values = layer["data"]["values"].as_array().unwrap();
         // 3 thetas + 1 closing vertex = 4
         assert_eq!(values.len(), 4);
@@ -2703,13 +2691,7 @@ mod tests {
             .insert("end".to_string(), ParameterValue::Number(180.0));
         let mut panel = PolarContext::new(Some(&proj), None, &[]);
         panel.angle_breaks_radians = vec![0.5, 1.0, 1.5];
-        let layer = polygon_ring(
-            &panel,
-            POLAR_OUTER,
-            None,
-            Value::Null,
-            json!("red"),
-        );
+        let layer = polygon_ring(&panel, POLAR_OUTER, None, Value::Null, json!("red"));
         let values = layer["data"]["values"].as_array().unwrap();
         // start + 3 breaks + end + centre(end) + centre(start) + close = 8
         assert_eq!(values.len(), 8);
@@ -2728,13 +2710,7 @@ mod tests {
             .insert("end".to_string(), ParameterValue::Number(180.0));
         let mut panel = PolarContext::new(Some(&proj), None, &[]);
         panel.angle_breaks_radians = vec![PI / 2.0];
-        let layer = polygon_ring(
-            &panel,
-            POLAR_OUTER,
-            None,
-            Value::Null,
-            json!("red"),
-        );
+        let layer = polygon_ring(&panel, POLAR_OUTER, None, Value::Null, json!("red"));
         let values = layer["data"]["values"].as_array().unwrap();
         let r_start = values[0]["r"].as_f64().unwrap();
         let r_break = values[1]["r"].as_f64().unwrap();
@@ -2751,13 +2727,7 @@ mod tests {
     fn test_polygon_ring_donut_has_both_rings() {
         let mut panel = PolarContext::new(None, None, &[]);
         panel.angle_breaks_radians = vec![1.0, 2.0, 3.0];
-        let layer = polygon_ring(
-            &panel,
-            POLAR_OUTER,
-            Some(0.3),
-            json!("white"),
-            Value::Null,
-        );
+        let layer = polygon_ring(&panel, POLAR_OUTER, Some(0.3), json!("white"), Value::Null);
         let values = layer["data"]["values"].as_array().unwrap();
         // Outer: 3 + 1 closing, Inner: 3 + 1 closing = 8
         assert_eq!(values.len(), 8);

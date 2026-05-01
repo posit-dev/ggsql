@@ -1208,10 +1208,10 @@ mod tests {
     // =========================================================================
 
     mod get_extent_translation_tests {
-        use crate::writer::vegalite::projection::get_projection_renderer;
         use super::*;
         use crate::plot::aesthetic::AestheticContext;
         use crate::plot::{ArrayElement, Scale};
+        use crate::writer::vegalite::projection::get_projection_renderer;
 
         fn discrete_scale(aesthetic: &str) -> Scale {
             Scale {

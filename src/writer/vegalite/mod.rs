@@ -1052,7 +1052,8 @@ impl Writer for VegaLiteWriter {
             "$schema": self.schema
         });
         // Get projection renderer (single instance used throughout)
-        let projection = get_projection_renderer(spec.project.as_ref(), spec.facet.as_ref(), &spec.scales);
+        let projection =
+            get_projection_renderer(spec.project.as_ref(), spec.facet.as_ref(), &spec.scales);
 
         if let Some((w, h)) = projection.panel_size() {
             vl_spec["width"] = w;

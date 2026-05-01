@@ -1111,7 +1111,11 @@ pub(super) fn categorical_numeric_breaks(scale: &super::Scale) -> Vec<f64> {
 /// Numeric domain for categorical scales: `(0.5, n + 0.5)`.
 pub(super) fn categorical_numeric_domain(scale: &super::Scale) -> Option<(f64, f64)> {
     let n = scale.input_range.as_ref()?.len();
-    if n > 0 { Some((0.5, n as f64 + 0.5)) } else { None }
+    if n > 0 {
+        Some((0.5, n as f64 + 0.5))
+    } else {
+        None
+    }
 }
 
 /// Labelled breaks for categorical scales: pairs position indices with category names.
