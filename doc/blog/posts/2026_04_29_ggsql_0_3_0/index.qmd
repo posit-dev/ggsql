@@ -9,7 +9,7 @@ date: 29/04/2026
 
 ![Waterflow 225 *by Thomas Lin Pedersen*](waterflow225.jpg)
 
-We are happy to announce the release of ggsql 0.3.0 (alpha). This release comes in quick succession to the initial [0.2.7 (alpha) release](https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/) and fixes a number of behind-the-scenes issues that we are eager to get out before we begin adding more features and integrations. You can read the full list of changes in the [CHANGELOG](../../CHANGELOG.md).
+We are happy to announce the release of ggsql 0.3.0 (alpha). This release comes in quick succession to the initial [0.2.7 (alpha) release](https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/) and fixes a number of behind-the-scenes issues that we are eager to get out before we begin adding more features and integrations. You can read the full list of changes in the [CHANGELOG](../../../CHANGELOG.md).
 
 ## Syntax ergonomics
 DuckDB showed us the way in terms of making SQL a bit more readable. One of their small but significant insights was that moving the `FROM` in front of `SELECT` made it much easier to visually parse the query since you didn't have to wait until the very end to figure out what the data source is. As a bonus, any language server that wants to suggest column names now has the info from the beginning of the query and can provide aid as you write.
@@ -36,6 +36,6 @@ Leading up to the first release we had spent a lot of time on the documentation 
 Speaking of coding agents, the CLI now also ships with a skill, accessible through the `skill` command. The same skill can also be installed directly with `npx skills add posit-dev/skills --skill ggsql`
 
 ## And all the rest
-The release also contains a range of various fixes and infrastructural reorganizations that are less interesting to talk about but can be seen in the [CHANGELOG](../../CHANGELOG.md).
+The release also contains a range of various fixes and infrastructural reorganizations that are less interesting to talk about but can be seen in the [CHANGELOG](../../../CHANGELOG.md).
 
 We are excited about the development and what comes next for ggsql. The next release will most likely come with some amazing new user-facing features.

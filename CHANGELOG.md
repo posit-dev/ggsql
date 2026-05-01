@@ -5,6 +5,12 @@
 - Side effects like `CREATE TEMP TABLE` before the `VISUALISE` statement are now
   separated from directly feeding into the visualisation data (#415)
 
+## 0.3.1 - 2026-04-30
+
+### Fixed
+
+- Fixed stacking in faceted plots (#403)
+
 ## 0.3.0 - 2026-04-29
 
 ### Added
