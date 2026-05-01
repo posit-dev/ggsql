@@ -48,12 +48,12 @@ impl<D: Driver> AdbcReader<D> {
     /// with the ANSI dialect, or pass a custom `SqlDialect`
     /// (e.g. a Trino / Snowflake dialect) here directly.
     pub fn new(mut driver: D, dialect: Box<dyn SqlDialect + Send>) -> Result<Self> {
-        let database = driver.new_database().map_err(|e| {
-            GgsqlError::ReaderError(format!("ADBC new_database failed: {}", e))
-        })?;
-        let connection = database.new_connection().map_err(|e| {
-            GgsqlError::ReaderError(format!("ADBC new_connection failed: {}", e))
-        })?;
+        let database = driver
+            .new_database()
+            .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_database failed: {}", e)))?;
+        let connection = database
+            .new_connection()
+            .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_connection failed: {}", e)))?;
         Ok(Self {
             _driver: driver,
             _database: database,
@@ -80,9 +80,9 @@ impl<D: Driver> AdbcReader<D> {
         let database = driver.new_database_with_opts(opts).map_err(|e| {
             GgsqlError::ReaderError(format!("ADBC new_database_with_opts failed: {}", e))
         })?;
-        let connection = database.new_connection().map_err(|e| {
-            GgsqlError::ReaderError(format!("ADBC new_connection failed: {}", e))
-        })?;
+        let connection = database
+            .new_connection()
+            .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_connection failed: {}", e)))?;
         Ok(Self {
             _driver: driver,
             _database: database,
@@ -129,12 +129,11 @@ where
                         .into(),
                 )
             })?;
-            let mut stmt = conn.new_statement().map_err(|e| {
-                GgsqlError::ReaderError(format!("ADBC new_statement: {}", e))
-            })?;
-            stmt.set_sql_query(sql).map_err(|e| {
-                GgsqlError::ReaderError(format!("ADBC set_sql_query: {}", e))
-            })?;
+            let mut stmt = conn
+                .new_statement()
+                .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
+            stmt.set_sql_query(sql)
+                .map_err(|e| GgsqlError::ReaderError(format!("ADBC set_sql_query: {}", e)))?;
             let reader = stmt
                 .execute()
                 .map_err(|e| GgsqlError::ReaderError(format!("ADBC execute: {}", e)))?;
@@ -193,19 +192,16 @@ where
         // which is silently tolerated below.
         let schema = batches[0].schema();
         if replace {
-            let drop_sql = format!(
-                "DROP TABLE IF EXISTS {}",
-                crate::naming::quote_ident(name)
-            );
-            let mut drop_stmt = conn.new_statement().map_err(|e| {
-                GgsqlError::ReaderError(format!("ADBC new_statement: {}", e))
-            })?;
-            drop_stmt.set_sql_query(&drop_sql).map_err(|e| {
-                GgsqlError::ReaderError(format!("ADBC set_sql_query DROP: {}", e))
-            })?;
-            drop_stmt.execute_update().map_err(|e| {
-                GgsqlError::ReaderError(format!("ADBC execute_update DROP: {}", e))
-            })?;
+            let drop_sql = format!("DROP TABLE IF EXISTS {}", crate::naming::quote_ident(name));
+            let mut drop_stmt = conn
+                .new_statement()
+                .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
+            drop_stmt
+                .set_sql_query(&drop_sql)
+                .map_err(|e| GgsqlError::ReaderError(format!("ADBC set_sql_query DROP: {}", e)))?;
+            drop_stmt
+                .execute_update()
+                .map_err(|e| GgsqlError::ReaderError(format!("ADBC execute_update DROP: {}", e)))?;
         }
 
         let create_sql = create_table_sql(name, &schema, &*self.dialect)?;
@@ -230,10 +226,7 @@ where
 
         for (batch_idx, batch) in batches.into_iter().enumerate() {
             let mut stmt = conn.new_statement().map_err(|e| {
-                GgsqlError::ReaderError(format!(
-                    "ADBC new_statement (batch {}): {}",
-                    batch_idx, e
-                ))
+                GgsqlError::ReaderError(format!("ADBC new_statement (batch {}): {}", batch_idx, e))
             })?;
             stmt.set_option(
                 OptionStatement::TargetTable,
@@ -340,19 +333,17 @@ fn record_batches_to_dataframe(
     let reader = arrow::ipc::reader::FileReader::try_new(cursor, None)
         .map_err(|e| GgsqlError::ReaderError(format!("arrow56 IPC reader: {}", e)))?;
     let workspace_schema = reader.schema();
-    let collected: std::result::Result<Vec<arrow::record_batch::RecordBatch>, _> =
-        reader.collect();
-    let workspace_batches = collected
-        .map_err(|e| GgsqlError::ReaderError(format!("arrow56 IPC read: {}", e)))?;
+    let collected: std::result::Result<Vec<arrow::record_batch::RecordBatch>, _> = reader.collect();
+    let workspace_batches =
+        collected.map_err(|e| GgsqlError::ReaderError(format!("arrow56 IPC read: {}", e)))?;
 
     let merged = if workspace_batches.is_empty() {
         arrow::record_batch::RecordBatch::new_empty(workspace_schema)
     } else if workspace_batches.len() == 1 {
         workspace_batches.into_iter().next().unwrap()
     } else {
-        arrow::compute::concat_batches(&workspace_schema, &workspace_batches).map_err(|e| {
-            GgsqlError::ReaderError(format!("arrow56 concat_batches: {}", e))
-        })?
+        arrow::compute::concat_batches(&workspace_schema, &workspace_batches)
+            .map_err(|e| GgsqlError::ReaderError(format!("arrow56 concat_batches: {}", e)))?
     };
 
     Ok(DataFrame::from_record_batch(merged))
@@ -399,7 +390,11 @@ fn create_table_sql(
                 )));
             }
         };
-        cols.push(format!("{} {}", crate::naming::quote_ident(field.name()), ty_name));
+        cols.push(format!(
+            "{} {}",
+            crate::naming::quote_ident(field.name()),
+            ty_name
+        ));
     }
 
     Ok(format!(
@@ -436,9 +431,7 @@ fn dataframe_to_record_batches(df: DataFrame) -> Result<Vec<RecordBatch>> {
         .map_err(|e| GgsqlError::ReaderError(format!("arrow58 IPC reader: {}", e)))?;
     let mut out: Vec<RecordBatch> = Vec::new();
     for batch in reader {
-        out.push(batch.map_err(|e| {
-            GgsqlError::ReaderError(format!("arrow58 IPC read: {}", e))
-        })?);
+        out.push(batch.map_err(|e| GgsqlError::ReaderError(format!("arrow58 IPC read: {}", e)))?);
     }
     Ok(out)
 }
@@ -522,11 +515,8 @@ mod tests {
             }
         }
 
-        let reader = AdbcReader::with_dialect(
-            DataFusionDriver::new(None),
-            Box::new(ShoutyDialect),
-        )
-        .expect("reader");
+        let reader = AdbcReader::with_dialect(DataFusionDriver::new(None), Box::new(ShoutyDialect))
+            .expect("reader");
 
         // The Reader trait's dialect() accessor should return our ShoutyDialect.
         assert_eq!(reader.dialect().integer_type_name(), Some("SHOUTY_BIGINT"));
@@ -608,8 +598,8 @@ mod tests {
 
     #[test]
     fn execute_sql_handles_nulls() {
-        use arrow::array::Array;
         use crate::array_util::as_i64;
+        use arrow::array::Array;
 
         let reader = fixture_reader();
         // Use DataFusion DDL to create a table with a NULL.
@@ -680,10 +670,8 @@ mod tests {
                 .try_borrow_mut()
                 .expect("fresh reader should allow a mutable borrow");
             let mut stmt = conn.new_statement().expect("new_statement");
-            stmt.set_sql_query(
-                "SELECT 1 AS v UNION ALL SELECT 2 UNION ALL SELECT 3",
-            )
-            .expect("set_sql_query");
+            stmt.set_sql_query("SELECT 1 AS v UNION ALL SELECT 2 UNION ALL SELECT 3")
+                .expect("set_sql_query");
             stmt.execute().expect("execute")
             // `stmt` and the `RefMut<Connection>` both drop here.
         };
