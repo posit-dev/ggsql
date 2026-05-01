@@ -46,7 +46,7 @@ pub mod util;
 
 pub mod reader;
 
-#[cfg(any(feature = "vegalite", feature = "ggplot2", feature = "plotters"))]
+#[cfg(feature = "vegalite")]
 pub mod writer;
 
 pub mod execute;
