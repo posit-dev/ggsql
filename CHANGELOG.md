@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Added
+
+- New `HybridReader` that composes any primary `Reader` with an in-process `DuckDBReader` for staging. `register()` writes to staging; `execute_sql` routes queries that reference registered names to staging and everything else to the primary. Available behind the existing `duckdb` feature.
+
 ## 0.3.1 - 2026-04-30
 
 ### Fixed
