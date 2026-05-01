@@ -1102,6 +1102,34 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     }
 }
 
+/// Numeric breaks for categorical scales: `[1, 2, …, n]` from input range length.
+pub(super) fn categorical_numeric_breaks(scale: &super::Scale) -> Vec<f64> {
+    let n = scale.input_range.as_ref().map_or(0, |r| r.len());
+    (1..=n).map(|i| i as f64).collect()
+}
+
+/// Numeric domain for categorical scales: `(0.5, n + 0.5)`.
+pub(super) fn categorical_numeric_domain(scale: &super::Scale) -> Option<(f64, f64)> {
+    let n = scale.input_range.as_ref()?.len();
+    if n > 0 { Some((0.5, n as f64 + 0.5)) } else { None }
+}
+
+/// Labelled breaks for categorical scales: pairs position indices with category names.
+pub(super) fn categorical_break_labels(scale: &super::Scale) -> Vec<(f64, String)> {
+    let Some(range) = scale.input_range.as_ref() else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(range.len());
+    for (i, elem) in range.iter().enumerate() {
+        let label = match elem {
+            ArrayElement::String(s) => s.clone(),
+            other => format!("{}", other.to_json()),
+        };
+        out.push(((i + 1) as f64, label));
+    }
+    out
+}
+
 /// Wrapper struct for scale type trait objects
 ///
 /// This provides a convenient interface for working with scale types while hiding

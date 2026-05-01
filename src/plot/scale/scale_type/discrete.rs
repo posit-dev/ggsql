@@ -58,28 +58,15 @@ impl ScaleTypeTrait for Discrete {
     }
 
     fn numeric_breaks(&self, scale: &super::super::Scale) -> Vec<f64> {
-        let n = scale.input_range.as_ref().map_or(0, |r| r.len());
-        (1..=n).map(|i| i as f64).collect()
+        super::categorical_numeric_breaks(scale)
     }
 
     fn numeric_domain(&self, scale: &super::super::Scale) -> Option<(f64, f64)> {
-        let n = scale.input_range.as_ref()?.len();
-        if n > 0 { Some((0.5, n as f64 + 0.5)) } else { None }
+        super::categorical_numeric_domain(scale)
     }
 
     fn break_labels(&self, scale: &super::super::Scale) -> Vec<(f64, String)> {
-        let Some(range) = scale.input_range.as_ref() else {
-            return Vec::new();
-        };
-        let mut out = Vec::with_capacity(range.len());
-        for (i, elem) in range.iter().enumerate() {
-            let label = match elem {
-                ArrayElement::String(s) => s.clone(),
-                other => format!("{}", other.to_json()),
-            };
-            out.push(((i + 1) as f64, label));
-        }
-        out
+        super::categorical_break_labels(scale)
     }
 
     fn default_properties(&self) -> &'static [ParamDefinition] {
