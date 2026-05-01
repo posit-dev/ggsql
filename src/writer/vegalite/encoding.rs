@@ -1040,7 +1040,7 @@ impl<'a> RenderContext<'a> {
 
     #[cfg(test)]
     pub fn default_for_test() -> Self {
-        let renderer = super::projection::get_projection_renderer(None, None);
+        let renderer = super::projection::get_projection_renderer(None, None, &[]);
         Self::new(
             &[],
             renderer.as_ref(),
@@ -1234,7 +1234,7 @@ mod tests {
             let scales: Vec<Scale> = vec![];
             let ctx = RenderContext::new(
                 &scales,
-                get_projection_renderer(None, None).as_ref(),
+                get_projection_renderer(None, None, &[]).as_ref(),
                 AestheticContext::from_static(&["x", "y"], &[]),
             );
             let err = ctx.get_extent("pos1").unwrap_err().to_string();
@@ -1249,7 +1249,7 @@ mod tests {
             let scales: Vec<Scale> = vec![];
             let ctx = RenderContext::new(
                 &scales,
-                get_projection_renderer(None, None).as_ref(),
+                get_projection_renderer(None, None, &[]).as_ref(),
                 AestheticContext::from_static(&["angle", "radius"], &[]),
             );
             let err = ctx.get_extent("pos1").unwrap_err().to_string();
@@ -1266,7 +1266,7 @@ mod tests {
             let scales = vec![discrete_scale("pos2")];
             let ctx = RenderContext::new(
                 &scales,
-                get_projection_renderer(None, None).as_ref(),
+                get_projection_renderer(None, None, &[]).as_ref(),
                 AestheticContext::from_static(&["x", "y"], &[]),
             );
             let err = ctx.get_extent("pos2").unwrap_err().to_string();

@@ -3636,7 +3636,7 @@ mod tests {
         use crate::plot::{ArrayElement, Scale};
         use crate::writer::vegalite::projection::get_projection_renderer;
 
-        let cartesian = get_projection_renderer(None, None);
+        let cartesian = get_projection_renderer(None, None, &[]);
 
         // Test success case: continuous scale with numeric range
         let scales = vec![Scale {

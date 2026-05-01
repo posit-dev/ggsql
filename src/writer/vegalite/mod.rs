@@ -1052,7 +1052,7 @@ impl Writer for VegaLiteWriter {
             "$schema": self.schema
         });
         // Get projection renderer (single instance used throughout)
-        let projection = get_projection_renderer(spec.project.as_ref(), spec.facet.as_ref());
+        let projection = get_projection_renderer(spec.project.as_ref(), spec.facet.as_ref(), &spec.scales);
 
         if let Some((w, h)) = projection.panel_size() {
             vl_spec["width"] = w;
@@ -1354,7 +1354,7 @@ mod tests {
 
         // Test with cartesian projection (None = default cartesian)
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
-        let cartesian = get_projection_renderer(None, None);
+        let cartesian = get_projection_renderer(None, None, &[]);
         let cart = cartesian.as_ref();
 
         // Internal position names should map to Vega-Lite channel names based on projection
@@ -1380,7 +1380,7 @@ mod tests {
         // Test with polar projection - internal position maps to radius/theta
         // regardless of the context's user-facing names
         let polar_proj = Projection::polar();
-        let polar = get_projection_renderer(Some(&polar_proj), None);
+        let polar = get_projection_renderer(Some(&polar_proj), None, &[]);
         let pol = polar.as_ref();
 
         let polar_ctx = AestheticContext::from_static(&["radius", "theta"], &[]);
