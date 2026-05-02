@@ -54,7 +54,7 @@ pub const SQL_NULL_HANDLE: SqlHandle = std::ptr::null_mut();
 // ============================================================================
 
 pub const SQL_ATTR_ODBC_VERSION: SqlInteger = 200;
-pub const SQL_OV_ODBC3: SqlInteger = 3;
+pub const SQL_OV_ODBC3_80: SqlInteger = 380;
 
 // ============================================================================
 // Connection attributes

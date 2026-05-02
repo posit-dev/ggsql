@@ -112,7 +112,7 @@ impl Environment {
         }
 
         let rc = unsafe {
-            (f.SQLSetEnvAttr)(handle, SQL_ATTR_ODBC_VERSION, SQL_OV_ODBC3 as SqlPointer, 0)
+            (f.SQLSetEnvAttr)(handle, SQL_ATTR_ODBC_VERSION, SQL_OV_ODBC3_80 as SqlPointer, 0)
         };
         check(rc, SQL_HANDLE_ENV, handle, "Failed to set ODBC version")?;
 
